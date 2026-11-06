@@ -32,7 +32,7 @@ Ntasks is under construction. The repository holds its skeleton:
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
-| Web app | A placeholder page |
+| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
