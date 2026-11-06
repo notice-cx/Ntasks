@@ -1,0 +1,17 @@
+{
+  "name": "@ntasks/lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tests that the repository's lint check reports the mistakes it exists to catch.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test test/promises.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "eslint": "10.14.0",
+    "typescript": "6.0.3"
+  }
+}

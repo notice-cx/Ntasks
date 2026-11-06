@@ -28,11 +28,14 @@ Run these from the repository root.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Builds the web app and starts the Worker at http://localhost:8787 |
+| `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing handles (awaits, returns, marks `void` or gives a `.catch()`), and a promise used where the code expects none |
+| `pnpm format:check` | Checks that every file is formatted the way Prettier formats it. `pnpm format` rewrites the files that are not |
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
 | `pnpm test` | Runs every workspace's tests |
 | `pnpm build` | Builds the web app, then checks that the Worker would deploy, without deploying it |
 
-CI runs `pnpm typecheck`, `pnpm test` and `pnpm build` on every pull request
+CI runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and
+`pnpm build` on every pull request
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). To run one
 workspace's command, name it with `--filter`:
 
@@ -60,6 +63,10 @@ pnpm --filter @ntasks/domain test
   [`tsconfig.base.json`](tsconfig.base.json). Add a library or types in the
   workspace's own `tsconfig.json`, never by loosening the base. No `any`.
 - **ES modules only.**
+- **Prettier formats the code**, with the settings in
+  [`.prettierrc.json`](.prettierrc.json). Run `pnpm format` before you commit.
+  [`.prettierignore`](.prettierignore) lists the files that were written
+  before the formatter and are not yet formatted; do not add a file to it.
 - **Comments say what the code cannot:** a reason, a rule, a trap, or the one
   place a fact lives. They do not narrate the code or record its history;
   that belongs in commit messages.
@@ -68,9 +75,19 @@ pnpm --filter @ntasks/domain test
 
 ### Rules for Worker code
 
+`pnpm lint` catches most breaks of the first rule. Review checks that rule's
+remaining cases and the other four.
+
 - Every promise is awaited, returned, or passed to `ctx.waitUntil()`. A
   promise left floating can be cut off when the response is sent, and its
-  error is lost.
+  error is lost. `pnpm lint` reports a promise that is none of those
+  (`@typescript-eslint/no-floating-promises`), and a promise passed where the
+  code expects none, such as an `if` condition or the callback of `forEach`
+  (`@typescript-eslint/no-misused-promises`). It reads the types, so it
+  reports a D1 call such as `db.prepare(sql).run()` that nothing awaits. It
+  also accepts `void promise` and `promise.catch(handler)`, which do not keep
+  the Worker from cutting the promise off; use `ctx.waitUntil()` for work that
+  must outlive the response.
 - Never keep one request's data in a module-level variable. One Worker
   instance serves many requests, so the value would leak into the next one.
 - Make tokens and ids with `crypto.randomUUID()` or
