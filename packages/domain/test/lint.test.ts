@@ -6,11 +6,20 @@ import { missingSections, requiredSections } from '../src/index.ts';
 
 describe('missingSections', () => {
   it('names every section a bug lacks, in order', () => {
-    expect(missingSections({ type: 'bug', description: 'It crashes.', acceptance: '' })).toEqual(['## Steps to Reproduce', '## Acceptance Criteria']);
+    expect(missingSections({ type: 'bug', description: 'It crashes.', acceptance: '' })).toEqual([
+      '## Steps to Reproduce',
+      '## Acceptance Criteria',
+    ]);
   });
 
   it('finds a section by its name anywhere, in any case', () => {
-    expect(missingSections({ type: 'bug', description: '### steps TO reproduce\n1. Open it.\nACCEPTANCE CRITERIA: no crash', acceptance: '' })).toEqual([]);
+    expect(
+      missingSections({
+        type: 'bug',
+        description: '### steps TO reproduce\n1. Open it.\nACCEPTANCE CRITERIA: no crash',
+        acceptance: '',
+      }),
+    ).toEqual([]);
   });
 
   it('counts a non-empty acceptance field as the criteria section', () => {
@@ -19,8 +28,10 @@ describe('missingSections', () => {
     expect(missingSections({ type: 'task', description: '', acceptance: '   ' })).toEqual(['## Acceptance Criteria']);
   });
 
-  it('accepts Acceptance Criteria in place of an epic\'s Success Criteria', () => {
-    expect(missingSections({ type: 'epic', description: '## Acceptance Criteria\nAll shipped.', acceptance: '' })).toEqual([]);
+  it("accepts Acceptance Criteria in place of an epic's Success Criteria", () => {
+    expect(
+      missingSections({ type: 'epic', description: '## Acceptance Criteria\nAll shipped.', acceptance: '' }),
+    ).toEqual([]);
   });
 
   it('expects a decision to state the decision, its rationale and the alternatives', () => {

@@ -18,7 +18,14 @@ export const DEPENDENCY_TYPES = ['blocks', 'related', 'discovered-from'] as cons
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 
 /** How a close ended. */
-export const TASK_RESOLUTIONS = ['done', 'wont-do', 'duplicate', 'cant-reproduce', 'already-handled', 'no-longer-needed'] as const;
+export const TASK_RESOLUTIONS = [
+  'done',
+  'wont-do',
+  'duplicate',
+  'cant-reproduce',
+  'already-handled',
+  'no-longer-needed',
+] as const;
 export type TaskResolution = (typeof TASK_RESOLUTIONS)[number];
 
 /** What a history event records. A comment is `commented`; every other write is one of the rest. */

@@ -208,9 +208,12 @@ function filter(statement: Query, query: TaskFilters): void {
       WHERE NOT EXISTS (SELECT 1 FROM task_labels l WHERE l.task_id = t.id AND l.label = wanted.value))`);
   }
   if (query.words !== undefined && query.words.length > 0) {
-    if (!query.words.every((word) => typeof word === 'string' && word.trim() !== '')) invalid('words must be non-empty text');
+    if (!query.words.every((word) => typeof word === 'string' && word.trim() !== ''))
+      invalid('words must be non-empty text');
     const words = JSON.stringify(query.words.map((word) => word.toLowerCase()));
-    where.push(`NOT EXISTS (SELECT 1 FROM json_each(${statement.param(words)}) word WHERE instr(${SEARCHED_TEXT}, word.value) = 0)`);
+    where.push(
+      `NOT EXISTS (SELECT 1 FROM json_each(${statement.param(words)}) word WHERE instr(${SEARCHED_TEXT}, word.value) = 0)`,
+    );
   }
   if (query.types !== undefined) {
     if (!query.types.every(isTaskType)) invalid('types must be task types');
