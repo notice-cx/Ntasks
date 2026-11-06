@@ -35,6 +35,8 @@ import { refusal, verifyRequest, type Verification, type VerifierEnv } from './v
 export interface AccessEnv extends VerifierEnv {
   /** Limits sign-in requests per client address (wrangler.jsonc `ratelimits`). */
   readonly SIGN_IN_LIMIT: RateLimit;
+  /** Limits agent registrations from one address. */
+  readonly REGISTER_ADDRESS_LIMIT: RateLimit;
   /** Limits agent registrations from all addresses together. */
   readonly REGISTER_LIMIT: RateLimit;
 }
@@ -74,10 +76,14 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   const { success } = await env.SIGN_IN_LIMIT.limit({ key: address });
   if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
   // Anyone may register an agent, from any number of addresses, and each
-  // registration writes to D1; one key for every caller caps them all.
+  // registration writes to D1, so one key for every caller caps them all.
+  // Each address is limited first, and a registration it is refused does not
+  // count toward the shared cap, so one address cannot use all of it.
   if (url.pathname === REGISTER_PATH && request.method === 'POST') {
-    const registration = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
-    if (!registration.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+    const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: address });
+    if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+    const fromAll = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
+    if (!fromAll.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
   }
   try {
     if (AUTHORIZATION_SERVER_METADATA_PATHS.includes(url.pathname)) return await serverMetadata(request, env, config);
@@ -97,12 +103,34 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
 
 class BodyTooLarge extends Error {}
 
-/** The request body as text, refused above BODY_BYTES. */
+/**
+ * The request body as text, refused above BODY_BYTES. It reads the body a
+ * chunk at a time and stops at the limit, so a body sent without a
+ * Content-Length is never held in memory whole.
+ */
 async function boundedText(request: Request): Promise<string> {
   const declared = Number(request.headers.get('content-length') ?? '0');
   if (declared > BODY_BYTES) throw new BodyTooLarge();
-  const bytes = await request.arrayBuffer();
-  if (bytes.byteLength > BODY_BYTES) throw new BodyTooLarge();
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > BODY_BYTES) {
+      await reader.cancel();
+      throw new BodyTooLarge();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   return new TextDecoder().decode(bytes);
 }
 

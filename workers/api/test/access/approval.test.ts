@@ -82,4 +82,19 @@ describe('the actor an agent writes as', () => {
     } as const;
     expect(actorOf(service)).toEqual({ name: 'service:noticeos' });
   });
+
+  it('marks an owner whose own name starts like an agent’s, so the two never meet', () => {
+    const owner = { kind: 'person', id: 'person:x', userId: 'x', name: 'agent:Alice' } as const;
+    const agent = {
+      kind: 'agent',
+      id: 'agent:c:x',
+      userId: 'x',
+      clientId: 'c',
+      name: 'Alice',
+      projects: new Map(),
+    } as const;
+
+    expect(actorOf(owner)).toEqual({ name: 'person:agent:Alice' });
+    expect(actorOf(agent)).toEqual({ name: 'agent:Alice' });
+  });
 });

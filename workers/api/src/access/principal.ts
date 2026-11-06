@@ -70,14 +70,20 @@ export function reachableProjects(principal: Principal): 'all' | readonly string
   return [...principal.projects.keys()];
 }
 
+/** A name that starts like one of the prefixes actorOf adds. */
+const PREFIXED = /^(?:agent|service|person):/u;
+
 /**
  * The engine's actor for a write by this principal, with the model an agent
  * names. The task store records it as the filer, assignee, closer or author.
  * An agent picks its own name when it registers, and could pick the owner's,
- * so an agent's actor is `agent:<name>` and a service's `service:<name>`. Only
- * an allowlisted owner's write records a name with neither prefix.
+ * so an agent's actor is `agent:<name>` and a service's `service:<name>`. An
+ * owner's actor is their name, or `person:<name>` when their name itself
+ * starts with one of these prefixes. So an actor that starts with `agent:` is
+ * always an agent, and one that starts with `service:` always a service.
  */
 export function actorOf(principal: Principal, model?: string): Actor {
-  const name = principal.kind === 'person' ? principal.name : `${principal.kind}:${principal.name}`.slice(0, 255);
+  const kind = principal.kind === 'person' && !PREFIXED.test(principal.name) ? null : principal.kind;
+  const name = (kind === null ? principal.name : `${kind}:${principal.name}`).slice(0, 255);
   return model === undefined ? { name } : { name, model };
 }

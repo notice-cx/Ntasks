@@ -35,11 +35,13 @@
   "secrets": {
     "required": ["NTASKS_ORIGIN", "AUTH_SECRET", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "OWNER_GITHUB_IDS"]
   },
-  // At most 30 sign-in requests a minute from one address, and at most 10
-  // agent registrations a minute from all addresses together: each
-  // registration writes to D1 without anyone signed in, and the free plan's
-  // daily write limit stops every query once reached. namespace_id names a
-  // limiter within the account; it is not a secret.
+  // About 30 sign-in requests a minute from one address; about 3 agent
+  // registrations a minute from one address and 10 from all addresses
+  // together. Each registration writes to D1 without anyone signed in, and
+  // the free plan's daily write limit stops every query once reached.
+  // Cloudflare counts each limit separately in each of its locations, so the
+  // numbers are approximate. namespace_id names a limiter within the account;
+  // it is not a secret.
   "ratelimits": [
     {
       "name": "SIGN_IN_LIMIT",
@@ -50,6 +52,11 @@
       "name": "REGISTER_LIMIT",
       "namespace_id": "1002",
       "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "REGISTER_ADDRESS_LIMIT",
+      "namespace_id": "1003",
+      "simple": { "limit": 3, "period": 60 }
     }
   ],
   // The task store. database_id is left out: the first `wrangler deploy`

@@ -133,11 +133,13 @@ sign-in routes do. A refused request gets:
 
 `principal.id` is stable and opaque, such as `service:<credential id>`; the
 API passes it to the task engine as the retry principal. `actorOf(principal,
-model)` makes the engine's `Actor`, the name the task's history records: the
-owner's GitHub name; `agent:` followed by the agent's registered name; or
-`service:` followed by the credential's name. An agent chooses its own name
-when it registers and could choose the owner's, so the prefix keeps its
-writes from passing as the owner's in history.
+model)` makes the engine's `Actor`, the name the task's history records:
+`agent:` followed by the agent's registered name; `service:` followed by the
+credential's name; or the owner's GitHub name, with `person:` in front when
+that name itself starts with `agent:`, `service:` or `person:`. An agent
+chooses its own name when it registers and could choose the owner's, so an
+actor that starts with `agent:` is always an agent and one that starts with
+`service:` always a service.
 
 ## Cutting a caller off
 
@@ -153,16 +155,22 @@ Each of these takes effect at the caller's next request.
 ## Routes
 
 Every path below is in `assets.run_worker_first` in
-[`wrangler.jsonc`](../workers/api/wrangler.jsonc). Two limits, both
+[`wrangler.jsonc`](../workers/api/wrangler.jsonc). Three limits, each
 Cloudflare's rate limiting binding, answer `429` once reached:
 
-- Every sign-in path but the resource metadata takes at most 30 requests a
+- Every sign-in path but the resource metadata takes about 30 requests a
   minute from one address (`SIGN_IN_LIMIT`).
-- Agent registration takes at most 10 requests a minute from all addresses
-  together (`REGISTER_LIMIT`). Anyone may register, and each registration
-  writes to D1; on the free plan, reaching the daily write limit stops every
-  query until 00:00 UTC. Cloudflare counts this limit in each of its
-  locations, so it bounds registrations rather than fixing an exact total.
+- Agent registration takes about 3 requests a minute from one address
+  (`REGISTER_ADDRESS_LIMIT`), and about 10 a minute from all addresses
+  together (`REGISTER_LIMIT`). A registration refused for its address does
+  not count toward the shared limit, so one address cannot use all of it.
+  Anyone may register, and each registration writes to D1; on the free plan,
+  reaching the daily write limit stops every query until 00:00 UTC.
+
+These limits are approximate. Cloudflare counts each one separately in each
+of its locations, and a location can let a few more requests through before
+it refuses, so registrations from many locations can add up to more than 10
+a minute in all. Allow for that when estimating D1 writes.
 
 | Route | Answer |
 |---|---|

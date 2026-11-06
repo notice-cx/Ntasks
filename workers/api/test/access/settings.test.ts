@@ -50,7 +50,12 @@ describe('the sign-in settings', () => {
   });
 
   it('refuse every caller while sign-in is off', async () => {
-    const off = { DB: env.DB, SIGN_IN_LIMIT: env.SIGN_IN_LIMIT, REGISTER_LIMIT: env.REGISTER_LIMIT };
+    const off = {
+      DB: env.DB,
+      SIGN_IN_LIMIT: env.SIGN_IN_LIMIT,
+      REGISTER_LIMIT: env.REGISTER_LIMIT,
+      REGISTER_ADDRESS_LIMIT: env.REGISTER_ADDRESS_LIMIT,
+    };
     const request = new Request(`${ORIGIN}/api/access/me`, {
       headers: { authorization: 'Bearer some-token-of-sixteen-or-more' },
     });
@@ -60,6 +65,35 @@ describe('the sign-in settings', () => {
     expect(verification.ok ? 0 : refusal(verification, {}).status).toBe(503);
     const page = await handleAccess(new Request(`${ORIGIN}/sign-in`), off);
     expect(page?.status).toBe(503);
+  });
+});
+
+describe('a request body', () => {
+  it('is refused once it passes 16 KiB, even with no Content-Length', async () => {
+    let pulled = 0;
+    const chunk = new TextEncoder().encode('a'.repeat(4096));
+    // Endless unless the reader stops: proves the limit holds while reading.
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const request = new Request(`${ORIGIN}/sign-in`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        'content-type': 'application/x-www-form-urlencoded',
+        'cf-connecting-ip': freshAddress(),
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(request.headers.get('content-length')).toBeNull();
+
+    const response = await handleAccess(request, env);
+    expect(response?.status).toBe(413);
+    expect(pulled).toBeLessThan(10);
   });
 });
 
@@ -76,34 +110,54 @@ describe('the sign-in rate limit', () => {
     expect((await call('/api/access/me', {}, freshAddress())).status).toBe(401);
   });
 
-  it('caps agent registrations from all addresses together', async () => {
-    // A stand-in for the REGISTER_LIMIT binding that allows two calls. The
-    // tests raise the real binding's limit so they can register freely.
+  /** A stand-in for the shared REGISTER_LIMIT binding that allows `allowed` calls and records their keys. */
+  function sharedLimit(allowed: number): RateLimit & { readonly keys: string[] } {
     const keys: string[] = [];
-    const registrations = {
+    return {
+      keys,
       limit: ({ key }: RateLimitOptions) => {
         keys.push(key);
-        return Promise.resolve({ success: keys.length <= 2 });
+        return Promise.resolve({ success: keys.length <= allowed });
       },
-    } satisfies RateLimit;
-    const register = (address: string) =>
-      handleAccess(
-        new Request(`${ORIGIN}/api/auth/oauth2/register`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
-          body: JSON.stringify({
-            client_name: 'Example Agent',
-            redirect_uris: ['http://127.0.0.1:43110/callback'],
-            token_endpoint_auth_method: 'none',
-          }),
+    };
+  }
+
+  function register(address: string, shared: RateLimit): Promise<Response | null> {
+    return handleAccess(
+      new Request(`${ORIGIN}/api/auth/oauth2/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
+        body: JSON.stringify({
+          client_name: 'Example Agent',
+          redirect_uris: ['http://127.0.0.1:43110/callback'],
+          token_endpoint_auth_method: 'none',
         }),
-        { ...env, REGISTER_LIMIT: registrations },
-      );
+      }),
+      { ...env, REGISTER_LIMIT: shared },
+    );
+  }
+
+  // The tests raise the real REGISTER_LIMIT so they can register freely, so
+  // these use a stand-in for it; test/node/routing.ts checks its configured
+  // value. REGISTER_ADDRESS_LIMIT is the binding as wrangler.jsonc sets it.
+  it('caps agent registrations from all addresses together', async () => {
+    const shared = sharedLimit(2);
 
     const statuses = [];
-    for (let i = 0; i < 3; i += 1) statuses.push((await register(freshAddress()))?.status);
+    for (let i = 0; i < 3; i += 1) statuses.push((await register(freshAddress(), shared))?.status);
     expect(statuses).toEqual([201, 201, 429]);
-    expect(new Set(keys).size).toBe(1);
+    expect(new Set(shared.keys).size).toBe(1);
+  });
+
+  it('refuses a fourth registration a minute from one address, without spending the shared cap', async () => {
+    const shared = sharedLimit(1_000);
+    const address = freshAddress();
+
+    const statuses = [];
+    for (let i = 0; i < 4; i += 1) statuses.push((await register(address, shared))?.status);
+    expect(statuses).toEqual([201, 201, 201, 429]);
+    expect(shared.keys).toHaveLength(3);
+    expect((await register(freshAddress(), shared))?.status).toBe(201);
   });
 
   it('leaves the resource metadata unlimited, since it reads nothing', async () => {
