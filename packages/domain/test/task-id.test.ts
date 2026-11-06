@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTaskId } from '../src/index';
+import { isTaskId } from '../src/index.ts';
 
 describe('isTaskId', () => {
   it.each([
