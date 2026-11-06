@@ -7,6 +7,7 @@
  */
 import { IDEMPOTENCY_KEY, TASK_LIMITS, type TaskStatus } from '@ntasks/domain';
 import {
+  assigneeArg,
   cardArg,
   choiceArg,
   closingArgs,
@@ -150,7 +151,7 @@ export async function updateRoute(
     priority: priorityArg(body),
     title: textArg(body, 'title', TASK_LIMITS.title, false),
     description: textArg(body, 'description', TASK_LIMITS.description, false, true),
-    assignee: emptyIsNone(textArg(body, 'assignee', TASK_LIMITS.actor, false, true)),
+    assignee: assigneeArg(body),
     parent: body.parent === '' ? null : body.parent === undefined ? undefined : taskArg(body, 'parent'),
     defer: emptyIsNone(deferArg(body)),
     acceptance: textArg(body, 'acceptance', TASK_LIMITS.acceptance, false, true),

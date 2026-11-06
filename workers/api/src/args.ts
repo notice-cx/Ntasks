@@ -257,6 +257,16 @@ export function listed(ids: readonly string[]): string {
   return ids.length < 2 ? ids.join('') : `${ids.slice(0, -1).join(', ')} and ${ids.at(-1)}`;
 }
 
+/** The holder a change names: a name on one line with no spaces around it,
+ * as list_tasks takes one, or "" to release the task, which is null to the write. */
+export function assigneeArg(args: Args, name = 'assignee'): string | null | undefined {
+  const value = textArg(args, name, TASK_LIMITS.actor, false, true);
+  if (value === '') return null;
+  if (value !== undefined && (/[\r\n\t]/u.test(value) || value.trim() !== value))
+    refuse(`invalid arguments: ${name} (a name on one line, or "" to release the task)`);
+  return value;
+}
+
 /** "" clears a field: null to the write. */
 export function emptyIsNone(value: string | undefined): string | null | undefined {
   return value === '' ? null : value;

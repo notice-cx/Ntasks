@@ -587,6 +587,20 @@ describe('update_task', () => {
     expect([cleared.metadata, cleared.choices, cleared.dueAt]).toEqual([{}, null, '2027-02-01T00:00:00.000Z']);
   });
 
+  it('gives a task to the name it is sent, and releases it with ""', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const assign = (assignee: string) =>
+      write<{ task: { assignee: string | null } }>(target, 'update_task', {
+        project: project.id,
+        task: id,
+        assignee,
+        idempotency_key: key(),
+      });
+    expect((await assign('agent-c')).task.assignee).toBe('agent-c');
+    expect((await assign('')).task.assignee).toBeNull();
+  });
+
   it('opens a closed task again when given a status', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
@@ -693,6 +707,12 @@ describe('update_task', () => {
         ...args,
       });
     expect(await update({})).toBe('invalid arguments: name at least one field to change');
+    for (const assignee of [' agent-c', 'agent-c ', 'agent\tc', '  ']) {
+      expect(await update({ assignee }), JSON.stringify(assignee)).toBe(
+        'invalid arguments: assignee (a name on one line, or "" to release the task)',
+      );
+    }
+    expect((await current(project, id)).assignee).toBeNull();
     expect(await update({ status: 'closed' })).toBe(
       'invalid arguments: status (one of open, in_progress, blocked, deferred)',
     );

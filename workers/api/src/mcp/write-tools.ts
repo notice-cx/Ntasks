@@ -20,6 +20,7 @@ import {
   type TaskStatus,
 } from '@ntasks/domain';
 import {
+  assigneeArg,
   cardArg,
   choiceArg,
   choicesArg,
@@ -568,7 +569,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         priority: priorityArg(args),
         title: textArg(args, 'title', TASK_LIMITS.title, false),
         description: textArg(args, 'description', TASK_LIMITS.description, false, true),
-        assignee: emptyIsNone(textArg(args, 'assignee', TASK_LIMITS.actor, false, true)),
+        assignee: assigneeArg(args),
         parent: args.parent === '' ? null : args.parent === undefined ? undefined : taskArg(args, 'parent'),
         defer: emptyIsNone(deferArg(args)),
         acceptance: textArg(args, 'acceptance', TASK_LIMITS.acceptance, false, true),

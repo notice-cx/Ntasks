@@ -237,7 +237,7 @@ describe('PATCH /api/tasks/:id', () => {
     });
   });
 
-  it('refuses a claim with other changes, a close by status, and a human label taken off', async () => {
+  it('refuses a claim with other changes, a close by status, an assignee with spaces around it, and a human label taken off', async () => {
     const { id } = await task({ title: 'Human', labels: ['human'] });
     const patch = (body: Record<string, unknown>) =>
       send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, ...body });
@@ -252,6 +252,10 @@ describe('PATCH /api/tasks/:id', () => {
     expect(await patch({})).toEqual({
       status: 400,
       body: { error: 'invalid_request', detail: 'name at least one field to change' },
+    });
+    expect(await patch({ assignee: 'agent-c ' })).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: 'assignee (a name on one line, or "" to release the task)' },
     });
     expect(await patch({ removeLabels: ['human'] })).toEqual({
       status: 409,
