@@ -93,7 +93,8 @@ setting reaches it. Dolt's usage reporting is turned off.
 For each database, in this order (`export --describe` prints the exact
 queries):
 
-- the hash of the working set, which changes with any write;
+- the hash of the branch head, which changes with any commit, and of the
+  working set, which changes with any write;
 - the project id (`_project_id` in the `metadata` table) and the task id
   prefix (`issue_prefix` in the `config` table), and no other setting;
 - the name and row count of every table;
@@ -101,8 +102,8 @@ queries):
 - every row of `issues`, `labels`, `dependencies`, `comments` and `events`;
 - every change ever made to `issues`, `labels` and `dependencies`, commit by
   commit (`dolt_diff_<table>`);
-- the hash of the working set again. If it changed, the hub was written to
-  during the export, and the export stops without writing a file.
+- both hashes again. If either changed, the hub was written to during the
+  export, and the export stops without writing a file.
 
 ## How Beads data becomes Ntasks rows
 

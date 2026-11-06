@@ -254,7 +254,7 @@ export class FakeHub {
     const project = this.project();
     const q = databaseQueries(this.database);
     const answers = new Map<string, readonly BeadsRow[]>([
-      [q.working, [{ working: this.#working }]],
+      [q.state, [{ head: this.log.at(-1)?.commit_hash ?? 'h0', working: this.#working }]],
       [q.projectId, [{ value: this.id }]],
       [q.prefix, [{ value: this.prefix }]],
       [q.tables, project.tables.map((table) => ({ name: table.name }))],

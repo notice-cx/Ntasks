@@ -92,7 +92,8 @@ export function readHubFile(json: string): HubFile {
 export function databaseQueries(database: string) {
   const db = quote(database, DATABASE);
   return {
-    working: `USE ${db}; SELECT DOLT_HASHOF_DB('WORKING') AS working`,
+    /** The branch head and the working set: a commit changes the first, any write the second. */
+    state: `USE ${db}; SELECT DOLT_HASHOF('HEAD') AS head, DOLT_HASHOF_DB('WORKING') AS working`,
     projectId: `SELECT value FROM ${db}.\`metadata\` WHERE \`key\` = '_project_id'`,
     prefix: `SELECT value FROM ${db}.\`config\` WHERE \`key\` = 'issue_prefix'`,
     tables: `SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = '${database}' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
@@ -114,7 +115,7 @@ export function describeExport(hub: HubFile): string {
     lines.push(
       '',
       `Database ${project.database} (project ${project.key}):`,
-      `  ${q.working}`,
+      `  ${q.state}`,
       `  ${q.projectId}`,
       `  ${q.prefix}`,
       `  ${q.tables}`,
@@ -123,7 +124,7 @@ export function describeExport(hub: HubFile): string {
       `  ${q.commits}`,
       ...READ_TABLES.map((table) => `  ${q.rows(table)}   (if the table exists)`),
       ...HISTORY_TABLES.map((table) => `  ${q.diff(table)}   (if ${table} exists)`),
-      `  ${q.working}   (again: the export refuses if the database changed meanwhile)`,
+      `  ${q.state}   (again: the export refuses if the database changed meanwhile)`,
     );
   }
   lines.push('', `Each runs as: ${hub.client.join(' ')} '<query>'`);
@@ -131,14 +132,24 @@ export function describeExport(hub: HubFile): string {
 }
 
 function single(rows: readonly BeadsRow[], what: string): string {
-  const value = rows.length === 1 ? textOf(rows[0]!.value ?? rows[0]!.working ?? rows[0]!.version) : null;
+  const value = rows.length === 1 ? textOf(rows[0]!.value ?? rows[0]!.version) : null;
   if (value === null) throw new Error(`The hub returned no ${what}.`);
   return value;
 }
 
+/** The branch head and working set hashes, as one text to compare. */
+async function stateOf(query: Query, sql: string, database: string): Promise<string> {
+  const rows = await query(sql);
+  const head = textOf(rows[0]?.head);
+  const working = textOf(rows[0]?.working);
+  if (rows.length !== 1 || head === null || working === null)
+    throw new Error(`The hub returned no branch head and working set hash for ${database}.`);
+  return `${head} ${working}`;
+}
+
 async function exportProject(project: HubProject, query: Query): Promise<BeadsProject> {
   const q = databaseQueries(project.database);
-  const workingBefore = single(await query(q.working), `working set hash for ${project.database}`);
+  const stateBefore = await stateOf(query, q.state, project.database);
   const id = single(await query(q.projectId), `project id in ${project.database}`);
   const prefix = single(await query(q.prefix), `prefix in ${project.database}`);
   if (project.id !== undefined && project.id !== id)
@@ -161,8 +172,7 @@ async function exportProject(project: HubProject, query: Query): Promise<BeadsPr
   for (const table of READ_TABLES) rows[table] = names.includes(table) ? await query(q.rows(table)) : [];
   const diffs = {} as Record<HistoryTable, BeadsRow[]>;
   for (const table of HISTORY_TABLES) diffs[table] = names.includes(table) ? await query(q.diff(table)) : [];
-  const workingAfter = single(await query(q.working), `working set hash for ${project.database}`);
-  if (workingAfter !== workingBefore) {
+  if ((await stateOf(query, q.state, project.database)) !== stateBefore) {
     throw new Error(
       `${project.database} changed while the export read it, so the export is not one consistent copy. Run it again, or stop writers first.`,
     );

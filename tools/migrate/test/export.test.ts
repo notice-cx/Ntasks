@@ -32,17 +32,23 @@ describe('export', () => {
     await exportHub(hubFile([acme]), server);
     expect(server.sent.length).toBeGreaterThan(10);
     for (const sql of server.sent) {
-      expect(sql).toMatch(/^(SELECT |USE `acme_tasks`; SELECT DOLT_HASHOF_DB\('WORKING'\))/u);
+      expect(sql).toMatch(
+        /^(SELECT |USE `acme_tasks`; SELECT DOLT_HASHOF\('HEAD'\) AS head, DOLT_HASHOF_DB\('WORKING'\))/u,
+      );
       expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|CALL|CREATE|DROP|ALTER|REPLACE|GRANT)\b/iu);
     }
   });
 
-  it('refuses a hub that changed while it was read', async () => {
+  it.each([
+    ['written to', (reads: number) => ({ head: 'c1', working: `w${reads}` })],
+    // A commit of changes already in the working set leaves its hash as it was.
+    ['committed to', (reads: number) => ({ head: `c${reads}`, working: 'w1' })],
+  ])('refuses a hub %s while it was read', async (_, stateAt) => {
     const acme = acmeHub();
     const server = fakeServer([acme]);
-    const working = databaseQueries('acme_tasks').working;
+    const state = databaseQueries('acme_tasks').state;
     let reads = 0;
-    const changing = async (sql: string) => (sql === working ? [{ working: `w${(reads += 1)}` }] : server(sql));
+    const changing = async (sql: string) => (sql === state ? [stateAt((reads += 1))] : server(sql));
     await expect(exportHub(hubFile([acme]), changing)).rejects.toThrow('acme_tasks changed while the export read it');
   });
 
@@ -60,7 +66,9 @@ describe('export', () => {
   it('lists every query it would send without sending any', () => {
     const description = describeExport(hubFile([acmeHub()]));
     expect(description).toContain('SELECT * FROM `acme_tasks`.`dolt_diff_issues`');
-    expect(description).toContain("USE `acme_tasks`; SELECT DOLT_HASHOF_DB('WORKING') AS working");
+    expect(description).toContain(
+      "USE `acme_tasks`; SELECT DOLT_HASHOF('HEAD') AS head, DOLT_HASHOF_DB('WORKING') AS working",
+    );
     expect(description).toContain("Each runs as: dolt sql --result-format=json --query '<query>'");
   });
 
