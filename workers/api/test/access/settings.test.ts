@@ -50,7 +50,7 @@ describe('the sign-in settings', () => {
   });
 
   it('refuse every caller while sign-in is off', async () => {
-    const off = { DB: env.DB, SIGN_IN_LIMIT: env.SIGN_IN_LIMIT };
+    const off = { DB: env.DB, SIGN_IN_LIMIT: env.SIGN_IN_LIMIT, REGISTER_LIMIT: env.REGISTER_LIMIT };
     const request = new Request(`${ORIGIN}/api/access/me`, {
       headers: { authorization: 'Bearer some-token-of-sixteen-or-more' },
     });
@@ -74,6 +74,36 @@ describe('the sign-in rate limit', () => {
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).toBe('60');
     expect((await call('/api/access/me', {}, freshAddress())).status).toBe(401);
+  });
+
+  it('caps agent registrations from all addresses together', async () => {
+    // A stand-in for the REGISTER_LIMIT binding that allows two calls. The
+    // tests raise the real binding's limit so they can register freely.
+    const keys: string[] = [];
+    const registrations = {
+      limit: ({ key }: RateLimitOptions) => {
+        keys.push(key);
+        return Promise.resolve({ success: keys.length <= 2 });
+      },
+    } satisfies RateLimit;
+    const register = (address: string) =>
+      handleAccess(
+        new Request(`${ORIGIN}/api/auth/oauth2/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
+          body: JSON.stringify({
+            client_name: 'Example Agent',
+            redirect_uris: ['http://127.0.0.1:43110/callback'],
+            token_endpoint_auth_method: 'none',
+          }),
+        }),
+        { ...env, REGISTER_LIMIT: registrations },
+      );
+
+    const statuses = [];
+    for (let i = 0; i < 3; i += 1) statuses.push((await register(freshAddress()))?.status);
+    expect(statuses).toEqual([201, 201, 429]);
+    expect(new Set(keys).size).toBe(1);
   });
 
   it('leaves the resource metadata unlimited, since it reads nothing', async () => {

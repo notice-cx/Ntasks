@@ -21,6 +21,9 @@ export default defineConfig({
           GITHUB_CLIENT_SECRET: 'test-github-client-secret',
           OWNER_GITHUB_IDS: '1001',
         },
+        // The tests register far more agents a minute than wrangler.jsonc
+        // allows; test/access/settings.test.ts checks that limit with a stand-in.
+        ratelimits: { REGISTER_LIMIT: { namespace_id: '1002', simple: { limit: 10_000, period: 60 } } },
       },
     })),
   ],

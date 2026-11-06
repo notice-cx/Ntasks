@@ -55,10 +55,13 @@ export function parseGrants(value: unknown): ProjectGrant[] {
   });
 }
 
+/**
+ * Every project, by key. The approval page lists them all and checks the
+ * owner's choices against them, so it has no limit: a project left off would
+ * be one the owner could not grant.
+ */
 export async function listProjects(db: D1Database): Promise<ProjectSummary[]> {
-  const { results } = await db
-    .prepare('SELECT id, key, name FROM projects ORDER BY key LIMIT 500')
-    .all<ProjectSummary>();
+  const { results } = await db.prepare('SELECT id, key, name FROM projects ORDER BY key').all<ProjectSummary>();
   return results;
 }
 

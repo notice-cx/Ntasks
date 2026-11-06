@@ -35,7 +35,11 @@ import { refusal, verifyRequest, type Verification, type VerifierEnv } from './v
 export interface AccessEnv extends VerifierEnv {
   /** Limits sign-in requests per client address (wrangler.jsonc `ratelimits`). */
   readonly SIGN_IN_LIMIT: RateLimit;
+  /** Limits agent registrations from all addresses together. */
+  readonly REGISTER_LIMIT: RateLimit;
 }
+
+const REGISTER_PATH = `${AUTH_BASE_PATH}/oauth2/register`;
 
 const ACCESS_API = '/api/access';
 /** Sign-in requests are small; a larger body is refused before it is read. */
@@ -69,6 +73,12 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const { success } = await env.SIGN_IN_LIMIT.limit({ key: address });
   if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+  // Anyone may register an agent, from any number of addresses, and each
+  // registration writes to D1; one key for every caller caps them all.
+  if (url.pathname === REGISTER_PATH && request.method === 'POST') {
+    const registration = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
+    if (!registration.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+  }
   try {
     if (AUTHORIZATION_SERVER_METADATA_PATHS.includes(url.pathname)) return await serverMetadata(request, env, config);
     if (url.pathname.startsWith(`${AUTH_BASE_PATH}/`)) return await library(request, env, config, url);

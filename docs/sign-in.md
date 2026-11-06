@@ -129,8 +129,11 @@ sign-in routes do. A refused request gets:
 
 `principal.id` is stable and opaque, such as `service:<credential id>`; the
 API passes it to the task engine as the retry principal. `actorOf(principal,
-model)` makes the engine's `Actor`: the owner's GitHub name, the agent's
-registered name, or the credential's name.
+model)` makes the engine's `Actor`, the name the task's history records: the
+owner's GitHub name; `agent:` followed by the agent's registered name; or
+`service:` followed by the credential's name. An agent chooses its own name
+when it registers and could choose the owner's, so the prefix keeps its
+writes from passing as the owner's in history.
 
 ## Cutting a caller off
 
@@ -146,9 +149,16 @@ Each of these takes effect at the caller's next request.
 ## Routes
 
 Every path below is in `assets.run_worker_first` in
-[`wrangler.jsonc`](../workers/api/wrangler.jsonc). Every sign-in path but
-the resource metadata is limited to 30 requests a minute from one address
-(`SIGN_IN_LIMIT`, Cloudflare's rate limiting binding); the 31st gets `429`.
+[`wrangler.jsonc`](../workers/api/wrangler.jsonc). Two limits, both
+Cloudflare's rate limiting binding, answer `429` once reached:
+
+- Every sign-in path but the resource metadata takes at most 30 requests a
+  minute from one address (`SIGN_IN_LIMIT`).
+- Agent registration takes at most 10 requests a minute from all addresses
+  together (`REGISTER_LIMIT`). Anyone may register, and each registration
+  writes to D1; on the free plan, reaching the daily write limit stops every
+  query until 00:00 UTC. Cloudflare counts this limit in each of its
+  locations, so it bounds registrations rather than fixing an exact total.
 
 | Route | Answer |
 |---|---|

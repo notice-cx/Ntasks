@@ -70,7 +70,14 @@ export function reachableProjects(principal: Principal): 'all' | readonly string
   return [...principal.projects.keys()];
 }
 
-/** The engine's actor for a write by this principal, with the model an agent names. */
+/**
+ * The engine's actor for a write by this principal, with the model an agent
+ * names. The task store records it as the filer, assignee, closer or author.
+ * An agent picks its own name when it registers, and could pick the owner's,
+ * so an agent's actor is `agent:<name>` and a service's `service:<name>`. Only
+ * an allowlisted owner's write records a name with neither prefix.
+ */
 export function actorOf(principal: Principal, model?: string): Actor {
-  return model === undefined ? { name: principal.name } : { name: principal.name, model };
+  const name = principal.kind === 'person' ? principal.name : `${principal.kind}:${principal.name}`.slice(0, 255);
+  return model === undefined ? { name } : { name, model };
 }

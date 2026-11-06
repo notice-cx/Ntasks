@@ -233,9 +233,10 @@ export async function connectAgent(
   browser: Browser,
   projects: readonly string[],
   scope = 'tasks:read tasks:write offline_access',
+  name = 'Example Agent',
 ): Promise<{ client: McpClient; tokens: Tokens }> {
   const client = new McpClient();
-  await client.register();
+  await client.register(name);
   const { landing, verifier } = await client.authorize(browser, scope);
   expect(landing.pathname).toBe('/agent-access');
   const approved = await browser.fetch('/agent-access', {
