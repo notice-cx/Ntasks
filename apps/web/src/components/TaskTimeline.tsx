@@ -26,9 +26,19 @@ const KIND_GLYPH: Record<TimelineEntry['kind'], ComponentType<{ className?: stri
  * same moments in order with who did each and what they wrote, then the box
  * for the next comment.
  */
-export function TaskTimeline({ entries, nowMs, composer }: { entries: readonly TimelineEntry[]; nowMs: number; composer: ReactNode }) {
+export function TaskTimeline({
+  entries,
+  nowMs,
+  composer,
+}: {
+  entries: readonly TimelineEntry[];
+  nowMs: number;
+  composer: ReactNode;
+}) {
   const dated = entries.filter((entry) => entry.at !== null && Number.isFinite(Date.parse(entry.at)));
-  const ordered = [...dated].sort((a, b) => Date.parse(a.at ?? '') - Date.parse(b.at ?? '')).concat(entries.filter((entry) => !dated.includes(entry)));
+  const ordered = [...dated]
+    .sort((a, b) => Date.parse(a.at ?? '') - Date.parse(b.at ?? ''))
+    .concat(entries.filter((entry) => !dated.includes(entry)));
   const first = dated.length > 0 ? Math.min(...dated.map((entry) => Date.parse(entry.at ?? ''))) : null;
   const span = first === null ? 0 : Math.max(1, nowMs - first);
   return (
@@ -42,7 +52,10 @@ export function TaskTimeline({ entries, nowMs, composer }: { entries: readonly T
               return (
                 <span
                   key={entry.id}
-                  className={cn('absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full', entry.kind === 'comment' ? 'bg-muted-foreground' : 'bg-foreground')}
+                  className={cn(
+                    'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full',
+                    entry.kind === 'comment' ? 'bg-muted-foreground' : 'bg-foreground',
+                  )}
                   style={{ left: `${Math.min(100, Math.max(0, left))}%` }}
                 />
               );
@@ -61,7 +74,10 @@ export function TaskTimeline({ entries, nowMs, composer }: { entries: readonly T
           const age = ageMs(nowMs, entry.at);
           return (
             <li key={entry.id} className="flex gap-3" data-timeline-entry={entry.kind}>
-              <span aria-hidden className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-card text-muted-foreground">
+              <span
+                aria-hidden
+                className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-card text-muted-foreground"
+              >
                 <Glyph className="size-3.5" />
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-1">

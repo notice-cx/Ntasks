@@ -84,27 +84,43 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
   } catch {
     // A body that is not JSON carries no sentence of its own.
   }
-  const sentence = detail
-    ?? (response.status === 404 ? `${what}: not found.`
-      : response.status === 401 || response.status === 403 ? `${what}: this sign-in may not do that.`
+  const sentence =
+    detail ??
+    (response.status === 404
+      ? `${what}: not found.`
+      : response.status === 401 || response.status === 403
+        ? `${what}: this sign-in may not do that.`
         : `${what}: the server answered ${response.status}.`);
   return new ApiError(sentence, response.status, code);
 }
 
 function readProjects(payload: unknown): readonly TaskProject[] {
   if (!isRecord(payload) || !Array.isArray(payload.projects)) throw new Error('The project list could not be read.');
-  return Object.freeze(payload.projects.map((row: unknown) => {
-    if (!isRecord(row) || typeof row.projectId !== 'string' || typeof row.logicalKey !== 'string'
-      || typeof row.displayName !== 'string' || typeof row.prefix !== 'string') {
-      throw new Error('The project list could not be read.');
-    }
-    return Object.freeze({ projectId: row.projectId, logicalKey: row.logicalKey, displayName: row.displayName, prefix: row.prefix });
-  }));
+  return Object.freeze(
+    payload.projects.map((row: unknown) => {
+      if (
+        !isRecord(row) ||
+        typeof row.projectId !== 'string' ||
+        typeof row.logicalKey !== 'string' ||
+        typeof row.displayName !== 'string' ||
+        typeof row.prefix !== 'string'
+      ) {
+        throw new Error('The project list could not be read.');
+      }
+      return Object.freeze({
+        projectId: row.projectId,
+        logicalKey: row.logicalKey,
+        displayName: row.displayName,
+        prefix: row.prefix,
+      });
+    }),
+  );
 }
 
 function readCapabilities(payload: unknown): TasksCapabilities {
   const record = isRecord(payload) ? payload : {};
-  const strings = (value: unknown) => Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value as string[] : undefined;
+  const strings = (value: unknown) =>
+    Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? (value as string[]) : undefined;
   const operations = strings(record.operations);
   const editableFields = strings(record.editableFields);
   return {
@@ -153,7 +169,13 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
 
   /** A write carries a fresh retry key, so the server applies it once even if
    * the request is sent again after a dropped answer. */
-  async function write(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, what: string, keepalive = false): Promise<Response> {
+  async function write(
+    method: 'POST' | 'PATCH',
+    path: string,
+    body: Record<string, unknown>,
+    what: string,
+    keepalive = false,
+  ): Promise<Response> {
     const response = await fetch(path, {
       method,
       headers: { ...JSON_READ, 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
@@ -167,8 +189,20 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
   const taskPath = (id: string, action?: string) =>
     `/api/tasks/${encodeURIComponent(id)}${action === undefined ? '' : `/${action}`}`;
 
-  async function act(id: string, project: string, action: string, payload: Record<string, unknown>, keepalive?: boolean): Promise<void> {
-    await write('POST', taskPath(id, action), { ...payload, projectId: await projectId(project) }, `Task ${id}`, keepalive);
+  async function act(
+    id: string,
+    project: string,
+    action: string,
+    payload: Record<string, unknown>,
+    keepalive?: boolean,
+  ): Promise<void> {
+    await write(
+      'POST',
+      taskPath(id, action),
+      { ...payload, projectId: await projectId(project) },
+      `Task ${id}`,
+      keepalive,
+    );
   }
 
   function ended(resolution: TaskResolution | undefined, unmarked: TaskResolution, duplicateOf: string | undefined) {
@@ -192,9 +226,15 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
     },
     async createTask({ project, ...input }) {
-      const response = await write('POST', '/api/tasks', { ...input, projectId: await projectId(project) }, 'The new task');
+      const response = await write(
+        'POST',
+        '/api/tasks',
+        { ...input, projectId: await projectId(project) },
+        'The new task',
+      );
       const created: unknown = await response.json();
-      if (!isRecord(created) || typeof created.id !== 'string') throw new Error('The new task was filed, but its id could not be read.');
+      if (!isRecord(created) || typeof created.id !== 'string')
+        throw new Error('The new task was filed, but its id could not be read.');
       return { id: created.id, project };
     },
     async updateTask(id, project, edit) {
@@ -210,17 +250,35 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       await act(id, project, 'respond', { response }, keepalive);
     },
     async choose(id, project, option, note, { keepalive } = {}) {
-      await act(id, project, 'choose', { option, ...(note === undefined || note.trim() === '' ? {} : { note }) }, keepalive);
+      await act(
+        id,
+        project,
+        'choose',
+        { option, ...(note === undefined || note.trim() === '' ? {} : { note }) },
+        keepalive,
+      );
     },
     async dismiss(id, project, reason, { resolution, duplicateOf, keepalive } = {}) {
-      await act(id, project, 'dismiss', { ...(reason === undefined ? {} : { reason }), ...ended(resolution, 'wont-do', duplicateOf) }, keepalive);
+      await act(
+        id,
+        project,
+        'dismiss',
+        { ...(reason === undefined ? {} : { reason }), ...ended(resolution, 'wont-do', duplicateOf) },
+        keepalive,
+      );
     },
     async dispute(id, project) {
       await act(id, project, 'dispute', {});
     },
     async resolveGate(id, project, reason, { keepalive } = {}) {
       const path = `/api/gates/${encodeURIComponent(id)}/resolve`;
-      await write('POST', path, { ...(reason === undefined ? {} : { reason }), projectId: await projectId(project) }, `Approval ${id}`, keepalive);
+      await write(
+        'POST',
+        path,
+        { ...(reason === undefined ? {} : { reason }), projectId: await projectId(project) },
+        `Approval ${id}`,
+        keepalive,
+      );
     },
   };
 }

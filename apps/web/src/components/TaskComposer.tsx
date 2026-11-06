@@ -28,7 +28,11 @@ export function acceptanceLines(text: string): string[] {
 
 /** The editor's lines as the checklist a task's Done when holds, blank lines dropped. */
 export function acceptanceText(lines: readonly string[]): string {
-  return lines.map((line) => line.trim()).filter((line) => line !== '').map((line) => `- [ ] ${line}`).join('\n');
+  return lines
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => `- [ ] ${line}`)
+    .join('\n');
 }
 
 export interface ComposerPrefill {
@@ -41,7 +45,13 @@ export interface ComposerPrefill {
  * files; the rest waits under More. The task is filed only on a press, and
  * the toast that follows opens its page.
  */
-export function TaskComposer({ open, onClose, projects, loading = false, prefill = null }: {
+export function TaskComposer({
+  open,
+  onClose,
+  projects,
+  loading = false,
+  prefill = null,
+}: {
   open: boolean;
   onClose: () => void;
   projects: readonly TaskProject[];
@@ -78,7 +88,7 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
     }
     if (seeded.current) return;
     seeded.current = true;
-    setProject(prefill?.project ?? (projects.length === 1 ? projects[0]?.logicalKey ?? '' : ''));
+    setProject(prefill?.project ?? (projects.length === 1 ? (projects[0]?.logicalKey ?? '') : ''));
     setTitle(prefill?.title ?? '');
     setType('task');
     setPriority(2);
@@ -135,7 +145,8 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
     if (!chosen) next.project = 'Choose the project this task belongs to.';
     if (!cleanTitle) next.title = 'Write a title someone can read without context.';
     // A parent from another project cannot hold this task.
-    if (cleanParent && chosen && !cleanParent.startsWith(`${chosen.prefix}-`)) next.parent = `A parent in ${chosen.displayName} starts with ${chosen.prefix}-.`;
+    if (cleanParent && chosen && !cleanParent.startsWith(`${chosen.prefix}-`))
+      next.parent = `A parent in ${chosen.displayName} starts with ${chosen.prefix}-.`;
     setErrors(next);
     if (next.parent) setMore(true);
     if (Object.keys(next).length > 0 || !chosen) return;
@@ -156,11 +167,13 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
       const created = await createTask.mutateAsync(input);
       toast.success(`Filed ${created.id}`, {
         description: cleanTitle,
-        action: { label: 'Open', onClick: () => navigate(taskPath(created.id)) },
+        action: { label: 'Open', onClick: () => void navigate(taskPath(created.id)) },
       });
       onClose();
     } catch (error) {
-      setErrors({ form: error instanceof Error && error.message !== '' ? error.message : 'The task could not be filed.' });
+      setErrors({
+        form: error instanceof Error && error.message !== '' ? error.message : 'The task could not be filed.',
+      });
     } finally {
       setFiling(false);
     }
@@ -168,10 +181,22 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end" data-task-composer="">
-      <button type="button" aria-label="Close the composer" onClick={onClose} className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
-      <aside role="dialog" aria-modal="true" aria-labelledby={titleId} className="relative flex h-full w-full max-w-lg flex-col border-l border-border bg-card shadow-xl">
+      <button
+        type="button"
+        aria-label="Close the composer"
+        onClick={onClose}
+        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative flex h-full w-full max-w-lg flex-col border-l border-border bg-card shadow-xl"
+      >
         <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <h2 id={titleId} className="m-0 text-base font-semibold">File a task</h2>
+          <h2 id={titleId} className="m-0 text-base font-semibold">
+            File a task
+          </h2>
           <Button type="button" variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
             <X aria-hidden />
           </Button>
@@ -219,13 +244,25 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
               >
                 <option value="">Choose a project…</option>
                 {projects.map((entry) => (
-                  <option key={entry.logicalKey} value={entry.logicalKey}>{entry.displayName} ({entry.prefix}-)</option>
+                  <option key={entry.logicalKey} value={entry.logicalKey}>
+                    {entry.displayName} ({entry.prefix}-)
+                  </option>
                 ))}
               </select>
             </Field>
             <Field id={`${fieldId}-priority`} label="Priority">
-              <select id={`${fieldId}-priority`} className={FIELD} value={String(priority)} onChange={(event) => setPriority(Number(event.target.value))} data-composer-priority="">
-                {PRIORITY_BANDS.map((band, index) => <option key={band} value={String(index)}>{band}</option>)}
+              <select
+                id={`${fieldId}-priority`}
+                className={FIELD}
+                value={String(priority)}
+                onChange={(event) => setPriority(Number(event.target.value))}
+                data-composer-priority=""
+              >
+                {PRIORITY_BANDS.map((band, index) => (
+                  <option key={band} value={String(index)}>
+                    {band}
+                  </option>
+                ))}
               </select>
             </Field>
           </div>
@@ -233,9 +270,17 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
           {labels.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5" data-composer-labels="">
               {labels.map((label) => (
-                <span key={label} className="inline-flex items-center gap-1 rounded-md border border-border py-0.5 pe-1 ps-2 font-mono text-[11px]">
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1 rounded-md border border-border py-0.5 pe-1 ps-2 font-mono text-[11px]"
+                >
                   {label}
-                  <button type="button" aria-label={`Remove label ${label}`} onClick={() => setLabels((current) => current.filter((entry) => entry !== label))} className="rounded-sm px-0.5 text-muted-foreground hover:text-foreground">
+                  <button
+                    type="button"
+                    aria-label={`Remove label ${label}`}
+                    onClick={() => setLabels((current) => current.filter((entry) => entry !== label))}
+                    className="rounded-sm px-0.5 text-muted-foreground hover:text-foreground"
+                  >
                     <X className="size-3" aria-hidden />
                   </button>
                 </span>
@@ -243,7 +288,15 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
             </div>
           ) : null}
 
-          <Button type="button" variant="ghost" size="sm" className="w-fit px-1.5 text-muted-foreground" aria-expanded={more} onClick={() => setMore((current) => !current)} data-composer-more="">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit px-1.5 text-muted-foreground"
+            aria-expanded={more}
+            onClick={() => setMore((current) => !current)}
+            data-composer-more=""
+          >
             <ChevronDown className={cn('motion-safe:transition-transform', more && 'rotate-180')} aria-hidden />
             More
           </Button>
@@ -252,8 +305,18 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
             <div className="flex flex-col gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field id={`${fieldId}-type`} label="Type">
-                  <select id={`${fieldId}-type`} className={FIELD} value={type} onChange={(event) => setType(event.target.value)} data-composer-type="">
-                    {TASK_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
+                  <select
+                    id={`${fieldId}-type`}
+                    className={FIELD}
+                    value={type}
+                    onChange={(event) => setType(event.target.value)}
+                    data-composer-type=""
+                  >
+                    {TASK_TYPES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field id={`${fieldId}-parent`} label="Parent epic" error={errors.parent}>
@@ -283,7 +346,13 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
                     }}
                     placeholder="Add a label"
                   />
-                  <Button type="button" variant="outline" size="sm" onClick={addLabel} disabled={labelDraft.trim() === ''}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addLabel}
+                    disabled={labelDraft.trim() === ''}
+                  >
                     <Plus aria-hidden /> Add
                   </Button>
                 </div>
@@ -294,14 +363,22 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
                 label="Description"
                 hint="Markdown: lists, checklists, code and links work; task ids become links."
                 aside={
-                  <div role="group" aria-label="Write or preview" className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5">
+                  <div
+                    role="group"
+                    aria-label="Write or preview"
+                    className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5"
+                  >
                     {[false, true].map((preview) => (
                       <button
                         key={String(preview)}
                         type="button"
                         aria-pressed={previewing === preview}
                         onClick={() => setPreviewing(preview)}
-                        className={cn('inline-flex items-center rounded-sm border px-2 py-0.5 text-xs', pillControlClass, pillPickerStateClass(previewing === preview))}
+                        className={cn(
+                          'inline-flex items-center rounded-sm border px-2 py-0.5 text-xs',
+                          pillControlClass,
+                          pillPickerStateClass(previewing === preview),
+                        )}
                       >
                         {preview ? 'Preview' : 'Write'}
                       </button>
@@ -311,7 +388,11 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
               >
                 {previewing ? (
                   <div className={cn(FIELD, 'min-h-24 overflow-x-auto')}>
-                    {description.trim() ? <MarkdownText source={description} /> : <span className="text-muted-foreground">Nothing to preview</span>}
+                    {description.trim() ? (
+                      <MarkdownText source={description} />
+                    ) : (
+                      <span className="text-muted-foreground">Nothing to preview</span>
+                    )}
                   </div>
                 ) : (
                   <textarea
@@ -358,7 +439,13 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
                       />
                     </div>
                   ))}
-                  <Button type="button" variant="ghost" size="sm" className="w-fit px-1.5 text-muted-foreground" onClick={() => insertLine(lines.length)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit px-1.5 text-muted-foreground"
+                    onClick={() => insertLine(lines.length)}
+                  >
                     <Plus aria-hidden /> Another line
                   </Button>
                 </div>
@@ -368,9 +455,15 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
         </div>
 
         <footer className="flex flex-col gap-2 border-t border-border px-4 py-3">
-          {errors.form ? <p className="m-0 text-xs text-error" role="alert" data-composer-error="">{errors.form}</p> : null}
+          {errors.form ? (
+            <p className="m-0 text-xs text-error" role="alert" data-composer-error="">
+              {errors.form}
+            </p>
+          ) : null}
           <div className="flex items-center justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
             <Button type="button" onClick={() => void file()} disabled={filing || loading} data-composer-submit="">
               {filing ? 'Filing…' : 'File task'}
             </Button>
@@ -383,7 +476,15 @@ export function TaskComposer({ open, onClose, projects, loading = false, prefill
 }
 
 /** A label, its control, and the reason a file was refused, on the field that caused it. Required fields carry an asterisk. */
-function Field({ id, label, required = false, error, aside, hint, children }: {
+function Field({
+  id,
+  label,
+  required = false,
+  error,
+  aside,
+  hint,
+  children,
+}: {
   id: string;
   label: string;
   required?: boolean;
@@ -397,13 +498,22 @@ function Field({ id, label, required = false, error, aside, hint, children }: {
       <div className="flex min-w-0 items-center justify-between gap-2">
         <label htmlFor={id} className="text-xs font-medium text-foreground">
           {label}
-          {required ? <span aria-hidden className="text-muted-foreground"> *</span> : null}
+          {required ? (
+            <span aria-hidden className="text-muted-foreground">
+              {' '}
+              *
+            </span>
+          ) : null}
         </label>
         {aside}
       </div>
       {children}
       {hint ? <span className="text-micro text-muted-foreground">{hint}</span> : null}
-      {error ? <span className="text-[11px] leading-snug text-error" role="alert">{error}</span> : null}
+      {error ? (
+        <span className="text-[11px] leading-snug text-error" role="alert">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

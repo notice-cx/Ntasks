@@ -50,14 +50,16 @@ describe('the composer', () => {
     fireEvent.keyDown(first, { key: 'Enter' });
     fireEvent.change(screen.getByLabelText('Done when, line 2'), { target: { value: 'A test covers it' } });
     fireEvent.click(screen.getByRole('button', { name: 'File task' }));
-    await waitFor(() => expect(api.state.tasks.find((entry) => entry.title === 'Show the sign-in errors in red')).toMatchObject({
-      id: 'web-k3m9.5',
-      issueType: 'bug',
-      parent: 'web-k3m9',
-      labels: ['copy'],
-      description: 'Errors are grey today.',
-      acceptance: '- [ ] Every error is red\n- [ ] A test covers it',
-    }));
+    await waitFor(() =>
+      expect(api.state.tasks.find((entry) => entry.title === 'Show the sign-in errors in red')).toMatchObject({
+        id: 'web-k3m9.5',
+        issueType: 'bug',
+        parent: 'web-k3m9',
+        labels: ['copy'],
+        description: 'Errors are grey today.',
+        acceptance: '- [ ] Every error is red\n- [ ] A test covers it',
+      }),
+    );
   });
 
   it('reads and writes Done when as a checklist', () => {

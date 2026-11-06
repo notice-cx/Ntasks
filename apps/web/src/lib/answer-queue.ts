@@ -55,7 +55,10 @@ export function createAnswerQueue(page?: Window): AnswerQueue {
 
   function inTurn(work: () => Promise<void>): Promise<void> {
     const next = tail === null ? work() : tail.then(work);
-    const settled = next.then(() => undefined, () => undefined);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
     tail = settled;
     void settled.then(() => {
       if (tail === settled) tail = null;

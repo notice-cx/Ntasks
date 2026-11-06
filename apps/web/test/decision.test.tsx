@@ -38,7 +38,12 @@ describe('answering a decision', () => {
 
     await waitOutUndo();
     await waitFor(() => expect(task(api, 'web-d4x1')?.status).toBe('closed'));
-    expect(task(api, 'web-d4x1')?.choice).toMatchObject({ option: 'a', label: 'Email link only', by: FIXTURE_ACTOR, note: 'Fewer paths to support.' });
+    expect(task(api, 'web-d4x1')?.choice).toMatchObject({
+      option: 'a',
+      label: 'Email link only',
+      by: FIXTURE_ACTOR,
+      note: 'Fewer paths to support.',
+    });
     // Read again, the page records who chose and how.
     expect(await screen.findByRole('region', { name: 'Choice' })).toBeTruthy();
   });
@@ -47,10 +52,14 @@ describe('answering a decision', () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
     const queue = await screen.findByRole('region', { name: 'Your decisions' });
-    const row = within(queue).getByText('Approve sending the new sign-in page to every visitor').closest('li') as HTMLElement;
+    const row = within(queue)
+      .getByText('Approve sending the new sign-in page to every visitor')
+      .closest('li') as HTMLElement;
     fireEvent.click(await enabledButton('Approve', row));
     // The row leaves the list at once.
-    await waitFor(() => expect(within(queue).queryByText('Approve sending the new sign-in page to every visitor')).toBeNull());
+    await waitFor(() =>
+      expect(within(queue).queryByText('Approve sending the new sign-in page to every visitor')).toBeNull(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitOutUndo();
     expect(task(api, 'web-g7p2')?.status).toBe('open');
@@ -78,7 +87,9 @@ describe('answering a decision', () => {
     renderApp('/tasks/web-q8n5', api);
     fireEvent.click(await enabledButton('Close as'));
     fireEvent.click(await screen.findByRole('menuitem', { name: "Won't do" }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'The page will not name an address.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'The page will not name an address.' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Close task' }));
     expect(await screen.findByText("Closed as Won't do")).toBeTruthy();
     await waitOutUndo();

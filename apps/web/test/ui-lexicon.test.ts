@@ -86,7 +86,13 @@ describe('the UI lexicon', () => {
   // A guard that scans nothing passes forever.
   it('has files to sweep', () => {
     expect(FILES.length).toBeGreaterThan(20);
-    for (const name of ['src/App.tsx', 'src/routes/TasksBoard.tsx', 'src/routes/TaskRoute.tsx', 'src/routes/FocusRoute.tsx', 'src/components/TaskComposer.tsx']) {
+    for (const name of [
+      'src/App.tsx',
+      'src/routes/TasksBoard.tsx',
+      'src/routes/TaskRoute.tsx',
+      'src/routes/FocusRoute.tsx',
+      'src/components/TaskComposer.tsx',
+    ]) {
       expect(FILES, `${name} must be in the scan`).toContain(name);
     }
   });
@@ -95,9 +101,11 @@ describe('the UI lexicon', () => {
     const offenders = FILES.flatMap((name) => offendersIn(name, readFileSync(path.join(APP_ROOT, name), 'utf8')));
     expect(
       offenders,
-      'these shipped strings still use internal vocabulary:\n  ' + offenders.join('\n  ') + '\n'
-        + 'Replace it with the word given, or add the exact phrase to ALLOWED_PHRASES with its reason; never widen a pattern. '
-        + 'A `bd` command stays as it is when it is visibly a command: inside a <code> element, or in backticks inside a sentence.',
+      'these shipped strings still use internal vocabulary:\n  ' +
+        offenders.join('\n  ') +
+        '\n' +
+        'Replace it with the word given, or add the exact phrase to ALLOWED_PHRASES with its reason; never widen a pattern. ' +
+        'A `bd` command stays as it is when it is visibly a command: inside a <code> element, or in backticks inside a sentence.',
     ).toEqual([]);
   });
 
@@ -109,7 +117,9 @@ describe('the UI lexicon', () => {
 
   // The guard has to be able to fail, or a broken reader would pass a page full of coinages.
   it('catches a coinage and spares a labelled command', () => {
-    expect(offendersIn('probe.tsx', 'const a = <p>Filed as bead in the project its prefix names.</p>;')).toHaveLength(1);
+    expect(offendersIn('probe.tsx', 'const a = <p>Filed as bead in the project its prefix names.</p>;')).toHaveLength(
+      1,
+    );
     expect(offendersIn('probe.tsx', 'const a = { label: "Open the task hub" };')).toHaveLength(1);
     expect(offendersIn('probe.tsx', 'const beadId = 1; // a bead in a comment')).toEqual([]);
     expect(offendersIn('probe.tsx', 'const a = <code className="font-mono">bd ready</code>;')).toEqual([]);

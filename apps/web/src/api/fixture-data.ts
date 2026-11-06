@@ -70,13 +70,15 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     base('web', 'web-k3m9', 'Ship the new sign-in page', {
       issueType: 'epic',
       priority: 1,
-      description: 'WHAT: Replace the sign-in page with the new form.\nWHY: 1 in 5 visitors who start signing in give up on the old form.\nWHERE: `src/pages/sign-in.tsx`',
+      description:
+        'WHAT: Replace the sign-in page with the new form.\nWHY: 1 in 5 visitors who start signing in give up on the old form.\nWHERE: `src/pages/sign-in.tsx`',
       createdAt: at(12 * DAY),
     }),
     base('web', 'web-k3m9.1', 'Draw the sign-in form', {
       parent: 'web-k3m9',
       ...closed(2 * DAY, 'agent-one', 'Landed in 1a2b3c4: the form renders its fields and errors.'),
-      acceptance: '- [x] The form shows email and password fields\n- [x] A wrong password shows its error under the field',
+      acceptance:
+        '- [x] The form shows email and password fields\n- [x] A wrong password shows its error under the field',
     }),
     base('web', 'web-k3m9.2', 'Check the sign-in form with a screen reader', {
       parent: 'web-k3m9',
@@ -87,7 +89,8 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       updatedAt: at(40 * 60_000),
       metadata: { noticeos_claimed_model: 'example-model-2' },
       description: 'Walk the form with the keyboard and a screen reader, and fix what they cannot reach.',
-      acceptance: '- [x] Every field is reachable with Tab\n- [ ] Every error is announced\n- [ ] The submit button names what it does',
+      acceptance:
+        '- [x] Every field is reachable with Tab\n- [ ] Every error is announced\n- [ ] The submit button names what it does',
       comments: 1,
     }),
     base('web', 'web-k3m9.3', 'Send the new sign-in page to every visitor', {
@@ -121,11 +124,17 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       ready: true,
       createdAt: at(3 * DAY),
       updatedAt: at(3 * DAY),
-      description: 'The new form can offer an email link, a password, or both. Each method we keep is one more path to test and support.',
+      description:
+        'The new form can offer an email link, a password, or both. Each method we keep is one more path to test and support.',
       choices: {
         question: 'Which sign-in methods should the page offer?',
         options: [
-          { key: 'a', label: 'Email link only', detail: 'One path to test. People without email access on this device wait for the link.', recommended: true },
+          {
+            key: 'a',
+            label: 'Email link only',
+            detail: 'One path to test. People without email access on this device wait for the link.',
+            recommended: true,
+          },
           { key: 'b', label: 'Email link and password', detail: 'Two paths to test and support.' },
           { key: 'c', label: 'Password only', detail: 'The current behaviour.' },
         ],
@@ -145,7 +154,8 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       priority: 0,
       ready: true,
       updatedAt: at(9 * HOUR),
-      description: 'The reset link in the welcome email opens a page that says the link expired, even when it is new.\n\n## Steps to Reproduce\n1. Sign up with a new address.\n2. Open the welcome email and press **Reset password**.',
+      description:
+        'The reset link in the welcome email opens a page that says the link expired, even when it is new.\n\n## Steps to Reproduce\n1. Sign up with a new address.\n2. Open the welcome email and press **Reset password**.',
       acceptance: '- [ ] A new reset link opens the reset form\n- [ ] A test covers a link younger than an hour',
     }),
     base('web', 'web-t5w3', 'Rename the Settings tab to Account', {
@@ -184,7 +194,12 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       choices: {
         question: 'Where should the API reference live?',
         options: [
-          { key: 'a', label: "In the repository's docs folder", detail: 'Reviewed with the code that changes it.', recommended: true },
+          {
+            key: 'a',
+            label: "In the repository's docs folder",
+            detail: 'Reviewed with the code that changes it.',
+            recommended: true,
+          },
           { key: 'b', label: 'In a separate docs project', detail: 'Easier to search; needs its own deploy.' },
         ],
       },
@@ -200,12 +215,28 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
   ];
 
   const comments = new Map<string, TaskComment[]>([
-    ['web-k3m9.2', [
-      { id: 'c1', author: 'agent-two', text: 'Started with the keyboard order. Tab skips the **submit** button; fixing that first.', createdAt: at(2 * HOUR) },
-    ]],
-    ['web-d4x1', [
-      { id: 'c2', author: 'agent-one', text: 'Support answered 31 password questions last month and 2 about email links.', createdAt: at(2 * DAY) },
-    ]],
+    [
+      'web-k3m9.2',
+      [
+        {
+          id: 'c1',
+          author: 'agent-two',
+          text: 'Started with the keyboard order. Tab skips the **submit** button; fixing that first.',
+          createdAt: at(2 * HOUR),
+        },
+      ],
+    ],
+    [
+      'web-d4x1',
+      [
+        {
+          id: 'c2',
+          author: 'agent-one',
+          text: 'Support answered 31 password questions last month and 2 about email links.',
+          createdAt: at(2 * DAY),
+        },
+      ],
+    ],
   ]);
 
   const projects: TaskProject[] = [

@@ -43,7 +43,15 @@ export function markRingClass(size: 'row' | 'chip'): string {
   );
 }
 
-export function PriorityMark({ priority, size = 'row', className }: { priority: number; size?: 'row' | 'chip'; className?: string }) {
+export function PriorityMark({
+  priority,
+  size = 'row',
+  className,
+}: {
+  priority: number;
+  size?: 'row' | 'chip';
+  className?: string;
+}) {
   const face = priorityFace(priority);
   return (
     <span aria-hidden data-priority-mark={face.band} className={cn(markRingClass(size), face.ink, className)}>
@@ -92,21 +100,38 @@ export function taskTypeWord(issueType: string, awaitType: string | null = null)
  * state. An open bug is the one problem among them, so its mark and its
  * page's header wear the alert surface; closed, it is ink again. */
 export function typeFace(issueType: string, awaitType: string | null, status: string | null) {
-  const icon = issueType === 'gate' ? ((awaitType ?? 'human') === 'human' ? Stamp : Hourglass) : TYPE_ICONS[issueType] ?? Square;
+  const icon =
+    issueType === 'gate' ? ((awaitType ?? 'human') === 'human' ? Stamp : Hourglass) : (TYPE_ICONS[issueType] ?? Square);
   const problem = issueType === 'bug' && status !== 'closed';
   return {
     word: taskTypeWord(issueType, awaitType),
     icon,
     surface: problem ? ('alert' as const) : ('neutral' as const),
-    tile: problem ? 'bg-error-soft text-error ring-error/40' : status === 'closed' ? 'bg-muted text-muted-foreground ring-border' : 'bg-card text-foreground ring-border',
+    tile: problem
+      ? 'bg-error-soft text-error ring-error/40'
+      : status === 'closed'
+        ? 'bg-muted text-muted-foreground ring-border'
+        : 'bg-card text-foreground ring-border',
   };
 }
 
-export function TypeMark({ issueType, awaitType, status }: { issueType: string; awaitType: string | null; status: string | null }) {
+export function TypeMark({
+  issueType,
+  awaitType,
+  status,
+}: {
+  issueType: string;
+  awaitType: string | null;
+  status: string | null;
+}) {
   const face = typeFace(issueType, awaitType, status);
   const Icon = face.icon;
   return (
-    <span aria-hidden data-task-type-mark={issueType} className={cn('grid size-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset', face.tile)}>
+    <span
+      aria-hidden
+      data-task-type-mark={issueType}
+      className={cn('grid size-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset', face.tile)}
+    >
       <Icon className="size-[1.125rem]" strokeWidth={2} />
     </span>
   );
@@ -152,7 +177,14 @@ export function statusFace(stored: string): StatusFace {
 export function TaskStatusGlyph({ status, className }: { status: string; className?: string }) {
   const face = statusFace(status);
   const Icon = face.icon;
-  return <Icon role="img" aria-label={`State: ${face.label}`} data-task-status-glyph={face.key} className={cn('size-3.5 shrink-0', STATE_TONE[face.tone].text, className)} />;
+  return (
+    <Icon
+      role="img"
+      aria-label={`State: ${face.label}`}
+      data-task-status-glyph={face.key}
+      className={cn('size-3.5 shrink-0', STATE_TONE[face.tone].text, className)}
+    />
+  );
 }
 
 /** A status compact, for a table cell: glyph and word, no pill. */
@@ -161,7 +193,9 @@ export function TaskStatusMark({ status }: { status: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <TaskStatusGlyph status={status} />
-      <span className={cn('text-xs', STATE_TONE[face.tone].text)} data-task-status={face.key}>{face.label}</span>
+      <span className={cn('text-xs', STATE_TONE[face.tone].text)} data-task-status={face.key}>
+        {face.label}
+      </span>
     </span>
   );
 }
@@ -169,7 +203,13 @@ export function TaskStatusMark({ status }: { status: string }) {
 export function TaskStatusChip({ status }: { status: string }) {
   const face = statusFace(status);
   const Icon = face.icon;
-  return <StateChip tone={face.tone} glyph={<Icon className="size-3.5" />} label={<span data-task-status={face.key}>{face.label}</span>} />;
+  return (
+    <StateChip
+      tone={face.tone}
+      glyph={<Icon className="size-3.5" />}
+      label={<span data-task-status={face.key}>{face.label}</span>}
+    />
+  );
 }
 
 /** A closed or parked task's row mark: its status glyph in the priority mark's ring. */
@@ -177,7 +217,11 @@ export function RestingMark({ status, className }: { status: string; className?:
   const face = statusFace(status);
   const Icon = face.icon;
   return (
-    <span aria-hidden data-task-rest-mark={face.key} className={cn(markRingClass('row'), STATE_TONE[face.tone].text, className)}>
+    <span
+      aria-hidden
+      data-task-rest-mark={face.key}
+      className={cn(markRingClass('row'), STATE_TONE[face.tone].text, className)}
+    >
       <Icon className="size-2.5" strokeWidth={3} />
     </span>
   );

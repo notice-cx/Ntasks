@@ -9,7 +9,16 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAnswerQueue, useTasksApi } from '@/api/context';
 import type { TasksApi } from '@/api/client';
-import type { CloseOptions, LiveTaskDetail, LiveTasksPayload, NewTask, TaskChoiceKey, TaskEdit, TaskProject, TasksCapabilities } from '@/api/types';
+import type {
+  CloseOptions,
+  LiveTaskDetail,
+  LiveTasksPayload,
+  NewTask,
+  TaskChoiceKey,
+  TaskEdit,
+  TaskProject,
+  TasksCapabilities,
+} from '@/api/types';
 import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
 import { choiceName, closeAsReason, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
@@ -48,11 +57,17 @@ export function verbReason(capabilities: TasksCapabilities, available: boolean, 
 }
 
 export function operationAvailable(capabilities: TasksCapabilities, operation: string): boolean {
-  return writesAvailable(capabilities) && (capabilities.operations === undefined || capabilities.operations.includes(operation));
+  return (
+    writesAvailable(capabilities) &&
+    (capabilities.operations === undefined || capabilities.operations.includes(operation))
+  );
 }
 
 export function fieldAvailable(capabilities: TasksCapabilities, field: string): boolean {
-  return operationAvailable(capabilities, 'update') && (capabilities.editableFields === undefined || capabilities.editableFields.includes(field));
+  return (
+    operationAvailable(capabilities, 'update') &&
+    (capabilities.editableFields === undefined || capabilities.editableFields.includes(field))
+  );
 }
 
 export function useTaskProjects() {
@@ -105,7 +120,8 @@ export function useUpdateTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
   return useMutation({
-    mutationFn: ({ id, project, edit }: { id: string; project: string; edit: TaskEdit }) => api.updateTask(id, project, edit),
+    mutationFn: ({ id, project, edit }: { id: string; project: string; edit: TaskEdit }) =>
+      api.updateTask(id, project, edit),
     onSuccess: () => refresh(),
   });
 }
@@ -133,7 +149,8 @@ export function useCommentOnTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
   return useMutation({
-    mutationFn: ({ id, project, text }: { id: string; project: string; text: string }) => api.comment(id, project, text),
+    mutationFn: ({ id, project, text }: { id: string; project: string; text: string }) =>
+      api.comment(id, project, text),
     onSuccess: () => refresh(),
   });
 }
@@ -170,7 +187,11 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
     case 'close': {
       const other = answer.duplicateOf === undefined ? {} : { duplicateOf: answer.duplicateOf };
       if (answer.via !== 'dismiss') {
-        return api.closeTask(answer.id, answer.project, closeAsReason(answer), { ...write, resolution: answer.resolution, ...other });
+        return api.closeTask(answer.id, answer.project, closeAsReason(answer), {
+          ...write,
+          resolution: answer.resolution,
+          ...other,
+        });
       }
       const note = answer.note?.trim() ? answer.note.trim() : undefined;
       return api.dismiss(answer.id, answer.project, note, { ...write, resolution: answer.resolution, ...other });
@@ -205,33 +226,36 @@ export function useInboxAnswer(): (answer: InboxAnswer) => void {
   const queue = useAnswerQueue();
   const refresh = useTaskRefresh();
   const navigate = useNavigate();
-  return useCallback((answer: InboxAnswer) => {
-    const captured = Object.freeze({ ...answer });
-    toastCount += 1;
-    const toastId = `answer-${toastCount}`;
-    toast.success(answeredAs(answer), {
-      id: toastId,
-      description: answer.title,
-      duration: UNDO_WINDOW_MS,
-      action: { label: 'Undo', onClick: () => queue.undoGroup(toastId) },
-    });
-    queue.schedule({
-      id: answer.id,
-      group: toastId,
-      send: (keepalive) => sendInboxAnswer(api, captured, keepalive),
-      onSent: () => {
-        toast.dismiss(toastId);
-        void refresh();
-      },
-      onFailed: (error) => {
-        toast.dismiss(toastId);
-        toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not send ${answer.id}`, {
-          action: { label: 'Open', onClick: () => navigate(taskPath(answer.id)) },
-        });
-      },
-      onUndo: () => toast.dismiss(toastId),
-    });
-  }, [api, queue, refresh, navigate]);
+  return useCallback(
+    (answer: InboxAnswer) => {
+      const captured = Object.freeze({ ...answer });
+      toastCount += 1;
+      const toastId = `answer-${toastCount}`;
+      toast.success(answeredAs(answer), {
+        id: toastId,
+        description: answer.title,
+        duration: UNDO_WINDOW_MS,
+        action: { label: 'Undo', onClick: () => queue.undoGroup(toastId) },
+      });
+      queue.schedule({
+        id: answer.id,
+        group: toastId,
+        send: (keepalive) => sendInboxAnswer(api, captured, keepalive),
+        onSent: () => {
+          toast.dismiss(toastId);
+          void refresh();
+        },
+        onFailed: (error) => {
+          toast.dismiss(toastId);
+          toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not send ${answer.id}`, {
+            action: { label: 'Open', onClick: () => void navigate(taskPath(answer.id)) },
+          });
+        },
+        onUndo: () => toast.dismiss(toastId),
+      });
+    },
+    [api, queue, refresh, navigate],
+  );
 }
 
 /** Whether a task's row stays hidden while its answer waits or is on its way. */

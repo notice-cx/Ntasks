@@ -21,15 +21,30 @@ export const RESOLUTION_GLYPH: Readonly<Record<NotDone, ComponentType<{ classNam
  * arrow keys move the pick. Every chip keeps its border, so a press never
  * reflows the row.
  */
-export function ResolutionChips({ value, onChange }: { value: TaskResolution; onChange: (resolution: TaskResolution, byKey: boolean) => void }) {
+export function ResolutionChips({
+  value,
+  onChange,
+}: {
+  value: TaskResolution;
+  onChange: (resolution: TaskResolution, byKey: boolean) => void;
+}) {
   const chips = useRef<(HTMLButtonElement | null)[]>([]);
   function step(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const last = TASK_RESOLUTIONS.length - 1;
-    const to = event.key === 'Home' ? 0
-      : event.key === 'End' ? last
-        : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (index === last ? 0 : index + 1)
-          : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (index === 0 ? last : index - 1)
-            : null;
+    const to =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? last
+          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+            ? index === last
+              ? 0
+              : index + 1
+            : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+              ? index === 0
+                ? last
+                : index - 1
+              : null;
     if (to === null) return;
     event.preventDefault();
     onChange(TASK_RESOLUTIONS[to] ?? 'done', true);
@@ -54,7 +69,10 @@ export function ResolutionChips({ value, onChange }: { value: TaskResolution; on
             onClick={() => onChange(resolution, false)}
             onKeyDown={(event) => step(event, index)}
           >
-            <span aria-hidden className={cn('size-2.5 shrink-0 rounded-full border-[1.5px] border-current', picked && 'bg-current')} />
+            <span
+              aria-hidden
+              className={cn('size-2.5 shrink-0 rounded-full border-[1.5px] border-current', picked && 'bg-current')}
+            />
             {RESOLUTION_LABELS[resolution]}
           </button>
         );
@@ -64,7 +82,15 @@ export function ResolutionChips({ value, onChange }: { value: TaskResolution; on
 }
 
 /** The closes where nothing shipped, as a menu beside a row's other verbs. */
-export function CloseAsMenu({ onPick, subject, disabledReason = null }: { onPick: (resolution: NotDone) => void; subject: string; disabledReason?: string | null }) {
+export function CloseAsMenu({
+  onPick,
+  subject,
+  disabledReason = null,
+}: {
+  onPick: (resolution: NotDone) => void;
+  subject: string;
+  disabledReason?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const reasonId = useId();
   const disabled = disabledReason !== null;
@@ -86,7 +112,13 @@ export function CloseAsMenu({ onPick, subject, disabledReason = null }: { onPick
             <ChevronDown aria-hidden className={cn('motion-safe:transition-transform', open && 'rotate-180')} />
           </Button>
         </PopoverTrigger>
-        <PopoverContent role="menu" aria-label={`Close ${subject} as`} align="end" className="w-52 p-1.5" data-close-as-menu="">
+        <PopoverContent
+          role="menu"
+          aria-label={`Close ${subject} as`}
+          align="end"
+          className="w-52 p-1.5"
+          data-close-as-menu=""
+        >
           {NOT_DONE.map((resolution) => {
             const Glyph = RESOLUTION_GLYPH[resolution];
             return (
@@ -128,7 +160,14 @@ export interface CloseAsInput {
  * Note, and for a duplicate the other task's id first. Enter sends, Escape
  * steps back; the caller's send carries the Undo.
  */
-export function CloseNoteForm({ id, resolution, onSend, onCancel, named = true, autoFocus = true }: {
+export function CloseNoteForm({
+  id,
+  resolution,
+  onSend,
+  onCancel,
+  named = true,
+  autoFocus = true,
+}: {
   id: string;
   resolution: NotDone;
   onSend: (close: CloseAsInput) => void;
@@ -174,7 +213,9 @@ export function CloseNoteForm({ id, resolution, onSend, onCancel, named = true, 
       ) : null}
       {duplicate ? (
         <span className="flex items-center gap-2">
-          <label htmlFor={`${ids}-other`} className="shrink-0 text-xs font-medium text-muted-foreground">Duplicate of</label>
+          <label htmlFor={`${ids}-other`} className="shrink-0 text-xs font-medium text-muted-foreground">
+            Duplicate of
+          </label>
           <input
             id={`${ids}-other`}
             type="text"
@@ -189,7 +230,9 @@ export function CloseNoteForm({ id, resolution, onSend, onCancel, named = true, 
         </span>
       ) : null}
       <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
-        <label htmlFor={`${ids}-note`} className="shrink-0 text-xs font-medium text-muted-foreground">Note</label>
+        <label htmlFor={`${ids}-note`} className="shrink-0 text-xs font-medium text-muted-foreground">
+          Note
+        </label>
         <input
           id={`${ids}-note`}
           type="text"
@@ -200,8 +243,12 @@ export function CloseNoteForm({ id, resolution, onSend, onCancel, named = true, 
         />
       </span>
       <span className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={!ready} data-task-confirm="close-as">Close task</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" size="sm" disabled={!ready} data-task-confirm="close-as">
+          Close task
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
       </span>
     </form>
   );

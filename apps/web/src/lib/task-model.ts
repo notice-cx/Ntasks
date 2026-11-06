@@ -46,14 +46,17 @@ export const RESOLUTION_LABELS: Readonly<Record<TaskResolution, string>> = Objec
 
 /** A close where nothing shipped. */
 export type NotDone = Exclude<TaskResolution, 'done'>;
-export const NOT_DONE: readonly NotDone[] = TASK_RESOLUTIONS.filter((resolution): resolution is NotDone => resolution !== 'done');
+export const NOT_DONE: readonly NotDone[] = TASK_RESOLUTIONS.filter(
+  (resolution): resolution is NotDone => resolution !== 'done',
+);
 
 /** An approval a task waits on, which a person answers. */
 export function isGate(task: Pick<LiveTask, 'issueType'> & { awaitType?: string | null }): boolean {
   return task.issueType === 'gate' || (task.awaitType ?? null) !== null;
 }
 
-type AskFacts = Pick<LiveTask, 'issueType' | 'status' | 'labels' | 'ready' | 'awaitType'> & Pick<Partial<LiveTask>, 'choices' | 'choice'>;
+type AskFacts = Pick<LiveTask, 'issueType' | 'status' | 'labels' | 'ready' | 'awaitType'> &
+  Pick<Partial<LiveTask>, 'choices' | 'choice'>;
 
 /**
  * Whether a task waits on a person: an open approval a person answers, or a
@@ -90,11 +93,22 @@ export function choiceName(option: TaskChoiceKey, label: string): string {
 
 /** The options in the order they are drawn: the recommended one first. */
 export function choiceOrder(choices: TaskChoices): readonly TaskChoiceOption[] {
-  return [...choices.options.filter((option) => option.recommended), ...choices.options.filter((option) => !option.recommended)];
+  return [
+    ...choices.options.filter((option) => option.recommended),
+    ...choices.options.filter((option) => !option.recommended),
+  ];
 }
 
 /** The reason a close where nothing shipped carries: the person's note, else the resolution's words. */
-export function closeAsReason({ resolution, note, duplicateOf }: { resolution: NotDone; note?: string; duplicateOf?: string }): string {
+export function closeAsReason({
+  resolution,
+  note,
+  duplicateOf,
+}: {
+  resolution: NotDone;
+  note?: string;
+  duplicateOf?: string;
+}): string {
   const words = note?.trim() ?? '';
   if (words !== '') return words;
   const label = RESOLUTION_LABELS[resolution];
@@ -106,7 +120,11 @@ const DISMISSED = 'Dismissed';
 /** What a closed task's reason adds under "Closed as …": the closer's note,
  * or null when the reason only repeats the resolution's words. A done close's
  * reason is its evidence and is always shown. */
-export function closeNote(reason: string | null | undefined, resolution: TaskResolution, duplicateOf: string | null): string | null {
+export function closeNote(
+  reason: string | null | undefined,
+  resolution: TaskResolution,
+  duplicateOf: string | null,
+): string | null {
   const text = reason?.trim() ?? '';
   if (text === '') return null;
   if (resolution === 'done') return text;
@@ -138,7 +156,9 @@ function metadataText(metadata: Record<string, unknown> | null, name: string): s
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
-export function closeAttribution(task: Pick<LiveTask, 'status' | 'closedAt' | 'metadata'>): { by: string; model: string | null } | null {
+export function closeAttribution(
+  task: Pick<LiveTask, 'status' | 'closedAt' | 'metadata'>,
+): { by: string; model: string | null } | null {
   if (task.status !== 'closed' || task.closedAt === null) return null;
   const by = metadataText(task.metadata, CLOSED_BY);
   const at = Date.parse(metadataText(task.metadata, CLOSED_AT) ?? '');
@@ -199,11 +219,20 @@ export function inboxOrder(a: BoardTask, b: BoardTask): number {
 export function boardRows(project: string, tasks: readonly LiveTask[], actors?: readonly TaskActor[]): BoardTask[] {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   return tasks.map((task) => {
-    const proceeds = tasks.filter((other) => other.issueType !== 'epic' && !isGate(other)
-      && other.status !== 'closed' && other.status !== PARKED
-      && other.dependencies.some((edge) => isBlockingLink(edge.type) && edge.id === task.id)
-      && other.dependencies.every((edge) => !isBlockingLink(edge.type) || edge.id === task.id
-        || (byId.get(edge.id)?.status ?? edge.status) === 'closed'));
+    const proceeds = tasks.filter(
+      (other) =>
+        other.issueType !== 'epic' &&
+        !isGate(other) &&
+        other.status !== 'closed' &&
+        other.status !== PARKED &&
+        other.dependencies.some((edge) => isBlockingLink(edge.type) && edge.id === task.id) &&
+        other.dependencies.every(
+          (edge) =>
+            !isBlockingLink(edge.type) ||
+            edge.id === task.id ||
+            (byId.get(edge.id)?.status ?? edge.status) === 'closed',
+        ),
+    );
     return {
       ...task,
       project,
@@ -215,9 +244,12 @@ export function boardRows(project: string, tasks: readonly LiveTask[], actors?: 
 
 /** Whether an open task waits on another task that is not closed. */
 export function waitsOnTask(task: BoardTask, statuses: ReadonlyMap<string, string>): boolean {
-  return task.status === 'open' && task.dependencies.some((edge) => {
-    if (!isBlockingLink(edge.type)) return false;
-    const status = statuses.get(edge.id) ?? edge.status;
-    return status == null ? !task.ready : status !== 'closed';
-  });
+  return (
+    task.status === 'open' &&
+    task.dependencies.some((edge) => {
+      if (!isBlockingLink(edge.type)) return false;
+      const status = statuses.get(edge.id) ?? edge.status;
+      return status == null ? !task.ready : status !== 'closed';
+    })
+  );
 }

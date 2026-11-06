@@ -105,14 +105,23 @@ function blocks(source: string): Block[] {
     }
     if (line.startsWith('>')) {
       const quoted: string[] = [];
-      while (at < lines.length && (lines[at] ?? '').startsWith('>')) quoted.push((lines[at++] ?? '').replace(/^>\s?/, ''));
+      while (at < lines.length && (lines[at] ?? '').startsWith('>'))
+        quoted.push((lines[at++] ?? '').replace(/^>\s?/, ''));
       out.push({ kind: 'quote', lines: quoted });
       continue;
     }
     const paragraph: string[] = [];
     while (at < lines.length) {
       const next = lines[at] ?? '';
-      if (next.trim() === '' || HEADING.test(next) || BULLET.test(next) || NUMBERED.test(next) || next.trimStart().startsWith('```') || next.startsWith('>')) break;
+      if (
+        next.trim() === '' ||
+        HEADING.test(next) ||
+        BULLET.test(next) ||
+        NUMBERED.test(next) ||
+        next.trimStart().startsWith('```') ||
+        next.startsWith('>')
+      )
+        break;
       paragraph.push(next);
       at += 1;
     }
@@ -121,7 +130,8 @@ function blocks(source: string): Block[] {
   return out;
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|(\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b)|((?<![\w*])\*[^*\s][^*]*\*(?!\w))|((?<!\w)_[^_\s][^_]*_(?!\w))/g;
+const INLINE =
+  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])|(\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b)|((?<![\w*])\*[^*\s][^*]*\*(?!\w))|((?<!\w)_[^_\s][^_]*_(?!\w))/g;
 
 function safeHref(href: string): string | null {
   return /^(?:https?:\/\/|mailto:)/i.test(href) ? href : null;
@@ -137,22 +147,58 @@ function inline(text: string, prefixes: ReadonlySet<string>, key: string): React
     const whole = match[0];
     const id = `${key}-${n++}`;
     if (match[1]) {
-      out.push(<code key={id} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{whole.slice(1, -1)}</code>);
+      out.push(
+        <code key={id} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+          {whole.slice(1, -1)}
+        </code>,
+      );
     } else if (match[2]) {
-      out.push(<strong key={id} className="font-semibold">{whole.slice(2, -2)}</strong>);
+      out.push(
+        <strong key={id} className="font-semibold">
+          {whole.slice(2, -2)}
+        </strong>,
+      );
     } else if (match[3]) {
       const split = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(whole);
       const href = safeHref(split?.[2] ?? '');
-      out.push(href
-        ? <a key={id} href={href} target="_blank" rel="noreferrer noopener" className={cn(inlineLinkClass, 'underline')}>{split?.[1]}</a>
-        : split?.[1] ?? whole);
+      out.push(
+        href ? (
+          <a
+            key={id}
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={cn(inlineLinkClass, 'underline')}
+          >
+            {split?.[1]}
+          </a>
+        ) : (
+          (split?.[1] ?? whole)
+        ),
+      );
     } else if (match[4]) {
-      out.push(<a key={id} href={whole} target="_blank" rel="noreferrer noopener" className={cn(inlineLinkClass, 'underline [overflow-wrap:anywhere]')}>{whole}</a>);
+      out.push(
+        <a
+          key={id}
+          href={whole}
+          target="_blank"
+          rel="noreferrer noopener"
+          className={cn(inlineLinkClass, 'underline [overflow-wrap:anywhere]')}
+        >
+          {whole}
+        </a>,
+      );
     } else if (match[5]) {
       const prefix = whole.slice(0, whole.indexOf('-'));
-      out.push(prefixes.has(prefix)
-        ? <Link key={id} to={taskPath(whole)} className={cn(inlineLinkClass, 'font-mono text-[0.9em] underline')}>{whole}</Link>
-        : whole);
+      out.push(
+        prefixes.has(prefix) ? (
+          <Link key={id} to={taskPath(whole)} className={cn(inlineLinkClass, 'font-mono text-[0.9em] underline')}>
+            {whole}
+          </Link>
+        ) : (
+          whole
+        ),
+      );
     } else {
       out.push(<em key={id}>{whole.slice(1, -1)}</em>);
     }
@@ -166,7 +212,12 @@ function inline(text: string, prefixes: ReadonlySet<string>, key: string): React
  * Markdown as React elements. With `onToggleTask`, a checklist's boxes are
  * buttons that hand back the line they sit on.
  */
-export function MarkdownText({ source, onToggleTask, toggleDisabled = false, className }: {
+export function MarkdownText({
+  source,
+  onToggleTask,
+  toggleDisabled = false,
+  className,
+}: {
   source: string;
   onToggleTask?: (line: number) => void;
   toggleDisabled?: boolean;
@@ -174,21 +225,48 @@ export function MarkdownText({ source, onToggleTask, toggleDisabled = false, cla
 }) {
   const prefixes = useContext(TaskPrefixes);
   return (
-    <div className={cn('flex min-w-0 flex-col gap-2 text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]', className)} data-markdown="">
+    <div
+      className={cn(
+        'flex min-w-0 flex-col gap-2 text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]',
+        className,
+      )}
+      data-markdown=""
+    >
       {blocks(source).map((block, index) => {
         const key = `b${index}`;
         switch (block.kind) {
           case 'heading':
-            return <p key={key} className={cn('m-0 font-semibold', block.level === 1 ? 'text-base' : 'text-sm')}>{inline(block.text, prefixes, key)}</p>;
+            return (
+              <p key={key} className={cn('m-0 font-semibold', block.level === 1 ? 'text-base' : 'text-sm')}>
+                {inline(block.text, prefixes, key)}
+              </p>
+            );
           case 'code':
-            return <pre key={key} className="m-0 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs"><code>{block.text}</code></pre>;
+            return (
+              <pre key={key} className="m-0 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
+                <code>{block.text}</code>
+              </pre>
+            );
           case 'quote':
-            return <blockquote key={key} className="m-0 border-s-2 border-border ps-3 text-muted-foreground">{block.lines.map((line, at) => <p key={at} className="m-0">{inline(line, prefixes, `${key}-${at}`)}</p>)}</blockquote>;
+            return (
+              <blockquote key={key} className="m-0 border-s-2 border-border ps-3 text-muted-foreground">
+                {block.lines.map((line, at) => (
+                  <p key={at} className="m-0">
+                    {inline(line, prefixes, `${key}-${at}`)}
+                  </p>
+                ))}
+              </blockquote>
+            );
           case 'list': {
             const List = block.ordered ? 'ol' : 'ul';
             return (
-              <List key={key} className={cn('m-0 flex flex-col gap-1 ps-5', block.ordered ? 'list-decimal' : 'list-disc')}>
-                {block.items.map((item, at) => <li key={at}>{inline(item, prefixes, `${key}-${at}`)}</li>)}
+              <List
+                key={key}
+                className={cn('m-0 flex flex-col gap-1 ps-5', block.ordered ? 'list-decimal' : 'list-disc')}
+              >
+                {block.items.map((item, at) => (
+                  <li key={at}>{inline(item, prefixes, `${key}-${at}`)}</li>
+                ))}
               </List>
             );
           }
@@ -197,9 +275,18 @@ export function MarkdownText({ source, onToggleTask, toggleDisabled = false, cla
               <ul key={key} className="m-0 flex list-none flex-col gap-1 p-0" data-checklist="">
                 {block.items.map((item) => {
                   const Box = item.done ? CheckSquare : Square;
-                  const box = <Box aria-hidden className={cn('mt-0.5 size-4 shrink-0', item.done ? 'text-foreground' : 'text-muted-foreground')} />;
+                  const box = (
+                    <Box
+                      aria-hidden
+                      className={cn('mt-0.5 size-4 shrink-0', item.done ? 'text-foreground' : 'text-muted-foreground')}
+                    />
+                  );
                   return (
-                    <li key={item.line} className="flex items-start gap-2" data-checklist-item={item.done ? 'done' : 'open'}>
+                    <li
+                      key={item.line}
+                      className="flex items-start gap-2"
+                      data-checklist-item={item.done ? 'done' : 'open'}
+                    >
                       {onToggleTask ? (
                         <button
                           type="button"
@@ -212,8 +299,12 @@ export function MarkdownText({ source, onToggleTask, toggleDisabled = false, cla
                         >
                           {box}
                         </button>
-                      ) : box}
-                      <span className={cn(item.done && 'text-muted-foreground')}>{inline(item.text, prefixes, `${key}-${item.line}`)}</span>
+                      ) : (
+                        box
+                      )}
+                      <span className={cn(item.done && 'text-muted-foreground')}>
+                        {inline(item.text, prefixes, `${key}-${item.line}`)}
+                      </span>
                     </li>
                   );
                 })}
@@ -226,7 +317,14 @@ export function MarkdownText({ source, onToggleTask, toggleDisabled = false, cla
                   const labelled = LABELLED.exec(line);
                   return (
                     <span key={at} className="block">
-                      {labelled ? <><span className={cn(eyebrowClass, 'me-2')}>{labelled[1]?.toLowerCase()}</span>{inline(labelled[2] ?? '', prefixes, `${key}-${at}`)}</> : inline(line, prefixes, `${key}-${at}`)}
+                      {labelled ? (
+                        <>
+                          <span className={cn(eyebrowClass, 'me-2')}>{labelled[1]?.toLowerCase()}</span>
+                          {inline(labelled[2] ?? '', prefixes, `${key}-${at}`)}
+                        </>
+                      ) : (
+                        inline(line, prefixes, `${key}-${at}`)
+                      )}
                     </span>
                   );
                 })}

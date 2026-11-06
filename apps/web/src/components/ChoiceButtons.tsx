@@ -28,7 +28,14 @@ const liveOption = cn(
  * filled. With `disabledReason` they cannot be pressed, and the reason is
  * written under them.
  */
-export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason = null, footer, className }: {
+export function ChoiceButtons({
+  choices,
+  chosen = null,
+  onChoose,
+  disabledReason = null,
+  footer,
+  className,
+}: {
   choices: TaskChoices;
   chosen?: TaskChoiceKey | null;
   onChoose?: (option: TaskChoiceKey, note: string | undefined) => void;
@@ -44,7 +51,11 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
   // An empty reason disables the options without words: the answer has not arrived yet.
   const reasonId = disabledReason ? `${ids}-reason` : undefined;
   const question = (
-    <p id={questionId} className="m-0 text-sm font-medium text-foreground [overflow-wrap:anywhere]" data-choice-question="">
+    <p
+      id={questionId}
+      className="m-0 text-sm font-medium text-foreground [overflow-wrap:anywhere]"
+      data-choice-question=""
+    >
       {choices.question}
     </p>
   );
@@ -52,7 +63,12 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
 
   if (chosen !== null) {
     return (
-      <div role="group" aria-labelledby={questionId} className={cn('flex min-w-0 flex-col gap-2', className)} data-choice-buttons="chosen">
+      <div
+        role="group"
+        aria-labelledby={questionId}
+        className={cn('flex min-w-0 flex-col gap-2', className)}
+        data-choice-buttons="chosen"
+      >
         {question}
         <ul className={grid}>
           {options.map((option, index) => {
@@ -76,13 +92,23 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
   }
 
   return (
-    <div role="group" aria-labelledby={questionId} className={cn('flex min-w-0 flex-col gap-2', className)} data-choice-buttons={disabled ? 'inert' : 'live'}>
+    <div
+      role="group"
+      aria-labelledby={questionId}
+      className={cn('flex min-w-0 flex-col gap-2', className)}
+      data-choice-buttons={disabled ? 'inert' : 'live'}
+    >
       {question}
       <ul className={grid}>
         {options.map((option, index) => {
           const detailId = `${ids}-${option.key}`;
-          const said = [option.recommended ? `${detailId}-recommended` : null, option.detail ? `${detailId}-detail` : null, reasonId ?? null]
-            .filter(Boolean).join(' ');
+          const said = [
+            option.recommended ? `${detailId}-recommended` : null,
+            option.detail ? `${detailId}-detail` : null,
+            reasonId ?? null,
+          ]
+            .filter(Boolean)
+            .join(' ');
           return (
             <li key={option.key} className="viz-arrive min-w-0" style={{ '--viz-i': index } as CSSProperties}>
               <button
@@ -108,7 +134,9 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
         <div className="flex flex-wrap items-center gap-2">
           {!disabled ? (
             <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
-              <label htmlFor={`${ids}-note`} className="shrink-0 text-xs font-medium text-muted-foreground">Note</label>
+              <label htmlFor={`${ids}-note`} className="shrink-0 text-xs font-medium text-muted-foreground">
+                Note
+              </label>
               <input
                 id={`${ids}-note`}
                 type="text"
@@ -124,7 +152,11 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
         </div>
       ) : null}
       {reasonId ? (
-        <p id={reasonId} className="m-0 inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-choice-reason="">
+        <p
+          id={reasonId}
+          className="m-0 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+          data-choice-reason=""
+        >
           <Lock className="size-3.5 shrink-0" aria-hidden />
           {disabledReason}
         </p>
@@ -133,33 +165,54 @@ export function ChoiceButtons({ choices, chosen = null, onChoose, disabledReason
   );
 }
 
-function OptionFace({ option, state, detailId }: { option: TaskChoiceOption; state: 'live' | 'recommended' | 'chosen' | 'other'; detailId?: string }) {
+function OptionFace({
+  option,
+  state,
+  detailId,
+}: {
+  option: TaskChoiceOption;
+  state: 'live' | 'recommended' | 'chosen' | 'other';
+  detailId?: string;
+}) {
   return (
     <>
       <span
         aria-hidden
         className={cn(
           'mt-px grid size-5 shrink-0 place-items-center rounded-full border-[1.5px] text-micro font-semibold leading-none',
-          state === 'chosen' ? 'border-primary bg-primary text-primary-foreground'
-            : state === 'recommended' ? 'border-foreground text-foreground'
+          state === 'chosen'
+            ? 'border-primary bg-primary text-primary-foreground'
+            : state === 'recommended'
+              ? 'border-foreground text-foreground'
               : 'border-current text-muted-foreground group-hover/option:text-foreground motion-safe:transition-colors',
         )}
       >
         {option.key}
       </span>
       <span className="grid min-w-0 flex-1 gap-0.5">
-        <span className={cn('flex min-w-0 items-start gap-1.5 text-sm font-medium [overflow-wrap:anywhere]', state === 'other' ? 'text-muted-foreground' : 'text-foreground')}>
+        <span
+          className={cn(
+            'flex min-w-0 items-start gap-1.5 text-sm font-medium [overflow-wrap:anywhere]',
+            state === 'other' ? 'text-muted-foreground' : 'text-foreground',
+          )}
+        >
           <span className="min-w-0">{option.label}</span>
           {state === 'chosen' ? <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" /> : null}
         </span>
         {option.recommended ? (
-          <span id={detailId ? `${detailId}-recommended` : undefined} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <span
+            id={detailId ? `${detailId}-recommended` : undefined}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+          >
             <Star aria-hidden className="size-3 shrink-0 fill-current" />
             Recommended
           </span>
         ) : null}
         {option.detail ? (
-          <span id={detailId ? `${detailId}-detail` : undefined} className="whitespace-pre-line text-xs font-normal text-muted-foreground [overflow-wrap:anywhere]">
+          <span
+            id={detailId ? `${detailId}-detail` : undefined}
+            className="whitespace-pre-line text-xs font-normal text-muted-foreground [overflow-wrap:anywhere]"
+          >
             {option.detail}
           </span>
         ) : null}

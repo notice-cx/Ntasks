@@ -11,7 +11,9 @@ function task(api: ReturnType<typeof createFixtureTasksApi>, id: string) {
 describe('a task page', () => {
   it('shows the task whole: its header, description, Done when and facts', async () => {
     renderApp('/tasks/web-b2r6');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' }),
+    ).toBeTruthy();
     expect(screen.getByText('Bug')).toBeTruthy();
     expect(screen.getByText('top priority')).toBeTruthy();
     expect(screen.getByText('0 of 2')).toBeTruthy();
@@ -21,7 +23,9 @@ describe('a task page', () => {
     // The breadcrumb leads back to the board and the project's tasks.
     const where = screen.getByRole('navigation', { name: 'Where this task sits' });
     expect(within(where).getByRole('link', { name: 'Tasks' }).getAttribute('href')).toBe('/tasks');
-    expect(within(where).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe('/tasks?project=web');
+    expect(within(where).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
+      '/tasks?project=web',
+    );
   });
 
   it('claims, comments, ticks Done when and closes with its evidence', async () => {
@@ -31,19 +35,25 @@ describe('a task page', () => {
     await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe(FIXTURE_ACTOR));
     expect(await screen.findByText('· claimed 0s ago')).toBeTruthy();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment' }), { target: { value: 'Found it: the link uses the **old** host.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment' }), {
+      target: { value: 'Found it: the link uses the **old** host.' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     expect(await screen.findByText('Comment added')).toBeTruthy();
     expect(api.state.comments.get('web-b2r6')?.[0]?.text).toBe('Found it: the link uses the **old** host.');
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'A new reset link opens the reset form' }));
-    await waitFor(() => expect(task(api, 'web-b2r6')?.acceptance).toContain('- [x] A new reset link opens the reset form'));
+    await waitFor(() =>
+      expect(task(api, 'web-b2r6')?.acceptance).toContain('- [x] A new reset link opens the reset form'),
+    );
     expect(await screen.findByText('1 of 2')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     const close = screen.getByRole('button', { name: 'Close task' });
     expect((close as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/What shipped, and the commit/), { target: { value: 'Landed in 4d5e6f7: the link uses the new host.' } });
+    fireEvent.change(screen.getByLabelText(/What shipped, and the commit/), {
+      target: { value: 'Landed in 4d5e6f7: the link uses the new host.' },
+    });
     fireEvent.click(close);
     await waitFor(() => expect(task(api, 'web-b2r6')?.status).toBe('closed'));
     expect(task(api, 'web-b2r6')?.closeReason).toBe('Landed in 4d5e6f7: the link uses the new host.');

@@ -17,14 +17,22 @@ export const pillClass = 'inline-flex items-center gap-1.5 rounded-md border px-
 
 /** A picker: only the picked option has edges. */
 export function pillPickerStateClass(picked: boolean): string {
-  return picked ? 'border-primary/30 bg-accent-soft font-medium text-primary' : 'border-transparent text-muted-foreground hover:bg-muted';
+  return picked
+    ? 'border-primary/30 bg-accent-soft font-medium text-primary'
+    : 'border-transparent text-muted-foreground hover:bg-muted';
 }
 
 /** A row of choices where every option keeps its border, so a press never reflows the row. */
-export const pillChoiceClass = cn(pillClass, pillControlClass, 'whitespace-nowrap rounded-full px-2.5 font-medium transition-colors');
+export const pillChoiceClass = cn(
+  pillClass,
+  pillControlClass,
+  'whitespace-nowrap rounded-full px-2.5 font-medium transition-colors',
+);
 
 export function pillChoiceStateClass(selected: boolean): string {
-  return selected ? 'border-primary/30 bg-accent-soft text-primary' : 'border-border text-muted-foreground hover:bg-muted/60';
+  return selected
+    ? 'border-primary/30 bg-accent-soft text-primary'
+    : 'border-border text-muted-foreground hover:bg-muted/60';
 }
 
 /** A section's eyebrow: small, tracked, uppercase. */

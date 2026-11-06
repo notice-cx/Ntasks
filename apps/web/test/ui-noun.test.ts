@@ -18,7 +18,7 @@ const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const FILES = sourceFiles(APP_ROOT, 'src', new Set());
 
 const NOUNS = [
-  { pattern: /propert(?:y|ies)/gi, word: 'asset (a property is the analytics provider\'s own object)' },
+  { pattern: /propert(?:y|ies)/gi, word: "asset (a property is the analytics provider's own object)" },
   { pattern: /\bsites?\b/gi, word: 'asset' },
 ] as const;
 
@@ -57,9 +57,11 @@ describe('the UI nouns', () => {
     const offenders = FILES.flatMap((name) => offendersIn(name, readFileSync(path.join(APP_ROOT, name), 'utf8')));
     expect(
       offenders,
-      'these shipped strings use a noun reserved for something else:\n  ' + offenders.join('\n  ') + '\n'
-        + 'Write asset. If a string names the provider\'s own property object, a stored value or an address, '
-        + 'add that exact phrase to ALLOWED_PHRASES with its reason; never widen a pattern.',
+      'these shipped strings use a noun reserved for something else:\n  ' +
+        offenders.join('\n  ') +
+        '\n' +
+        "Write asset. If a string names the provider's own property object, a stored value or an address, " +
+        'add that exact phrase to ALLOWED_PHRASES with its reason; never widen a pattern.',
     ).toEqual([]);
   });
 
@@ -75,12 +77,14 @@ describe('the UI nouns', () => {
       'const a = () => <p>No site matches.</p>;',
       'const a = { label: "All sites" };',
       'const a = { title: "Property settings" };',
-    ]) expect(offendersIn('probe.tsx', copy), copy).not.toEqual([]);
+    ])
+      expect(offendersIn('probe.tsx', copy), copy).not.toEqual([]);
     for (const code of [
       'const a = (id: string) => fetch(`/api/sites/${id}`);',
       'const siteName = "x";',
       'const a = { perProperty: 1 };',
       'const a = (c: { sites: string[] }) => c.sites;',
-    ]) expect(offendersIn('probe.tsx', code), code).toEqual([]);
+    ])
+      expect(offendersIn('probe.tsx', code), code).toEqual([]);
   });
 });

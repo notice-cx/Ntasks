@@ -42,7 +42,13 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
           position="bottom-right"
           closeButton
           // The toasts wear the page's own tokens, so they follow its theme.
-          style={{ '--normal-bg': 'var(--card)', '--normal-text': 'var(--foreground)', '--normal-border': 'var(--border)' } as CSSProperties}
+          style={
+            {
+              '--normal-bg': 'var(--card)',
+              '--normal-text': 'var(--foreground)',
+              '--normal-border': 'var(--border)',
+            } as CSSProperties
+          }
           toastOptions={{ className: 'font-sans' }}
         />
       </TasksApiProvider>
@@ -51,31 +57,49 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
 }
 
 function Shell() {
-  const nav = ({ isActive }: { isActive: boolean }) => cn(
-    'rounded-md px-2.5 py-1.5 text-sm font-medium',
-    pillControlClass,
-    isActive ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
-  );
+  const nav = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      'rounded-md px-2.5 py-1.5 text-sm font-medium',
+      pillControlClass,
+      isActive ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+    );
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-card/60">
         <div className="mx-auto flex w-full max-w-[1400px] items-center gap-4 px-4 py-2.5 md:px-6">
-          <Link to="/tasks" className={cn('text-base font-semibold tracking-[-0.02em] text-foreground', pillControlClass)}>Ntasks</Link>
+          <Link
+            to="/tasks"
+            className={cn('text-base font-semibold tracking-[-0.02em] text-foreground', pillControlClass)}
+          >
+            Ntasks
+          </Link>
           <nav aria-label="Pages" className="flex items-center gap-1">
-            <NavLink to="/tasks" end className={nav}>Tasks</NavLink>
-            <NavLink to="/tasks/focus" className={nav}>Focus</NavLink>
+            <NavLink to="/tasks" end className={nav}>
+              Tasks
+            </NavLink>
+            <NavLink to="/tasks/focus" className={nav}>
+              Focus
+            </NavLink>
           </nav>
         </div>
       </header>
       <main className="page-arrive flex-1">
-        <Suspense fallback={<div className="mx-auto w-full max-w-[1400px] p-4 md:p-6"><PageSkeleton shape="list" /></div>}>
+        <Suspense
+          fallback={
+            <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
+              <PageSkeleton shape="list" />
+            </div>
+          }
+        >
           <Outlet />
         </Suspense>
       </main>
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground md:px-6">
           <span>Ntasks · AGPL-3.0</span>
-          <a href={SOURCE_URL} className="underline-offset-4 hover:text-foreground hover:underline" data-source-link="">Source code</a>
+          <a href={SOURCE_URL} className="underline-offset-4 hover:text-foreground hover:underline" data-source-link="">
+            Source code
+          </a>
         </div>
       </footer>
     </div>
@@ -85,7 +109,14 @@ function Shell() {
 function NoPage() {
   return (
     <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
-      <EmptyState title="No page at this address" hint={<Link to="/tasks" className="text-foreground underline underline-offset-4">Go to Tasks</Link>} />
+      <EmptyState
+        title="No page at this address"
+        hint={
+          <Link to="/tasks" className="text-foreground underline underline-offset-4">
+            Go to Tasks
+          </Link>
+        }
+      />
     </div>
   );
 }

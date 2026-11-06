@@ -34,8 +34,12 @@ function returnPath(state: unknown): string {
 
 /** A key pressed in a field or an open menu is not a Focus command. */
 function typing(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement
-    && target.closest('input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"], [role="listbox"]') !== null;
+  return (
+    target instanceof HTMLElement &&
+    target.closest(
+      'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"], [role="listbox"]',
+    ) !== null
+  );
 }
 
 /**
@@ -73,16 +77,31 @@ export function FocusRoute() {
 
   let body;
   if (board.catalog.isError) {
-    body = <ReadFailed title="Couldn't load your projects" error={board.catalog.error} retrying={board.fetching} onRetry={() => void board.refetch()} />;
+    body = (
+      <ReadFailed
+        title="Couldn't load your projects"
+        error={board.catalog.error}
+        retrying={board.fetching}
+        onRetry={() => void board.refetch()}
+      />
+    );
   } else if (board.loading) {
     body = <PageSkeleton shape="page" />;
   } else if (current === null) {
     body = (
       <div className="flex flex-col items-start gap-3 py-10" data-focus-done="">
-        <p className="m-0 text-figure-sm text-foreground">{board.complete ? "That's every decision for you." : 'No decisions in the projects that could be read.'}</p>
+        <p className="m-0 text-figure-sm text-foreground">
+          {board.complete ? "That's every decision for you." : 'No decisions in the projects that could be read.'}
+        </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild><Link to={leave}>Back to Tasks</Link></Button>
-          {skipped.size > 0 ? <Button type="button" variant="ghost" onClick={() => setSkipped(new Set())} data-focus-again="">Start over</Button> : null}
+          <Button asChild>
+            <Link to={leave}>Back to Tasks</Link>
+          </Button>
+          {skipped.size > 0 ? (
+            <Button type="button" variant="ghost" onClick={() => setSkipped(new Set())} data-focus-again="">
+              Start over
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -93,7 +112,7 @@ export function FocusRoute() {
         task={current}
         projectName={names.get(current.project) ?? current.project}
         after={after}
-        afterProject={after ? names.get(after.project) ?? after.project : null}
+        afterProject={after ? (names.get(after.project) ?? after.project) : null}
         writable={board.projects.some((row) => row.key === current.project && row.ok)}
         nowMs={now}
         onSkip={() => setSkipped((ids) => new Set([...ids, current.id]))}
@@ -112,11 +131,25 @@ export function FocusRoute() {
         {total > 0 && total <= 24 ? (
           <span aria-hidden className="flex flex-wrap gap-1">
             {Array.from({ length: total }, (_, index) => (
-              <span key={index} className={cn('size-1.5 rounded-full', current === null || index < position ? 'bg-foreground/80' : 'bg-border')} />
+              <span
+                key={index}
+                className={cn(
+                  'size-1.5 rounded-full',
+                  current === null || index < position ? 'bg-foreground/80' : 'bg-border',
+                )}
+              />
             ))}
           </span>
         ) : null}
-        <Link to={leave} className={cn('ms-auto text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline', pillControlClass)}>Leave focus</Link>
+        <Link
+          to={leave}
+          className={cn(
+            'ms-auto text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline',
+            pillControlClass,
+          )}
+        >
+          Leave focus
+        </Link>
       </div>
       {body}
     </div>
@@ -124,7 +157,16 @@ export function FocusRoute() {
 }
 
 /** One decision, with every way of answering it as a large press and the keys that do the same. */
-function FocusDecision({ task, projectName, after, afterProject, writable, nowMs, onSkip, onSent }: {
+function FocusDecision({
+  task,
+  projectName,
+  after,
+  afterProject,
+  writable,
+  nowMs,
+  onSkip,
+  onSent,
+}: {
   task: BoardTask;
   projectName: string;
   after: BoardTask | null;
@@ -141,9 +183,10 @@ function FocusDecision({ task, projectName, after, afterProject, writable, nowMs
   const [note, setNote] = useState('');
   const [text, setText] = useState('');
   const ask = askVerb(task);
-  const choices = ask === 'choose' ? task.choices ?? null : null;
+  const choices = ask === 'choose' ? (task.choices ?? null) : null;
   const options = choices ? choiceOrder(choices) : [];
-  const allowed = writable && operationAvailable(capabilities, choices ? 'choose' : isGate(task) ? 'resolve' : 'respond');
+  const allowed =
+    writable && operationAvailable(capabilities, choices ? 'choose' : isGate(task) ? 'resolve' : 'respond');
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
   const waited = ageMs(nowMs, task.createdAt ?? task.updatedAt);
   const scope = { id: task.id, title: task.title, project: task.project };
@@ -180,7 +223,11 @@ function FocusDecision({ task, projectName, after, afterProject, writable, nowMs
         live.onSkip();
         return;
       }
-      if (event.key === 'Enter' && live.ask === 'approve' && !(event.target instanceof HTMLButtonElement || event.target instanceof HTMLAnchorElement)) {
+      if (
+        event.key === 'Enter' &&
+        live.ask === 'approve' &&
+        !(event.target instanceof HTMLButtonElement || event.target instanceof HTMLAnchorElement)
+      ) {
         event.preventDefault();
         live.approve();
         return;
@@ -197,27 +244,37 @@ function FocusDecision({ task, projectName, after, afterProject, writable, nowMs
 
   const hint = choices
     ? `${options.map((option) => option.key.toUpperCase()).join(' ')} choose · → skip`
-    : ask === 'approve' ? 'Enter approve · → skip' : '→ skip';
+    : ask === 'approve'
+      ? 'Enter approve · → skip'
+      : '→ skip';
 
   return (
     <section className="flex flex-col gap-5" data-focus-decision={task.id}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
         <span className="font-medium text-foreground">{projectName}</span>
         <span className="inline-flex items-center gap-1.5 font-medium text-warn">
-          <span aria-hidden className="font-bold">{askGlyph(task)}</span>
+          <span aria-hidden className="font-bold">
+            {askGlyph(task)}
+          </span>
           {ASK_LINE[ask]}
           {waited !== null ? ` · waiting ${ageLabel(waited / DAY)}` : ''}
         </span>
       </div>
 
       <h1 className="m-0 text-[28px] font-bold leading-[1.1] tracking-[-0.03em] text-foreground md:text-display">
-        <Link to={taskPath(task.id)} className="underline-offset-4 hover:underline">{task.title}</Link>
+        <Link to={taskPath(task.id)} className="underline-offset-4 hover:underline">
+          {task.title}
+        </Link>
       </h1>
-      {task.description.trim() ? <p className="m-0 whitespace-pre-line text-base text-muted-foreground">{task.description.trim()}</p> : null}
+      {task.description.trim() ? (
+        <p className="m-0 whitespace-pre-line text-base text-muted-foreground">{task.description.trim()}</p>
+      ) : null}
 
       {choices ? (
         <div role="group" aria-labelledby={`${noteId}-question`} className="flex flex-col gap-3" data-focus-options="">
-          <p id={`${noteId}-question`} className="m-0 text-base font-medium text-foreground [overflow-wrap:anywhere]">{choices.question}</p>
+          <p id={`${noteId}-question`} className="m-0 text-base font-medium text-foreground [overflow-wrap:anywhere]">
+            {choices.question}
+          </p>
           <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3 p-0">
             {options.map((option) => (
               <li key={option.key} className="min-w-0">
@@ -233,37 +290,70 @@ function FocusDecision({ task, projectName, after, afterProject, writable, nowMs
                   )}
                   data-focus-option={option.key}
                 >
-                  <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] border-current text-sm font-semibold text-foreground">
+                  <span
+                    aria-hidden
+                    className="grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] border-current text-sm font-semibold text-foreground"
+                  >
                     {option.key.toUpperCase()}
                   </span>
                   <span className="grid min-w-0 gap-1">
-                    <span className="text-base font-medium text-foreground [overflow-wrap:anywhere]">{option.label}</span>
+                    <span className="text-base font-medium text-foreground [overflow-wrap:anywhere]">
+                      {option.label}
+                    </span>
                     {option.recommended ? (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Star aria-hidden className="size-3 fill-current" />
                         Recommended
                       </span>
                     ) : null}
-                    {option.detail ? <span className="whitespace-pre-line text-sm text-muted-foreground [overflow-wrap:anywhere]">{option.detail}</span> : null}
+                    {option.detail ? (
+                      <span className="whitespace-pre-line text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                        {option.detail}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
               </li>
             ))}
           </ul>
           <span className="flex items-center gap-2">
-            <label htmlFor={noteId} className="shrink-0 text-xs font-medium text-muted-foreground">Note</label>
-            <input id={noteId} type="text" className={cn(fieldClass, 'h-9 min-w-0 flex-1')} maxLength={NOTE_MAX} value={note} onChange={(event) => setNote(event.target.value)} data-focus-note="" />
+            <label htmlFor={noteId} className="shrink-0 text-xs font-medium text-muted-foreground">
+              Note
+            </label>
+            <input
+              id={noteId}
+              type="text"
+              className={cn(fieldClass, 'h-9 min-w-0 flex-1')}
+              maxLength={NOTE_MAX}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              data-focus-note=""
+            />
           </span>
         </div>
       ) : ask === 'approve' ? (
         <div>
-          <Button type="button" className="min-h-11 px-6 text-base" disabled={reason !== null} aria-describedby={reason ? reasonId : undefined} onClick={approve} data-focus-approve="">
+          <Button
+            type="button"
+            className="min-h-11 px-6 text-base"
+            disabled={reason !== null}
+            aria-describedby={reason ? reasonId : undefined}
+            onClick={approve}
+            data-focus-approve=""
+          >
             <Check aria-hidden />
             Approve
           </Button>
         </div>
       ) : (
-        <form className="flex items-start gap-2 max-sm:flex-wrap" data-focus-answer="" onSubmit={(event) => { event.preventDefault(); send(); }}>
+        <form
+          className="flex items-start gap-2 max-sm:flex-wrap"
+          data-focus-answer=""
+          onSubmit={(event) => {
+            event.preventDefault();
+            send();
+          }}
+        >
           <textarea
             rows={2}
             className={cn(fieldClass, 'min-h-16 w-full flex-1 resize-y max-sm:basis-full')}
@@ -284,16 +374,28 @@ function FocusDecision({ task, projectName, after, afterProject, writable, nowMs
           </Button>
         </form>
       )}
-      {reason ? <p id={reasonId} className="m-0 text-xs text-muted-foreground">{reason}</p> : null}
+      {reason ? (
+        <p id={reasonId} className="m-0 text-xs text-muted-foreground">
+          {reason}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3">
-        <Button type="button" variant="ghost" onClick={onSkip} data-focus-skip="">Not now</Button>
+        <Button type="button" variant="ghost" onClick={onSkip} data-focus-skip="">
+          Not now
+        </Button>
         {after ? (
           <span className="min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-focus-after="">
-            After this: <Link to={taskPath(after.id)} className={inlineLinkClass}>{after.title}</Link>{afterProject ? ` · ${afterProject}` : ''}
+            After this:{' '}
+            <Link to={taskPath(after.id)} className={inlineLinkClass}>
+              {after.title}
+            </Link>
+            {afterProject ? ` · ${afterProject}` : ''}
           </span>
         ) : null}
-        <span className="ms-auto text-xs text-muted-foreground max-sm:hidden" data-focus-keys="">{hint}</span>
+        <span className="ms-auto text-xs text-muted-foreground max-sm:hidden" data-focus-keys="">
+          {hint}
+        </span>
       </div>
     </section>
   );

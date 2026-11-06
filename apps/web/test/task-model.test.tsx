@@ -8,9 +8,28 @@ import { MemoryRouter } from 'react-router-dom';
 
 function task(fields: Partial<LiveTask>): LiveTask {
   return {
-    id: 'web-a1', title: 'A task', status: 'open', priority: 2, issueType: 'task', assignee: null, updatedAt: '2026-11-01T00:00:00Z',
-    closedAt: null, createdAt: '2026-11-01T00:00:00Z', parent: null, deferUntil: null, description: '', acceptance: '', labels: [],
-    ready: true, dependencies: [], comments: 0, metadata: null, startedAt: null, closeReason: null, awaitType: null, ...fields,
+    id: 'web-a1',
+    title: 'A task',
+    status: 'open',
+    priority: 2,
+    issueType: 'task',
+    assignee: null,
+    updatedAt: '2026-11-01T00:00:00Z',
+    closedAt: null,
+    createdAt: '2026-11-01T00:00:00Z',
+    parent: null,
+    deferUntil: null,
+    description: '',
+    acceptance: '',
+    labels: [],
+    ready: true,
+    dependencies: [],
+    comments: 0,
+    metadata: null,
+    startedAt: null,
+    closeReason: null,
+    awaitType: null,
+    ...fields,
   };
 }
 
@@ -18,10 +37,27 @@ describe('what waits on a person', () => {
   it('is an open approval, or a ready task labelled human that nobody answered', () => {
     expect(inboxAsk(task({ issueType: 'gate', awaitType: 'human', ready: false }))).toBe('approve');
     expect(inboxAsk(task({ labels: ['human'] }))).toBe('answer');
-    expect(inboxAsk(task({ labels: ['human'], choices: { question: 'Which?', options: [{ key: 'a', label: 'A', recommended: true }, { key: 'b', label: 'B' }] } }))).toBe('choose');
+    expect(
+      inboxAsk(
+        task({
+          labels: ['human'],
+          choices: {
+            question: 'Which?',
+            options: [
+              { key: 'a', label: 'A', recommended: true },
+              { key: 'b', label: 'B' },
+            ],
+          },
+        }),
+      ),
+    ).toBe('choose');
     expect(waitsOnPerson(task({ labels: ['human'], ready: false }))).toBe(false);
     expect(waitsOnPerson(task({ labels: ['human'], status: 'deferred' }))).toBe(false);
-    expect(waitsOnPerson(task({ labels: ['human'], choice: { option: 'a', label: 'A', by: 'x', at: '2026-11-01T00:00:00Z' } }))).toBe(false);
+    expect(
+      waitsOnPerson(
+        task({ labels: ['human'], choice: { option: 'a', label: 'A', by: 'x', at: '2026-11-01T00:00:00Z' } }),
+      ),
+    ).toBe(false);
     expect(waitsOnPerson(task({ issueType: 'gate', awaitType: 'timer' }))).toBe(false);
   });
 
@@ -29,7 +65,12 @@ describe('what waits on a person', () => {
     const rows = boardRows('web', [
       task({ id: 'web-g1', issueType: 'gate', awaitType: 'human', priority: 3 }),
       task({ id: 'web-q1', labels: ['human'], priority: 1 }),
-      task({ id: 'web-w1', priority: 0, ready: false, dependencies: [{ id: 'web-g1', type: 'blocks', title: null, status: 'open' }] }),
+      task({
+        id: 'web-w1',
+        priority: 0,
+        ready: false,
+        dependencies: [{ id: 'web-g1', type: 'blocks', title: null, status: 'open' }],
+      }),
     ]);
     const asks = rows.filter((row) => inboxAsk(row) !== null).sort(inboxOrder);
     expect(asks.map((row) => row.id)).toEqual(['web-g1', 'web-q1']);
@@ -58,8 +99,20 @@ describe('the Undo window', () => {
   it('sends after the window, and Undo cancels an answer not yet sent', async () => {
     const queue = createAnswerQueue();
     const sent: string[] = [];
-    queue.schedule({ id: 'web-a1', group: 'one', send: async () => { sent.push('web-a1'); } });
-    queue.schedule({ id: 'web-a2', group: 'two', send: async () => { sent.push('web-a2'); } });
+    queue.schedule({
+      id: 'web-a1',
+      group: 'one',
+      send: async () => {
+        sent.push('web-a1');
+      },
+    });
+    queue.schedule({
+      id: 'web-a2',
+      group: 'two',
+      send: async () => {
+        sent.push('web-a2');
+      },
+    });
     expect(queue.hides('web-a1', null)).toBe(true);
     expect(queue.undoGroup('two')).toBe(1);
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
@@ -73,7 +126,12 @@ describe('the Undo window', () => {
   it('sends what is waiting at once when the page is leaving', () => {
     const queue = createAnswerQueue();
     const sent: boolean[] = [];
-    queue.schedule({ id: 'web-a1', send: async (keepalive) => { sent.push(keepalive); } });
+    queue.schedule({
+      id: 'web-a1',
+      send: async (keepalive) => {
+        sent.push(keepalive);
+      },
+    });
     queue.flush(true);
     expect(sent).toEqual([true]);
   });
@@ -88,7 +146,11 @@ describe('task Markdown', () => {
   });
 
   it('links only safe addresses and draws no raw HTML', () => {
-    render(<MemoryRouter><MarkdownText source={'[ok](https://example.com) [bad](javascript:alert(1)) <b>raw</b>'} /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <MarkdownText source={'[ok](https://example.com) [bad](javascript:alert(1)) <b>raw</b>'} />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole('link', { name: 'ok' }).getAttribute('href')).toBe('https://example.com');
     expect(screen.queryByRole('link', { name: 'bad' })).toBeNull();
     expect(screen.getByText(/<b>raw<\/b>/)).toBeTruthy();

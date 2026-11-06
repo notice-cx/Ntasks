@@ -19,7 +19,10 @@ export function renderApp(path: string, api: TasksApi = createFixtureTasksApi())
 }
 
 /** A button once it can be pressed: verbs stay disabled until the sign-in's permissions have arrived. */
-export async function enabledButton(name: string | RegExp, scope: HTMLElement | null = null): Promise<HTMLButtonElement> {
+export async function enabledButton(
+  name: string | RegExp,
+  scope: HTMLElement | null = null,
+): Promise<HTMLButtonElement> {
   const query: BoundFunctions<typeof queries> = scope ? within(scope) : screen;
   let found: HTMLButtonElement | null = null;
   await waitFor(() => {

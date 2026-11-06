@@ -53,8 +53,9 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
   /** Ready, as the server works it out: open, and every task it depends on closed. */
   function ready(task: FixtureTask): boolean {
     if (task.status !== 'open') return false;
-    return task.dependencies.every((edge) => edge.type !== 'blocks'
-      || state.tasks.find((row) => row.id === edge.id)?.status === 'closed');
+    return task.dependencies.every(
+      (edge) => edge.type !== 'blocks' || state.tasks.find((row) => row.id === edge.id)?.status === 'closed',
+    );
   }
 
   function withLinks(task: FixtureTask): LiveTask {
@@ -71,19 +72,21 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
   }
 
   function epics(key: string): LiveEpic[] {
-    return state.tasks.filter((task) => task.project === key && task.issueType === 'epic').map((epic) => {
-      const children = state.tasks.filter((task) => task.parent === epic.id);
-      const closed = children.filter((task) => task.status === 'closed').length;
-      return {
-        id: epic.id,
-        title: epic.title,
-        status: epic.status,
-        priority: epic.priority,
-        total: children.length,
-        closed,
-        eligibleForClose: epic.status !== 'closed' && children.length > 0 && closed === children.length,
-      };
-    });
+    return state.tasks
+      .filter((task) => task.project === key && task.issueType === 'epic')
+      .map((epic) => {
+        const children = state.tasks.filter((task) => task.parent === epic.id);
+        const closed = children.filter((task) => task.status === 'closed').length;
+        return {
+          id: epic.id,
+          title: epic.title,
+          status: epic.status,
+          priority: epic.priority,
+          total: children.length,
+          closed,
+          eligibleForClose: epic.status !== 'closed' && children.length > 0 && closed === children.length,
+        };
+      });
   }
 
   function touch(task: FixtureTask): string {
@@ -94,7 +97,12 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
 
   function addComment(task: FixtureTask, text: string): void {
     const list = state.comments.get(task.id) ?? [];
-    const comment: TaskComment = { id: `c${list.length + 1}-${task.id}`, author: FIXTURE_ACTOR, text, createdAt: touch(task) };
+    const comment: TaskComment = {
+      id: `c${list.length + 1}-${task.id}`,
+      author: FIXTURE_ACTOR,
+      text,
+      createdAt: touch(task),
+    };
     state.comments.set(task.id, [...list, comment]);
   }
 
@@ -108,7 +116,7 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     task.closedAt = at;
     task.closeReason = reason;
     task.resolution = resolution;
-    task.duplicateOf = resolution === 'duplicate' ? duplicateOf ?? null : null;
+    task.duplicateOf = resolution === 'duplicate' ? (duplicateOf ?? null) : null;
     task.metadata = { ...task.metadata, noticeos_closed_by: FIXTURE_ACTOR, noticeos_closed_at: at };
   }
 
@@ -120,7 +128,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
 
   function waitsOnPerson(task: FixtureTask): void {
     const asked = task.issueType === 'gate' || task.labels.includes('human');
-    if (!asked || task.status === 'closed') throw new ApiError(`Task ${task.id} is not waiting on a person.`, 409, 'task_refused');
+    if (!asked || task.status === 'closed')
+      throw new ApiError(`Task ${task.id} is not waiting on a person.`, 409, 'task_refused');
   }
 
   return {
@@ -222,7 +231,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         task.startedAt ??= new Date(now()).toISOString();
       }
       if (edit.status !== undefined) {
-        if (edit.status === 'closed') throw new ApiError('Close a task with Close, which records why.', 409, 'task_refused');
+        if (edit.status === 'closed')
+          throw new ApiError('Close a task with Close, which records why.', 409, 'task_refused');
         task.status = edit.status;
         if (edit.status !== 'deferred') task.deferUntil = null;
       }
@@ -264,7 +274,13 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       waitsOnPerson(task);
       const picked = task.choices?.options.find((entry) => entry.key === option);
       if (!picked) throw new ApiError(`Task ${id} offers no option ${option}.`, 409, 'task_refused');
-      task.choice = { option, label: picked.label, by: FIXTURE_ACTOR, at: new Date(now()).toISOString(), ...(note ? { note } : {}) };
+      task.choice = {
+        option,
+        label: picked.label,
+        by: FIXTURE_ACTOR,
+        at: new Date(now()).toISOString(),
+        ...(note ? { note } : {}),
+      };
       if (task.issueType === 'decision') close(task, `Chose (${option}) ${picked.label}`);
       else handBack(task);
     },
@@ -277,7 +293,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     async dispute(id, key) {
       reach();
       const task = find(id, key);
-      if (task.issueType !== 'gate' || task.status !== 'closed') throw new ApiError(`Task ${id} is not an answered approval.`, 409, 'task_refused');
+      if (task.issueType !== 'gate' || task.status !== 'closed')
+        throw new ApiError(`Task ${id} is not an answered approval.`, 409, 'task_refused');
       task.status = 'open';
       task.closedAt = null;
       task.closeReason = null;

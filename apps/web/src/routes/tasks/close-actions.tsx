@@ -17,7 +17,14 @@ export function closeOperation(task: { readonly labels: readonly string[] }): 'd
  * A close where nothing shipped, on a task's row: the Close as menu and, once
  * one is picked, its one-line note, sent through the Undo window.
  */
-export function useCloseAs({ id, title, project, via, disabledReason = null, onOpen }: {
+export function useCloseAs({
+  id,
+  title,
+  project,
+  via,
+  disabledReason = null,
+  onOpen,
+}: {
   id: string;
   title: string;
   project: string;
@@ -37,17 +44,26 @@ export function useCloseAs({ id, title, project, via, disabledReason = null, onO
       }}
     />
   );
-  const box = picked === null ? null : (
-    <CloseNoteForm
-      key={picked}
-      id={id}
-      resolution={picked}
-      onCancel={() => setPicked(null)}
-      onSend={(close) => {
-        answer({ kind: 'close', id, title, project, resolution: picked, ...close, ...(via === undefined ? {} : { via }) });
-        setPicked(null);
-      }}
-    />
-  );
+  const box =
+    picked === null ? null : (
+      <CloseNoteForm
+        key={picked}
+        id={id}
+        resolution={picked}
+        onCancel={() => setPicked(null)}
+        onSend={(close) => {
+          answer({
+            kind: 'close',
+            id,
+            title,
+            project,
+            resolution: picked,
+            ...close,
+            ...(via === undefined ? {} : { via }),
+          });
+          setPicked(null);
+        }}
+      />
+    );
   return { menu, box, cancel: () => setPicked(null) };
 }

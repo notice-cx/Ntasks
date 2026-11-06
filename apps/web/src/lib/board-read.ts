@@ -28,7 +28,14 @@ export interface BoardFilters {
   assignee: string;
 }
 
-export const NO_FILTERS: BoardFilters = { q: '', project: 'all', status: 'all', priority: 'all', label: '', assignee: 'all' };
+export const NO_FILTERS: BoardFilters = {
+  q: '',
+  project: 'all',
+  status: 'all',
+  priority: 'all',
+  label: '',
+  assignee: 'all',
+};
 
 export interface ProjectRead {
   data?: LiveTasksPayload;
@@ -67,7 +74,12 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     return {
       ...base,
       ok: false,
-      error: error === undefined || error === null ? null : error instanceof Error && error.message !== '' ? error.message : 'The task list could not be read.',
+      error:
+        error === undefined || error === null
+          ? null
+          : error instanceof Error && error.message !== ''
+            ? error.message
+            : 'The task list could not be read.',
       readAt: null,
       tasks: [],
       waiting: [],
@@ -75,11 +87,18 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     };
   }
   // Only approvals a person answers are drawn; one that resolves itself waits on nobody.
-  const tasks = boardRows(project.logicalKey, payload.tasks.filter((task) => task.awaitType === null || task.awaitType === 'human'), payload.actors);
+  const tasks = boardRows(
+    project.logicalKey,
+    payload.tasks.filter((task) => task.awaitType === null || task.awaitType === 'human'),
+    payload.actors,
+  );
   // An approval is the one question for the task it holds, so that task is not asked again beside it.
   const approvals = new Set(tasks.filter((task) => isGate(task) && inboxAsk(task) !== null).map((task) => task.id));
   const waiting = tasks
-    .filter((task) => inboxAsk(task) !== null && !task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)))
+    .filter(
+      (task) =>
+        inboxAsk(task) !== null && !task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)),
+    )
     .sort(inboxOrder);
   return {
     ...base,
@@ -102,7 +121,12 @@ function matchesSearch(task: BoardTask, q: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
-export function readBoard(catalog: readonly TaskProject[], reads: ReadonlyMap<string, ProjectRead>, filters: BoardFilters, nowMs: number) {
+export function readBoard(
+  catalog: readonly TaskProject[],
+  reads: ReadonlyMap<string, ProjectRead>,
+  filters: BoardFilters,
+  nowMs: number,
+) {
   const available = catalog.map((project) => readProject(project, reads.get(project.logicalKey)));
   const projects = available.filter((project) => filters.project === 'all' || project.key === filters.project);
   const allTasks = projects.flatMap((project) => project.tasks);
@@ -110,11 +134,11 @@ export function readBoard(catalog: readonly TaskProject[], reads: ReadonlyMap<st
   const filterStatus = (task: BoardTask) => statusKey(isWork(task) ? workStatus(task, statuses) : task.status);
 
   const matches = (task: BoardTask) =>
-    matchesSearch(task, filters.q)
-    && (filters.status === 'all' || filterStatus(task) === filters.status)
-    && (filters.priority === 'all' || priorityBand(task.priority) === filters.priority)
-    && (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase())))
-    && (filters.assignee === 'all' || (task.assignee ?? '') === filters.assignee);
+    matchesSearch(task, filters.q) &&
+    (filters.status === 'all' || filterStatus(task) === filters.status) &&
+    (filters.priority === 'all' || priorityBand(task.priority) === filters.priority) &&
+    (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase()))) &&
+    (filters.assignee === 'all' || (task.assignee ?? '') === filters.assignee);
 
   const statusCounts = new Map<string, number>();
   const priorityCounts = new Map<string, number>();
@@ -128,7 +152,10 @@ export function readBoard(catalog: readonly TaskProject[], reads: ReadonlyMap<st
     priorityCounts.set(band, (priorityCounts.get(band) ?? 0) + 1);
   }
 
-  const inbox = projects.flatMap((project) => project.waiting).filter(matches).sort(inboxOrder);
+  const inbox = projects
+    .flatMap((project) => project.waiting)
+    .filter(matches)
+    .sort(inboxOrder);
   // A decision is answered in the decisions list, so the table does not list it again.
   const waitingIds = new Set(projects.flatMap((project) => project.waiting.map((task) => task.id)));
   const work = allTasks.filter(isWork);
@@ -160,8 +187,12 @@ export function readBoard(catalog: readonly TaskProject[], reads: ReadonlyMap<st
       urgent: live.filter((task) => task.priority <= 1).length,
       blocked: live.filter((task) => workStatus(task, statuses) === 'blocked').length,
       // A close where nothing shipped is not done work.
-      doneThisWeek: work.filter((task) => task.status === 'closed' && (task.resolution ?? 'done') === 'done'
-        && Date.parse(task.closedAt ?? '') >= weekStart).length,
+      doneThisWeek: work.filter(
+        (task) =>
+          task.status === 'closed' &&
+          (task.resolution ?? 'done') === 'done' &&
+          Date.parse(task.closedAt ?? '') >= weekStart,
+      ).length,
     },
   };
 }

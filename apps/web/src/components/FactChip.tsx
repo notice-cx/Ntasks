@@ -31,7 +31,17 @@ const pressable = cn(
  * the Undo), and Escape leaves it as it was. Without write permission it is
  * the same chip with nothing to press.
  */
-export function FactChip({ label, valueText, children, to, editor, onSave, readOnly = false, quiet = false, className }: {
+export function FactChip({
+  label,
+  valueText,
+  children,
+  to,
+  editor,
+  onSave,
+  readOnly = false,
+  quiet = false,
+  className,
+}: {
   label: string;
   valueText: string;
   children: ReactNode;
@@ -46,7 +56,16 @@ export function FactChip({ label, valueText, children, to, editor, onSave, readO
   const [saving, setSaving] = useState(false);
   const editable = editor !== undefined && onSave !== undefined && !readOnly;
   // A long value wraps between its parts and its words, never inside a name.
-  const face = <span className={cn('inline-flex min-w-0 flex-wrap items-center gap-x-1.5 break-words', quiet && 'text-muted-foreground')}>{children}</span>;
+  const face = (
+    <span
+      className={cn(
+        'inline-flex min-w-0 flex-wrap items-center gap-x-1.5 break-words',
+        quiet && 'text-muted-foreground',
+      )}
+    >
+      {children}
+    </span>
+  );
 
   async function save(next: string) {
     setOpen(false);
@@ -60,13 +79,21 @@ export function FactChip({ label, valueText, children, to, editor, onSave, readO
   }
 
   if (!editable) {
-    return to
-      ? <Link to={to} data-fact-chip="link" className={cn(factChipClass, pressable, className)}>{face}</Link>
-      : <span data-fact-chip="plain" className={cn(factChipClass, className)}>{face}</span>;
+    return to ? (
+      <Link to={to} data-fact-chip="link" className={cn(factChipClass, pressable, className)}>
+        {face}
+      </Link>
+    ) : (
+      <span data-fact-chip="plain" className={cn(factChipClass, className)}>
+        {face}
+      </span>
+    );
   }
 
   const name = valueText === '' ? label : `${label}: ${valueText}`;
-  const status = saving ? <LoaderCircle aria-hidden className="size-3 shrink-0 motion-safe:animate-spin" /> : (
+  const status = saving ? (
+    <LoaderCircle aria-hidden className="size-3 shrink-0 motion-safe:animate-spin" />
+  ) : (
     <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground group-data-[state=open]:rotate-180" />
   );
 
@@ -74,13 +101,30 @@ export function FactChip({ label, valueText, children, to, editor, onSave, readO
     <Popover open={open} onOpenChange={setOpen}>
       {to ? (
         <span data-fact-chip="split" className={cn(factChipClass, 'gap-0 p-0', className)}>
-          <Link to={to} className={cn('inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-s-full py-0.5 ps-2.5 pe-2', pressable)}>{face}</Link>
-          <PopoverTrigger type="button" aria-label={`Change ${label.toLowerCase()}`} className={cn('inline-flex min-h-7 items-center rounded-e-full border-s border-border px-1.5', pressable)}>
+          <Link
+            to={to}
+            className={cn(
+              'inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-s-full py-0.5 ps-2.5 pe-2',
+              pressable,
+            )}
+          >
+            {face}
+          </Link>
+          <PopoverTrigger
+            type="button"
+            aria-label={`Change ${label.toLowerCase()}`}
+            className={cn('inline-flex min-h-7 items-center rounded-e-full border-s border-border px-1.5', pressable)}
+          >
             {status}
           </PopoverTrigger>
         </span>
       ) : (
-        <PopoverTrigger type="button" aria-label={`Change ${name}`} data-fact-chip="edit" className={cn(factChipClass, pressable, className)}>
+        <PopoverTrigger
+          type="button"
+          aria-label={`Change ${name}`}
+          data-fact-chip="edit"
+          className={cn(factChipClass, pressable, className)}
+        >
           {face}
           {status}
         </PopoverTrigger>
@@ -95,7 +139,13 @@ export function FactChip({ label, valueText, children, to, editor, onSave, readO
 function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; onSave: (next: string) => void }) {
   const [typed, setTyped] = useState(editor.kind === 'choice' ? '' : editor.value);
   const typedField = (inputLabel: string, placeholder?: string, kind: 'text' | 'date' = 'text') => (
-    <form className="flex items-center gap-1.5 p-1" onSubmit={(event) => { event.preventDefault(); if (typed.trim() !== '') onSave(typed.trim()); }}>
+    <form
+      className="flex items-center gap-1.5 p-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (typed.trim() !== '') onSave(typed.trim());
+      }}
+    >
       <input
         type={kind}
         autoFocus
@@ -105,7 +155,11 @@ function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; 
         value={typed}
         onChange={(event) => setTyped(event.target.value)}
       />
-      <button type="submit" aria-label={`Save ${label.toLowerCase()}`} className="grid size-8 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+      <button
+        type="submit"
+        aria-label={`Save ${label.toLowerCase()}`}
+        className="grid size-8 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <CornerDownLeft className="size-4" aria-hidden />
       </button>
     </form>
@@ -114,8 +168,17 @@ function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; 
   if (editor.kind === 'date') {
     return (
       <div className="flex flex-col gap-0.5">
-        {(editor.presets ?? []).map((preset) => <Option key={preset.value} label={preset.label} picked={preset.value === editor.value} onPick={() => onSave(preset.value)} />)}
-        {editor.value !== '' && editor.clearLabel ? <Option label={editor.clearLabel} picked={false} onPick={() => onSave('')} /> : null}
+        {(editor.presets ?? []).map((preset) => (
+          <Option
+            key={preset.value}
+            label={preset.label}
+            picked={preset.value === editor.value}
+            onPick={() => onSave(preset.value)}
+          />
+        ))}
+        {editor.value !== '' && editor.clearLabel ? (
+          <Option label={editor.clearLabel} picked={false} onPick={() => onSave('')} />
+        ) : null}
         {typedField(`${label} date`, undefined, 'date')}
       </div>
     );
@@ -123,14 +186,30 @@ function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; 
   return (
     <div className="flex flex-col gap-0.5" role="listbox" aria-label={label}>
       {editor.choices.map((choice) => (
-        <Option key={choice.value || 'none'} label={choice.label} mark={choice.mark} picked={choice.value === editor.value} onPick={() => onSave(choice.value)} />
+        <Option
+          key={choice.value || 'none'}
+          label={choice.label}
+          mark={choice.mark}
+          picked={choice.value === editor.value}
+          onPick={() => onSave(choice.value)}
+        />
       ))}
       {editor.other ? typedField(editor.other.label, editor.other.placeholder) : null}
     </div>
   );
 }
 
-function Option({ label, mark, picked, onPick }: { label: string; mark?: ReactNode; picked: boolean; onPick: () => void }) {
+function Option({
+  label,
+  mark,
+  picked,
+  onPick,
+}: {
+  label: string;
+  mark?: ReactNode;
+  picked: boolean;
+  onPick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -139,7 +218,11 @@ function Option({ label, mark, picked, onPick }: { label: string; mark?: ReactNo
       onClick={onPick}
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-foreground outline-none hover:bg-muted focus-visible:bg-muted max-sm:min-h-11"
     >
-      {mark ? <span aria-hidden className="inline-flex shrink-0">{mark}</span> : null}
+      {mark ? (
+        <span aria-hidden className="inline-flex shrink-0">
+          {mark}
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{label}</span>
       {picked ? <Check aria-hidden className="size-4 shrink-0 text-primary" /> : null}
     </button>

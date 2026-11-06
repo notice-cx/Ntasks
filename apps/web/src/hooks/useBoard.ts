@@ -7,7 +7,9 @@ export function useBoard(filters: BoardFilters, nowMs: number) {
   const catalog = useTaskProjects();
   const keys = useMemo(() => (catalog.data ?? []).map((project) => project.logicalKey), [catalog.data]);
   const boards = useBoards(keys);
-  const reads = new Map<string, ProjectRead>(keys.map((key, index) => [key, { data: boards[index]?.data, error: boards[index]?.error ?? null }]));
+  const reads = new Map<string, ProjectRead>(
+    keys.map((key, index) => [key, { data: boards[index]?.data, error: boards[index]?.error ?? null }]),
+  );
   const read = readBoard(catalog.data ?? [], reads, filters, nowMs);
   return {
     ...read,

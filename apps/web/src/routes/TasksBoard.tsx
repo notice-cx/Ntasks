@@ -75,14 +75,17 @@ export function TasksBoard() {
   }
 
   function openComposer() {
-    navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: { [COMPOSE_STATE]: true } });
+    void navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: { [COMPOSE_STATE]: true } },
+    );
   }
 
   function closeComposer() {
     const next = new URLSearchParams(params);
     next.delete('new');
     const search = next.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true, state: null });
+    void navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true, state: null });
   }
 
   const readAt = (task: BoardTask) => board.projects.find((project) => project.key === task.project)?.readAt ?? null;
@@ -91,8 +94,13 @@ export function TasksBoard() {
   const rows = board.rows.filter((task) => !hides(task.id, readAt(task)));
   const answered = board.inbox.length - inbox.length;
   const waiting = Math.max(0, board.totals.waiting - answered);
-  const narrowed = filters.project !== 'all' || filters.status !== 'all' || filters.priority !== 'all'
-    || filters.label !== '' || filters.assignee !== 'all' || filters.q.trim() !== '';
+  const narrowed =
+    filters.project !== 'all' ||
+    filters.status !== 'all' ||
+    filters.priority !== 'all' ||
+    filters.label !== '' ||
+    filters.assignee !== 'all' ||
+    filters.q.trim() !== '';
   const partial = !board.complete;
   const projectNames = new Map(board.available.map((project) => [project.key, project.name]));
   const readable = new Set(board.projects.filter((project) => project.ok).map((project) => project.key));
@@ -106,7 +114,14 @@ export function TasksBoard() {
 
   let body: ReactNode;
   if (board.catalog.isError) {
-    body = <ReadFailed title="Couldn't load your projects" error={board.catalog.error} retrying={board.fetching} onRetry={() => void board.refetch()} />;
+    body = (
+      <ReadFailed
+        title="Couldn't load your projects"
+        error={board.catalog.error}
+        retrying={board.fetching}
+        onRetry={() => void board.refetch()}
+      />
+    );
   } else if (board.loading) {
     body = <PageSkeleton shape="list" />;
   } else if (board.available.length === 0) {
@@ -114,14 +129,22 @@ export function TasksBoard() {
   } else {
     const nothingWaits = waiting === 0 && board.complete;
     const detail = [
-      board.totals.approvals > 0 ? `${formatInt(board.totals.approvals)} ${board.totals.approvals === 1 ? 'needs' : 'need'} your approval` : null,
+      board.totals.approvals > 0
+        ? `${formatInt(board.totals.approvals)} ${board.totals.approvals === 1 ? 'needs' : 'need'} your approval`
+        : null,
       `${countLabel(board.totals.open, partial)} open ${board.totals.open === 1 ? 'task' : 'tasks'}`,
-    ].filter(Boolean).join(' · ');
+    ]
+      .filter(Boolean)
+      .join(' · ');
     body = (
       <>
         <div className="flex flex-col gap-5" data-surface-hero="">
           <PageAnswer
-            answer={nothingWaits ? 'No decisions for you' : `${countLabel(waiting, partial)} ${waiting === 1 && !partial ? 'decision' : 'decisions'} for you`}
+            answer={
+              nothingWaits
+                ? 'No decisions for you'
+                : `${countLabel(waiting, partial)} ${waiting === 1 && !partial ? 'decision' : 'decisions'} for you`
+            }
             detail={detail}
             figures={[
               { label: 'Urgent', value: countLabel(board.totals.urgent, partial), mark: 'tasks-urgent' },
@@ -133,21 +156,41 @@ export function TasksBoard() {
           <WorkingNow tasks={board.allTasks} />
           {nothingWaits && inbox.length === 0 ? null : (
             <div className="flex flex-col gap-3" data-waiting-list="">
-              <AskQueue asks={inbox} projectNames={projectNames} nowMs={now} showProject={board.available.length > 1} writable={(task) => readable.has(task.project)} />
+              <AskQueue
+                asks={inbox}
+                projectNames={projectNames}
+                nowMs={now}
+                showProject={board.available.length > 1}
+                writable={(task) => readable.has(task.project)}
+              />
               {inbox.length > 0 && board.complete ? (
-                <FinishLine line="That's every decision for you." age={board.readAt ? `read ${formatAge(ageMs(now, board.readAt))} ago` : null} />
+                <FinishLine
+                  line="That's every decision for you."
+                  age={board.readAt ? `read ${formatAge(ageMs(now, board.readAt))} ago` : null}
+                />
               ) : null}
             </div>
           )}
         </div>
 
         {board.broken.length > 0 ? (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-warn/30 bg-warn-soft px-4 py-2.5 text-sm" data-projects-unread="">
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-warn/30 bg-warn-soft px-4 py-2.5 text-sm"
+            data-projects-unread=""
+          >
             <span className="text-foreground">
-              <span className="font-medium">{board.broken.length === 1 ? '1 project could not be read' : `${formatInt(board.broken.length)} projects could not be read`}: </span>
+              <span className="font-medium">
+                {board.broken.length === 1
+                  ? '1 project could not be read'
+                  : `${formatInt(board.broken.length)} projects could not be read`}
+                :{' '}
+              </span>
               {board.broken.map((project) => project.name).join(', ')}. Its counts above are lower bounds.
             </span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void board.refetch()}>Retry</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void board.refetch()}>
+              Retry
+            </Button>
           </div>
         ) : null}
 
@@ -156,12 +199,18 @@ export function TasksBoard() {
           value={filters}
           narrowed={narrowed}
           onPick={setParam}
-          aside={board.pending.length > 0 ? (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" role="status">
-              <LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden />
-              Loading
-            </span>
-          ) : board.readAt ? <span className="text-xs tabular-nums text-muted-foreground">read {formatAge(ageMs(now, board.readAt))} ago</span> : null}
+          aside={
+            board.pending.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" role="status">
+                <LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden />
+                Loading
+              </span>
+            ) : board.readAt ? (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                read {formatAge(ageMs(now, board.readAt))} ago
+              </span>
+            ) : null
+          }
         />
 
         <AllTasks
@@ -182,16 +231,30 @@ export function TasksBoard() {
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 p-4 md:p-6" data-tasks-board="">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel title="Tasks" caption={board.available.length > 0 ? `${formatInt(board.available.length)} ${board.available.length === 1 ? 'project' : 'projects'}` : undefined} />
+        <SectionLabel
+          title="Tasks"
+          caption={
+            board.available.length > 0
+              ? `${formatInt(board.available.length)} ${board.available.length === 1 ? 'project' : 'projects'}`
+              : undefined
+          }
+        />
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
-            <Link to="/tasks/focus" state={{ returnTo: `${location.pathname}${location.search}` }} data-focus-link="">Focus</Link>
+            <Link to="/tasks/focus" state={{ returnTo: `${location.pathname}${location.search}` }} data-focus-link="">
+              Focus
+            </Link>
           </Button>
           {newTask}
         </div>
       </div>
       {capabilities.live && !writable ? (
-        <p className="m-0 rounded-[10px] border border-border bg-muted/50 px-4 py-2.5 text-sm text-muted-foreground" data-tasks-readonly="">{READ_ONLY}</p>
+        <p
+          className="m-0 rounded-[10px] border border-border bg-muted/50 px-4 py-2.5 text-sm text-muted-foreground"
+          data-tasks-readonly=""
+        >
+          {READ_ONLY}
+        </p>
       ) : null}
       {composing ? (
         <TaskComposer
@@ -221,14 +284,23 @@ function WorkingNow({ tasks }: { tasks: readonly BoardTask[] }) {
     <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm" data-tasks-working="">
       <span className="text-muted-foreground">Working now</span>
       {working.map((entry) => (
-        <span key={entry.name}><span className="font-medium text-foreground">{entry.name}</span> <span className="tabular-nums text-muted-foreground">{formatInt(entry.n)}</span></span>
+        <span key={entry.name}>
+          <span className="font-medium text-foreground">{entry.name}</span>{' '}
+          <span className="tabular-nums text-muted-foreground">{formatInt(entry.n)}</span>
+        </span>
       ))}
     </p>
   );
 }
 
 /** Six controls in one row, each one a part of the address. Each option carries its count. */
-function Filters({ board, value, narrowed, onPick, aside }: {
+function Filters({
+  board,
+  value,
+  narrowed,
+  onPick,
+  aside,
+}: {
   board: ReturnType<typeof useBoard>;
   value: BoardFilters;
   narrowed: boolean;
@@ -236,24 +308,54 @@ function Filters({ board, value, narrowed, onPick, aside }: {
   aside: ReactNode;
 }) {
   const assignees = [...board.assigneeCounts.keys()].sort();
-  const names = new Map(board.allTasks.flatMap((task) => (task.assignee ? [[task.assignee, actorLabel(task.assignee, task.actors)] as const] : [])));
+  const names = new Map(
+    board.allTasks.flatMap((task) =>
+      task.assignee ? [[task.assignee, actorLabel(task.assignee, task.actors)] as const] : [],
+    ),
+  );
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-tasks-filters="">
-      <label className="sr-only" htmlFor="tasks-search">Search task titles and ids</label>
-      <input id="tasks-search" type="search" className={cn(fieldClass, 'w-56 max-w-full')} placeholder="Title or id…" value={value.q} onChange={(event) => onPick('q', event.target.value)} />
+      <label className="sr-only" htmlFor="tasks-search">
+        Search task titles and ids
+      </label>
+      <input
+        id="tasks-search"
+        type="search"
+        className={cn(fieldClass, 'w-56 max-w-full')}
+        placeholder="Title or id…"
+        value={value.q}
+        onChange={(event) => onPick('q', event.target.value)}
+      />
       {board.available.length < 2 && value.project === 'all' ? null : (
         <>
-          <label className="sr-only" htmlFor="tasks-project">Project</label>
-          <select id="tasks-project" className={fieldClass} value={value.project} onChange={(event) => onPick('project', event.target.value)}>
+          <label className="sr-only" htmlFor="tasks-project">
+            Project
+          </label>
+          <select
+            id="tasks-project"
+            className={fieldClass}
+            value={value.project}
+            onChange={(event) => onPick('project', event.target.value)}
+          >
             <option value="all">Every project</option>
             {board.available.map((project) => (
-              <option key={project.key} value={project.key}>{project.name} · {board.projectCounts.get(project.key) ?? 0}</option>
+              <option key={project.key} value={project.key}>
+                {project.name} · {board.projectCounts.get(project.key) ?? 0}
+              </option>
             ))}
           </select>
         </>
       )}
-      <label className="sr-only" htmlFor="tasks-status">Status</label>
-      <select id="tasks-status" className={fieldClass} value={value.status} onChange={(event) => onPick('status', event.target.value)} data-tasks-filter="status">
+      <label className="sr-only" htmlFor="tasks-status">
+        Status
+      </label>
+      <select
+        id="tasks-status"
+        className={fieldClass}
+        value={value.status}
+        onChange={(event) => onPick('status', event.target.value)}
+        data-tasks-filter="status"
+      >
         <option value="all">Any status</option>
         {TASK_STATUSES.map((status) => (
           <option key={status.key} value={status.key}>
@@ -261,20 +363,57 @@ function Filters({ board, value, narrowed, onPick, aside }: {
           </option>
         ))}
       </select>
-      <label className="sr-only" htmlFor="tasks-priority">Priority</label>
-      <select id="tasks-priority" className={fieldClass} value={value.priority} onChange={(event) => onPick('priority', event.target.value)}>
+      <label className="sr-only" htmlFor="tasks-priority">
+        Priority
+      </label>
+      <select
+        id="tasks-priority"
+        className={fieldClass}
+        value={value.priority}
+        onChange={(event) => onPick('priority', event.target.value)}
+      >
         <option value="all">Any priority</option>
-        {PRIORITY_BANDS.map((band) => <option key={band} value={band}>{band} · {board.priorityCounts.get(band) ?? 0}</option>)}
+        {PRIORITY_BANDS.map((band) => (
+          <option key={band} value={band}>
+            {band} · {board.priorityCounts.get(band) ?? 0}
+          </option>
+        ))}
       </select>
-      <label className="sr-only" htmlFor="tasks-assignee">Assignee</label>
-      <select id="tasks-assignee" className={fieldClass} value={value.assignee} onChange={(event) => onPick('assignee', event.target.value)}>
+      <label className="sr-only" htmlFor="tasks-assignee">
+        Assignee
+      </label>
+      <select
+        id="tasks-assignee"
+        className={fieldClass}
+        value={value.assignee}
+        onChange={(event) => onPick('assignee', event.target.value)}
+      >
         <option value="all">Anyone</option>
-        {assignees.map((name) => <option key={name} value={name}>{names.get(name) ?? name} · {board.assigneeCounts.get(name) ?? 0}</option>)}
+        {assignees.map((name) => (
+          <option key={name} value={name}>
+            {names.get(name) ?? name} · {board.assigneeCounts.get(name) ?? 0}
+          </option>
+        ))}
       </select>
-      <label className="sr-only" htmlFor="tasks-label">Label</label>
-      <input id="tasks-label" type="search" className={cn(fieldClass, 'w-40')} placeholder="Label…" value={value.label} onChange={(event) => onPick('label', event.target.value)} />
+      <label className="sr-only" htmlFor="tasks-label">
+        Label
+      </label>
+      <input
+        id="tasks-label"
+        type="search"
+        className={cn(fieldClass, 'w-40')}
+        placeholder="Label…"
+        value={value.label}
+        onChange={(event) => onPick('label', event.target.value)}
+      />
       {narrowed ? (
-        <Link to={{ search: '' }} replace className={cn(inlineLinkClass, 'text-xs font-medium max-sm:inline-flex max-sm:items-center max-sm:px-2')}>Clear filters</Link>
+        <Link
+          to={{ search: '' }}
+          replace
+          className={cn(inlineLinkClass, 'text-xs font-medium max-sm:inline-flex max-sm:items-center max-sm:px-2')}
+        >
+          Clear filters
+        </Link>
       ) : null}
       {aside ? <span className="ms-auto inline-flex items-center gap-2">{aside}</span> : null}
     </div>
@@ -282,7 +421,17 @@ function Filters({ board, value, narrowed, onPick, aside }: {
 }
 
 /** Every task, one line each, 25 at a time. A row opens in place for its verbs; its id is the link to its page. */
-function AllTasks({ rows, shown, onMore, total, narrowed, partial, projects, nowMs, showProject }: {
+function AllTasks({
+  rows,
+  shown,
+  onMore,
+  total,
+  narrowed,
+  partial,
+  projects,
+  nowMs,
+  showProject,
+}: {
   rows: BoardTask[];
   shown: number;
   onMore: () => void;
@@ -296,34 +445,84 @@ function AllTasks({ rows, shown, onMore, total, narrowed, partial, projects, now
   const page = rows.slice(0, shown);
   const remaining = rows.length - page.length;
   return (
-    <section className="flex flex-col rounded-[10px] border border-border bg-card" aria-labelledby="all-tasks-title" data-tasks-table="">
+    <section
+      className="flex flex-col rounded-[10px] border border-border bg-card"
+      aria-labelledby="all-tasks-title"
+      data-tasks-table=""
+    >
       <SectionLabel
         id="all-tasks-title"
         title="All tasks"
-        caption={<span data-tasks-summary="">{countLabel(rows.length, partial)}{narrowed ? ` of ${countLabel(total, partial)}` : ''}</span>}
+        caption={
+          <span data-tasks-summary="">
+            {countLabel(rows.length, partial)}
+            {narrowed ? ` of ${countLabel(total, partial)}` : ''}
+          </span>
+        }
         className="px-4 pb-2 pt-3"
       />
       {rows.length === 0 ? (
         <p className="m-0 px-4 pb-4 text-xs text-muted-foreground">
-          {total === 0 ? 'Nothing is queued.' : narrowed ? 'No task matches these filters.' : 'Every other task is in your decisions above.'}
+          {total === 0
+            ? 'Nothing is queued.'
+            : narrowed
+              ? 'No task matches these filters.'
+              : 'Every other task is in your decisions above.'}
         </p>
       ) : (
         <div className="px-2 pb-1">
           <table className="w-full border-collapse text-start">
             <thead className="max-sm:sr-only">
               <tr className="text-start">
-                <th scope="col" className="px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">Task</th>
-                <th scope="col" className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">Id</th>
-                {showProject ? <th scope="col" className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">Project</th> : null}
-                <th scope="col" className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">Who</th>
-                <th scope="col" className="whitespace-nowrap px-2 py-1.5 text-end text-xs font-medium text-muted-foreground">Age</th>
-                <th scope="col" className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">State</th>
-                <th scope="col"><span className="sr-only">Close</span></th>
+                <th scope="col" className="px-2 py-1.5 text-start text-xs font-medium text-muted-foreground">
+                  Task
+                </th>
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground"
+                >
+                  Id
+                </th>
+                {showProject ? (
+                  <th
+                    scope="col"
+                    className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground"
+                  >
+                    Project
+                  </th>
+                ) : null}
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground"
+                >
+                  Who
+                </th>
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-2 py-1.5 text-end text-xs font-medium text-muted-foreground"
+                >
+                  Age
+                </th>
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-2 py-1.5 text-start text-xs font-medium text-muted-foreground"
+                >
+                  State
+                </th>
+                <th scope="col">
+                  <span className="sr-only">Close</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {page.map((task) => (
-                <BoardRow key={task.id} task={task} project={projects.get(task.project) ?? null} nowMs={nowMs} showProject={showProject} />
+                <BoardRow
+                  key={task.id}
+                  task={task}
+                  project={projects.get(task.project) ?? null}
+                  nowMs={nowMs}
+                  showProject={showProject}
+                />
               ))}
             </tbody>
           </table>
@@ -342,15 +541,34 @@ function AllTasks({ rows, shown, onMore, total, narrowed, partial, projects, now
 
 /** A finished or parked row wears its status glyph; live work its priority mark. */
 function RowMark({ task }: { task: BoardTask }) {
-  return task.status === 'closed' || task.status === PARKED ? <RestingMark status={task.status} /> : <PriorityMark priority={task.priority} />;
+  return task.status === 'closed' || task.status === PARKED ? (
+    <RestingMark status={task.status} />
+  ) : (
+    <PriorityMark priority={task.priority} />
+  );
 }
 
-function BoardRow({ task, project, nowMs, showProject }: { task: BoardTask; project: BoardProject | null; nowMs: number; showProject: boolean }) {
+function BoardRow({
+  task,
+  project,
+  nowMs,
+  showProject,
+}: {
+  task: BoardTask;
+  project: BoardProject | null;
+  nowMs: number;
+  showProject: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const capabilities = useCapabilities();
   const actionable = project?.ok === true && writesAvailable(capabilities);
   const closable = task.status !== 'closed' && actionable && operationAvailable(capabilities, closeOperation(task));
-  const closeAs = useCloseAs({ id: task.id, title: task.title, project: task.project, ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}) });
+  const closeAs = useCloseAs({
+    id: task.id,
+    title: task.title,
+    project: task.project,
+    ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}),
+  });
   const holder = task.assignee ? actorLabel(task.assignee, task.actors) : null;
   const age = formatAge(ageMs(nowMs, task.updatedAt));
   const columns = showProject ? 7 : 6;
@@ -362,7 +580,10 @@ function BoardRow({ task, project, nowMs, showProject }: { task: BoardTask; proj
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((current) => !current)}
-            className={cn('flex w-full items-start gap-2.5 rounded-md p-1 text-start hover:bg-muted/40', pillControlClass)}
+            className={cn(
+              'flex w-full items-start gap-2.5 rounded-md p-1 text-start hover:bg-muted/40',
+              pillControlClass,
+            )}
           >
             <RowMark task={task} />
             <span className="flex min-w-0 flex-col gap-0.5">
@@ -374,14 +595,34 @@ function BoardRow({ task, project, nowMs, showProject }: { task: BoardTask; proj
           </button>
         </td>
         <td className="whitespace-nowrap px-2 py-1.5 max-sm:hidden">
-          <Link to={taskPath(task.id)} className="font-mono text-[11px] tabular-nums text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{task.id}</Link>
+          <Link
+            to={taskPath(task.id)}
+            className="font-mono text-[11px] tabular-nums text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            {task.id}
+          </Link>
         </td>
-        {showProject ? <td className="min-w-28 max-w-[10rem] px-2 py-1.5 text-xs text-muted-foreground max-sm:hidden">{project?.name ?? task.project}</td> : null}
-        <td className="min-w-24 max-w-[9rem] whitespace-nowrap px-2 py-1.5 text-xs max-sm:hidden" data-task-holder={task.assignee ?? ''}>
-          {holder ? <span className="font-medium text-foreground">{holder}</span> : <span className="text-muted-foreground">nobody</span>}
+        {showProject ? (
+          <td className="min-w-28 max-w-[10rem] px-2 py-1.5 text-xs text-muted-foreground max-sm:hidden">
+            {project?.name ?? task.project}
+          </td>
+        ) : null}
+        <td
+          className="min-w-24 max-w-[9rem] whitespace-nowrap px-2 py-1.5 text-xs max-sm:hidden"
+          data-task-holder={task.assignee ?? ''}
+        >
+          {holder ? (
+            <span className="font-medium text-foreground">{holder}</span>
+          ) : (
+            <span className="text-muted-foreground">nobody</span>
+          )}
         </td>
-        <td className="whitespace-nowrap px-2 py-1.5 text-end text-xs tabular-nums text-muted-foreground max-sm:hidden">{age}</td>
-        <td className="whitespace-nowrap px-2 py-1.5 max-sm:hidden"><TaskStatusMark status={task.status} /></td>
+        <td className="whitespace-nowrap px-2 py-1.5 text-end text-xs tabular-nums text-muted-foreground max-sm:hidden">
+          {age}
+        </td>
+        <td className="whitespace-nowrap px-2 py-1.5 max-sm:hidden">
+          <TaskStatusMark status={task.status} />
+        </td>
         <td className="whitespace-nowrap py-0.5 pe-1 text-end max-sm:hidden">
           {closable ? (
             <span className="inline-flex opacity-50 transition-opacity group-hover/task:opacity-100 group-focus-within/task:opacity-100 has-[[aria-expanded=true]]:opacity-100">
@@ -393,7 +634,12 @@ function BoardRow({ task, project, nowMs, showProject }: { task: BoardTask; proj
       {open ? (
         <tr data-task-detail={task.id}>
           <td colSpan={columns} className="px-3 pb-2.5 max-sm:px-2">
-            <RowDetail task={task} epic={task.parent ? project?.epicNames.get(task.parent) ?? null : null} actionable={actionable} closeMenu={closable ? closeAs.menu : null} />
+            <RowDetail
+              task={task}
+              epic={task.parent ? (project?.epicNames.get(task.parent) ?? null) : null}
+              actionable={actionable}
+              closeMenu={closable ? closeAs.menu : null}
+            />
           </td>
         </tr>
       ) : null}
@@ -413,7 +659,17 @@ function statusWord(task: BoardTask): string {
 }
 
 /** What an open row shows: the facts a one-line row could not carry, then its verbs, inline. A close's reason is required: it is the evidence. */
-function RowDetail({ task, epic, actionable, closeMenu }: { task: BoardTask; epic: string | null; actionable: boolean; closeMenu: ReactNode }) {
+function RowDetail({
+  task,
+  epic,
+  actionable,
+  closeMenu,
+}: {
+  task: BoardTask;
+  epic: string | null;
+  actionable: boolean;
+  closeMenu: ReactNode;
+}) {
   const capabilities = useCapabilities();
   const [mode, setMode] = useState<null | 'close' | 'defer'>(null);
   const [reason, setReason] = useState('');
@@ -435,7 +691,13 @@ function RowDetail({ task, epic, actionable, closeMenu }: { task: BoardTask; epi
       toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not ${what} ${task.id}`);
       return;
     }
-    toast.success(what === 'claim' ? `Claimed ${task.id}` : what === 'close' ? `Closed ${task.id}` : `Parked ${task.id} until ${until}`);
+    toast.success(
+      what === 'claim'
+        ? `Claimed ${task.id}`
+        : what === 'close'
+          ? `Closed ${task.id}`
+          : `Parked ${task.id} until ${until}`,
+    );
     setReason('');
     setUntil('');
     setMode(null);
@@ -444,7 +706,14 @@ function RowDetail({ task, epic, actionable, closeMenu }: { task: BoardTask; epi
   return (
     <div className="flex flex-col gap-2 rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {epic && task.parent ? <span>Part of <Link to={taskPath(task.parent)} className={inlineLinkClass}>{epic}</Link></span> : null}
+        {epic && task.parent ? (
+          <span>
+            Part of{' '}
+            <Link to={taskPath(task.parent)} className={inlineLinkClass}>
+              {epic}
+            </Link>
+          </span>
+        ) : null}
         <span>Priority {band}</span>
         {task.assignee ? <span>Claimed by {actorLabel(task.assignee, task.actors)}</span> : null}
         {task.deferUntil ? <span>Parked until {task.deferUntil.slice(0, 10)}</span> : null}
@@ -454,30 +723,95 @@ function RowDetail({ task, epic, actionable, closeMenu }: { task: BoardTask; epi
         <div className="flex flex-wrap items-center gap-2">
           {done ? null : (
             <>
-              <Button type="button" size="sm" disabled={!actionable || busy || !fieldAvailable(capabilities, 'claim') || task.assignee !== null} onClick={() => void act('claim')} data-task-action="claim">Claim</Button>
-              <Button type="button" size="sm" variant="outline" disabled={!actionable || busy || !operationAvailable(capabilities, 'close')} onClick={() => setMode('close')} data-task-action="close">Close…</Button>
-              <Button type="button" size="sm" variant="outline" disabled={!actionable || busy || !fieldAvailable(capabilities, 'defer')} onClick={() => setMode('defer')} data-task-action="defer">Park…</Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!actionable || busy || !fieldAvailable(capabilities, 'claim') || task.assignee !== null}
+                onClick={() => void act('claim')}
+                data-task-action="claim"
+              >
+                Claim
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!actionable || busy || !operationAvailable(capabilities, 'close')}
+                onClick={() => setMode('close')}
+                data-task-action="close"
+              >
+                Close…
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!actionable || busy || !fieldAvailable(capabilities, 'defer')}
+                onClick={() => setMode('defer')}
+                data-task-action="defer"
+              >
+                Park…
+              </Button>
               <span className="sm:hidden">{closeMenu}</span>
             </>
           )}
-          <Link to={taskPath(task.id)} className={cn(inlineLinkClass, 'font-medium')}>Open task →</Link>
+          <Link to={taskPath(task.id)} className={cn(inlineLinkClass, 'font-medium')}>
+            Open task →
+          </Link>
         </div>
       ) : null}
       {mode === 'close' ? (
-        <form className="flex flex-col gap-2" data-task-form="close" onSubmit={(event) => { event.preventDefault(); void act('close'); }}>
-          <input type="text" autoFocus className={cn(fieldClass, 'w-full')} aria-label={`Why ${task.id} is closed`} placeholder="Evidence: a commit, a link, what proves it" value={reason} onChange={(event) => setReason(event.target.value)} />
+        <form
+          className="flex flex-col gap-2"
+          data-task-form="close"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act('close');
+          }}
+        >
+          <input
+            type="text"
+            autoFocus
+            className={cn(fieldClass, 'w-full')}
+            aria-label={`Why ${task.id} is closed`}
+            placeholder="Evidence: a commit, a link, what proves it"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
           <div className="flex items-center gap-2">
-            <Button type="submit" size="sm" disabled={busy || reason.trim() === ''} data-task-confirm="close">Close task</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={busy || reason.trim() === ''} data-task-confirm="close">
+              Close task
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>
+              Cancel
+            </Button>
           </div>
         </form>
       ) : null}
       {mode === 'defer' ? (
-        <form className="flex flex-col gap-2" data-task-form="defer" onSubmit={(event) => { event.preventDefault(); void act('defer'); }}>
-          <input type="date" autoFocus className={cn(fieldClass, 'w-full')} aria-label={`Park ${task.id} until`} value={until} onChange={(event) => setUntil(event.target.value)} />
+        <form
+          className="flex flex-col gap-2"
+          data-task-form="defer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act('defer');
+          }}
+        >
+          <input
+            type="date"
+            autoFocus
+            className={cn(fieldClass, 'w-full')}
+            aria-label={`Park ${task.id} until`}
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+          />
           <div className="flex items-center gap-2">
-            <Button type="submit" size="sm" disabled={busy || until === ''} data-task-confirm="defer">Park it</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>Cancel</Button>
+            <Button type="submit" size="sm" disabled={busy || until === ''} data-task-confirm="defer">
+              Park it
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>
+              Cancel
+            </Button>
           </div>
         </form>
       ) : null}

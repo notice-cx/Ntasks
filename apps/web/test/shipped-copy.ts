@@ -65,7 +65,7 @@ export function shippedSpans(text: string): [number, number][] {
 
 /** Part of a longer identifier (`beadId`, `siteName`) even inside a literal: still code. */
 export function insideIdentifier(text: string, at: number, length: number): boolean {
-  const before = at > 0 ? text[at - 1] ?? '' : '';
+  const before = at > 0 ? (text[at - 1] ?? '') : '';
   const after = text[at + length] ?? '';
   return /[A-Za-z0-9_$]/.test(before) || /[A-Za-z0-9_$]/.test(after);
 }

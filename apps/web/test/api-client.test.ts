@@ -8,7 +8,9 @@ interface Sent {
   headers: Headers;
 }
 
-const PROJECTS = { projects: [{ projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' }] };
+const PROJECTS = {
+  projects: [{ projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' }],
+};
 
 /** A server that answers the project list and records every other request. */
 function server(answer: (sent: Sent) => Response = () => Response.json({ id: 'web-n1' })) {
@@ -63,12 +65,20 @@ describe('the HTTP Tasks API client', () => {
       ['POST', '/api/tasks', { title: 'Write the guide', priority: 1, labels: ['docs'], projectId: 'p-web' }],
       ['PATCH', '/api/tasks/web-a1b2', { claim: true, projectId: 'p-web' }],
       ['POST', '/api/tasks/web-a1b2/close', { reason: 'Landed in 1a2b3c4', projectId: 'p-web' }],
-      ['POST', '/api/tasks/web-a1b2/close', { reason: 'Same as web-c3', resolution: 'duplicate', duplicateOf: 'web-c3', projectId: 'p-web' }],
+      [
+        'POST',
+        '/api/tasks/web-a1b2/close',
+        { reason: 'Same as web-c3', resolution: 'duplicate', duplicateOf: 'web-c3', projectId: 'p-web' },
+      ],
       ['POST', '/api/tasks/web-a1b2/comments', { text: 'A note', projectId: 'p-web' }],
       ['POST', '/api/tasks/web-a1b2/respond', { response: 'Use the support address', projectId: 'p-web' }],
       ['POST', '/api/tasks/web-a1b2/choose', { option: 'b', note: 'Second is safer', projectId: 'p-web' }],
       ['POST', '/api/tasks/web-a1b2/dismiss', { projectId: 'p-web' }],
-      ['POST', '/api/tasks/web-a1b2/dismiss', { reason: 'Handled elsewhere', resolution: 'already-handled', projectId: 'p-web' }],
+      [
+        'POST',
+        '/api/tasks/web-a1b2/dismiss',
+        { reason: 'Handled elsewhere', resolution: 'already-handled', projectId: 'p-web' },
+      ],
       ['POST', '/api/gates/web-g1/resolve', { projectId: 'p-web' }],
     ]);
   });
@@ -96,7 +106,9 @@ describe('the HTTP Tasks API client', () => {
   });
 
   it("shows a refusal in the server's own words", async () => {
-    const { api } = server(() => Response.json({ error: 'task_refused', detail: 'Task web-a1b2 is held by agent-one.' }, { status: 409 }));
+    const { api } = server(() =>
+      Response.json({ error: 'task_refused', detail: 'Task web-a1b2 is held by agent-one.' }, { status: 409 }),
+    );
     await expect(api.updateTask('web-a1b2', 'web', { claim: true })).rejects.toMatchObject({
       status: 409,
       code: 'task_refused',

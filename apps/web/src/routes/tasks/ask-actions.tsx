@@ -16,7 +16,17 @@ import { useCloseAs } from './close-actions';
  * Close as under them. Every answer waits in the Undo window. `buttons` sit
  * beside the title and `box` under it; both are null when nothing is asked.
  */
-export function useAskActions({ ask, id, title, project, choices = null, disabledReason = null, chooseDisabledReason = disabledReason, placement, onChosen }: {
+export function useAskActions({
+  ask,
+  id,
+  title,
+  project,
+  choices = null,
+  disabledReason = null,
+  chooseDisabledReason = disabledReason,
+  placement,
+  onChosen,
+}: {
   ask: InboxAsk | null;
   id: string;
   title: string;
@@ -36,7 +46,14 @@ export function useAskActions({ ask, id, title, project, choices = null, disable
   const indent = placement === 'row' ? 'pb-2 pe-2 ps-9' : undefined;
   // The header writes the reason once beside its buttons, so the controls under it are disabled without repeating it.
   const quiet = (reason: string | null) => (placement === 'header' && reason !== null ? '' : reason);
-  const closeAs = useCloseAs({ id, title, project, via: 'dismiss', disabledReason: quiet(disabledReason), onOpen: () => setAnswering(false) });
+  const closeAs = useCloseAs({
+    id,
+    title,
+    project,
+    via: 'dismiss',
+    disabledReason: quiet(disabledReason),
+    onOpen: () => setAnswering(false),
+  });
   const disabled = disabledReason !== null;
 
   function send() {
@@ -72,12 +89,21 @@ export function useAskActions({ ask, id, title, project, choices = null, disable
     </>
   );
 
-  const buttons = ask === 'approve' ? (
-    <Button type="button" size="sm" disabled={disabled} onClick={() => answer({ kind: 'approve', id, title, project })} data-task-action="approve">
-      <Check aria-hidden />
-      Approve
-    </Button>
-  ) : choosing ? null : answerVerbs;
+  const buttons =
+    ask === 'approve' ? (
+      <Button
+        type="button"
+        size="sm"
+        disabled={disabled}
+        onClick={() => answer({ kind: 'approve', id, title, project })}
+        data-task-action="approve"
+      >
+        <Check aria-hidden />
+        Approve
+      </Button>
+    ) : choosing ? null : (
+      answerVerbs
+    );
 
   const options = choosing ? (
     <ChoiceButtons
@@ -86,7 +112,15 @@ export function useAskActions({ ask, id, title, project, choices = null, disable
       disabledReason={quiet(chooseDisabledReason)}
       onChoose={(option, note) => {
         const label = choices.options.find((entry) => entry.key === option)?.label;
-        answer({ kind: 'choose', id, title, project, option, ...(label === undefined ? {} : { label }), ...(note === undefined ? {} : { note }) });
+        answer({
+          kind: 'choose',
+          id,
+          title,
+          project,
+          option,
+          ...(label === undefined ? {} : { label }),
+          ...(note === undefined ? {} : { note }),
+        });
         setAnswering(false);
         onChosen?.(option);
       }}
@@ -127,11 +161,20 @@ export function useAskActions({ ask, id, title, project, choices = null, disable
         <SendHorizontal aria-hidden />
         Send
       </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setAnswering(false)}>Cancel</Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setAnswering(false)}>
+        Cancel
+      </Button>
     </form>
   ) : null;
 
   const closeBox = closeAs.box ? <div className={indent}>{closeAs.box}</div> : null;
-  const box = options || answerBox || closeBox ? <>{options}{answerBox}{closeBox}</> : null;
+  const box =
+    options || answerBox || closeBox ? (
+      <>
+        {options}
+        {answerBox}
+        {closeBox}
+      </>
+    ) : null;
   return { buttons, box };
 }

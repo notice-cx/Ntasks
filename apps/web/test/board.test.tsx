@@ -14,16 +14,25 @@ describe('the board', () => {
     expect(within(answer).getByText('Urgent').nextElementSibling?.textContent).toBe('4');
     expect(within(answer).getByText('Blocked').nextElementSibling?.textContent).toBe('3');
     const queue = screen.getByRole('region', { name: 'Your decisions' });
-    const rows = within(queue).getAllByRole('listitem').filter((row) => row.hasAttribute('data-inbox-row'));
+    const rows = within(queue)
+      .getAllByRole('listitem')
+      .filter((row) => row.hasAttribute('data-inbox-row'));
     // Approvals first among equal urgency, then the oldest question.
-    expect(rows.map((row) => row.getAttribute('data-inbox-row'))).toEqual(['web-g7p2', 'web-d4x1', 'docs-r4s9', 'web-q8n5']);
+    expect(rows.map((row) => row.getAttribute('data-inbox-row'))).toEqual([
+      'web-g7p2',
+      'web-d4x1',
+      'docs-r4s9',
+      'web-q8n5',
+    ]);
     expect(screen.getByText("That's every decision for you.")).toBeTruthy();
   });
 
   it('lists every other task once, and a decision only in the decisions list', async () => {
     renderApp('/tasks');
     const table = await screen.findByRole('region', { name: 'All tasks' });
-    const ids = within(table).getAllByRole('row').flatMap((row) => row.getAttribute('data-task-row') ?? []);
+    const ids = within(table)
+      .getAllByRole('row')
+      .flatMap((row) => row.getAttribute('data-task-row') ?? []);
     expect(ids).toContain('web-b2r6');
     expect(ids).not.toContain('web-d4x1');
     expect(ids).not.toContain('web-g7p2');
@@ -37,7 +46,9 @@ describe('the board', () => {
     renderApp('/tasks?status=blocked');
     const table = await screen.findByRole('region', { name: 'All tasks' });
     await waitFor(() => {
-      const ids = within(table).getAllByRole('row').flatMap((row) => row.getAttribute('data-task-row') ?? []);
+      const ids = within(table)
+        .getAllByRole('row')
+        .flatMap((row) => row.getAttribute('data-task-row') ?? []);
       // Blocked by status, and open but waiting on an unfinished task.
       expect(ids.sort()).toEqual(['docs-w8e3', 'web-k3m9.3', 'web-k3m9.4']);
     });
@@ -58,10 +69,13 @@ describe('the board', () => {
 
   it('says which project could not be read, and keeps the counts as lower bounds', async () => {
     const api = createFixtureTasksApi();
-    const failing = { ...api, board: async (project: string, signal?: AbortSignal) => {
-      if (project === 'docs') throw new Error('The task list: the server answered 503.');
-      return api.board(project, signal);
-    } };
+    const failing = {
+      ...api,
+      board: async (project: string, signal?: AbortSignal) => {
+        if (project === 'docs') throw new Error('The task list: the server answered 503.');
+        return api.board(project, signal);
+      },
+    };
     renderApp('/tasks', failing);
     expect(await screen.findByText(/1 project could not be read/)).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'at least 3 decisions for you' })).toBeTruthy();
