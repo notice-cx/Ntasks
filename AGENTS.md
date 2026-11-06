@@ -24,7 +24,7 @@ invariants. A change that weakens one is the owner's decision, not a refactor.
 | `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
 | `apps/web/` | The web app. Its build in `dist/` is the Worker's static assets |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
-| `tools/lint/` | The test that `pnpm lint` reports the mistakes it exists to catch. The lint configuration itself is `eslint.config.js` at the root |
+| `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, and the test that no `wrangler.jsonc` names a secret in `vars`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store and the verifier |
 | `docs/` | Concepts and architecture |
 
@@ -40,7 +40,7 @@ the pnpm version in `package.json`'s `packageManager` field:
 
 ```sh
 pnpm install
-pnpm lint          # ESLint: promises that nothing handles (await, return, void, .catch)
+pnpm lint          # ESLint: promises that nothing handles, and the other Worker-code rules it can see
 pnpm format:check  # Prettier; `pnpm format` rewrites the files it would change
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
@@ -82,11 +82,12 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
 - **Worker code** follows the rules in
   [CONTRIBUTING.md](CONTRIBUTING.md#rules-for-worker-code): no floating
   promises, no request data in module scope, Web Crypto for tokens and secret
-  comparisons, no secrets in config or source. `pnpm lint` catches an
-  unhandled promise but accepts `void promise` and `promise.catch(handler)`,
-  which do not keep the Worker running after the response. Review checks that
-  work which must outlive the response uses `ctx.waitUntil()`, and checks the
-  other rules. A change to `eslint.config.js` keeps `tools/lint`'s test
+  comparisons, no secrets in config or source. `pnpm lint` and `pnpm test`
+  check part of each rule, and CONTRIBUTING.md says which part. `pnpm lint`
+  accepts `void promise` and `promise.catch(handler)`, which do not keep the
+  Worker running after the response. Review checks that work which must
+  outlive the response uses `ctx.waitUntil()`, and checks what the tools
+  cannot see. A change to `eslint.config.js` keeps `tools/lint`'s tests
   passing.
 - **Prettier formats `.ts`, `.tsx`, `.js` and `.mjs` files**
   (`.prettierrc.json`). `.prettierignore` lists only the generated file and
