@@ -50,7 +50,8 @@ pnpm --filter @ntasks/domain test
   [`workers/api/test/`](workers/api/test/) and run inside workerd, except those
   in [`workers/api/test/node/`](workers/api/test/node/), which Node runs: they
   start the Worker behind Cloudflare's static-file layer to check which paths
-  reach it. The task model's tests live in
+  reach it, and apply the task store's migrations to a database that already
+  holds rows. The task model's tests live in
   [`packages/domain/test/`](packages/domain/test/) and run in Node.
 - **The databases change through migrations.** Follow the migration rules
   for [the task store](workers/api/src/store/migrations/README.md) and for

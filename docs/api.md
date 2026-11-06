@@ -85,12 +85,12 @@ start of the task guide and its rules for writing a task.
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50) and `offset` |
 | `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
+| `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
 | `create_tasks` | Each task filed, in order, with its `lint`; the first task refused, if any, and how many were not tried | `workspace`, `project`, `tasks` (1 to 25, each with `create_task`'s task fields), `idempotency_key`, and optionally `model` |
 | `claim_task` | The task, now held by the sender and in progress | `workspace`, `project`, `task`, `idempotency_key`, and optionally `model` |
-| `update_task` | The task as changed, and `lint` | `workspace`, `project`, `task`, `idempotency_key`, and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `choices`, `card` and `change_class` |
+| `update_task` | The task as changed, and `lint` | `workspace`, `project`, `task`, `idempotency_key`, and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `choices`, `card` and `change_class` |
 | `comment_on_task` | The comment | `workspace`, `project`, `task`, `text`, `idempotency_key` |
-| `add_dependency` | The link | `workspace`, `project`, `task`, `depends_on`, and optionally `type`: `blocks` (the default), `related` or `discovered-from` |
+| `add_dependency` | The link | `workspace`, `project`, `task`, `depends_on`, and optionally `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
 | `remove_dependency` | The link, removed | `workspace`, `project`, `task`, `depends_on` |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `project`, `task`, `reason` (at most 400 characters) |
 | `close_task` | The task as closed | `workspace`, `project`, `task`, `reason`, `idempotency_key`, and optionally `resolution` (`done` when left out), `duplicate_of` and `model` |
@@ -103,6 +103,20 @@ its project.
 `get_task` returns them as `notes`, `design` and `estimateMinutes`, and
 `list_tasks` returns `estimateMinutes`; like `description`, `notes` and
 `design` are left out of `list_tasks`.
+
+`duplicates` names earlier tasks for the same work, and `supersedes` the
+tasks this one replaces. `get_task` lists them among `dependencies`, with
+those types.
+
+Each of `external_links` and `add_external_links` is an object with a `url`,
+an http or https URL of at most 2,048 characters, a `title`, one line of at
+most 512 characters, and optionally a `kind`: `pull-request`, `document` or
+`other`. `remove_external_links` lists URLs. A task links to at most 32
+pages, and to a URL once: a URL is kept as the URL standard writes it, so
+`HTTPS://Example.com` and `https://example.com/` are one URL, and adding a URL
+the task has gives that link the new title and kind. `get_task` and
+`list_tasks` return them as `externalLinks`, ordered by URL, each with its
+`url`, `title` and `kind`, which is null when none was given.
 
 In `update_task`, `""` releases the task (`assignee`), takes it out of its
 parent (`parent`) or clears its defer date (`defer`), and `null` takes off its
@@ -148,8 +162,9 @@ too.
   from its holder.
 - **A dependency** keeps the type it was added with: asking for it with
   another type is refused, and asking for it again changes nothing. A
-  `related` link may name a task in another project the sender reaches; every
-  other link stays inside the project. A link that would make tasks wait on
+  `related`, `duplicates` or `supersedes` link may name a task in another
+  project the sender reaches; every other link stays inside the project. A
+  link that would make tasks wait on
   each other in a loop is refused. A dependency on a person's decision stays
   until the person decides.
 - **An approval** asked again with the same reason returns the open one,
@@ -211,8 +226,8 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
+| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution` and `duplicateOf` | `{ task }`, the task as closed |
 
@@ -225,7 +240,9 @@ of its parent or clears its defer date, and `null` takes off its card, change
 class, estimate or due date. `dueAt` is a date, `YYYY-MM-DD`, or an ISO time
 with its offset, and the task answers it as `dueAt` in UTC. A card's kill
 date is also the task's due date, so a body that gives a card with a kill
-date gives no `dueAt`. NoticeOS answered a change, a comment and a close with its task
+date gives no `dueAt`. `externalLinks`, `addExternalLinks` and
+`removeExternalLinks` take what `external_links`, `add_external_links` and
+`remove_external_links` take over MCP. NoticeOS answered a change, a comment and a close with its task
 client's own output; Ntasks answers them with the task or the comment, in the
 shapes the reads use.
 
@@ -266,7 +283,8 @@ there until a write changes a task or a deferred task's time comes. The store
 keeps at most 32 MB of answers, the oldest going first, and reads an answer
 larger than 8 MB afresh each time, since the object has 128 MB in all. When the
 store does read, each read reaches its rows through an index and returns a
-task's labels and links in the same query:
+task's labels, its links to other tasks and its external links in the same
+query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
 - a list or a board reads about ten rows for each task it returns;

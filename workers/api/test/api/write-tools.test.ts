@@ -97,12 +97,22 @@ describe('tools/list', () => {
       'create_task.notes',
       'create_task.design',
       'create_task.estimate_minutes',
+      'create_task.duplicates',
+      'create_task.supersedes',
+      'create_task.external_links',
       'create_tasks.tasks.notes',
       'create_tasks.tasks.design',
       'create_tasks.tasks.estimate_minutes',
+      'create_tasks.tasks.duplicates',
+      'create_tasks.tasks.supersedes',
+      'create_tasks.tasks.external_links',
       'update_task.notes',
       'update_task.design',
       'update_task.estimate_minutes',
+      'update_task.duplicates',
+      'update_task.supersedes',
+      'update_task.add_external_links',
+      'update_task.remove_external_links',
     ]);
   });
 });
@@ -1075,6 +1085,202 @@ describe("a task's notes, design and estimate", () => {
     await write(target, 'update_task', once);
     expect(await refusal(target, 'update_task', { ...once, notes: 'Second.' })).toMatch(/^conflict: /u);
     expect((await current(project, id)).notes).toBe('First.');
+  });
+});
+
+describe('duplicates and supersedes links', () => {
+  it('are filed and added, in this project or another, and hold nothing out of ready work', async () => {
+    const project = await newProject(engine);
+    const other = await newProject(engine);
+    const first = await task(project, { title: 'First filing' });
+    const old = await task(project, { title: 'Old plan' });
+    const elsewhere = await task(other, { title: 'Filed elsewhere' });
+    const filed = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Second filing',
+      duplicates: [first.id],
+      supersedes: [old.id],
+      idempotency_key: key(),
+    });
+    const later = await task(project, { title: 'Later plan' });
+    await write(target, 'update_task', {
+      project: project.id,
+      task: later.id,
+      duplicates: [elsewhere.id],
+      supersedes: [filed.id],
+      idempotency_key: key(),
+    });
+
+    const read = await write<{ task: { dependencies: unknown[]; ready: boolean } }>(target, 'get_task', {
+      project: project.id,
+      task: filed.id,
+    });
+    expect(read.task.ready).toBe(true);
+    expect(read.task.dependencies).toEqual(
+      [
+        { id: first.id, type: 'duplicates', title: 'First filing', status: 'open' },
+        { id: old.id, type: 'supersedes', title: 'Old plan', status: 'open' },
+      ].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    );
+    expect((await current(project, later.id)).dependencies.map((link) => [link.taskId, link.type]).sort()).toEqual(
+      [
+        [elsewhere.id, 'duplicates'],
+        [filed.id, 'supersedes'],
+      ].sort(),
+    );
+    const ready = await write<{ tasks: { id: string }[] }>(target, 'list_tasks', { project: project.id, ready: true });
+    expect(ready.tasks.map((row) => row.id).sort()).toEqual([first.id, old.id, filed.id, later.id].sort());
+
+    expect(
+      await write(target, 'remove_dependency', { project: project.id, task: later.id, depends_on: elsewhere.id }),
+    ).toMatchObject({ removed: true });
+    expect((await current(project, later.id)).dependencies.map((link) => link.taskId)).toEqual([filed.id]);
+  });
+
+  it('refuse a link to the task itself, a task named twice, and a type add_dependency does not take', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const kin = await task(project, { title: 'Kin' });
+    const base = { workspace: WORKSPACE.id, project: project.id, task: id, idempotency_key: key() };
+    expect(await refusal(target, 'update_task', { ...base, supersedes: [id] })).toBe(
+      'invalid arguments: supersedes (another task than this one)',
+    );
+    expect(await refusal(target, 'update_task', { ...base, related: [kin.id], duplicates: [kin.id] })).toBe(
+      'invalid arguments: a linked task is named twice; a task links to another once',
+    );
+    expect(
+      await refusal(target, 'create_task', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        title: 'T',
+        duplicates: [kin.id],
+        supersedes: [kin.id],
+        idempotency_key: key(),
+      }),
+    ).toBe('invalid arguments: a linked task is named twice; a task links to another once');
+    expect(
+      await refusal(target, 'add_dependency', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        task: id,
+        depends_on: kin.id,
+        type: 'duplicates',
+      }),
+    ).toBe('invalid arguments: type (one of blocks, related, discovered-from)');
+    expect((await current(project, id)).dependencies).toEqual([]);
+  });
+});
+
+describe('external links', () => {
+  const pr = {
+    url: 'https://example.com/acme/web/pull/12',
+    title: 'Add the pricing page',
+    kind: 'pull-request' as const,
+  };
+  const doc = { url: 'https://docs.example.com/pricing', title: 'Pricing notes' };
+
+  it('are filed, added, retitled and taken off, each change in the history', async () => {
+    const project = await newProject(engine);
+    const filed = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Ship the pricing page',
+      external_links: [pr],
+      idempotency_key: key(),
+    });
+    const id = filed.id;
+    const added = await write<{ task: { externalLinks: unknown[] } }>(target, 'update_task', {
+      project: project.id,
+      task: id,
+      add_external_links: [doc, { ...pr, title: 'Add the pricing page (merged)' }],
+      idempotency_key: key(),
+    });
+    expect(added.task.externalLinks).toEqual([
+      { url: doc.url, title: doc.title, kind: null },
+      { ...pr, title: 'Add the pricing page (merged)' },
+    ]);
+    const listed = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
+    expect(listed.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.task.externalLinks });
+    // The same page is one URL, however it is written.
+    const removed = await write<{ task: { externalLinks: unknown[] } }>(target, 'update_task', {
+      project: project.id,
+      task: id,
+      remove_external_links: ['HTTPS://DOCS.example.com/pricing'],
+      idempotency_key: key(),
+    });
+    expect(removed.task.externalLinks).toEqual([{ ...pr, title: 'Add the pricing page (merged)' }]);
+
+    const { changes } = await write<{ changes: { task: { externalLinks: unknown[] } }[] }>(target, 'get_task_history', {
+      project: project.id,
+      task: id,
+      snapshots: true,
+    });
+    expect(changes.map((change) => change.task.externalLinks)).toEqual([
+      removed.task.externalLinks,
+      added.task.externalLinks,
+      [pr],
+    ]);
+  });
+
+  it('change nothing for a link the task has, and keep the retry rules', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project, { title: 'Linked', externalLinks: [pr] });
+    const again = await write<{ replayed: boolean }>(target, 'update_task', {
+      project: project.id,
+      task: id,
+      add_external_links: [pr],
+      idempotency_key: key(),
+    });
+    expect(again.replayed).toBe(false);
+    expect((await current(project, id)).version).toBe(1);
+
+    const once = { project: project.id, task: id, add_external_links: [doc], idempotency_key: key() };
+    await write(target, 'update_task', once);
+    expect(await write<{ replayed: boolean }>(target, 'update_task', once)).toMatchObject({ replayed: true });
+    expect((await current(project, id)).version).toBe(2);
+    expect(
+      await refusal(target, 'update_task', {
+        workspace: WORKSPACE.id,
+        ...once,
+        add_external_links: [{ ...doc, url: 'https://docs.example.com/other' }],
+      }),
+    ).toMatch(/^conflict: /u);
+  });
+
+  it('refuse a URL that is not http or https, or too long, a link named twice, and more than a task holds', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const base = { workspace: WORKSPACE.id, project: project.id, task: id, idempotency_key: key() };
+    const url = (value: string) =>
+      refusal(target, 'update_task', { ...base, add_external_links: [{ url: value, title: 'T' }] });
+    const rule = 'invalid arguments: add_external_links[0].url (an http or https URL of at most 2048 characters)';
+    expect(await url('ftp://example.com/file')).toBe(rule);
+    expect(await url('javascript:alert(1)')).toBe(rule);
+    expect(await url('example.com/page')).toBe(rule);
+    expect(await url('https://example.com/a page')).toBe(rule);
+    expect(await url(`https://example.com/${'a'.repeat(2030)}`)).toBe(rule);
+    expect(await refusal(target, 'update_task', { ...base, add_external_links: [{ ...doc, kind: 'issue' }] })).toBe(
+      'invalid arguments: add_external_links[0].kind (one of pull-request, document, other)',
+    );
+    expect(
+      await refusal(target, 'update_task', { ...base, add_external_links: [{ ...doc, title: 'Two\nlines' }] }),
+    ).toBe('invalid arguments: add_external_links[0].title (one line, no surrounding spaces)');
+    expect(
+      await refusal(target, 'update_task', { ...base, add_external_links: [doc, { ...doc, title: 'Again' }] }),
+    ).toBe('invalid arguments: add_external_links (a URL named twice; a task links to a URL once)');
+    expect(
+      await refusal(target, 'update_task', { ...base, add_external_links: [doc], remove_external_links: [doc.url] }),
+    ).toBe(
+      'invalid arguments: add_external_links and remove_external_links (a URL both added and taken off; send one)',
+    );
+    const many = Array.from({ length: 32 }, (_, index) => ({
+      url: `https://example.com/${index}`,
+      title: `Page ${index}`,
+    }));
+    await write(target, 'update_task', { ...base, add_external_links: many });
+    expect(await refusal(target, 'update_task', { ...base, idempotency_key: key(), add_external_links: [doc] })).toBe(
+      'invalid arguments: a task links to at most 32 pages outside Ntasks',
+    );
+    expect((await current(project, id)).externalLinks).toHaveLength(32);
   });
 });
 

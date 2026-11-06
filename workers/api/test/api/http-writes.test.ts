@@ -51,6 +51,8 @@ describe('GET /api/tasks/capabilities', () => {
         'dueAt',
         'addLabels',
         'removeLabels',
+        'addExternalLinks',
+        'removeExternalLinks',
         'card',
         'changeClass',
       ],
@@ -315,6 +317,44 @@ describe('PATCH /api/tasks/:id', () => {
       await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-01', card }),
     ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
     expect((await current(id)).dueAt).toBeNull();
+  });
+
+  it('files a task with external links, adds and takes them off, and refuses a URL that is not http or https', async () => {
+    const pr = { url: 'https://example.com/acme/web/pull/7', title: 'Move the blog', kind: 'pull-request' };
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Move the blog',
+      externalLinks: [pr],
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    expect((await get(target, `/api/tasks/${id}?project=${project.id}`)).body.task).toMatchObject({
+      externalLinks: [pr],
+    });
+    const doc = { url: 'https://docs.example.com/blog', title: 'Blog plan', kind: 'document' };
+    const added = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      addExternalLinks: [doc],
+      removeExternalLinks: [pr.url],
+    });
+    expect(added.body.task).toMatchObject({ externalLinks: [doc] });
+    const history = await get(target, `/api/tasks/${id}/history?project=${project.id}`);
+    expect((history.body.changes as { fields: unknown }[])[0]!.fields).toEqual({
+      externalLinks: { old: [pr], new: [doc] },
+    });
+    expect(
+      await send(target, 'PATCH', `/api/tasks/${id}`, {
+        projectId: project.id,
+        addExternalLinks: [{ url: 'file:///etc/hosts', title: 'Hosts' }],
+      }),
+    ).toEqual({
+      status: 400,
+      body: {
+        error: 'invalid_request',
+        detail: 'addExternalLinks[0].url (an http or https URL of at most 2048 characters)',
+      },
+    });
+    expect((await current(id)).externalLinks).toEqual([doc]);
   });
 
   it('takes a task with claim, and refuses one someone else holds', async () => {

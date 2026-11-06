@@ -12,6 +12,7 @@ import {
   type Actor,
   type CreateTaskInput,
   type DependencyType,
+  type ExternalLink,
   type JsonObject,
   type NewTaskLink,
   type Project,
@@ -218,16 +219,19 @@ async function changing(
   throw unavailable(retry !== undefined);
 }
 
-/** The task ids a new task or a change links to: a related link may name a
- * task in another project the sender reaches; every other link stays in the project. */
+/** The link types that may name a task in another project the sender
+ * reaches. They hold nothing out of ready work; every other link stays in the project. */
+const ACROSS_PROJECTS: readonly DependencyType[] = Object.freeze(['related', 'duplicates', 'supersedes']);
+
+/** The task ids a new task or a change links to, each in its project. */
 async function linkTargets(
   context: WriteContext,
   project: Project,
-  links: readonly { readonly taskId: string; readonly related: boolean }[],
+  links: readonly { readonly taskId: string; readonly type: DependencyType }[],
 ): Promise<void> {
   const local: string[] = [];
   for (const link of links) {
-    const owner = link.related ? await ownerOf(context, link.taskId) : undefined;
+    const owner = ACROSS_PROJECTS.includes(link.type) ? await ownerOf(context, link.taskId) : undefined;
     if (owner !== undefined && owner.id !== project.id) await tasksIn(context, owner, [link.taskId]);
     else local.push(link.taskId);
   }
@@ -236,9 +240,10 @@ async function linkTargets(
 
 // ─── Creating a task ──────────────────────────────────────────────────────────
 
-/** A new task's link: what the new task depends on, blocks, relates to or was found from. */
+/** A new task's link: what the new task depends on, blocks, relates to, was
+ * found from, duplicates or replaces. */
 export interface NewLink {
-  readonly kind: 'depends_on' | 'blocks' | 'related' | 'discovered_from';
+  readonly kind: 'depends_on' | 'blocks' | 'related' | 'discovered_from' | 'duplicates' | 'supersedes';
   readonly taskId: string;
 }
 
@@ -247,6 +252,8 @@ const ENGINE_LINKS: Readonly<Record<NewLink['kind'], Omit<NewTaskLink, 'taskId'>
   blocks: { direction: 'blocks', type: 'blocks' },
   related: { direction: 'depends-on', type: 'related' },
   discovered_from: { direction: 'depends-on', type: 'discovered-from' },
+  duplicates: { direction: 'depends-on', type: 'duplicates' },
+  supersedes: { direction: 'depends-on', type: 'supersedes' },
 });
 
 export interface NewTask {
@@ -263,6 +270,8 @@ export interface NewTask {
   /** An ISO time. A card's kill date is the due date too, so a task is filed with one of them. */
   readonly dueAt?: string;
   readonly links?: readonly NewLink[];
+  /** Pages outside Ntasks, each URL as the URL standard writes it. */
+  readonly externalLinks?: readonly ExternalLink[];
   /** What a person must approve before the task proceeds. */
   readonly approval?: string;
   readonly choices?: JsonObject;
@@ -292,7 +301,7 @@ export async function createTask(
   await linkTargets(
     context,
     project,
-    links.map((link) => ({ taskId: link.taskId, related: link.kind === 'related' })),
+    links.map((link) => ({ taskId: link.taskId, type: ENGINE_LINKS[link.kind].type })),
   );
   const card = task.card === undefined ? undefined : recordedCard(task.card, context.principal.name, context.now());
   const due = card?.kill === undefined ? undefined : (card.kill as JsonObject).date;
@@ -313,6 +322,7 @@ export async function createTask(
     ...(task.parent === undefined ? {} : { parentId: task.parent }),
     ...(task.labels === undefined ? {} : { labels: task.labels }),
     links: links.map((link) => ({ ...ENGINE_LINKS[link.kind], taskId: link.taskId })),
+    ...(task.externalLinks === undefined ? {} : { externalLinks: task.externalLinks }),
     ...(typeof due === 'string' ? { dueAt: due } : task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
@@ -352,8 +362,16 @@ export interface TaskChange {
   readonly defer?: string | null;
   readonly addLabels?: readonly string[];
   readonly removeLabels?: readonly string[];
-  /** Tasks to link as related, in this project or another the sender reaches. */
+  /** Tasks to link as related, as duplicated by this one or as replaced by it,
+   * in this project or another the sender reaches. */
   readonly related?: readonly string[];
+  readonly duplicates?: readonly string[];
+  readonly supersedes?: readonly string[];
+  /** Pages outside Ntasks to link, each URL as the URL standard writes it. One
+   * the task links to already takes this title and kind. */
+  readonly addExternalLinks?: readonly ExternalLink[];
+  /** URLs, as the URL standard writes them, whose links to take off. */
+  readonly removeExternalLinks?: readonly string[];
   /** null takes them off. */
   readonly choices?: JsonObject | null;
   /** A card's figures, or null to take it off. */
@@ -398,6 +416,15 @@ function assignment(task: Task, change: TaskChange, actor: Actor): void {
 }
 
 const same = (a: unknown, b: unknown) => canonical(a ?? null) === canonical(b ?? null);
+
+/** The links a change adds, by type. */
+function linksOf(change: TaskChange): { readonly taskId: string; readonly type: DependencyType }[] {
+  return [
+    ...(change.related ?? []).map((taskId) => ({ taskId, type: 'related' as const })),
+    ...(change.duplicates ?? []).map((taskId) => ({ taskId, type: 'duplicates' as const })),
+    ...(change.supersedes ?? []).map((taskId) => ({ taskId, type: 'supersedes' as const })),
+  ];
+}
 
 /** The write that makes `change` to `task` as it stands, or null when it changes nothing. */
 function planChange(context: WriteContext, task: Task, change: TaskChange, actor: Actor): TaskWrite | null {
@@ -469,7 +496,16 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
   const removeLabels = (change.removeLabels ?? []).filter((label) => task.labels.includes(label));
   const linked = new Set(task.dependencies.map((link) => link.taskId));
   // A link the two already have, of any type, stays as it is.
-  const related = [...new Set(change.related ?? [])].filter((id) => !linked.has(id));
+  const addLinks = linksOf(change)
+    .filter((link) => !linked.has(link.taskId))
+    .filter((link, index, all) => all.findIndex((other) => other.taskId === link.taskId) === index);
+
+  const external = new Map(task.externalLinks.map((link) => [link.url, link]));
+  const addExternalLinks = (change.addExternalLinks ?? []).filter((link) => {
+    const standing = external.get(link.url);
+    return standing?.title !== link.title || standing.kind !== link.kind;
+  });
+  const removeExternalLinks = (change.removeExternalLinks ?? []).filter((url) => external.has(url));
 
   const write: TaskWrite = {
     expectedVersion: task.version,
@@ -478,7 +514,9 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     ...(addLabels.length > 0 ? { addLabels } : {}),
     ...(removeLabels.length > 0 ? { removeLabels } : {}),
-    ...(related.length > 0 ? { addLinks: related.map((taskId) => ({ taskId, type: 'related' as const })) } : {}),
+    ...(addLinks.length > 0 ? { addLinks } : {}),
+    ...(addExternalLinks.length > 0 ? { addExternalLinks } : {}),
+    ...(removeExternalLinks.length > 0 ? { removeExternalLinks } : {}),
   };
   return Object.keys(write).length > 1 ? write : null;
 }
@@ -497,14 +535,12 @@ export async function updateTask(
   const retry = await retryOf(context.principal, retryRequest);
   const replay = await recorded(context, project, retry);
   if (replay !== null) return { project, result: replay };
-  if (change.related?.includes(taskId))
-    throw new Refused('invalid', 'invalid arguments: related (another task than this one)');
+  for (const name of ['related', 'duplicates', 'supersedes'] as const) {
+    if (change[name]?.includes(taskId))
+      throw new Refused('invalid', `invalid arguments: ${name} (another task than this one)`);
+  }
   if (typeof change.parent === 'string') await tasksIn(context, project, [change.parent]);
-  await linkTargets(
-    context,
-    project,
-    (change.related ?? []).map((id) => ({ taskId: id, related: true })),
-  );
+  await linkTargets(context, project, linksOf(change));
   const actor = actorOf(context.principal, model);
   const loop =
     typeof change.parent === 'string'
@@ -637,7 +673,7 @@ export async function addDependency(
 ): Promise<void> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
-  await linkTargets(context, project, [{ taskId: dependsOn, related: type === 'related' }]);
+  await linkTargets(context, project, [{ taskId: dependsOn, type }]);
   const loop = refused(
     `refused: ${dependsOn} already waits on ${taskId}, so ${taskId} cannot depend on it: the two would wait on each other in a loop.`,
     `${dependsOn} already waits on ${taskId}, so ${taskId} cannot depend on it.`,

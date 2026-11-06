@@ -118,6 +118,30 @@ describe('reads from memory', () => {
     });
   });
 
+  it('shows an external link added or taken off on the next board it had served from memory', async () => {
+    await runInDurableObject(store(), async (instance: TaskStore) => {
+      const project = await newProject(instance.tasks);
+      const { task } = await instance.tasks.createTask(project.id, { title: 'Linked' }, AGENT);
+      const links = async () => {
+        const response = await instance.serve(new Request(`${ORIGIN}/api/tasks?project=${project.id}`), READER);
+        const { tasks } = (await response.json()) as { tasks: { externalLinks: { url: string }[] }[] };
+        return tasks[0]!.externalLinks.map((link) => link.url);
+      };
+      const url = 'https://example.com/acme/web/pull/1';
+
+      expect(await links()).toEqual([]);
+      await instance.tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, addExternalLinks: [{ url, title: 'The change' }] },
+        AGENT,
+      );
+      expect(await links()).toEqual([url]);
+      await instance.tasks.writeTask(project.id, task.id, { expectedVersion: 2, removeExternalLinks: [url] }, AGENT);
+      expect(await links()).toEqual([]);
+    });
+  });
+
   it("reads again once a deferred task's time comes", async () => {
     const time = clock();
     const meter = newMeter();

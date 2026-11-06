@@ -2,6 +2,7 @@
 import type {
   DependencyType,
   EpicProgress,
+  ExternalLink,
   JsonObject,
   Project,
   Task,
@@ -60,6 +61,8 @@ export interface TaskRow extends StoredTaskRow {
   /** Its links onto other tasks and theirs onto it, as JSON arrays of LinkJson. */
   readonly dependencies_json: string;
   readonly dependents_json: string;
+  /** Its links to pages outside Ntasks, as a JSON array of ExternalLink. */
+  readonly external_links_json: string;
 }
 
 /** One link in a TaskRow's JSON: the other task, the link's type, and the other task's title and status. */
@@ -118,6 +121,8 @@ function links(text: string): TaskLink[] {
     .sort((a, b) => (a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0));
 }
 
+const byUrl = (a: ExternalLink, b: ExternalLink) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0);
+
 export function toTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -138,6 +143,7 @@ export function toTask(row: TaskRow): Task {
     labels: (JSON.parse(row.labels_json) as string[]).sort(),
     dependencies: links(row.dependencies_json),
     dependents: links(row.dependents_json),
+    externalLinks: (JSON.parse(row.external_links_json) as ExternalLink[]).sort(byUrl),
     ready: row.ready === 1,
     deferUntil: row.defer_until,
     dueAt: row.due_at,

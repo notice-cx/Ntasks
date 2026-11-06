@@ -4,15 +4,19 @@
  * argument, by the name its caller sent, and what it must be.
  */
 import {
+  EXTERNAL_LINK_KINDS,
   IDEMPOTENCY_KEY,
+  isExternalLinkKind,
   isTaskId,
   TASK_LIMITS,
   TASK_PRIORITY,
   TASK_RESOLUTIONS,
   TASK_TYPES,
+  type ExternalLink,
   type JsonObject,
   type TaskType,
 } from '@ntasks/domain';
+import { httpUrl } from './engine/validate.ts';
 import {
   choicesOf,
   choicesProblem,
@@ -286,6 +290,59 @@ export function assigneeArg(args: Args, name = 'assignee'): string | null | unde
   if (value !== undefined && (/[\r\n\t]/u.test(value) || value.trim() !== value))
     refuse(`invalid arguments: ${name} (a name on one line, or "" to release the task)`);
   return value;
+}
+
+const URL_RULE = `an http or https URL of at most ${TASK_LIMITS.externalLinkUrl} characters`;
+
+/** Links to pages outside Ntasks: each a url, a title on one line and
+ * optionally a kind, each URL once, as the URL standard writes it. */
+export function externalLinksArg(args: Args, name: string, least = 0): ExternalLink[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < least || value.length > TASK_LIMITS.externalLinks)
+    refuse(
+      `invalid arguments: ${name} (${least ? `${least} to ` : 'at most '}${TASK_LIMITS.externalLinks} links, each a url and a title)`,
+    );
+  const links = value.map((entry: unknown, index): ExternalLink => {
+    const at = `${name}[${index}]`;
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry))
+      refuse(`invalid arguments: ${at} (a link: url, title and optionally kind)`);
+    const link = entry as Args;
+    const unknown = Object.keys(link).filter((key) => !['url', 'title', 'kind'].includes(key));
+    if (unknown.length > 0) refuse(`invalid arguments: ${at} (url, title and kind only; not ${unknown.join(', ')})`);
+    const url = httpUrl(link.url) ?? refuse(`invalid arguments: ${at}.url (${URL_RULE})`);
+    const title = textArg({ [`${at}.title`]: link.title }, `${at}.title`, TASK_LIMITS.externalLinkTitle, true)!;
+    if (/[\r\n\t]/u.test(title) || title.trim() !== title)
+      refuse(`invalid arguments: ${at}.title (one line, no surrounding spaces)`);
+    if (link.kind !== undefined && !isExternalLinkKind(link.kind))
+      refuse(`invalid arguments: ${at}.kind (one of ${EXTERNAL_LINK_KINDS.join(', ')})`);
+    return { url, title, kind: link.kind ?? null };
+  });
+  if (new Set(links.map((link) => link.url)).size !== links.length)
+    refuse(`invalid arguments: ${name} (a URL named twice; a task links to a URL once)`);
+  return links;
+}
+
+/** The URLs of external links to take off, as the URL standard writes them. */
+export function urlsArg(args: Args, name: string): string[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.externalLinks)
+    refuse(`invalid arguments: ${name} (1 to ${TASK_LIMITS.externalLinks} URLs)`);
+  const urls = value.map(
+    (url: unknown, index) => httpUrl(url) ?? refuse(`invalid arguments: ${name}[${index}] (${URL_RULE})`),
+  );
+  return [...new Set(urls)];
+}
+
+/** A change adds or takes off a link to a URL, not both. */
+export function addsOrRemoves(
+  added: readonly ExternalLink[] | undefined,
+  removed: readonly string[] | undefined,
+  names: string,
+): void {
+  if (added?.some((link) => removed?.includes(link.url)))
+    refuse(`invalid arguments: ${names} (a URL both added and taken off; send one)`);
 }
 
 /** "" clears a field: null to the write. */

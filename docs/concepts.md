@@ -24,6 +24,8 @@ A **task** is one piece of work. It has:
   such as progress and findings;
 - a **design**: how the work is to be built;
 - an **estimate**: how long the work should take, in whole minutes;
+- **external links**: pages outside Ntasks the work concerns, such as a pull
+  request or a document, each a URL with a title;
 - a **type**: `task`, `bug`, `feature`, `chore`, `epic` or `decision`;
 - a **priority**, from `0`, the most urgent, to `4`;
 - a **status**, one of:
@@ -51,11 +53,13 @@ flowchart LR
   D["web-4 · Write the guide<br/>ready"]
 ```
 
-Each arrow points from a task to the task that waits on it. Two more kinds of
-link record context without making anything wait:
+Each arrow points from a task to the task that waits on it. Four more kinds
+of link record context without making anything wait:
 
 - **related** connects tasks about the same subject;
-- **discovered from** points a new task at the task whose work turned it up.
+- **discovered from** points a new task at the task whose work turned it up;
+- **duplicates** points a task at an earlier task for the same work;
+- **supersedes** points a task at the task it replaces.
 
 ## Ready work
 

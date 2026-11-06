@@ -114,7 +114,9 @@ const TASK_COLUMNS = `t.*, ${READY} AS ready,
   (SELECT json_group_array(json_object('id', e.depends_on_id, 'type', e.type, 'title', o.title, 'status', o.status))
      FROM task_edges e JOIN tasks o ON o.id = e.depends_on_id WHERE e.task_id = t.id) AS dependencies_json,
   (SELECT json_group_array(json_object('id', e.task_id, 'type', e.type, 'title', o.title, 'status', o.status))
-     FROM task_edges e JOIN tasks o ON o.id = e.task_id WHERE e.depends_on_id = t.id) AS dependents_json`;
+     FROM task_edges e JOIN tasks o ON o.id = e.task_id WHERE e.depends_on_id = t.id) AS dependents_json,
+  (SELECT json_group_array(json_object('url', x.url, 'title', x.title, 'kind', x.kind))
+     FROM task_external_links x WHERE x.task_id = t.id) AS external_links_json`;
 
 /** Tasks in scope, for lists. A read of closed tasks from a date reaches
  * them through the closed_at index, not through every closed task. */

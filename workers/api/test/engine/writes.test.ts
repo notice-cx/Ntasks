@@ -271,6 +271,7 @@ describe('history (rule 4)', () => {
     const tasks = engine({ now: time.now });
     const project = await newProject(tasks);
     const blocker = (await tasks.createTask(project.id, { title: 'Blocker' }, OWNER)).task;
+    const other = (await tasks.createTask(project.id, { title: 'Replaced' }, OWNER)).task;
     const { task } = await tasks.createTask(project.id, { title: 'Tracked', labels: ['a'], metadata: { n: 1 } }, OWNER);
     const writes = [
       { set: { title: 'Tracked closely', priority: 1 } },
@@ -278,6 +279,12 @@ describe('history (rule 4)', () => {
       { addLabels: ['b'], removeLabels: ['a'], metadata: { n: 2 } },
       { addLinks: [{ taskId: blocker.id, type: 'blocks' as const }] },
       { set: { notes: 'Seen on mobile.', design: 'One query.', estimateMinutes: 30 } },
+      {
+        addLinks: [{ taskId: other.id, type: 'supersedes' as const }],
+        addExternalLinks: [
+          { url: 'https://example.com/acme/web/pull/4', title: 'The fix', kind: 'pull-request' as const },
+        ],
+      },
       { close: { reason: 'Done.', resolution: 'done' as const } },
     ];
     for (const [index, write] of writes.entries()) {
@@ -293,7 +300,8 @@ describe('history (rule 4)', () => {
       ['updated', 4],
       ['updated', 5],
       ['updated', 6],
-      ['closed', 7],
+      ['updated', 7],
+      ['closed', 8],
     ]);
     const rebuilt: Record<string, Json> = {};
     for (const event of events) Object.assign(rebuilt, event.changes);
@@ -310,6 +318,7 @@ describe('history (rule 4)', () => {
       'notes',
       'design',
       'estimateMinutes',
+      'externalLinks',
       'close',
     ] as const;
     for (const field of fields) expect(rebuilt[field], field).toEqual(current[field]);

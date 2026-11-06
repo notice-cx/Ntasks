@@ -3,6 +3,7 @@
 import {
   IDEMPOTENCY_KEY,
   isDependencyType,
+  isExternalLinkKind,
   isTaskId,
   isTaskResolution,
   isTaskStatus,
@@ -13,8 +14,10 @@ import {
   type Actor,
   type CreateTaskInput,
   type DependencyType,
+  type ExternalLink,
   type Json,
   type JsonObject,
+  type NewExternalLink,
   type NewTaskLink,
   type Retry,
   type TaskFieldChanges,
@@ -101,6 +104,50 @@ export function retry(value: Retry | undefined): Retry | undefined {
   return value;
 }
 
+/**
+ * An http or https URL as the URL standard writes it, so one page has one
+ * URL, or null when `value` is not one or the URL is longer than
+ * TASK_LIMITS.externalLinkUrl. Space and control characters are refused, not
+ * dropped as the URL parser drops some.
+ */
+export function httpUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || /[\s\u0000-\u001f\u007f]/u.test(value)) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  return url.href.length > TASK_LIMITS.externalLinkUrl ? null : url.href;
+}
+
+function externalUrl(value: unknown, field: string): string {
+  return (
+    httpUrl(value) ??
+    invalid(`${field} must be an http or https URL of at most ${TASK_LIMITS.externalLinkUrl} characters`)
+  );
+}
+
+/** Links to pages outside Ntasks, each URL once. */
+function externalLinks(value: unknown, field: string): ExternalLink[] {
+  if (!Array.isArray(value) || value.length > TASK_LIMITS.externalLinks)
+    invalid(`${field} must be a list of at most ${TASK_LIMITS.externalLinks} links`);
+  const checked = value.map((entry: NewExternalLink | null, index): ExternalLink => {
+    const at = `${field}[${index}]`;
+    if (entry === null || typeof entry !== 'object') invalid(`${at} must be a link with a url and a title`);
+    const kind: unknown = entry.kind ?? null;
+    if (kind !== null && !isExternalLinkKind(kind)) invalid(`${at}.kind must be pull-request, document or other`);
+    return {
+      url: externalUrl(entry.url, `${at}.url`),
+      title: text(entry.title, `${at}.title`, TASK_LIMITS.externalLinkTitle, true),
+      kind,
+    };
+  });
+  if (new Set(checked.map((link) => link.url)).size !== checked.length) invalid(`${field} names a URL twice`);
+  return checked;
+}
+
 function nullable<T>(value: T | null | undefined, check: (present: T) => T): T | null | undefined {
   return value === undefined || value === null ? value : check(value);
 }
@@ -109,7 +156,8 @@ function links(value: unknown): { taskId: string; type: DependencyType }[] {
   if (!Array.isArray(value) || value.length > TASK_LIMITS.links)
     invalid(`links must be a list of at most ${TASK_LIMITS.links}`);
   return value.map((entry: { taskId?: unknown; type?: unknown }, index) => {
-    if (!isDependencyType(entry?.type)) invalid(`links[${index}].type must be blocks, related or discovered-from`);
+    if (!isDependencyType(entry?.type))
+      invalid(`links[${index}].type must be blocks, related, discovered-from, duplicates or supersedes`);
     return { taskId: taskId(entry.taskId, `links[${index}].taskId`), type: entry.type };
   });
 }
@@ -126,6 +174,7 @@ export interface CreateFields {
   readonly parentId: string | null;
   readonly labels: string[];
   readonly links: NewTaskLink[];
+  readonly externalLinks: ExternalLink[];
   readonly deferUntil: string | null;
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
@@ -157,6 +206,7 @@ export function createInput(input: CreateTaskInput): CreateFields {
     parentId: input.parentId === undefined ? null : taskId(input.parentId, 'parentId'),
     labels: labels(input.labels ?? [], 'labels'),
     links: newLinks,
+    externalLinks: externalLinks(input.externalLinks ?? [], 'externalLinks'),
     deferUntil: input.deferUntil === undefined ? null : instant(input.deferUntil, 'deferUntil'),
     dueAt: input.dueAt === undefined ? null : instant(input.dueAt, 'dueAt'),
     choices: input.choices === undefined ? null : jsonObject(input.choices, 'choices'),
@@ -177,6 +227,8 @@ export interface CheckedWrite {
   readonly metadata: Readonly<Record<string, Json | null>> | null;
   readonly addLinks: { taskId: string; type: DependencyType }[];
   readonly removeLinks: string[];
+  readonly addExternalLinks: ExternalLink[];
+  readonly removeExternalLinks: string[];
   readonly requestApproval: { reason: string } | null;
   readonly close: { reason: string; resolution: TaskResolution; duplicateOf: string | null } | null;
   readonly reopen: boolean;
@@ -233,6 +285,15 @@ export function write(input: TaskWrite): CheckedWrite {
   const removeLinks: unknown = input.removeLinks ?? [];
   if (!Array.isArray(removeLinks) || removeLinks.length > TASK_LIMITS.links)
     invalid(`removeLinks must be a list of at most ${TASK_LIMITS.links} task ids`);
+  const removeExternal: unknown = input.removeExternalLinks ?? [];
+  if (!Array.isArray(removeExternal) || removeExternal.length > TASK_LIMITS.externalLinks)
+    invalid(`removeExternalLinks must be a list of at most ${TASK_LIMITS.externalLinks} URLs`);
+  const addExternalLinks = externalLinks(input.addExternalLinks ?? [], 'addExternalLinks');
+  const removeExternalLinks = [
+    ...new Set(removeExternal.map((url, index) => externalUrl(url, `removeExternalLinks[${index}]`))),
+  ];
+  if (addExternalLinks.some((link) => removeExternalLinks.includes(link.url)))
+    invalid('a write adds or removes an external link, not both');
   const checked: CheckedWrite = {
     expectedVersion: input.expectedVersion,
     set,
@@ -241,6 +302,8 @@ export function write(input: TaskWrite): CheckedWrite {
     metadata,
     addLinks: links(input.addLinks ?? []),
     removeLinks: [...new Set(removeLinks.map((id, index) => taskId(id, `removeLinks[${index}]`)))],
+    addExternalLinks,
+    removeExternalLinks,
     requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
     close,
     reopen: input.reopen === true,
@@ -253,6 +316,8 @@ export function write(input: TaskWrite): CheckedWrite {
     metadata === null &&
     checked.addLinks.length === 0 &&
     checked.removeLinks.length === 0 &&
+    addExternalLinks.length === 0 &&
+    removeExternalLinks.length === 0 &&
     checked.requestApproval === null &&
     close === null &&
     !checked.reopen &&

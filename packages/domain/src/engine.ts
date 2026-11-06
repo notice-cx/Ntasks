@@ -17,6 +17,7 @@
 import type {
   DependencyType,
   EpicProgress,
+  ExternalLinkKind,
   Json,
   JsonObject,
   Project,
@@ -74,6 +75,14 @@ export interface NewTaskLink {
   readonly type: DependencyType;
 }
 
+/** A link to a page outside Ntasks, as a write gives it. */
+export interface NewExternalLink {
+  /** An http or https URL; the engine keeps it as the URL standard writes it. */
+  readonly url: string;
+  readonly title: string;
+  readonly kind?: ExternalLinkKind | null;
+}
+
 export interface CreateTaskInput {
   readonly title: string;
   readonly description?: string;
@@ -88,6 +97,7 @@ export interface CreateTaskInput {
   readonly parentId?: string;
   readonly labels?: readonly string[];
   readonly links?: readonly NewTaskLink[];
+  readonly externalLinks?: readonly NewExternalLink[];
   readonly deferUntil?: string;
   readonly dueAt?: string;
   readonly choices?: JsonObject;
@@ -141,6 +151,11 @@ export interface TaskWrite {
    * of tasks waiting on each other is refused as `cycle`. */
   readonly addLinks?: readonly { readonly taskId: string; readonly type: DependencyType }[];
   readonly removeLinks?: readonly string[];
+  /** Links to pages outside Ntasks. One to a URL the task already links to
+   * replaces its title and kind. A URL may not be both added and removed. */
+  readonly addExternalLinks?: readonly NewExternalLink[];
+  /** The URLs of external links to take off. */
+  readonly removeExternalLinks?: readonly string[];
   /** Opens an approval: a gate task that this task waits on until a person
    * answers it. The new gate's id is in the result's `created`. */
   readonly requestApproval?: { readonly reason: string };

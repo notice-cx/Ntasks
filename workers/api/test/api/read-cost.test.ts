@@ -1,6 +1,7 @@
 // What each read costs the task store, on a store the size of a busy
 // installation: eight projects, one much larger than the rest, about a
-// thousand tasks open and several thousand closed. The free plan allows 5
+// thousand tasks open and several thousand closed, a quarter of them linking
+// a pull request. The free plan allows 5
 // million rows read per day and refuses reads for the rest of the day once
 // that allowance is spent; these budgets keep each read far inside it. They
 // measure a read the store has not cached; a cached one reads no rows
@@ -58,6 +59,10 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
     `${numbers}
      INSERT INTO task_edges (task_id, depends_on_id, type, created_at)
      SELECT ${id('i')}, ${id('i - 1')}, CASE WHEN i <= ?4 THEN 'blocks' ELSE 'discovered-from' END, ?5 FROM n WHERE i % 3 = 0`,
+    `${numbers}
+     INSERT INTO task_external_links (task_id, url, title, kind, created_at)
+     SELECT ${id('i')}, 'https://example.com/' || ?2 || '/pull/' || i, 'Seeded change ' || i, 'pull-request', ?5
+     FROM n WHERE i % 4 = 2`,
     `${numbers}
      INSERT INTO task_labels (task_id, label)
      SELECT ${id('i')}, 'area-' || (i % 7) FROM n UNION ALL SELECT ${id('i')}, 'seo' FROM n WHERE i % 5 = 0`,

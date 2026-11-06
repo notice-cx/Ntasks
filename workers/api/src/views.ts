@@ -81,6 +81,7 @@ export function webTask(task: Task) {
       title: link.title,
       status: link.status,
     })),
+    externalLinks: task.externalLinks.map(({ url, title, kind }) => ({ url, title, kind })),
     comments: task.commentCount,
     metadata: task.metadata,
     createdAt: task.createdAt,
@@ -123,6 +124,7 @@ export function mcpTask(task: Task) {
     changeClass: web.changeClass,
     deferUntil: task.deferUntil,
     dependencies: web.dependencies,
+    externalLinks: web.externalLinks,
     commentCount: task.commentCount,
     metadata: task.metadata,
     createdAt: task.createdAt,
@@ -156,6 +158,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     card: full.card,
     changeClass: full.changeClass,
     estimateMinutes: full.estimateMinutes,
+    externalLinks: full.externalLinks,
     deferUntil: full.deferUntil,
     createdAt: full.createdAt,
     updatedAt: full.updatedAt,
@@ -184,6 +187,7 @@ function snapshotView(state: Record<string, Json>) {
   const close = objectOrNull(state.close);
   const metadata = objectOrNull(state.metadata) ?? {};
   const dependencies = Array.isArray(state.dependencies) ? state.dependencies : [];
+  const externalLinks = Array.isArray(state.externalLinks) ? state.externalLinks : [];
   return {
     id: state.id ?? null,
     title: state.title ?? null,
@@ -208,6 +212,7 @@ function snapshotView(state: Record<string, Json>) {
       const entry = objectOrNull(link) ?? {};
       return { id: entry.taskId ?? null, type: entry.type ?? null };
     }),
+    externalLinks,
     metadata,
     startedAt: state.startedAt ?? null,
     closedAt: close?.at ?? null,

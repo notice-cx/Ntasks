@@ -1,5 +1,6 @@
 import {
   DEPENDENCY_TYPES,
+  EXTERNAL_LINK_KINDS,
   GUARD_REFUSALS,
   guardRefusalOf,
   TASK_EVENT_KINDS,
@@ -97,6 +98,7 @@ describe('the schema accepts exactly the task model vocabulary', () => {
     ['tasks', 'type', TASK_TYPES],
     ['tasks', 'resolution', TASK_RESOLUTIONS],
     ['task_edges', 'type', DEPENDENCY_TYPES],
+    ['task_external_links', 'kind', EXTERNAL_LINK_KINDS],
     ['task_events', 'kind', TASK_EVENT_KINDS],
   ] as const)('%s.%s allows the domain list and nothing else', async (table, column, domainList) => {
     expect((await checkList(table, column)).sort()).toEqual([...domainList].sort());
@@ -338,6 +340,26 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(newTask({ estimate_minutes: -1 })).rejects.toThrow(/CHECK constraint failed/u);
     await expect(newTask({ notes: null })).rejects.toThrow(/NOT NULL constraint failed: tasks.notes/u);
     await expect(newTask({ design: null })).rejects.toThrow(/NOT NULL constraint failed: tasks.design/u);
+  });
+
+  it('keeps an external link to an http or https URL, once per task', async () => {
+    const { taskId } = await newTask();
+    const link = (url: string, kind: string | null = 'document') =>
+      insert('task_external_links', { task_id: taskId, url, title: 'A page', kind, created_at: NOW });
+    await expect(link('https://example.com/a').run()).resolves.toBeUndefined();
+    await expect(link('http://example.com/b', null).run()).resolves.toBeUndefined();
+    await expect(link('https://example.com/a', 'other').run()).rejects.toThrow(/UNIQUE constraint failed/u);
+    await expect(link('ftp://example.com/c').run()).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(link(`https://example.com/${'a'.repeat(2030)}`).run()).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(link('https://example.com/d', 'issue').run()).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(
+      insert('task_external_links', {
+        task_id: 'tnone-a1',
+        url: 'https://example.com/e',
+        title: 'A',
+        created_at: NOW,
+      }).run(),
+    ).rejects.toThrow(/FOREIGN KEY constraint failed/u);
   });
 
   it('refuses a name longer than 255 characters', async () => {

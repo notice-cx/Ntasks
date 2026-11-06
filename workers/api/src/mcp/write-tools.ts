@@ -11,7 +11,7 @@
  * with what lint finds missing, as advice: nothing is refused for it.
  */
 import {
-  DEPENDENCY_TYPES,
+  EXTERNAL_LINK_KINDS,
   IDEMPOTENCY_KEY,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
@@ -20,6 +20,7 @@ import {
   type TaskStatus,
 } from '@ntasks/domain';
 import {
+  addsOrRemoves,
   assigneeArg,
   cardArg,
   choiceArg,
@@ -28,6 +29,7 @@ import {
   deferArg,
   emptyIsNone,
   estimateArg,
+  externalLinksArg,
   handoffMetadataArg,
   keyArg,
   labelsArg,
@@ -41,6 +43,7 @@ import {
   taskArg,
   textArg,
   typeArg,
+  urlsArg,
   WRITABLE_TYPES,
   type Args,
 } from '../args.ts';
@@ -92,7 +95,23 @@ export const WRITE = Object.freeze({
 const BATCH = 25;
 const STATUSES: readonly Exclude<TaskStatus, 'closed'>[] = ['open', 'in_progress', 'blocked', 'deferred'];
 /** The link arguments a new task takes. */
-const LINKS = Object.freeze(['depends_on', 'blocks', 'related', 'discovered_from'] as const);
+const LINKS = Object.freeze([
+  'depends_on',
+  'blocks',
+  'related',
+  'discovered_from',
+  'duplicates',
+  'supersedes',
+] as const);
+/** The links update_task adds besides related: none holds the task out of ready work. */
+const CHANGE_LINKS = Object.freeze(['related', 'duplicates', 'supersedes'] as const);
+/** The types add_dependency takes, as NoticeOS's tool took them; duplicates
+ * and supersedes are added with create_task and update_task. */
+const DEPENDENCY_ARG_TYPES = Object.freeze([
+  'blocks',
+  'related',
+  'discovered-from',
+] as const satisfies readonly DependencyType[]);
 
 /** Optional on a new task, a claim and a close: the work is credited to this model as well as to the agent. */
 const MODEL = Object.freeze({
@@ -242,6 +261,29 @@ const ESTIMATE = Object.freeze({
   maximum: TASK_LIMITS.estimateMinutes,
   description: 'How long it should take, in whole minutes.',
 });
+/** Links to pages outside Ntasks. */
+const EXTERNAL_LINKS = Object.freeze({
+  type: 'array',
+  maxItems: TASK_LIMITS.externalLinks,
+  description:
+    'Pages outside Ntasks this task links to, such as a pull request or a document. A task links to a URL once.',
+  items: schema(
+    {
+      url: {
+        type: 'string',
+        maxLength: TASK_LIMITS.externalLinkUrl,
+        description: 'An http or https URL.',
+      },
+      title: {
+        type: 'string',
+        maxLength: TASK_LIMITS.externalLinkTitle,
+        description: 'One line: the words shown for the link.',
+      },
+      kind: { type: 'string', enum: EXTERNAL_LINK_KINDS, description: 'What the page is.' },
+    },
+    ['url', 'title'],
+  ),
+});
 const CHANGE_CLASS = Object.freeze({
   type: 'string',
   enum: TASK_CHANGE_CLASSES,
@@ -267,6 +309,11 @@ const NEW_TASK = Object.freeze({
   blocks: TASK_IDS('Tasks that wait on this one.'),
   related: TASK_IDS('Tasks it relates to, without waiting on them; may name another project in this workspace.'),
   discovered_from: TASK_IDS('Tasks whose work turned this one up.'),
+  duplicates: TASK_IDS(
+    'Tasks this one duplicates: the same work, filed before. May name another project in this workspace.',
+  ),
+  supersedes: TASK_IDS('Tasks this one replaces. May name another project in this workspace.'),
+  external_links: EXTERNAL_LINKS,
   approval: {
     type: 'string',
     maxLength: GATE_REASON_MAX,
@@ -329,6 +376,7 @@ function creation(args: Args, target: (name: string, value: unknown) => string):
     design: textArg(args, 'design', TASK_LIMITS.design, false, true),
     estimateMinutes: estimateArg(args, 'estimate_minutes'),
     links: links.length ? links : undefined,
+    externalLinks: externalLinksArg(args, 'external_links'),
     choices: choicesArg(args),
     card: cardArg(args),
     changeClass: choiceArg(args, 'change_class', TASK_CHANGE_CLASSES),
@@ -546,6 +594,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         add_labels: { type: 'array', items: { type: 'string' } },
         remove_labels: { type: 'array', items: { type: 'string' } },
         related: TASK_IDS('Add nonblocking related tasks in this workspace, including other projects.'),
+        duplicates: TASK_IDS(
+          'Add tasks this one duplicates: the same work, filed before. May name another project in this workspace.',
+        ),
+        supersedes: TASK_IDS('Add tasks this one replaces. May name another project in this workspace.'),
+        add_external_links: {
+          ...EXTERNAL_LINKS,
+          minItems: 1,
+          description: `${EXTERNAL_LINKS.description} A link to a URL the task has already takes the new title and kind.`,
+        },
+        remove_external_links: {
+          type: 'array',
+          minItems: 1,
+          maxItems: TASK_LIMITS.externalLinks,
+          items: { type: 'string', maxLength: TASK_LIMITS.externalLinkUrl },
+          description: 'The URLs of external links to take off.',
+        },
         choices: {
           ...CHOICES,
           type: ['object', 'null'],
@@ -589,14 +653,26 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         'card',
         'change_class',
         'related',
+        'duplicates',
+        'supersedes',
+        'add_external_links',
+        'remove_external_links',
         'idempotency_key',
       ]);
-      let related: string[] | undefined;
-      if (args.related !== undefined) {
-        if (!Array.isArray(args.related) || !args.related.length || args.related.length > TASK_LIMITS.links)
-          refuse(`invalid arguments: related (1–${TASK_LIMITS.links} task ids)`);
-        related = args.related.map((id: unknown) => taskArg({ task: id }));
+      const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
+      for (const name of CHANGE_LINKS) {
+        const value = args[name];
+        if (value === undefined) continue;
+        if (!Array.isArray(value) || !value.length || value.length > TASK_LIMITS.links)
+          refuse(`invalid arguments: ${name} (1–${TASK_LIMITS.links} task ids)`);
+        linked[name] = value.map((id: unknown) => taskArg({ task: id }));
       }
+      const targets = Object.values(linked).flat();
+      if (new Set(targets).size !== targets.length)
+        refuse('invalid arguments: a linked task is named twice; a task links to another once');
+      const addExternalLinks = externalLinksArg(args, 'add_external_links', 1);
+      const removeExternalLinks = urlsArg(args, 'remove_external_links');
+      addsOrRemoves(addExternalLinks, removeExternalLinks, 'add_external_links and remove_external_links');
       const taskId = taskArg(args);
       const fields: TaskChange = {
         status: choiceArg(args, 'status', STATUSES),
@@ -612,7 +688,9 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         estimateMinutes: estimateArg(args, 'estimate_minutes', true),
         addLabels: labelsArg(args, 'add_labels', 1),
         removeLabels: labelsArg(args, 'remove_labels', 1),
-        related,
+        ...linked,
+        addExternalLinks,
+        removeExternalLinks,
         choices: args.choices === null ? null : choicesArg(args),
         card: args.card === null ? null : cardArg(args),
         changeClass: args.change_class === null ? null : choiceArg(args, 'change_class', TASK_CHANGE_CLASSES),
@@ -678,7 +756,11 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         project: PROJECT,
         task: TASK,
         depends_on: { type: 'string', description: 'The task id it depends on.' },
-        type: { type: 'string', enum: DEPENDENCY_TYPES, description: 'blocks (default), related or discovered-from.' },
+        type: {
+          type: 'string',
+          enum: DEPENDENCY_ARG_TYPES,
+          description: 'blocks (default), related or discovered-from.',
+        },
       },
       ['project', 'task', 'depends_on'],
     ),
@@ -688,7 +770,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       only(args, ['project', 'task', 'depends_on', 'type']);
       const taskId = taskArg(args);
       const dependsOn = taskArg(args, 'depends_on');
-      const type: DependencyType = choiceArg(args, 'type', DEPENDENCY_TYPES) ?? 'blocks';
+      const type: DependencyType = choiceArg(args, 'type', DEPENDENCY_ARG_TYPES) ?? 'blocks';
       if (taskId === dependsOn) refuse('invalid arguments: a task cannot depend on itself');
       await addDependency(context, projectArg(args), taskId, dependsOn, type);
       return { task: taskId, dependsOn, type };
