@@ -20,9 +20,21 @@ updates:
       cloudflare-toolchain:
         patterns: ["wrangler", "@cloudflare/vitest-plugin"]
         update-types: ["minor", "patch"]
+      # typescript-eslint supports only the TypeScript versions it lists, and a
+      # new ESLint or Prettier can report or reformat code that passed before,
+      # so these update together, apart from other dependencies.
+      typescript-toolchain:
+        patterns: ["typescript", "typescript-eslint", "eslint", "prettier"]
+        update-types: ["minor", "patch"]
       npm-minor-and-patch:
         patterns: ["*"]
-        exclude-patterns: ["wrangler", "@cloudflare/vitest-plugin"]
+        exclude-patterns:
+          - "wrangler"
+          - "@cloudflare/vitest-plugin"
+          - "typescript"
+          - "typescript-eslint"
+          - "eslint"
+          - "prettier"
         update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
