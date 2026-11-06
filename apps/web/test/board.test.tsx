@@ -110,6 +110,10 @@ describe('the board', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(reads).toBe(first);
     focusManager.setFocused(undefined);
+    // A write reads the boards again.
+    fireEvent.click(await screen.findByText('Rename the Settings tab to Account'));
+    fireEvent.click(await enabledButton('Claim'));
+    await waitFor(() => expect(reads).toBeGreaterThan(first));
   });
 
   it('counts a project whose latest read failed as not read, even with an earlier read in hand', async () => {

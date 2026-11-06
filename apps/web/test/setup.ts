@@ -1,6 +1,9 @@
 import { cleanup } from '@testing-library/react';
 import { toast } from 'sonner';
-import { afterEach } from 'vitest';
+import { afterAll, afterEach } from 'vitest';
+
+/** Longer than the toaster's own exit timer. */
+const TOAST_EXIT_MS = 300;
 
 // jsdom has no layout: Radix measures its anchor with ResizeObserver, and the
 // toaster asks matchMedia for the system theme.
@@ -27,4 +30,10 @@ afterEach(() => {
   cleanup();
   // The toaster's list outlives a render; each test starts with none.
   toast.dismiss();
+});
+
+// A dismissed toast removes itself on a timer about 200 ms later. Each file
+// waits that out once, so no removal runs after jsdom's window is gone.
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, TOAST_EXIT_MS));
 });
