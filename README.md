@@ -37,10 +37,12 @@ Ntasks is under construction. The repository holds its skeleton:
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
-| Writes through the API, sign-in | Being built |
+| Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
+| Writes through the API | Being built |
 
-Until sign-in is built, the Worker refuses every API request, so a deployment
-serves no task data. [SECURITY.md](SECURITY.md) has the details.
+Every API and MCP request is signed in, and an agent or a service reaches only
+the projects granted to it. A deployment without its sign-in settings refuses
+every request. [SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 
@@ -53,6 +55,8 @@ serves no task data. [SECURITY.md](SECURITY.md) has the details.
   each read costs.
 - [The task store](docs/task-store.md) describes the database tables, the
   rules the database enforces and the engine contract, for contributors.
+- [Sign-in](docs/sign-in.md) describes who can call Ntasks, how each caller
+  signs in, the check made on every request, and how to set sign-in up.
 
 ## Run it locally
 

@@ -7,6 +7,7 @@ Cloudflare serves the web app's build for every other path.
 | Path | Holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The request handler |
+| [`src/access/`](src/access/) | Sign-in: the owner, AI agents over OAuth, service credentials, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
 | [`src/engine/`](src/engine/) | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md)) |
 | [`migrations/`](migrations/) | The D1 schema, as numbered SQL files ([rules](migrations/README.md)) |
 | [`test/`](test/) | Tests that run in workerd on a local D1 database |
@@ -18,6 +19,7 @@ Cloudflare serves the web app's build for every other path.
 | Route | Answer |
 |---|---|
 | `GET /healthz` | `200` with `{"ok":true}`. It shows the Worker is running and reads no binding |
+| `/sign-in`, `/agent-access`, `/api/auth/`, `/api/access/` and the OAuth discovery documents under `/.well-known/` | Sign-in; [Sign-in](../../docs/sign-in.md#routes) lists each route |
 | Any other path under `/api/` | `404` with `{"error":"not_found"}` |
 
 ## Commands

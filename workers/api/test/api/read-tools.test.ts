@@ -14,7 +14,19 @@ import {
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, callTool, NOBODY, ORIGIN, read, READER, refusal, worker, WORKSPACE, type TestApi } from './helpers.ts';
+import {
+  api,
+  callTool,
+  grantedOnly,
+  NOBODY,
+  ORIGIN,
+  read,
+  READER,
+  refusal,
+  worker,
+  WORKSPACE,
+  type TestApi,
+} from './helpers.ts';
 
 const time = clock('2026-11-06T12:00:00.000Z');
 let target: TestApi;
@@ -96,7 +108,7 @@ describe('list_workspaces and get_task_guide', () => {
       ],
     });
     const writer = api({
-      principal: { id: 'p-w', name: 'agent-w', scopes: [SCOPES.write, SCOPES.read, 'other:scope'] },
+      principal: { id: 'p-w', name: 'agent-w', scopes: [SCOPES.write, SCOPES.read, 'other:scope'], projects: 'all' },
     });
     const listed = (await callTool<{ workspaces: { role: string; access: string[] }[] }>(writer, 'list_workspaces'))
       .value!;
@@ -370,5 +382,33 @@ describe('get_task_history', () => {
       limit: 1,
     });
     expect(changes.map((change) => change.actions)).toEqual([['claimed']]);
+  });
+});
+
+describe('a sender granted some projects', () => {
+  it('sees only those projects, and the others as if they did not exist', async () => {
+    const granted = api({ principal: grantedOnly(project.id), now: time.now });
+
+    const { projects } = await read<{ projects: { projectId: string }[] }>(granted, 'list_projects');
+    expect(projects.map((entry) => entry.projectId)).toEqual([project.id]);
+    const every = await read<Listed>(granted, 'list_tasks', { query: 'guide', limit: 200 });
+    expect(every.tasks.map((task) => task.projectId)).not.toContain(other.id);
+    expect(every.tasks.map((task) => task.id)).toContain(ids.child);
+    expect(every.total).toBe(every.tasks.length);
+
+    const missing = `refused: projectId ${other.id} names no project in this workspace; list_projects lists the current projectIds.`;
+    expect(await refusal(granted, 'list_tasks', { workspace: WORKSPACE.id, project: other.id })).toBe(missing);
+    expect(
+      await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
+    ).toBe(missing);
+    expect(
+      await refusal(granted, 'get_task_history', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
+    ).toBe(missing);
+    // A task from a project the sender cannot reach is not traced to that project.
+    expect(
+      await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: project.id, task: ids.elsewhere }),
+    ).toBe(
+      `refused: ${ids.elsewhere} is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
+    );
   });
 });

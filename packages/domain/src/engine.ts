@@ -235,6 +235,9 @@ export interface TaskEngine {
     taskId: string,
     options: { readonly limit: number; readonly beforeSeq?: number },
   ): Promise<readonly TaskEvent[]>;
+  /** The sequence number of the latest change, or 0 before the first: where
+   * a client that has just read a board starts reading changes. */
+  latestChange(): Promise<number>;
   /** Every change after `after`, across projects or in one, for clients that keep a copy. */
   listChanges(query: {
     readonly after: number;

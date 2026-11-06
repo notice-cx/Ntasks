@@ -29,6 +29,11 @@ toast, because an answer cannot be reversed once the server records it
 Every read and write goes through one module, `src/api/client.ts`. It speaks
 the `/api/tasks` format NoticeOS's Tower reads, which the Ntasks API keeps.
 
+A visitor who is not signed in sees a Sign in step, which opens the Worker's
+own sign-in page; a refused read is shown at once, never retried.
+`test/worker-contract.test.ts` feeds the Worker's own task answers through the
+board, so the two cannot drift apart unnoticed.
+
 `src/api/fixture.ts` answers the same calls from invented tasks held in the
 page. The development server and the tests use it, so the pages can be built
 and checked without a running API. A production build never includes it.

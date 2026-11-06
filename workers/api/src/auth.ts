@@ -12,13 +12,34 @@ export const SCOPES = Object.freeze({
   write: 'tasks:write',
 });
 
+/** How far a sender may go in one project. Write includes read. */
+export type ProjectAccess = 'read' | 'write';
+
 /** A signed-in sender. */
 export interface Principal {
   /** A stable identity: retry records are kept per principal. */
   readonly id: string;
   /** The name the engine records as the filer, assignee, closer or author. */
   readonly name: string;
+  /** What the sender may do somewhere; `projects` says where. */
   readonly scopes: readonly string[];
+  /** The projects the sender reaches: every one, as the owner does, or the
+   * ones it was granted, each for reading or for writing too. */
+  readonly projects: 'all' | ReadonlyMap<string, ProjectAccess>;
+}
+
+/** Whether the sender may read the project's tasks, or with `write`, change them. */
+export function mayReach(principal: Principal, projectId: string, needed: ProjectAccess = 'read'): boolean {
+  if (principal.projects === 'all') return true;
+  const access = principal.projects.get(projectId);
+  return access === 'write' || (access === 'read' && needed === 'read');
+}
+
+/** The projects of `projects` that the sender may read, in the same order. A
+ * project it may not reach is answered as if it did not exist, so a sender
+ * learns nothing of another's projects. */
+export function reachable<T extends { readonly id: string }>(principal: Principal, projects: readonly T[]): T[] {
+  return projects.filter((project) => mayReach(principal, project.id));
 }
 
 export interface Authenticator {

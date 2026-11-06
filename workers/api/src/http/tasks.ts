@@ -13,18 +13,22 @@ import {
   type TaskEngine,
   type TaskStatus,
 } from '@ntasks/domain';
+import { mayReach, reachable, type Principal } from '../auth.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
 import { commentView, historyView, proposalOf, webTask } from '../views.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
 
 export interface ReadContext {
   readonly engine: TaskEngine;
+  /** The signed-in sender, who sees only the projects it reaches. */
+  readonly principal: Principal;
   readonly now: () => string;
 }
 
-async function projectOf(engine: TaskEngine, projectId: string | undefined): Promise<Project> {
+/** The project a request names, among those the sender reaches. */
+async function projectOf({ engine, principal }: ReadContext, projectId: string | undefined): Promise<Project> {
   if (!projectId) invalidRequest('project is required: a projectId from /api/tasks/projects');
-  const project = (await engine.listProjects()).find((candidate) => candidate.id === projectId);
+  const project = reachable(principal, await engine.listProjects()).find((candidate) => candidate.id === projectId);
   return project ?? notFound(`no project ${projectId}; /api/tasks/projects lists them`);
 }
 
@@ -42,10 +46,10 @@ function epicView(epic: EpicProgress) {
 }
 
 /** GET /api/tasks/projects */
-export async function projects({ engine }: ReadContext, url: URL): Promise<Response> {
+export async function projects({ engine, principal }: ReadContext, url: URL): Promise<Response> {
   queryOf(url, []);
   return json({
-    projects: (await engine.listProjects()).map((project) => ({
+    projects: reachable(principal, await engine.listProjects()).map((project) => ({
       projectId: project.id,
       logicalKey: project.key,
       displayName: project.name,
@@ -66,7 +70,8 @@ export function capabilities(_context: ReadContext, url: URL): Response {
  * reaches further back than the board's week, and only on a read of closed
  * tasks alone, so the board itself stays a small read.
  */
-export async function boardRoute({ engine, now }: ReadContext, url: URL): Promise<Response> {
+export async function boardRoute(context: ReadContext, url: URL): Promise<Response> {
+  const { engine, now } = context;
   const query = queryOf(url, ['project', 'status', 'closedDays']);
   const statuses = query.status === undefined ? [...TASK_STATUSES] : query.status.split(',');
   if (
@@ -79,8 +84,10 @@ export async function boardRoute({ engine, now }: ReadContext, url: URL): Promis
   if (query.closedDays !== undefined && statuses.join(',') !== 'closed')
     invalidRequest('closedDays is for a read of closed tasks alone: status=closed');
   const closedDays = wholeOf(query, 'closedDays', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
-  const project = await projectOf(engine, query.project);
+  const project = await projectOf(context, query.project);
   const active = statuses.some((status) => status !== 'closed');
+  // Read before the board, so a change the board misses is after it in the feed.
+  const lastSeq = await engine.latestChange();
   const [found, epics] = await Promise.all([
     board(engine, project.id, statuses as TaskStatus[], closedDays, {}, now),
     active ? engine.listEpics(project.id) : null,
@@ -94,6 +101,7 @@ export async function boardRoute({ engine, now }: ReadContext, url: URL): Promis
     tasks: found.tasks.map(webTask),
     epics: epics?.map(epicView) ?? null,
     actors: [],
+    lastSeq,
   });
 }
 
@@ -102,9 +110,10 @@ async function taskIn(engine: TaskEngine, project: Project, taskId: string) {
 }
 
 /** GET /api/tasks/:id?project=… */
-export async function taskRoute({ engine, now }: ReadContext, url: URL, taskId: string): Promise<Response> {
+export async function taskRoute(context: ReadContext, url: URL, taskId: string): Promise<Response> {
+  const { engine, now } = context;
   const query = queryOf(url, ['project']);
-  const project = await projectOf(engine, query.project);
+  const project = await projectOf(context, query.project);
   const [task, comments] = await Promise.all([
     taskIn(engine, project, taskId),
     engine.listComments(project.id, taskId),
@@ -122,10 +131,11 @@ export async function taskRoute({ engine, now }: ReadContext, url: URL, taskId: 
 }
 
 /** GET /api/tasks/:id/history?project=…&limit=…: the task's changes, newest first. */
-export async function historyRoute({ engine }: ReadContext, url: URL, taskId: string): Promise<Response> {
+export async function historyRoute(context: ReadContext, url: URL, taskId: string): Promise<Response> {
+  const { engine } = context;
   const query = queryOf(url, ['project', 'limit']);
   const limit = wholeOf(query, 'limit', 1, TASK_LIMITS.page, 100);
-  const project = await projectOf(engine, query.project);
+  const project = await projectOf(context, query.project);
   const [, events] = await Promise.all([taskIn(engine, project, taskId), allEvents(engine, project.id, taskId)]);
   return json({ changes: historyView(events, limit, false) });
 }
@@ -135,12 +145,15 @@ export async function historyRoute({ engine }: ReadContext, url: URL, taskId: st
  * number `after`, oldest first, for a client that keeps its own copy. It asks
  * again with `after` set to the answer's `lastSeq`.
  */
-export async function changesRoute({ engine }: ReadContext, url: URL): Promise<Response> {
+export async function changesRoute(context: ReadContext, url: URL): Promise<Response> {
+  const { engine, principal } = context;
   const query = queryOf(url, ['after', 'limit', 'project']);
   const after = wholeOf(query, 'after', 0, Number.MAX_SAFE_INTEGER, 0);
   const limit = wholeOf(query, 'limit', 1, TASK_LIMITS.page, 100);
-  const projectId = query.project === undefined ? undefined : (await projectOf(engine, query.project)).id;
-  return json(await engine.listChanges({ after, limit, ...(projectId === undefined ? {} : { projectId }) }));
+  const projectId = query.project === undefined ? undefined : (await projectOf(context, query.project)).id;
+  const page = await engine.listChanges({ after, limit, ...(projectId === undefined ? {} : { projectId }) });
+  // lastSeq still moves past events the sender cannot see, so it asks after them next.
+  return json({ events: page.events.filter((event) => mayReach(principal, event.projectId)), lastSeq: page.lastSeq });
 }
 
 /** The task id in /api/tasks/:id and /api/tasks/:id/history, or null for another path. */

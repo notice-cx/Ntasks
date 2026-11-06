@@ -114,11 +114,11 @@ export function TasksBoard() {
   );
 
   let body: ReactNode;
-  if (board.catalog.isError) {
+  if (board.readFailure !== null) {
     body = (
       <ReadFailed
         title="Couldn't load your projects"
-        error={board.catalog.error}
+        error={board.readFailure}
         retrying={board.fetching}
         onRetry={() => void board.refetch()}
       />

@@ -13,12 +13,52 @@
   // this Worker. Any other path is served from the build; a page address with
   // no file of its own serves index.html, and the app routes it. All of /api/*
   // is listed, so an API client asking for a path that does not exist gets
-  // the Worker's JSON 404, never the app's HTML.
+  // the Worker's JSON 404, never the app's HTML. The sign-in pages and the
+  // OAuth discovery documents MCP clients read are the Worker's too
+  // (src/access/protocol.ts).
   "assets": {
     "directory": "../../apps/web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/healthz", "/api/*"]
+    "run_worker_first": [
+      "/healthz",
+      "/api/*",
+      "/sign-in",
+      "/agent-access",
+      "/.well-known/oauth-authorization-server",
+      "/.well-known/oauth-authorization-server/*",
+      "/.well-known/oauth-protected-resource/*"
+    ]
   },
+  // Sign-in settings, set with `wrangler secret put` on a deployment and in
+  // .dev.vars locally; docs/sign-in.md lists them. Without them sign-in is
+  // off and every call that needs a signed-in sender is refused.
+  "secrets": {
+    "required": ["NTASKS_ORIGIN", "AUTH_SECRET", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "OWNER_GITHUB_IDS"]
+  },
+  // About 30 sign-in requests a minute from one address; about 3 agent
+  // registrations a minute from one address and 10 from all addresses
+  // together. Each registration writes to D1 without anyone signed in, and
+  // the free plan's daily write limit stops every query once reached.
+  // Cloudflare counts each limit separately in each of its locations, so the
+  // numbers are approximate. namespace_id names a limiter within the account;
+  // it is not a secret.
+  "ratelimits": [
+    {
+      "name": "SIGN_IN_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "REGISTER_LIMIT",
+      "namespace_id": "1002",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "REGISTER_ADDRESS_LIMIT",
+      "namespace_id": "1003",
+      "simple": { "limit": 3, "period": 60 }
+    }
+  ],
   // The one workspace this installation serves. Agents name it on every task
   // tool call, as they named a NoticeOS workspace; an installation that takes
   // over from NoticeOS sets WORKSPACE_ID to that workspace's id, so agents'

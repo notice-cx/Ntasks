@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, createHttpTasksApi } from '@/api/client';
+import { ApiError, createHttpTasksApi, retryRead, UnreadableAnswer } from '@/api/client';
 
 interface Sent {
   url: string;
@@ -28,6 +28,23 @@ function server(answer: (sent: Sent) => Response = () => Response.json({ id: 'we
   });
   return { api, sent };
 }
+
+describe('which failed reads are tried again', () => {
+  it('retries a lost connection or a server error, never a refusal', () => {
+    expect(retryRead(0, new TypeError('Failed to fetch'))).toBe(true);
+    expect(retryRead(0, new ApiError('The task list: the server answered 503.', 503, null))).toBe(true);
+    expect(retryRead(3, new ApiError('The task list: the server answered 503.', 503, null))).toBe(false);
+    expect(retryRead(0, new ApiError('Sign in to see your tasks.', 401, 'sign_in_required'))).toBe(false);
+    expect(retryRead(0, new ApiError('Task web-a1: not found.', 404, 'not_found'))).toBe(false);
+  });
+
+  it('does not retry an answer whose shape the app cannot read', async () => {
+    const api = createHttpTasksApi(async () => Response.json({ projects: [{ projectId: 'p-web' }] }));
+    const error: unknown = await api.projects().catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(UnreadableAnswer);
+    expect(retryRead(0, error)).toBe(false);
+  });
+});
 
 describe('the HTTP Tasks API client', () => {
   it('reads a board and a task by the project id the project list gives', async () => {

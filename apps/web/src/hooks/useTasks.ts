@@ -42,7 +42,7 @@ export function writesAvailable(capabilities: TasksCapabilities): boolean {
   return capabilities.live && capabilities.writable !== false;
 }
 
-export const READ_ONLY = 'This sign-in can read tasks but not change them.';
+export const READ_ONLY = 'Read-only: tasks cannot be changed here.';
 
 /**
  * Why a verb is unavailable, as the words written beside it: null when it is
@@ -104,7 +104,6 @@ export function useTask(id: string, project: string | null) {
     queryFn: ({ signal }) => api.task(id, project as string, signal),
     enabled: project !== null && id !== '',
     staleTime: 15_000,
-    retry: (count, error) => count < 2 && !(error instanceof Error && 'status' in error && error.status === 404),
   });
 }
 

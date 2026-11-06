@@ -55,6 +55,32 @@ export interface TasksApi {
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions): Promise<void>;
 }
 
+/** Where the owner signs in: the Worker's own page, outside this app. */
+export const SIGN_IN_PATH = '/sign-in';
+
+/** Whether a refusal means nobody is signed in, so the next step is signing in. */
+export function needsSignIn(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+/**
+ * Whether a failed read is worth trying again: a lost connection or a server
+ * error may pass, but a refusal (sign in, not found, a bad request) answers
+ * the same way every time, and retrying only delays saying so.
+ */
+export function retryRead(failures: number, error: unknown): boolean {
+  if (error instanceof UnreadableAnswer) return false;
+  return failures < 3 && !(error instanceof ApiError && error.status < 500);
+}
+
+/** An answer whose shape this app does not know. The server sends the same one again, so it is not retried. */
+export class UnreadableAnswer extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnreadableAnswer';
+  }
+}
+
 /** A refused request, with the server's own sentence when it sent one. */
 export class ApiError extends Error {
   readonly status: number;
@@ -90,16 +116,19 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
   }
   const sentence =
     detail ??
-    (response.status === 404
-      ? `${what}: not found.`
-      : response.status === 401 || response.status === 403
-        ? `${what}: this sign-in may not do that.`
-        : `${what}: the server answered ${response.status}.`);
+    (response.status === 401
+      ? 'Sign in to see your tasks.'
+      : response.status === 404
+        ? `${what}: not found.`
+        : response.status === 401 || response.status === 403
+          ? `${what}: this sign-in may not do that.`
+          : `${what}: the server answered ${response.status}.`);
   return new ApiError(sentence, response.status, code);
 }
 
 function readProjects(payload: unknown): readonly TaskProject[] {
-  if (!isRecord(payload) || !Array.isArray(payload.projects)) throw new Error('The project list could not be read.');
+  if (!isRecord(payload) || !Array.isArray(payload.projects))
+    throw new UnreadableAnswer('The project list could not be read.');
   return Object.freeze(
     payload.projects.map((row: unknown) => {
       if (
@@ -109,7 +138,7 @@ function readProjects(payload: unknown): readonly TaskProject[] {
         typeof row.displayName !== 'string' ||
         typeof row.prefix !== 'string'
       ) {
-        throw new Error('The project list could not be read.');
+        throw new UnreadableAnswer('The project list could not be read.');
       }
       return Object.freeze({
         projectId: row.projectId,
@@ -266,7 +295,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       );
       const created: unknown = await response.json();
       if (!isRecord(created) || typeof created.id !== 'string')
-        throw new Error('The new task was filed, but its id could not be read.');
+        throw new UnreadableAnswer('The new task was filed, but its id could not be read.');
       return { id: created.id, project };
     },
     async updateTask(id, project, edit, options) {

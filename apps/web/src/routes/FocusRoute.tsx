@@ -76,11 +76,11 @@ export function FocusRoute() {
   const names = new Map(board.available.map((row) => [row.key, row.name]));
 
   let body;
-  if (board.catalog.isError) {
+  if (board.readFailure !== null) {
     body = (
       <ReadFailed
         title="Couldn't load your projects"
-        error={board.catalog.error}
+        error={board.readFailure}
         retrying={board.fetching}
         onRetry={() => void board.refetch()}
       />
