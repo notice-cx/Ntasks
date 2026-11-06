@@ -29,8 +29,9 @@ export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
 export const TASK_PRIORITY = Object.freeze({ highest: 0, lowest: 4, default: 2 });
 
 /**
- * The largest values the API accepts in a write. The database's own limits
- * are higher, so that imported history always fits.
+ * The largest values the API accepts in a new write. The database accepts at
+ * least these, and as much as Beads' own columns hold, so that a task imported
+ * from Beads fits (workers/api/migrations/0001_task_store.sql).
  */
 export const TASK_LIMITS = Object.freeze({
   title: 512,

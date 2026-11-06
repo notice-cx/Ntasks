@@ -61,7 +61,25 @@ function eventRow(projectId: string, taskId: string, fields: Row = {}): Row {
   return { task_id: taskId, project_id: projectId, version: 1, kind: 'updated', actor: 'tester', at: LATER, changes: '{}', ...fields };
 }
 
+/** The values a table's CHECK allows for one column, read from the schema itself. */
+async function checkList(table: string, column: string): Promise<string[]> {
+  const row = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first<{ sql: string }>();
+  const list = new RegExp(`\\b${column} IN \\(([^)]*)\\)`, 'u').exec(row?.sql ?? '')?.[1];
+  if (list === undefined) throw new Error(`${table} has no CHECK list for ${column}`);
+  return [...list.matchAll(/'([^']*)'/gu)].map((match) => match[1]!);
+}
+
 describe('the schema accepts exactly the task model vocabulary', () => {
+  it.each([
+    ['tasks', 'status', TASK_STATUSES],
+    ['tasks', 'type', TASK_TYPES],
+    ['tasks', 'resolution', TASK_RESOLUTIONS],
+    ['task_edges', 'type', DEPENDENCY_TYPES],
+    ['task_events', 'kind', TASK_EVENT_KINDS],
+  ] as const)('%s.%s allows the domain list and nothing else', async (table, column, domainList) => {
+    expect((await checkList(table, column)).sort()).toEqual([...domainList].sort());
+  });
+
   it.each(TASK_STATUSES)('accepts the status %s', async (status) => {
     await expect(newTask(status === 'closed' ? CLOSED : { status })).resolves.toBeDefined();
   });
@@ -240,8 +258,30 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(newTask({ status: 'closed' })).rejects.toThrow(/CHECK constraint failed/u);
   });
 
-  it('refuses close details on a task that is not closed', async () => {
-    await expect(newTask({ close_reason: 'Shipped' })).rejects.toThrow(/CHECK constraint failed/u);
+  it.each([
+    ['a close time', { closed_at: LATER }],
+    ['a resolution', { resolution: 'done' }],
+    ['a close reason', { close_reason: 'Shipped' }],
+    ['a closer', { closed_by: 'tester' }],
+    ['a closer model', { closed_model: 'claude-opus-5-5' }],
+  ] as const)('refuses %s on a task that is not closed', async (_case, fields) => {
+    await expect(newTask(fields)).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
+  it('refuses a duplicate close left on a task that is not closed', async () => {
+    const other = await newTask();
+    await expect(newTask({ resolution: 'duplicate', duplicate_of: other.taskId })).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
+  it('accepts a task as large as Beads stores one', async () => {
+    const name = 'n'.repeat(255);
+    const { taskId } = await newTask({ assignee: name, title: 't'.repeat(500), description: 'd'.repeat(200_000) });
+
+    await expect(insert('task_labels', { task_id: taskId, label: name }).run()).resolves.toBeDefined();
+  });
+
+  it('refuses a name longer than 255 characters', async () => {
+    await expect(newTask({ assignee: 'n'.repeat(256) })).rejects.toThrow(/CHECK constraint failed/u);
   });
 
   it('refuses a project prefix with a hyphen', async () => {

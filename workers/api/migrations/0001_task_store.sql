@@ -7,8 +7,11 @@
 -- Times are UTC ISO 8601 text with milliseconds, such as
 -- 2026-11-06T17:55:06.376Z, so they sort correctly as text.
 --
--- Length limits here are a storage backstop, set above the API's own limits
--- (TASK_LIMITS in packages/domain) so that imported history always fits.
+-- Length limits here are a storage backstop. Names, such as an assignee, a
+-- label or a model, allow 255 characters, as Beads' columns do; a title
+-- allows 1024, above Beads' 500; long text has no limit here, as in Beads.
+-- So a task imported from Beads always fits. The API accepts less in a new
+-- write: TASK_LIMITS in packages/domain.
 
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,
@@ -22,7 +25,7 @@ CREATE TABLE projects (
 ) STRICT;
 
 CREATE TABLE tasks (
-  id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 3 AND 128 AND id NOT GLOB '*[^a-z0-9.-]*'),
+  id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 3 AND 255 AND id NOT GLOB '*[^a-z0-9.-]*'),
   project_id TEXT NOT NULL REFERENCES projects (id),
   parent_id TEXT REFERENCES tasks (id),
   type TEXT NOT NULL CHECK (type IN ('task', 'bug', 'feature', 'epic', 'chore', 'decision', 'gate')),
@@ -31,11 +34,11 @@ CREATE TABLE tasks (
   status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'blocked', 'deferred', 'closed')),
   priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 4),
   title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 1024),
-  description TEXT NOT NULL DEFAULT '' CHECK (length(description) <= 65536),
-  acceptance TEXT NOT NULL DEFAULT '' CHECK (length(acceptance) <= 65536),
-  assignee TEXT CHECK (assignee IS NULL OR length(assignee) BETWEEN 1 AND 128),
+  description TEXT NOT NULL DEFAULT '',
+  acceptance TEXT NOT NULL DEFAULT '',
+  assignee TEXT CHECK (assignee IS NULL OR length(assignee) BETWEEN 1 AND 255),
   -- The model the assignee named when it claimed the task.
-  assignee_model TEXT CHECK (assignee_model IS NULL OR length(assignee_model) BETWEEN 1 AND 128),
+  assignee_model TEXT CHECK (assignee_model IS NULL OR length(assignee_model) BETWEEN 1 AND 255),
   defer_until TEXT,
   due_at TEXT,
   -- A decision's options, and the option a person chose, as JSON objects.
@@ -44,24 +47,26 @@ CREATE TABLE tasks (
   -- Fields that other systems attach, as one JSON object Ntasks stores as given.
   metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata) AND json_type(metadata) = 'object'),
   -- Who filed the task, and with which model. Null on a task imported without them.
-  filed_by TEXT,
-  filed_model TEXT,
+  filed_by TEXT CHECK (filed_by IS NULL OR length(filed_by) BETWEEN 1 AND 255),
+  filed_model TEXT CHECK (filed_model IS NULL OR length(filed_model) BETWEEN 1 AND 255),
   -- How the current close ended. All null while the task is not closed;
   -- earlier closes stay in task_events.
-  close_reason TEXT CHECK (close_reason IS NULL OR length(close_reason) <= 65536),
+  close_reason TEXT,
   resolution TEXT CHECK (resolution IS NULL OR resolution IN ('done', 'wont-do', 'duplicate', 'cant-reproduce', 'already-handled', 'no-longer-needed')),
   duplicate_of TEXT REFERENCES tasks (id),
-  closed_by TEXT,
-  closed_model TEXT,
+  closed_by TEXT CHECK (closed_by IS NULL OR length(closed_by) BETWEEN 1 AND 255),
+  closed_model TEXT CHECK (closed_model IS NULL OR length(closed_model) BETWEEN 1 AND 255),
   -- Raised by one with every change, so a write can name the version it read.
   version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
   closed_at TEXT,
-  -- A task is closed exactly when it records when and how it closed.
-  CHECK ((status = 'closed') = (closed_at IS NOT NULL AND resolution IS NOT NULL)),
-  CHECK (status = 'closed' OR (close_reason IS NULL AND closed_by IS NULL AND closed_model IS NULL)),
+  -- A closed task records when and how it closed, and any other task records
+  -- no close at all, so a reopen cannot leave part of the old close behind.
+  CHECK (status <> 'closed' OR (closed_at IS NOT NULL AND resolution IS NOT NULL)),
+  CHECK (status = 'closed' OR (closed_at IS NULL AND resolution IS NULL AND close_reason IS NULL
+    AND duplicate_of IS NULL AND closed_by IS NULL AND closed_model IS NULL)),
   CHECK (duplicate_of IS NULL OR resolution = 'duplicate'),
   CHECK (parent_id IS NULL OR parent_id <> id)
 ) STRICT;
@@ -73,7 +78,7 @@ CREATE INDEX tasks_by_assignee ON tasks (assignee) WHERE assignee IS NOT NULL;
 
 CREATE TABLE task_labels (
   task_id TEXT NOT NULL REFERENCES tasks (id),
-  label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 128),
+  label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 255),
   PRIMARY KEY (task_id, label)
 ) STRICT, WITHOUT ROWID;
 
@@ -88,7 +93,7 @@ CREATE TABLE task_edges (
   depends_on_id TEXT NOT NULL REFERENCES tasks (id),
   type TEXT NOT NULL CHECK (type IN ('blocks', 'related', 'discovered-from')),
   created_at TEXT NOT NULL,
-  created_by TEXT,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) BETWEEN 1 AND 255),
   PRIMARY KEY (task_id, depends_on_id),
   CHECK (task_id <> depends_on_id)
 ) STRICT, WITHOUT ROWID;
@@ -98,8 +103,8 @@ CREATE INDEX task_edges_by_dependency ON task_edges (depends_on_id, type);
 CREATE TABLE task_comments (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks (id),
-  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 128),
-  text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 65536),
+  author TEXT NOT NULL CHECK (length(author) BETWEEN 1 AND 255),
+  text TEXT NOT NULL CHECK (length(text) >= 1),
   created_at TEXT NOT NULL
 ) STRICT;
 
@@ -115,8 +120,8 @@ CREATE TABLE task_events (
   -- The task's version after this change; a comment leaves it unchanged.
   version INTEGER NOT NULL CHECK (version >= 1),
   kind TEXT NOT NULL CHECK (kind IN ('created', 'updated', 'closed', 'reopened', 'commented')),
-  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 128),
-  model TEXT,
+  actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 255),
+  model TEXT CHECK (model IS NULL OR length(model) BETWEEN 1 AND 255),
   at TEXT NOT NULL,
   -- What the change set, as an object of field names and their new values.
   -- The created event holds every field, so applying a task's events in
