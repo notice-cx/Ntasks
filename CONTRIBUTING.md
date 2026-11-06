@@ -19,7 +19,7 @@ pnpm install
 
 No Cloudflare account is needed. Tests and `pnpm dev` run the Worker in
 [workerd](https://github.com/cloudflare/workerd), the open-source runtime that
-runs Workers on Cloudflare, with a local D1 database.
+runs Workers on Cloudflare, with a local task store and a local D1 database.
 
 ## Commands
 
@@ -52,9 +52,9 @@ pnpm --filter @ntasks/domain test
   start the Worker behind Cloudflare's static-file layer to check which paths
   reach it. The task model's tests live in
   [`packages/domain/test/`](packages/domain/test/) and run in Node.
-- **The database changes through migrations.** Follow
-  [the migration rules](workers/api/migrations/README.md); a merged migration
-  never changes.
+- **The databases change through migrations.** Follow the migration rules
+  for [the task store](workers/api/src/store/migrations/README.md) and for
+  [D1](workers/api/migrations/README.md); a merged migration never changes.
 - **Worker settings regenerate the Worker's types.** After editing
   [`workers/api/wrangler.jsonc`](workers/api/wrangler.jsonc), run
   `pnpm --filter @ntasks/api run types` and commit the regenerated
@@ -84,7 +84,7 @@ remaining cases and the other four.
   (`@typescript-eslint/no-floating-promises`), and a promise passed where the
   code expects none, such as an `if` condition or the callback of `forEach`
   (`@typescript-eslint/no-misused-promises`). It reads the types, so it
-  reports a D1 call such as `db.prepare(sql).run()` that nothing awaits. It
+  reports a database call such as `db.prepare(sql).run()` that nothing awaits. It
   also accepts `void promise` and `promise.catch(handler)`, which do not keep
   the Worker from cutting the promise off; use `ctx.waitUntil()` for work that
   must outlive the response.

@@ -1,7 +1,7 @@
 /**
  * The task model's vocabulary and record shapes. docs/concepts.md introduces
  * each term. The lists below are also CHECK constraints in
- * workers/api/migrations/0001_task_store.sql; the Worker's schema tests fail
+ * workers/api/src/store/migrations/0001_task_store.sql; the Worker's schema tests fail
  * when the two disagree.
  */
 
@@ -31,7 +31,7 @@ export const TASK_PRIORITY = Object.freeze({ highest: 0, lowest: 4, default: 2 }
 /**
  * The largest values the API accepts in a new write. The database accepts at
  * least these, and as much as Beads' own columns hold, so that a task imported
- * from Beads fits (workers/api/migrations/0001_task_store.sql).
+ * from Beads fits (workers/api/src/store/migrations/0001_task_store.sql).
  */
 export const TASK_LIMITS = Object.freeze({
   title: 512,

@@ -1,6 +1,7 @@
-// Every write the engine makes. Each is one D1 batch, which commits whole or
-// not at all; the write guard (migrations/0001_task_store.sql) rolls a batch
-// back when its versioned update matched no row or a link would close a loop.
+// Every write the engine makes. Each is one batch, which commits whole or not
+// at all; the write guard (src/store/migrations/0001_task_store.sql) rolls a
+// batch back when its versioned update matched no row or a link would close a
+// loop.
 import {
   guardRefusalOf,
   TaskRefused,
@@ -19,6 +20,7 @@ import {
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
+import type { Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
 import { toTask, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
@@ -78,19 +80,19 @@ function linkList(links: ReadonlyMap<string, DependencyType>): Json {
 }
 
 export class Writes {
-  readonly #db: D1Database;
+  readonly #db: Database;
   readonly #reads: Reads;
   readonly #now: () => string;
   readonly #newKey: () => string;
 
-  constructor(db: D1Database, reads: Reads, options: WriteOptions) {
+  constructor(db: Database, reads: Reads, options: WriteOptions) {
     this.#db = db;
     this.#reads = reads;
     this.#now = options.now;
     this.#newKey = options.newKey;
   }
 
-  #insert(table: string, row: Row): D1PreparedStatement {
+  #insert(table: string, row: Row): Statement {
     const columns = Object.keys(row);
     return this.#db
       .prepare(
@@ -120,7 +122,7 @@ export class Writes {
   }
 
   /** Fails the batch with `cycle` if `from` already waits, through blocks links, on `to`. */
-  #noBlockingLoop(from: string, to: string): D1PreparedStatement {
+  #noBlockingLoop(from: string, to: string): Statement {
     return this.#db
       .prepare(
         `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
@@ -136,7 +138,7 @@ export class Writes {
   }
 
   /** Fails the batch with `cycle` if `taskId` is `parentId` or one of its ancestors. */
-  #noParentLoop(parentId: string, taskId: string): D1PreparedStatement {
+  #noParentLoop(parentId: string, taskId: string): Statement {
     return this.#db
       .prepare(
         `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
@@ -171,7 +173,7 @@ export class Writes {
   }
 
   /** Clears this principal's expired records, then records this write's result. */
-  #receipt(retry: Retry | undefined, projectId: string, result: JsonObject, at: string): D1PreparedStatement[] {
+  #receipt(retry: Retry | undefined, projectId: string, result: JsonObject, at: string): Statement[] {
     if (retry === undefined) return [];
     return [
       this.#db
@@ -290,7 +292,7 @@ export class Writes {
         fields.parentId === null ? `${project.prefix}-${this.#newKey()}` : await this.#childId(fields.parentId);
       const at = this.#now();
       const dependencies = new Map<string, DependencyType>();
-      const statements: D1PreparedStatement[] = [
+      const statements: Statement[] = [
         this.#insert('tasks', {
           id,
           project_id: projectId,
@@ -520,7 +522,7 @@ export class Writes {
       const version = current.version + 1;
       const assignments = Object.keys(columns).map((column, index) => `${column} = ?${index + 1}`);
       const values = Object.values(columns);
-      const statements: D1PreparedStatement[] = [
+      const statements: Statement[] = [
         this.#db
           .prepare(
             `UPDATE tasks SET ${[...assignments, 'version = version + 1', `updated_at = ?${values.length + 1}`].join(', ')}

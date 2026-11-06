@@ -2,6 +2,7 @@
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
 import type { Project, TaskEngine } from '@ntasks/domain';
+import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
 import {
@@ -13,7 +14,7 @@ import {
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, callTool, NOBODY, ORIGIN, read, READER, refusal, WORKSPACE, type TestApi } from './helpers.ts';
+import { api, callTool, NOBODY, ORIGIN, read, READER, refusal, worker, WORKSPACE, type TestApi } from './helpers.ts';
 
 const time = clock('2026-11-06T12:00:00.000Z');
 let target: TestApi;
@@ -163,9 +164,7 @@ describe('the workspace and scope of a call', () => {
   });
 
   it('answers 401 from the sign-in when nobody is signed in', async () => {
-    const response = await api({ principal: null }).fetch(
-      new Request(`${ORIGIN}/api/mcp`, { method: 'POST', body: '{}' }),
-    );
+    const response = await worker(null).fetch(new Request(`${ORIGIN}/api/mcp`, { method: 'POST', body: '{}' }), env);
     expect(response.status).toBe(401);
   });
 });

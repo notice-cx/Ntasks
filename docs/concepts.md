@@ -142,11 +142,11 @@ returns metadata; it does not depend on any one system's fields.
 [Beads](https://github.com/gastownhall/beads) is a command-line issue tracker
 built for AI coding agents. Ntasks follows its task model: the dependency
 graph, ready work, claims, epics, decisions and approvals. It implements that
-model itself, on D1, instead of running Beads.
+model itself, in a Cloudflare Durable Object, instead of running Beads.
 
 | | Beads | Ntasks |
 |---|---|---|
-| Runs as | A command-line tool over a Dolt database | A Cloudflare Worker over a D1 database |
+| Runs as | A command-line tool over a Dolt database | A Cloudflare Worker and a Durable Object with its own SQLite database |
 | Reached by | The `bd` command | HTTP and the Model Context Protocol |
 | Task ids | A prefix may contain hyphens, as in `web-app-a3f8e9` | A prefix has no hyphens, so it ends at the first one |
 | History | Dolt versions the whole database, with branches and merges | Each task records its own changes; there are no branches |

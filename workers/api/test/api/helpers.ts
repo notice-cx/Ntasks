@@ -1,11 +1,13 @@
-// Shared set-up for the API tests: the API around this run's database, a
-// sender signed in with the scopes a test gives them, and calls to its MCP
-// endpoint and HTTP routes.
+// Shared set-up for the API tests: the API as the task store answers it, a
+// sender the Worker signed in with the scopes a test gives them, and calls to
+// its MCP endpoint and HTTP routes.
 import type { TaskEngine } from '@ntasks/domain';
-import { env } from 'cloudflare:workers';
-import { createApi } from '../../src/api.ts';
+import { serveApi } from '../../src/api.ts';
 import { SCOPES, type Authenticator, type Principal } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
+import type { Meter } from '../../src/store/sqlite.ts';
+import { createWorker } from '../../src/worker.ts';
+import { storeDatabase } from '../store.ts';
 
 export const WORKSPACE = Object.freeze({ id: 'workspace-test', name: 'Test workspace' });
 export const ORIGIN = 'https://ntasks.test';
@@ -21,21 +23,23 @@ export function signedInAs(principal: Principal | null): Authenticator {
   };
 }
 
+/** The Worker as deployed, but signing every request in as `principal`. */
+export function worker(principal: Principal | null) {
+  return createWorker({ authenticator: () => signedInAs(principal) });
+}
+
 export interface TestApi {
   readonly engine: TaskEngine;
   fetch(request: Request): Promise<Response>;
 }
 
-export function api(options: { principal?: Principal | null; now?: () => string; db?: D1Database } = {}): TestApi {
+/** The API as the task store answers it for `principal`, on the store's
+ * storage, with a clock the test sets and its statements counted in `meter`. */
+export function api(options: { principal?: Principal; now?: () => string; meter?: Meter } = {}): TestApi {
   const now = options.now ?? (() => new Date().toISOString());
-  const engine = createEngine(options.db ?? env.DB, { now });
-  const served = createApi({
-    engine,
-    authenticator: signedInAs(options.principal === undefined ? READER : options.principal),
-    workspace: WORKSPACE,
-    now,
-  });
-  return { engine, fetch: (request) => served.fetch(request) };
+  const engine = createEngine(storeDatabase(options.meter), { now });
+  const principal = options.principal ?? READER;
+  return { engine, fetch: (request) => serveApi(request, principal, { engine, workspace: WORKSPACE, now }) };
 }
 
 /** A JSON-RPC reply to a tools/call, with the fields the tests read. */
