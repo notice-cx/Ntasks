@@ -129,6 +129,51 @@ describe('a service acting for an agent it names', () => {
     expect(again).toMatchObject({ replayed: true, task: { id: first.task.id } });
   });
 
+  it('files and claims a task through the MCP write tools as the agent it names', async () => {
+    const project = await createProject('Written');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const service = await serviceFor(browser, 'noticeos-writes', project);
+    const bearer = { authorization: `Bearer ${service.token}` };
+    const agentA = { ...bearer, [ON_BEHALF_OF_HEADER]: 'agent-a' };
+    const agentB = { ...bearer, [ON_BEHALF_OF_HEADER]: 'agent-b' };
+    const workspace = env.WORKSPACE_ID;
+    const create = (headers: Record<string, string>) =>
+      tool(headers, 'create_task', {
+        workspace,
+        project,
+        title: 'File it through the tool',
+        model: 'example-model',
+        idempotency_key: 'create-same-key-0001',
+      }) as Promise<{ id: string; replayed: boolean }>;
+
+    const created = await create(agentA);
+    const claimed = (await tool(agentA, 'claim_task', {
+      workspace,
+      project,
+      task: created.id,
+      model: 'example-model',
+      idempotency_key: 'claim-agent-a-0001',
+    })) as { task: { assignee: string } };
+    expect(claimed.task.assignee).toBe('service:noticeos-writes/agent-a');
+    const stored = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.getTask(project, created.id),
+    );
+    expect(stored).toMatchObject({
+      filedBy: 'service:noticeos-writes/agent-a',
+      filedModel: 'example-model',
+      assignee: 'service:noticeos-writes/agent-a',
+      assigneeModel: 'example-model',
+    });
+
+    // The same idempotency key from another agent files that agent's own task;
+    // from the first agent again, it replays the first answer.
+    const fromB = await create(agentB);
+    expect(fromB).toMatchObject({ replayed: false });
+    expect(fromB.id).not.toBe(created.id);
+    expect(await create(agentA)).toEqual({ ...created, replayed: true });
+  });
+
   it('refuses a malformed or too long agent name with 400, through the Worker', async () => {
     const project = await createProject('Refused');
     const browser = new Browser();
