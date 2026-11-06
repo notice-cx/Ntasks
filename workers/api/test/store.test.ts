@@ -85,7 +85,8 @@ describe('reads from memory', () => {
 
       const first = await board();
       const again = await board();
-      await instance.tasks.createTask(project.id, { title: 'Second' }, AGENT);
+      // A lower priority orders it after First even when both are created in the same millisecond.
+      await instance.tasks.createTask(project.id, { title: 'Second', priority: 3 }, AGENT);
       const afterWrite = await board();
 
       expect(first.titles).toEqual(['First']);

@@ -410,7 +410,8 @@ describe('epics', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const epic = await make(tasks, project.id, 'Launch', { title: '', type: 'epic' });
-    const empty = await make(tasks, project.id, 'Empty epic', { title: '', type: 'epic' });
+    // A lower priority lists it second even when both are created in the same millisecond.
+    const empty = await make(tasks, project.id, 'Empty epic', { title: '', type: 'epic', priority: 3 });
     const one = await make(tasks, project.id, 'One', { title: '', parentId: epic.id });
     const two = await make(tasks, project.id, 'Two', { title: '', parentId: epic.id });
     await close(tasks, project.id, one);
@@ -429,7 +430,7 @@ describe('epics', () => {
         id: empty.id,
         title: 'Empty epic',
         status: 'open',
-        priority: 2,
+        priority: 3,
         children: 0,
         closedChildren: 0,
         eligibleForClose: false,
