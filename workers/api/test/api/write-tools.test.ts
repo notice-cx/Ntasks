@@ -342,6 +342,42 @@ describe('create_task', () => {
   });
 });
 
+describe('a create whose blocked task keeps changing', () => {
+  it('answers that the change did not land, for create_task and for an entry of create_tasks', async () => {
+    const project = await newProject(engine);
+    const other = await task(project, { title: 'Busy' });
+    const busy = api({
+      principal: WRITER,
+      engine,
+      wrap: (inner) => ({
+        ...inner,
+        // What the engine answers once its own retries are spent.
+        createTask: async () => {
+          throw new TaskRefused('version_conflict', 'A task this new one blocks kept changing; try again.');
+        },
+      }),
+    });
+    const unavailable =
+      "unavailable: the task store did not complete this call, and nothing in the task's state explains it. Retry the same call; with the same idempotency_key a change lands at most once.";
+    expect(
+      await refusal(busy, 'create_task', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        title: 'Blocks it',
+        blocks: [other.id],
+        idempotency_key: key(),
+      }),
+    ).toBe(unavailable);
+    expect(
+      await write(busy, 'create_tasks', {
+        project: project.id,
+        tasks: [{ title: 'Blocks it', blocks: [other.id] }],
+        idempotency_key: key(),
+      }),
+    ).toMatchObject({ created: [], failed: { index: 0, error: unavailable } });
+  });
+});
+
 describe('create_tasks', () => {
   it('files several tasks in order, an entry naming an earlier one by its place', async () => {
     const project = await newProject(engine);

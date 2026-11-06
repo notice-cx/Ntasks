@@ -95,11 +95,14 @@ function unavailable(keyed: boolean): Refused {
 
 /** A refusal from the engine, in the API's words. Its own checks come first,
  * so these are what slipped past them, such as a link that would close a loop. */
-function fromEngine(error: unknown, loop?: Refused): unknown {
+function fromEngine(error: unknown, { loop, keyed = false }: { loop?: Refused; keyed?: boolean } = {}): unknown {
   if (!(error instanceof TaskRefused)) return error;
   switch (error.refusal) {
     case 'retry_conflict':
       return conflict();
+    // The engine tried again itself, and another write kept changing a task this one changes.
+    case 'version_conflict':
+      return unavailable(keyed);
     case 'cycle':
       return (
         loop ??
@@ -203,7 +206,7 @@ async function changing(
       return await context.engine.writeTask(project.id, task.id, write, actor, retry);
     } catch (error) {
       const raced = error instanceof TaskRefused && (error.refusal === 'version_conflict' || error.refusal === 'held');
-      if (!raced) throw fromEngine(error, loop);
+      if (!raced) throw fromEngine(error, { loop });
       task = await taskOf(context, project, task.id);
     }
   }
@@ -307,7 +310,7 @@ export async function createTask(
     const result = await context.engine.createTask(project.id, input, actorOf(context.principal, model), retry);
     return { project, result };
   } catch (error) {
-    throw fromEngine(error);
+    throw fromEngine(error, { keyed: retry !== undefined });
   }
 }
 
