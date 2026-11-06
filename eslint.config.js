@@ -10,6 +10,22 @@ const SECRET_NAME = '/(secret|token|password|passcode|signature|hmac|api_?key)$/
 // The declarations at the top of a module, with and without `export`.
 const MODULE_DECLARATION = ':matches(Program, Program > ExportNamedDeclaration) > VariableDeclaration';
 
+// Where a comparison's operand shows its name: the operand itself (`token`,
+// `session.token`), or inside a non-null assertion, a cast or an optional
+// chain, each of which wraps it in a node with an `expression`. Two wrappers
+// deep covers `(session?.token as string)`.
+const NAME_PATHS = [
+  'name',
+  'property.name',
+  'expression.name',
+  'expression.property.name',
+  'expression.expression.name',
+  'expression.expression.property.name',
+];
+const SECRET_OPERAND = ['left', 'right']
+  .flatMap((side) => NAME_PATHS.map((path) => `[${side}.${path}=${SECRET_NAME}]`))
+  .join(', ');
+
 // A collection that starts empty is there to be filled while the Worker runs.
 const EMPTY_COLLECTION = [
   '[init.type="NewExpression"][init.callee.name=/^(Map|Set|WeakMap|WeakSet)$/][init.arguments.length=0]',
@@ -92,11 +108,12 @@ export default [
             'A module-level collection that starts empty is filled by requests and shared with the next one. Keep request data in the request.',
         })),
         {
-          // A direct comparison only: a secret reached through another name, or
-          // compared in a helper, is left to review.
+          // A direct comparison only: a secret reached through another name,
+          // compared in a helper, or wrapped more than two deep is left to
+          // review.
           selector: [
             'BinaryExpression[operator=/^[=!]==?$/]',
-            `:matches([left.name=${SECRET_NAME}], [left.property.name=${SECRET_NAME}], [right.name=${SECRET_NAME}], [right.property.name=${SECRET_NAME}])`,
+            `:matches(${SECRET_OPERAND})`,
             // esquery reads a missing attribute as the text "undefined", so
             // [left.name="undefined"] would match every node with no name.
             ':not(:matches([left.raw="null"], [right.raw="null"], [left.name=/^undefined$/], [right.name=/^undefined$/], [left.value=""], [right.value=""]))',

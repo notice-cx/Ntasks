@@ -46,10 +46,15 @@ export function compare(): boolean {
   if (token === expected) return true; // no-restricted-syntax
   if (session.signature !== expected) return false; // no-restricted-syntax
   if (expected == session.token) return true; // no-restricted-syntax
+  if (token! === expected) return true; // no-restricted-syntax
+  if ((token as string) === expected) return true; // no-restricted-syntax
+  if (session?.token === expected) return true; // no-restricted-syntax
+  if (expected !== (session?.signature as string)) return false; // no-restricted-syntax
 
   // Not a comparison of a secret with another value.
   if (token === undefined || session.token === null || token === '') return false;
-  if (session.kind === 'token' || session.tokenType === 'bearer') return false;
+  if (token! === undefined || (session?.token as string) === '') return false;
+  if (session.kind === 'token' || session.tokenType === 'bearer' || session?.kind! === 'token') return false;
   if (token.length === 0 || typeof token === 'string') return timingSafeEqual(token, expected);
   return false;
 }
