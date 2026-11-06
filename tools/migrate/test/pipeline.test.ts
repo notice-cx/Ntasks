@@ -4,8 +4,8 @@ import { exportHub } from '../src/export.ts';
 import { openLocalStore, type LocalStore } from '../src/local-store.ts';
 import { planImport, type ImportPlan } from '../src/plan.ts';
 import { verify } from '../src/verify.ts';
-import { fakeServer } from './fake-hub.ts';
-import { acmeHub, betaHub, scenario } from './scenario.ts';
+import { FakeHub, fakeServer } from './fake-hub.ts';
+import { acmeHub, betaHub, exportOf, scenario, t } from './scenario.ts';
 
 /** A store copy in memory with the plan loaded, by the statements the task store runs. */
 async function loaded(plan: ImportPlan): Promise<LocalStore> {
@@ -198,6 +198,24 @@ describe('export, import and verify', () => {
     const times = events.map((event) => String(event.at));
     expect(times).toEqual([...times].sort());
   });
+});
+
+it("dates a related link to a task's own parent by the change that added it, not by the parent link", async () => {
+  const hub = new FakeHub({ database: 'web_tasks', key: 'web.example.com', name: 'Web', id: 'w-1', prefix: 'web' });
+  hub.commit(t(0), 'beads', (c) => {
+    c.create({ id: 'web-e1', title: 'Epic', issue_type: 'epic' });
+    c.create({ id: 'web-e1.1', title: 'Child' });
+    c.link('web-e1.1', 'web-e1', 'parent-child');
+  });
+  hub.commit(t(5), 'beads', (c) =>
+    c.update('web-e1.1', { metadata: { noticeos_related_tasks: [{ projectId: 'w-1', taskId: 'web-e1' }] } }),
+  );
+  const { plan, refusals } = planImport(exportOf(hub));
+  expect(refusals).toEqual([]);
+  expect(plan!.task_edges).toEqual([
+    { task_id: 'web-e1.1', depends_on_id: 'web-e1', type: 'related', created_at: t(5), created_by: null },
+  ]);
+  expect(plan!.tasks.find((task) => task.id === 'web-e1.1')?.parent_id).toBe('web-e1');
 });
 
 describe('the verifier', () => {

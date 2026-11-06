@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,6 +113,10 @@ describe('import and verify', () => {
       `Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the store copy ${store}.`,
     );
     expect(run.out[1]).toMatch(COST[0]!);
+    // The copy and any file SQLite keeps beside it are private to their owner.
+    for (const name of (await readdir(folder)).filter((entry) => entry.startsWith('store.sqlite'))) {
+      expect((await stat(path.join(folder, name))).mode & 0o077, name).toBe(0);
+    }
 
     const check = io();
     expect(await main(['verify', '--from', from, '--store', store], check.io), check.err.join('\n')).toBe(0);

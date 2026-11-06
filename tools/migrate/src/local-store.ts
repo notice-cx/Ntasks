@@ -6,7 +6,7 @@
  * network. SQLite runs the schema's checks and triggers here as it does in
  * the store.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +66,9 @@ export async function openLocalStore(file: string, options: { readonly create: b
   if (!memory && options.create && existsSync(file))
     throw new Error(`${file} already exists. The import writes only a new store file.`);
   if (!memory && !options.create && !existsSync(file)) throw new Error(`${file} does not exist.`);
+  // The copy holds the hub's task data: made private to its owner before SQLite
+  // opens it, and SQLite gives its journal files the database file's permissions.
+  if (!memory && options.create) closeSync(openSync(file, 'wx', 0o600));
   const db = new DatabaseSync(file, { readOnly: !options.create && !memory });
   db.exec('PRAGMA foreign_keys = ON');
   if (options.create) migrate(db);

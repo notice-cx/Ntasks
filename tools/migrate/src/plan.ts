@@ -310,17 +310,18 @@ export function planImport(data: BeadsExport): {
     perTask.push(events);
     tasks.push(taskRow(state, history.versions.length, createdAt, history.current.updatedAt ?? createdAt));
     for (const label of state.labels) labels.push({ task_id: taskId, label });
+    // Keyed by target and type, so a parent link never dates a link of another type to the same task.
     const linkRows = new Map<string, { at: string | null; by: string | null }>();
     for (const row of history.links) {
       const target = textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
       if (target !== null)
-        linkRows.set(target, {
+        linkRows.set(`${target} ${textOf(row.type) ?? 'blocks'}`, {
           at: timeOf(row.created_at) ?? null,
           by: isEmpty(row.created_by) ? null : textOf(row.created_by),
         });
     }
     for (const link of state.dependencies) {
-      const row = linkRows.get(link.taskId);
+      const row = linkRows.get(`${link.taskId} ${link.type}`);
       edges.push({
         task_id: taskId,
         depends_on_id: link.taskId,
