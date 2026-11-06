@@ -117,6 +117,19 @@ describe('the HTTP Tasks API client', () => {
     ]);
   });
 
+  it('sends the retry key a caller passes on every kind of write', async () => {
+    const { api, sent } = server();
+    const idempotencyKey = 'one-submission';
+    await api.updateTask('web-a1b2', 'web', { claim: true }, { idempotencyKey });
+    await api.closeTask('web-a1b2', 'web', 'Done', { idempotencyKey });
+    await api.respond('web-a1b2', 'web', 'Yes', { idempotencyKey });
+    await api.choose('web-a1b2', 'web', 'a', undefined, { idempotencyKey });
+    await api.dismiss('web-a1b2', 'web', undefined, { resolution: 'duplicate', duplicateOf: 'web-c3', idempotencyKey });
+    await api.resolveGate('web-g1', 'web', undefined, { idempotencyKey, keepalive: true });
+    expect(sent.map((request) => request.headers.get('idempotency-key'))).toEqual(Array(6).fill(idempotencyKey));
+    expect(sent[4]?.body).toEqual({ resolution: 'duplicate', duplicateOf: 'web-c3', projectId: 'p-web' });
+  });
+
   it("lets one caller stop waiting without failing another caller's read", async () => {
     let answerList: (response: Response) => void = () => {};
     const api = createHttpTasksApi(async (url, init) => {

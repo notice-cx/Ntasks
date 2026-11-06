@@ -272,44 +272,44 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     async updateTask(id, project, edit, options) {
       await write('PATCH', taskPath(id), { ...edit, projectId: await projectId(project) }, `Task ${id}`, options);
     },
-    async closeTask(id, project, reason, { resolution, duplicateOf, keepalive } = {}) {
-      await act(id, project, 'close', { reason, ...ended(resolution, 'done', duplicateOf) }, { keepalive });
+    async closeTask(id, project, reason, { resolution, duplicateOf, ...sending } = {}) {
+      await act(id, project, 'close', { reason, ...ended(resolution, 'done', duplicateOf) }, sending);
     },
     async comment(id, project, text, options) {
       await act(id, project, 'comments', { text }, options);
     },
-    async respond(id, project, response, { keepalive } = {}) {
-      await act(id, project, 'respond', { response }, { keepalive });
+    async respond(id, project, response, sending = {}) {
+      await act(id, project, 'respond', { response }, sending);
     },
-    async choose(id, project, option, note, { keepalive } = {}) {
+    async choose(id, project, option, note, sending = {}) {
       await act(
         id,
         project,
         'choose',
         { option, ...(note === undefined || note.trim() === '' ? {} : { note }) },
-        { keepalive },
+        sending,
       );
     },
-    async dismiss(id, project, reason, { resolution, duplicateOf, keepalive } = {}) {
+    async dismiss(id, project, reason, { resolution, duplicateOf, ...sending } = {}) {
       await act(
         id,
         project,
         'dismiss',
         { ...(reason === undefined ? {} : { reason }), ...ended(resolution, 'wont-do', duplicateOf) },
-        { keepalive },
+        sending,
       );
     },
     async dispute(id, project) {
       await act(id, project, 'dispute', {});
     },
-    async resolveGate(id, project, reason, { keepalive } = {}) {
+    async resolveGate(id, project, reason, sending = {}) {
       const path = `/api/gates/${encodeURIComponent(id)}/resolve`;
       await write(
         'POST',
         path,
         { ...(reason === undefined ? {} : { reason }), projectId: await projectId(project) },
         `Approval ${id}`,
-        { keepalive },
+        sending,
       );
     },
   };

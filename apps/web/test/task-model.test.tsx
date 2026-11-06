@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFixtureTasksApi } from '@/api/fixture';
 import type { LiveTask } from '@/api/types';
 import { createAnswerQueue, HIDE_AFTER_SEND_MS, UNDO_WINDOW_MS } from '@/lib/answer-queue';
 import { boardRows, closeAsReason, closeNote, inboxAsk, inboxOrder, waitsOnPerson } from '@/lib/task-model';
@@ -75,6 +76,29 @@ describe('what waits on a person', () => {
     const asks = rows.filter((row) => inboxAsk(row) !== null).sort(inboxOrder);
     expect(asks.map((row) => row.id)).toEqual(['web-g1', 'web-q1']);
     expect(asks[0]?.proceeds?.map((row) => row.id)).toEqual(['web-w1']);
+  });
+});
+
+describe('the fixture API', () => {
+  it('answers the same write again from its retry key, and refuses the key for a different change', async () => {
+    const api = createFixtureTasksApi();
+    const first = await api.createTask({ project: 'web', title: 'Once' }, { idempotencyKey: 'key-1' });
+    await expect(api.createTask({ project: 'web', title: 'Once' }, { idempotencyKey: 'key-1' })).resolves.toEqual(
+      first,
+    );
+    expect(api.state.tasks.filter((task) => task.title === 'Once')).toHaveLength(1);
+    await expect(
+      api.createTask({ project: 'web', title: 'Changed' }, { idempotencyKey: 'key-1' }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'idempotency_conflict',
+    });
+    await expect(api.comment('web-b2r6', 'web', 'Once', { idempotencyKey: 'key-1' })).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+    await api.comment('web-b2r6', 'web', 'A note', { idempotencyKey: 'key-2' });
+    await api.comment('web-b2r6', 'web', 'A note', { idempotencyKey: 'key-2' });
+    expect(api.state.comments.get('web-b2r6')).toHaveLength(1);
   });
 });
 

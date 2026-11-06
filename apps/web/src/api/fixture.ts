@@ -32,8 +32,24 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
 } {
   const state = seed ?? fixtureSeed(now());
   let made = 0;
-  /** What each retry key's write answered, so a second attempt is not applied twice. */
-  const receipts = new Map<string, unknown>();
+  /** Each retry key's write and its answer: the same write again gets the
+   * answer without being applied twice, and a different write is refused. */
+  const receipts = new Map<string, { write: string; answer: unknown }>();
+
+  /** The recorded answer to this write, or undefined when the key is new. */
+  function receipt(key: string | undefined, write: unknown): { answer: unknown } | undefined {
+    if (key === undefined) return undefined;
+    const found = receipts.get(key);
+    if (found === undefined) return undefined;
+    if (found.write !== JSON.stringify(write)) {
+      throw new ApiError('This retry key was used for a different change.', 409, 'idempotency_conflict');
+    }
+    return { answer: found.answer };
+  }
+
+  function record(key: string | undefined, write: unknown, answer: unknown): void {
+    if (key !== undefined) receipts.set(key, { write: JSON.stringify(write), answer });
+  }
 
   function reach(): void {
     if (unreachable) throw new ApiError('The task list: the server answered 503.', 503, null);
@@ -177,8 +193,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     },
     async createTask(input, options) {
       reach();
-      const receipt = options?.idempotencyKey === undefined ? undefined : receipts.get(options.idempotencyKey);
-      if (receipt !== undefined) return receipt as { id: string; project: string };
+      const replay = receipt(options?.idempotencyKey, ['create', input]);
+      if (replay !== undefined) return replay.answer as { id: string; project: string };
       const { prefix } = project(input.project);
       const title = input.title.trim();
       if (title === '') throw new ApiError('A task needs a title.', 400, 'invalid');
@@ -221,7 +237,7 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         awaitType: null,
       });
       const created = { id, project: input.project };
-      if (options?.idempotencyKey !== undefined) receipts.set(options.idempotencyKey, created);
+      record(options?.idempotencyKey, ['create', input], created);
       return created;
     },
     async updateTask(id, key, edit) {
@@ -264,9 +280,9 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     },
     async comment(id, key, text, options) {
       reach();
-      if (options?.idempotencyKey !== undefined && receipts.has(options.idempotencyKey)) return;
+      if (receipt(options?.idempotencyKey, ['comment', id, key, text]) !== undefined) return;
       addComment(find(id, key), text);
-      if (options?.idempotencyKey !== undefined) receipts.set(options.idempotencyKey, true);
+      record(options?.idempotencyKey, ['comment', id, key, text], null);
     },
     async respond(id, key, response) {
       reach();
