@@ -35,7 +35,8 @@ Ntasks is under construction. The repository holds its skeleton:
 | Web app | A placeholder page |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | The database tables and the rules the database enforces |
-| Task engine, API, MCP endpoint, sign-in | Being built |
+| Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
+| API, MCP endpoint, sign-in | Being built |
 
 Until sign-in is built, a deployed Ntasks has no access control; do not store
 real tasks in one. [SECURITY.md](SECURITY.md) has the details.
