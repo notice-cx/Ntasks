@@ -1,6 +1,7 @@
 // The task engine: TaskEngine (packages/domain/src/engine.ts) on D1.
 import { missingSections, type TaskEngine } from '@ntasks/domain';
 import { Reads } from './reads.ts';
+import { toTask } from './rows.ts';
 import { randomKey, Writes } from './writes.ts';
 
 export interface EngineOptions {
@@ -20,12 +21,13 @@ export function createEngine(db: D1Database, options: EngineOptions = {}): TaskE
     getTask: (projectId, taskId) => reads.getTask(projectId, taskId),
     findTasks: (projectId, taskIds) => reads.findTasks(projectId, taskIds),
     listTasks: (projectId, query) => reads.listTasks(projectId, query),
+    listBoard: (projectId, query) => reads.listBoard(projectId, query),
     listEpics: (projectId) => reads.listEpics(projectId),
     listComments: (projectId, taskId) => reads.listComments(projectId, taskId),
     listHistory: (projectId, taskId, options) => reads.listHistory(projectId, taskId, options.limit, options.beforeSeq),
     listChanges: (query) => reads.listChanges(query.after, query.limit, query.projectId),
     async lint(projectId, taskIds) {
-      const tasks = await reads.hydrate(await reads.taskRows(projectId, taskIds));
+      const tasks = (await reads.taskRows(projectId, taskIds)).map(toTask);
       const missing = new Map<string, readonly string[]>();
       for (const task of tasks) {
         const sections = missingSections(task);

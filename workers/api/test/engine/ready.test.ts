@@ -9,7 +9,12 @@ import type { Task, TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import { AGENT, clock, engine, expectRefusal, newProject, OWNER } from './helpers.ts';
 
-async function make(tasks: TaskEngine, projectId: string, title: string, extra: Parameters<TaskEngine['createTask']>[1] = { title }) {
+async function make(
+  tasks: TaskEngine,
+  projectId: string,
+  title: string,
+  extra: Parameters<TaskEngine['createTask']>[1] = { title },
+) {
   return (await tasks.createTask(projectId, { ...extra, title }, AGENT)).task;
 }
 
@@ -19,7 +24,12 @@ async function readyIds(tasks: TaskEngine, projectId: string): Promise<string[]>
 
 async function close(tasks: TaskEngine, projectId: string, task: Task) {
   const current = (await tasks.getTask(projectId, task.id))!;
-  return tasks.writeTask(projectId, task.id, { expectedVersion: current.version, close: { reason: 'Done', resolution: 'done' } }, AGENT);
+  return tasks.writeTask(
+    projectId,
+    task.id,
+    { expectedVersion: current.version, close: { reason: 'Done', resolution: 'done' } },
+    AGENT,
+  );
 }
 
 describe('links', () => {
@@ -32,7 +42,9 @@ describe('links', () => {
       links: [{ direction: 'depends-on', taskId: schema.id, type: 'blocks' }],
     });
 
-    expect(engineTask.dependencies).toEqual([{ taskId: schema.id, type: 'blocks', title: 'Design the schema', status: 'open' }]);
+    expect(engineTask.dependencies).toEqual([
+      { taskId: schema.id, type: 'blocks', title: 'Design the schema', status: 'open' },
+    ]);
     expect((await tasks.getTask(project.id, schema.id))?.dependents).toEqual([
       { taskId: engineTask.id, type: 'blocks', title: 'Build the engine', status: 'open' },
     ]);
@@ -43,7 +55,10 @@ describe('links', () => {
     const project = await newProject(tasks);
     const waiting = await make(tasks, project.id, 'Ship it');
 
-    const blocker = await make(tasks, project.id, 'Review it', { title: '', links: [{ direction: 'blocks', taskId: waiting.id, type: 'blocks' }] });
+    const blocker = await make(tasks, project.id, 'Review it', {
+      title: '',
+      links: [{ direction: 'blocks', taskId: waiting.id, type: 'blocks' }],
+    });
 
     const after = (await tasks.getTask(project.id, waiting.id))!;
     expect(after.dependencies.map((link) => link.taskId)).toEqual([blocker.id]);
@@ -56,7 +71,10 @@ describe('links', () => {
     const project = await newProject(tasks);
     const a = await make(tasks, project.id, 'A');
     const b = await make(tasks, project.id, 'B');
-    const c = await make(tasks, project.id, 'C', { title: '', links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }] });
+    const c = await make(tasks, project.id, 'C', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }],
+    });
 
     const { task: after } = await tasks.writeTask(
       project.id,
@@ -67,7 +85,12 @@ describe('links', () => {
     expect(after.dependencies.map((link) => [link.taskId, link.type])).toEqual([[b.id, 'related']]);
     expect(after.ready).toBe(true);
 
-    const { task: changed } = await tasks.writeTask(project.id, c.id, { expectedVersion: 2, addLinks: [{ taskId: b.id, type: 'blocks' }] }, AGENT);
+    const { task: changed } = await tasks.writeTask(
+      project.id,
+      c.id,
+      { expectedVersion: 2, addLinks: [{ taskId: b.id, type: 'blocks' }] },
+      AGENT,
+    );
     expect(changed.dependencies.map((link) => [link.taskId, link.type])).toEqual([[b.id, 'blocks']]);
     expect(changed.ready).toBe(false);
   });
@@ -76,11 +99,23 @@ describe('links', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const a = await make(tasks, project.id, 'A');
-    const b = await make(tasks, project.id, 'B', { title: '', links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }] });
-    const c = await make(tasks, project.id, 'C', { title: '', links: [{ direction: 'depends-on', taskId: b.id, type: 'blocks' }] });
+    const b = await make(tasks, project.id, 'B', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }],
+    });
+    const c = await make(tasks, project.id, 'C', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: b.id, type: 'blocks' }],
+    });
 
-    await expectRefusal(tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: b.id, type: 'blocks' }] }, AGENT), 'cycle');
-    await expectRefusal(tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: c.id, type: 'blocks' }] }, AGENT), 'cycle');
+    await expectRefusal(
+      tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: b.id, type: 'blocks' }] }, AGENT),
+      'cycle',
+    );
+    await expectRefusal(
+      tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: c.id, type: 'blocks' }] }, AGENT),
+      'cycle',
+    );
     expect((await tasks.getTask(project.id, a.id))?.dependencies).toEqual([]);
   });
 
@@ -88,9 +123,17 @@ describe('links', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const a = await make(tasks, project.id, 'A');
-    const b = await make(tasks, project.id, 'B', { title: '', links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }] });
+    const b = await make(tasks, project.id, 'B', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: a.id, type: 'blocks' }],
+    });
 
-    const { task } = await tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: b.id, type: 'related' }] }, AGENT);
+    const { task } = await tasks.writeTask(
+      project.id,
+      a.id,
+      { expectedVersion: 1, addLinks: [{ taskId: b.id, type: 'related' }] },
+      AGENT,
+    );
     expect(task.dependencies.map((link) => link.type)).toEqual(['related']);
   });
 
@@ -100,10 +143,18 @@ describe('links', () => {
     const a = await make(tasks, project.id, 'A');
 
     await expectRefusal(
-      tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: `${project.prefix}-none`, type: 'blocks' }] }, AGENT),
+      tasks.writeTask(
+        project.id,
+        a.id,
+        { expectedVersion: 1, addLinks: [{ taskId: `${project.prefix}-none`, type: 'blocks' }] },
+        AGENT,
+      ),
       'not_found',
     );
-    await expectRefusal(tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: a.id, type: 'blocks' }] }, AGENT), 'invalid');
+    await expectRefusal(
+      tasks.writeTask(project.id, a.id, { expectedVersion: 1, addLinks: [{ taskId: a.id, type: 'blocks' }] }, AGENT),
+      'invalid',
+    );
   });
 
   it('refuses a parent that would make a task its own ancestor', async () => {
@@ -113,8 +164,14 @@ describe('links', () => {
     const child = await make(tasks, project.id, 'Child', { title: '', parentId: epic.id });
     const grandchild = await make(tasks, project.id, 'Grandchild', { title: '', parentId: child.id });
 
-    await expectRefusal(tasks.writeTask(project.id, epic.id, { expectedVersion: 1, set: { parentId: grandchild.id } }, AGENT), 'cycle');
-    await expectRefusal(tasks.writeTask(project.id, epic.id, { expectedVersion: 1, set: { parentId: epic.id } }, AGENT), 'cycle');
+    await expectRefusal(
+      tasks.writeTask(project.id, epic.id, { expectedVersion: 1, set: { parentId: grandchild.id } }, AGENT),
+      'cycle',
+    );
+    await expectRefusal(
+      tasks.writeTask(project.id, epic.id, { expectedVersion: 1, set: { parentId: epic.id } }, AGENT),
+      'cycle',
+    );
   });
 });
 
@@ -127,17 +184,32 @@ describe('reading one task and listing the project', () => {
     const later = new Date(Date.parse(time.now()) + 60 * 60_000).toISOString();
     const blocker = await make(tasks, project.id, 'Blocker');
     const foreign = (await tasks.createTask(elsewhere.id, { title: 'Foreign blocker' }, AGENT)).task;
-    const epic = await make(tasks, project.id, 'Epic', { title: '', type: 'epic', links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }] });
+    const epic = await make(tasks, project.id, 'Epic', {
+      title: '',
+      type: 'epic',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
     const child = await make(tasks, project.id, 'Child', { title: '', parentId: epic.id });
     await make(tasks, project.id, 'Grandchild', { title: '', parentId: child.id });
-    const closedParent = await make(tasks, project.id, 'Closed parent', { title: '', links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }] });
+    const closedParent = await make(tasks, project.id, 'Closed parent', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
     await make(tasks, project.id, 'Under a closed parent', { title: '', parentId: closedParent.id });
     await close(tasks, project.id, closedParent);
     const deferred = await make(tasks, project.id, 'Deferred', { title: '', deferUntil: later });
     await make(tasks, project.id, 'Under a deferred parent', { title: '', parentId: deferred.id });
-    await make(tasks, project.id, 'Blocked from another project', { title: '', links: [{ direction: 'depends-on', taskId: foreign.id, type: 'blocks' }] });
+    await make(tasks, project.id, 'Blocked from another project', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: foreign.id, type: 'blocks' }],
+    });
     const gated = await make(tasks, project.id, 'Waits on approval');
-    await tasks.writeTask(project.id, gated.id, { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      gated.id,
+      { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } },
+      AGENT,
+    );
     await make(tasks, project.id, 'Plain');
 
     const compare = async () => {
@@ -151,7 +223,12 @@ describe('reading one task and listing the project', () => {
     };
     await compare();
     await close(tasks, project.id, blocker);
-    await tasks.writeTask(elsewhere.id, foreign.id, { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } }, AGENT);
+    await tasks.writeTask(
+      elsewhere.id,
+      foreign.id,
+      { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
+      AGENT,
+    );
     await compare();
   });
 });
@@ -206,6 +283,26 @@ describe('ready work', () => {
     expect(await readyIds(tasks, project.id)).toEqual([epic.id, child.id, grandchild.id].sort());
   });
 
+  it('passes blocking down from a parent in any status but closed', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const blocker = await make(tasks, project.id, 'Blocker');
+    const children: string[] = [];
+    for (const status of ['in_progress', 'blocked', 'deferred'] as const) {
+      const parent = await make(tasks, project.id, `Parent ${status}`, {
+        title: '',
+        links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+      });
+      await tasks.writeTask(project.id, parent.id, { expectedVersion: 1, set: { status } }, AGENT);
+      children.push((await make(tasks, project.id, `Child of ${status}`, { title: '', parentId: parent.id })).id);
+    }
+
+    expect(await readyIds(tasks, project.id)).toEqual([blocker.id]);
+    for (const id of children) expect((await tasks.getTask(project.id, id))?.ready, id).toBe(false);
+    const board = await tasks.listBoard(project.id, { statuses: ['open'] });
+    expect(board.filter((task) => children.includes(task.id)).map((task) => task.ready)).toEqual([false, false, false]);
+  });
+
   it('does not pass blocking down from a closed parent', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
@@ -251,12 +348,22 @@ describe('ready work', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const blocker = await make(tasks, project.id, 'Blocker');
-    await make(tasks, project.id, 'Waiting', { title: '', links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }] });
+    await make(tasks, project.id, 'Waiting', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
     await make(tasks, project.id, 'Free');
 
     const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
-    expect(all.filter((task) => task.ready).map((task) => task.id).sort()).toEqual(await readyIds(tasks, project.id));
-    expect((await tasks.listTasks(project.id, { limit: 200, ready: false })).tasks.map((task) => task.title)).toEqual(['Waiting']);
+    expect(
+      all
+        .filter((task) => task.ready)
+        .map((task) => task.id)
+        .sort(),
+    ).toEqual(await readyIds(tasks, project.id));
+    expect((await tasks.listTasks(project.id, { limit: 200, ready: false })).tasks.map((task) => task.title)).toEqual([
+      'Waiting',
+    ]);
   });
 });
 
@@ -269,17 +376,31 @@ describe('approvals', () => {
     const { task, created } = await tasks.writeTask(
       project.id,
       deploy.id,
-      { expectedVersion: 1, requestApproval: { reason: 'Deploy the Worker to the owner account.\nIt creates the database.' } },
+      {
+        expectedVersion: 1,
+        requestApproval: { reason: 'Deploy the Worker to the owner account.\nIt creates the database.' },
+      },
       AGENT,
     );
 
     const [gate] = created;
-    expect(gate).toMatchObject({ type: 'gate', awaitType: 'human', status: 'open', title: 'Deploy the Worker to the owner account.', ready: false });
+    expect(gate).toMatchObject({
+      type: 'gate',
+      awaitType: 'human',
+      status: 'open',
+      title: 'Deploy the Worker to the owner account.',
+      ready: false,
+    });
     expect(task.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks', title: gate!.title, status: 'open' }]);
     expect(task.ready).toBe(false);
     expect(await readyIds(tasks, project.id)).toEqual([]);
 
-    await tasks.writeTask(project.id, gate!.id, { expectedVersion: 1, close: { reason: 'Approved.', resolution: 'done' } }, OWNER);
+    await tasks.writeTask(
+      project.id,
+      gate!.id,
+      { expectedVersion: 1, close: { reason: 'Approved.', resolution: 'done' } },
+      OWNER,
+    );
     expect(await readyIds(tasks, project.id)).toEqual([deploy.id]);
   });
 });
@@ -295,8 +416,24 @@ describe('epics', () => {
     await close(tasks, project.id, one);
 
     expect(await tasks.listEpics(project.id)).toEqual([
-      { id: epic.id, title: 'Launch', status: 'open', priority: 2, children: 2, closedChildren: 1, eligibleForClose: false },
-      { id: empty.id, title: 'Empty epic', status: 'open', priority: 2, children: 0, closedChildren: 0, eligibleForClose: false },
+      {
+        id: epic.id,
+        title: 'Launch',
+        status: 'open',
+        priority: 2,
+        children: 2,
+        closedChildren: 1,
+        eligibleForClose: false,
+      },
+      {
+        id: empty.id,
+        title: 'Empty epic',
+        status: 'open',
+        priority: 2,
+        children: 0,
+        closedChildren: 0,
+        eligibleForClose: false,
+      },
     ]);
 
     await close(tasks, project.id, two);

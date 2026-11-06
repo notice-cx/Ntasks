@@ -140,14 +140,29 @@ export interface TaskWrite {
   readonly comment?: string;
 }
 
-export interface TaskQuery {
-  readonly statuses?: readonly TaskStatus[];
+/** The filters every list of tasks takes. */
+export interface TaskFilters {
   /** Only tasks someone can start now. */
   readonly ready?: boolean;
   readonly parentId?: string;
   readonly assignee?: string;
   /** Only tasks carrying every one of these labels. */
   readonly labels?: readonly string[];
+  /** Only tasks whose id, title, description, acceptance or labels hold every
+   * one of these words, ignoring case. */
+  readonly words?: readonly string[];
+  /** Only tasks of these types. */
+  readonly types?: readonly TaskType[];
+  /** Only tasks created at or after, or before, these times. */
+  readonly createdAfter?: string;
+  readonly createdBefore?: string;
+  /** Only tasks last changed at or after, or before, these times. */
+  readonly updatedAfter?: string;
+  readonly updatedBefore?: string;
+}
+
+export interface TaskQuery extends TaskFilters {
+  readonly statuses?: readonly TaskStatus[];
   /** Only tasks closed at or after this time. */
   readonly closedSince?: string;
   /** Only tasks closed before this time. */
@@ -156,6 +171,15 @@ export interface TaskQuery {
   readonly limit: number;
   /** The `nextCursor` of the previous page. */
   readonly cursor?: string;
+}
+
+/** What a board shows: the tasks in the statuses named, and those closed from a time. */
+export interface BoardQuery extends TaskFilters {
+  /** Every task in these statuses. */
+  readonly statuses: readonly Exclude<TaskStatus, 'closed'>[];
+  /** With it, also every task closed at or after this time. A ready-only
+   * board leaves closed tasks out, as no closed task is ready. */
+  readonly closedSince?: string;
 }
 
 export interface TaskPage {
@@ -194,12 +218,23 @@ export interface TaskEngine {
   findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
   /** Most urgent first: priority, then oldest. Ready work is worked out on the server (rule 5). */
   listTasks(projectId: string, query: TaskQuery): Promise<TaskPage>;
+  /** A board, in one project or, with `projectId` null, in every project:
+   * every task it matches, most urgent first, in one round trip and not paged. */
+  listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
   listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
   /** The task's changes, newest first. */
-  listHistory(projectId: string, taskId: string, options: { readonly limit: number; readonly beforeSeq?: number }): Promise<readonly TaskEvent[]>;
+  listHistory(
+    projectId: string,
+    taskId: string,
+    options: { readonly limit: number; readonly beforeSeq?: number },
+  ): Promise<readonly TaskEvent[]>;
   /** Every change after `after`, across projects or in one, for clients that keep a copy. */
-  listChanges(query: { readonly after: number; readonly limit: number; readonly projectId?: string }): Promise<ChangePage>;
+  listChanges(query: {
+    readonly after: number;
+    readonly limit: number;
+    readonly projectId?: string;
+  }): Promise<ChangePage>;
   /** For each of these tasks that lacks a section its type expects, the
    * missing headings (`missingSections` in lint.ts). A task lacking none, or
    * not in the project, is left out. */

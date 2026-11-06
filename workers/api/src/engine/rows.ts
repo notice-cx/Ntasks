@@ -14,8 +14,8 @@ import type {
   TaskType,
 } from '@ntasks/domain';
 
-/** A `tasks` row as the engine's reads select it, with the computed columns. */
-export interface TaskRow {
+/** A `tasks` row as the table stores it. */
+export interface StoredTaskRow {
   readonly id: string;
   readonly project_id: string;
   readonly parent_id: string | null;
@@ -45,23 +45,26 @@ export interface TaskRow {
   readonly updated_at: string;
   readonly started_at: string | null;
   readonly closed_at: string | null;
+}
+
+/** A `tasks` row as the engine's reads select it, with the columns they compute. */
+export interface TaskRow extends StoredTaskRow {
   /** 1 when someone can start the task now (READY in reads.ts). */
   readonly ready: number;
   readonly comment_count: number;
+  /** The task's labels, as a JSON array of text. */
+  readonly labels_json: string;
+  /** Its links onto other tasks and theirs onto it, as JSON arrays of LinkJson. */
+  readonly dependencies_json: string;
+  readonly dependents_json: string;
 }
 
-/** A link row: `task_id` depends on `other_id`, with the other task's title and status. */
-export interface LinkRow {
-  readonly task_id: string;
-  readonly other_id: string;
+/** One link in a TaskRow's JSON: the other task, the link's type, and the other task's title and status. */
+interface LinkJson {
+  readonly id: string;
   readonly type: DependencyType;
   readonly title: string;
   readonly status: TaskStatus;
-}
-
-export interface LabelRow {
-  readonly task_id: string;
-  readonly label: string;
 }
 
 export interface ProjectRow {
@@ -101,22 +104,18 @@ export interface EpicRow {
   readonly closed_children: number;
 }
 
-/** What a task's history and a write need about one task, beyond its row. */
-export interface TaskParts {
-  readonly labels: readonly string[];
-  readonly dependencies: readonly TaskLink[];
-  readonly dependents: readonly TaskLink[];
-}
-
 function object(text: string | null): JsonObject | null {
   return text === null ? null : (JSON.parse(text) as JsonObject);
 }
 
-function link(row: LinkRow): TaskLink {
-  return { taskId: row.other_id, type: row.type, title: row.title, status: row.status };
+/** A row's links, ordered by the other task's id, so every read lists them alike. */
+function links(text: string): TaskLink[] {
+  return (JSON.parse(text) as LinkJson[])
+    .map((entry) => ({ taskId: entry.id, type: entry.type, title: entry.title, status: entry.status }))
+    .sort((a, b) => (a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0));
 }
 
-export function toTask(row: TaskRow, parts: TaskParts): Task {
+export function toTask(row: TaskRow): Task {
   return {
     id: row.id,
     projectId: row.project_id,
@@ -130,9 +129,9 @@ export function toTask(row: TaskRow, parts: TaskParts): Task {
     acceptance: row.acceptance,
     assignee: row.assignee,
     assigneeModel: row.assignee_model,
-    labels: parts.labels,
-    dependencies: parts.dependencies,
-    dependents: parts.dependents,
+    labels: (JSON.parse(row.labels_json) as string[]).sort(),
+    dependencies: links(row.dependencies_json),
+    dependents: links(row.dependents_json),
     ready: row.ready === 1,
     deferUntil: row.defer_until,
     dueAt: row.due_at,
@@ -158,23 +157,6 @@ export function toTask(row: TaskRow, parts: TaskParts): Task {
     updatedAt: row.updated_at,
     startedAt: row.started_at,
   };
-}
-
-/** Groups label and link rows by task, in the order the queries returned them. */
-export function partsByTask(labels: readonly LabelRow[], dependencies: readonly LinkRow[], dependents: readonly LinkRow[]) {
-  const parts = new Map<string, { labels: string[]; dependencies: TaskLink[]; dependents: TaskLink[] }>();
-  const entry = (taskId: string) => {
-    let found = parts.get(taskId);
-    if (found === undefined) {
-      found = { labels: [], dependencies: [], dependents: [] };
-      parts.set(taskId, found);
-    }
-    return found;
-  };
-  for (const row of labels) entry(row.task_id).labels.push(row.label);
-  for (const row of dependencies) entry(row.task_id).dependencies.push(link(row));
-  for (const row of dependents) entry(row.task_id).dependents.push(link(row));
-  return (taskId: string): TaskParts => parts.get(taskId) ?? { labels: [], dependencies: [], dependents: [] };
 }
 
 export function toProject(row: ProjectRow): Project {
