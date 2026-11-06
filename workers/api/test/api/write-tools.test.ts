@@ -45,9 +45,16 @@ const isSchema = (value: unknown): value is Schema =>
  * of create_tasks. Each property left out is named in `added` by its path, and
  * in `required` too when the schema requires it.
  */
-function withoutAdded(ours: unknown, theirs: unknown, at: string, found: { added: string[]; required: string[] }) {
+function withoutAdded(
+  ours: unknown,
+  theirs: unknown,
+  at: string,
+  found: { added: string[]; required: string[] },
+): unknown {
   if (Array.isArray(ours))
-    return ours.map((entry: unknown, index) => withoutAdded(entry, (theirs as unknown[])?.[index], at, found));
+    return ours.map((entry: unknown, index): unknown =>
+      withoutAdded(entry, (theirs as unknown[] | undefined)?.[index], at, found),
+    );
   if (!isSchema(ours) || !isSchema(theirs)) return ours;
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(ours)) {
