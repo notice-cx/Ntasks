@@ -2,9 +2,9 @@
 
 Ntasks is one Cloudflare Worker and one D1 database. A **Worker** is a program
 Cloudflare runs on its servers in answer to web requests, and **D1** is
-Cloudflare's SQLite database. The Worker will answer the API, the MCP endpoint
-that AI agents connect to and sign-in; Cloudflare serves the web app's files
-from the same deployment. This page shows how the parts fit, the limits the
+Cloudflare's SQLite database. The Worker answers the API and the MCP endpoint
+that AI agents connect to, and will answer sign-in; Cloudflare serves the web
+app's files from the same deployment. This page shows how the parts fit, the limits the
 design keeps to, and the rules every change keeps. Read
 [Concepts](concepts.md) first for the task model itself.
 
@@ -24,12 +24,12 @@ flowchart LR
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz` |
+| Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz`, and the API under `/api`, which refuses every request until sign-in is built |
 | Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
-| Web app | [`apps/web/`](../apps/web/) | The task pages. Until the API is built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
-| MCP endpoint for agents | | Not yet |
+| Web app | [`apps/web/`](../apps/web/) | The task pages. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
 | Sign-in | | Not yet |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
@@ -76,6 +76,7 @@ limits that shape the design, from Cloudflare's documentation in November
 |---|---:|
 | Worker requests | 100,000 a day |
 | Worker CPU time | 10 ms per request |
+| D1 queries | 50 per request |
 | D1 rows read | 5,000,000 a day |
 | D1 rows written | 100,000 a day |
 | D1 database size | 500 MB |
@@ -83,7 +84,9 @@ limits that shape the design, from Cloudflare's documentation in November
 When a D1 daily limit is reached, every query fails until 00:00 UTC. To stay
 inside these limits, Ntasks:
 
-- reads with indexed queries and returns long lists a page at a time;
+- reaches every row it reads through an index, returns a task's labels and
+  links in the same query, and makes at most three round trips to the
+  database for any read ([what a read costs](api.md#what-a-read-costs));
 - lets clients ask for the changes since their last read, instead of
   reloading whole lists;
 - keeps CPU time per request low, because time spent waiting on the database

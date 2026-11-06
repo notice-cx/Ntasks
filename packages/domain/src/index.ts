@@ -32,6 +32,7 @@ export type {
 export { GUARD_REFUSALS, guardRefusalOf, TASK_REFUSALS, TaskRefused } from './engine.ts';
 export type {
   Actor,
+  BoardQuery,
   ChangePage,
   CommentResult,
   CreateProjectInput,
@@ -40,6 +41,7 @@ export type {
   Retry,
   TaskEngine,
   TaskFieldChanges,
+  TaskFilters,
   TaskPage,
   TaskQuery,
   TaskRefusal,

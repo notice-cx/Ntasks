@@ -32,14 +32,15 @@ Ntasks is under construction. The repository holds its skeleton:
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz` |
-| Web app | The task pages: the board, a task's page, focus and the composer. Until the API is built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them with no tasks |
+| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | The database tables and the rules the database enforces |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API, MCP endpoint, sign-in | Being built |
+| API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
+| Writes through the API, sign-in | Being built |
 
-Until sign-in is built, a deployed Ntasks has no access control; do not store
-real tasks in one. [SECURITY.md](SECURITY.md) has the details.
+Until sign-in is built, the Worker refuses every API request, so a deployment
+serves no task data. [SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 
@@ -48,6 +49,8 @@ real tasks in one. [SECURITY.md](SECURITY.md) has the details.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.
+- [The API](docs/api.md) lists the MCP tools and the HTTP routes, and what
+  each read costs.
 - [The task store](docs/task-store.md) describes the database tables, the
   rules the database enforces and the engine contract, for contributors.
 
