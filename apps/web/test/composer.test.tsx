@@ -125,6 +125,20 @@ describe('the composer', () => {
     await waitFor(() => expect(select.value).toBe('docs'));
   });
 
+  it('keeps a prefilled project when the project list is already in hand', async () => {
+    const seed = fixtureSeed(Date.now());
+    seed.projects = seed.projects.filter((project) => project.logicalKey === 'docs');
+    seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
+    // The board is narrowed to a project the list does not hold, and the composer opens after the list arrived.
+    renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
+    fireEvent.click(await enabledButton('New task'));
+    const select = (await screen.findByLabelText(/^Project/, {
+      selector: 'select[data-composer-project]',
+    })) as HTMLSelectElement;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(select.value).not.toBe('docs');
+  });
+
   it('reads and writes Done when as a checklist', () => {
     expect(acceptanceLines('- [ ] One\n- [x] Two\n\nThree')).toEqual(['One', 'Two', 'Three']);
     expect(acceptanceText(['One', ' ', 'Two '])).toBe('- [ ] One\n- [ ] Two');

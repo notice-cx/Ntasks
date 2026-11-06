@@ -105,11 +105,13 @@ export function TaskComposer({
     setErrors({});
   }, [open, prefill]);
 
-  // The only project is picked when the list arrives, unless one is already chosen.
+  // The only project is picked when the list arrives, unless one is chosen or
+  // prefilled. The prefill is checked itself: on the render that opens the
+  // composer, `project` still holds the value from before the seeding above.
   useEffect(() => {
-    if (!open || project !== '' || projects.length !== 1) return;
+    if (!open || project !== '' || prefill?.project || projects.length !== 1) return;
     setProject(projects[0]?.logicalKey ?? '');
-  }, [open, project, projects]);
+  }, [open, project, prefill, projects]);
 
   useEffect(() => {
     if (!open) return;

@@ -160,6 +160,18 @@ describe('the Undo window', () => {
     expect(queue.hides('web-a1', read)).toBe(false);
   });
 
+  it('forgets a sent answer when its hiding ends, without being asked about it again', async () => {
+    const queue = createAnswerQueue();
+    queue.schedule({ id: 'web-a1', send: async () => {} });
+    await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+    const read = Date.now() - 1;
+    const before = queue.version();
+    await vi.advanceTimersByTimeAsync(HIDE_AFTER_SEND_MS + 1);
+    // The queue told its readers on its own, with no call for this task in between.
+    expect(queue.version()).toBeGreaterThan(before);
+    expect(queue.hides('web-a1', read)).toBe(false);
+  });
+
   it('sends what is waiting when the page it is attached to is left, and only while attached', () => {
     const queue = createAnswerQueue();
     const sent: boolean[] = [];

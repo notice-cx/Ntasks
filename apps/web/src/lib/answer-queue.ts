@@ -103,7 +103,14 @@ export function createAnswerQueue(): AnswerQueue {
         return;
       }
       settle();
-      sentAt.set(id, Date.now());
+      const at = Date.now();
+      sentAt.set(id, at);
+      // Forgotten when the hiding ends, even for a task no list draws again.
+      setTimeout(() => {
+        if (sentAt.get(id) !== at) return;
+        sentAt.delete(id);
+        emit();
+      }, HIDE_AFTER_SEND_MS);
       emit();
       onSent?.();
     }
