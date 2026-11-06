@@ -163,7 +163,13 @@ export class Writes {
     actor: Actor,
     at: string,
   ): Statement[] {
-    const title = reason.split('\n')[0]!.slice(0, 512);
+    // The reason holds a line that is not blank: validate.ts refuses one that does not.
+    const title = reason
+      .replace(/\r/gu, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line !== '')!
+      .slice(0, 512);
     return [
       this.#insert('tasks', {
         id: gateId,

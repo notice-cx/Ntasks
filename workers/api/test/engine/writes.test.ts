@@ -511,6 +511,24 @@ describe('a new task that asks for an approval', () => {
     expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
   });
 
+  it("titles the approval with the reason's first line that is not blank, without its spaces or carriage return", async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const reason = '\n  \r\n  Rotate the signing key.  \r\nIt signs every session out.';
+    const { created } = await tasks.createTask(project.id, { title: 'Rotate', requestApproval: { reason } }, AGENT);
+    const { task } = await tasks.createTask(project.id, { title: 'Later' }, AGENT);
+    const asked = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, requestApproval: { reason } },
+      AGENT,
+    );
+
+    for (const gate of [created[0]!, asked.created[0]!]) {
+      expect(gate).toMatchObject({ title: 'Rotate the signing key.', description: reason });
+    }
+  });
+
   it('refuses an approval with no reason, filing nothing', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
