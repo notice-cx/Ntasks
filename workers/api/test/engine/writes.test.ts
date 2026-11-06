@@ -400,6 +400,71 @@ describe('retries (rule 3)', () => {
     );
   });
 
+  it('reads back an earlier write by its key, without writing, for the API to check before a rule the write broke', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const other = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Closed once' }, OWNER);
+    const write = { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' as const } };
+    const key = `close-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, write, 'close_task');
+
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await tasks.writeTask(project.id, task.id, write, AGENT, retry);
+    const recorded = await tasks.recordedWrite(project.id, retry);
+
+    expect(recorded).toMatchObject({
+      task: { id: task.id, status: 'closed', version: 2 },
+      created: [],
+      replayed: true,
+    });
+    await expectRefusal(
+      tasks.recordedWrite(project.id, await retryFor(key, { other: true }, 'close_task')),
+      'retry_conflict',
+    );
+    await expectRefusal(tasks.recordedWrite(other.id, retry), 'retry_conflict');
+    const commented = await retryFor(`comment-${crypto.randomUUID()}`, 'Hi.', 'close_task');
+    await tasks.addComment(project.id, task.id, 'Hi.', AGENT, commented);
+    await expectRefusal(tasks.recordedWrite(project.id, commented), 'retry_conflict');
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(3);
+  });
+
+  it('records the key of a write that changed nothing, without a new version or history', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Already so' }, OWNER);
+    const key = `noop-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, { title: 'Already so' }, 'update_task');
+
+    const recorded = await tasks.recordUnchanged(project.id, task.id, 1, retry);
+    expect(recorded).toMatchObject({ task: { id: task.id, version: 1 }, created: [], replayed: false });
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(1);
+
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved on' } }, OWNER);
+    expect(await tasks.recordUnchanged(project.id, task.id, 1, retry)).toMatchObject({
+      task: { title: 'Moved on', version: 2 },
+      replayed: true,
+    });
+    expect(await tasks.recordedWrite(project.id, retry)).toMatchObject({ replayed: true });
+    await expectRefusal(
+      tasks.recordedWrite(project.id, await retryFor(key, { title: 'Other' }, 'update_task')),
+      'retry_conflict',
+    );
+  });
+
+  it('records nothing for a task that changed since it was read, or that does not exist', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Moving' }, OWNER);
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved' } }, OWNER);
+    const retry = await retryFor(`stale-${crypto.randomUUID()}`, { title: 'Moved' }, 'update_task');
+
+    await expectRefusal(tasks.recordUnchanged(project.id, task.id, 1, retry), 'version_conflict');
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await expectRefusal(tasks.recordUnchanged(project.id, `${project.prefix}-none`, 1, retry), 'not_found');
+    expect(await tasks.recordUnchanged(project.id, task.id, 2, retry)).toMatchObject({ replayed: false });
+  });
+
   it('answers a repeated comment with the same comment', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
@@ -446,6 +511,68 @@ describe('retries (rule 3)', () => {
     expect(results.map((result) => result.replayed).sort()).toEqual([false, true]);
     expect(results.map((result) => result.task.version)).toEqual([2, 2]);
     expect((await tasks.getTask(project.id, task.id))?.commentCount).toBe(1);
+  });
+});
+
+describe('a new task that asks for an approval', () => {
+  it('opens the approval in the same batch, and answers a retry with both', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const input = {
+      title: 'Deploy',
+      priority: 1,
+      requestApproval: { reason: 'Deploy to production.\nIt creates the database.' },
+    };
+    const retry = await retryFor(`create-${crypto.randomUUID()}`, input, 'create_task');
+
+    const { task, created } = await tasks.createTask(project.id, input, AGENT, retry);
+
+    const [gate] = created;
+    expect(gate).toMatchObject({
+      type: 'gate',
+      awaitType: 'human',
+      status: 'open',
+      priority: 1,
+      title: 'Deploy to production.',
+      filedBy: AGENT.name,
+    });
+    expect(task.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks', title: gate!.title, status: 'open' }]);
+    expect(task.ready).toBe(false);
+    const [event] = await historyOf(tasks, project.id, task.id);
+    expect(event!.changes.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks' }]);
+
+    const again = await tasks.createTask(project.id, input, AGENT, retry);
+    expect(again).toMatchObject({ replayed: true, task: { id: task.id }, created: [{ id: gate!.id }] });
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+  });
+
+  it("titles the approval with the reason's first line that is not blank, without its spaces or carriage return", async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const reason = '\n  \r\n  Rotate the signing key.  \r\nIt signs every session out.';
+    const { created } = await tasks.createTask(project.id, { title: 'Rotate', requestApproval: { reason } }, AGENT);
+    const { task } = await tasks.createTask(project.id, { title: 'Later' }, AGENT);
+    const asked = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, requestApproval: { reason } },
+      AGENT,
+    );
+
+    for (const gate of [created[0]!, asked.created[0]!]) {
+      expect(gate).toMatchObject({ title: 'Rotate the signing key.', description: reason });
+    }
+  });
+
+  it('refuses an approval with no reason, filing nothing', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    await expectRefusal(
+      tasks.createTask(project.id, { title: 'Ask', requestApproval: { reason: ' ' } }, AGENT),
+      'invalid',
+    );
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
   });
 });
 

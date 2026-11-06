@@ -33,12 +33,12 @@ flowchart LR
 | Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | Sign-in's tables, in D1 ([Sign-in](sign-in.md#tables)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
-| Web app | [`apps/web/`](../apps/web/) | The task pages. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
-| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
+| Web app | [`apps/web/`](../apps/web/) | The task pages, reading the Worker's routes; until they use the write routes, they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/), [`task-writes.ts`](../workers/api/src/task-writes.ts) | The MCP tools and the HTTP routes that read and change tasks ([The API](api.md)); a person's decisions through them are not built yet |
 | Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Owner sign-in with GitHub, OAuth 2.1 for AI agents, service credentials, and the token verifier every route calls ([Sign-in](sign-in.md)) |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
-AI agents call tools on a server. Ntasks will offer its task operations, such
+AI agents call tools on a server. Ntasks offers its task operations, such
 as listing ready work or claiming a task, as MCP tools.
 
 ## How a request is routed

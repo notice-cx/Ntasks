@@ -13,6 +13,7 @@ import {
   unofferedTools,
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
+import { MCP_TOOLS } from '../../src/mcp/server.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
@@ -72,7 +73,7 @@ beforeAll(async () => {
 });
 
 describe('tools/list', () => {
-  it('lists the read tools, each but list_workspaces and get_task_guide naming its workspace', async () => {
+  it("lists the task tools in NoticeOS's order, each but list_workspaces and get_task_guide naming its workspace", async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -90,9 +91,21 @@ describe('tools/list', () => {
       'list_tasks',
       'get_task',
       'get_task_history',
+      'create_task',
+      'create_tasks',
+      'claim_task',
+      'update_task',
+      'comment_on_task',
+      'add_dependency',
+      'remove_dependency',
+      'request_human_approval',
+      'close_task',
     ]);
     for (const tool of result.tools.slice(2)) expect(tool.inputSchema.required[0], tool.name).toBe('workspace');
-    for (const tool of result.tools) expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: true });
+    for (const tool of result.tools.slice(0, 6))
+      expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: true });
+    for (const tool of result.tools.slice(6))
+      expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: false });
   });
 });
 
@@ -129,16 +142,9 @@ describe('list_workspaces and get_task_guide', () => {
       }),
     );
     const { result } = (await response.json()) as { result: { instructions: string } };
-    const note = unofferedTools([
-      'list_workspaces',
-      'get_task_guide',
-      'list_projects',
-      'list_tasks',
-      'get_task',
-      'get_task_history',
-    ]);
-    expect(note).toMatch(
-      /^This endpoint does not offer create_task, create_tasks, update_task, claim_task, comment_on_task, close_task, /u,
+    const note = unofferedTools(MCP_TOOLS.map((tool) => tool.name));
+    expect(note).toBe(
+      'This endpoint does not offer reconcile_task, get_agent_stats yet, so the steps that use them do not apply here.',
     );
     expect(result.instructions.startsWith(`${note}\n`)).toBe(true);
     const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!;
@@ -234,6 +240,7 @@ describe('list_tasks', () => {
     expect(
       idsOf(await listed({ created_after: '2026-11-06T12:03:00Z', created_before: '2026-11-06T12:04:00Z' })),
     ).toEqual([ids.blocked]);
+    expect(idsOf(await listed({ created_after: '2028-02-29' }))).toEqual([]);
   });
 
   it('takes as many labels and words as its arguments allow', async () => {
@@ -278,6 +285,14 @@ describe('list_tasks', () => {
     expect(await refused({ created_after: 'yesterday' })).toBe(
       'invalid arguments: created_after (YYYY-MM-DD or an ISO time)',
     );
+    // A day the month does not have is refused, not read as a day of the next month.
+    for (const [name, value] of [
+      ['created_after', '2026-02-31'],
+      ['updated_before', '2026-02-30T10:00:00Z'],
+      ['created_before', '2027-02-29T23:00+02:00'],
+    ]) {
+      expect(await refused({ [name!]: value }), value).toBe(`invalid arguments: ${name} (YYYY-MM-DD or an ISO time)`);
+    }
     expect(await refused({ project: 'no such project' })).toBe(
       'invalid arguments: project (a projectId from list_projects)',
     );
