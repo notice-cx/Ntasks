@@ -1,8 +1,9 @@
+import { focusManager } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { FIXTURE_ACTOR } from '@/api/fixture-data';
-import { SOURCE_URL } from '@/App';
+import { newQueryClient, SOURCE_URL } from '@/App';
 import { enabledButton, renderApp } from './render';
 
 describe('the board', () => {
@@ -79,6 +80,35 @@ describe('the board', () => {
     renderApp('/tasks', failing);
     expect(await screen.findByText(/1 project could not be read/)).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'at least 3 decisions for you' })).toBeTruthy();
+  });
+
+  it('reads the board again after a write, not when the window regains focus', async () => {
+    const api = createFixtureTasksApi();
+    let reads = 0;
+    const counted = {
+      ...api,
+      board: (project: string, signal?: AbortSignal) => {
+        reads += 1;
+        return api.board(project, signal);
+      },
+    };
+    // The app's own defaults, under which a read refetches when the window regains focus.
+    const queryClient = newQueryClient();
+    queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: false } });
+    renderApp('/tasks', counted, queryClient);
+    await screen.findByRole('heading', { level: 1, name: '4 decisions for you' });
+    const first = reads;
+    expect(first).toBe(2);
+    // Older than the board's stale time, then the window loses and regains focus.
+    queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ['tasks'] })
+      .forEach((query) => query.setState({ dataUpdatedAt: 0 }));
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(reads).toBe(first);
+    focusManager.setFocused(undefined);
   });
 
   it('links to its source code on every page', async () => {

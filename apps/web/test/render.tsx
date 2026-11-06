@@ -8,8 +8,11 @@ import { createFixtureTasksApi } from '@/api/fixture';
 import type { TasksApi } from '@/api/client';
 
 /** The app at `path`, over a fresh fixture API unless one is given. */
-export function renderApp(path: string, api: TasksApi = createFixtureTasksApi()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+export function renderApp(
+  path: string,
+  api: TasksApi = createFixtureTasksApi(),
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }),
+) {
   const view = render(
     <MemoryRouter initialEntries={[path]}>
       <App api={api} queryClient={queryClient} />

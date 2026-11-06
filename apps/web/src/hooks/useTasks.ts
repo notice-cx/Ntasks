@@ -79,7 +79,12 @@ export function useTaskProjects() {
   });
 }
 
-/** Every named project's board, in the order given. */
+/**
+ * Every named project's board, in the order given. A board is the API's most
+ * expensive read (about two database rows per task), so it is read when a
+ * page opens and after a write, never again just because the window regained
+ * focus; the page says how old its read is.
+ */
 export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasksPayload, Error>[] {
   const api = useTasksApi();
   return useQueries({
@@ -87,6 +92,7 @@ export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasks
       queryKey: ['tasks', project],
       queryFn: ({ signal }: { signal: AbortSignal }) => api.board(project, signal),
       staleTime: 15_000,
+      refetchOnWindowFocus: false,
     })),
   });
 }
