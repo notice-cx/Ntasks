@@ -31,6 +31,10 @@ the `/api/tasks` format NoticeOS's Tower reads, which the Ntasks API keeps.
 
 A visitor who is not signed in sees a Sign in step, which opens the Worker's
 own sign-in page; a refused read is shown at once, never retried.
+While a page is visible it asks the API's change feed every 30 seconds what
+changed since the boards it shows (`src/hooks/useChangeFeed.ts`), and reads a
+project's board again only when a change landed in that project; a poll that
+finds nothing costs almost no database reads.
 `test/worker-contract.test.ts` feeds the Worker's own task answers through the
 board, so the two cannot drift apart unnoticed.
 
