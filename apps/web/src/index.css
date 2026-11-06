@@ -1,0 +1,307 @@
+@import "tailwindcss";
+
+/*
+  The design tokens, carried over from NoticeOS's Tower (its brand file and
+  its desk aliases), so the task pages look the same in both apps. Colour,
+  type, radius and motion are defined here once; components use them through
+  Tailwind utilities by name and never write a hex or pixel colour of their
+  own.
+
+  Dark is the default theme. `.light` redefines the same variables, and the
+  app sets it on <html> when the system prefers light (src/theme.ts). Every
+  utility that reads a --color-* token follows the switch, because
+  `@theme inline` keeps the variable reference live.
+
+  The families: `error` / `warn` / `info` are severity and nothing else uses
+  them; `urgent` is one step between warn and error, not a fourth severity.
+  The brand accent (`primary`) marks the one primary action, a selection or
+  focus, and no state token points at it. Surface kinds tint a card by its
+  subject, never by a verdict. `viz-track` and `viz-grid` are the empty track
+  a bar fills and the hairline a grid is drawn with.
+*/
+
+:root {
+  --brand-font: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --brand-radius-control: 8px;
+  --brand-radius-panel: 14px;
+  --brand-canvas: #0d1019;
+  --brand-surface: #151a26;
+  --brand-raised: #1e2636;
+  --brand-ink: #f0f3ff;
+  --brand-muted: #a4aec3;
+  --brand-line: #303a4f;
+  --brand-control-line: #63718c;
+  --brand-blue: #2745d4;
+  /* The brand blue is too dark to read as text on the dark canvas, so the
+     accent is the tint the brand draws it in on dark surfaces. */
+  --brand-accent: #b0b9ff;
+  --brand-accent-hover: #c4cbff;
+  --brand-on-accent: #111526;
+  --brand-accent-soft: #242e52;
+  --brand-success: #69d99a;
+  --brand-success-soft: #172f25;
+  --brand-danger: #ff8491;
+  --brand-danger-soft: #391e29;
+  --brand-warning: #f5c06a;
+  --brand-warning-soft: #342b1d;
+  --brand-fast: 150ms;
+  --brand-standard: 220ms;
+
+  --background: var(--brand-canvas);
+  --foreground: var(--brand-ink);
+  --card: var(--brand-surface);
+  --card-foreground: var(--brand-ink);
+  --muted: var(--brand-raised);
+  --muted-foreground: var(--brand-muted);
+  --border: var(--brand-line);
+  --ring: var(--brand-accent);
+  --input: var(--brand-control-line);
+  --primary: var(--brand-accent);
+  --primary-foreground: var(--brand-on-accent);
+  --primary-hover: var(--brand-accent-hover);
+  --accent-soft: var(--brand-accent-soft);
+
+  --error: var(--brand-danger);
+  --error-foreground: var(--brand-canvas);
+  --error-soft: var(--brand-danger-soft);
+  --warn: var(--brand-warning);
+  --warn-foreground: var(--brand-canvas);
+  --warn-soft: var(--brand-warning-soft);
+  --urgent: oklch(0.73 0.18 50);
+  --info: var(--brand-muted);
+  --info-foreground: oklch(0.16 0.01 250);
+  --milestone: oklch(0.72 0.17 155);
+  --milestone-foreground: oklch(0.16 0.02 155);
+  --healthy: var(--brand-success);
+  --healthy-soft: var(--brand-success-soft);
+  --connected: var(--brand-success);
+  --connected-foreground: oklch(0.16 0.02 145);
+  --connected-soft: var(--brand-success-soft);
+  --trend-positive: oklch(0.76 0.15 150);
+  --trend-negative: oklch(0.7 0.17 25);
+
+  --surface-money: oklch(0.25 0.035 200);
+  --surface-money-line: oklch(0.42 0.06 200);
+  --surface-alert: oklch(0.24 0.04 12);
+  --surface-alert-line: oklch(0.42 0.07 12);
+  --surface-win: oklch(0.23 0.04 160);
+  --surface-win-line: oklch(0.4 0.07 160);
+  --surface-neutral: var(--brand-raised);
+  --surface-neutral-line: var(--brand-line);
+  --surface-highlight: oklch(1 0 0 / 0.07);
+  --glass: oklch(1 0 0 / 0.05);
+  --glass-line: oklch(1 0 0 / 0.1);
+
+  --viz-track: oklch(0.27 0.016 255);
+  --viz-grid: oklch(0.32 0.016 255 / 0.7);
+  --skeleton-shine: oklch(1 0 0 / 0.06);
+  --shadow-raised: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 24px 48px -28px oklch(0 0 0 / 0.85);
+  /* A dropdown's chevron in the muted ink; an image cannot read a variable,
+     so each theme spells its own. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a4aec3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+
+.light {
+  --brand-canvas: #f6f7fb;
+  --brand-surface: #ffffff;
+  --brand-raised: #edf0f6;
+  --brand-ink: #171b2b;
+  --brand-muted: #586176;
+  --brand-line: #d8deea;
+  --brand-control-line: #7a859b;
+  --brand-accent: var(--brand-blue);
+  --brand-accent-hover: #213bb4;
+  --brand-on-accent: #ffffff;
+  --brand-accent-soft: #eef0ff;
+  --brand-success: #18794e;
+  --brand-success-soft: #e9f6ee;
+  --brand-danger: #c52a3a;
+  --brand-danger-soft: #fff0f1;
+  --brand-warning: #8c5a00;
+  --brand-warning-soft: #fff4dc;
+
+  --error-foreground: oklch(0.99 0 0);
+  --warn-foreground: var(--brand-surface);
+  --urgent: oklch(0.62 0.17 50);
+  --info-foreground: oklch(0.99 0 0);
+  --milestone: oklch(0.6 0.16 155);
+  --milestone-foreground: oklch(0.99 0 0);
+  --connected-foreground: oklch(0.99 0 0);
+  --trend-positive: oklch(0.55 0.14 150);
+  --trend-negative: oklch(0.58 0.16 25);
+
+  --surface-money: oklch(0.96 0.025 200);
+  --surface-money-line: oklch(0.82 0.06 200);
+  --surface-alert: oklch(0.965 0.02 12);
+  --surface-alert-line: oklch(0.84 0.07 12);
+  --surface-win: oklch(0.965 0.03 160);
+  --surface-win-line: oklch(0.82 0.07 160);
+  --surface-highlight: oklch(1 0 0 / 0.7);
+  --glass: oklch(1 0 0 / 0.55);
+  --glass-line: oklch(0 0 0 / 0.08);
+
+  --viz-track: oklch(0.94 0.008 255);
+  --viz-grid: oklch(0.88 0.01 255 / 0.8);
+  --skeleton-shine: oklch(1 0 0 / 0.7);
+  --shadow-raised: inset 0 1px 0 oklch(1 0 0 / 0.8), 0 24px 48px -30px oklch(0.25 0.04 260 / 0.28);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586176' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+@theme inline {
+  --font-sans: var(--brand-font);
+  --radius-md: var(--brand-radius-control);
+  --radius-lg: var(--brand-radius-panel);
+  --radius-xl: var(--brand-radius-panel);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-soft: var(--error-soft);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-warn-soft: var(--warn-soft);
+  --color-urgent: var(--urgent);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-milestone: var(--milestone);
+  --color-milestone-foreground: var(--milestone-foreground);
+  --color-healthy: var(--healthy);
+  --color-healthy-soft: var(--healthy-soft);
+  --color-connected: var(--connected);
+  --color-connected-foreground: var(--connected-foreground);
+  --color-connected-soft: var(--connected-soft);
+  --color-trend-positive: var(--trend-positive);
+  --color-trend-negative: var(--trend-negative);
+
+  --color-surface-money: var(--surface-money);
+  --color-surface-money-line: var(--surface-money-line);
+  --color-surface-alert: var(--surface-alert);
+  --color-surface-alert-line: var(--surface-alert-line);
+  --color-surface-win: var(--surface-win);
+  --color-surface-win-line: var(--surface-win-line);
+  --color-surface-neutral: var(--surface-neutral);
+  --color-surface-neutral-line: var(--surface-neutral-line);
+  --color-surface-highlight: var(--surface-highlight);
+  --color-glass: var(--glass);
+  --color-glass-line: var(--glass-line);
+  --color-viz-track: var(--viz-track);
+  --color-viz-grid: var(--viz-grid);
+  --shadow-raised: var(--shadow-raised);
+
+  /* The type scale above Tailwind's own steps. Numbers own the top of it:
+     `display` is a screen's lead figure, `figure` a tile's, `figure-sm` a
+     row's. `micro` is the floor; nothing is set smaller. Body and caption
+     stay `text-sm` and `text-xs`. src/lib/utils.ts lists these names so a
+     class merge never drops them. */
+  --text-display: 2.75rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 650;
+  --text-figure: 1.875rem;
+  --text-figure--line-height: 1.1;
+  --text-figure--letter-spacing: -0.025em;
+  --text-figure--font-weight: 620;
+  --text-figure-sm: 1.375rem;
+  --text-figure-sm--line-height: 1.15;
+  --text-figure-sm--letter-spacing: -0.02em;
+  --text-figure-sm--font-weight: 600;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--brand-font);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* A dropdown draws its own chevron, in the field's end padding. */
+  select:not([multiple], [size]) {
+    appearance: none;
+    background-image: var(--select-chevron);
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    background-size: 1rem;
+    padding-inline-end: 2.25rem;
+  }
+}
+
+/* Motion shows a change: a region arrives by fading in and rising a few
+   pixels, a claim still being worked carries a slow ring, and a loading
+   block shimmers. All of it stops under prefers-reduced-motion. */
+@keyframes viz-arrive {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.viz-arrive {
+  animation: viz-arrive 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--viz-i, 0) * 45ms);
+}
+@keyframes viz-breathe {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 8px color-mix(in oklab, currentColor 0%, transparent); }
+}
+.viz-breathe {
+  animation: viz-breathe 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+/* Loading blocks wait 180 ms before they appear, so a fast load goes
+   straight to the content. */
+@keyframes skeleton-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.skeleton-group {
+  animation: skeleton-reveal 200ms ease-out 180ms both;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+.skeleton {
+  background-color: var(--viz-track);
+  background-image: linear-gradient(100deg, transparent 40%, var(--skeleton-shine) 50%, transparent 60%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  animation: skeleton-shimmer 1.6s linear infinite;
+}
+.page-arrive > * {
+  animation: viz-arrive 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-group {
+    animation-duration: 1ms;
+  }
+  .skeleton,
+  .viz-arrive,
+  .viz-breathe,
+  .page-arrive > * {
+    animation: none;
+  }
+}
