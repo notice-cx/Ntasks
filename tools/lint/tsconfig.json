@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The fixture uses the Worker's globals (D1Database, ExecutionContext),
+    // which worker-configuration.d.ts declares.
+    "types": ["node"],
+    // Node runs the test as it is, by stripping its types.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "erasableSyntaxOnly": true
+  },
+  "include": ["fixtures", "test", "../../workers/api/worker-configuration.d.ts"]
+}

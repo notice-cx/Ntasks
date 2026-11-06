@@ -16,11 +16,11 @@ permissions:
   contents: read
 
 jobs:
-  # The required check: typecheck, tests and the build, in the order a
+  # The required check: lint, typecheck, tests and the build, in the order a
   # contributor runs them. The build ends with `wrangler deploy --dry-run`,
   # which needs no Cloudflare account and deploys nothing.
   check:
-    name: Typecheck, test and build
+    name: Lint, typecheck, test and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -37,6 +37,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
