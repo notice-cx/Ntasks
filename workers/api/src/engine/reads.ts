@@ -200,12 +200,17 @@ function filter(statement: Statement, query: TaskFilters): void {
   if (query.ready === false) where.push(`NOT ${READY}`);
   if (query.parentId !== undefined) where.push(`t.parent_id = ${statement.param(query.parentId)}`);
   if (query.assignee !== undefined) where.push(`t.assignee = ${statement.param(query.assignee)}`);
-  for (const label of query.labels ?? []) {
-    where.push(`EXISTS (SELECT 1 FROM task_labels l WHERE l.task_id = t.id AND l.label = ${statement.param(label)})`);
+  // Labels and words each travel as one JSON array, because a statement binds
+  // at most 100 values; a task must carry every label and hold every word.
+  if (query.labels !== undefined && query.labels.length > 0) {
+    if (!query.labels.every((label) => typeof label === 'string')) invalid('labels must be text');
+    where.push(`NOT EXISTS (SELECT 1 FROM json_each(${statement.param(JSON.stringify(query.labels))}) wanted
+      WHERE NOT EXISTS (SELECT 1 FROM task_labels l WHERE l.task_id = t.id AND l.label = wanted.value))`);
   }
-  for (const word of query.words ?? []) {
-    if (typeof word !== 'string' || word.trim() === '') invalid('words must be non-empty text');
-    where.push(`instr(${SEARCHED_TEXT}, ${statement.param(word.toLowerCase())}) > 0`);
+  if (query.words !== undefined && query.words.length > 0) {
+    if (!query.words.every((word) => typeof word === 'string' && word.trim() !== '')) invalid('words must be non-empty text');
+    const words = JSON.stringify(query.words.map((word) => word.toLowerCase()));
+    where.push(`NOT EXISTS (SELECT 1 FROM json_each(${statement.param(words)}) word WHERE instr(${SEARCHED_TEXT}, word.value) = 0)`);
   }
   if (query.types !== undefined) {
     if (!query.types.every(isTaskType)) invalid('types must be task types');

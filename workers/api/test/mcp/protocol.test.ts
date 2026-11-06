@@ -342,6 +342,17 @@ describe('the transport', () => {
   });
 });
 
+describe('a method named like a property every object has', () => {
+  it('is an unknown method, in either era', async () => {
+    for (const method of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const older = await answer(legacy(method, { any: 1 }));
+      expect([older.status, older.body.error.code], method).toEqual([200, -32601]);
+      const newer = await answer(modern(method, { any: 1 }));
+      expect([newer.status, newer.body.error.code], method).toEqual([404, -32601]);
+    }
+  });
+});
+
 describe('parseMcpMessage', () => {
   it('reads every message the same way', () => {
     expect(

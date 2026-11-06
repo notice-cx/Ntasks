@@ -51,6 +51,8 @@ export const MCP_TOOLS: readonly McpTool[] = Object.freeze([
   GET_TASK_GUIDE,
   ...TASK_TOOLS.map(inWorkspace),
 ]);
+/** The names of the tools this endpoint offers, which the guide is told. */
+const OFFERED: readonly string[] = Object.freeze(MCP_TOOLS.map((tool) => tool.name));
 
 /** What the sender may do: the scopes this endpoint knows, of those it holds. */
 function accessOf(principal: Principal): string[] {
@@ -61,19 +63,19 @@ export function taskServer(context: ToolContext): McpServer {
   const { workspace, principal } = context;
   return Object.freeze({
     info: SERVER_INFO,
-    instructions: taskInstructions(),
+    instructions: taskInstructions(OFFERED),
     tools: MCP_TOOLS,
     async call(name: string, args: Record<string, unknown>) {
       if (name === TASK_GUIDE_TOOL) {
         if (Object.keys(args).length > 0) throw new McpToolError(`invalid arguments: ${TASK_GUIDE_TOOL} takes none`);
-        return taskGuide();
+        return taskGuide(OFFERED);
       }
       if (name === 'list_workspaces') {
         if (Object.keys(args).length > 0) throw new McpToolError('invalid arguments: list_workspaces takes none');
         const access = accessOf(principal);
         return {
           // The guide's version, so an agent that read the guide reads it again only when it changed.
-          guideVersion: (await taskGuide()).version,
+          guideVersion: (await taskGuide(OFFERED)).version,
           workspaces: [
             {
               workspaceId: workspace.id,
