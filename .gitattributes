@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Generated files: GitHub collapses them in pull request diffs.
+pnpm-lock.yaml linguist-generated=true
+workers/api/worker-configuration.d.ts linguist-generated=true

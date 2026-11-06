@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The Worker's globals and its Env come from worker-configuration.d.ts,
+    // which `pnpm --filter @ntasks/api run types` generates from wrangler.jsonc.
+    // The runtime also has Node's built-in modules (see wrangler.jsonc).
+    "types": ["node"]
+  },
+  "include": ["src", "worker-configuration.d.ts"]
+}

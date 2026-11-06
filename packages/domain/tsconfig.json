@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The model runs in the Worker, the browser and Node alike, so it may use
+    // no platform's globals.
+    "types": [],
+    // Node runs this source as it is, by stripping its types. Node's module
+    // rules make every relative import name its file, and erasableSyntaxOnly
+    // refuses TypeScript syntax that Node cannot strip.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src", "test"]
+}

@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # One root entry covers every pnpm workspace and the shared lockfile.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+    ignore:
+      # NoticeOS compiles with TypeScript 6 and will import @ntasks/domain;
+      # the two repositories move to TypeScript 7 together.
+      - dependency-name: "typescript"
+        versions: ["7.x"]
+    groups:
+      # The Workers test plugin depends on one exact wrangler version, so the
+      # two update in the same pull request.
+      cloudflare-toolchain:
+        patterns: ["wrangler", "@cloudflare/vitest-plugin"]
+        update-types: ["minor", "patch"]
+      npm-minor-and-patch:
+        patterns: ["*"]
+        exclude-patterns: ["wrangler", "@cloudflare/vitest-plugin"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

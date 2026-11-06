@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in Ntasks does not work as its documentation says.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest list of steps that shows the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output or logs
+      description: Remove tokens, passwords and personal data before pasting.
+      render: text

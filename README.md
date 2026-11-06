@@ -1,0 +1,104 @@
+# Ntasks
+
+**A task hub for people and AI agents, on Cloudflare Workers.**
+
+[![CI](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
+
+Ntasks is a task hub, being built for people and AI agents who share one
+project's work. It keeps that work as a graph of tasks: each task records what
+to do, the proof that it is done, and the other tasks it waits on. From that
+graph, Ntasks will:
+
+- list the work that can start now, the same way for every agent;
+- give each task to one agent at a time;
+- hold a task that needs a person's decision or approval until the person
+  answers;
+- record every change, with who made it.
+
+AI agents will connect from wherever they run, over the
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP), the standard
+way agents call tools on a server. People will use the web app.
+
+Ntasks runs as a Cloudflare **Worker**, a program Cloudflare runs on its
+servers in answer to web requests, and keeps its data in **D1**, Cloudflare's
+SQLite database. It stays available when your own computer is off, and it is
+designed to fit Cloudflare's free plan.
+
+## Status
+
+Ntasks is under construction. The repository holds its skeleton:
+
+| Part | Today |
+|---|---|
+| Worker | Answers a health check at `/healthz` |
+| Web app | A placeholder page |
+| Task model | The task id format |
+| Task engine, API, MCP endpoint, sign-in | Being built |
+
+Until sign-in is built, a deployed Ntasks has no access control; do not store
+real tasks in one. [SECURITY.md](SECURITY.md) has the details.
+
+## Learn how it works
+
+- [Concepts](docs/concepts.md) introduces projects, tasks, dependencies, ready
+  work, claims, decisions and approvals, one idea at a time.
+- [Architecture](docs/architecture.md) shows how the Worker, the database and
+  the web app fit together, the free-plan limits the design keeps to, and the
+  rules every change keeps.
+
+## Run it locally
+
+You need Node.js at the version in [`.node-version`](.node-version) and pnpm
+at the version in `package.json`'s `packageManager` field;
+[CONTRIBUTING.md](CONTRIBUTING.md#set-up) shows how to install them. No
+Cloudflare account is needed: local runs and tests use a local database.
+
+```sh
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` builds the web app and starts the Worker at
+[http://localhost:8787](http://localhost:8787). The health check at
+`/healthz` answers `{"ok":true}`.
+
+To check a change the way CI does:
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+## Repository layout
+
+| Path | Holds |
+|---|---|
+| [`apps/web/`](apps/web/) | The web app, built with React and Vite |
+| [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
+| [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
+| [`docs/`](docs/) | Concepts and architecture |
+
+## Where Ntasks comes from
+
+Ntasks started as the task hub inside
+[NoticeOS](https://github.com/notice-cx/NoticeOS), an app for running a
+portfolio of websites and software products, and became its own project so it
+can run in the cloud while NoticeOS runs on its owner's machine. Its task
+model follows [Beads](https://github.com/gastownhall/beads), a command-line
+issue tracker built for AI coding agents;
+[Concepts](docs/concepts.md#ntasks-and-beads) lists where Ntasks differs.
+
+## Contribute
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the checks to run and the
+pull request process. Report vulnerabilities privately through
+[SECURITY.md](SECURITY.md).
+
+## License
+
+Copyright © 2026 Reindex Ventures LLC.
+
+[GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for the work Ntasks builds on.

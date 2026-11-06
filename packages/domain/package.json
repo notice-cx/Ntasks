@@ -1,0 +1,20 @@
+{
+  "name": "@ntasks/domain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Ntasks task model: the formats and rules every part of Ntasks shares.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run && node --test test/node-import.mjs"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

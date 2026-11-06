@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ntasks",
+  "main": "src/index.ts",
+  // From compatibility date 2026-08-04 the runtime includes Node's built-in
+  // modules without the nodejs_compat flag; tsconfig.json types them.
+  "compatibility_date": "2026-11-06",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  // The web app, built by apps/web. A path listed in run_worker_first reaches
+  // this Worker. Any other path is served from the build; a page address with
+  // no file of its own serves index.html, and the app routes it. All of /api/*
+  // is listed, so an API client asking for a path that does not exist gets
+  // the Worker's JSON 404, never the app's HTML.
+  "assets": {
+    "directory": "../../apps/web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/healthz", "/api/*"]
+  },
+  // The task store. database_id is left out: the first `wrangler deploy`
+  // creates the database (wrangler's automatic provisioning). `wrangler dev`
+  // and the tests use a local database, so neither needs an account.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ntasks"
+    }
+  ]
+}

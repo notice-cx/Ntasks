@@ -1,0 +1,15 @@
+name: Feature request
+description: Something you want Ntasks to do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to do
+      description: The work you are doing and where Ntasks gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How you would expect it to work

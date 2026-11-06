@@ -1,0 +1,14 @@
+{
+  // The files Node runs: the routing test, run as is by `node --test`, which
+  // strips its types, and the Vitest configuration. They get Node's types,
+  // not the Worker's runtime types, and Node's module rules.
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": [".", "../../vitest.config.ts"]
+}
