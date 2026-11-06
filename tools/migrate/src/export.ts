@@ -137,6 +137,8 @@ export function describeExport(hub: HubFile): string {
     '4. One snapshot of every database:',
     ...all.map(({ q }) => `   ${q.count('TABLE')}   (for each table step 3 found)`),
     ...all.flatMap(({ q }) => [
+      `   ${q.projectId}`,
+      `   ${q.prefix}`,
       `   ${q.tables}`,
       `   ${q.branches}`,
       `   ${q.commits}`,
@@ -203,7 +205,7 @@ export async function exportHub(hub: HubFile, read: Reader, now: () => Date = ()
     queries.push(...names.map((name) => databaseQueries(project.database).count(name)));
   for (const { project, names } of found) {
     const q = databaseQueries(project.database);
-    queries.push(q.tables, q.branches, q.commits);
+    queries.push(q.projectId, q.prefix, q.tables, q.branches, q.commits);
     queries.push(...READ_TABLES.filter((table) => names.includes(table)).map(q.rows));
     queries.push(...HISTORY_TABLES.filter((table) => names.includes(table)).map(q.diff));
   }
@@ -212,9 +214,14 @@ export async function exportHub(hub: HubFile, read: Reader, now: () => Date = ()
 
   const projects = found.map(({ project, id, prefix, names }): BeadsProject => {
     const q = databaseQueries(project.database);
-    if (tableNames(answer(q.tables)).join() !== names.join()) {
+    // What step 3 found must hold in the snapshot too, or a change made and undone could pair it with other data.
+    if (
+      single(answer(q.projectId), `project id in ${project.database}`) !== id ||
+      single(answer(q.prefix), `prefix in ${project.database}`) !== prefix ||
+      tableNames(answer(q.tables)).join() !== names.join()
+    ) {
       throw new Error(
-        `The tables of ${project.database} changed while the export read it. Run it again, or stop writers first.`,
+        `The project id, prefix or tables of ${project.database} changed while the export read them. Run it again, or stop writers first.`,
       );
     }
     const tables = names.map((name) => {

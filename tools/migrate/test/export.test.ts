@@ -102,6 +102,23 @@ it('reads everything it keeps in one step, after the first state check and befor
   ]);
 });
 
+it('refuses a project id changed and changed back while the export read it', async () => {
+  const acme = acmeHub();
+  const server = fakeServer([acme]);
+  const projectId = databaseQueries('acme_tasks').projectId;
+  let reads = 0;
+  // The working set and branch head read the same before and after; only the snapshot sees another id.
+  const changing = async (queries: readonly string[]) => {
+    const answers = await server(queries);
+    return queries.map((sql, index) =>
+      sql === projectId && (reads += 1) === 2 ? [{ value: 'other-project' }] : answers[index]!,
+    );
+  };
+  await expect(exportHub(hubFile([acme]), changing)).rejects.toThrow(
+    'The project id, prefix or tables of acme_tasks changed while the export read them.',
+  );
+});
+
 it('refuses when an earlier project changed while a later one was read', async () => {
   const acme = acmeHub();
   const beta = betaHub();

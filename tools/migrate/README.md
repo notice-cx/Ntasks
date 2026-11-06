@@ -104,6 +104,7 @@ random value back, so it can tell which output answers which query.
    the task id prefix (`issue_prefix` in the `config` table), and no other
    setting, and the names of its tables.
 4. In one transaction for all databases, so it is one snapshot of the hub:
+   the project id, prefix and table names again, which must match step 3,
    the row count of every table, the Dolt branches and commits (`dolt_log`),
    every row of `issues`, `labels`, `dependencies`, `comments` and `events`,
    and every change ever made to `issues`, `labels` and `dependencies`,
