@@ -407,11 +407,14 @@ describe('approvals', () => {
 
 describe('epics', () => {
   it('lists open epics with their children, eligible to close once every child is', async () => {
-    const tasks = engine();
+    // Epics are listed oldest first, so the second is made a minute later:
+    // two made in the same millisecond would fall back to their random ids.
+    const time = clock();
+    const tasks = engine({ now: time.now });
     const project = await newProject(tasks);
     const epic = await make(tasks, project.id, 'Launch', { title: '', type: 'epic' });
-    // A lower priority lists it second even when both are created in the same millisecond.
-    const empty = await make(tasks, project.id, 'Empty epic', { title: '', type: 'epic', priority: 3 });
+    time.advance(1);
+    const empty = await make(tasks, project.id, 'Empty epic', { title: '', type: 'epic' });
     const one = await make(tasks, project.id, 'One', { title: '', parentId: epic.id });
     const two = await make(tasks, project.id, 'Two', { title: '', parentId: epic.id });
     await close(tasks, project.id, one);
@@ -430,7 +433,7 @@ describe('epics', () => {
         id: empty.id,
         title: 'Empty epic',
         status: 'open',
-        priority: 3,
+        priority: 2,
         children: 0,
         closedChildren: 0,
         eligibleForClose: false,
