@@ -45,6 +45,8 @@ const BOOKKEEPING_TABLES = new Set([
   'dirty_issues',
   'export_hashes',
   'repo_mtimes',
+  // The counter Beads numbers its audit log's entries from.
+  'bd_events_seq',
 ]);
 const READ_TABLES = new Set(['issues', 'labels', 'dependencies', 'comments', 'events']);
 /** Why a table that holds rows belongs to something out of scope. */
