@@ -165,7 +165,11 @@ Cloudflare's rate limiting binding, answer `429` once reached:
   together (`REGISTER_LIMIT`). A registration refused for its address does
   not count toward the shared limit, so one address cannot use all of it.
   Anyone may register, and each registration writes to D1; on the free plan,
-  reaching the daily write limit stops every query until 00:00 UTC.
+  reaching the daily write limit stops every query until 00:00 UTC. A
+  caller with several addresses can still use up the shared limit, and then
+  every new agent's registration gets `429` until the minute passes. That is
+  the cost of the limit: a minute without new registrations instead of a day
+  without the database. Agents already registered are not affected.
 
 These limits are approximate. Cloudflare counts each one separately in each
 of its locations, and a location can let a few more requests through before
