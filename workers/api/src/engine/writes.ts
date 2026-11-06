@@ -198,6 +198,9 @@ export class Writes {
         title,
         description: reason,
         acceptance: '',
+        notes: '',
+        design: '',
+        estimateMinutes: null,
         assignee: null,
         assigneeModel: null,
         startedAt: null,
@@ -425,6 +428,9 @@ export class Writes {
           title: fields.title,
           description: fields.description,
           acceptance: fields.acceptance,
+          notes: fields.notes,
+          design: fields.design,
+          estimate_minutes: fields.estimateMinutes,
           defer_until: fields.deferUntil,
           due_at: fields.dueAt,
           choices: fields.choices === null ? null : JSON.stringify(fields.choices),
@@ -481,6 +487,9 @@ export class Writes {
           title: fields.title,
           description: fields.description,
           acceptance: fields.acceptance,
+          notes: fields.notes,
+          design: fields.design,
+          estimateMinutes: fields.estimateMinutes,
           assignee: null,
           assigneeModel: null,
           startedAt: null,
@@ -553,6 +562,9 @@ export class Writes {
     if (set.title !== undefined) change('title', 'title', set.title);
     if (set.description !== undefined) change('description', 'description', set.description);
     if (set.acceptance !== undefined) change('acceptance', 'acceptance', set.acceptance);
+    if (set.notes !== undefined) change('notes', 'notes', set.notes);
+    if (set.design !== undefined) change('design', 'design', set.design);
+    if (set.estimateMinutes !== undefined) change('estimate_minutes', 'estimateMinutes', set.estimateMinutes);
     if (set.type !== undefined) change('type', 'type', set.type);
     if (set.priority !== undefined) change('priority', 'priority', set.priority);
     if (set.deferUntil !== undefined) change('defer_until', 'deferUntil', set.deferUntil);

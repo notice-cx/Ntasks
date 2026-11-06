@@ -47,6 +47,10 @@ export interface TaskRow {
   readonly updated_at: string;
   readonly started_at: string | null;
   readonly closed_at: string | null;
+  /** Left out, these take the column's default: '' for text, null for the estimate. */
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimate_minutes?: number | null;
 }
 
 export interface LabelRow {
@@ -129,6 +133,9 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'updated_at',
     'started_at',
     'closed_at',
+    'notes',
+    'design',
+    'estimate_minutes',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],
@@ -158,14 +165,17 @@ export function isStoreTable(value: unknown): value is StoreTable {
   return typeof value === 'string' && (STORE_TABLES as readonly string[]).includes(value);
 }
 
-/** One INSERT per row, table by table in STORE_TABLES' order. */
+/** One INSERT per row, table by table in STORE_TABLES' order. A column the
+ * row leaves out is left out of its INSERT, so it takes the column's default. */
 export function insertStatements(rows: StoreRows): StoreStatement[] {
   const statements: StoreStatement[] = [];
   for (const table of STORE_TABLES) {
-    const columns = STORE_COLUMNS[table] as readonly string[];
-    const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
-    for (const row of rows[table] as readonly object[] as readonly Readonly<Record<string, StoreValue>>[]) {
-      statements.push({ sql, values: columns.map((column) => row[column] ?? null) });
+    for (const row of rows[table] as readonly object[] as readonly Readonly<Record<string, StoreValue | undefined>>[]) {
+      const columns = (STORE_COLUMNS[table] as readonly string[]).filter((column) => row[column] !== undefined);
+      statements.push({
+        sql: `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+        values: columns.map((column) => row[column] ?? null),
+      });
     }
   }
   return statements;

@@ -148,6 +148,17 @@ export function priorityArg(args: Args, name = 'priority'): number | undefined {
   return value;
 }
 
+/** An estimate in whole minutes; with `clearable`, null takes it off. */
+export function estimateArg(args: Args, name: string, clearable = false): number | null | undefined {
+  const value = args[name];
+  if (value === undefined || (clearable && value === null)) return value;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > TASK_LIMITS.estimateMinutes)
+    refuse(
+      `invalid arguments: ${name} (whole minutes, 0–${TASK_LIMITS.estimateMinutes}${clearable ? ', or null to take it off' : ''})`,
+    );
+  return value;
+}
+
 /** One of `values`, or undefined when the argument is left out. */
 export function choiceArg<T extends string>(args: Args, name: string, values: readonly T[]): T | undefined {
   const value = args[name];

@@ -69,6 +69,9 @@ export function webTask(task: Task) {
     deferUntil: task.deferUntil,
     description: task.description,
     acceptance: task.acceptance,
+    notes: task.notes,
+    design: task.design,
+    estimateMinutes: task.estimateMinutes,
     labels: task.labels,
     ready: task.ready,
     dependencies: task.dependencies.map((link) => ({
@@ -109,6 +112,9 @@ export function mcpTask(task: Task) {
     awaitingHuman: waitsOnPerson(task),
     description: task.description,
     acceptance: task.acceptance,
+    notes: task.notes,
+    design: task.design,
+    estimateMinutes: task.estimateMinutes,
     choices: task.choices,
     choice: task.choice,
     card: web.card,
@@ -129,8 +135,8 @@ export function mcpTask(task: Task) {
 }
 
 /** A task as list_tasks shows it: enough to choose one, which get_task then
- * reads in full. A field with no value is left out, so a long page stays
- * readable. */
+ * reads in full. Its long text (description, acceptance, notes and design) is
+ * left out, and so is a field with no value, so a long page stays readable. */
 export function mcpSummary(task: Task): Record<string, unknown> {
   const full = mcpTask(task);
   const row: Record<string, unknown> = {
@@ -148,6 +154,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     choice: full.choice,
     card: full.card,
     changeClass: full.changeClass,
+    estimateMinutes: full.estimateMinutes,
     deferUntil: full.deferUntil,
     createdAt: full.createdAt,
     updatedAt: full.updatedAt,
@@ -187,6 +194,9 @@ function snapshotView(state: Record<string, Json>) {
     parent: state.parentId ?? null,
     description: state.description ?? '',
     acceptance: state.acceptance ?? '',
+    notes: state.notes ?? '',
+    design: state.design ?? '',
+    estimateMinutes: state.estimateMinutes ?? null,
     choices: state.choices ?? null,
     choice: state.choice ?? null,
     card: objectOrNull(metadata[NOTICEOS.card]),

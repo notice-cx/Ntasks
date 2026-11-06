@@ -44,6 +44,10 @@ export const TASK_LIMITS = Object.freeze({
   title: 512,
   description: 8192,
   acceptance: 8192,
+  notes: 8192,
+  design: 8192,
+  /** A year of minutes. */
+  estimateMinutes: 525_600,
   comment: 4096,
   reason: 2048,
   labels: 32,
@@ -102,6 +106,12 @@ export interface Task {
   readonly title: string;
   readonly description: string;
   readonly acceptance: string;
+  /** Markdown, as description is: what those working on it record as it moves, such as progress and findings. */
+  readonly notes: string;
+  /** Markdown, as description is: how the work is to be built. */
+  readonly design: string;
+  /** How long the work should take, in whole minutes; null when nobody estimated it. */
+  readonly estimateMinutes: number | null;
   readonly assignee: string | null;
   readonly assigneeModel: string | null;
   readonly labels: readonly string[];

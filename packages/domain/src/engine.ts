@@ -78,6 +78,9 @@ export interface CreateTaskInput {
   readonly title: string;
   readonly description?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimateMinutes?: number;
   /** `task` when left out. A gate is made with `requestApproval`, never as a type. */
   readonly type?: Exclude<TaskType, 'gate'>;
   readonly priority?: number;
@@ -99,6 +102,9 @@ export interface TaskFieldChanges {
   readonly title?: string;
   readonly description?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimateMinutes?: number | null;
   readonly type?: Exclude<TaskType, 'gate'>;
   readonly priority?: number;
   /** Any status but `closed`; a write closes a task with `close`. */

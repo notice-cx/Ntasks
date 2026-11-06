@@ -277,6 +277,7 @@ describe('history (rule 4)', () => {
       { set: { assignee: AGENT.name, status: 'in_progress' as const } },
       { addLabels: ['b'], removeLabels: ['a'], metadata: { n: 2 } },
       { addLinks: [{ taskId: blocker.id, type: 'blocks' as const }] },
+      { set: { notes: 'Seen on mobile.', design: 'One query.', estimateMinutes: 30 } },
       { close: { reason: 'Done.', resolution: 'done' as const } },
     ];
     for (const [index, write] of writes.entries()) {
@@ -291,7 +292,8 @@ describe('history (rule 4)', () => {
       ['updated', 3],
       ['updated', 4],
       ['updated', 5],
-      ['closed', 6],
+      ['updated', 6],
+      ['closed', 7],
     ]);
     const rebuilt: Record<string, Json> = {};
     for (const event of events) Object.assign(rebuilt, event.changes);
@@ -305,6 +307,9 @@ describe('history (rule 4)', () => {
       'startedAt',
       'labels',
       'metadata',
+      'notes',
+      'design',
+      'estimateMinutes',
       'close',
     ] as const;
     for (const field of fields) expect(rebuilt[field], field).toEqual(current[field]);

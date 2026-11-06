@@ -71,6 +71,11 @@ export interface LiveTask {
   /** Empty when the task carries none. */
   description: string;
   acceptance: string;
+  /** Markdown, empty when the task carries none, when the server sends them. */
+  notes?: string;
+  design?: string;
+  /** Whole minutes; null when nobody estimated it. */
+  estimateMinutes?: number | null;
   labels: string[];
   /** Someone can start it now, as the server worked it out. */
   ready: boolean;

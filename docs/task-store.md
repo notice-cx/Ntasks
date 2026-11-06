@@ -36,6 +36,13 @@ contributors working on the engine, the API or the import from Beads. Read
 A task's parent is the `parent_id` column, not a link. Sign-in and access
 grants have their own tables, in D1 ([Sign-in](sign-in.md#tables)).
 
+A task's text is in four Markdown columns of `tasks`: `description`,
+`acceptance`, `notes` and `design`. The database sets no length limit on
+them, so a task imported from Beads fits; a new write through the API takes
+at most 8,192 characters in each (`TASK_LIMITS` in
+[`task.ts`](../packages/domain/src/task.ts)). `estimate_minutes` holds the
+task's estimate in whole minutes, or null when nobody estimated it.
+
 ## Rules the database enforces
 
 These hold whatever code writes to the database. Each has a test in
@@ -176,6 +183,7 @@ describe.
 | Epics that can close once their children have | Formulas, molecules and wisps |
 | Approvals (gates a person answers) and decisions | Dolt branches, merges and sync |
 | Labels, comments, metadata and the full history of every task | |
+| Notes, design and estimated minutes | |
 
 An import from Beads refuses a task that uses something out of scope and
 names it, rather than dropping it. [`tools/migrate`](../tools/migrate/README.md)

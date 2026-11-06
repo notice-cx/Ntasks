@@ -45,6 +45,9 @@ describe('GET /api/tasks/capabilities', () => {
         'parent',
         'defer',
         'acceptance',
+        'notes',
+        'design',
+        'estimateMinutes',
         'addLabels',
         'removeLabels',
         'card',
@@ -233,6 +236,42 @@ describe('PATCH /api/tasks/:id', () => {
       changeClass: 'template',
       card: { measurability: 'cohort', by: WRITER.name },
     });
+  });
+
+  it("files, changes and takes off a task's notes, design and estimate, and records each in its history", async () => {
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Move the blog',
+      notes: 'Old posts keep their dates.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: 45,
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    const page = await get(target, `/api/tasks/${id}?project=${project.id}`);
+    expect(page.body.task).toMatchObject({
+      notes: 'Old posts keep their dates.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: 45,
+    });
+    const patched = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      notes: 'Redirects in place.',
+      estimateMinutes: null,
+    });
+    expect(patched.body.task).toMatchObject({
+      notes: 'Redirects in place.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: null,
+    });
+    const history = await get(target, `/api/tasks/${id}/history?project=${project.id}`);
+    expect((history.body.changes as { fields: unknown }[])[0]!.fields).toEqual({
+      notes: { old: 'Old posts keep their dates.', new: 'Redirects in place.' },
+      estimateMinutes: { old: 45, new: null },
+    });
+    expect(
+      await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', estimateMinutes: 2.5 }),
+    ).toEqual({ status: 400, body: { error: 'invalid_request', detail: 'estimateMinutes (whole minutes, 0–525600)' } });
   });
 
   it('takes a task with claim, and refuses one someone else holds', async () => {

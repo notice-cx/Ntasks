@@ -20,6 +20,10 @@ A **task** is one piece of work. It has:
 - a **title**: the outcome, in plain words;
 - a **description**: what to do, why, and where;
 - **acceptance**: the proof that the work is done;
+- **notes**: what the people and agents working on it record as it moves,
+  such as progress and findings;
+- a **design**: how the work is to be built;
+- an **estimate**: how long the work should take, in whole minutes;
 - a **type**: `task`, `bug`, `feature`, `chore`, `epic` or `decision`;
 - a **priority**, from `0`, the most urgent, to `4`;
 - a **status**, one of:

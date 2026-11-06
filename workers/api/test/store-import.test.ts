@@ -103,6 +103,9 @@ const ROWS: StoreRows = {
       close_reason: 'Done.',
       resolution: 'done',
       closed_by: 'agent-a',
+      notes: 'Two pages left for later.',
+      design: 'One page per product.',
+      estimate_minutes: 240,
     },
   ],
   task_labels: [{ task_id: 'acme-e1.1', label: 'content' }],
@@ -165,12 +168,16 @@ const ROWS: StoreRows = {
 };
 
 describe('an import into the task store', () => {
-  it('writes every row, and reads each table back as it was given', async () => {
+  it('writes every row, and reads each table back as it was given, with the defaults of columns it left out', async () => {
     const stub = freshStore();
     const result = await stub.importRows(ROWS);
     expect(result.rows).toBe(10);
     expect(result.rowsWritten).toBeGreaterThanOrEqual(10);
-    for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(ROWS[table]);
+    const stored: StoreRows = {
+      ...ROWS,
+      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, ...row })),
+    };
+    for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });
 
   it('names every column of each table it writes', async () => {

@@ -26,6 +26,9 @@ export interface StoredTaskRow {
   readonly title: string;
   readonly description: string;
   readonly acceptance: string;
+  readonly notes: string;
+  readonly design: string;
+  readonly estimate_minutes: number | null;
   readonly assignee: string | null;
   readonly assignee_model: string | null;
   readonly defer_until: string | null;
@@ -127,6 +130,9 @@ export function toTask(row: TaskRow): Task {
     title: row.title,
     description: row.description,
     acceptance: row.acceptance,
+    notes: row.notes,
+    design: row.design,
+    estimateMinutes: row.estimate_minutes,
     assignee: row.assignee,
     assigneeModel: row.assignee_model,
     labels: (JSON.parse(row.labels_json) as string[]).sort(),

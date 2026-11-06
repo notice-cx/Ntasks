@@ -322,9 +322,22 @@ describe('rules the database keeps whatever code writes to it', () => {
 
   it('accepts a task as large as Beads stores one', async () => {
     const name = 'n'.repeat(255);
-    const { taskId } = await newTask({ assignee: name, title: 't'.repeat(500), description: 'd'.repeat(200_000) });
+    const { taskId } = await newTask({
+      assignee: name,
+      title: 't'.repeat(500),
+      description: 'd'.repeat(200_000),
+      notes: 'n'.repeat(200_000),
+      design: 'g'.repeat(200_000),
+      estimate_minutes: 1_000_000,
+    });
 
     await expect(insert('task_labels', { task_id: taskId, label: name }).run()).resolves.toBeUndefined();
+  });
+
+  it('refuses an estimate below zero minutes, and a task with no notes or design text', async () => {
+    await expect(newTask({ estimate_minutes: -1 })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ notes: null })).rejects.toThrow(/NOT NULL constraint failed: tasks.notes/u);
+    await expect(newTask({ design: null })).rejects.toThrow(/NOT NULL constraint failed: tasks.design/u);
   });
 
   it('refuses a name longer than 255 characters', async () => {

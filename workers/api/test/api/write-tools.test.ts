@@ -36,8 +36,41 @@ async function current(project: Project, id: string): Promise<Task> {
 const missingProject = (id: string) =>
   `refused: projectId ${id} names no project in this workspace; list_projects lists the current projectIds.`;
 
+type Schema = { readonly [key: string]: unknown };
+const isSchema = (value: unknown): value is Schema =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * `ours` without the properties `theirs` lacks, at any depth, such as an entry
+ * of create_tasks. Each property left out is named in `added` by its path, and
+ * in `required` too when the schema requires it.
+ */
+function withoutAdded(ours: unknown, theirs: unknown, at: string, found: { added: string[]; required: string[] }) {
+  if (Array.isArray(ours))
+    return ours.map((entry: unknown, index) => withoutAdded(entry, (theirs as unknown[])?.[index], at, found));
+  if (!isSchema(ours) || !isSchema(theirs)) return ours;
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(ours)) {
+    if (key !== 'properties' || !isSchema(value) || !isSchema(theirs.properties)) {
+      kept[key] = withoutAdded(value, theirs[key], at, found);
+      continue;
+    }
+    const properties: Record<string, unknown> = {};
+    for (const [name, property] of Object.entries(value)) {
+      if (name in theirs.properties) {
+        properties[name] = withoutAdded(property, theirs.properties[name], `${at}.${name}`, found);
+        continue;
+      }
+      found.added.push(`${at}.${name}`);
+      if (Array.isArray(ours.required) && ours.required.includes(name)) found.required.push(`${at}.${name}`);
+    }
+    kept[key] = properties;
+  }
+  return kept;
+}
+
 describe('tools/list', () => {
-  it("offers NoticeOS's task tools with NoticeOS's names, descriptions, schemas and annotations", async () => {
+  it("offers NoticeOS's task tools with NoticeOS's names, descriptions, schemas and annotations, adding only optional arguments", async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -47,7 +80,23 @@ describe('tools/list', () => {
     );
     const { result } = (await response.json()) as { result: { tools: { name: string }[] } };
     const names = NOTICEOS_TOOLS.map((tool) => tool.name);
-    expect(result.tools.filter((tool) => names.includes(tool.name))).toEqual(NOTICEOS_TOOLS);
+    const offered = result.tools.filter((tool) => names.includes(tool.name));
+    expect(offered.map((tool) => tool.name)).toEqual(names);
+    const found = { added: [] as string[], required: [] as string[] };
+    const unchanged = offered.map((tool, index) => withoutAdded(tool, NOTICEOS_TOOLS[index], tool.name, found));
+    expect(unchanged).toEqual(NOTICEOS_TOOLS);
+    expect(found.required).toEqual([]);
+    expect(found.added).toEqual([
+      'create_task.notes',
+      'create_task.design',
+      'create_task.estimate_minutes',
+      'create_tasks.tasks.notes',
+      'create_tasks.tasks.design',
+      'create_tasks.tasks.estimate_minutes',
+      'update_task.notes',
+      'update_task.design',
+      'update_task.estimate_minutes',
+    ]);
   });
 });
 
@@ -913,6 +962,112 @@ describe('update_task', () => {
       "unavailable: the task store did not complete this call, and nothing in the task's state explains it. Retry the same call; with the same idempotency_key a change lands at most once.",
     );
     expect((await current(project, id)).title).toBe('After the race');
+  });
+});
+
+describe("a task's notes, design and estimate", () => {
+  interface Snapshot {
+    task: { notes: string; design: string; estimateMinutes: number | null };
+  }
+
+  it('are filed, changed and taken off, and each version is in the history', async () => {
+    const project = await newProject(engine);
+    const filed = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Plan the import',
+      notes: 'The old pages redirect.',
+      design: '## Steps\n1. Export.',
+      estimate_minutes: 90,
+      idempotency_key: key(),
+    });
+    const batch = await write<{ created: { id: string }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Second', notes: 'Batch note.', estimate_minutes: 0 }],
+      idempotency_key: key(),
+    });
+    expect(await current(project, batch.created[0]!.id)).toMatchObject({
+      notes: 'Batch note.',
+      design: '',
+      estimateMinutes: 0,
+    });
+    const read = await write<{ task: Record<string, unknown> }>(target, 'get_task', {
+      project: project.id,
+      task: filed.id,
+    });
+    expect(read.task).toMatchObject({
+      notes: 'The old pages redirect.',
+      design: '## Steps\n1. Export.',
+      estimateMinutes: 90,
+    });
+
+    const changed = await write<{ task: Record<string, unknown> }>(target, 'update_task', {
+      project: project.id,
+      task: filed.id,
+      notes: 'Export done.',
+      design: '',
+      estimate_minutes: 120,
+      idempotency_key: key(),
+    });
+    expect(changed.task).toMatchObject({ notes: 'Export done.', design: '', estimateMinutes: 120 });
+    await write(target, 'update_task', {
+      project: project.id,
+      task: filed.id,
+      estimate_minutes: null,
+      idempotency_key: key(),
+    });
+    expect((await current(project, filed.id)).estimateMinutes).toBeNull();
+    const listed = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
+    expect(listed.tasks.find((row) => row.id === batch.created[0]!.id)).toMatchObject({ estimateMinutes: 0 });
+    expect(listed.tasks.find((row) => row.id === filed.id)).not.toHaveProperty('notes');
+
+    const { changes } = await write<{ changes: (Snapshot & { revision: string })[] }>(target, 'get_task_history', {
+      project: project.id,
+      task: filed.id,
+      snapshots: true,
+    });
+    expect(
+      changes
+        .map((change) => change.task)
+        .map(({ notes, design, estimateMinutes }) => [notes, design, estimateMinutes]),
+    ).toEqual([
+      ['Export done.', '', null],
+      ['Export done.', '', 120],
+      ['The old pages redirect.', '## Steps\n1. Export.', 90],
+    ]);
+    const fields = await write<{ changes: { fields: Record<string, { old: unknown; new: unknown }> }[] }>(
+      target,
+      'get_task_history',
+      { project: project.id, task: filed.id },
+    );
+    expect(fields.changes[1]!.fields).toEqual({
+      notes: { old: 'The old pages redirect.', new: 'Export done.' },
+      design: { old: '## Steps\n1. Export.', new: '' },
+      estimateMinutes: { old: 90, new: 120 },
+    });
+  });
+
+  it('refuse an estimate that is not whole minutes, and a key reused with other notes', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const base = { workspace: WORKSPACE.id, project: project.id, idempotency_key: key() };
+    for (const estimate of [-1, 1.5, 525_601, '30']) {
+      expect(await refusal(target, 'create_task', { ...base, title: 'T', estimate_minutes: estimate })).toBe(
+        'invalid arguments: estimate_minutes (whole minutes, 0–525600)',
+      );
+      expect(await refusal(target, 'update_task', { ...base, task: id, estimate_minutes: estimate })).toBe(
+        'invalid arguments: estimate_minutes (whole minutes, 0–525600, or null to take it off)',
+      );
+    }
+    expect(await refusal(target, 'create_task', { ...base, title: 'T', estimate_minutes: null })).toBe(
+      'invalid arguments: estimate_minutes (whole minutes, 0–525600)',
+    );
+    expect(await refusal(target, 'update_task', { ...base, task: id, notes: 'x'.repeat(8193) })).toBe(
+      'invalid arguments: notes (at most 8192 characters; this one has 8193)',
+    );
+    const once = { ...base, task: id, notes: 'First.' };
+    await write(target, 'update_task', once);
+    expect(await refusal(target, 'update_task', { ...once, notes: 'Second.' })).toMatch(/^conflict: /u);
+    expect((await current(project, id)).notes).toBe('First.');
   });
 });
 

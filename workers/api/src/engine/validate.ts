@@ -51,6 +51,13 @@ export function priority(value: unknown): number {
   return value as number;
 }
 
+/** An estimate: whole minutes, from 0 to TASK_LIMITS.estimateMinutes. */
+export function estimate(value: unknown, field: string): number {
+  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > TASK_LIMITS.estimateMinutes)
+    invalid(`${field} must be a whole number of minutes from 0 to ${TASK_LIMITS.estimateMinutes}`);
+  return value as number;
+}
+
 export function taskId(value: unknown, field: string): string {
   if (!isTaskId(value)) invalid(`${field} must be a task id, such as web-a1b2`);
   return value;
@@ -111,6 +118,9 @@ export interface CreateFields {
   readonly title: string;
   readonly description: string;
   readonly acceptance: string;
+  readonly notes: string;
+  readonly design: string;
+  readonly estimateMinutes: number | null;
   readonly type: Exclude<CreateTaskInput['type'], undefined>;
   readonly priority: number;
   readonly parentId: string | null;
@@ -139,6 +149,9 @@ export function createInput(input: CreateTaskInput): CreateFields {
     title: text(input.title, 'title', TASK_LIMITS.title, true),
     description: text(input.description ?? '', 'description', TASK_LIMITS.description),
     acceptance: text(input.acceptance ?? '', 'acceptance', TASK_LIMITS.acceptance),
+    notes: text(input.notes ?? '', 'notes', TASK_LIMITS.notes),
+    design: text(input.design ?? '', 'design', TASK_LIMITS.design),
+    estimateMinutes: input.estimateMinutes === undefined ? null : estimate(input.estimateMinutes, 'estimateMinutes'),
     type,
     priority: priority(input.priority ?? TASK_PRIORITY.default),
     parentId: input.parentId === undefined ? null : taskId(input.parentId, 'parentId'),
@@ -191,6 +204,11 @@ export function write(input: TaskWrite): CheckedWrite {
     ...(given.acceptance === undefined
       ? {}
       : { acceptance: text(given.acceptance, 'acceptance', TASK_LIMITS.acceptance) }),
+    ...(given.notes === undefined ? {} : { notes: text(given.notes, 'notes', TASK_LIMITS.notes) }),
+    ...(given.design === undefined ? {} : { design: text(given.design, 'design', TASK_LIMITS.design) }),
+    ...(given.estimateMinutes === undefined
+      ? {}
+      : { estimateMinutes: nullable(given.estimateMinutes, (minutes) => estimate(minutes, 'estimateMinutes')) }),
     ...(given.type === undefined ? {} : { type: given.type }),
     ...(given.priority === undefined ? {} : { priority: priority(given.priority) }),
     ...(given.status === undefined ? {} : { status: given.status }),

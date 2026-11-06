@@ -257,6 +257,9 @@ export interface NewTask {
   readonly labels?: readonly string[];
   readonly parent?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimateMinutes?: number;
   readonly links?: readonly NewLink[];
   /** What a person must approve before the task proceeds. */
   readonly approval?: string;
@@ -300,6 +303,9 @@ export async function createTask(
     title: task.title,
     ...(task.description === undefined ? {} : { description: task.description }),
     ...(task.acceptance === undefined ? {} : { acceptance: task.acceptance }),
+    ...(task.notes === undefined ? {} : { notes: task.notes }),
+    ...(task.design === undefined ? {} : { design: task.design }),
+    ...(task.estimateMinutes === undefined ? {} : { estimateMinutes: task.estimateMinutes }),
     ...(task.type === undefined ? {} : { type: task.type }),
     ...(task.priority === undefined ? {} : { priority: task.priority }),
     ...(task.parent === undefined ? {} : { parentId: task.parent }),
@@ -330,6 +336,10 @@ export interface TaskChange {
   readonly title?: string;
   readonly description?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  /** null takes the estimate off. */
+  readonly estimateMinutes?: number | null;
   /** null releases the task. */
   readonly assignee?: string | null;
   /** null takes the task out of its parent. */
@@ -416,6 +426,9 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
   put('title', change.title, task.title);
   put('description', change.description, task.description);
   put('acceptance', change.acceptance, task.acceptance);
+  put('notes', change.notes, task.notes);
+  put('design', change.design, task.design);
+  put('estimateMinutes', change.estimateMinutes, task.estimateMinutes);
   put('priority', change.priority, task.priority);
   put('parentId', change.parent, task.parentId);
   put(
