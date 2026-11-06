@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 508" width="800" height="508" role="img" aria-labelledby="title desc">
+  <title id="title">How Ntasks works</title>
+  <desc id="desc">AI agents connect to /api/mcp and sign in with OAuth 2.1. People use the web app; the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every API request goes to the Ntasks Worker on Cloudflare, which signs it in and checks which projects the caller may reach, then hands it to the task store: one Durable Object with its own SQLite database that holds the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards refresh from the change feed at /api/changes.</desc>
+  <style>
+    svg {
+      --bg: #ffffff; --card: #f6f8fa; --line: #d0d7de; --edge: #818b98;
+      --text: #1f2328; --muted: #59636e;
+      --blue: #0969da; --blue-soft: #ddf4ff; --green: #1a7f37; --green-soft: #dafbe1;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0d1117; --card: #161b22; --line: #3d444d; --edge: #768390;
+        --text: #e6edf3; --muted: #9198a1;
+        --blue: #4493f8; --blue-soft: #121d2f; --green: #3fb950; --green-soft: #12261e;
+      }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: var(--text); }
+    .panel { fill: var(--bg); stroke: var(--line); }
+    .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+    .region { fill: none; stroke: var(--edge); stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .h { font-size: 19px; font-weight: 600; }
+    .s { font-size: 16px; fill: var(--muted); }
+    .label { font-size: 15px; font-weight: 600; fill: var(--muted); }
+    .route { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 15px; }
+    .c { text-anchor: middle; }
+    .e { text-anchor: end; }
+    .blue { fill: var(--blue); }
+    .green { fill: var(--green); }
+    .edge { stroke: var(--edge); stroke-width: 2; }
+    .edge-head { fill: var(--edge); }
+    .feed { stroke: var(--green); stroke-width: 2; }
+    .feed-head { fill: var(--green); }
+    .chip { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+    .chip-feed { fill: var(--green-soft); stroke: var(--green); stroke-width: 1.5; }
+    .chip-text { font-size: 15px; }
+    .board { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; }
+    .bar { fill: var(--edge); }
+    .new-bar { fill: var(--green); opacity: 0; }
+    .dot { stroke: var(--bg); stroke-width: 2; opacity: 0; }
+    .dot-req { fill: var(--blue); }
+    .dot-chg { fill: var(--green); }
+    .pulse { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 2.5; opacity: 0; }
+    .pulse-chg { fill: var(--green-soft); stroke: var(--green); stroke-width: 2.5; opacity: 0; }
+
+    .run { animation-duration: 12s; animation-timing-function: linear; animation-iteration-count: infinite; }
+    #dot-agent { animation-name: dot-agent; }
+    #dot-person { animation-name: dot-person; }
+    #dot-service { animation-name: dot-service; }
+    #hand-1 { animation-name: hand-1; }
+    #hand-2 { animation-name: hand-2; }
+    #hand-3 { animation-name: hand-3; }
+    #worker-pulse { animation-name: worker-pulse; }
+    #store-pulse { animation-name: store-pulse; }
+    #feed-pulse { animation-name: feed-pulse; }
+    #change-1 { animation-name: change-1; }
+    #change-2 { animation-name: change-2; }
+    #board-new { animation-name: board-new; }
+
+    @keyframes dot-agent { 0% { transform: translateY(0); opacity: 0; } 1% { opacity: 1; } 10% { transform: translateY(66px); opacity: 1; } 11%, 100% { transform: translateY(66px); opacity: 0; } }
+    @keyframes dot-person { 0%, 22% { transform: translateY(0); opacity: 0; } 23% { opacity: 1; } 32% { transform: translateY(66px); opacity: 1; } 33%, 100% { transform: translateY(66px); opacity: 0; } }
+    @keyframes dot-service { 0%, 44% { transform: translateY(0); opacity: 0; } 45% { opacity: 1; } 54% { transform: translateY(66px); opacity: 1; } 55%, 100% { transform: translateY(66px); opacity: 0; } }
+    @keyframes hand-1 { 0%, 12% { transform: translateY(0); opacity: 0; } 13% { opacity: 1; } 19% { transform: translateY(38px); opacity: 1; } 20%, 100% { transform: translateY(38px); opacity: 0; } }
+    @keyframes hand-2 { 0%, 34% { transform: translateY(0); opacity: 0; } 35% { opacity: 1; } 41% { transform: translateY(38px); opacity: 1; } 42%, 100% { transform: translateY(38px); opacity: 0; } }
+    @keyframes hand-3 { 0%, 56% { transform: translateY(0); opacity: 0; } 57% { opacity: 1; } 63% { transform: translateY(38px); opacity: 1; } 64%, 100% { transform: translateY(38px); opacity: 0; } }
+    @keyframes worker-pulse { 0%, 10% { opacity: 0; } 11% { opacity: 1; } 14% { opacity: 1; } 16% { opacity: 0; } 32% { opacity: 0; } 33% { opacity: 1; } 36% { opacity: 1; } 38% { opacity: 0; } 54% { opacity: 0; } 55% { opacity: 1; } 58% { opacity: 1; } 60%, 100% { opacity: 0; } }
+    @keyframes store-pulse { 0%, 19% { opacity: 0; } 20% { opacity: 1; } 23% { opacity: 1; } 25% { opacity: 0; } 41% { opacity: 0; } 42% { opacity: 1; } 45% { opacity: 1; } 47% { opacity: 0; } 63% { opacity: 0; } 64% { opacity: 1; } 67% { opacity: 1; } 69%, 100% { opacity: 0; } }
+    @keyframes feed-pulse { 0%, 64% { opacity: 0; } 66% { opacity: 1; } 74% { opacity: 1; } 76%, 100% { opacity: 0; } }
+    @keyframes change-1 { 0%, 68% { transform: translateY(0); opacity: 0; } 69% { opacity: 1; } 75% { transform: translateY(-40px); opacity: 1; } 76%, 100% { transform: translateY(-40px); opacity: 0; } }
+    @keyframes change-2 { 0%, 76% { transform: translateY(0); opacity: 0; } 77% { opacity: 1; } 85% { transform: translateY(-66px); opacity: 1; } 86%, 100% { transform: translateY(-66px); opacity: 0; } }
+    @keyframes board-new { 0%, 85% { opacity: 0; } 87% { opacity: 1; } 97% { opacity: 1; } 99%, 100% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .run { animation: none; }
+    }
+  </style>
+
+  <rect class="panel" x="0.5" y="0.5" width="799" height="507" rx="14"/>
+
+  <!-- Callers -->
+  <rect class="box" x="16" y="20" width="242" height="120" rx="12"/>
+  <text class="h" x="34" y="52">AI agents</text>
+  <text class="s" x="34" y="78">Claude Code, Codex</text>
+  <text class="s" x="34" y="100">or any MCP client</text>
+  <text class="s" x="34" y="122">OAuth 2.1 sign-in</text>
+
+  <rect class="box" x="279" y="20" width="242" height="120" rx="12"/>
+  <text class="h" x="297" y="52">People</text>
+  <text class="s" x="297" y="78">in the web app</text>
+  <text class="s" x="297" y="100">the owner signs in</text>
+  <text class="s" x="297" y="122">with GitHub</text>
+  <rect class="board" x="451" y="34" width="54" height="42" rx="4"/>
+  <path class="edge" d="M469 34 V76 M487 34 V76" stroke-width="1.5"/>
+  <rect class="bar" x="455" y="40" width="10" height="6" rx="1.5"/>
+  <rect class="bar" x="455" y="51" width="10" height="6" rx="1.5"/>
+  <rect class="bar" x="473" y="40" width="10" height="6" rx="1.5"/>
+  <rect class="bar" x="491" y="40" width="10" height="6" rx="1.5"/>
+  <rect id="board-new" class="new-bar run" x="490" y="50" width="12" height="8" rx="2"/>
+
+  <rect class="box" x="542" y="20" width="242" height="120" rx="12"/>
+  <text class="h" x="560" y="52">Services</text>
+  <text class="s" x="560" y="78">such as NoticeOS</text>
+  <text class="s" x="560" y="100">revocable credential</text>
+  <text class="s" x="560" y="122">acting for a named agent</text>
+
+  <!-- Routes into Cloudflare -->
+  <line class="edge" x1="137" y1="140" x2="137" y2="212"/>
+  <polygon class="edge-head" points="131,212 143,212 137,222"/>
+  <text class="route blue" x="147" y="168">/api/mcp</text>
+
+  <line class="edge" x1="388" y1="140" x2="388" y2="212"/>
+  <polygon class="edge-head" points="382,212 394,212 388,222"/>
+  <text class="route blue e" x="378" y="168">/api/tasks</text>
+
+  <line class="feed" x1="412" y1="222" x2="412" y2="150"/>
+  <polygon class="feed-head" points="406,150 418,150 412,140"/>
+  <text class="route green" x="422" y="168">/api/changes</text>
+
+  <line class="edge" x1="663" y1="140" x2="663" y2="212"/>
+  <polygon class="edge-head" points="657,212 669,212 663,222"/>
+  <text class="route blue" x="673" y="168">/api/tasks</text>
+
+  <!-- Cloudflare -->
+  <rect class="region" x="16" y="182" width="768" height="310" rx="12"/>
+  <text class="label" x="30" y="204">Cloudflare</text>
+
+  <rect class="box" x="32" y="222" width="736" height="80" rx="12"/>
+  <rect id="worker-pulse" class="pulse run" x="32" y="222" width="736" height="80" rx="12"/>
+  <text class="h c" x="400" y="254">Ntasks Worker</text>
+  <text class="s c" x="400" y="282">signs in every API request and checks which projects the caller may reach</text>
+
+  <line class="edge" x1="200" y1="302" x2="200" y2="348"/>
+  <polygon class="edge-head" points="194,348 206,348 200,358"/>
+  <line class="feed" x1="364" y1="358" x2="364" y2="312"/>
+  <polygon class="feed-head" points="358,312 370,312 364,302"/>
+  <line class="edge" x1="676" y1="302" x2="676" y2="348"/>
+  <polygon class="edge-head" points="670,348 682,348 676,358"/>
+
+  <rect class="box" x="32" y="358" width="528" height="118" rx="12"/>
+  <rect id="store-pulse" class="pulse run" x="32" y="358" width="528" height="118" rx="12"/>
+  <text class="h" x="48" y="388">Task store</text>
+  <text class="s" x="48" y="412">one Durable Object with its own SQLite database</text>
+  <rect class="chip" x="48" y="428" width="64" height="30" rx="15"/>
+  <text class="chip-text c" x="80" y="448">tasks</text>
+  <rect class="chip" x="122" y="428" width="60" height="30" rx="15"/>
+  <text class="chip-text c" x="152" y="448">links</text>
+  <rect class="chip" x="192" y="428" width="106" height="30" rx="15"/>
+  <text class="chip-text c" x="245" y="448">full history</text>
+  <rect class="chip-feed" x="308" y="428" width="112" height="30" rx="15"/>
+  <rect id="feed-pulse" class="pulse-chg run" x="308" y="428" width="112" height="30" rx="15"/>
+  <text class="chip-text c green" x="364" y="448">change feed</text>
+
+  <rect class="box" x="584" y="358" width="184" height="118" rx="12"/>
+  <text class="h" x="600" y="388">D1</text>
+  <text class="s" x="600" y="412">sign-in data</text>
+  <text class="s" x="600" y="434">and project grants</text>
+
+  <!-- Moving parts -->
+  <circle id="dot-agent" class="dot dot-req run" cx="137" cy="146" r="7"/>
+  <circle id="dot-person" class="dot dot-req run" cx="388" cy="146" r="7"/>
+  <circle id="dot-service" class="dot dot-req run" cx="663" cy="146" r="7"/>
+  <circle id="hand-1" class="dot dot-req run" cx="200" cy="308" r="7"/>
+  <circle id="hand-2" class="dot dot-req run" cx="200" cy="308" r="7"/>
+  <circle id="hand-3" class="dot dot-req run" cx="200" cy="308" r="7"/>
+  <circle id="change-1" class="dot dot-chg run" cx="364" cy="350" r="7"/>
+  <circle id="change-2" class="dot dot-chg run" cx="412" cy="214" r="7"/>
+</svg>
