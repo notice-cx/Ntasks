@@ -63,6 +63,8 @@ export interface LiveTask {
   /** The epic this task belongs to, or null. */
   parent: string | null;
   deferUntil: string | null;
+  /** When the work is due, when the server sends it; null when it has no due date. */
+  dueAt?: string | null;
   choices?: TaskChoices | null;
   choice?: TaskChoice | null;
   /** How a closed task's close ended; null on a task that is not closed. */

@@ -5,7 +5,7 @@
  * MCP tool that does the same thing (task-writes.ts), checked by the same
  * rules (args.ts). An Idempotency-Key header makes a write safe to retry.
  */
-import { IDEMPOTENCY_KEY, TASK_LIMITS, type TaskStatus } from '@ntasks/domain';
+import { IDEMPOTENCY_KEY, TASK_LIMITS, type JsonObject, type TaskStatus } from '@ntasks/domain';
 import {
   assigneeArg,
   cardArg,
@@ -14,6 +14,7 @@ import {
   deferArg,
   emptyIsNone,
   estimateArg,
+  instantArg,
   labelsArg,
   only,
   priorityArg,
@@ -63,6 +64,7 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'notes',
   'design',
   'estimateMinutes',
+  'dueAt',
   'addLabels',
   'removeLabels',
   'card',
@@ -99,6 +101,12 @@ async function writeOf(
   };
 }
 
+/** A card's kill date is the task's due date, so a write gives one of the two. */
+function oneDueDate(dueAt: string | null | undefined, card: JsonObject | null | undefined): void {
+  if (dueAt !== undefined && card?.kill !== undefined)
+    refuse("invalid arguments: dueAt (a card's kill date is the due date; send one of them)");
+}
+
 /** POST /api/tasks: files a task. Answers its id and its project's key. */
 export async function createRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'create_task', {});
@@ -114,6 +122,7 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     'notes',
     'design',
     'estimateMinutes',
+    'dueAt',
     'metadata',
     'card',
     'changeClass',
@@ -130,10 +139,12 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
     design: textArg(body, 'design', TASK_LIMITS.design, false, true),
     estimateMinutes: estimateArg(body, 'estimateMinutes'),
+    dueAt: instantArg(body, 'dueAt'),
     metadata: sourceMetadataArg(body),
     card: cardArg(body),
     changeClass: choiceArg(body, 'changeClass', TASK_CHANGE_CLASSES),
   };
+  oneDueDate(fields.dueAt, fields.card);
   const task = Object.fromEntries(
     Object.entries(fields).filter(([, value]) => value !== undefined),
   ) as unknown as NewTask;
@@ -169,6 +180,7 @@ export async function updateRoute(
     notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
     design: textArg(body, 'design', TASK_LIMITS.design, false, true),
     estimateMinutes: estimateArg(body, 'estimateMinutes', true),
+    dueAt: body.dueAt === null ? null : instantArg(body, 'dueAt'),
     addLabels: labelsArg(body, 'addLabels', 1),
     removeLabels: labelsArg(body, 'removeLabels', 1),
     card: body.card === null ? null : cardArg(body),
@@ -177,6 +189,7 @@ export async function updateRoute(
   const change = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as TaskChange;
   if (Object.keys(change).length === 0) refuse('invalid arguments: name at least one field to change');
   setOrTakeOff(body, ['card', 'changeClass']);
+  oneDueDate(change.dueAt, change.card);
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
   return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
 }

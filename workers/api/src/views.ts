@@ -67,6 +67,7 @@ export function webTask(task: Task) {
     assigneeModel: task.assigneeModel,
     parent: task.parentId,
     deferUntil: task.deferUntil,
+    dueAt: task.dueAt,
     description: task.description,
     acceptance: task.acceptance,
     notes: task.notes,

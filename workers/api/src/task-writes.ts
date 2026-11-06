@@ -260,6 +260,8 @@ export interface NewTask {
   readonly notes?: string;
   readonly design?: string;
   readonly estimateMinutes?: number;
+  /** An ISO time. A card's kill date is the due date too, so a task is filed with one of them. */
+  readonly dueAt?: string;
   readonly links?: readonly NewLink[];
   /** What a person must approve before the task proceeds. */
   readonly approval?: string;
@@ -311,7 +313,7 @@ export async function createTask(
     ...(task.parent === undefined ? {} : { parentId: task.parent }),
     ...(task.labels === undefined ? {} : { labels: task.labels }),
     links: links.map((link) => ({ ...ENGINE_LINKS[link.kind], taskId: link.taskId })),
-    ...(typeof due === 'string' ? { dueAt: due } : {}),
+    ...(typeof due === 'string' ? { dueAt: due } : task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
     ...(task.approval === undefined ? {} : { requestApproval: { reason: task.approval } }),
@@ -340,6 +342,8 @@ export interface TaskChange {
   readonly design?: string;
   /** null takes the estimate off. */
   readonly estimateMinutes?: number | null;
+  /** An ISO time, or null to clear it. A card's kill date sets it too. */
+  readonly dueAt?: string | null;
   /** null releases the task. */
   readonly assignee?: string | null;
   /** null takes the task out of its parent. */
@@ -429,6 +433,7 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
   put('notes', change.notes, task.notes);
   put('design', change.design, task.design);
   put('estimateMinutes', change.estimateMinutes, task.estimateMinutes);
+  put('dueAt', change.dueAt, task.dueAt);
   put('priority', change.priority, task.priority);
   put('parentId', change.parent, task.parentId);
   put(

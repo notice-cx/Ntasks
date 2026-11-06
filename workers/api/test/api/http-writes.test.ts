@@ -48,6 +48,7 @@ describe('GET /api/tasks/capabilities', () => {
         'notes',
         'design',
         'estimateMinutes',
+        'dueAt',
         'addLabels',
         'removeLabels',
         'card',
@@ -272,6 +273,48 @@ describe('PATCH /api/tasks/:id', () => {
     expect(
       await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', estimateMinutes: 2.5 }),
     ).toEqual({ status: 400, body: { error: 'invalid_request', detail: 'estimateMinutes (whole minutes, 0–525600)' } });
+  });
+
+  it('files a task with a due date, changes it and clears it, and refuses one beside a kill date', async () => {
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Review the panel',
+      dueAt: '2027-02-01',
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    expect((await current(id)).dueAt).toBe('2027-02-01T00:00:00.000Z');
+    expect((await get(target, `/api/tasks/${id}?project=${project.id}`)).body.task).toMatchObject({
+      dueAt: '2027-02-01T00:00:00.000Z',
+    });
+    const moved = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      dueAt: '2027-03-01T09:30:00+02:00',
+    });
+    expect(moved.body.task).toMatchObject({ dueAt: '2027-03-01T07:30:00.000Z' });
+    const cleared = await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: null });
+    expect(cleared.body.task).toMatchObject({ dueAt: null });
+    expect((await current(id)).dueAt).toBeNull();
+
+    const invalid = (detail: string) => ({ status: 400, body: { error: 'invalid_request', detail } });
+    expect(await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-31' })).toEqual(
+      invalid('dueAt (YYYY-MM-DD or an ISO time)'),
+    );
+    const card = {
+      valuePerMonth: 3,
+      likelihood: 0.5,
+      reviewMinutes: 2,
+      daysToSignal: 10,
+      measurability: 'cohort',
+      kill: { state: 'No lift', date: '2027-04-01' },
+    };
+    expect(
+      await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', dueAt: '2027-02-01', card }),
+    ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
+    expect(
+      await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-01', card }),
+    ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
+    expect((await current(id)).dueAt).toBeNull();
   });
 
   it('takes a task with claim, and refuses one someone else holds', async () => {

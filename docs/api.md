@@ -211,8 +211,8 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `addLabels`, `removeLabels`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
+| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution` and `duplicateOf` | `{ task }`, the task as closed |
 
@@ -222,7 +222,10 @@ used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,
 `noticeos_panel_date`, `noticeos_panel_version` and
 `noticeos_task_map_asset`. In a change, `""` releases the task, takes it out
 of its parent or clears its defer date, and `null` takes off its card, change
-class or estimate. NoticeOS answered a change, a comment and a close with its task
+class, estimate or due date. `dueAt` is a date, `YYYY-MM-DD`, or an ISO time
+with its offset, and the task answers it as `dueAt` in UTC. A card's kill
+date is also the task's due date, so a body that gives a card with a kill
+date gives no `dueAt`. NoticeOS answered a change, a comment and a close with its task
 client's own output; Ntasks answers them with the task or the comment, in the
 shapes the reads use.
 
