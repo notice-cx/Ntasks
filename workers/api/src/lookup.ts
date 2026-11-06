@@ -4,7 +4,7 @@
  * sender learns nothing of another's projects. The MCP tools and the HTTP
  * writes share these, and their refusals.
  */
-import type { Project, Task, TaskEngine } from '@ntasks/domain';
+import type { Json, Project, Task, TaskEngine, TaskEvent, TaskLink } from '@ntasks/domain';
 import { mayReach, reachable, type Principal, type ProjectAccess } from './auth.ts';
 import { Refused } from './refused.ts';
 
@@ -80,4 +80,36 @@ export async function tasksIn(reader: Reader, project: Project, taskIds: readonl
 export async function ownerOf({ engine, principal }: Reader, taskId: string): Promise<Project | undefined> {
   const prefix = taskId.slice(0, taskId.indexOf('-'));
   return reachable(principal, await engine.listProjects()).find((candidate) => candidate.prefix === prefix);
+}
+
+/** What a sender may see of the links between tasks. */
+export interface LinkView {
+  /** The task without its links to and from tasks in projects the sender cannot reach. */
+  task(task: Task): Task;
+  /** The event without such links in the dependencies it records. */
+  event(event: TaskEvent): TaskEvent;
+}
+
+const EVERY_LINK: LinkView = Object.freeze({ task: (task: Task) => task, event: (event: TaskEvent) => event });
+
+/**
+ * The links a sender may see. A link to a task in a project the sender cannot
+ * reach would show that task's id, title and status, so it is left out; the
+ * other task's project is the one whose prefix its id starts with. A sender
+ * who reaches every project sees every link.
+ */
+export async function linksSeenBy({ engine, principal }: Reader): Promise<LinkView> {
+  if (principal.projects === 'all') return EVERY_LINK;
+  const prefixes = new Set(reachable(principal, await engine.listProjects()).map((project) => project.prefix));
+  const seen = (taskId: unknown) => typeof taskId === 'string' && prefixes.has(taskId.slice(0, taskId.indexOf('-')));
+  const links = (list: readonly TaskLink[]) => list.filter((link) => seen(link.taskId));
+  return {
+    task: (task) => ({ ...task, dependencies: links(task.dependencies), dependents: links(task.dependents) }),
+    event(event) {
+      const recorded = event.changes.dependencies;
+      if (!Array.isArray(recorded)) return event;
+      const kept = (recorded as readonly Json[]).filter((entry) => seen((entry as { taskId?: Json } | null)?.taskId));
+      return { ...event, changes: { ...event.changes, dependencies: kept } };
+    },
+  };
 }

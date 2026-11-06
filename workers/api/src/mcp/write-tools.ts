@@ -76,6 +76,7 @@ import {
   type RetryRequest,
   type TaskChange,
 } from '../task-writes.ts';
+import { linksSeenBy } from '../lookup.ts';
 import { commentView, mcpTask } from '../views.ts';
 import { PROJECT, schema, TASK, type TaskTool } from './read-tools.ts';
 
@@ -493,7 +494,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         model,
         retryRequest('claim_task', args),
       );
-      return { task: mcpTask(result.task), replayed: result.replayed };
+      return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };
     },
   },
   {
@@ -596,7 +597,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         retryRequest('update_task', args),
       );
       return {
-        task: mcpTask(result.task),
+        task: mcpTask((await linksSeenBy(context)).task(result.task)),
         replayed: result.replayed,
         lint: lintView(await lintOf(context, project.id, [result.task]), taskId, choiceAdvice(result.task)),
       };
@@ -739,7 +740,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const closing = closingArgs(args, taskId, 'duplicate_of');
       keyArg(args);
       const { result } = await closeTask(context, projectId, taskId, closing, model, retryRequest('close_task', args));
-      return { task: mcpTask(result.task), replayed: result.replayed };
+      return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };
     },
   },
 ] satisfies TaskTool[]);

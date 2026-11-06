@@ -37,6 +37,7 @@ import {
   type TaskChange,
   type WriteContext,
 } from '../task-writes.ts';
+import { linksSeenBy } from '../lookup.ts';
 import { commentView, webTask } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
 import { invalidRequest, json, queryOf } from './respond.ts';
@@ -164,7 +165,7 @@ export async function updateRoute(
   if (Object.keys(change).length === 0) refuse('invalid arguments: name at least one field to change');
   setOrTakeOff(body, ['card', 'changeClass']);
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
-  return json({ task: webTask(result.task) });
+  return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
 }
 
 /** POST /api/tasks/:id/comments: adds a comment. */
@@ -189,5 +190,5 @@ export async function closeRoute(context: WriteContext, url: URL, request: Reque
   const projectId = projectArg(body, 'projectId');
   const closing = closingArgs(body, taskId, 'duplicateOf');
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
-  return json({ task: webTask(result.task) });
+  return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
 }

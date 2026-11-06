@@ -38,6 +38,10 @@ an agent or a service reaches only the projects it was granted, each for
 reading or for writing too. Lists and the change feed leave the other
 projects out, and a request that names one gets the same answer as a project
 that does not exist, so a sender learns nothing of projects it cannot reach.
+For the same reason, a link between a task the sender reaches and a task in a
+project it cannot reach is left out of every task the API answers with, and
+of the task's history and the change feed. The other task's project is the
+one whose prefix starts its id.
 A write to a project granted for reading only is refused: `403` with
 `forbidden` on an HTTP route, and a `refused: …` sentence from an MCP tool.
 

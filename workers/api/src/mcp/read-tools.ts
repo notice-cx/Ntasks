@@ -8,12 +8,13 @@ import {
   isTaskType,
   TASK_LIMITS,
   TASK_STATUSES,
+  type Task,
   type TaskEngine,
   type TaskStatus,
   type TaskType,
 } from '@ntasks/domain';
 import { reachable, type Principal } from '../auth.ts';
-import { projectOf, taskOf } from '../lookup.ts';
+import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, type Workspace } from '../service.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
 import {
@@ -175,6 +176,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       };
       if (filters.types?.some((type) => !isTaskType(type))) refuse('invalid arguments: type');
       const nextOf = (shown: number, total: number) => (offset + shown < total ? offset + shown : null);
+      const links = await linksSeenBy(context);
+      const summary = (task: Task) => mcpSummary(links.task(task));
       if (args.project !== undefined) {
         const project = await projectOf(context, projectArg(args));
         const found = await board(engine, project.id, statuses as TaskStatus[], closedDays, filters, now);
@@ -184,7 +187,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           readAt: found.readAt,
           closedSince: found.closedSince,
           total: found.tasks.length,
-          tasks: page.map(mcpSummary),
+          tasks: page.map(summary),
           nextOffset: nextOf(page.length, found.tasks.length),
         };
       }
@@ -206,7 +209,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         readAt: found.readAt,
         closedSince: found.closedSince,
         total: found.tasks.length,
-        tasks: page.map((task) => ({ id: task.id, ...where.get(task.projectId), ...mcpSummary(task) })),
+        tasks: page.map((task) => ({ id: task.id, ...where.get(task.projectId), ...summary(task) })),
         nextOffset: nextOf(page.length, found.tasks.length),
       };
     },
@@ -222,14 +225,15 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       only(args, ['project', 'task']);
       const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
-      const [task, comments] = await Promise.all([
+      const [task, comments, links] = await Promise.all([
         taskOf(context, project, taskId),
         engine.listComments(project.id, taskId),
+        linksSeenBy(context),
       ]);
       return {
         project: project.key,
         readAt: now(),
-        task: mcpTask(task),
+        task: mcpTask(links.task(task)),
         comments: comments.map(commentView),
         proposal: proposalOf(task),
       };
@@ -260,8 +264,12 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const snapshots = booleanArg(args, 'snapshots') ?? false;
       const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
-      const [, events] = await Promise.all([taskOf(context, project, taskId), allEvents(engine, project.id, taskId)]);
-      return { changes: historyView(events, limit, snapshots) };
+      const [, events, links] = await Promise.all([
+        taskOf(context, project, taskId),
+        allEvents(engine, project.id, taskId),
+        linksSeenBy(context),
+      ]);
+      return { changes: historyView(events.map(links.event), limit, snapshots) };
     },
   },
 ]);
