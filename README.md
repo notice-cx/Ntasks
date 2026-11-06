@@ -32,12 +32,12 @@ Ntasks is under construction. The repository holds its skeleton:
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
-| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
+| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in is built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
-| Writes through the API, sign-in | Being built |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links and approval requests ([the API](docs/api.md)) |
+| A person's decisions through the API, sign-in | Being built |
 
 Until sign-in is built, the Worker refuses every API request, so a deployment
 serves no task data. [SECURITY.md](SECURITY.md) has the details.

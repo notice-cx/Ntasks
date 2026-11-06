@@ -73,13 +73,17 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
 - **Reads:** `getTask`, `findTasks`, `listTasks`, `listBoard`, `listEpics`,
-  `listComments`, `listHistory`, `listChanges` and `lint`. `listTasks` reads
-  one project a page at a time; `listBoard` reads a whole board, in one
-  project or in every project, in one round trip.
+  `listComments`, `listHistory`, `listChanges`, `lint` and `recordedWrite`.
+  `listTasks` reads one project a page at a time; `listBoard` reads a whole
+  board, in one project or in every project, in one round trip.
+  `recordedWrite` returns what an earlier write with an idempotency key
+  answered, so the API can answer a retry before it checks a rule that the
+  write's own effect would break, such as a close's rule that the task is
+  open.
 - **Writes:** `createTask`, `writeTask` and `addComment`. Each is one batch.
-  `writeTask` takes everything one change does at once: field changes,
-  labels, links, metadata, a close or a reopen, an approval request and a
-  comment.
+  `createTask` can open an approval the new task waits on. `writeTask` takes
+  everything one change does at once: field changes, labels, links, metadata,
+  a close or a reopen, an approval request and a comment.
 - **Projects:** `listProjects` and `createProject`.
 
 The engine checks the task model's rules. It does not check who may act: the
@@ -114,7 +118,8 @@ NoticeOS sent these operations to Beads, some of them as several `bd`
 commands in a row (`scripts/hosted-task-command.mts` in NoticeOS). Each is one
 engine call. Its checks of who may decide, such as matching an owner's answer
 to the proposal they saw, stay in the API layer, which is ported from that
-file.
+file: [`task-writes.ts`](../workers/api/src/task-writes.ts) holds the checks
+of the writes the API offers.
 
 | NoticeOS operation | Engine call |
 |---|---|
@@ -128,12 +133,12 @@ file.
 | `epics` | `listEpics` |
 | `snapshot` | `listChanges` |
 | `lint` | `lint` |
-| `create` | `createTask` |
+| `create` | `createTask`, with `requestApproval` when the new task asks for an approval |
 | `update`, `depend`, `undepend`, `relate`, `hand-back` | `writeTask` with `set`, labels, `addLinks` or `removeLinks` |
 | `comment` | `addComment` |
 | `close`, `dismiss` | `writeTask` with `close` |
 | `attribute` | Nothing separate: the close records the closer, model and resolution itself |
-| `gate` | `writeTask` with `requestApproval` |
+| `gate` | `writeTask` with `requestApproval`, after the API looks for an open approval asking the same |
 | `resolve-gate` | `writeTask` with `close` on the gate |
 | `dispute` | `writeTask` with `reopen` on the gate |
 | `respond`, `choose`, `record-choice` | One `writeTask`: the choice, the comment, and the close or hand-back |
