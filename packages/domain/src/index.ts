@@ -48,3 +48,16 @@ export type {
   TaskWrite,
   WriteResult,
 } from './engine.ts';
+export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES } from './store-rows.ts';
+export type {
+  CommentRow,
+  EdgeRow,
+  EventRow,
+  LabelRow,
+  ProjectRow,
+  StoreRows,
+  StoreStatement,
+  StoreTable,
+  StoreValue,
+  TaskRow,
+} from './store-rows.ts';
