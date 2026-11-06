@@ -51,6 +51,16 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     if (key !== undefined) receipts.set(key, { write: JSON.stringify(write), answer });
   }
 
+  /** Applies a write once per retry key: the same write sent again gets the
+   * first answer without being applied again. A refused write records nothing. */
+  function once<T>(key: string | undefined, write: unknown, apply: () => T): T {
+    const replay = receipt(key, write);
+    if (replay !== undefined) return replay.answer as T;
+    const answer = apply();
+    record(key, write, answer);
+    return answer;
+  }
+
   function reach(): void {
     if (unreachable) throw new ApiError('The task list: the server answered 503.', 503, null);
   }
@@ -193,126 +203,132 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     },
     async createTask(input, options) {
       reach();
-      const replay = receipt(options?.idempotencyKey, ['create', input]);
-      if (replay !== undefined) return replay.answer as { id: string; project: string };
-      const { prefix } = project(input.project);
-      const title = input.title.trim();
-      if (title === '') throw new ApiError('A task needs a title.', 400, 'invalid');
-      let id: string;
-      if (input.parent) {
-        const parent = find(input.parent, input.project);
-        const children = state.tasks.filter((task) => task.parent === parent.id).length;
-        id = `${parent.id}.${children + 1}`;
-      } else {
-        made += 1;
-        id = `${prefix}-n${made.toString(36)}${(now() % 1296).toString(36).padStart(2, '0')}`;
-      }
-      const at = new Date(now()).toISOString();
-      state.tasks.push({
-        project: input.project,
-        id,
-        title,
-        status: 'open',
-        priority: input.priority ?? 2,
-        issueType: input.type ?? 'task',
-        assignee: null,
-        updatedAt: at,
-        closedAt: null,
-        createdAt: at,
-        parent: input.parent ?? null,
-        deferUntil: null,
-        choices: null,
-        choice: null,
-        resolution: null,
-        duplicateOf: null,
-        description: input.description ?? '',
-        acceptance: input.acceptance ?? '',
-        labels: input.labels ?? [],
-        ready: true,
-        dependencies: [],
-        comments: 0,
-        metadata: { ...input.metadata, noticeos_filed_by: FIXTURE_ACTOR },
-        startedAt: null,
-        closeReason: null,
-        awaitType: null,
-      });
-      const created = { id, project: input.project };
-      record(options?.idempotencyKey, ['create', input], created);
-      return created;
-    },
-    async updateTask(id, key, edit) {
-      reach();
-      const task = find(id, key);
-      if (edit.claim) {
-        if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
-        if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
-          throw new ApiError(`Task ${id} is held by ${task.assignee}.`, 409, 'task_refused');
+      return once(options?.idempotencyKey, ['create', input], () => {
+        const { prefix } = project(input.project);
+        const title = input.title.trim();
+        if (title === '') throw new ApiError('A task needs a title.', 400, 'invalid');
+        let id: string;
+        if (input.parent) {
+          const parent = find(input.parent, input.project);
+          const children = state.tasks.filter((task) => task.parent === parent.id).length;
+          id = `${parent.id}.${children + 1}`;
+        } else {
+          made += 1;
+          id = `${prefix}-n${made.toString(36)}${(now() % 1296).toString(36).padStart(2, '0')}`;
         }
-        task.assignee = FIXTURE_ACTOR;
-        task.status = 'in_progress';
-        task.startedAt ??= new Date(now()).toISOString();
-      }
-      if (edit.status !== undefined) {
-        if (edit.status === 'closed')
-          throw new ApiError('Close a task with Close, which records why.', 409, 'task_refused');
-        task.status = edit.status;
-        if (edit.status !== 'deferred') task.deferUntil = null;
-      }
-      if (edit.priority !== undefined) task.priority = edit.priority;
-      if (edit.assignee !== undefined) task.assignee = edit.assignee === '' ? null : edit.assignee;
-      if (edit.parent !== undefined) task.parent = edit.parent === '' ? null : edit.parent;
-      if (edit.defer !== undefined) {
-        task.deferUntil = edit.defer === '' ? null : edit.defer;
-        if (edit.defer === '' && task.status === 'deferred') task.status = 'open';
-        if (edit.defer !== '') task.status = 'deferred';
-      }
-      if (edit.title !== undefined) task.title = edit.title;
-      if (edit.description !== undefined) task.description = edit.description;
-      if (edit.acceptance !== undefined) task.acceptance = edit.acceptance;
-      if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
-      if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
-      touch(task);
+        const at = new Date(now()).toISOString();
+        state.tasks.push({
+          project: input.project,
+          id,
+          title,
+          status: 'open',
+          priority: input.priority ?? 2,
+          issueType: input.type ?? 'task',
+          assignee: null,
+          updatedAt: at,
+          closedAt: null,
+          createdAt: at,
+          parent: input.parent ?? null,
+          deferUntil: null,
+          choices: null,
+          choice: null,
+          resolution: null,
+          duplicateOf: null,
+          description: input.description ?? '',
+          acceptance: input.acceptance ?? '',
+          labels: input.labels ?? [],
+          ready: true,
+          dependencies: [],
+          comments: 0,
+          metadata: { ...input.metadata, noticeos_filed_by: FIXTURE_ACTOR },
+          startedAt: null,
+          closeReason: null,
+          awaitType: null,
+        });
+        return { id, project: input.project };
+      });
     },
-    async closeTask(id, key, reason, { resolution, duplicateOf } = {}) {
+    async updateTask(id, key, edit, options) {
       reach();
-      if (reason.trim() === '') throw new ApiError('A close needs its reason.', 409, 'task_refused');
-      close(find(id, key), reason, resolution, duplicateOf);
+      once(options?.idempotencyKey, ['update', id, key, edit], () => {
+        const task = find(id, key);
+        if (edit.claim) {
+          if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
+          if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
+            throw new ApiError(`Task ${id} is held by ${task.assignee}.`, 409, 'task_refused');
+          }
+          task.assignee = FIXTURE_ACTOR;
+          task.status = 'in_progress';
+          task.startedAt ??= new Date(now()).toISOString();
+        }
+        if (edit.status !== undefined) {
+          if (edit.status === 'closed')
+            throw new ApiError('Close a task with Close, which records why.', 409, 'task_refused');
+          task.status = edit.status;
+          if (edit.status !== 'deferred') task.deferUntil = null;
+        }
+        if (edit.priority !== undefined) task.priority = edit.priority;
+        if (edit.assignee !== undefined) task.assignee = edit.assignee === '' ? null : edit.assignee;
+        if (edit.parent !== undefined) task.parent = edit.parent === '' ? null : edit.parent;
+        if (edit.defer !== undefined) {
+          task.deferUntil = edit.defer === '' ? null : edit.defer;
+          if (edit.defer === '' && task.status === 'deferred') task.status = 'open';
+          if (edit.defer !== '') task.status = 'deferred';
+        }
+        if (edit.title !== undefined) task.title = edit.title;
+        if (edit.description !== undefined) task.description = edit.description;
+        if (edit.acceptance !== undefined) task.acceptance = edit.acceptance;
+        if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
+        if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
+        touch(task);
+      });
+    },
+    async closeTask(id, key, reason, { resolution, duplicateOf, idempotencyKey } = {}) {
+      reach();
+      once(idempotencyKey, ['close', id, key, reason, resolution ?? 'done', duplicateOf ?? null], () => {
+        if (reason.trim() === '') throw new ApiError('A close needs its reason.', 409, 'task_refused');
+        close(find(id, key), reason, resolution, duplicateOf);
+      });
     },
     async comment(id, key, text, options) {
       reach();
-      if (receipt(options?.idempotencyKey, ['comment', id, key, text]) !== undefined) return;
-      addComment(find(id, key), text);
-      record(options?.idempotencyKey, ['comment', id, key, text], null);
+      once(options?.idempotencyKey, ['comment', id, key, text], () => addComment(find(id, key), text));
     },
-    async respond(id, key, response) {
+    async respond(id, key, response, options) {
       reach();
-      const task = find(id, key);
-      waitsOnPerson(task);
-      addComment(task, response);
-      if (task.issueType === 'decision') close(task, response);
-      else handBack(task);
+      once(options?.idempotencyKey, ['respond', id, key, response], () => {
+        const task = find(id, key);
+        waitsOnPerson(task);
+        addComment(task, response);
+        if (task.issueType === 'decision') close(task, response);
+        else handBack(task);
+      });
     },
-    async choose(id, key, option, note) {
+    async choose(id, key, option, note, options) {
       reach();
-      const task = find(id, key);
-      waitsOnPerson(task);
-      const picked = task.choices?.options.find((entry) => entry.key === option);
-      if (!picked) throw new ApiError(`Task ${id} offers no option ${option}.`, 409, 'task_refused');
-      task.choice = {
-        option,
-        label: picked.label,
-        by: FIXTURE_ACTOR,
-        at: new Date(now()).toISOString(),
-        ...(note ? { note } : {}),
-      };
-      if (task.issueType === 'decision') close(task, `Chose (${option}) ${picked.label}`);
-      else handBack(task);
+      once(options?.idempotencyKey, ['choose', id, key, option, note ?? null], () => {
+        const task = find(id, key);
+        waitsOnPerson(task);
+        const picked = task.choices?.options.find((entry) => entry.key === option);
+        if (!picked) throw new ApiError(`Task ${id} offers no option ${option}.`, 409, 'task_refused');
+        task.choice = {
+          option,
+          label: picked.label,
+          by: FIXTURE_ACTOR,
+          at: new Date(now()).toISOString(),
+          ...(note ? { note } : {}),
+        };
+        if (task.issueType === 'decision') close(task, `Chose (${option}) ${picked.label}`);
+        else handBack(task);
+      });
     },
-    async dismiss(id, key, reason, { resolution = 'wont-do', duplicateOf } = {}) {
+    async dismiss(id, key, reason, { resolution = 'wont-do', duplicateOf, idempotencyKey } = {}) {
       reach();
-      const task = find(id, key);
-      waitsOnPerson(task);
-      close(task, reason ? `Dismissed: ${reason}` : 'Dismissed', resolution, duplicateOf);
+      once(idempotencyKey, ['dismiss', id, key, reason ?? null, resolution, duplicateOf ?? null], () => {
+        const task = find(id, key);
+        waitsOnPerson(task);
+        close(task, reason ? `Dismissed: ${reason}` : 'Dismissed', resolution, duplicateOf);
+      });
     },
     async dispute(id, key) {
       reach();
@@ -325,11 +341,13 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       task.resolution = null;
       touch(task);
     },
-    async resolveGate(id, key, reason) {
+    async resolveGate(id, key, reason, options) {
       reach();
-      const task = find(id, key);
-      if (task.issueType !== 'gate') throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
-      close(task, reason ? `Approved: ${reason}` : 'Approved');
+      once(options?.idempotencyKey, ['resolve', id, key, reason ?? null], () => {
+        const task = find(id, key);
+        if (task.issueType !== 'gate') throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
+        close(task, reason ? `Approved: ${reason}` : 'Approved');
+      });
     },
   };
 }

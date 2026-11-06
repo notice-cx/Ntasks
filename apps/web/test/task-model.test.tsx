@@ -102,6 +102,27 @@ describe('the fixture API', () => {
   });
 });
 
+describe('the fixture API retry keys on answers', () => {
+  it('applies an answer, a pick and an approval once when they are sent again with their key', async () => {
+    const api = createFixtureTasksApi();
+    const comments = () => api.state.comments.get('web-q8n5')?.length ?? 0;
+    await api.respond('web-q8n5', 'web', 'support@example.com', { idempotencyKey: 'answer-1' });
+    await api.respond('web-q8n5', 'web', 'support@example.com', { idempotencyKey: 'answer-1' });
+    expect(comments()).toBe(1);
+    await api.choose('web-d4x1', 'web', 'a', undefined, { idempotencyKey: 'pick-1' });
+    await expect(api.choose('web-d4x1', 'web', 'a', undefined, { idempotencyKey: 'pick-1' })).resolves.toBeUndefined();
+    await api.resolveGate('web-g7p2', 'web', undefined, { idempotencyKey: 'approve-1' });
+    await expect(
+      api.resolveGate('web-g7p2', 'web', undefined, { idempotencyKey: 'approve-1' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      api.respond('web-q8n5', 'web', 'Another answer', { idempotencyKey: 'answer-1' }),
+    ).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+  });
+});
+
 describe('a close where nothing shipped', () => {
   it("records the person's note, else the resolution's words, and shows only a note", () => {
     expect(closeAsReason({ resolution: 'duplicate', duplicateOf: 'web-b2' })).toBe('Duplicate of web-b2');
