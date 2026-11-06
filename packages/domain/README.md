@@ -17,3 +17,7 @@ workerd, in the browser and in Node.
 pnpm --filter @ntasks/domain test
 pnpm --filter @ntasks/domain typecheck
 ```
+
+`test` runs the Vitest suite, then [`test/node-import.mjs`](test/node-import.mjs)
+with `node --test`. That file imports the package by its name with no bundler,
+so it fails if Node itself cannot load the package.
