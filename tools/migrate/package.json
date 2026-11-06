@@ -1,0 +1,20 @@
+{
+  "name": "@ntasks/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Moves a Beads task hub on Dolt into the Ntasks task store: export, import and verify.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ntasks/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

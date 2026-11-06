@@ -92,6 +92,7 @@ pnpm build
 | [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
 | [`tools/lint/`](tools/lint/) | The test that `pnpm lint` reports the mistakes it exists to catch |
+| [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, with a verifier |
 | [`docs/`](docs/) | Concepts and architecture |
 
 ## Where Ntasks comes from
