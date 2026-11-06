@@ -84,7 +84,7 @@ export function unofferedTools(offered: readonly string[]): string | null {
   const missing = GUIDE_TOOLS.filter((name) => !offered.includes(name));
   return missing.length === 0
     ? null
-    : `This endpoint does not offer ${missing.join(', ')} yet, so the steps below that use them do not apply here.`;
+    : `This endpoint does not offer ${missing.join(', ')} yet, so the steps that use them do not apply here.`;
 }
 
 export interface TaskGuide {
@@ -132,9 +132,10 @@ export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> 
  * endpoint lacks, and its rules for writing a task. */
 export function taskInstructions(offered: readonly string[]): string {
   const unoffered = unofferedTools(offered);
+  // First, so an agent learns what is missing before any step that names it.
   return [
-    TASK_START,
     ...(unoffered === null ? [] : [unoffered]),
+    TASK_START,
     `${TASK_GUIDE_TOOL} returns these rules with the full workflow and what changed lately, at any time; list_workspaces returns its version as guideVersion, so read it again when that changes.`,
     '',
     ...TASK_QUALITY,

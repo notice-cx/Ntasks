@@ -140,7 +140,7 @@ describe('list_workspaces and get_task_guide', () => {
     expect(note).toMatch(
       /^This endpoint does not offer create_task, create_tasks, update_task, claim_task, comment_on_task, close_task, /u,
     );
-    expect(result.instructions).toContain(note);
+    expect(result.instructions.startsWith(`${note}\n`)).toBe(true);
     const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!;
     expect(guide.guide).toContain(`## This endpoint\n\n${note}`);
   });
