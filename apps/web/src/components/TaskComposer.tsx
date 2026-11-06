@@ -1,5 +1,5 @@
 import { ChevronDown, Plus, Square, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,7 +10,70 @@ import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
 import { PRIORITY_BANDS } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
-import { MarkdownText } from '@/routes/tasks/task-markdown';
+import { TaskPrefixesProvider } from '@/routes/tasks/task-prefixes';
+
+// The Markdown renderer is about 100 kB compressed, and the board, where the
+// composer opens, has no other use for it: it loads when a preview is asked for.
+let renderer: Promise<typeof import('@/routes/tasks/task-markdown')> | null = null;
+
+/** The renderer's module, read once. A failed read is forgotten, so the next attempt asks again. */
+function loadRenderer(): Promise<typeof import('@/routes/tasks/task-markdown')> {
+  renderer ??= import('@/routes/tasks/task-markdown').catch((error: unknown) => {
+    renderer = null;
+    throw error;
+  });
+  return renderer;
+}
+
+/** React keeps a lazy component's failed load for good, so each attempt is a new one. */
+function lazyRenderer() {
+  return lazy(() => loadRenderer().then((module) => ({ default: module.MarkdownText })));
+}
+
+/** Catches a preview that failed to load, so the composer and its draft stay as they are. */
+class PreviewBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/** The description drawn as it will show on the task's page, with its task ids linked. */
+function DescriptionPreview({ source, prefixes }: { source: string; prefixes: ReadonlySet<string> }) {
+  const [attempt, setAttempt] = useState(0);
+  const [Renderer, setRenderer] = useState(lazyRenderer);
+  const failed = (
+    <div className="flex flex-col items-start gap-2" data-preview-failed="">
+      <span className="text-muted-foreground">The preview could not load. Your text, as written:</span>
+      <p className="m-0 whitespace-pre-wrap">{source}</p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          setRenderer(lazyRenderer);
+          setAttempt((count) => count + 1);
+        }}
+      >
+        Try again
+      </Button>
+    </div>
+  );
+  return (
+    <PreviewBoundary key={attempt} fallback={failed}>
+      <Suspense fallback={<span className="text-muted-foreground">Loading the preview…</span>}>
+        <TaskPrefixesProvider value={prefixes}>
+          <Renderer source={source} />
+        </TaskPrefixesProvider>
+      </Suspense>
+    </PreviewBoundary>
+  );
+}
 
 const FIELD = cn(fieldClass, 'w-full py-1.5');
 
@@ -405,7 +468,10 @@ export function TaskComposer({
                 {previewing ? (
                   <div className={cn(FIELD, 'min-h-24 overflow-x-auto')}>
                     {description.trim() ? (
-                      <MarkdownText source={description} />
+                      <DescriptionPreview
+                        source={description}
+                        prefixes={new Set(projects.map((entry) => entry.prefix))}
+                      />
                     ) : (
                       <span className="text-muted-foreground">Nothing to preview</span>
                     )}

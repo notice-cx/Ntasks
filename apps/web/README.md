@@ -24,6 +24,24 @@ An answer to a decision waits five seconds before it is sent, with Undo in the
 toast, because an answer cannot be reversed once the server records it
 (`src/lib/answer-queue.ts`).
 
+## Task text
+
+A task's description, Done when, notes, design and comments are Markdown,
+drawn by `src/routes/tasks/task-markdown.tsx` with `react-markdown`: GitHub's
+additions (tables, task-list checkboxes, strikethrough, bare links), code
+blocks highlighted in a short list of languages, and a line break in the text
+kept as a line break. People and agents write this text, so the page trusts
+none of it:
+
+- raw HTML is dropped, and a script's or style's contents with it;
+- `rehype-sanitize`, with GitHub's rules, removes event-handler attributes,
+  inline styles and any address that is not http(s), mailto or relative;
+- a link to another site opens in a new tab with no opener and no referrer;
+- an image on another site is not loaded; it shows as a link to the image.
+
+A ticked box in Done when writes the text back with only that box changed.
+`test/markdown.test.tsx` covers each case.
+
 ## Where the data comes from
 
 Every read and write goes through one module, `src/api/client.ts`. It speaks

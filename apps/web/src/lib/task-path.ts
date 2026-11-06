@@ -8,3 +8,12 @@ export function taskPrefix(id: string): string {
   const at = id.indexOf('-');
   return at < 0 ? '' : id.slice(0, at);
 }
+
+/**
+ * Whether an address on this site is one of the app's own pages: `/` and
+ * everything under `/tasks`. Any other address here, such as `/sign-in` or
+ * `/api/…`, is the Worker's, and a link to it must load it, not route to it.
+ */
+export function isAppPage(pathname: string): boolean {
+  return pathname === '/' || pathname === '/tasks' || pathname.startsWith('/tasks/');
+}
