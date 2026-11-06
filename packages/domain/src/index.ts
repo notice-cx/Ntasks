@@ -29,7 +29,7 @@ export type {
   TaskStatus,
   TaskType,
 } from './task.ts';
-export { GUARD_REFUSALS, guardRefusalOf, TASK_REFUSALS, TaskRefused } from './engine.ts';
+export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRefused } from './engine.ts';
 export type {
   Actor,
   BoardQuery,

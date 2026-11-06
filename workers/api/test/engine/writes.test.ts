@@ -268,6 +268,28 @@ describe('retries (rule 3)', () => {
     await expectRefusal(tasks.createTask(other.id, { title: 'First' }, AGENT, await retryFor(key, { title: 'First' }, 'create_task')), 'retry_conflict');
   });
 
+  it('reads back an earlier write by its key, without writing, for the API to check before a rule the write broke', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const other = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Closed once' }, OWNER);
+    const write = { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' as const } };
+    const key = `close-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, write, 'close_task');
+
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await tasks.writeTask(project.id, task.id, write, AGENT, retry);
+    const recorded = await tasks.recordedWrite(project.id, retry);
+
+    expect(recorded).toMatchObject({ task: { id: task.id, status: 'closed', version: 2 }, created: [], replayed: true });
+    await expectRefusal(tasks.recordedWrite(project.id, await retryFor(key, { other: true }, 'close_task')), 'retry_conflict');
+    await expectRefusal(tasks.recordedWrite(other.id, retry), 'retry_conflict');
+    const commented = await retryFor(`comment-${crypto.randomUUID()}`, 'Hi.', 'close_task');
+    await tasks.addComment(project.id, task.id, 'Hi.', AGENT, commented);
+    await expectRefusal(tasks.recordedWrite(project.id, commented), 'retry_conflict');
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(3);
+  });
+
   it('answers a repeated comment with the same comment', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
@@ -310,6 +332,36 @@ describe('retries (rule 3)', () => {
     expect(results.map((result) => result.replayed).sort()).toEqual([false, true]);
     expect(results.map((result) => result.task.version)).toEqual([2, 2]);
     expect((await tasks.getTask(project.id, task.id))?.commentCount).toBe(1);
+  });
+});
+
+describe('a new task that asks for an approval', () => {
+  it('opens the approval in the same batch, and answers a retry with both', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const input = { title: 'Deploy', priority: 1, requestApproval: { reason: 'Deploy to production.\nIt creates the database.' } };
+    const retry = await retryFor(`create-${crypto.randomUUID()}`, input, 'create_task');
+
+    const { task, created } = await tasks.createTask(project.id, input, AGENT, retry);
+
+    const [gate] = created;
+    expect(gate).toMatchObject({ type: 'gate', awaitType: 'human', status: 'open', priority: 1, title: 'Deploy to production.', filedBy: AGENT.name });
+    expect(task.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks', title: gate!.title, status: 'open' }]);
+    expect(task.ready).toBe(false);
+    const [event] = await historyOf(tasks, project.id, task.id);
+    expect(event!.changes.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks' }]);
+
+    const again = await tasks.createTask(project.id, input, AGENT, retry);
+    expect(again).toMatchObject({ replayed: true, task: { id: task.id }, created: [{ id: gate!.id }] });
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+  });
+
+  it('refuses an approval with no reason, filing nothing', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    await expectRefusal(tasks.createTask(project.id, { title: 'Ask', requestApproval: { reason: ' ' } }, AGENT), 'invalid');
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
   });
 });
 

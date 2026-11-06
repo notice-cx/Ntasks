@@ -36,6 +36,9 @@ export interface Actor {
   readonly model?: string;
 }
 
+/** An idempotency key: 8 to 128 letters, digits, dots, underscores, colons or hyphens, starting with a letter or digit. */
+export const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u;
+
 /**
  * Makes a write safe to retry. The engine records which tasks or comment the
  * write produced under (`principal`, `operation`, `key`), in the same batch as
@@ -75,7 +78,7 @@ export interface CreateTaskInput {
   readonly title: string;
   readonly description?: string;
   readonly acceptance?: string;
-  /** `task` when left out. A gate is made with `requestApproval` on a write, not here. */
+  /** `task` when left out. A gate is made with `requestApproval`, never as a type. */
   readonly type?: Exclude<TaskType, 'gate'>;
   readonly priority?: number;
   /** The new task's id becomes the parent's id with the next child number. */
@@ -86,6 +89,9 @@ export interface CreateTaskInput {
   readonly dueAt?: string;
   readonly choices?: JsonObject;
   readonly metadata?: JsonObject;
+  /** Opens an approval with the new task, in the same batch: a gate the new
+   * task waits on until a person answers it. The gate is in the result's `created`. */
+  readonly requestApproval?: { readonly reason: string };
 }
 
 /** Field changes. A key left out is unchanged; `null` clears the field. */
@@ -245,6 +251,15 @@ export interface TaskEngine {
    * missing headings (`missingSections` in lint.ts). A task lacking none, or
    * not in the project, is left out. */
   lint(projectId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
+
+  /** The answer of an earlier createTask or writeTask with this retry
+   * identity, its tasks as they stand now and `replayed: true`, or null when no
+   * write in the last seven days used the key. A key used for a different
+   * request or project is refused as `retry_conflict`. The API reads it before
+   * checking a rule that the write's own effect would break, such as a close's
+   * rule that the task is open, so a retried close answers instead of being
+   * refused. */
+  recordedWrite(projectId: string, retry: Retry): Promise<WriteResult | null>;
 
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
   /** Changes an existing task in one batch (rules 1 to 4). */

@@ -38,6 +38,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
       }
       return missing;
     },
+    recordedWrite: (projectId, retry) => writes.recordedWrite(projectId, retry),
     createTask: (projectId, input, actor, retry) => writes.createTask(projectId, input, actor, retry),
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
     addComment: (projectId, taskId, text, actor, retry) => writes.addComment(projectId, taskId, text, actor, retry),

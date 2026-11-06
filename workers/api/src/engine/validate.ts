@@ -1,6 +1,7 @@
 // Checks of the engine's inputs against the task model and TASK_LIMITS. Each
 // failure is a TaskRefused('invalid') that names the field and the rule.
 import {
+  IDEMPOTENCY_KEY,
   isDependencyType,
   isTaskId,
   isTaskResolution,
@@ -75,8 +76,6 @@ export function actor(value: Actor): Actor {
   return { name, model: text(value.model, 'actor.model', TASK_LIMITS.actor, true) };
 }
 
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u;
-
 export function retry(value: Retry | undefined): Retry | undefined {
   if (value === undefined) return undefined;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY.test(value.key)) {
@@ -115,6 +114,7 @@ export interface CreateFields {
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
   readonly metadata: JsonObject;
+  readonly requestApproval: { reason: string } | null;
 }
 
 export function createInput(input: CreateTaskInput): CreateFields {
@@ -141,7 +141,12 @@ export function createInput(input: CreateTaskInput): CreateFields {
     dueAt: input.dueAt === undefined ? null : instant(input.dueAt, 'dueAt'),
     choices: input.choices === undefined ? null : jsonObject(input.choices, 'choices'),
     metadata: input.metadata === undefined ? {} : jsonObject(input.metadata, 'metadata'),
+    requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
   };
+}
+
+function approval(value: { reason: string } | undefined): { reason: string } {
+  return { reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) };
 }
 
 export interface CheckedWrite {
@@ -197,7 +202,7 @@ export function write(input: TaskWrite): CheckedWrite {
     metadata,
     addLinks: links(input.addLinks ?? []),
     removeLinks: [...new Set(removeLinks.map((id, index) => taskId(id, `removeLinks[${index}]`)))],
-    requestApproval: input.requestApproval === undefined ? null : { reason: text(input.requestApproval?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) },
+    requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
     close,
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),
