@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { lazy, Suspense, useState, type CSSProperties } from 'react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode } from 'react';
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import type { TasksApi } from '@/api/client';
 import { TasksApiProvider } from '@/api/context';
 import { EmptyState, PageSkeleton } from '@/components/surface';
+import { Button } from '@/components/ui/button';
 import { pillControlClass } from '@/components/ui/chrome';
 import { cn } from '@/lib/utils';
 
@@ -57,6 +58,7 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
 }
 
 function Shell() {
+  const { pathname } = useLocation();
   const nav = ({ isActive }: { isActive: boolean }) =>
     cn(
       'rounded-md px-2.5 py-1.5 text-sm font-medium',
@@ -84,15 +86,18 @@ function Shell() {
         </div>
       </header>
       <main className="page-arrive flex-1">
-        <Suspense
-          fallback={
-            <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
-              <PageSkeleton shape="list" />
-            </div>
-          }
-        >
-          <Outlet />
-        </Suspense>
+        {/* Keyed by the address, so moving to another page tries again. */}
+        <PageBoundary key={pathname}>
+          <Suspense
+            fallback={
+              <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
+                <PageSkeleton shape="list" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </PageBoundary>
       </main>
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground md:px-6">
@@ -119,4 +124,33 @@ function NoPage() {
       />
     </div>
   );
+}
+
+/**
+ * A page that fails while it loads or draws, such as one whose code changed
+ * under a new deployment, takes only itself down: the header and the
+ * source-code link stay, with a way to load the page again.
+ */
+export class PageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  override render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div
+        className="mx-auto flex w-full max-w-[1400px] flex-col items-start gap-3 p-4 md:p-6"
+        role="alert"
+        data-page-failed=""
+      >
+        <EmptyState title="This page could not load" hint="Reloading fetches the current version of the app." />
+        <Button type="button" onClick={() => window.location.reload()}>
+          Reload
+        </Button>
+      </div>
+    );
+  }
 }

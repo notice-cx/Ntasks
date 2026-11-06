@@ -88,10 +88,11 @@ export function TasksBoard() {
     void navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true, state: null });
   }
 
-  const readAt = (task: BoardTask) => board.projects.find((project) => project.key === task.project)?.readAt ?? null;
+  const fetchedAt = (task: BoardTask) =>
+    board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
   // An answered decision leaves the list at once, while its Undo window runs and until a later read says what the server holds.
-  const inbox = board.inbox.filter((task) => !hides(task.id, readAt(task)));
-  const rows = board.rows.filter((task) => !hides(task.id, readAt(task)));
+  const inbox = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
+  const rows = board.rows.filter((task) => !hides(task.id, fetchedAt(task)));
   const answered = board.inbox.length - inbox.length;
   const waiting = Math.max(0, board.totals.waiting - answered);
   const narrowed =

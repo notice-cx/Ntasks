@@ -80,6 +80,18 @@ describe('a task page', () => {
     expect(within(section).getByRole('link', { name: /web-k3m9\.4/ })).toBeTruthy();
   });
 
+  it("starts the next task's page clean when a link moves to it", async () => {
+    renderApp('/tasks/web-k3m9.3');
+    await screen.findByRole('heading', { level: 1, name: 'Send the new sign-in page to every visitor' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment' }), {
+      target: { value: 'A draft for this task' },
+    });
+    const links = (await screen.findByText('Waits on')).closest('section') as HTMLElement;
+    fireEvent.click(within(links).getByRole('link', { name: /web-k3m9\.2/ }));
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    expect((screen.getByRole('textbox', { name: 'Add a comment' }) as HTMLTextAreaElement).value).toBe('');
+  });
+
   it('shows a closed task as closed, with how it ended', async () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();

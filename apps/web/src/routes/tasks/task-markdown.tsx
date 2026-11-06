@@ -23,28 +23,49 @@ const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 const HEADING = /^(#{1,3})\s+(.*)$/;
 const LABELLED = /^(WHAT|WHY|WHERE|FIX|HOW):\s*(.*)$/;
 
-/** How many of a text's checkboxes are ticked. */
-export function taskListItems(source: string): { done: number; total: number } {
-  let done = 0;
-  let total = 0;
-  for (const line of source.split('\n')) {
-    const match = CHECKBOX.exec(line);
-    if (!match) continue;
-    total += 1;
-    if (match[2] !== ' ') done += 1;
+/** A text's lines and the line endings between them, split one way for every
+ * reader here, so a box's line number means the same line to all of them. */
+function splitLines(source: string): { lines: string[]; ends: string[] } {
+  const lines: string[] = [];
+  const ends: string[] = [];
+  let last = 0;
+  for (const match of source.matchAll(/\r\n|\r|\n/g)) {
+    lines.push(source.slice(last, match.index));
+    ends.push(match[0]);
+    last = match.index + match[0].length;
   }
-  return { done, total };
+  lines.push(source.slice(last));
+  return { lines, ends };
 }
 
-/** The text with the checkbox on line `line` (0-based) flipped. */
+/** The line numbers that hold a checkbox the page draws: none inside a code block. */
+function checkboxLines(lines: readonly string[]): number[] {
+  const found: number[] = [];
+  let fenced = false;
+  lines.forEach((line, at) => {
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+    else if (!fenced && CHECKBOX.test(line)) found.push(at);
+  });
+  return found;
+}
+
+/** How many of a text's checkboxes are ticked. */
+export function taskListItems(source: string): { done: number; total: number } {
+  const { lines } = splitLines(source);
+  const boxes = checkboxLines(lines);
+  const done = boxes.filter((at) => CHECKBOX.exec(lines[at] ?? '')?.[2] !== ' ').length;
+  return { done, total: boxes.length };
+}
+
+/** The text with the checkbox on line `line` (0-based) flipped, its line endings as they were. */
 export function toggleTaskListLine(source: string, line: number): string {
-  const lines = source.split('\n');
+  const { lines, ends } = splitLines(source);
   const target = lines[line];
-  if (target === undefined) return source;
+  if (target === undefined || !checkboxLines(lines).includes(line)) return source;
   const match = CHECKBOX.exec(target);
   if (!match) return source;
   lines[line] = target.replace(/\[([ xX])\]/, match[2] === ' ' ? '[x]' : '[ ]');
-  return lines.join('\n');
+  return lines.map((text, at) => text + (ends[at] ?? '')).join('');
 }
 
 type Block =
@@ -56,7 +77,7 @@ type Block =
   | { kind: 'paragraph'; lines: string[] };
 
 function blocks(source: string): Block[] {
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  const { lines } = splitLines(source);
   const out: Block[] = [];
   let at = 0;
   while (at < lines.length) {

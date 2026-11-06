@@ -11,8 +11,9 @@ const Runtime = createContext<TasksRuntime | null>(null);
 
 /** The API every page reads and writes through, and the Undo window answers wait in. */
 export function TasksApiProvider({ api, children }: { api: TasksApi; children: ReactNode }) {
-  const answers = useMemo(() => createAnswerQueue(typeof window === 'undefined' ? undefined : window), []);
-  useEffect(() => () => answers.dispose(), [answers]);
+  const answers = useMemo(() => createAnswerQueue(), []);
+  // Attached in an effect, so a render React discards attaches nothing and a remount attaches again.
+  useEffect(() => answers.attach(window), [answers]);
   const value = useMemo(() => ({ api, answers }), [api, answers]);
   return <Runtime.Provider value={value}>{children}</Runtime.Provider>;
 }

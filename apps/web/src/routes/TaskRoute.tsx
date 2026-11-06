@@ -26,6 +26,7 @@ import {
   useInboxAnswer,
   useTask,
   useTaskProjects,
+  useRetryKey,
   useUpdateTask,
   verbReason,
 } from '@/hooks/useTasks';
@@ -123,10 +124,12 @@ export function TaskRoute() {
     ];
     body = (
       <TaskPrefixesProvider value={prefixes}>
+        {/* Keyed by the task, so a draft, an open form or a pick never carries over to the next task. */}
         <TaskPage
+          key={task.id}
           task={task}
           project={project}
-          readAt={detail.data.readAt}
+          fetchedAt={detail.dataUpdatedAt || null}
           comments={detail.data.comments}
           actors={actors}
           crumbs={crumbs}
@@ -154,7 +157,7 @@ export function TaskRoute() {
 function TaskPage({
   task,
   project,
-  readAt,
+  fetchedAt,
   comments,
   actors,
   crumbs,
@@ -167,7 +170,8 @@ function TaskPage({
 }: {
   task: LiveTask;
   project: TaskProject;
-  readAt: string;
+  /** When this browser received the task's read, by its own clock. */
+  fetchedAt: number | null;
   comments: TaskComment[];
   actors: readonly TaskActor[] | undefined;
   crumbs: Crumb[];
@@ -209,7 +213,15 @@ function TaskPage({
 
   return (
     <>
-      <TaskHeader task={task} project={key} head={head} readAt={readAt} actors={actors} crumbs={crumbs} nowMs={nowMs}>
+      <TaskHeader
+        task={task}
+        project={key}
+        head={head}
+        fetchedAt={fetchedAt}
+        actors={actors}
+        crumbs={crumbs}
+        nowMs={nowMs}
+      >
         {task.status === 'closed' && !closedByPick ? (
           <ClosedSummary
             by={closer ? [actorLabel(closer.by, actors), closer.model].filter(Boolean).join(' · ') : null}
@@ -302,7 +314,7 @@ function TaskHeader({
   task,
   project,
   head,
-  readAt,
+  fetchedAt,
   actors,
   crumbs,
   nowMs,
@@ -311,7 +323,8 @@ function TaskHeader({
   task: LiveTask;
   project: string;
   head: TaskHeadFacts;
-  readAt: string;
+  /** When this browser received the task's read, by its own clock. */
+  fetchedAt: number | null;
   actors: readonly TaskActor[] | undefined;
   crumbs: Crumb[];
   nowMs: number;
@@ -321,7 +334,7 @@ function TaskHeader({
   const hides = useAnswerHides();
   const [closing, setClosing] = useState(false);
   const [picked, setPicked] = useState<TaskChoiceKey | null>(null);
-  const answered = hides(task.id, readAt);
+  const answered = hides(task.id, fetchedAt);
   const closeReason = verbReason(capabilities, operationAvailable(capabilities, 'close'), UNAVAILABLE);
   const askReason = verbReason(
     capabilities,
@@ -882,17 +895,20 @@ function Activity({
 function CommentBox({ id, project }: { id: string; project: string }) {
   const writable = operationAvailable(useCapabilities(), 'comment');
   const comment = useCommentOnTask();
+  const retryKey = useRetryKey();
   const [text, setText] = useState('');
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        if (text.trim() === '') return;
+        const words = text.trim();
+        if (words === '' || comment.isPending) return;
         comment.mutate(
-          { id, project, text: text.trim() },
+          { id, project, text: words, idempotencyKey: retryKey.keyFor(`${id}\n${words}`) },
           {
             onSuccess: () => {
+              retryKey.done();
               setText('');
               toast.success('Comment added');
             },

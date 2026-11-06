@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { FIXTURE_ACTOR } from '@/api/fixture-data';
 import { newQueryClient, SOURCE_URL } from '@/App';
+import { NO_FILTERS, readBoard } from '@/lib/board-read';
 import { enabledButton, renderApp } from './render';
 
 describe('the board', () => {
@@ -109,6 +110,19 @@ describe('the board', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(reads).toBe(first);
     focusManager.setFocused(undefined);
+  });
+
+  it('counts a project whose latest read failed as not read, even with an earlier read in hand', async () => {
+    const api = createFixtureTasksApi();
+    const projects = await api.projects();
+    const reads = new Map([
+      ['web', { data: await api.board('web'), error: null }],
+      ['docs', { data: await api.board('docs'), error: new Error('The task list: the server answered 503.') }],
+    ]);
+    const read = readBoard(projects, reads, NO_FILTERS, Date.now());
+    expect(read.complete).toBe(false);
+    expect(read.broken.map((project) => project.key)).toEqual(['docs']);
+    expect(read.allTasks.some((task) => task.project === 'docs')).toBe(false);
   });
 
   it('links to its source code on every page', async () => {

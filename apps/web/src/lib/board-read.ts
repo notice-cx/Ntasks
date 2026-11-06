@@ -40,6 +40,8 @@ export const NO_FILTERS: BoardFilters = {
 export interface ProjectRead {
   data?: LiveTasksPayload;
   error: unknown;
+  /** When this browser received `data`, by its own clock; null before any read. */
+  fetchedAt?: number | null;
 }
 
 export interface BoardProject {
@@ -49,7 +51,10 @@ export interface BoardProject {
   /** The read answered. */
   ok: boolean;
   error: string | null;
+  /** When the server read the tasks, for the page to say how old they are. */
   readAt: string | null;
+  /** When this browser received the read, by its own clock. */
+  fetchedAt: number | null;
   tasks: BoardTask[];
   /** The decisions waiting on a person, most urgent first. */
   waiting: BoardTask[];
@@ -66,11 +71,16 @@ function workStatus(task: BoardTask, statuses: ReadonlyMap<string, string>): str
   return waitsOnTask(task, statuses) ? 'blocked' : task.status;
 }
 
+/**
+ * One project's rows. A project whose latest read failed counts as not read,
+ * even with an earlier read still in hand: its rows would be counted as
+ * current when nothing says they still are.
+ */
 function readProject(project: TaskProject, read: ProjectRead | undefined): BoardProject {
   const base = { key: project.logicalKey, name: project.displayName, prefix: project.prefix };
-  const payload = read?.data;
+  const error = read?.error;
+  const payload = error === undefined || error === null ? read?.data : undefined;
   if (!payload) {
-    const error = read?.error;
     return {
       ...base,
       ok: false,
@@ -81,6 +91,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
             ? error.message
             : 'The task list could not be read.',
       readAt: null,
+      fetchedAt: null,
       tasks: [],
       waiting: [],
       epicNames: new Map(),
@@ -105,6 +116,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     ok: true,
     error: null,
     readAt: payload.readAt,
+    fetchedAt: read?.fetchedAt ?? null,
     tasks,
     waiting,
     epicNames: new Map([

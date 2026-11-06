@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
+import { fixtureSeed } from '@/api/fixture-data';
 import { acceptanceLines, acceptanceText } from '@/components/TaskComposer';
 import { enabledButton, renderApp } from './render';
 
@@ -60,6 +61,68 @@ describe('the composer', () => {
         acceptance: '- [ ] Every error is red\n- [ ] A test covers it',
       }),
     );
+  });
+
+  it('files one task when Cmd or Ctrl and Enter are pressed in the title', async () => {
+    const api = createFixtureTasksApi();
+    let calls = 0;
+    const counted = {
+      ...api,
+      createTask: (...args: Parameters<typeof api.createTask>) => {
+        calls += 1;
+        return api.createTask(...args);
+      },
+    };
+    renderApp('/tasks?new=1&project=docs', counted);
+    await enabledButton('File task');
+    const title = screen.getByLabelText(/Title/);
+    fireEvent.change(title, { target: { value: 'Only once' } });
+    fireEvent.keyDown(title, { key: 'Enter', metaKey: true });
+    expect(await screen.findByText(/^Filed docs-/)).toBeTruthy();
+    expect(calls).toBe(1);
+    expect(api.state.tasks.filter((entry) => entry.title === 'Only once')).toHaveLength(1);
+  });
+
+  it('sends a failed submission again with the same retry key, and a changed one with a new key', async () => {
+    const api = createFixtureTasksApi();
+    const keys: (string | undefined)[] = [];
+    const flaky = {
+      ...api,
+      createTask: async (...args: Parameters<typeof api.createTask>) => {
+        keys.push(args[1]?.idempotencyKey);
+        if (keys.length === 1) throw new Error('The connection dropped.');
+        return api.createTask(...args);
+      },
+    };
+    renderApp('/tasks?new=1&project=docs', flaky);
+    const file = await enabledButton('File task');
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Retry me' } });
+    fireEvent.click(file);
+    expect(await screen.findByText('The connection dropped.')).toBeTruthy();
+    fireEvent.click(await enabledButton('File task'));
+    expect(await screen.findByText(/^Filed docs-/)).toBeTruthy();
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+
+    fireEvent.click(await enabledButton('New task'));
+    fireEvent.change(await screen.findByLabelText(/Title/), { target: { value: 'Another' } });
+    fireEvent.change(screen.getByLabelText(/^Project/, { selector: 'select[data-composer-project]' }), {
+      target: { value: 'docs' },
+    });
+    fireEvent.click(await enabledButton('File task'));
+    await waitFor(() => expect(keys).toHaveLength(3));
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it('picks the only project once the list arrives', async () => {
+    const seed = fixtureSeed(Date.now());
+    seed.projects = seed.projects.filter((project) => project.logicalKey === 'docs');
+    seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
+    renderApp('/tasks?new=1', createFixtureTasksApi({ seed }));
+    const select = screen.getByLabelText(/^Project/, {
+      selector: 'select[data-composer-project]',
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('docs'));
   });
 
   it('reads and writes Done when as a checklist', () => {

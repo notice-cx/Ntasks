@@ -3,6 +3,7 @@ import { Check, ChevronDown, CornerDownLeft, LoaderCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { fieldClass } from '@/components/ui/chrome';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { focusStart, roveFocus } from '@/components/ui/rove';
 import { cn } from '@/lib/utils';
 
 export interface FactChoice {
@@ -129,7 +130,15 @@ export function FactChip({
           {status}
         </PopoverTrigger>
       )}
-      <PopoverContent aria-label={label} className="w-64 p-1.5">
+      <PopoverContent
+        aria-label={label}
+        className="w-64 p-1.5"
+        // The editor opens on the value it holds, else on its first option or its field.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          focusStart(event.target as HTMLElement, '[role="option"], input', '[role="option"][aria-selected="true"]');
+        }}
+      >
         <Editor editor={editor} label={label} onSave={(next) => void save(next)} />
       </PopoverContent>
     </Popover>
@@ -148,7 +157,6 @@ function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; 
     >
       <input
         type={kind}
-        autoFocus
         aria-label={inputLabel}
         placeholder={placeholder}
         className={cn(fieldClass, 'h-8 min-w-0 flex-1')}
@@ -168,33 +176,52 @@ function Editor({ editor, label, onSave }: { editor: FactEditor; label: string; 
   if (editor.kind === 'date') {
     return (
       <div className="flex flex-col gap-0.5">
-        {(editor.presets ?? []).map((preset) => (
-          <Option
-            key={preset.value}
-            label={preset.label}
-            picked={preset.value === editor.value}
-            onPick={() => onSave(preset.value)}
-          />
-        ))}
-        {editor.value !== '' && editor.clearLabel ? (
-          <Option label={editor.clearLabel} picked={false} onPick={() => onSave('')} />
-        ) : null}
+        <Options label={label}>
+          {(editor.presets ?? []).map((preset) => (
+            <Option
+              key={preset.value}
+              label={preset.label}
+              picked={preset.value === editor.value}
+              onPick={() => onSave(preset.value)}
+            />
+          ))}
+          {editor.value !== '' && editor.clearLabel ? (
+            <Option label={editor.clearLabel} picked={false} onPick={() => onSave('')} />
+          ) : null}
+        </Options>
         {typedField(`${label} date`, undefined, 'date')}
       </div>
     );
   }
   return (
-    <div className="flex flex-col gap-0.5" role="listbox" aria-label={label}>
-      {editor.choices.map((choice) => (
-        <Option
-          key={choice.value || 'none'}
-          label={choice.label}
-          mark={choice.mark}
-          picked={choice.value === editor.value}
-          onPick={() => onSave(choice.value)}
-        />
-      ))}
+    <div className="flex flex-col gap-0.5">
+      <Options label={label}>
+        {editor.choices.map((choice) => (
+          <Option
+            key={choice.value || 'none'}
+            label={choice.label}
+            mark={choice.mark}
+            picked={choice.value === editor.value}
+            onPick={() => onSave(choice.value)}
+          />
+        ))}
+      </Options>
+      {/* A typed value is a field beside the list, never an item in it. */}
       {editor.other ? typedField(editor.other.label, editor.other.placeholder) : null}
+    </div>
+  );
+}
+
+/** A list of options: a listbox that holds only its options, moved through with the arrow keys. */
+function Options({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      className="flex flex-col gap-0.5"
+      role="listbox"
+      aria-label={label}
+      onKeyDown={(event) => roveFocus(event, '[role="option"]')}
+    >
+      {children}
     </div>
   );
 }

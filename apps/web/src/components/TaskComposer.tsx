@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import type { NewTask, TaskProject } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { fieldClass, pillControlClass, pillPickerStateClass } from '@/components/ui/chrome';
-import { useCreateTask } from '@/hooks/useTasks';
+import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
 import { PRIORITY_BANDS } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
@@ -78,6 +78,9 @@ export function TaskComposer({
   const [more, setMore] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [filing, setFiling] = useState(false);
+  // Set at once, where state would wait for the next render: a second press in the same moment files nothing.
+  const inFlight = useRef(false);
+  const retryKey = useRetryKey();
 
   // Seeded once per opening, so a project list arriving later never resets what was typed.
   const seeded = useRef(false);
@@ -88,7 +91,7 @@ export function TaskComposer({
     }
     if (seeded.current) return;
     seeded.current = true;
-    setProject(prefill?.project ?? (projects.length === 1 ? (projects[0]?.logicalKey ?? '') : ''));
+    setProject(prefill?.project ?? '');
     setTitle(prefill?.title ?? '');
     setType('task');
     setPriority(2);
@@ -100,7 +103,13 @@ export function TaskComposer({
     setLines(['']);
     setMore(false);
     setErrors({});
-  }, [open, prefill, projects]);
+  }, [open, prefill]);
+
+  // The only project is picked when the list arrives, unless one is already chosen.
+  useEffect(() => {
+    if (!open || project !== '' || projects.length !== 1) return;
+    setProject(projects[0]?.logicalKey ?? '');
+  }, [open, project, projects]);
 
   useEffect(() => {
     if (!open) return;
@@ -138,7 +147,7 @@ export function TaskComposer({
   }
 
   async function file() {
-    if (filing || loading) return;
+    if (inFlight.current || loading) return;
     const next: Record<string, string> = {};
     const cleanTitle = title.trim();
     const cleanParent = parent.trim();
@@ -162,9 +171,11 @@ export function TaskComposer({
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(acceptance ? { acceptance } : {}),
     };
+    inFlight.current = true;
     setFiling(true);
     try {
-      const created = await createTask.mutateAsync(input);
+      const created = await createTask.mutateAsync({ input, idempotencyKey: retryKey.keyFor(JSON.stringify(input)) });
+      retryKey.done();
       toast.success(`Filed ${created.id}`, {
         description: cleanTitle,
         action: { label: 'Open', onClick: () => void navigate(taskPath(created.id)) },
@@ -175,6 +186,7 @@ export function TaskComposer({
         form: error instanceof Error && error.message !== '' ? error.message : 'The task could not be filed.',
       });
     } finally {
+      inFlight.current = false;
       setFiling(false);
     }
   }
@@ -224,6 +236,8 @@ export function TaskComposer({
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
                 event.preventDefault();
+                // The panel files on Cmd or Ctrl with Enter too; this press is handled here alone.
+                event.stopPropagation();
                 void file();
               }}
               placeholder="What should be true when this is done"

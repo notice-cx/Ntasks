@@ -23,9 +23,13 @@ import type {
   TasksCapabilities,
 } from './types';
 
-/** A write that may still be sent while the page is leaving. */
 export interface WriteOptions {
+  /** Send the write while the page is leaving. */
   keepalive?: boolean;
+  /** The retry key. A second attempt at the same submission passes the key
+   * the first attempt used, so the server applies it once even when the first
+   * attempt's answer was lost; without one, the write gets a new key. */
+  idempotencyKey?: string;
 }
 
 export interface TasksApi {
@@ -34,11 +38,11 @@ export interface TasksApi {
   /** One project's board: unfinished tasks and the last week's closes. */
   board(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
-  createTask(input: NewTask): Promise<TaskCreated>;
-  updateTask(id: string, project: string, edit: TaskEdit): Promise<void>;
+  createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
+  updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
   closeTask(id: string, project: string, reason: string, options?: CloseOptions & WriteOptions): Promise<void>;
-  comment(id: string, project: string, text: string): Promise<void>;
+  comment(id: string, project: string, text: string, options?: WriteOptions): Promise<void>;
   /** Answer a task waiting on a person: a decision closes with the answer, any other task goes back to ready work. */
   respond(id: string, project: string, response: string, options?: WriteOptions): Promise<void>;
   /** Pick one of a decision's options, with an optional note. */
@@ -133,15 +137,38 @@ function readCapabilities(payload: unknown): TasksCapabilities {
   };
 }
 
+/** Waits for `promise`, or stops waiting when `signal` aborts. The promise
+ * itself runs on, so a cancelled caller never fails its other waiters. */
+function until<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason as Error);
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason as Error);
+    signal.addEventListener('abort', stop, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', stop);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', stop);
+        reject(error as Error);
+      },
+    );
+  });
+}
+
 /** The Tasks API over HTTP, on the page's own origin. */
 export function createHttpTasksApi(fetch: Fetch): TasksApi {
-  /** The last project list read, which every request names its project's id from. */
+  /** The last project list read, which every request names its project's id
+   * from. Several requests share it, so it is read without any one caller's
+   * signal. */
   let catalog: Promise<readonly TaskProject[]> | undefined;
 
   /** Reads the list again, so a project added since appears. */
-  function projects(signal?: AbortSignal): Promise<readonly TaskProject[]> {
+  function readCatalog(): Promise<readonly TaskProject[]> {
     const read = (async () => {
-      const response = await fetch('/api/tasks/projects', { headers: JSON_READ, ...(signal ? { signal } : {}) });
+      const response = await fetch('/api/tasks/projects', { headers: JSON_READ });
       if (!response.ok) throw await refusal(response, 'The project list');
       return readProjects(await response.json());
     })();
@@ -154,9 +181,9 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
   }
 
   async function projectId(project: string, signal?: AbortSignal): Promise<string> {
-    let found = (await (catalog ?? projects(signal))).find((row) => row.logicalKey === project);
+    let found = (await until(catalog ?? readCatalog(), signal)).find((row) => row.logicalKey === project);
     // A key the last list did not hold may name a project added since.
-    found ??= (await projects(signal)).find((row) => row.logicalKey === project);
+    found ??= (await until(readCatalog(), signal)).find((row) => row.logicalKey === project);
     if (!found) throw new ApiError(`No project named ${project}.`, 404, 'unknown_project');
     return found.projectId;
   }
@@ -167,18 +194,22 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     return (await response.json()) as T;
   }
 
-  /** A write carries a fresh retry key, so the server applies it once even if
-   * the request is sent again after a dropped answer. */
+  /** Every write carries a retry key: the caller's, for a second attempt at
+   * one submission, else a new one. */
   async function write(
     method: 'POST' | 'PATCH',
     path: string,
     body: Record<string, unknown>,
     what: string,
-    keepalive = false,
+    { keepalive = false, idempotencyKey }: WriteOptions = {},
   ): Promise<Response> {
     const response = await fetch(path, {
       method,
-      headers: { ...JSON_READ, 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
+      headers: {
+        ...JSON_READ,
+        'content-type': 'application/json',
+        'idempotency-key': idempotencyKey ?? crypto.randomUUID(),
+      },
       body: JSON.stringify(body),
       ...(keepalive ? { keepalive: true } : {}),
     });
@@ -194,14 +225,14 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     project: string,
     action: string,
     payload: Record<string, unknown>,
-    keepalive?: boolean,
+    options?: WriteOptions,
   ): Promise<void> {
     await write(
       'POST',
       taskPath(id, action),
       { ...payload, projectId: await projectId(project) },
       `Task ${id}`,
-      keepalive,
+      options,
     );
   }
 
@@ -216,7 +247,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     async capabilities(signal) {
       return readCapabilities(await read<unknown>('/api/tasks/capabilities', 'What this sign-in may do', signal));
     },
-    projects,
+    projects: (signal) => until(readCatalog(), signal),
     async board(project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
@@ -225,29 +256,30 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
     },
-    async createTask({ project, ...input }) {
+    async createTask({ project, ...input }, options) {
       const response = await write(
         'POST',
         '/api/tasks',
         { ...input, projectId: await projectId(project) },
         'The new task',
+        options,
       );
       const created: unknown = await response.json();
       if (!isRecord(created) || typeof created.id !== 'string')
         throw new Error('The new task was filed, but its id could not be read.');
       return { id: created.id, project };
     },
-    async updateTask(id, project, edit) {
-      await write('PATCH', taskPath(id), { ...edit, projectId: await projectId(project) }, `Task ${id}`);
+    async updateTask(id, project, edit, options) {
+      await write('PATCH', taskPath(id), { ...edit, projectId: await projectId(project) }, `Task ${id}`, options);
     },
     async closeTask(id, project, reason, { resolution, duplicateOf, keepalive } = {}) {
-      await act(id, project, 'close', { reason, ...ended(resolution, 'done', duplicateOf) }, keepalive);
+      await act(id, project, 'close', { reason, ...ended(resolution, 'done', duplicateOf) }, { keepalive });
     },
-    async comment(id, project, text) {
-      await act(id, project, 'comments', { text });
+    async comment(id, project, text, options) {
+      await act(id, project, 'comments', { text }, options);
     },
     async respond(id, project, response, { keepalive } = {}) {
-      await act(id, project, 'respond', { response }, keepalive);
+      await act(id, project, 'respond', { response }, { keepalive });
     },
     async choose(id, project, option, note, { keepalive } = {}) {
       await act(
@@ -255,7 +287,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         project,
         'choose',
         { option, ...(note === undefined || note.trim() === '' ? {} : { note }) },
-        keepalive,
+        { keepalive },
       );
     },
     async dismiss(id, project, reason, { resolution, duplicateOf, keepalive } = {}) {
@@ -264,7 +296,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         project,
         'dismiss',
         { ...(reason === undefined ? {} : { reason }), ...ended(resolution, 'wont-do', duplicateOf) },
-        keepalive,
+        { keepalive },
       );
     },
     async dispute(id, project) {
@@ -277,7 +309,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         path,
         { ...(reason === undefined ? {} : { reason }), projectId: await projectId(project) },
         `Approval ${id}`,
-        keepalive,
+        { keepalive },
       );
     },
   };

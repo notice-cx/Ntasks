@@ -32,6 +32,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
 } {
   const state = seed ?? fixtureSeed(now());
   let made = 0;
+  /** What each retry key's write answered, so a second attempt is not applied twice. */
+  const receipts = new Map<string, unknown>();
 
   function reach(): void {
     if (unreachable) throw new ApiError('The task list: the server answered 503.', 503, null);
@@ -173,8 +175,10 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         comments: state.comments.get(id) ?? [],
       });
     },
-    async createTask(input) {
+    async createTask(input, options) {
       reach();
+      const receipt = options?.idempotencyKey === undefined ? undefined : receipts.get(options.idempotencyKey);
+      if (receipt !== undefined) return receipt as { id: string; project: string };
       const { prefix } = project(input.project);
       const title = input.title.trim();
       if (title === '') throw new ApiError('A task needs a title.', 400, 'invalid');
@@ -216,7 +220,9 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         closeReason: null,
         awaitType: null,
       });
-      return { id, project: input.project };
+      const created = { id, project: input.project };
+      if (options?.idempotencyKey !== undefined) receipts.set(options.idempotencyKey, created);
+      return created;
     },
     async updateTask(id, key, edit) {
       reach();
@@ -256,9 +262,11 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       if (reason.trim() === '') throw new ApiError('A close needs its reason.', 409, 'task_refused');
       close(find(id, key), reason, resolution, duplicateOf);
     },
-    async comment(id, key, text) {
+    async comment(id, key, text, options) {
       reach();
+      if (options?.idempotencyKey !== undefined && receipts.has(options.idempotencyKey)) return;
       addComment(find(id, key), text);
+      if (options?.idempotencyKey !== undefined) receipts.set(options.idempotencyKey, true);
     },
     async respond(id, key, response) {
       reach();

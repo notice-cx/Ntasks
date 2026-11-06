@@ -105,6 +105,39 @@ describe('the HTTP Tasks API client', () => {
     expect(lists).toBe(2);
   });
 
+  it('uses the retry key a caller passes, so a second attempt is the same submission', async () => {
+    const { api, sent } = server();
+    await api.createTask({ project: 'web', title: 'Once' }, { idempotencyKey: 'submission-1' });
+    await api.createTask({ project: 'web', title: 'Once' }, { idempotencyKey: 'submission-1' });
+    await api.comment('web-a1b2', 'web', 'Note', { idempotencyKey: 'comment-1' });
+    expect(sent.map((request) => request.headers.get('idempotency-key'))).toEqual([
+      'submission-1',
+      'submission-1',
+      'comment-1',
+    ]);
+  });
+
+  it("lets one caller stop waiting without failing another caller's read", async () => {
+    let answerList: (response: Response) => void = () => {};
+    const api = createHttpTasksApi(async (url, init) => {
+      if (url === '/api/tasks/projects') {
+        // The shared list is read without any caller's signal.
+        expect(init?.signal).toBeUndefined();
+        return new Promise<Response>((resolve) => {
+          answerList = resolve;
+        });
+      }
+      return Response.json({ project: 'web', tasks: [] });
+    });
+    const leaving = new AbortController();
+    const first = api.board('web', leaving.signal);
+    const second = api.board('web');
+    leaving.abort();
+    answerList(Response.json(PROJECTS));
+    await expect(first).rejects.toBeDefined();
+    await expect(second).resolves.toMatchObject({ project: 'web' });
+  });
+
   it("shows a refusal in the server's own words", async () => {
     const { api } = server(() =>
       Response.json({ error: 'task_refused', detail: 'Task web-a1b2 is held by agent-one.' }, { status: 409 }),

@@ -61,8 +61,8 @@ export function FocusRoute() {
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(() => new Set());
   const [handled, setHandled] = useState<ReadonlySet<string>>(() => new Set());
 
-  const readAt = (task: BoardTask) => board.projects.find((row) => row.key === task.project)?.readAt ?? null;
-  const queue = board.inbox.filter((task) => !hides(task.id, readAt(task)));
+  const fetchedAt = (task: BoardTask) => board.projects.find((row) => row.key === task.project)?.fetchedAt ?? null;
+  const queue = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
   const at = start === null ? -1 : queue.findIndex((task) => task.id === start);
   const ordered = at <= 0 ? queue : [...queue.slice(at), ...queue.slice(0, at)];
   const pending = ordered.filter((task) => !skipped.has(task.id));

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveTask } from '@/api/types';
-import { createAnswerQueue, UNDO_WINDOW_MS } from '@/lib/answer-queue';
+import { createAnswerQueue, HIDE_AFTER_SEND_MS, UNDO_WINDOW_MS } from '@/lib/answer-queue';
 import { boardRows, closeAsReason, closeNote, inboxAsk, inboxOrder, waitsOnPerson } from '@/lib/task-model';
 import { MarkdownText, taskListItems, toggleTaskListLine } from '@/routes/tasks/task-markdown';
 import { render, screen } from '@testing-library/react';
@@ -117,10 +117,46 @@ describe('the Undo window', () => {
     expect(queue.undoGroup('two')).toBe(1);
     await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
     expect(sent).toEqual(['web-a1']);
-    // Hidden until a read taken after the answer.
-    expect(queue.hides('web-a1', '2000-01-01T00:00:00Z')).toBe(true);
-    expect(queue.hides('web-a1', new Date(Date.now() + 1000).toISOString())).toBe(false);
-    expect(queue.hides('web-a2', null)).toBe(false);
+    expect(queue.hides('web-a2', Date.now())).toBe(false);
+    // Hidden while the read on screen was received before the answer went, by this browser's clock.
+    const before = Date.now() - 1;
+    expect(queue.hides('web-a1', before)).toBe(true);
+    expect(queue.hides('web-a1', Date.now() + 1)).toBe(false);
+    // Once a later read has shown it, it stays shown.
+    expect(queue.hides('web-a1', before)).toBe(false);
+  });
+
+  it('stops hiding a sent answer that no later read follows', async () => {
+    const queue = createAnswerQueue();
+    queue.schedule({ id: 'web-a1', send: async () => {} });
+    await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+    const read = Date.now() - 1;
+    expect(queue.hides('web-a1', read)).toBe(true);
+    await vi.advanceTimersByTimeAsync(HIDE_AFTER_SEND_MS + 1);
+    expect(queue.hides('web-a1', read)).toBe(false);
+  });
+
+  it('sends what is waiting when the page it is attached to is left, and only while attached', () => {
+    const queue = createAnswerQueue();
+    const sent: boolean[] = [];
+    const detach = queue.attach(window);
+    queue.schedule({
+      id: 'web-a1',
+      send: async (keepalive) => {
+        sent.push(keepalive);
+      },
+    });
+    window.dispatchEvent(new Event('pagehide'));
+    expect(sent).toEqual([true]);
+    detach();
+    queue.schedule({
+      id: 'web-a2',
+      send: async (keepalive) => {
+        sent.push(keepalive);
+      },
+    });
+    window.dispatchEvent(new Event('pagehide'));
+    expect(sent).toEqual([true]);
   });
 
   it('sends what is waiting at once when the page is leaving', () => {
@@ -143,6 +179,14 @@ describe('task Markdown', () => {
     expect(taskListItems(text)).toEqual({ done: 1, total: 2 });
     expect(toggleTaskListLine(text, 1)).toBe('Intro\n- [x] One\n- [x] Two');
     expect(toggleTaskListLine(text, 0)).toBe(text);
+  });
+
+  it('skips a checkbox inside a code block and keeps the line endings it was given', () => {
+    const text = '- [ ] One\r\n```\r\n- [ ] Example\r\n```\r\n- [ ] Two';
+    expect(taskListItems(text)).toEqual({ done: 0, total: 2 });
+    expect(toggleTaskListLine(text, 2)).toBe(text);
+    expect(toggleTaskListLine(text, 4)).toBe('- [ ] One\r\n```\r\n- [ ] Example\r\n```\r\n- [x] Two');
+    expect(toggleTaskListLine('- [ ] A\r- [ ] B', 1)).toBe('- [ ] A\r- [x] B');
   });
 
   it('links only safe addresses and draws no raw HTML', () => {

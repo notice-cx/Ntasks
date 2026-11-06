@@ -4,7 +4,7 @@
  * Undo window (`lib/answer-queue.ts`) before they are sent.
  */
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAnswerQueue, useTasksApi } from '@/api/context';
@@ -116,10 +116,36 @@ export function useTaskRefresh(): () => Promise<void> {
   }, [client]);
 }
 
+/**
+ * A retry key per submission. Pressing again with the same content after a
+ * failure reuses the key, so a write the server applied but whose answer was
+ * lost is not applied twice; changed content is a new submission with a new
+ * key, and `done` forgets the key once the write succeeds.
+ */
+export function useRetryKey(): { keyFor: (content: string) => string; done: () => void } {
+  const last = useRef<{ content: string; key: string } | null>(null);
+  return useMemo(
+    () => ({
+      keyFor: (content: string) => {
+        if (last.current?.content !== content) last.current = { content, key: crypto.randomUUID() };
+        return last.current.key;
+      },
+      done: () => {
+        last.current = null;
+      },
+    }),
+    [],
+  );
+}
+
 export function useCreateTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
-  return useMutation({ mutationFn: (input: NewTask) => api.createTask(input), onSuccess: () => refresh() });
+  return useMutation({
+    mutationFn: ({ input, idempotencyKey }: { input: NewTask; idempotencyKey?: string }) =>
+      api.createTask(input, idempotencyKey === undefined ? undefined : { idempotencyKey }),
+    onSuccess: () => refresh(),
+  });
 }
 
 export function useUpdateTask() {
@@ -155,8 +181,17 @@ export function useCommentOnTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
   return useMutation({
-    mutationFn: ({ id, project, text }: { id: string; project: string; text: string }) =>
-      api.comment(id, project, text),
+    mutationFn: ({
+      id,
+      project,
+      text,
+      idempotencyKey,
+    }: {
+      id: string;
+      project: string;
+      text: string;
+      idempotencyKey?: string;
+    }) => api.comment(id, project, text, idempotencyKey === undefined ? undefined : { idempotencyKey }),
     onSuccess: () => refresh(),
   });
 }
@@ -265,7 +300,7 @@ export function useInboxAnswer(): (answer: InboxAnswer) => void {
 }
 
 /** Whether a task's row stays hidden while its answer waits or is on its way. */
-export function useAnswerHides(): (id: string, readAt: string | null) => boolean {
+export function useAnswerHides(): (id: string, fetchedAt: number | null) => boolean {
   const queue = useAnswerQueue();
   useSyncExternalStore(queue.subscribe, queue.version, queue.version);
   return queue.hides;

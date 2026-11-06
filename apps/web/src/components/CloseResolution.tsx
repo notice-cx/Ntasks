@@ -4,6 +4,7 @@ import { isTaskId, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain'
 import { Button } from '@/components/ui/button';
 import { fieldClass, pillChoiceClass, pillChoiceStateClass } from '@/components/ui/chrome';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { focusStart, roveFocus } from '@/components/ui/rove';
 import { NOT_DONE, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
 import { cn } from '@/lib/utils';
 
@@ -118,6 +119,12 @@ export function CloseAsMenu({
           align="end"
           className="w-52 p-1.5"
           data-close-as-menu=""
+          // A menu opens on its first item and moves with the arrow keys.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            focusStart(event.target as HTMLElement, '[role="menuitem"]');
+          }}
+          onKeyDown={(event) => roveFocus(event, '[role="menuitem"]')}
         >
           {NOT_DONE.map((resolution) => {
             const Glyph = RESOLUTION_GLYPH[resolution];
