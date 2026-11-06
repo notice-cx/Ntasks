@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc",
-    "test": "node --test test/promises.test.ts"
+    "test": "node --test \"test/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "26.6.6",

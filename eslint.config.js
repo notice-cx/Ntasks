@@ -4,6 +4,43 @@
 // the types. Each workspace's own tsconfig.json supplies those types.
 import tseslint from 'typescript-eslint';
 
+// A variable or property whose name ends in one of these holds a secret.
+const SECRET_NAME = '/(secret|token|password|passcode|signature|hmac|api_?key)$/i';
+
+// The declarations at the top of a module, with and without `export`.
+const MODULE_DECLARATION = ':matches(Program, Program > ExportNamedDeclaration) > VariableDeclaration';
+
+// Where a comparison's operand shows its name: the operand itself, or inside a
+// non-null assertion, a cast or an optional chain, each of which wraps it in a
+// node with an `expression`. Two wrappers deep covers `(session?.token as
+// string)`. The node that holds the name is a variable (`token`), a property
+// read with a dot (`session.token`, whose `computed` is false), or a property
+// read with a string in brackets (`session['token']`, whose `computed` is
+// true). A key held in a variable (`record[token]`) names nothing, so it is
+// not read.
+const WRAPPERS = ['', 'expression.', 'expression.expression.'];
+const SECRET_OPERAND = ['left', 'right']
+  .flatMap((side) =>
+    WRAPPERS.flatMap((wrapper) => {
+      const node = `${side}.${wrapper}`;
+      return [
+        `[${node}name=${SECRET_NAME}]`,
+        `[${node}computed=false][${node}property.name=${SECRET_NAME}]`,
+        `[${node}computed=true][${node}property.value=${SECRET_NAME}]`,
+      ];
+    }),
+  )
+  .join(', ');
+
+// A collection that starts empty is there to be filled while the Worker runs.
+const EMPTY_COLLECTION = [
+  '[init.type="NewExpression"][init.callee.name=/^(Map|Set|WeakMap|WeakSet)$/][init.arguments.length=0]',
+  '[init.type="ObjectExpression"][init.properties.length=0]',
+  '[init.type="ArrayExpression"][init.elements.length=0]',
+  '[init.type=/^TS(As|Satisfies)Expression$/][init.expression.type="ObjectExpression"][init.expression.properties.length=0]',
+  '[init.type=/^TS(As|Satisfies)Expression$/][init.expression.type="ArrayExpression"][init.expression.elements.length=0]',
+];
+
 export default [
   {
     ignores: [
@@ -42,6 +79,53 @@ export default [
         // An async event handler in JSX (`onClick={async () => ...}`) is routine
         // in the web app, and the browser reports its rejection.
         { checksVoidReturn: { attributes: false } },
+      ],
+    },
+  },
+  {
+    // Tokens and ids come from Web Crypto. The web app is not Worker code.
+    files: ['workers/**/*.ts', 'packages/**/*.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Math',
+          property: 'random',
+          message: 'Make tokens and ids with crypto.randomUUID() or crypto.getRandomValues().',
+        },
+      ],
+    },
+  },
+  {
+    // One Worker instance serves many requests, so a module-level variable
+    // that one request writes is read by the next. Tests keep fixtures in
+    // module-level variables and are not listed.
+    files: ['workers/*/src/**/*.ts', 'packages/*/src/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: `${MODULE_DECLARATION}[kind=/^(let|var)$/]`,
+          message: 'A module-level variable outlives the request that wrote it. Declare it with const.',
+        },
+        ...EMPTY_COLLECTION.map((init) => ({
+          selector: `${MODULE_DECLARATION} > VariableDeclarator${init}`,
+          message:
+            'A module-level collection that starts empty is filled by requests and shared with the next one. Keep request data in the request.',
+        })),
+        {
+          // A direct comparison only: a secret reached through another name,
+          // compared in a helper, or wrapped more than two deep is left to
+          // review.
+          selector: [
+            'BinaryExpression[operator=/^[=!]==?$/]',
+            `:matches(${SECRET_OPERAND})`,
+            // esquery reads a missing attribute as the text "undefined", so
+            // [left.name="undefined"] would match every node with no name.
+            ':not(:matches([left.raw="null"], [right.raw="null"], [left.name=/^undefined$/], [right.name=/^undefined$/], [left.value=""], [right.value=""]))',
+          ].join(''),
+          message: 'Compare secrets with crypto.subtle.timingSafeEqual(), never with a comparison operator.',
+        },
       ],
     },
   },

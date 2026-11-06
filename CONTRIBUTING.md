@@ -28,10 +28,10 @@ Run these from the repository root.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Builds the web app and starts the Worker at http://localhost:8787 |
-| `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing handles (awaits, returns, marks `void` or gives a `.catch()`), and a promise used where the code expects none |
+| `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing handles (awaits, returns, marks `void` or gives a `.catch()`), and a promise used where the code expects none. In Worker code it also reports the breaks of the other [rules for Worker code](#rules-for-worker-code) that it can see |
 | `pnpm format:check` | Checks that every file is formatted the way Prettier formats it. `pnpm format` rewrites the files that are not |
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
-| `pnpm test` | Runs every workspace's tests |
+| `pnpm test` | Runs every workspace's tests. They include tests that `pnpm lint` reports what it should, and a check that no `vars` setting in a `wrangler.jsonc` is named like a secret |
 | `pnpm build` | Builds the web app, then checks that the Worker would deploy, without deploying it |
 
 CI runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and
@@ -76,8 +76,8 @@ pnpm --filter @ntasks/domain test
 
 ### Rules for Worker code
 
-`pnpm lint` catches most breaks of the first rule. Review checks that rule's
-remaining cases and the other four.
+A tool checks part of each rule, and CI runs the tools. Review checks the rest.
+Each rule below says which part a tool checks.
 
 - Every promise is awaited, returned, or passed to `ctx.waitUntil()`. A
   promise left floating can be cut off when the response is sent, and its
@@ -91,11 +91,32 @@ remaining cases and the other four.
   must outlive the response.
 - Never keep one request's data in a module-level variable. One Worker
   instance serves many requests, so the value would leak into the next one.
+  In `workers/*/src` and `packages/*/src`, `pnpm lint` reports a module-level
+  `let` or `var`, and a module-level `const` that starts as an empty `Map`,
+  `Set`, `WeakMap`, `WeakSet`, object or array (`no-restricted-syntax`). A
+  constant that nothing fills at run time, such as
+  `new Set(['GET', 'HEAD'])`, passes. Review checks a `const` object or
+  collection that code writes request data into later.
 - Make tokens and ids with `crypto.randomUUID()` or
-  `crypto.getRandomValues()`, never `Math.random()`.
-- Compare secrets with `crypto.subtle.timingSafeEqual()`, never `===`.
+  `crypto.getRandomValues()`, never `Math.random()`. `pnpm lint` reports
+  `Math.random` in `workers/` and `packages/`, tests included
+  (`no-restricted-properties`).
+- Compare secrets with `crypto.subtle.timingSafeEqual()`, never `===`. In
+  `workers/*/src` and `packages/*/src`, `pnpm lint` reports `===`, `!==`, `==`
+  or `!=` when an operand is a variable or property whose name ends in
+  `secret`, `token`, `password`, `passcode`, `signature`, `hmac` or `apiKey`
+  (`no-restricted-syntax`). The property can be written `session.token` or
+  `session['token']`, and `!`, `as` or `?.` can wrap the operand, as in
+  `token! === expected` or `(session?.token as string) === expected`. A key
+  held in a variable, as in `record[token]`, names nothing and passes, and so
+  does a comparison with `null`, `undefined` or `''`. Review checks a secret
+  held under another name, and one compared inside a helper.
 - Never write a secret into `wrangler.jsonc`, the source or a test. Local
-  values go in `.dev.vars`, which git ignores.
+  values go in `.dev.vars`, which git ignores. `pnpm test` fails when a
+  variable under `vars` in a `wrangler.jsonc` has a name that contains
+  `secret`, `token`, `password`, `passcode`, `credential`, `api_key`,
+  `private_key` or `signing_key`; a secret is set with `wrangler secret put`.
+  Review checks the source and the tests.
 
 ## Commit messages and pull request titles
 
