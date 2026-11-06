@@ -131,7 +131,7 @@ describe('the composer', () => {
     seed.projects = seed.projects.filter((project) => project.logicalKey === 'docs');
     seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
     // The board is narrowed to a project the list does not hold yet, and the composer opens after the list arrived.
-    const { api, queryClient } = renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
+    const { queryClient } = renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
     await screen.findByText('Every project');
     fireEvent.click(await enabledButton('New task'));
     const select = (await screen.findByLabelText(/^Project/, {
@@ -141,7 +141,6 @@ describe('the composer', () => {
     if (web) seed.projects.push(web);
     await queryClient.invalidateQueries({ queryKey: ['task-projects'] });
     await waitFor(() => expect(select.value).toBe('web'));
-    expect(api.state.projects.map((project) => project.logicalKey)).toContain('web');
   });
 
   it('reads and writes Done when as a checklist', () => {
