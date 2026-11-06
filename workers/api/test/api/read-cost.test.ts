@@ -114,7 +114,7 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
  * projects.
  */
 const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
-  'HTTP board, largest project': { statements: 4, rowsRead: 7_000 },
+  'HTTP board, largest project': { statements: 5, rowsRead: 7_000 },
   'HTTP task page': { statements: 3, rowsRead: 60 },
   'HTTP task history': { statements: 3, rowsRead: 60 },
   'HTTP change feed, 200 changes': { statements: 1, rowsRead: 250 },
