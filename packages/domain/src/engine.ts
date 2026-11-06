@@ -36,10 +36,12 @@ export interface Actor {
 }
 
 /**
- * Makes a write safe to retry. The engine records the write's answer under
- * (`principal`, `operation`, `key`) in the same batch as the write. The same
- * key with the same `requestHash` returns that answer again without writing;
- * with a different `requestHash` it is refused as `retry_conflict`.
+ * Makes a write safe to retry. The engine records which tasks or comment the
+ * write produced under (`principal`, `operation`, `key`), in the same batch as
+ * the write. The same key with the same `requestHash` returns those again,
+ * as they stand now, with `replayed: true` and without writing; with a
+ * different `requestHash` it is refused as `retry_conflict`. A record is kept
+ * for seven days.
  */
 export interface Retry {
   /** The authenticated sender's stable identity, not a display name. */
@@ -94,8 +96,10 @@ export interface TaskFieldChanges {
   readonly priority?: number;
   /** Any status but `closed`; a write closes a task with `close`. */
   readonly status?: Exclude<TaskStatus, 'closed'>;
-  /** Setting yourself as assignee with status `in_progress` is a claim: it
-   * records your model and the start time. */
+  /** Setting yourself as assignee is a claim: it records your model, and with
+   * status `in_progress` the start time. A claim on a task someone else holds
+   * is refused as `held` (rule 1); giving it to them directly, or releasing it,
+   * is not a claim. */
   readonly assignee?: string | null;
   readonly parentId?: string | null;
   readonly deferUntil?: string | null;
@@ -196,7 +200,9 @@ export interface TaskEngine {
   listHistory(projectId: string, taskId: string, options: { readonly limit: number; readonly beforeSeq?: number }): Promise<readonly TaskEvent[]>;
   /** Every change after `after`, across projects or in one, for clients that keep a copy. */
   listChanges(query: { readonly after: number; readonly limit: number; readonly projectId?: string }): Promise<ChangePage>;
-  /** For each task, the sections its type expects that it still lacks. */
+  /** For each of these tasks that lacks a section its type expects, the
+   * missing headings (`missingSections` in lint.ts). A task lacking none, or
+   * not in the project, is left out. */
   lint(projectId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
 
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
@@ -211,7 +217,7 @@ export interface TaskEngine {
  * write guard (workers/api/migrations/0001_task_store.sql), which reports them
  * as "ntasks refused: <refusal>".
  */
-export const TASK_REFUSALS = ['not_found', 'version_conflict', 'cycle', 'retry_conflict', 'invalid'] as const;
+export const TASK_REFUSALS = ['not_found', 'version_conflict', 'cycle', 'held', 'retry_conflict', 'invalid'] as const;
 export type TaskRefusal = (typeof TASK_REFUSALS)[number];
 
 /** The refusals the database's write guard can report. */

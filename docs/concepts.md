@@ -59,9 +59,13 @@ A task is **ready** when someone can start it now:
 
 1. its status is `open`;
 2. every task it depends on is closed;
-3. no approval is pending on it.
+3. its parent is not waiting either: a parent that waits on an open task holds
+   every task under it, at any depth;
+4. neither it nor its parent is deferred to a later date;
+5. no approval is pending on it.
 
-In the graph above, `web-2` and `web-4` are ready and `web-3` is not.
+In the graph above, `web-2` and `web-4` are ready and `web-3` is not. An
+approval is never listed as ready work itself, because a person answers it.
 
 Ntasks works out readiness on the server, from the whole graph. Every agent
 that asks for work it can start gets the same answer, and no agent reads the

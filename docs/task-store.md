@@ -12,9 +12,10 @@ contributors working on the engine, the API or the import from Beads. Read
 | Schema | [`workers/api/migrations/0001_task_store.sql`](../workers/api/migrations/0001_task_store.sql) |
 | Vocabulary and record shapes | [`packages/domain/src/task.ts`](../packages/domain/src/task.ts) |
 | Engine contract | [`packages/domain/src/engine.ts`](../packages/domain/src/engine.ts) |
+| The engine, on D1 | [`workers/api/src/engine/`](../workers/api/src/engine/) |
+| Lint rules, from Beads | [`packages/domain/src/lint.ts`](../packages/domain/src/lint.ts) |
 | Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
-
-The engine that implements the contract on D1 is being built.
+| Tests of the engine | [`workers/api/test/engine/`](../workers/api/test/engine/) |
 
 ## Tables
 
@@ -79,6 +80,29 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 The engine checks the task model's rules. It does not check who may act: the
 API layer signs the sender in and passes the engine an `Actor`.
+
+### Refusals
+
+A refused write throws `TaskRefused`, whose `refusal` names why. Nothing of a
+refused write is stored.
+
+| Refusal | When |
+|---|---|
+| `not_found` | The project, the task or a task the write names does not exist |
+| `version_conflict` | The task changed after the caller read it (rule 2) |
+| `cycle` | A `blocks` link or a parent would make tasks wait on each other in a loop |
+| `held` | A claim on a task someone else holds (rule 1) |
+| `retry_conflict` | An idempotency key reused for a different request or project (rule 3) |
+| `invalid` | An input breaks the model or `TASK_LIMITS`; the message names the field |
+
+### Ready work
+
+Ready work follows Beads' rule. A task that is not closed is blocked when it
+has a `blocks` link onto a task that is not closed, or when its parent is
+blocked, down any depth. A task is ready when it is open, not blocked, not a
+gate, and neither it nor its parent is deferred past now. `READY` in
+[`reads.ts`](../workers/api/src/engine/reads.ts) is that rule, and both the
+ready filter and every task's `ready` flag use it.
 
 ### Where each NoticeOS operation goes
 

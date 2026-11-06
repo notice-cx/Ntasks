@@ -27,7 +27,7 @@ flowchart LR
 | Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz` |
 | Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
-| Task engine | | Not yet |
+| Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | A placeholder page |
 | MCP endpoint for agents | | Not yet |
 | Sign-in | | Not yet |
