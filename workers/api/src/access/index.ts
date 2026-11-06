@@ -5,7 +5,7 @@
  * answer is the owner's own decision is `mayDecide`. `handleAccess` answers
  * the sign-in paths themselves.
  */
-export { signInAuthenticator, type SignedIn, type SignInAuthenticator } from './authenticator.ts';
+export { ON_BEHALF_OF_HEADER, signInAuthenticator, type SignedIn, type SignInAuthenticator } from './authenticator.ts';
 export { handleAccess, isAccessPath, type AccessEnv } from './routes.ts';
 export { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 export {

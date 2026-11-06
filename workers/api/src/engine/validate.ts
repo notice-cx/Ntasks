@@ -85,7 +85,7 @@ export function retry(value: Retry | undefined): Retry | undefined {
   if (typeof value.requestHash !== 'string' || !/^[0-9a-f]{64}$/u.test(value.requestHash)) {
     invalid('requestHash must be 64 lowercase hexadecimal characters');
   }
-  text(value.principal, 'retry.principal', 128, true);
+  text(value.principal, 'retry.principal', TASK_LIMITS.retryPrincipal, true);
   text(value.operation, 'retry.operation', 64, true);
   return value;
 }

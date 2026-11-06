@@ -43,6 +43,8 @@ export const TASK_LIMITS = Object.freeze({
   label: 128,
   links: 32,
   actor: 128,
+  /** A retry principal: the sender's stable identity that idempotency keys are kept under. */
+  retryPrincipal: 128,
   /** The most tasks one list request returns. */
   page: 200,
 });
