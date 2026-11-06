@@ -17,6 +17,7 @@ import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './
 import {
   projectComments,
   projectHistory,
+  sharesSecond,
   taskEvents,
   type CommentRecord,
   type EventRecord,
@@ -113,9 +114,12 @@ function withoutBlocks(history: TaskHistory, children: ReadonlySet<string>): Tas
     ...state,
     dependencies: state.dependencies.filter((link) => !(link.type === 'blocks' && children.has(link.taskId))),
   });
+  // Shared seconds are counted before any version is left out, so a kept version
+  // is never matched to the audit entry of one that is gone.
+  const shared = sharesSecond(history.versions, history.current.createdAt ?? history.versions[0]?.at ?? '');
   const versions: Version[] = [];
-  for (const version of history.versions) {
-    const next = { ...version, state: strip(version.state) };
+  for (const [index, version] of history.versions.entries()) {
+    const next: Version = { ...version, state: strip(version.state), ...(shared[index] ? { crowded: true } : {}) };
     const last = versions.at(-1);
     if (last === undefined || !sameJson(last.state, next.state)) versions.push(next);
   }

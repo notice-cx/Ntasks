@@ -156,6 +156,12 @@ function againstExport(
     if (!isTaskId(task.id))
       out.push({ subject: String(task.id), difference: 'its id is not a task id Ntasks accepts' });
 
+  // Every project's parents, as the import reads them: a parent may be in another project.
+  const parentOf = new Map<string, string>();
+  for (const row of data.projects.flatMap((project) => project.rows.dependencies)) {
+    if (textOf(row.type) === 'parent-child') parentOf.set(textOf(row.issue_id) ?? '', linkTarget(row) ?? '');
+  }
+
   for (const project of data.projects) {
     const subject = `project ${project.key}`;
     const stored = held.projects.find((row) => row.id === project.id);
@@ -195,10 +201,6 @@ function againstExport(
       out,
     );
 
-    const parentOf = new Map<string, string>();
-    for (const row of project.rows.dependencies) {
-      if (textOf(row.type) === 'parent-child') parentOf.set(textOf(row.issue_id) ?? '', linkTarget(row) ?? '');
-    }
     const linksByIssue = new Map<string, string[]>();
     for (const row of project.rows.dependencies) {
       const issueId = textOf(row.issue_id) ?? '';

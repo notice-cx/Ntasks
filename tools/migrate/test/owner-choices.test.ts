@@ -70,6 +70,40 @@ describe("the owner's choices", () => {
     expect(plan!.tasks.find((task) => task.id === 'web-e1')?.version).toBe(2);
   });
 
+  it('keeps a change by its committer when a left-out link was added in the same second', async () => {
+    const made = hub((c) => {
+      c.create({ id: 'web-e1', title: 'Epic', issue_type: 'epic' });
+      c.create({ id: 'web-e1.1', title: 'Child' });
+      c.link('web-e1.1', 'web-e1', 'parent-child');
+    });
+    made.commit(t(1), 'beads', (c) => c.link('web-e1', 'web-e1.1', 'blocks'), {
+      issue: 'web-e1',
+      event: 'dependency_added',
+      actor: 'agent-x',
+    });
+    made.commit(t(1), 'beads', (c) => c.update('web-e1', { title: 'Epic, renamed' }));
+    const { plan } = await imported(made);
+    const renamed = plan!.task_events.find((event) => event.task_id === 'web-e1' && event.version === 2);
+    expect(renamed).toMatchObject({ kind: 'updated', actor: 'beads' });
+  });
+
+  it("leaves out a parent's blocks link onto its own child in another project, and the verifier agrees", async () => {
+    const web = hub((c) => c.create({ id: 'web-e1', title: 'Epic', issue_type: 'epic' }));
+    const api = new FakeHub({ database: 'api_tasks', key: 'api.example.com', name: 'API', id: 'a-1', prefix: 'api' });
+    api.commit(t(1), 'beads', (c) => {
+      c.create({ id: 'api-c1', title: 'Child elsewhere' });
+      c.link('api-c1', 'web-e1', 'parent-child');
+    });
+    web.commit(t(2), 'beads', (c) => c.link('web-e1', 'api-c1', 'blocks'));
+    const data = exportOf(web, api);
+    const { plan, refusals, leftOut } = planImport(data);
+    expect(refusals).toEqual([]);
+    expect(leftOut).toEqual([{ subject: 'web-e1', what: 'its blocks link onto its own child api-c1' }]);
+    const store = await openLocalStore(':memory:', { create: true });
+    store.load(plan!);
+    expect((await verify(data, plan!, (table) => store.read(table))).differences).toEqual([]);
+  });
+
   it('still refuses any other loop, such as a parent waiting on its grandchild', () => {
     const made = hub((c) => {
       c.create({ id: 'web-e1', title: 'Epic', issue_type: 'epic' });
