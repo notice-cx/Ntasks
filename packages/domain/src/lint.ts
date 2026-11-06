@@ -31,7 +31,11 @@ export function requiredSections(type: TaskType): readonly string[] {
  * field also counts as the "Acceptance Criteria" or "Success Criteria"
  * section, and an epic may say "Acceptance Criteria" for "Success Criteria".
  */
-export function missingSections(task: { readonly type: TaskType; readonly description: string; readonly acceptance: string }): string[] {
+export function missingSections(task: {
+  readonly type: TaskType;
+  readonly description: string;
+  readonly acceptance: string;
+}): string[] {
   const text = `${task.description}\n${task.acceptance}`.toLowerCase();
   const hasAcceptance = task.acceptance.trim() !== '';
   return REQUIRED_SECTIONS[task.type]

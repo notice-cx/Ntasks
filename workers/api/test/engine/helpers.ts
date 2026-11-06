@@ -27,7 +27,12 @@ export function engine(options: EngineOptions = {}): TaskEngine {
 /** A project with a prefix no other test uses, so tests never see each other's tasks. */
 export async function newProject(tasks: TaskEngine): Promise<Project> {
   const id = crypto.randomUUID();
-  return tasks.createProject({ id, key: `${id.slice(0, 8)}.example.com`, name: 'Test project', prefix: `p${id.slice(0, 8)}` });
+  return tasks.createProject({
+    id,
+    key: `${id.slice(0, 8)}.example.com`,
+    name: 'Test project',
+    prefix: `p${id.slice(0, 8)}`,
+  });
 }
 
 /** Asserts that `work` is refused with `refusal`. */

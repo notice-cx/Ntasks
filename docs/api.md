@@ -45,7 +45,9 @@ The Worker signs every request in as [Sign-in](sign-in.md) describes: the
 owner's browser session, an agent's OAuth access token, or a service
 credential. A request with none, or with one that is invalid, revoked or
 expired, gets `401` with a bearer challenge that tells an MCP client where to
-sign in. The sign-in routes under `/api/auth` and `/api/access` answer as
+sign in. A service names the agent each request is for in the
+`x-ntasks-on-behalf-of` header, and the request is recorded as that agent's
+([A service acting for its agents](sign-in.md#a-service-acting-for-its-agents)). The sign-in routes under `/api/auth` and `/api/access` answer as
 [Sign-in](sign-in.md#routes) describes.
 
 ## The workspace

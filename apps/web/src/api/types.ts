@@ -121,9 +121,26 @@ export interface LiveTasksPayload {
   readAt: string;
   /** The earliest close time the closed tasks in `tasks` cover. */
   closedSince?: string;
+  /** The latest change the board reflects: the change feed starts after it. */
+  lastSeq?: number;
   tasks: LiveTask[];
   /** Null when the server could not read the epics' progress. */
   epics: LiveEpic[] | null;
+}
+
+/** One change to a task, as the change feed lists it. */
+export interface TaskChange {
+  /** Orders every change in the installation. */
+  seq: number;
+  /** The project's id, as the project list gives it. */
+  projectId: string;
+  taskId: string;
+}
+
+/** The changes after a sequence number, and the number to ask after next. */
+export interface ChangesPage {
+  events: TaskChange[];
+  lastSeq: number;
 }
 
 export interface TaskComment {

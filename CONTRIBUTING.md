@@ -65,8 +65,9 @@ pnpm --filter @ntasks/domain test
 - **ES modules only.**
 - **Prettier formats the code**, with the settings in
   [`.prettierrc.json`](.prettierrc.json). Run `pnpm format` before you commit.
-  [`.prettierignore`](.prettierignore) lists the files that were written
-  before the formatter and are not yet formatted; do not add a file to it.
+  Every `.ts`, `.tsx`, `.js` and `.mjs` file is checked, except the generated
+  file and the agent worktrees that [`.prettierignore`](.prettierignore) lists;
+  do not add a file to it.
 - **Comments say what the code cannot:** a reason, a rule, a trap, or the one
   place a fact lives. They do not narrate the code or record its history;
   that belongs in commit messages.
