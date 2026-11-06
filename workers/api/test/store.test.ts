@@ -119,6 +119,64 @@ describe('reads from memory', () => {
     expect(task.deferUntil).toBe(later);
   });
 
+  it("reads again once a closed parent's deferral ends, which held its children back", async () => {
+    // A start no other test's deferral shares: the next deferral is read across the whole store.
+    const time = clock('2030-01-01T00:00:00.000Z');
+    const meter = newMeter();
+    const tasks = cachedReads(createEngine(storeDatabase(meter), { now: time.now }), time.now);
+    const project = await newProject(tasks);
+    const later = new Date(Date.parse(time.now()) + 60 * 60_000).toISOString();
+    const { task: parent } = await tasks.createTask(
+      project.id,
+      { title: 'Parent', type: 'epic', deferUntil: later },
+      AGENT,
+    );
+    await tasks.createTask(project.id, { title: 'Child', parentId: parent.id }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      parent.id,
+      { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } },
+      AGENT,
+    );
+    const childReady = async () =>
+      (await tasks.listBoard(project.id, { statuses: ['open'] })).find((task) => task.title === 'Child')?.ready;
+
+    expect(await childReady()).toBe(false);
+    time.advance(61);
+    expect(await childReady()).toBe(true);
+  });
+
+  it('keeps answers within its byte budget, and serves an oversized answer without keeping it', async () => {
+    const meter = newMeter();
+    const engine = createEngine(storeDatabase(meter));
+    const project = await newProject(engine);
+    for (const title of ['One', 'Two', 'Three'])
+      await engine.createTask(project.id, { title, description: 'd'.repeat(2_000) }, AGENT);
+    const readCost = async (tasks: TaskEngine, statuses: ('open' | 'in_progress')[]) => {
+      Object.assign(meter, newMeter());
+      await tasks.listBoard(project.id, { statuses });
+      // Its size is counted once the answer settles.
+      await Promise.resolve();
+      return meter.rowsRead;
+    };
+
+    const tiny = cachedReads(engine, () => new Date().toISOString(), {
+      entries: 64,
+      bytes: 1_000_000,
+      entryBytes: 1_000,
+    });
+    expect(await readCost(tiny, ['open'])).toBeGreaterThan(0);
+    expect(await readCost(tiny, ['open'])).toBeGreaterThan(0);
+
+    const one = cachedReads(engine, () => new Date().toISOString(), { entries: 64, bytes: 20_000, entryBytes: 20_000 });
+    await readCost(one, ['open']);
+    expect(await readCost(one, ['open'])).toBe(0);
+    await readCost(one, ['in_progress']);
+    await readCost(one, ['open', 'in_progress']);
+    // The newest answers pushed the first one out.
+    expect(await readCost(one, ['open'])).toBeGreaterThan(0);
+  });
+
   it('forgets after a refused write too, and never serves a list another caller could reorder', async () => {
     const tasks = cachedReads(createEngine(storeDatabase()), () => new Date().toISOString());
     const project = await newProject(tasks);
