@@ -127,16 +127,21 @@ describe('the composer', () => {
 
   it('keeps a prefilled project when the project list is already in hand', async () => {
     const seed = fixtureSeed(Date.now());
+    const web = seed.projects.find((project) => project.logicalKey === 'web');
     seed.projects = seed.projects.filter((project) => project.logicalKey === 'docs');
     seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
-    // The board is narrowed to a project the list does not hold, and the composer opens after the list arrived.
-    renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
+    // The board is narrowed to a project the list does not hold yet, and the composer opens after the list arrived.
+    const { api, queryClient } = renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
+    await screen.findByText('Every project');
     fireEvent.click(await enabledButton('New task'));
     const select = (await screen.findByLabelText(/^Project/, {
       selector: 'select[data-composer-project]',
     })) as HTMLSelectElement;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(select.value).not.toBe('docs');
+    // The prefilled project appears in the list later; the composer still holds it and selects it.
+    if (web) seed.projects.push(web);
+    await queryClient.invalidateQueries({ queryKey: ['task-projects'] });
+    await waitFor(() => expect(select.value).toBe('web'));
+    expect(api.state.projects.map((project) => project.logicalKey)).toContain('web');
   });
 
   it('reads and writes Done when as a checklist', () => {

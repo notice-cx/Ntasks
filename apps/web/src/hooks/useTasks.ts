@@ -108,11 +108,17 @@ export function useTask(id: string, project: string | null) {
   });
 }
 
-/** What every write invalidates: the boards and the task pages. */
+/**
+ * What every write refreshes: the boards and the task pages. A read already on
+ * its way started before the write and may answer with what the server held
+ * before it, so it is cancelled first and every refresh is a new read.
+ */
 export function useTaskRefresh(): () => Promise<void> {
   const client = useQueryClient();
   return useCallback(async () => {
-    await Promise.all([['tasks'], ['task']].map((queryKey) => client.invalidateQueries({ queryKey })));
+    const keys = [['tasks'], ['task']];
+    await Promise.all(keys.map((queryKey) => client.cancelQueries({ queryKey })));
+    await Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
   }, [client]);
 }
 

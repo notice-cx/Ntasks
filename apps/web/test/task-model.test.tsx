@@ -121,6 +121,39 @@ describe('the fixture API retry keys on answers', () => {
       code: 'idempotency_conflict',
     });
   });
+
+  it('applies an update, a close and a decline once per key, and a refused write leaves its key unused', async () => {
+    const api = createFixtureTasksApi();
+    const task = (id: string) => api.state.tasks.find((entry) => entry.id === id);
+    await api.updateTask('web-t5w3', 'web', { claim: true }, { idempotencyKey: 'claim-1' });
+    await api.updateTask('web-t5w3', 'web', { claim: true }, { idempotencyKey: 'claim-1' });
+    await expect(
+      api.updateTask('web-t5w3', 'web', { priority: 0 }, { idempotencyKey: 'claim-1' }),
+    ).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+    expect(task('web-t5w3')?.priority).toBe(3);
+
+    // Refused for a missing reason, so the key is still free for the corrected close.
+    await expect(api.closeTask('web-t5w3', 'web', ' ', { idempotencyKey: 'close-1' })).rejects.toMatchObject({
+      code: 'task_refused',
+    });
+    await api.closeTask('web-t5w3', 'web', 'Renamed in 1a2b3c4', { idempotencyKey: 'close-1' });
+    await expect(
+      api.closeTask('web-t5w3', 'web', 'Renamed in 1a2b3c4', { idempotencyKey: 'close-1' }),
+    ).resolves.toBeUndefined();
+    expect(task('web-t5w3')?.closeReason).toBe('Renamed in 1a2b3c4');
+
+    await api.dismiss('docs-r4s9', 'docs', 'Not needed', { idempotencyKey: 'decline-1' });
+    await expect(
+      api.dismiss('docs-r4s9', 'docs', 'Not needed', { idempotencyKey: 'decline-1' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      api.dismiss('docs-r4s9', 'docs', 'Other reason', { idempotencyKey: 'decline-1' }),
+    ).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+  });
 });
 
 describe('a close where nothing shipped', () => {
