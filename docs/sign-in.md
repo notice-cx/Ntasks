@@ -109,7 +109,11 @@ signed token would save no database read.
 An API or MCP route calls `verifyRequest(request, env)` first. It returns
 the sender as a `Principal`, or a refusal that `refusal()` turns into the
 answer. Then the route checks the project the request names with
-`may(principal, projectId, 'read' | 'write')`.
+`may(principal, projectId, 'read' | 'write')`. `signInAuthenticator(env)`
+offers the same check as `authenticate(request)` and `challenge(request)`,
+with the sender's scopes; scopes say what the sender may do somewhere, not
+where, so a route still checks each project with `may`. Neither reads the
+request's body.
 
 | The request carries | The verifier checks, in one D1 query |
 |---|---|

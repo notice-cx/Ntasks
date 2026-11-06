@@ -4,6 +4,7 @@
  * then it checks the project the request names with `may`, and whether an
  * answer is the owner's own decision with `mayDecide`.
  */
+export { signInAuthenticator, type SignedIn, type SignInAuthenticator } from './authenticator.ts';
 export { handleAccess, isAccessPath, type AccessEnv } from './routes.ts';
 export { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 export {
