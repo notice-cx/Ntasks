@@ -3,9 +3,15 @@
  * named service credentials with their project grants. The owner manages
  * them through the routes in routes.ts.
  */
+import { STORE_NAME, type TaskStore } from '../store/index.ts';
 import { hex, randomSecret, sha256 } from './crypto.ts';
 import type { ProjectAccess } from './principal.ts';
 import { serviceToken } from './service-token.ts';
+
+/** The bindings the grant records read projects through. */
+export interface ProjectSource {
+  readonly TASK_STORE: DurableObjectNamespace<TaskStore>;
+}
 
 export interface ProjectGrant {
   readonly projectId: string;
@@ -56,29 +62,33 @@ export function parseGrants(value: unknown): ProjectGrant[] {
 }
 
 /**
- * Every project, by key. The approval page lists them all and checks the
- * owner's choices against them, so it has no limit: a project left off would
- * be one the owner could not grant.
+ * Every project, by key, read from the task store. The approval page lists
+ * them all and checks the owner's choices against them, so it has no limit: a
+ * project left off would be one the owner could not grant.
  */
-export async function listProjects(db: D1Database): Promise<ProjectSummary[]> {
-  const { results } = await db.prepare('SELECT id, key, name FROM projects ORDER BY key').all<ProjectSummary>();
-  return results;
+export async function listProjects(env: ProjectSource): Promise<ProjectSummary[]> {
+  const projects = await env.TASK_STORE.getByName(STORE_NAME).projects();
+  return projects
+    .map(({ id, key, name }) => ({ id, key, name }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
-/** Fails as unknown_project unless every grant names an existing project. */
-async function assertProjectsExist(db: D1Database, grants: readonly ProjectGrant[]): Promise<void> {
-  const ids = grants.map((grant) => grant.projectId);
-  const row = await db
-    .prepare(`SELECT count(*) AS found FROM projects WHERE id IN (SELECT value FROM json_each(?))`)
-    .bind(JSON.stringify(ids))
-    .first<{ found: number }>();
-  if (row?.found !== ids.length)
+/**
+ * Fails as unknown_project unless every grant names one of `projects`. The
+ * grant tables cannot reference the task store's projects, so every grant is
+ * checked here before it is recorded.
+ */
+export function assertProjectsExist(projects: readonly ProjectSummary[], grants: readonly ProjectGrant[]): void {
+  const known = new Set(projects.map((project) => project.id));
+  if (!grants.every((grant) => known.has(grant.projectId))) {
     throw new AccessRefused('unknown_project', 'a grant names a project that does not exist');
+  }
 }
 
 /**
  * Replaces the projects an agent may reach for a person, in one batch. Called
- * when the person approves the agent, before its consent is recorded.
+ * when the person approves the agent, before its consent is recorded, with
+ * grants already checked against the task store's projects.
  */
 export async function setAgentGrants(
   db: D1Database,
@@ -86,7 +96,6 @@ export async function setAgentGrants(
   clientId: string,
   grants: readonly ProjectGrant[],
 ): Promise<void> {
-  await assertProjectsExist(db, grants);
   const now = new Date().toISOString();
   await db.batch([
     db.prepare('DELETE FROM access_agent_grants WHERE user_id = ? AND client_id = ?').bind(userId, clientId),
@@ -171,14 +180,20 @@ export interface ServiceCredential {
 /** Makes a credential and returns it with its token, which is never shown again. */
 export async function createServiceCredential(
   db: D1Database,
-  input: { readonly name: unknown; readonly grants: unknown; readonly createdBy: string },
+  input: {
+    readonly name: unknown;
+    readonly grants: unknown;
+    readonly createdBy: string;
+    /** The task store's projects, which every grant must name. */
+    readonly projects: readonly ProjectSummary[];
+  },
 ): Promise<ServiceCredential & { readonly token: string }> {
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!NAME.test(name)) {
     throw new AccessRefused('invalid_request', 'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores');
   }
   const grants = parseGrants(input.grants);
-  await assertProjectsExist(db, grants);
+  assertProjectsExist(input.projects, grants);
   const id = crypto.randomUUID();
   const secret = randomSecret(32);
   const createdAt = new Date().toISOString();

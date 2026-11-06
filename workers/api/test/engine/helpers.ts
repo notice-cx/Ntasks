@@ -1,9 +1,9 @@
 // Shared set-up for the engine tests: a fresh project per test, a clock the
 // test moves, and the actors that act in them.
 import { TaskRefused, type Actor, type Project, type TaskEngine, type TaskRefusal } from '@ntasks/domain';
-import { env } from 'cloudflare:workers';
 import { expect } from 'vitest';
 import { createEngine, type EngineOptions } from '../../src/engine/index.ts';
+import { storeDatabase } from '../store.ts';
 
 export const AGENT: Actor = { name: 'agent-a', model: 'model-a' };
 export const OTHER: Actor = { name: 'agent-b', model: 'model-b' };
@@ -21,7 +21,7 @@ export function clock(start = '2026-11-06T12:00:00.000Z') {
 }
 
 export function engine(options: EngineOptions = {}): TaskEngine {
-  return createEngine(env.DB, options);
+  return createEngine(storeDatabase(), options);
 }
 
 /** A project with a prefix no other test uses, so tests never see each other's tasks. */

@@ -12,7 +12,7 @@ Read [Architecture](architecture.md) first for where sign-in sits.
 | The token verifier | [`workers/api/src/access/verify.ts`](../workers/api/src/access/verify.ts) |
 | What a caller may do | [`workers/api/src/access/principal.ts`](../workers/api/src/access/principal.ts) |
 | Scopes, paths and discovery documents | [`workers/api/src/access/protocol.ts`](../workers/api/src/access/protocol.ts) |
-| Tables | [`workers/api/migrations/0002_sign_in.sql`](../workers/api/migrations/0002_sign_in.sql) |
+| Tables | [`workers/api/migrations/0001_sign_in.sql`](../workers/api/migrations/0001_sign_in.sql) |
 | Tests | [`workers/api/test/access/`](../workers/api/test/access/) |
 
 Sign-in runs on [Better Auth](https://www.better-auth.com), an open-source
@@ -224,5 +224,10 @@ make or revoke; an agent or a service gets `403` with `{"error":"owner_only"}`.
 | `access_service_credentials`, `access_service_grants` | Service credentials, with the SHA-256 of each secret, and their projects |
 | `access_registration_days` | How many agents registered on each UTC day, for the daily registration budget |
 
-The task store holds no sign-in data: it records the actor name and model the
-API passes it, and the retry principal as an opaque string.
+These tables are in D1; the tasks and projects are in the task store, a
+Durable Object with its own database. The task store holds no sign-in data:
+it records the actor name and model the API passes it, and the retry
+principal as an opaque string. D1 cannot reference the task store's
+projects, so the grant tables hold a project's id, and the Worker checks
+that the project exists, by asking the task store, before it records a
+grant. The approval page lists projects the same way.

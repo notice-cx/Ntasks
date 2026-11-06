@@ -56,6 +56,7 @@ describe('the sign-in settings', () => {
       SIGN_IN_LIMIT: env.SIGN_IN_LIMIT,
       REGISTER_LIMIT: env.REGISTER_LIMIT,
       REGISTER_ADDRESS_LIMIT: env.REGISTER_ADDRESS_LIMIT,
+      TASK_STORE: env.TASK_STORE,
     };
     const request = new Request(`${ORIGIN}/api/access/me`, {
       headers: { authorization: 'Bearer some-token-of-sixteen-or-more' },

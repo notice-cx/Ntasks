@@ -1,8 +1,11 @@
 // Drives the Worker the way a browser and an MCP client do: a browser keeps
 // cookies and submits forms; an MCP client registers, sends the person
 // through authorization and exchanges the code for tokens.
-import { env, exports } from 'cloudflare:workers';
+import { runInDurableObject } from 'cloudflare:test';
+import { exports } from 'cloudflare:workers';
 import { expect } from 'vitest';
+import type { TaskStore } from '../../src/store/index.ts';
+import { store } from '../store.ts';
 import { codeFor, GITHUB_AUTHORIZE } from './github.ts';
 
 export const ORIGIN = 'https://ntasks.test';
@@ -119,13 +122,36 @@ export class Browser {
   }
 }
 
-/** Adds a project straight to the task store, as the engine would. */
+/** Projects to add to the task store, each with a key and a prefix. */
+export interface NewProject {
+  readonly name: string;
+  readonly key?: string;
+  readonly prefix?: string;
+}
+
+/** Adds projects to the task store through its own engine, and returns their ids in order. */
+export async function createProjects(projects: readonly NewProject[]): Promise<string[]> {
+  return runInDurableObject(store(), async (instance: TaskStore) => {
+    const ids: string[] = [];
+    for (const project of projects) {
+      const id = crypto.randomUUID();
+      const suffix = id.replace(/-/gu, '').slice(0, 8);
+      await instance.tasks.createProject({
+        id,
+        key: project.key ?? `${project.name.toLowerCase()}-${suffix}.example.com`,
+        name: project.name,
+        prefix: project.prefix ?? `p${suffix}`,
+      });
+      ids.push(id);
+    }
+    return ids;
+  });
+}
+
+/** Adds one project to the task store, and returns its id. */
 export async function createProject(name = 'Example'): Promise<string> {
-  const id = crypto.randomUUID();
-  const suffix = id.replace(/-/gu, '').slice(0, 8);
-  await env.DB.prepare('INSERT INTO projects (id, key, name, prefix, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, `${name.toLowerCase()}-${suffix}.example.com`, name, `p${suffix}`, new Date().toISOString())
-    .run();
+  const [id] = await createProjects([{ name }]);
+  if (!id) throw new Error('no project was made');
   return id;
 }
 

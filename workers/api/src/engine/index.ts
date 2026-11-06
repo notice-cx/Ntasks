@@ -1,5 +1,7 @@
-// The task engine: TaskEngine (packages/domain/src/engine.ts) on D1.
+// The task engine: TaskEngine (packages/domain/src/engine.ts) over any
+// Database (database.ts); the task store runs it on its own SQLite storage.
 import { missingSections, type TaskEngine } from '@ntasks/domain';
+import type { Database } from './database.ts';
 import { Reads } from './reads.ts';
 import { toTask } from './rows.ts';
 import { randomKey, Writes } from './writes.ts';
@@ -11,7 +13,7 @@ export interface EngineOptions {
   readonly newKey?: () => string;
 }
 
-export function createEngine(db: D1Database, options: EngineOptions = {}): TaskEngine {
+export function createEngine(db: Database, options: EngineOptions = {}): TaskEngine {
   const now = options.now ?? (() => new Date().toISOString());
   const reads = new Reads(db, now);
   const writes = new Writes(db, reads, { now, newKey: options.newKey ?? (() => randomKey()) });
@@ -23,6 +25,7 @@ export function createEngine(db: D1Database, options: EngineOptions = {}): TaskE
     listTasks: (projectId, query) => reads.listTasks(projectId, query),
     listBoard: (projectId, query) => reads.listBoard(projectId, query),
     listEpics: (projectId) => reads.listEpics(projectId),
+    nextDeferralAfter: (time) => reads.nextDeferralAfter(time),
     listComments: (projectId, taskId) => reads.listComments(projectId, taskId),
     listHistory: (projectId, taskId, options) => reads.listHistory(projectId, taskId, options.limit, options.beforeSeq),
     listChanges: (query) => reads.listChanges(query.after, query.limit, query.projectId),

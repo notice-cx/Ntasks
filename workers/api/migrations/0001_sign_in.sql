@@ -1,4 +1,4 @@
--- Migration number: 0002 	 2026-11-06T19:40:00.000Z
+-- Migration number: 0001 	 2026-11-06T19:40:00.000Z
 
 -- Sign-in and access: who may call Ntasks, and which projects each caller
 -- reaches. docs/sign-in.md describes the tables and the checks made on every
@@ -13,7 +13,10 @@
 -- as 0 or 1, and lists and objects as JSON text.
 --
 -- The access_ tables belong to Ntasks: which projects each agent and each
--- service credential may reach.
+-- service credential may reach. A project lives in the task store, a Durable
+-- Object with its own database that D1 cannot reference, so project_id is
+-- the store's project id and the Worker checks that the project exists when
+-- it records a grant.
 
 CREATE TABLE auth_user (
   id TEXT PRIMARY KEY,
@@ -226,7 +229,7 @@ CREATE TABLE auth_oauth_client_assertion (
 CREATE TABLE access_agent_grants (
   user_id TEXT NOT NULL REFERENCES auth_user (id) ON DELETE CASCADE,
   client_id TEXT NOT NULL REFERENCES auth_oauth_client (client_id) ON DELETE CASCADE,
-  project_id TEXT NOT NULL REFERENCES projects (id),
+  project_id TEXT NOT NULL CHECK (length(project_id) BETWEEN 1 AND 255),
   access TEXT NOT NULL CHECK (access IN ('read', 'write')),
   created_at TEXT NOT NULL,
   PRIMARY KEY (user_id, client_id, project_id)
@@ -265,7 +268,7 @@ CREATE TABLE access_registration_days (
 -- The projects a service credential may reach. It reaches no other project.
 CREATE TABLE access_service_grants (
   credential_id TEXT NOT NULL REFERENCES access_service_credentials (id),
-  project_id TEXT NOT NULL REFERENCES projects (id),
+  project_id TEXT NOT NULL CHECK (length(project_id) BETWEEN 1 AND 255),
   access TEXT NOT NULL CHECK (access IN ('read', 'write')),
   PRIMARY KEY (credential_id, project_id)
 ) STRICT, WITHOUT ROWID;

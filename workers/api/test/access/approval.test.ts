@@ -2,30 +2,21 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { actorOf } from '../../src/access/principal.ts';
 import { verifyRequest } from '../../src/access/verify.ts';
-import { Browser, connectAgent, McpClient, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
+import { Browser, connectAgent, createProjects, McpClient, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
 standInForGitHub();
 
 describe('approving an agent', () => {
   it('lists every project and accepts one past the first 500', async () => {
-    const now = new Date().toISOString();
-    const bulk = Array.from({ length: 500 }, (_, i) => {
-      const n = String(i).padStart(3, '0');
-      return env.DB.prepare('INSERT INTO projects (id, key, name, prefix, created_at) VALUES (?, ?, ?, ?, ?)').bind(
-        crypto.randomUUID(),
-        `bulk-${n}.example.com`,
-        `Bulk ${n}`,
-        `bulk${n}`,
-        now,
-      );
-    });
-    await env.DB.batch(bulk);
+    await createProjects(
+      Array.from({ length: 500 }, (_, i) => {
+        const n = String(i).padStart(3, '0');
+        return { name: `Bulk ${n}`, key: `bulk-${n}.example.com`, prefix: `bulk${n}` };
+      }),
+    );
     // Sorts after every bulk project by key.
-    const last = crypto.randomUUID();
-    await env.DB.prepare('INSERT INTO projects (id, key, name, prefix, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(last, 'zz-last.example.com', 'Last Project', 'zzlast', now)
-      .run();
+    const [last = ''] = await createProjects([{ name: 'Last Project', key: 'zz-last.example.com', prefix: 'zzlast' }]);
     const browser = new Browser();
     await browser.signInAsOwner();
 
@@ -48,10 +39,9 @@ describe('the actor an agent writes as', () => {
   it('keeps an agent named after the owner apart from the owner', async () => {
     const browser = new Browser();
     await browser.signInAsOwner();
-    const project = crypto.randomUUID();
-    await env.DB.prepare('INSERT INTO projects (id, key, name, prefix, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(project, 'impostor.example.com', 'Impostor', 'impostor', new Date().toISOString())
-      .run();
+    const [project = ''] = await createProjects([
+      { name: 'Impostor', key: 'impostor.example.com', prefix: 'impostor' },
+    ]);
     const ownerName = `Person ${OWNER_GITHUB_ID}`;
 
     const { tokens } = await connectAgent(browser, [project], 'tasks:write', ownerName);

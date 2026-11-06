@@ -67,9 +67,18 @@
     "WORKSPACE_ID": "default",
     "WORKSPACE_NAME": "Ntasks"
   },
-  // The task store. database_id is left out: the first `wrangler deploy`
-  // creates the database (wrangler's automatic provisioning). `wrangler dev`
-  // and the tests use a local database, so neither needs an account.
+  // The task store: one Durable Object with its own SQLite database
+  // (src/store). A store is created by the first request that names it, and
+  // `wrangler dev` and the tests keep theirs locally.
+  "durable_objects": {
+    "bindings": [{ "name": "TASK_STORE", "class_name": "TaskStore" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStore"] }],
+  // The store's schema files are imported as text (src/store/schema.ts).
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  // D1 holds the data that is not tasks, from the files in migrations/.
+  // database_id is left out: the first `wrangler deploy` creates the database
+  // (wrangler's automatic provisioning).
   "d1_databases": [
     {
       "binding": "DB",

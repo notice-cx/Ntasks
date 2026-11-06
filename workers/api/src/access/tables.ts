@@ -1,5 +1,5 @@
 /**
- * Better Auth's tables under the names migrations/0002_sign_in.sql gives
+ * Better Auth's tables under the names migrations/0001_sign_in.sql gives
  * them: an auth_ prefix and snake_case columns, like the rest of the
  * database. test/access/schema.test.ts checks these against the library's own
  * schema, so a library upgrade that adds a column fails there first.

@@ -15,6 +15,7 @@ import {
   takeRegistration,
   listAgents,
   listProjects,
+  type ProjectSource,
   listServiceCredentials,
   revokeAgent,
   revokeServiceCredential,
@@ -34,7 +35,7 @@ import {
 } from './protocol.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
-export interface AccessEnv extends VerifierEnv {
+export interface AccessEnv extends VerifierEnv, ProjectSource {
   /** Limits sign-in requests per client address (wrangler.jsonc `ratelimits`). */
   readonly SIGN_IN_LIMIT: RateLimit;
   /** Limits agent registrations from one address. */
@@ -287,7 +288,7 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   } catch {
     return expiredPage();
   }
-  const projects = await listProjects(env.DB);
+  const projects = await listProjects(env);
   const show = (error: string | null) =>
     agentAccessPage({
       personName: person.name,
@@ -360,6 +361,7 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
       throw new AccessRefused('invalid_request', 'the body is not JSON');
     }
     const created = await createServiceCredential(env.DB, {
+      projects: await listProjects(env),
       name: body?.name,
       grants: body?.grants,
       createdBy: principal.userId,

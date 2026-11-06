@@ -108,17 +108,23 @@ arrives.
 
 ## What a read costs
 
-D1 counts every row a query reads, and its free plan allows 5,000,000 rows
-read a day and 50 queries per request ([architecture](architecture.md#the-free-plan-budget)).
-Each read reaches its rows through an index and returns a task's labels and
-links in the same query:
+Cloudflare counts every row a query reads, and its free plan allows the task
+store 5,000,000 rows read a day ([architecture](architecture.md#the-free-plan-budget)).
+
+A board, a list of tasks, the epics or the project list that the store has
+read since the last write comes from its memory and reads no rows. It stays
+there until a write changes a task or a deferred task's time comes. The store
+keeps at most 32 MB of answers, the oldest going first, and reads an answer
+larger than 8 MB afresh each time, since the object has 128 MB in all. When the
+store does read, each read reaches its rows through an index and returns a
+task's labels and links in the same query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
 - a list or a board reads about ten rows for each task it returns;
-- no read makes more than three round trips to the database, however many
-  projects there are.
+- no read runs more than four statements, however many projects there are.
 
 [`read-cost.test.ts`](../workers/api/test/api/read-cost.test.ts) seeds a store
 of eight projects and about 7,000 tasks and fails when a read goes over its
-budget. Run it with `--silent=false` to print each read's round trips,
-statements and rows read.
+budget. Run it with `--silent=false` to print each read's statements and rows
+read. [`store.test.ts`](../workers/api/test/store.test.ts) checks that a
+repeated read reads no rows.
