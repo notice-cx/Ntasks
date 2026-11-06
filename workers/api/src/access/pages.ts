@@ -109,6 +109,12 @@ ${query}
 export function agentAccessPage(input: {
   readonly personName: string;
   readonly client: { readonly name: string; readonly uri: string | null };
+  /**
+   * Where the browser goes after the owner answers: the agent's registered
+   * redirect address. Any client can register with any name, but the code
+   * only ever goes here, so the page shows it.
+   */
+  readonly returnsTo: string;
   /** The most the agent's scopes let it do; null when it asked for no access to tasks. */
   readonly access: ProjectAccess | null;
   readonly projects: readonly { readonly id: string; readonly key: string; readonly name: string }[];
@@ -141,6 +147,7 @@ ${input.projects
     `<h1>Allow ${escape(input.client.name)} to use Ntasks?</h1>
 ${alert}
 ${ask}
+<p class="muted">After you answer, your browser goes to ${escape(input.returnsTo)}.</p>
 <form method="post" action="${AGENT_ACCESS_PAGE}">
 <input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">
 ${projects}

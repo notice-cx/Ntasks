@@ -198,11 +198,20 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
     .first<{ name: string | null; uri: string | null }>();
   if (!client) return expiredPage();
   const access = scopeAccess((params.get('scope') ?? '').split(' '));
+  let returnsTo: string;
+  try {
+    // A native app's own scheme, such as myapp://callback, has no web origin.
+    const target = new URL(params.get('redirect_uri') ?? '');
+    returnsTo = target.origin !== 'null' ? target.origin : `${target.protocol}//${target.host}`;
+  } catch {
+    return expiredPage();
+  }
   const projects = await listProjects(env.DB);
   const show = (error: string | null) =>
     agentAccessPage({
       personName: person.name,
       client: { name: client.name ?? clientId, uri: client.uri },
+      returnsTo,
       access,
       projects,
       oauthQuery,

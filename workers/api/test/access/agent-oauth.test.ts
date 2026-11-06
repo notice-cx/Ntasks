@@ -79,6 +79,7 @@ describe('an agent connecting over OAuth', () => {
     const page = await approval.text();
     expect(page).toContain('Allow Example Agent to use Ntasks?');
     expect(page).toContain('asks to read and change tasks');
+    expect(page).toContain(`After you answer, your browser goes to ${new URL(REDIRECT_URI).origin}.`);
     expect(page).toContain('Chosen');
     expect(page).toContain('Other');
 
