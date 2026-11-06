@@ -1,0 +1,13 @@
+packages:
+  - "apps/*"
+  - "workers/*"
+  - "packages/*"
+  - "tools/*"
+# Installing is an explicit step; running a script never reinstalls.
+verifyDepsBeforeRun: error
+# Packages whose install scripts may run: esbuild and workerd fetch their
+# platform binaries. Every other package's install script is refused.
+allowBuilds:
+  esbuild: true
+  sharp: false
+  workerd: true

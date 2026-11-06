@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The model runs in the Worker, the browser and Node alike, so it may use
+    // no platform's globals.
+    "types": []
+  },
+  "include": ["src", "test"]
+}

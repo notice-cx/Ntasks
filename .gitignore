@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# test output
+coverage/
+
+# wrangler's local state: the local D1 database, caches and logs
+.wrangler/
+
+# secrets and local settings
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+
+# macOS
+.DS_Store

@@ -1,0 +1,25 @@
+{
+  "name": "ntasks",
+  "private": true,
+  "description": "A task hub for people and AI agents, on Cloudflare Workers and D1.",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/notice-cx/Ntasks#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/notice-cx/Ntasks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/notice-cx/Ntasks/issues"
+  },
+  "type": "module",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24.21.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ntasks/web run build && pnpm --filter @ntasks/api run dev",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "build": "pnpm -r --if-present run build"
+  }
+}

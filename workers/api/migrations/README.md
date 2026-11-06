@@ -1,0 +1,33 @@
+# Database migrations
+
+This folder holds the Worker's D1 schema as numbered SQL files. Wrangler applies
+them in number order and records each applied file in the database's
+`d1_migrations` table, so a database only ever receives the files it lacks.
+
+## Add a migration
+
+From the repository root:
+
+```sh
+pnpm --filter @ntasks/api exec wrangler d1 migrations create ntasks describe_the_change
+```
+
+Wrangler writes the next numbered file here. Put the schema change in it and
+add the tests that rely on it.
+
+## Rules
+
+- **A merged migration never changes.** A database that already applied the
+  file would not see an edit, so a correction is a new migration.
+- **The tests start from the full schema.** Before each test file,
+  [`test/apply-migrations.ts`](../test/apply-migrations.ts) applies every
+  migration here to a fresh local database.
+- **`wrangler dev` keeps its own local database.** Apply new migrations to it
+  with:
+
+  ```sh
+  pnpm --filter @ntasks/api exec wrangler d1 migrations apply ntasks --local
+  ```
+
+- **The deployed database changes only by a maintainer's release step**
+  (`--remote`). Tests and CI never apply migrations to it.
