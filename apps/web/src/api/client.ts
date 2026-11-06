@@ -72,7 +72,16 @@ export function needsSignIn(error: unknown): boolean {
  * the same way every time, and retrying only delays saying so.
  */
 export function retryRead(failures: number, error: unknown): boolean {
+  if (error instanceof UnreadableAnswer) return false;
   return failures < 3 && !(error instanceof ApiError && error.status < 500);
+}
+
+/** An answer whose shape this app does not know. The server sends the same one again, so it is not retried. */
+export class UnreadableAnswer extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnreadableAnswer';
+  }
 }
 
 /** A refused request, with the server's own sentence when it sent one. */
@@ -121,7 +130,8 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
 }
 
 function readProjects(payload: unknown): readonly TaskProject[] {
-  if (!isRecord(payload) || !Array.isArray(payload.projects)) throw new Error('The project list could not be read.');
+  if (!isRecord(payload) || !Array.isArray(payload.projects))
+    throw new UnreadableAnswer('The project list could not be read.');
   return Object.freeze(
     payload.projects.map((row: unknown) => {
       if (
@@ -131,7 +141,7 @@ function readProjects(payload: unknown): readonly TaskProject[] {
         typeof row.displayName !== 'string' ||
         typeof row.prefix !== 'string'
       ) {
-        throw new Error('The project list could not be read.');
+        throw new UnreadableAnswer('The project list could not be read.');
       }
       return Object.freeze({
         projectId: row.projectId,
@@ -299,7 +309,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       );
       const created: unknown = await response.json();
       if (!isRecord(created) || typeof created.id !== 'string')
-        throw new Error('The new task was filed, but its id could not be read.');
+        throw new UnreadableAnswer('The new task was filed, but its id could not be read.');
       return { id: created.id, project };
     },
     async updateTask(id, project, edit, options) {

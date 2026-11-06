@@ -88,7 +88,7 @@ fails instead of being ignored.
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer; `writable` is `false` until writes are built |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, and `closedSince`. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
@@ -106,9 +106,9 @@ change in the installation. `GET /api/changes?after=N` returns the events
 after `N`, oldest first, and `lastSeq`, the number to ask after next. When
 nothing changed it returns no events and the same `lastSeq`.
 
-This is the cheapest read the API has. A client that shows a board asks for
-the changes since its last read, and reloads the board only when an event
-arrives.
+This is the cheapest read the API has. A client that shows a board starts
+from the board's own `lastSeq`, asks for the changes after it, and reloads
+the board only when an event arrives.
 
 ## What a read costs
 

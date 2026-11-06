@@ -28,6 +28,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     nextDeferralAfter: (time) => reads.nextDeferralAfter(time),
     listComments: (projectId, taskId) => reads.listComments(projectId, taskId),
     listHistory: (projectId, taskId, options) => reads.listHistory(projectId, taskId, options.limit, options.beforeSeq),
+    latestChange: () => reads.latestChange(),
     listChanges: (query) => reads.listChanges(query.after, query.limit, query.projectId),
     async lint(projectId, taskIds) {
       const tasks = (await reads.taskRows(projectId, taskIds)).map(toTask);

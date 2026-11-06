@@ -2,7 +2,7 @@ import type { JsonObject, Task } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import type { LiveTask, LiveTasksPayload, TaskChoices } from '@/api/types';
 import { NO_FILTERS, readBoard } from '@/lib/board-read';
-import { closeAttribution, inboxAsk } from '@/lib/task-model';
+import { claimedModel, closeAttribution, inboxAsk } from '@/lib/task-model';
 // The Worker's own code for a task as the web app reads it, so this test
 // fails when the two drift apart.
 import { webTask } from '../../../workers/api/src/views.ts';
@@ -110,6 +110,7 @@ describe("the Worker's task answers", () => {
     expect((read.inbox[1]?.choices as TaskChoices | null)?.options.map((option) => option.key)).toEqual(['a', 'b']);
     expect(read.rows.map((row) => row.id).sort()).toEqual(['web-c1', 'web-w1']);
     expect(read.totals.blocked).toBe(1);
+    expect(claimedModel(read.rows.find((row) => row.id === 'web-c1')!)).toBe('example-model');
   });
 
   it('say who closed a task when the Worker sends it, and what the close was', () => {
@@ -124,7 +125,7 @@ describe("the Worker's task answers", () => {
           resolution: 'no-longer-needed',
           duplicateOf: null,
           by: 'Example Owner',
-          model: null,
+          model: 'example-model',
         },
       }),
     ]);
@@ -133,8 +134,6 @@ describe("the Worker's task answers", () => {
       resolution: 'no-longer-needed',
       closeReason: 'Not needed after the redesign',
     });
-    const closer = answer ? closeAttribution(answer) : null;
-    // Until the Worker sends the closer, the page leaves it out rather than guess.
-    expect(closer === null || closer.by === 'Example Owner').toBe(true);
+    expect(answer ? closeAttribution(answer) : null).toEqual({ by: 'Example Owner', model: 'example-model' });
   });
 });

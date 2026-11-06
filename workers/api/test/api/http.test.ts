@@ -224,3 +224,55 @@ describe('a sender granted some projects', () => {
     expect(granted.body.lastSeq).toBe(everything.body.lastSeq);
   });
 });
+
+describe('where a board starts reading changes', () => {
+  it('names the latest change it reflects, after which the feed has only newer changes', async () => {
+    const own = await newProject(engine);
+    const { task } = await engine.createTask(own.id, { title: 'Watched' }, AGENT);
+    const before = await get(target, `/api/tasks?project=${own.id}`);
+    const lastSeq = before.body.lastSeq as number;
+    expect(lastSeq).toBeGreaterThan(0);
+    expect((await get(target, `/api/changes?after=${lastSeq}&project=${own.id}`)).body.events).toEqual([]);
+
+    await engine.addComment(own.id, task.id, 'A note.', OWNER);
+
+    const after = await get(target, `/api/tasks?project=${own.id}`);
+    expect(after.body.lastSeq).toBeGreaterThan(lastSeq);
+    const newer = await get(target, `/api/changes?after=${lastSeq}&project=${own.id}`);
+    expect((newer.body.events as { kind: string }[]).map((event) => event.kind)).toEqual(['commented']);
+  });
+});
+
+describe('who closed or claimed a task', () => {
+  it('names the closer and the claimer with the models they named', async () => {
+    const own = await newProject(engine);
+    const { task: open } = await engine.createTask(own.id, { title: 'Still open' }, AGENT);
+    const { task: claimed } = await engine.createTask(own.id, { title: 'Claim me' }, AGENT);
+    await engine.writeTask(
+      own.id,
+      claimed.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
+    await engine.writeTask(
+      own.id,
+      claimed.id,
+      { expectedVersion: 2, close: { reason: 'Done.', resolution: 'done' } },
+      AGENT,
+    );
+
+    const { body } = await get(target, `/api/tasks?project=${own.id}`);
+    const tasks = body.tasks as Record<string, unknown>[];
+    expect(tasks.find((entry) => entry.id === open.id)).toMatchObject({
+      closedBy: null,
+      closedModel: null,
+      assigneeModel: null,
+    });
+    expect(tasks.find((entry) => entry.id === claimed.id)).toMatchObject({
+      assignee: AGENT.name,
+      assigneeModel: AGENT.model,
+      closedBy: AGENT.name,
+      closedModel: AGENT.model,
+    });
+  });
+});

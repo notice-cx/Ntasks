@@ -145,6 +145,24 @@ describe('the board', () => {
     }
   });
 
+  it('offers the sign-in page when the project list reads but a board read is refused', async () => {
+    const api = createFixtureTasksApi();
+    const expired = {
+      ...api,
+      board: async (project: string) => {
+        if (project === 'docs') throw new ApiError('Sign in to see your tasks.', 401, 'sign_in_required');
+        return api.board(project);
+      },
+    };
+    for (const path of ['/tasks', '/tasks/focus']) {
+      const { unmount } = renderApp(path, expired);
+      expect(await screen.findByText('Sign in to see your tasks')).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/sign-in');
+      expect(screen.queryByText(/could not be read/)).toBeNull();
+      unmount();
+    }
+  });
+
   it('links to its source code on every page', async () => {
     for (const path of ['/tasks', '/tasks/web-b2r6', '/tasks/focus', '/nowhere']) {
       const { unmount } = renderApp(path);
