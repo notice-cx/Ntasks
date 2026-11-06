@@ -68,6 +68,20 @@ describe('the import refuses what is out of scope, naming it', () => {
     ]);
   });
 
+  it('text that looks like zero or an empty list, which someone still wrote', () => {
+    const refusals = refusalsOf(
+      hubWith((c) => {
+        c.update('web-a1', { notes: '0', design: '[]' });
+        c.update('web-a2', { external_ref: '{}' });
+      }),
+    );
+    expect(refusals).toEqual([
+      { subject: 'web-a1', reason: 'its column design holds "[]", and Ntasks has no field for it' },
+      { subject: 'web-a1', reason: 'its column notes holds "0", and Ntasks has no field for it' },
+      { subject: 'web-a2', reason: 'its column external_ref holds "{}", and Ntasks has no field for it' },
+    ]);
+  });
+
   it('a wisp, a molecule and an approval waiting on something other than a person', () => {
     const refusals = refusalsOf(
       hubWith((c) => {

@@ -147,10 +147,13 @@ export function timeOf(value: Json | undefined): string | null | undefined {
   return iso;
 }
 
-/** Whether a stored value holds nothing: missing, NULL, empty text, zero, false, or an empty list or object. */
+/**
+ * Whether a stored value holds nothing: missing, NULL, empty text, the number
+ * zero, false, or an empty JSON list or object. Text is empty only when it has
+ * no characters: "0" or "[]" in a text column is something someone wrote.
+ */
 export function isEmpty(value: Json | undefined): boolean {
   if (value === undefined || value === null || value === '' || value === 0 || value === false) return true;
-  if (value === '0' || value === '[]' || value === '{}') return true;
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === 'object') return Object.keys(value).length === 0;
   return false;
