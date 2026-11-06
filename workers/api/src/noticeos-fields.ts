@@ -408,14 +408,15 @@ function normalized(text: string): string {
   return text.replace(/\r\n?/gu, '\n').trim();
 }
 
-/** Everything an approval asks, from its gate's description: the text after
- * "Reason:" in a gate imported from Beads when that text is not blank, else
- * the whole description, with its line ends made alike and the spaces around
- * it taken off. */
+/** Everything an approval asks, from its gate's description: in a gate
+ * imported from Beads, the text from its first "Reason:" line to the end when
+ * that line has text after the label, else the whole description, with its
+ * line ends made alike and the spaces around it taken off. */
 export function askedOf(description: string): string | null {
   const whole = normalized(description);
-  const imported = /(?:^|\n)Reason:[ \t]*([\s\S]+)$/u.exec(whole);
-  const reason = normalized(imported?.[1] ?? '') || whole;
+  const label = /(?:^|\n)Reason:[ \t]*/u.exec(whole);
+  const rest = label === null ? '' : whole.slice(label.index + label[0].length);
+  const reason = rest === '' || rest.startsWith('\n') ? whole : rest;
   return reason === '' ? null : reason;
 }
 

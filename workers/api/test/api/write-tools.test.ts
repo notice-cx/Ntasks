@@ -1089,7 +1089,59 @@ describe('request_human_approval', () => {
     );
     expect(await ask('Rotate the key.')).toMatchObject({ created: false, approval: { id: created[0]!.id } });
     expect((await ask('Approve the rotation.\nReason: Rotate the key.')).created).toBe(true);
-    expect((await current(project, id)).dependencies).toHaveLength(4);
+    // Only the first "Reason:" line counts, and only when text follows it on
+    // that line; the text it starts runs to the end.
+    await engine.writeTask(
+      project.id,
+      id,
+      {
+        expectedVersion: (await current(project, id)).version,
+        requestApproval: { reason: 'Approve the purge.\nReason:\nReason: Purge the cache.' },
+      },
+      OWNER,
+    );
+    expect((await ask('Reason: Purge the cache.')).created).toBe(true);
+    const { created: lines } = await engine.writeTask(
+      project.id,
+      id,
+      {
+        expectedVersion: (await current(project, id)).version,
+        requestApproval: { reason: 'Imported.\nReason: Move the database.\nThen check the backups.' },
+      },
+      OWNER,
+    );
+    expect(await ask('Move the database.\nThen check the backups.')).toMatchObject({
+      created: false,
+      approval: { id: lines[0]!.id },
+    });
+    expect((await current(project, id)).dependencies).toHaveLength(7);
+  });
+
+  it('returns the approval another request opened first for the same reason', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    let other: string | undefined;
+    const racing = api({
+      principal: WRITER,
+      engine,
+      wrap: (inner) => ({
+        ...inner,
+        async writeTask(...args) {
+          if (other === undefined && args[2].requestApproval !== undefined) {
+            const { created } = await inner.writeTask(args[0], args[1], { ...args[2] }, OWNER);
+            other = created[0]!.id;
+          }
+          return inner.writeTask(...args);
+        },
+      }),
+    });
+    const reply = await write<{ approval: { id: string }; created: boolean }>(racing, 'request_human_approval', {
+      project: project.id,
+      task: id,
+      reason: 'Rotate the key.',
+    });
+    expect(reply).toMatchObject({ created: false, approval: { id: other } });
+    expect((await current(project, id)).dependencies).toHaveLength(1);
   });
 
   it('refuses a closed task', async () => {
