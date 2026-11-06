@@ -111,11 +111,11 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     'card',
     'changeClass',
   ]);
-  const projectId = projectArg(body, 'projectId');
+  const projectId = projectArg(body, 'projectId', 'http');
   const fields = {
     title: textArg(body, 'title', TASK_LIMITS.title, true)!,
     description: textArg(body, 'description', TASK_LIMITS.description, false, true),
-    type: typeArg(body),
+    type: typeArg(body, 'type', 'http'),
     priority: priorityArg(body),
     labels: labelsArg(body, 'labels'),
     parent: body.parent === undefined ? undefined : taskArg(body, 'parent'),
@@ -140,7 +140,7 @@ export async function updateRoute(
 ): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'update_task', { task: taskId });
   only(body, ['projectId', ...EDITABLE_FIELDS]);
-  const projectId = projectArg(body, 'projectId');
+  const projectId = projectArg(body, 'projectId', 'http');
   if (body.claim !== undefined) {
     if (body.claim !== true) refuse('invalid arguments: claim (true)');
     const others = ['assignee', 'status', 'card', 'changeClass'].filter((name) => body[name] !== undefined);
@@ -177,7 +177,7 @@ export async function commentRoute(
 ): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'comment_on_task', { task: taskId });
   only(body, ['projectId', 'text']);
-  const projectId = projectArg(body, 'projectId');
+  const projectId = projectArg(body, 'projectId', 'http');
   const text = textArg(body, 'text', TASK_LIMITS.comment, true)!;
   const { comment } = await commentOnTask(context, projectId, taskId, text, retry(body));
   return json({ comment: commentView(comment) });
@@ -187,7 +187,7 @@ export async function commentRoute(
 export async function closeRoute(context: WriteContext, url: URL, request: Request, taskId: string): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'close_task', { task: taskId });
   only(body, ['projectId', 'reason', 'resolution', 'duplicateOf']);
-  const projectId = projectArg(body, 'projectId');
+  const projectId = projectArg(body, 'projectId', 'http');
   const closing = closingArgs(body, taskId, 'duplicateOf');
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
   return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });

@@ -168,6 +168,23 @@ describe('POST /api/tasks', () => {
     expect(await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', colour: 'red' })).toEqual(
       invalid('unknown colour'),
     );
+    // The advice names the HTTP route that lists projects, and says only MCP asks for an approval.
+    const { id } = await task();
+    for (const [method, path, body] of [
+      ['POST', '/api/tasks', { title: 'T' }],
+      ['PATCH', `/api/tasks/${id}`, { projectId: 'not a project', title: 'T' }],
+      ['POST', `/api/tasks/${id}/comments`, { text: 'Hi.' }],
+      ['POST', `/api/tasks/${id}/close`, { projectId: '', reason: 'Done.' }],
+    ] as const) {
+      expect(await send(target, method, path, body), `${method} ${path}`).toEqual(
+        invalid('projectId (a projectId from /api/tasks/projects)'),
+      );
+    }
+    expect(await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', type: 'gate' })).toEqual(
+      invalid(
+        'type (a gate holds another task until a person approves it, and only the MCP endpoint asks for an approval: request_human_approval, or create_task with approval)',
+      ),
+    );
     expect(
       await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', metadata: { noticeos_card: 'x' } }),
     ).toEqual(

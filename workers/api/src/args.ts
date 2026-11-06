@@ -26,6 +26,10 @@ import { Refused, type RefusalKind } from './refused.ts';
 
 export type Args = Record<string, unknown>;
 
+/** Who reads a refusal's advice: an agent over MCP, which names tools, or a
+ * client of the HTTP routes, which names routes. */
+export type Caller = 'mcp' | 'http';
+
 /** Refuses the call; an argument that breaks a rule unless `kind` says otherwise. */
 export function refuse(message: string, kind: RefusalKind = 'invalid'): never {
   throw new Refused(kind, message);
@@ -54,10 +58,12 @@ export function textArg(args: Args, name: string, max: number, required: boolean
 
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
-export function projectArg(args: Args, name = 'project'): string {
+export function projectArg(args: Args, name = 'project', caller: Caller = 'mcp'): string {
   const value = args[name];
   if (typeof value !== 'string' || !PROJECT_ID.test(value))
-    refuse(`invalid arguments: ${name} (a projectId from list_projects)`);
+    refuse(
+      `invalid arguments: ${name} (a projectId from ${caller === 'mcp' ? 'list_projects' : '/api/tasks/projects'})`,
+    );
   return value;
 }
 
@@ -157,10 +163,12 @@ export const WRITABLE_TYPES = Object.freeze(TASK_TYPES.filter((type) => type !==
   'gate'
 >[];
 
-export function typeArg(args: Args, name = 'type'): Exclude<TaskType, 'gate'> | undefined {
+export function typeArg(args: Args, name = 'type', caller: Caller = 'mcp'): Exclude<TaskType, 'gate'> | undefined {
   if (args[name] === 'gate') {
     refuse(
-      `invalid arguments: ${name} (a gate holds another task until a person approves it: pass approval with that task, or call request_human_approval)`,
+      caller === 'mcp'
+        ? `invalid arguments: ${name} (a gate holds another task until a person approves it: pass approval with that task, or call request_human_approval)`
+        : `invalid arguments: ${name} (a gate holds another task until a person approves it, and only the MCP endpoint asks for an approval: request_human_approval, or create_task with approval)`,
     );
   }
   return choiceArg(args, name, WRITABLE_TYPES);
