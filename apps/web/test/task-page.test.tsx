@@ -81,14 +81,20 @@ describe('a task page', () => {
   });
 
   it("starts the next task's page clean when a link moves to it", async () => {
-    renderApp('/tasks/web-k3m9.3');
+    // Both tasks are read first, so the move between them draws no loading
+    // state that would reset the page whatever its key.
+    renderApp('/tasks/web-k3m9.2');
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    const holds = (await screen.findByText('Holds back')).closest('section') as HTMLElement;
+    fireEvent.click(within(holds).getByRole('link', { name: /web-k3m9\.3/ }));
     await screen.findByRole('heading', { level: 1, name: 'Send the new sign-in page to every visitor' });
     fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment' }), {
       target: { value: 'A draft for this task' },
     });
-    const links = (await screen.findByText('Waits on')).closest('section') as HTMLElement;
-    fireEvent.click(within(links).getByRole('link', { name: /web-k3m9\.2/ }));
-    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    const waits = (await screen.findByText('Waits on')).closest('section') as HTMLElement;
+    fireEvent.click(within(waits).getByRole('link', { name: /web-k3m9\.2/ }));
+    // The cached task is drawn at once, in the same page component.
+    expect(screen.getByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' })).toBeTruthy();
     expect((screen.getByRole('textbox', { name: 'Add a comment' }) as HTMLTextAreaElement).value).toBe('');
   });
 

@@ -86,8 +86,8 @@ function Shell() {
         </div>
       </header>
       <main className="page-arrive flex-1">
-        {/* Keyed by the address, so moving to another page tries again. */}
-        <PageBoundary key={pathname}>
+        {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
+        <PageBoundary resetKey={pathname}>
           <Suspense
             fallback={
               <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
@@ -131,11 +131,22 @@ function NoPage() {
  * under a new deployment, takes only itself down: the header and the
  * source-code link stay, with a way to load the page again.
  */
-export class PageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false };
+export class PageBoundary extends Component<
+  { children: ReactNode; resetKey?: string },
+  { failed: boolean; resetKey: string | undefined }
+> {
+  override state = { failed: false, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
+  }
+
+  /** A new address clears a failure; the pages that did not fail keep their state. */
+  static getDerivedStateFromProps(
+    props: { resetKey?: string },
+    state: { resetKey: string | undefined },
+  ): { failed: boolean; resetKey: string | undefined } | null {
+    return props.resetKey === state.resetKey ? null : { failed: false, resetKey: props.resetKey };
   }
 
   override render() {

@@ -60,6 +60,25 @@ describe('a page that fails', () => {
     vi.restoreAllMocks();
   });
 
+  it('tries again when the address changes', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    function Broken(): never {
+      throw new Error('The page code could not be fetched.');
+    }
+    const { rerender } = render(
+      <PageBoundary resetKey="/tasks/web-a1">
+        <Broken />
+      </PageBoundary>,
+    );
+    expect(screen.getByText('This page could not load')).toBeTruthy();
+    rerender(
+      <PageBoundary resetKey="/tasks/web-a2">
+        <p>The next page</p>
+      </PageBoundary>,
+    );
+    expect(screen.getByText('The next page')).toBeTruthy();
+  });
+
   it('takes down only itself and offers Reload', () => {
     // React reports the caught error to the console; the test expects it.
     vi.spyOn(console, 'error').mockImplementation(() => {});
