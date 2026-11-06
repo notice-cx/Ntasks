@@ -87,7 +87,7 @@ pnpm build
 | [`apps/web/`](apps/web/) | The web app, built with React and Vite |
 | [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
-| [`tools/lint/`](tools/lint/) | The test that `pnpm lint` reports the mistakes it exists to catch |
+| [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, and that no `wrangler.jsonc` names a secret in `vars` |
 | [`docs/`](docs/) | Concepts and architecture |
 
 ## Where Ntasks comes from
