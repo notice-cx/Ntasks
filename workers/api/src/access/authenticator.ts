@@ -4,7 +4,7 @@
  * It reads only the request's headers, never its body, which the MCP
  * endpoint reads afterwards.
  */
-import { actorOf, type Principal } from './principal.ts';
+import { actorOf, type Principal, type ProjectAccess } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
 /** The OAuth scope names agents ask for (AGENT_SCOPES in protocol.ts). */
@@ -23,10 +23,14 @@ export interface SignedIn {
    */
   readonly scopes: readonly string[];
   /**
-   * The full sender. An agent or a service reaches only the projects it was
-   * granted, so a route that names or lists projects checks each with
-   * `may(principal, projectId, ...)` or `projectAccess`; whether an answer is
-   * the owner's own decision is `mayDecide(principal)`.
+   * Where the sender may act: `all` for the owner, or each project an agent
+   * or a service was granted, with the most it may do there. A project not
+   * in the map is one the sender may not reach.
+   */
+  readonly projects: 'all' | ReadonlyMap<string, ProjectAccess>;
+  /**
+   * The full sender, for `may(principal, projectId, ...)` and for
+   * `mayDecide(principal)`: whether an answer is the owner's own decision.
    */
   readonly principal: Principal;
 }
@@ -61,7 +65,13 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
         return null;
       }
       const { principal } = verification;
-      return Object.freeze({ id: principal.id, name: actorOf(principal).name, scopes: scopesOf(principal), principal });
+      return Object.freeze({
+        id: principal.id,
+        name: actorOf(principal).name,
+        scopes: scopesOf(principal),
+        projects: principal.kind === 'person' ? 'all' : principal.projects,
+        principal,
+      });
     },
     challenge(request: Request): Response {
       return refusal(refusals.get(request) ?? { ok: false, reason: 'unauthenticated' }, env);

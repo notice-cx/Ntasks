@@ -26,7 +26,7 @@ describe('the authenticator the API layer calls', () => {
     });
 
     const signedIn = await authenticator.authenticate(request);
-    expect(signedIn).toMatchObject({ name: 'Person 1001', scopes: ['tasks:read', 'tasks:write'] });
+    expect(signedIn).toMatchObject({ name: 'Person 1001', scopes: ['tasks:read', 'tasks:write'], projects: 'all' });
     expect(signedIn?.id).toMatch(/^person:/u);
   });
 
@@ -40,6 +40,7 @@ describe('the authenticator the API layer calls', () => {
     const request = bearer(tokens.access_token);
     const signedIn = await authenticator.authenticate(request);
     expect(signedIn).toMatchObject({ name: 'agent:Example Agent', scopes: ['tasks:read'] });
+    expect(signedIn?.projects).toEqual(new Map([[granted, 'read']]));
     expect(signedIn && may(signedIn.principal, granted, 'read')).toBe(true);
     expect(signedIn && may(signedIn.principal, other, 'read')).toBe(false);
     // The body is still there for the MCP endpoint to read.
