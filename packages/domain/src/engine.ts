@@ -195,6 +195,21 @@ export interface TaskPage {
   readonly nextCursor: string | null;
 }
 
+/** One project's tasks carrying a label, by id, a page at a time. */
+export interface LabelQuery {
+  readonly label: string;
+  /** 1 to TASK_LIMITS.page. */
+  readonly limit: number;
+  /** Only tasks whose id sorts after this one: the previous page's `next`. */
+  readonly after?: string;
+}
+
+export interface LabelPage {
+  readonly tasks: readonly Task[];
+  /** The last task's id when more remain; null on the last page. */
+  readonly next: string | null;
+}
+
 export interface ChangePage {
   /** Events after the requested sequence number, oldest first. */
   readonly events: readonly TaskEvent[];
@@ -229,6 +244,10 @@ export interface TaskEngine {
    * every task it matches, most urgent first, in one round trip and not paged. */
   listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
+  /** Every task of the project carrying the label, in every status and closed
+   * of any age, by id. Its cost follows the tasks carrying the label, not the
+   * project's size. */
+  listLabelled(projectId: string, query: LabelQuery): Promise<LabelPage>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,

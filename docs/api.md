@@ -189,6 +189,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
+| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status` and `closedDays` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
@@ -258,6 +259,8 @@ task's labels and links in the same query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
 - a list or a board reads about ten rows for each task it returns;
+- a label read reads about fifteen rows for each task carrying the label in
+  that project, however many tasks the project has;
 - no read runs more than four statements, however many projects there are.
 
 [`read-cost.test.ts`](../workers/api/test/api/read-cost.test.ts) seeds a store

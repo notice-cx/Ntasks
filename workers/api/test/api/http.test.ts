@@ -135,7 +135,7 @@ describe('GET /api/tasks', () => {
   it('refuses a parameter it does not take, a repeated one, and a missing or unknown project', async () => {
     expect((await get(target, `/api/tasks?project=${project.id}&colour=red`)).body).toEqual({
       error: 'invalid_request',
-      detail: 'unknown parameter colour; this route takes project, status, closedDays',
+      detail: 'unknown parameter colour; this route takes project, status, closedDays, label, limit, after',
     });
     expect((await get(target, `/api/tasks?project=${project.id}&project=${project.id}`)).body.detail).toBe(
       'project is given twice',

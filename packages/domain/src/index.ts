@@ -37,6 +37,8 @@ export type {
   CommentResult,
   CreateProjectInput,
   CreateTaskInput,
+  LabelPage,
+  LabelQuery,
   NewTaskLink,
   Retry,
   TaskEngine,
