@@ -23,6 +23,14 @@ function render(row: MutableRow): BeadsRow {
   return out;
 }
 
+/** A row as the Dolt SQL client prints it through a server: every value is text, a JSON value its JSON text. */
+function renderAsText(row: MutableRow): BeadsRow {
+  const out: Record<string, Json> = {};
+  for (const [column, value] of Object.entries(render(row)))
+    out[column] = typeof value === 'string' ? value : JSON.stringify(value);
+  return out;
+}
+
 /** The columns Beads gives a new issue, empty ones included. */
 function newIssue(fields: MutableRow, at: string, by: string): MutableRow {
   return {
@@ -76,7 +84,10 @@ export class FakeHub {
   readonly database: string;
   readonly key: string;
   readonly name: string;
+  /** The project's id in Ntasks, as a hub file names it. */
   readonly id: string;
+  /** Beads' own id for the project, the database's `_project_id`. */
+  readonly beadsProjectId: string;
   readonly prefix: string;
   readonly issues = new Map<string, MutableRow>();
   readonly labels = new Map<string, MutableRow>();
@@ -100,11 +111,22 @@ export class FakeHub {
   #now = '';
   #actor = '';
 
-  constructor(options: { database: string; key: string; name: string; id: string; prefix: string }) {
+  /** Print rows as the Dolt SQL client does through a server, as the real hub is read. */
+  valuesAsText = false;
+
+  constructor(options: {
+    database: string;
+    key: string;
+    name: string;
+    id: string;
+    prefix: string;
+    beadsProjectId?: string;
+  }) {
     this.database = options.database;
     this.key = options.key;
     this.name = options.name;
     this.id = options.id;
+    this.beadsProjectId = options.beadsProjectId ?? `beads-${options.id}`;
     this.prefix = options.prefix;
   }
 
@@ -217,6 +239,7 @@ export class FakeHub {
 
   /** The project as `export` would write it. */
   project(): BeadsProject {
+    const render_ = this.valuesAsText ? renderAsText : render;
     const tables = [
       { name: 'issues', rows: this.issues.size },
       { name: 'labels', rows: this.labels.size },
@@ -230,21 +253,22 @@ export class FakeHub {
       key: this.key,
       name: this.name,
       id: this.id,
+      beadsProjectId: this.beadsProjectId,
       prefix: this.prefix,
       tables,
       branches: this.branches,
-      commits: [...this.log].reverse().map(render),
+      commits: [...this.log].reverse().map(render_),
       rows: {
-        issues: [...this.issues.values()].map(render),
-        labels: [...this.labels.values()].map(render),
-        dependencies: [...this.links.values()].map(render),
-        comments: this.comments.map(render),
-        events: this.events.map(render),
+        issues: [...this.issues.values()].map(render_),
+        labels: [...this.labels.values()].map(render_),
+        dependencies: [...this.links.values()].map(render_),
+        comments: this.comments.map(render_),
+        events: this.events.map(render_),
       },
       diffs: {
-        issues: this.diffs.issues.map(render),
-        labels: this.diffs.labels.map(render),
-        dependencies: this.diffs.dependencies.map(render),
+        issues: this.diffs.issues.map(render_),
+        labels: this.diffs.labels.map(render_),
+        dependencies: this.diffs.dependencies.map(render_),
       },
     };
   }
@@ -255,13 +279,14 @@ export class FakeHub {
     const q = databaseQueries(this.database);
     const answers = new Map<string, readonly BeadsRow[]>([
       [q.state, [{ head: this.log.at(-1)?.commit_hash ?? 'h0', working: this.#working }]],
-      [q.projectId, [{ value: this.id }]],
+      [q.projectId, [{ value: this.beadsProjectId }]],
       [q.prefix, [{ value: this.prefix }]],
       [q.tables, project.tables.map((table) => ({ name: table.name }))],
       [q.branches, project.branches],
       [q.commits, project.commits],
     ]);
-    for (const table of project.tables) answers.set(q.count(table.name), [{ count: table.rows }]);
+    for (const table of project.tables)
+      answers.set(q.count(table.name), [{ count: this.valuesAsText ? String(table.rows) : table.rows }]);
     for (const table of ['issues', 'labels', 'dependencies', 'comments', 'events'] as const)
       answers.set(q.rows(table), project.rows[table]);
     for (const table of ['issues', 'labels', 'dependencies'] as const) answers.set(q.diff(table), project.diffs[table]);

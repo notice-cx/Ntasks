@@ -68,6 +68,23 @@ describe('the import refuses what is out of scope, naming it', () => {
     ]);
   });
 
+  it('accepts what a Dolt server prints for empty number and JSON columns, and Beads bookkeeping', () => {
+    const hub = hubWith((c) => {
+      c.update('web-a1', {
+        pinned: '0',
+        ephemeral: '0',
+        estimated_minutes: '0',
+        compaction_level: '0',
+        row_lock: '-8564433141813951760',
+      });
+      c.link('web-a1', 'web-a2', 'blocks', { metadata: '{}' });
+    });
+    hub.otherTables.push({ name: 'bd_events_seq', rows: 1 });
+    const { plan, refusals } = planImport(exportOf(hub));
+    expect(refusals).toEqual([]);
+    expect(plan!.task_edges).toHaveLength(1);
+  });
+
   it('text that looks like zero or an empty list, which someone still wrote', () => {
     const refusals = refusalsOf(
       hubWith((c) => {
