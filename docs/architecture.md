@@ -42,6 +42,8 @@ lists the paths the Worker answers in `assets.run_worker_first`: `/healthz`
 and every path under `/api/`. Any other path is a file from the web app's
 build. A page address with no file of its own returns the app's `index.html`,
 and the app shows that page in the browser.
+[`workers/api/test/node/routing.ts`](../workers/api/test/node/routing.ts)
+checks this routing with the real configuration.
 
 Cloudflare serves the web app's files without starting the Worker, so they do
 not count against the Worker's request limit below. They hold no task data:

@@ -1,4 +1,6 @@
 {
+  // The tests that run in workerd, with the Worker's runtime types.
   "extends": "../tsconfig.json",
-  "include": [".", "../src", "../worker-configuration.d.ts", "../vitest.config.ts"]
+  "include": [".", "../src", "../worker-configuration.d.ts"],
+  "exclude": ["node"]
 }

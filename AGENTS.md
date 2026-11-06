@@ -51,8 +51,11 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   never by loosening the base. No new `any`.
 - **Tests are vitest.** The Worker's tests run in workerd through
   `@cloudflare/vitest-plugin`, on a local D1 database that
-  `workers/api/test/apply-migrations.ts` brings to the current schema. A
-  behavior counts as covered only when a test exercises it.
+  `workers/api/test/apply-migrations.ts` brings to the current schema. Tests
+  that Node must run live in `workers/api/test/node/` and run with
+  `node --test`: `routing.ts` there puts the Worker behind Cloudflare's
+  static-file layer. A path added to `assets.run_worker_first` gets a case in
+  that test. A behavior counts as covered only when a test exercises it.
 - **Generated files are regenerated, never edited:**
   `workers/api/worker-configuration.d.ts` (`pnpm --filter @ntasks/api run
   types`, after any `wrangler.jsonc` change) and `pnpm-lock.yaml`.

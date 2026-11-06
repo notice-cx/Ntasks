@@ -44,9 +44,11 @@ pnpm --filter @ntasks/domain test
 
 - **Behavior changes come with tests.** A new test fails without the change and
   passes with it. The Worker's tests live in
-  [`workers/api/test/`](workers/api/test/) and run inside workerd; the task
-  model's tests live in [`packages/domain/test/`](packages/domain/test/) and
-  run in Node.
+  [`workers/api/test/`](workers/api/test/) and run inside workerd, except those
+  in [`workers/api/test/node/`](workers/api/test/node/), which Node runs: they
+  start the Worker behind Cloudflare's static-file layer to check which paths
+  reach it. The task model's tests live in
+  [`packages/domain/test/`](packages/domain/test/) and run in Node.
 - **The database changes through migrations.** Follow
   [the migration rules](workers/api/migrations/README.md); a merged migration
   never changes.
