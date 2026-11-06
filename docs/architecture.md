@@ -76,6 +76,7 @@ limits that shape the design, from Cloudflare's documentation in November
 |---|---:|
 | Worker requests | 100,000 a day |
 | Worker CPU time | 10 ms per request |
+| D1 queries | 50 per request |
 | D1 rows read | 5,000,000 a day |
 | D1 rows written | 100,000 a day |
 | D1 database size | 500 MB |
@@ -83,7 +84,9 @@ limits that shape the design, from Cloudflare's documentation in November
 When a D1 daily limit is reached, every query fails until 00:00 UTC. To stay
 inside these limits, Ntasks:
 
-- reads with indexed queries and returns long lists a page at a time;
+- reaches every row it reads through an index, returns a task's labels and
+  links in the same query, and makes at most three round trips to the
+  database for any read ([what a read costs](api.md#what-a-read-costs));
 - lets clients ask for the changes since their last read, instead of
   reloading whole lists;
 - keeps CPU time per request low, because time spent waiting on the database
