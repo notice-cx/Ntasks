@@ -22,6 +22,19 @@ describe('the composer', () => {
     expect(filed).toMatchObject({ project: 'docs', priority: 2, issueType: 'task', status: 'open' });
   });
 
+  it('previews the description as Markdown', async () => {
+    renderApp('/tasks?new=1&project=web');
+    fireEvent.click(await screen.findByRole('button', { name: 'More' }));
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Errors are **grey** today.\n\n<script>window.injected = true</script>' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    const bold = await screen.findByText('grey');
+    expect(bold.tagName).toBe('STRONG');
+    expect(document.querySelector('[data-markdown] script')).toBeNull();
+    expect(document.querySelector('[data-markdown]')?.textContent).not.toContain('injected');
+  });
+
   it('says on each field what is missing, and files nothing', async () => {
     const api = createFixtureTasksApi();
     const before = api.state.tasks.length;

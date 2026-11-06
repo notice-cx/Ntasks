@@ -1,5 +1,5 @@
 import { ChevronDown, Plus, Square, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,7 +10,12 @@ import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
 import { PRIORITY_BANDS } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
-import { MarkdownText } from '@/routes/tasks/task-markdown';
+
+// The Markdown renderer is about 100 kB compressed, and the board, where the
+// composer opens, has no other use for it: it loads when a preview is asked for.
+const MarkdownText = lazy(() =>
+  import('@/routes/tasks/task-markdown').then((module) => ({ default: module.MarkdownText })),
+);
 
 const FIELD = cn(fieldClass, 'w-full py-1.5');
 
@@ -405,7 +410,9 @@ export function TaskComposer({
                 {previewing ? (
                   <div className={cn(FIELD, 'min-h-24 overflow-x-auto')}>
                     {description.trim() ? (
-                      <MarkdownText source={description} />
+                      <Suspense fallback={<span className="text-muted-foreground">Loading the preview…</span>}>
+                        <MarkdownText source={description} />
+                      </Suspense>
                     ) : (
                       <span className="text-muted-foreground">Nothing to preview</span>
                     )}
