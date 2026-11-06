@@ -28,6 +28,7 @@ export interface SignInSecrets {
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** The value as an origin, or null unless it is exactly an https origin or a local http one. */
 function originOf(value: string | undefined): { origin: string; secure: boolean } | null {
   if (!value) return null;
   let url: URL;
@@ -43,6 +44,7 @@ function originOf(value: string | undefined): { origin: string; secure: boolean 
   return null;
 }
 
+/** GitHub user ids from a list split by commas or spaces, or null when it is empty or holds anything but ids. */
 function ownersOf(value: string | undefined): ReadonlySet<string> | null {
   if (!value) return null;
   const ids = value.split(/[\s,]+/u).filter((id) => id.length > 0);

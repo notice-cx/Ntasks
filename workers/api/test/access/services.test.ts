@@ -18,6 +18,7 @@ async function createService(browser: Browser, name: string, grants: unknown): P
   return browser.fetchJson('/api/access/services', { name, grants });
 }
 
+/** The principal a bearer token signs in as; fails the test when it is refused. */
 async function principalFor(token: string): Promise<Principal> {
   const verification = await verifyRequest(
     new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${token}` } }),

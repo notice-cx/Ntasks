@@ -7,6 +7,7 @@ import { handleAccess } from './access/index.ts';
 import { json } from './http.ts';
 
 export default {
+  /** The health check, then the sign-in paths; any other path that reaches the Worker is a JSON 404. */
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     if (pathname === '/healthz') return health(request);

@@ -37,6 +37,10 @@ interface AuthOptions {
   readonly validateSchema?: boolean;
 }
 
+/**
+ * A Better Auth instance for one request. Building it starts database reads,
+ * so build it only where the request then uses it, and await that use.
+ */
 export function createAuth(db: D1Database, config: SignInConfig, options: AuthOptions = {}) {
   const resource = mcpResource(config.origin);
   const scopes = [...Object.keys(AGENT_SCOPES), OFFLINE_ACCESS];

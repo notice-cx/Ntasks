@@ -44,6 +44,11 @@ export type Verification =
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/**
+ * Who sent the request, checked against the database, or why it is refused.
+ * A bearer token is checked before a session cookie; a malformed
+ * Authorization header is refused, never passed over for the cookie.
+ */
 export async function verifyRequest(request: Request, env: VerifierEnv): Promise<Verification> {
   const config = signInConfig(env);
   if (!config) return { ok: false, reason: 'not_configured' };
@@ -113,6 +118,7 @@ function hasOwnerAccount(config: SignInConfig, githubIds: string | null): boolea
   return Array.isArray(ids) && ids.some((id) => typeof id === 'string' && config.owners.has(id));
 }
 
+/** The parsed value, or null when the text is null or not JSON. */
 function parseJson(text: string | null): unknown {
   if (text === null) return null;
   try {
@@ -136,6 +142,7 @@ function grantsOf(text: string | null, most: ProjectAccess | null): ReadonlyMap<
   return projects;
 }
 
+/** The owner a signed session cookie belongs to; null when its signature fails, it expired or its GitHub id left the allowlist. */
 async function verifySession(db: D1Database, config: SignInConfig, cookie: string): Promise<PersonPrincipal | null> {
   const dot = cookie.lastIndexOf('.');
   if (dot < 1) return null;
@@ -161,6 +168,11 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
   });
 }
 
+/**
+ * The agent an access token belongs to; null when the token is unknown,
+ * expired, revoked or for another resource, its client is disabled, the
+ * consent is gone or its person left the allowlist.
+ */
 async function verifyAgentToken(db: D1Database, config: SignInConfig, token: string): Promise<AgentPrincipal | null> {
   // Better Auth stores an opaque token as base64url(SHA-256(token)).
   const stored = base64url(await sha256(token));
@@ -202,6 +214,7 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
   });
 }
 
+/** The service a credential belongs to; null when it is unknown, revoked or its secret does not match. */
 async function verifyServiceToken(db: D1Database, token: string): Promise<ServicePrincipal | null> {
   const parsed = parseServiceToken(token);
   if (!parsed) return null;

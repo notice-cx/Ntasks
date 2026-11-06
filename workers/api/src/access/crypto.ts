@@ -10,6 +10,7 @@ export function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+/** The bytes of lowercase hexadecimal text, or null when the text is not that. */
 export function fromHex(value: string): Uint8Array | null {
   if (value.length % 2 !== 0 || !/^[0-9a-f]*$/u.test(value)) return null;
   const bytes = new Uint8Array(value.length / 2);

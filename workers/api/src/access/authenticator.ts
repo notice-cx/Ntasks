@@ -36,6 +36,7 @@ export interface SignInAuthenticator {
   challenge(request: Request): Response;
 }
 
+/** The scopes for the most the principal may do in any one project; none for a sender with no grants. */
 function scopesOf(principal: Principal): readonly string[] {
   if (principal.kind === 'person') return [READ, WRITE];
   const access = new Set(principal.projects.values());
@@ -45,6 +46,7 @@ function scopesOf(principal: Principal): readonly string[] {
 
 type Refusal = Extract<Verification, { ok: false }>;
 
+/** The authenticator for these bindings. It keeps no request's data but the reason it refused that request. */
 export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
   // Why authenticate refused each request, for challenge to answer with: an
   // invalid token, a cross-site change or sign-in being off each answer

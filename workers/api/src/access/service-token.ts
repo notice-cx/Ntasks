@@ -14,6 +14,7 @@ export function serviceToken(id: string, secret: string): string {
   return `${SERVICE_TOKEN_PREFIX}.${id}.${secret}`;
 }
 
+/** The credential id and secret of a well-formed service token, or null. */
 export function parseServiceToken(token: string): { readonly id: string; readonly secret: string } | null {
   const match = TOKEN.exec(token);
   return match?.[1] && match[2] ? { id: match[1], secret: match[2] } : null;

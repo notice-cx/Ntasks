@@ -134,6 +134,7 @@ async function boundedText(request: Request): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/** RFC 8414 metadata from the OAuth provider, the same at the root and at the issuer's path. */
 async function serverMetadata(request: Request, env: AccessEnv, config: SignInConfig): Promise<Response> {
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
   return oauthProviderAuthServerMetadata(createAuth(env.DB, config))(request);
@@ -192,6 +193,7 @@ async function signedQuery(query: string, config: SignInConfig): Promise<string 
   return (await verifyOAuthQueryParams(query, config.secret)) ? query : null;
 }
 
+/** The owner, when a browser session signed the request in; null for an agent, a service or a refusal. */
 function personOf(verification: Verification): PersonPrincipal | null {
   return verification.ok && verification.principal.kind === 'person' ? verification.principal : null;
 }
@@ -201,6 +203,10 @@ function fromThisOrigin(request: Request, config: SignInConfig): boolean {
   return request.headers.get('origin') === config.origin;
 }
 
+/**
+ * GET shows the sign-in page. POST, from this origin only, starts a GitHub
+ * sign-in or signs out. A changed or expired OAuth query shows the expired page.
+ */
 async function signIn(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
   if (request.method === 'GET') {
     const query = url.search.slice(1);
@@ -232,6 +238,11 @@ async function signIn(request: Request, env: AccessEnv, config: SignInConfig, ur
   return redirectWithCookies(location, response);
 }
 
+/**
+ * The approval page: GET shows it, POST records the owner's answer. Both need
+ * a valid signed OAuth query and an enabled client; without the owner's
+ * session the browser is sent to sign in first.
+ */
 async function agentAccess(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'POST')
     return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
@@ -351,6 +362,7 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
   return json({ error: 'not_found' }, 404);
 }
 
+/** What GET /api/access/me answers: the sender's kind, name and projects, `all` for the owner. */
 function describe(principal: Principal): Record<string, unknown> {
   const projects =
     principal.kind === 'person' ? 'all' : [...principal.projects].map(([projectId, access]) => ({ projectId, access }));

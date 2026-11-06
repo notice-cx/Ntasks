@@ -10,6 +10,7 @@ export function codeFor(githubId: number): string {
   return `github-user-${githubId}`;
 }
 
+/** A fetch body as text, in whichever form the library passed it. */
 async function bodyText(body: BodyInit | null | undefined): Promise<string> {
   if (body === null || body === undefined) return '';
   if (typeof body === 'string') return body;

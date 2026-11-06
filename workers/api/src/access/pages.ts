@@ -72,6 +72,10 @@ function signInError(code: string | null): string | null {
   return 'Signing in did not finish. Try again.';
 }
 
+/**
+ * The sign-in page: who is signed in, with Sign out, or the Sign in with
+ * GitHub button, which carries an agent's signed OAuth query when there is one.
+ */
 export function signInPage(input: {
   readonly signedInAs: string | null;
   readonly oauthQuery: string | null;
@@ -109,6 +113,11 @@ ${query}
   );
 }
 
+/**
+ * The page where the owner allows or denies an agent and chooses its
+ * projects. Allow is left out when the agent asked for no access to tasks or
+ * there is no project to choose.
+ */
 export function agentAccessPage(input: {
   readonly personName: string;
   readonly client: { readonly name: string; readonly uri: string | null };
