@@ -225,7 +225,8 @@ export function parseMcpMessage(value: unknown): McpMessage {
   };
   if (!isRow(params)) refuse('params must be an object');
   const checked = params as Row;
-  const allowed = PARAMS[method];
+  // Only the methods PARAMS names, never a property every object inherits.
+  const allowed = Object.hasOwn(PARAMS, method) ? PARAMS[method] : undefined;
   if (allowed && Object.keys(checked).some((key) => !allowed.includes(key)))
     refuse(`${method} takes only ${allowed.join(', ')}`);
   const meta = checked._meta;

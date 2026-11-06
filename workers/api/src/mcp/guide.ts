@@ -60,13 +60,42 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
 
 export const TASK_GUIDE_TOOL = 'get_task_guide';
 
+/** Every tool the guide names. test/api/read-tools.test.ts checks the guide
+ * names each one. */
+export const GUIDE_TOOLS: readonly string[] = Object.freeze([
+  'list_workspaces',
+  'list_projects',
+  'list_tasks',
+  'get_task',
+  'create_task',
+  'create_tasks',
+  'update_task',
+  'claim_task',
+  'comment_on_task',
+  'close_task',
+  'request_human_approval',
+  'reconcile_task',
+  'get_agent_stats',
+]);
+
+/** A sentence naming the tools the guide names that this endpoint does not
+ * offer, or null when it offers them all. */
+export function unofferedTools(offered: readonly string[]): string | null {
+  const missing = GUIDE_TOOLS.filter((name) => !offered.includes(name));
+  return missing.length === 0
+    ? null
+    : `This endpoint does not offer ${missing.join(', ')} yet, so the steps below that use them do not apply here.`;
+}
+
 export interface TaskGuide {
   readonly version: string;
   readonly guide: string;
 }
 
-function guideBody(): string {
+function guideBody(offered: readonly string[]): string {
+  const unoffered = unofferedTools(offered);
   return [
+    ...(unoffered === null ? [] : ['## This endpoint', '', unoffered, '']),
     '## What changed',
     '',
     ...WHATS_CHANGED.map((entry) => `- ${entry}`),
@@ -87,8 +116,8 @@ function guideBody(): string {
 
 /** The whole guide as Markdown, with the first 12 hexadecimal characters of
  * its SHA-256 as its version. */
-export async function taskGuide(): Promise<TaskGuide> {
-  const body = guideBody();
+export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> {
+  const body = guideBody(offered);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
   const version = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'))
     .join('')
@@ -99,10 +128,13 @@ export async function taskGuide(): Promise<TaskGuide> {
   });
 }
 
-/** Every session's instructions: the guide's start and its rules for writing a task. */
-export function taskInstructions(): string {
+/** Every session's instructions: the guide's start, which of its tools this
+ * endpoint lacks, and its rules for writing a task. */
+export function taskInstructions(offered: readonly string[]): string {
+  const unoffered = unofferedTools(offered);
   return [
     TASK_START,
+    ...(unoffered === null ? [] : [unoffered]),
     `${TASK_GUIDE_TOOL} returns these rules with the full workflow and what changed lately, at any time; list_workspaces returns its version as guideVersion, so read it again when that changes.`,
     '',
     ...TASK_QUALITY,

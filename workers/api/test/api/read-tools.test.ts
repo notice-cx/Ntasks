@@ -5,6 +5,14 @@ import type { Project, TaskEngine } from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
+import {
+  GUIDE_TOOLS,
+  TASK_QUALITY,
+  TASK_START,
+  TASK_WORKFLOW,
+  unofferedTools,
+  WHATS_CHANGED,
+} from '../../src/mcp/guide.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import { api, callTool, NOBODY, ORIGIN, read, READER, refusal, worker, WORKSPACE, type TestApi } from './helpers.ts';
 
@@ -95,6 +103,42 @@ describe('list_workspaces and get_task_guide', () => {
     expect(listed.workspaces[0]).toMatchObject({ role: 'operator', access: [SCOPES.read, SCOPES.write] });
   });
 
+  it('name the tools of the guide this endpoint does not offer yet', async () => {
+    const response = await target.fetch(
+      new Request(`${ORIGIN}/api/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-06-18', capabilities: {} },
+        }),
+      }),
+    );
+    const { result } = (await response.json()) as { result: { instructions: string } };
+    const note = unofferedTools([
+      'list_workspaces',
+      'get_task_guide',
+      'list_projects',
+      'list_tasks',
+      'get_task',
+      'get_task_history',
+    ]);
+    expect(note).toMatch(
+      /^This endpoint does not offer create_task, create_tasks, update_task, claim_task, comment_on_task, close_task, /u,
+    );
+    expect(result.instructions).toContain(note);
+    const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!;
+    expect(guide.guide).toContain(`## This endpoint\n\n${note}`);
+  });
+
+  it('come from a guide that names every tool it lists', () => {
+    const text = [TASK_START, ...TASK_WORKFLOW, ...TASK_QUALITY, ...WHATS_CHANGED].join('\n');
+    for (const name of GUIDE_TOOLS) expect(text, name).toMatch(new RegExp(`\\b${name}\\b`, 'u'));
+    expect(unofferedTools(GUIDE_TOOLS)).toBeNull();
+  });
+
   it('take no arguments', async () => {
     expect(await refusal(target, 'list_workspaces', { workspace: WORKSPACE.id })).toBe(
       'invalid arguments: list_workspaces takes none',
@@ -178,6 +222,14 @@ describe('list_tasks', () => {
     expect(
       idsOf(await listed({ created_after: '2026-11-06T12:03:00Z', created_before: '2026-11-06T12:04:00Z' })),
     ).toEqual([ids.blocked]);
+  });
+
+  it('takes as many labels and words as its arguments allow', async () => {
+    const labels = Array.from({ length: 200 }, (_, index) => `label-${index}`);
+    expect(idsOf(await listed({ labels }))).toEqual([]);
+    const oneWord = idsOf(await listed({ query: 'g' }));
+    expect(oneWord.length).toBeGreaterThan(0);
+    expect(idsOf(await listed({ query: Array.from({ length: 200 }, () => 'g').join(' ') }))).toEqual(oneWord);
   });
 
   it('pages with limit and offset', async () => {
