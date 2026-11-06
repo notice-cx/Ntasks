@@ -4,7 +4,7 @@
  * src/auth.ts checks each project against; the task engine never sees a
  * principal, only the `Actor` and retry principal made from it.
  */
-import type { Actor } from '@ntasks/domain';
+import { TASK_LIMITS, type Actor } from '@ntasks/domain';
 import type { ProjectAccess } from '../auth.ts';
 
 export type { ProjectAccess };
@@ -38,6 +38,11 @@ export interface ServicePrincipal {
   readonly credentialId: string;
   readonly name: string;
   readonly projects: ReadonlyMap<string, ProjectAccess>;
+  /**
+   * The agent the service says a request is for (authenticator.ts). It names
+   * the actor; it grants nothing beyond the credential's own projects.
+   */
+  readonly onBehalfOf?: string;
 }
 
 export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal;
@@ -59,13 +64,20 @@ const PREFIXED = /^(?:agent|service|person):/u;
  * The engine's actor for a write by this principal, with the model an agent
  * names. The task store records it as the filer, assignee, closer or author.
  * An agent picks its own name when it registers, and could pick the owner's,
- * so an agent's actor is `agent:<name>` and a service's `service:<name>`. An
- * owner's actor is their name, or `person:<name>` when their name itself
- * starts with one of these prefixes. So an actor that starts with `agent:` is
- * always an agent, and one that starts with `service:` always a service.
+ * so an agent's actor is `agent:<name>` and a service's `service:<name>`, or
+ * `service:<name>/<agent>` when it acts for an agent it names. An owner's
+ * actor is their name, or `person:<name>` when their name itself starts with
+ * one of these prefixes. So an actor that starts with `agent:` is always an
+ * agent, and one that starts with `service:` always a service. The engine
+ * takes at most TASK_LIMITS.actor characters; the authenticator refuses an
+ * agent name that would make a service's actor longer, and a longer agent or
+ * owner name is cut.
  */
 export function actorOf(principal: Principal, model?: string): Actor {
   const kind = principal.kind === 'person' && !PREFIXED.test(principal.name) ? null : principal.kind;
-  const name = (kind === null ? principal.name : `${kind}:${principal.name}`).slice(0, 255);
+  const base = kind === null ? principal.name : `${kind}:${principal.name}`;
+  const full =
+    principal.kind === 'service' && principal.onBehalfOf !== undefined ? `${base}/${principal.onBehalfOf}` : base;
+  const name = full.slice(0, TASK_LIMITS.actor);
   return model === undefined ? { name } : { name, model };
 }
