@@ -28,7 +28,7 @@ import { listed } from './args.ts';
 import type { Principal } from './auth.ts';
 import { ownerOf, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
 import {
-  askedOf,
+  asksAlike,
   choiceName,
   NOTICEOS_METADATA,
   readCardShipped,
@@ -678,12 +678,11 @@ export async function requestApproval(
 ): Promise<{ readonly gate: Task; readonly created: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   let task = await taskOf(context, project, taskId);
-  const asked = askedOf(reason);
   const actor = actorOf(context.principal, undefined);
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     if (task.status === 'closed') throw closedRefusal(task.id);
     const open = (await openGates(context, project, task)).find(
-      (gate) => gate.awaitType === 'human' && askedOf(gate.description) === asked,
+      (gate) => gate.awaitType === 'human' && asksAlike(gate.description, reason),
     );
     if (open !== undefined) return { gate: open, created: false };
     try {

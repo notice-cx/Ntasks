@@ -1060,6 +1060,38 @@ describe('request_human_approval', () => {
     expect((await current(project, id)).dependencies).toHaveLength(3);
   });
 
+  it('compares requests whole, and reads a Beads gate by its "Reason:" line', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const ask = (reason: string) =>
+      write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', {
+        project: project.id,
+        task: id,
+        reason,
+      });
+    // An approval whose "Reason:" line is blank asks its whole text.
+    const release = await ask('Approve the release.\nReason:\n');
+    expect((await ask('Approve the deletion.\nReason:\n')).created).toBe(true);
+    expect(await ask('Approve the release.\nReason:')).toMatchObject({
+      created: false,
+      approval: { id: release.approval.id },
+    });
+    // A gate kept from Beads is asked again by its reason alone, and a request
+    // that only shares its "Reason:" line opens another.
+    const { created } = await engine.writeTask(
+      project.id,
+      id,
+      {
+        expectedVersion: (await current(project, id)).version,
+        requestApproval: { reason: 'Imported.\nReason: Rotate the key.' },
+      },
+      OWNER,
+    );
+    expect(await ask('Rotate the key.')).toMatchObject({ created: false, approval: { id: created[0]!.id } });
+    expect((await ask('Approve the rotation.\nReason: Rotate the key.')).created).toBe(true);
+    expect((await current(project, id)).dependencies).toHaveLength(4);
+  });
+
   it('refuses a closed task', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);

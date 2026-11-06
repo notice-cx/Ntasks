@@ -403,14 +403,29 @@ export const SOURCE_METADATA_KEYS: readonly string[] = Object.freeze([
 /** The longest reason an approval asks with. */
 export const GATE_REASON_MAX = 400;
 
+/** Text with its line ends made alike and the spaces around it taken off. */
+function normalized(text: string): string {
+  return text.replace(/\r\n?/gu, '\n').trim();
+}
+
 /** Everything an approval asks, from its gate's description: the text after
- * "Reason:" in a gate imported from Beads, else the whole description, with
- * its line ends made alike and the spaces around it taken off. Two requests
- * ask the same only when these are equal. */
+ * "Reason:" in a gate imported from Beads when that text is not blank, else
+ * the whole description, with its line ends made alike and the spaces around
+ * it taken off. */
 export function askedOf(description: string): string | null {
-  const imported = /(?:^|\n)Reason:[ \t]*([\s\S]+)$/u.exec(description);
-  const reason = (imported ? (imported[1] ?? '') : description).replace(/\r\n?/gu, '\n').trim();
+  const whole = normalized(description);
+  const imported = /(?:^|\n)Reason:[ \t]*([\s\S]+)$/u.exec(whole);
+  const reason = normalized(imported?.[1] ?? '') || whole;
   return reason === '' ? null : reason;
+}
+
+/** Whether an open approval asks what `reason` asks: its whole description
+ * is the reason, or the reason is the whole of a Beads gate's "Reason:" text.
+ * A request is compared whole, never by a part of it, so two requests that
+ * share a "Reason:" line still open two approvals. */
+export function asksAlike(description: string, reason: string): boolean {
+  const asked = normalized(reason);
+  return asked !== '' && (normalized(description) === asked || askedOf(description) === asked);
 }
 
 /** What an approval asks, as an answer shows it: at most GATE_REASON_MAX characters. */
