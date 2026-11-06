@@ -1,0 +1,12 @@
+{
+  // The tests and the build configuration run in Node, so they get Node's
+  // types; the app's own source does not.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    "paths": { "@/*": ["../src/*"] }
+  },
+  "include": [".", "../src", "../vite.config.ts", "../vitest.config.ts"]
+}

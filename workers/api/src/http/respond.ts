@@ -1,0 +1,58 @@
+/** Every answer holds the state at the time of its request; `no-store` keeps caches from serving it again. */
+export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return Response.json(body, { status, headers: { ...headers, 'cache-control': 'no-store' } });
+}
+
+/** A request the route cannot serve, with a sentence that says why. */
+export class HttpRefused extends Error {
+  override name = 'HttpRefused';
+  readonly status: number;
+  readonly error: string;
+  constructor(status: number, error: string, detail: string) {
+    super(detail);
+    this.status = status;
+    this.error = error;
+  }
+  response(): Response {
+    return json({ error: this.error, detail: this.message }, this.status);
+  }
+}
+
+export function invalidRequest(detail: string): never {
+  throw new HttpRefused(400, 'invalid_request', detail);
+}
+
+export function notFound(detail: string): never {
+  throw new HttpRefused(404, 'not_found', detail);
+}
+
+/**
+ * The query parameters a route takes, each at most once. An unknown or
+ * repeated one is refused, so a misspelt filter fails loudly instead of being
+ * ignored.
+ */
+export function queryOf(url: URL, allowed: readonly string[]): Readonly<Record<string, string>> {
+  const query: Record<string, string> = {};
+  for (const [key, value] of url.searchParams) {
+    if (!allowed.includes(key))
+      invalidRequest(`unknown parameter ${key}; this route takes ${allowed.join(', ') || 'none'}`);
+    if (Object.hasOwn(query, key)) invalidRequest(`${key} is given twice`);
+    query[key] = value;
+  }
+  return query;
+}
+
+/** A whole number from a query parameter, within bounds. */
+export function wholeOf(
+  query: Readonly<Record<string, string>>,
+  name: string,
+  least: number,
+  most: number,
+  fallback: number,
+): number {
+  const text = query[name];
+  if (text === undefined) return fallback;
+  const value = /^\d{1,15}$/u.test(text) ? Number(text) : Number.NaN;
+  if (!(value >= least && value <= most)) invalidRequest(`${name} must be a whole number from ${least} to ${most}`);
+  return value;
+}

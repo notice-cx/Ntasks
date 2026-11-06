@@ -21,8 +21,8 @@ AI agents will connect from wherever they run, over the
 way agents call tools on a server. People will use the web app.
 
 Ntasks runs as a Cloudflare **Worker**, a program Cloudflare runs on its
-servers in answer to web requests, and keeps its data in **D1**, Cloudflare's
-SQLite database. It stays available when your own computer is off, and it is
+servers in answer to web requests, and keeps its tasks in a **Durable
+Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
 designed to fit Cloudflare's free plan.
 
 ## Status
@@ -31,15 +31,16 @@ Ntasks is under construction. The repository holds its skeleton:
 
 | Part | Today |
 |---|---|
-| Worker | Answers a health check at `/healthz` |
-| Web app | A placeholder page |
+| Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
+| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
 | Task model | The task id format, the vocabulary and the engine contract |
-| Task store | The database tables and the rules the database enforces |
+| Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API, MCP endpoint, sign-in | Being built |
+| API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
+| Writes through the API, sign-in | Being built |
 
-Until sign-in is built, a deployed Ntasks has no access control; do not store
-real tasks in one. [SECURITY.md](SECURITY.md) has the details.
+Until sign-in is built, the Worker refuses every API request, so a deployment
+serves no task data. [SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 
@@ -48,6 +49,8 @@ real tasks in one. [SECURITY.md](SECURITY.md) has the details.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.
+- [The API](docs/api.md) lists the MCP tools and the HTTP routes, and what
+  each read costs.
 - [The task store](docs/task-store.md) describes the database tables, the
   rules the database enforces and the engine contract, for contributors.
 

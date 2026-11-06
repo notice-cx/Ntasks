@@ -1,6 +1,7 @@
-// Every write the engine makes. Each is one D1 batch, which commits whole or
-// not at all; the write guard (migrations/0001_task_store.sql) rolls a batch
-// back when its versioned update matched no row or a link would close a loop.
+// Every write the engine makes. Each is one batch, which commits whole or not
+// at all; the write guard (src/store/migrations/0001_task_store.sql) rolls a
+// batch back when its versioned update matched no row or a link would close a
+// loop.
 import {
   guardRefusalOf,
   TaskRefused,
@@ -19,8 +20,9 @@ import {
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
+import type { Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import type { TaskRow } from './rows.ts';
+import { toTask, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
@@ -45,7 +47,9 @@ function refuse(refusal: TaskRefusal, message: string = MESSAGES[refusal]): neve
 /** A random task key of lowercase letters and digits, as Beads' hash ids have. */
 export function randomKey(length = 4): string {
   const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
-  return Array.from(crypto.getRandomValues(new Uint8Array(length)), (byte) => alphabet[byte % alphabet.length]).join('');
+  return Array.from(crypto.getRandomValues(new Uint8Array(length)), (byte) => alphabet[byte % alphabet.length]).join(
+    '',
+  );
 }
 
 /** What a failed batch means for the caller: a refusal is thrown; a collision is returned for a retry. */
@@ -76,26 +80,35 @@ function linkList(links: ReadonlyMap<string, DependencyType>): Json {
 }
 
 export class Writes {
-  readonly #db: D1Database;
+  readonly #db: Database;
   readonly #reads: Reads;
   readonly #now: () => string;
   readonly #newKey: () => string;
 
-  constructor(db: D1Database, reads: Reads, options: WriteOptions) {
+  constructor(db: Database, reads: Reads, options: WriteOptions) {
     this.#db = db;
     this.#reads = reads;
     this.#now = options.now;
     this.#newKey = options.newKey;
   }
 
-  #insert(table: string, row: Row): D1PreparedStatement {
+  #insert(table: string, row: Row): Statement {
     const columns = Object.keys(row);
     return this.#db
-      .prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map((_, index) => `?${index + 1}`).join(', ')})`)
+      .prepare(
+        `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map((_, index) => `?${index + 1}`).join(', ')})`,
+      )
       .bind(...Object.values(row));
   }
 
-  #event(task: { id: string; projectId: string }, version: number, kind: TaskEventKind, actor: Actor, at: string, changes: JsonObject) {
+  #event(
+    task: { id: string; projectId: string },
+    version: number,
+    kind: TaskEventKind,
+    actor: Actor,
+    at: string,
+    changes: JsonObject,
+  ) {
     return this.#insert('task_events', {
       task_id: task.id,
       project_id: task.projectId,
@@ -109,7 +122,7 @@ export class Writes {
   }
 
   /** Fails the batch with `cycle` if `from` already waits, through blocks links, on `to`. */
-  #noBlockingLoop(from: string, to: string): D1PreparedStatement {
+  #noBlockingLoop(from: string, to: string): Statement {
     return this.#db
       .prepare(
         `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
@@ -125,7 +138,7 @@ export class Writes {
   }
 
   /** Fails the batch with `cycle` if `taskId` is `parentId` or one of its ancestors. */
-  #noParentLoop(parentId: string, taskId: string): D1PreparedStatement {
+  #noParentLoop(parentId: string, taskId: string): Statement {
     return this.#db
       .prepare(
         `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
@@ -160,10 +173,12 @@ export class Writes {
   }
 
   /** Clears this principal's expired records, then records this write's result. */
-  #receipt(retry: Retry | undefined, projectId: string, result: JsonObject, at: string): D1PreparedStatement[] {
+  #receipt(retry: Retry | undefined, projectId: string, result: JsonObject, at: string): Statement[] {
     if (retry === undefined) return [];
     return [
-      this.#db.prepare('DELETE FROM write_receipts WHERE principal = ?1 AND created_at < ?2').bind(retry.principal, this.#cutoff()),
+      this.#db
+        .prepare('DELETE FROM write_receipts WHERE principal = ?1 AND created_at < ?2')
+        .bind(retry.principal, this.#cutoff()),
       this.#insert('write_receipts', {
         principal: retry.principal,
         operation: retry.operation,
@@ -176,11 +191,19 @@ export class Writes {
     ];
   }
 
-  async #result(projectId: string, taskId: string, created: readonly string[], replayed: boolean): Promise<WriteResult> {
-    const rows = await this.#reads.taskRows(projectId, [taskId, ...created]);
-    const tasks = await this.#reads.hydrate(rows);
+  async #result(
+    projectId: string,
+    taskId: string,
+    created: readonly string[],
+    replayed: boolean,
+  ): Promise<WriteResult> {
+    const tasks = (await this.#reads.taskRows(projectId, [taskId, ...created])).map(toTask);
     const task = tasks.find((candidate) => candidate.id === taskId) ?? refuse('not_found');
-    return { task, created: created.map((id) => tasks.find((candidate) => candidate.id === id) ?? refuse('not_found')), replayed };
+    return {
+      task,
+      created: created.map((id) => tasks.find((candidate) => candidate.id === id) ?? refuse('not_found')),
+      replayed,
+    };
   }
 
   async #replay(retry: Retry | undefined, projectId: string): Promise<WriteResult | null> {
@@ -196,18 +219,24 @@ export class Writes {
   /** The id the parent's next child takes: its id, a dot and one more than the highest child number used. */
   async #childId(parentId: string): Promise<string> {
     const row = await this.#db
-      .prepare(`SELECT coalesce(max(CAST(substr(id, length(?1) + 2) AS INTEGER)), 0) + 1 AS next FROM tasks WHERE id GLOB ?1 || '.[0-9]*'`)
-      .bind(parentId)
+      // The pattern is one bound value, so SQLite reaches it through the primary key's index.
+      .prepare(
+        `SELECT coalesce(max(CAST(substr(id, length(?1) + 2) AS INTEGER)), 0) + 1 AS next FROM tasks WHERE id GLOB ?2`,
+      )
+      .bind(parentId, `${parentId}.[0-9]*`)
       .first<{ next: number }>();
     return `${parentId}.${row?.next ?? 1}`;
   }
 
-  async #existing(projectId: string | null, taskIds: readonly string[]): Promise<Map<string, TaskRow>> {
+  async #existing(projectId: string | null, taskIds: readonly string[]): Promise<Map<string, StoredTaskRow>> {
     if (taskIds.length === 0) return new Map();
     const { results } = await this.#db
-      .prepare(`SELECT * FROM tasks WHERE id IN (SELECT value FROM json_each(?1))${projectId === null ? '' : ' AND project_id = ?2'}`)
+      .prepare(
+        `SELECT t.* FROM (SELECT DISTINCT value AS id FROM json_each(?1)) wanted CROSS JOIN tasks t ON t.id = wanted.id` +
+          (projectId === null ? '' : ' WHERE t.project_id = ?2'),
+      )
       .bind(...(projectId === null ? [JSON.stringify(taskIds)] : [JSON.stringify(taskIds), projectId]))
-      .all<TaskRow>();
+      .all<StoredTaskRow>();
     const found = new Map(results.map((row) => [row.id, row]));
     for (const id of taskIds) if (!found.has(id)) refuse('not_found', `There is no task ${id}.`);
     return found;
@@ -223,13 +252,19 @@ export class Writes {
     try {
       await this.#insert('projects', { id, key, name, prefix: input.prefix, created_at: this.#now() }).run();
     } catch (error) {
-      if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) check.invalid('another project already uses this id, key or prefix');
+      if (error instanceof Error && error.message.includes('UNIQUE constraint failed'))
+        check.invalid('another project already uses this id, key or prefix');
       throw error;
     }
     return this.#projectOf(id);
   }
 
-  async createTask(projectId: string, input: CreateTaskInput, actorInput: Actor, retryInput?: Retry): Promise<WriteResult> {
+  async createTask(
+    projectId: string,
+    input: CreateTaskInput,
+    actorInput: Actor,
+    retryInput?: Retry,
+  ): Promise<WriteResult> {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const fields = check.createInput(input);
@@ -237,20 +272,27 @@ export class Writes {
     const replayed = await this.#replay(retry, projectId);
     if (replayed !== null) return replayed;
     if (fields.parentId !== null) await this.#existing(projectId, [fields.parentId]);
-    await this.#existing(null, fields.links.map((link) => link.taskId));
+    await this.#existing(
+      null,
+      fields.links.map((link) => link.taskId),
+    );
     // A `blocks`-direction link changes the other task too: its version, and its history.
-    const changedOthers = [...new Set(fields.links.filter((link) => link.direction === 'blocks').map((link) => link.taskId))];
+    const changedOthers = [
+      ...new Set(fields.links.filter((link) => link.direction === 'blocks').map((link) => link.taskId)),
+    ];
 
     let lastFailure: 'id_taken' | 'version_conflict' = 'id_taken';
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       // Read again on every attempt: the caller named no version for these
       // tasks, so a change to one of them since is retried, not refused.
-      const others = await this.#reads.hydrate(await this.#reads.taskRows(projectId, changedOthers));
-      if (others.length !== changedOthers.length) refuse('not_found', 'A task this new one blocks is not in this project.');
-      const id = fields.parentId === null ? `${project.prefix}-${this.#newKey()}` : await this.#childId(fields.parentId);
+      const others = (await this.#reads.taskRows(projectId, changedOthers)).map(toTask);
+      if (others.length !== changedOthers.length)
+        refuse('not_found', 'A task this new one blocks is not in this project.');
+      const id =
+        fields.parentId === null ? `${project.prefix}-${this.#newKey()}` : await this.#childId(fields.parentId);
       const at = this.#now();
       const dependencies = new Map<string, DependencyType>();
-      const statements: D1PreparedStatement[] = [
+      const statements: Statement[] = [
         this.#insert('tasks', {
           id,
           project_id: projectId,
@@ -277,12 +319,21 @@ export class Writes {
         if (link.taskId === id) refuse('invalid', 'A task cannot link to itself.');
         const [from, to] = link.direction === 'depends-on' ? [id, link.taskId] : [link.taskId, id];
         if (link.direction === 'depends-on') dependencies.set(link.taskId, link.type);
-        statements.push(this.#insert('task_edges', { task_id: from, depends_on_id: to, type: link.type, created_at: at, created_by: actor.name }));
+        statements.push(
+          this.#insert('task_edges', {
+            task_id: from,
+            depends_on_id: to,
+            type: link.type,
+            created_at: at,
+            created_by: actor.name,
+          }),
+        );
         if (link.type === 'blocks') statements.push(this.#noBlockingLoop(to, from));
       }
       for (const other of others) {
         const otherLinks = new Map(other.dependencies.map((dependency) => [dependency.taskId, dependency.type]));
-        for (const link of fields.links) if (link.direction === 'blocks' && link.taskId === other.id) otherLinks.set(id, link.type);
+        for (const link of fields.links)
+          if (link.direction === 'blocks' && link.taskId === other.id) otherLinks.set(id, link.type);
         statements.push(
           this.#db
             .prepare('UPDATE tasks SET version = version + 1, updated_at = ?1 WHERE id = ?2 AND version = ?3')
@@ -335,11 +386,18 @@ export class Writes {
         return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
       }
     }
-    if (lastFailure === 'version_conflict') refuse('version_conflict', 'A task this new one blocks kept changing; try again.');
+    if (lastFailure === 'version_conflict')
+      refuse('version_conflict', 'A task this new one blocks kept changing; try again.');
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
   }
 
-  async writeTask(projectId: string, taskId: string, writeInput: TaskWrite, actorInput: Actor, retryInput?: Retry): Promise<WriteResult> {
+  async writeTask(
+    projectId: string,
+    taskId: string,
+    writeInput: TaskWrite,
+    actorInput: Actor,
+    retryInput?: Retry,
+  ): Promise<WriteResult> {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const write = check.write(writeInput);
@@ -349,7 +407,7 @@ export class Writes {
     const replayed = await this.#replay(retry, projectId);
     if (replayed !== null) return replayed;
     if (row.version !== write.expectedVersion) refuse('version_conflict');
-    const [current] = (await this.#reads.hydrate([row])) as [Task];
+    const current = toTask(row);
 
     const set = write.set;
     const columns: Row = {};
@@ -361,7 +419,8 @@ export class Writes {
     const closed = current.status === 'closed';
     if (write.close !== null && closed) refuse('invalid', 'The task is already closed.');
     if (write.reopen && !closed) refuse('invalid', 'Only a closed task can be reopened.');
-    if (closed && !write.reopen && set.status !== undefined) refuse('invalid', 'Reopen a closed task before changing its status.');
+    if (closed && !write.reopen && set.status !== undefined)
+      refuse('invalid', 'Reopen a closed task before changing its status.');
     if (current.type === 'gate' && set.type !== undefined) refuse('invalid', "A gate's type cannot change.");
 
     if (set.title !== undefined) change('title', 'title', set.title);
@@ -371,8 +430,10 @@ export class Writes {
     if (set.priority !== undefined) change('priority', 'priority', set.priority);
     if (set.deferUntil !== undefined) change('defer_until', 'deferUntil', set.deferUntil);
     if (set.dueAt !== undefined) change('due_at', 'dueAt', set.dueAt);
-    if (set.choices !== undefined) change('choices', 'choices', set.choices === null ? null : JSON.stringify(set.choices), set.choices);
-    if (set.choice !== undefined) change('choice', 'choice', set.choice === null ? null : JSON.stringify(set.choice), set.choice);
+    if (set.choices !== undefined)
+      change('choices', 'choices', set.choices === null ? null : JSON.stringify(set.choices), set.choices);
+    if (set.choice !== undefined)
+      change('choice', 'choice', set.choice === null ? null : JSON.stringify(set.choice), set.choice);
     const choices = set.choices !== undefined ? set.choices : current.choices;
     const choice = set.choice !== undefined ? set.choice : current.choice;
     if (choice !== null && choices === null) refuse('invalid', 'A choice needs choices to pick from.');
@@ -416,7 +477,8 @@ export class Writes {
       };
     } else if (write.reopen) {
       kind = 'reopened';
-      for (const column of ['closed_at', 'close_reason', 'resolution', 'duplicate_of', 'closed_by', 'closed_model']) columns[column] = null;
+      for (const column of ['closed_at', 'close_reason', 'resolution', 'duplicate_of', 'closed_by', 'closed_model'])
+        columns[column] = null;
       change('status', 'status', set.status ?? 'open');
       changes.close = null;
     } else if (set.status !== undefined) {
@@ -445,7 +507,10 @@ export class Writes {
     const removeLinks = write.removeLinks.filter((id) => links.has(id));
     for (const id of removeLinks) links.delete(id);
     for (const link of write.addLinks) if (link.taskId === taskId) refuse('invalid', 'A task cannot link to itself.');
-    await this.#existing(null, write.addLinks.map((link) => link.taskId));
+    await this.#existing(
+      null,
+      write.addLinks.map((link) => link.taskId),
+    );
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
 
@@ -457,7 +522,7 @@ export class Writes {
       const version = current.version + 1;
       const assignments = Object.keys(columns).map((column, index) => `${column} = ?${index + 1}`);
       const values = Object.values(columns);
-      const statements: D1PreparedStatement[] = [
+      const statements: Statement[] = [
         this.#db
           .prepare(
             `UPDATE tasks SET ${[...assignments, 'version = version + 1', `updated_at = ?${values.length + 1}`].join(', ')}
@@ -514,15 +579,25 @@ export class Writes {
             filedBy: actor.name,
             filedModel: actor.model ?? null,
           }),
-          this.#insert('task_edges', { task_id: taskId, depends_on_id: gateId, type: 'blocks', created_at: at, created_by: actor.name }),
+          this.#insert('task_edges', {
+            task_id: taskId,
+            depends_on_id: gateId,
+            type: 'blocks',
+            created_at: at,
+            created_by: actor.name,
+          }),
         );
       }
       for (const label of removeLabels) {
-        statements.push(this.#db.prepare('DELETE FROM task_labels WHERE task_id = ?1 AND label = ?2').bind(taskId, label));
+        statements.push(
+          this.#db.prepare('DELETE FROM task_labels WHERE task_id = ?1 AND label = ?2').bind(taskId, label),
+        );
       }
       for (const label of addLabels) statements.push(this.#insert('task_labels', { task_id: taskId, label }));
       for (const id of removeLinks) {
-        statements.push(this.#db.prepare('DELETE FROM task_edges WHERE task_id = ?1 AND depends_on_id = ?2').bind(taskId, id));
+        statements.push(
+          this.#db.prepare('DELETE FROM task_edges WHERE task_id = ?1 AND depends_on_id = ?2').bind(taskId, id),
+        );
       }
       for (const link of addLinks) {
         statements.push(
@@ -538,7 +613,13 @@ export class Writes {
       if (write.comment !== null) {
         const commentId = crypto.randomUUID();
         statements.push(
-          this.#insert('task_comments', { id: commentId, task_id: taskId, author: actor.name, text: write.comment, created_at: at }),
+          this.#insert('task_comments', {
+            id: commentId,
+            task_id: taskId,
+            author: actor.name,
+            text: write.comment,
+            created_at: at,
+          }),
           this.#event(current, version, 'commented', actor, at, { commentId, text: write.comment }),
         );
       }
@@ -564,7 +645,13 @@ export class Writes {
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
   }
 
-  async addComment(projectId: string, taskId: string, textInput: string, actorInput: Actor, retryInput?: Retry): Promise<CommentResult> {
+  async addComment(
+    projectId: string,
+    taskId: string,
+    textInput: string,
+    actorInput: Actor,
+    retryInput?: Retry,
+  ): Promise<CommentResult> {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const text = check.text(textInput, 'comment', 4096, true);
@@ -573,7 +660,9 @@ export class Writes {
     const replayComment = async (): Promise<CommentResult | null> => {
       const recorded = await this.#recorded(retry, projectId);
       if (recorded === null) return null;
-      const comment = (await this.#reads.listComments(projectId, taskId)).find((candidate) => candidate.id === recorded.commentId);
+      const comment = (await this.#reads.listComments(projectId, taskId)).find(
+        (candidate) => candidate.id === recorded.commentId,
+      );
       return comment === undefined ? refuse('not_found') : { comment, replayed: true };
     };
     const replayed = await replayComment();

@@ -7,8 +7,9 @@ amended.
 ## What this repository is
 
 Ntasks is a task hub for people and AI agents, being built as one Cloudflare
-Worker over one D1 database: an HTTP API, an MCP endpoint and sign-in, with the
-web app served as the Worker's static files. The [README](README.md) lists
+Worker and one Durable Object that holds the tasks: an HTTP API, an MCP
+endpoint and sign-in, with the web app served as the Worker's static files.
+Sign-in's data is in D1. The [README](README.md) lists
 what is built today. [Concepts](docs/concepts.md) defines the task model,
 [Architecture](docs/architecture.md) the system, and
 [The task store](docs/task-store.md) the database and the engine contract.
@@ -20,7 +21,7 @@ invariants. A change that weakens one is the owner's decision, not a refactor.
 
 | Path | Owns |
 |---|---|
-| `workers/api/` | The Worker: request handling, D1 access, the migrations in `migrations/`, and tests that run in workerd in `test/` |
+| `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
 | `apps/web/` | The web app. Its build in `dist/` is the Worker's static assets |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The test that `pnpm lint` reports the mistakes it exists to catch. The lint configuration itself is `eslint.config.js` at the root |
@@ -55,8 +56,9 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   `tsconfig.base.json`. Add libraries or types in the workspace's tsconfig,
   never by loosening the base. No new `any`.
 - **Tests are vitest.** The Worker's tests run in workerd through
-  `@cloudflare/vitest-plugin`, on a local D1 database that
-  `workers/api/test/apply-migrations.ts` brings to the current schema. Tests
+  `@cloudflare/vitest-plugin`, on a local task store, which applies its own
+  schema, and a local D1 database that `workers/api/test/apply-migrations.ts`
+  brings to the current schema. Tests
   that Node must run live in `workers/api/test/node/` and run with
   `node --test`: `routing.ts` there puts the Worker behind Cloudflare's
   static-file layer. A path added to `assets.run_worker_first` gets a case in
@@ -65,7 +67,8 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   `workers/api/worker-configuration.d.ts` (`pnpm --filter @ntasks/api run
   types`, after any `wrangler.jsonc` change) and `pnpm-lock.yaml`.
 - **Migrations are append-only**
-  ([rules](workers/api/migrations/README.md)).
+  ([task store](workers/api/src/store/migrations/README.md),
+  [D1](workers/api/migrations/README.md)).
 - **Dependencies are pinned to exact versions.** `wrangler` and
   `@cloudflare/vitest-plugin` change together: the plugin depends on one exact
   wrangler version.

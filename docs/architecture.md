@@ -1,12 +1,14 @@
 # Architecture
 
-Ntasks is one Cloudflare Worker and one D1 database. A **Worker** is a program
-Cloudflare runs on its servers in answer to web requests, and **D1** is
-Cloudflare's SQLite database. The Worker will answer the API, the MCP endpoint
-that AI agents connect to and sign-in; Cloudflare serves the web app's files
-from the same deployment. This page shows how the parts fit, the limits the
-design keeps to, and the rules every change keeps. Read
-[Concepts](concepts.md) first for the task model itself.
+Ntasks is one Cloudflare Worker and one task store. A **Worker** is a program
+Cloudflare runs on its servers in answer to web requests. The **task store**
+is a Durable Object: a single Cloudflare object with its own SQLite database,
+which holds every task and runs the task engine beside it. Sign-in keeps its
+data in **D1**, Cloudflare's SQLite database service. The Worker answers the
+API and the MCP endpoint that AI agents connect to, and will answer sign-in;
+Cloudflare serves the web app's files from the same deployment. This page
+shows how the parts fit, the limits the design keeps to, and the rules every
+change keeps. Read [Concepts](concepts.md) first for the task model itself.
 
 ## The parts
 
@@ -17,19 +19,21 @@ flowchart LR
   service["A service, such as NoticeOS"] --> worker
   subgraph cf["Cloudflare"]
     files["Web app files"]
-    worker["Ntasks Worker<br/>API · MCP · sign-in"] --> db[("D1 database<br/>tasks · history · access")]
+    worker["Ntasks Worker<br/>health · sign-in"] --> store[("Task store<br/>a Durable Object<br/>tasks · history · API")]
+    worker --> db[("D1<br/>sign-in")]
   end
   person --> files
 ```
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz` |
-| Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
+| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts) | The health check at `/healthz`; signs each API request in and hands it to the task store, and until sign-in is built refuses every one |
+| Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds the tasks, applies its schema and answers repeated reads from memory |
+| Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
-| Web app | [`apps/web/`](../apps/web/) | A placeholder page |
-| MCP endpoint for agents | | Not yet |
+| Web app | [`apps/web/`](../apps/web/) | The task pages. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
 | Sign-in | | Not yet |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
@@ -49,6 +53,12 @@ checks this routing with the real configuration.
 Cloudflare serves the web app's files without starting the Worker, so they do
 not count against the Worker's request limit below. They hold no task data:
 the app asks the API for everything it shows.
+
+An API request goes from the Worker to the task store. The Worker answers
+`404` for a path the API does not serve, signs the sender in, and hands the
+request with its sender to the store. The store answers it with the task
+engine, whose queries run beside the data with no network trip. There is one
+store per installation, named `tasks`.
 
 ## Who connects, and how they sign in
 
@@ -76,14 +86,19 @@ limits that shape the design, from Cloudflare's documentation in November
 |---|---:|
 | Worker requests | 100,000 a day |
 | Worker CPU time | 10 ms per request |
-| D1 rows read | 5,000,000 a day |
-| D1 rows written | 100,000 a day |
-| D1 database size | 500 MB |
+| Durable Object requests | 100,000 a day |
+| Rows read, by the task store | 5,000,000 a day |
+| Rows written, by the task store | 100,000 a day |
+| Data stored, by Durable Objects | 5 GB in all |
 
-When a D1 daily limit is reached, every query fails until 00:00 UTC. To stay
-inside these limits, Ntasks:
+Each API request is one Worker request and one request to the task store.
+When a daily limit is reached, operations of that kind fail until 00:00 UTC.
+To stay inside these limits, Ntasks:
 
-- reads with indexed queries and returns long lists a page at a time;
+- answers a read it has answered since the last write from the store's
+  memory, which reads no rows;
+- reaches every row it reads through an index, and returns a task's labels
+  and links in the same query ([what a read costs](api.md#what-a-read-costs));
 - lets clients ask for the changes since their last read, instead of
   reloading whole lists;
 - keeps CPU time per request low, because time spent waiting on the database
@@ -110,8 +125,8 @@ They are what lets many agents work on one graph without corrupting it.
    their evidence.
 7. **Time alone never releases a claim.**
 
-D1 runs a batch of statements as one transaction, but a conditional update
-that matches no row does not fail the batch. The database's write guard turns
+The task store runs a batch of statements as one transaction, but a
+conditional update that matches no row does not fail the batch. The database's write guard turns
 that case into a failure that rolls back the whole batch, so a refused write
 leaves no history entry or retry record behind.
 [The task store](task-store.md#the-write-guard) shows how.

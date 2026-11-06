@@ -1,14 +1,15 @@
 /**
  * The task engine's contract: the one interface through which the API, the
- * MCP tools and imports read and change tasks. workers/api implements it on
- * D1. docs/task-store.md maps each operation NoticeOS used to send to Beads
- * onto these methods.
+ * MCP tools and imports read and change tasks. workers/api implements it in
+ * the task store, a Durable Object with its own SQLite database.
+ * docs/task-store.md maps each operation NoticeOS used to send to Beads onto
+ * these methods.
  *
  * The engine checks the task model's rules; it does not check who may act.
  * The API layer signs the sender in, decides what they may do, and passes the
  * engine an `Actor` it has already authenticated.
  *
- * Every write is one D1 batch, which commits whole or not at all: the change,
+ * Every write is one batch, which commits whole or not at all: the change,
  * its history event and its retry record land together. The rules in
  * docs/architecture.md ("Rules every change keeps") are the engine's
  * guarantees, and each method's comment names the ones it relies on.
@@ -140,14 +141,29 @@ export interface TaskWrite {
   readonly comment?: string;
 }
 
-export interface TaskQuery {
-  readonly statuses?: readonly TaskStatus[];
+/** The filters every list of tasks takes. */
+export interface TaskFilters {
   /** Only tasks someone can start now. */
   readonly ready?: boolean;
   readonly parentId?: string;
   readonly assignee?: string;
   /** Only tasks carrying every one of these labels. */
   readonly labels?: readonly string[];
+  /** Only tasks whose id, title, description, acceptance or labels hold every
+   * one of these words, ignoring case. */
+  readonly words?: readonly string[];
+  /** Only tasks of these types. */
+  readonly types?: readonly TaskType[];
+  /** Only tasks created at or after, or before, these times. */
+  readonly createdAfter?: string;
+  readonly createdBefore?: string;
+  /** Only tasks last changed at or after, or before, these times. */
+  readonly updatedAfter?: string;
+  readonly updatedBefore?: string;
+}
+
+export interface TaskQuery extends TaskFilters {
+  readonly statuses?: readonly TaskStatus[];
   /** Only tasks closed at or after this time. */
   readonly closedSince?: string;
   /** Only tasks closed before this time. */
@@ -156,6 +172,15 @@ export interface TaskQuery {
   readonly limit: number;
   /** The `nextCursor` of the previous page. */
   readonly cursor?: string;
+}
+
+/** What a board shows: the tasks in the statuses named, and those closed from a time. */
+export interface BoardQuery extends TaskFilters {
+  /** Every task in these statuses. */
+  readonly statuses: readonly Exclude<TaskStatus, 'closed'>[];
+  /** With it, also every task closed at or after this time. A ready-only
+   * board leaves closed tasks out, as no closed task is ready. */
+  readonly closedSince?: string;
 }
 
 export interface TaskPage {
@@ -194,12 +219,28 @@ export interface TaskEngine {
   findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
   /** Most urgent first: priority, then oldest. Ready work is worked out on the server (rule 5). */
   listTasks(projectId: string, query: TaskQuery): Promise<TaskPage>;
+  /** A board, in one project or, with `projectId` null, in every project:
+   * every task it matches, most urgent first, in one round trip and not paged. */
+  listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
+  /** The earliest time after `time` at which any task stops being deferred,
+   * or null when none will. Ready work can change then without any write,
+   * since a deferred parent holds its children back even once it is closed,
+   * so a cached read of it stays true until that time. */
+  nextDeferralAfter(time: string): Promise<string | null>;
   listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
   /** The task's changes, newest first. */
-  listHistory(projectId: string, taskId: string, options: { readonly limit: number; readonly beforeSeq?: number }): Promise<readonly TaskEvent[]>;
+  listHistory(
+    projectId: string,
+    taskId: string,
+    options: { readonly limit: number; readonly beforeSeq?: number },
+  ): Promise<readonly TaskEvent[]>;
   /** Every change after `after`, across projects or in one, for clients that keep a copy. */
-  listChanges(query: { readonly after: number; readonly limit: number; readonly projectId?: string }): Promise<ChangePage>;
+  listChanges(query: {
+    readonly after: number;
+    readonly limit: number;
+    readonly projectId?: string;
+  }): Promise<ChangePage>;
   /** For each of these tasks that lacks a section its type expects, the
    * missing headings (`missingSections` in lint.ts). A task lacking none, or
    * not in the project, is left out. */
@@ -214,7 +255,7 @@ export interface TaskEngine {
 
 /**
  * Why the engine refused a write. The first three can come from the database's
- * write guard (workers/api/migrations/0001_task_store.sql), which reports them
+ * write guard (workers/api/src/store/migrations/0001_task_store.sql), which reports them
  * as "ntasks refused: <refusal>".
  */
 export const TASK_REFUSALS = ['not_found', 'version_conflict', 'cycle', 'held', 'retry_conflict', 'invalid'] as const;
@@ -234,7 +275,7 @@ export class TaskRefused extends Error {
 
 const GUARD_MESSAGE = /ntasks refused: ([a-z_]+)/u;
 
-/** The guard refusal named in a D1 error message, or null when the error came from elsewhere. */
+/** The guard refusal named in a database error message, or null when the error came from elsewhere. */
 export function guardRefusalOf(message: string): (typeof GUARD_REFUSALS)[number] | null {
   const name = GUARD_MESSAGE.exec(message)?.[1];
   return (GUARD_REFUSALS as readonly string[]).includes(name ?? '') ? (name as (typeof GUARD_REFUSALS)[number]) : null;

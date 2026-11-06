@@ -1,18 +1,20 @@
 # The task store
 
-The task store is the D1 database behind Ntasks: the tables that hold projects
-and tasks, the rules the database itself enforces, and the engine contract
-that every part of Ntasks reads and writes through. It is written for
+The task store is the Durable Object behind Ntasks: one Cloudflare object
+with its own SQLite database, which holds the tables of projects and tasks,
+enforces the rules on them, and runs the engine that every part of Ntasks
+reads and writes through. It is written for
 contributors working on the engine, the API or the import from Beads. Read
 [Concepts](concepts.md) first for the task model, and
 [Architecture](architecture.md) for where the store sits.
 
 | Part | Where |
 |---|---|
-| Schema | [`workers/api/migrations/0001_task_store.sql`](../workers/api/migrations/0001_task_store.sql) |
+| Schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) |
+| The store object, its read cache and its SQLite access | [`workers/api/src/store/`](../workers/api/src/store/) |
 | Vocabulary and record shapes | [`packages/domain/src/task.ts`](../packages/domain/src/task.ts) |
 | Engine contract | [`packages/domain/src/engine.ts`](../packages/domain/src/engine.ts) |
-| The engine, on D1 | [`workers/api/src/engine/`](../workers/api/src/engine/) |
+| The engine | [`workers/api/src/engine/`](../workers/api/src/engine/) |
 | Lint rules, from Beads | [`packages/domain/src/lint.ts`](../packages/domain/src/lint.ts) |
 | Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
 | Tests of the engine | [`workers/api/test/engine/`](../workers/api/test/engine/) |
@@ -49,8 +51,8 @@ These hold whatever code writes to the database. Each has a test in
 
 ### The write guard
 
-D1 runs a batch of statements as one transaction, but a conditional update
-that matches no row does not fail it. The `write_guard` view turns that case
+The store runs a batch of statements as one transaction, but a conditional
+update that matches no row does not fail it. The `write_guard` view turns that case
 into a failure. Right after a statement that must change exactly one row, the
 engine inserts into the view whether it did:
 
@@ -62,7 +64,7 @@ INSERT INTO task_events (...) VALUES (...);
 ```
 
 When the update matched no row, the insert fails with
-`ntasks refused: version_conflict`, D1 rolls back the whole batch, and
+`ntasks refused: version_conflict`, the store rolls back the whole batch, and
 `guardRefusalOf()` in the domain package reads the refusal from the error.
 The guard reports `not_found`, `version_conflict` and `cycle`.
 
@@ -70,8 +72,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
-- **Reads:** `getTask`, `findTasks`, `listTasks`, `listEpics`,
-  `listComments`, `listHistory`, `listChanges` and `lint`.
+- **Reads:** `getTask`, `findTasks`, `listTasks`, `listBoard`, `listEpics`,
+  `listComments`, `listHistory`, `listChanges` and `lint`. `listTasks` reads
+  one project a page at a time; `listBoard` reads a whole board, in one
+  project or in every project, in one round trip.
 - **Writes:** `createTask`, `writeTask` and `addComment`. Each is one batch.
   `writeTask` takes everything one change does at once: field changes,
   labels, links, metadata, a close or a reopen, an approval request and a
@@ -114,8 +118,9 @@ file.
 
 | NoticeOS operation | Engine call |
 |---|---|
-| `list`, `active-board`, `closed-board` | `listTasks` with statuses or close times |
-| `ready` | `listTasks` with `ready: true` |
+| `list` | `listTasks` with statuses or close times |
+| `active-board`, `closed-board` | One `listBoard` with the open statuses and `closedSince` |
+| `ready` | `listBoard` or `listTasks` with `ready: true` |
 | `show` | `getTask` |
 | `find` | `findTasks` |
 | `history` | `listHistory` |
