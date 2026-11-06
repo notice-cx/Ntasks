@@ -106,6 +106,12 @@ describe('an agent connecting over OAuth', () => {
       env,
     );
     expect(verified.ok && verified.principal.kind === 'agent' && verified.principal.projects.has(other)).toBe(false);
+
+    // Through the Worker, the API lists only the chosen project and answers the other as missing.
+    const bearer = { headers: { authorization: `Bearer ${tokens.access_token}` } };
+    const listed = await (await call('/api/tasks/projects', bearer)).json<{ projects: { projectId: string }[] }>();
+    expect(listed.projects.map((project) => project.projectId)).toEqual([chosen]);
+    expect((await call(`/api/tasks?project=${other}`, bearer)).status).toBe(404);
   });
 
   it('gives a read-only agent read access to the projects it was granted', async () => {

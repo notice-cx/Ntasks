@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { may, type Principal } from '../../src/access/principal.ts';
-import { verifyRequest } from '../../src/access/verify.ts';
+import { signInAuthenticator, type SignedIn } from '../../src/access/authenticator.ts';
+import { mayReach } from '../../src/auth.ts';
 import { Browser, call, createProject, meWithToken, ORIGIN } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -18,14 +18,19 @@ async function createService(browser: Browser, name: string, grants: unknown): P
   return browser.fetchJson('/api/access/services', { name, grants });
 }
 
-/** The principal a bearer token signs in as; fails the test when it is refused. */
-async function principalFor(token: string): Promise<Principal> {
-  const verification = await verifyRequest(
+/** The sender a bearer token signs in as, as the API sees it; fails the test when it is refused. */
+async function principalFor(token: string): Promise<SignedIn> {
+  const signedIn = await signInAuthenticator(env).authenticate(
     new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${token}` } }),
-    env,
   );
-  if (!verification.ok) throw new Error(`refused: ${verification.reason}`);
-  return verification.principal;
+  if (!signedIn) throw new Error('refused');
+  return signedIn;
+}
+
+/** GET an API path with a bearer token, through the Worker. */
+async function getWith(token: string, path: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await call(path, { headers: { authorization: `Bearer ${token}` } });
+  return { status: response.status, body: await response.json<Record<string, unknown>>() };
 }
 
 describe('a service credential', () => {
@@ -41,15 +46,64 @@ describe('a service credential', () => {
     expect(service.token).toMatch(/^ntasks_service\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/u);
 
     const principal = await principalFor(service.token);
-    expect(principal).toMatchObject({ kind: 'service', name: 'noticeos-laptop', id: `service:${service.id}` });
-    expect(may(principal, granted, 'read')).toBe(true);
-    expect(may(principal, granted, 'write')).toBe(true);
-    expect(may(principal, other, 'read')).toBe(false);
+    expect(principal).toMatchObject({
+      id: `service:${service.id}`,
+      name: 'service:noticeos-laptop',
+      scopes: ['tasks:read', 'tasks:write'],
+      projects: new Map([[granted, 'write']]),
+      principal: { kind: 'service', name: 'noticeos-laptop' },
+    });
+    expect(mayReach(principal, granted, 'read')).toBe(true);
+    expect(mayReach(principal, granted, 'write')).toBe(true);
+    expect(mayReach(principal, other, 'read')).toBe(false);
     expect(await (await meWithToken(service.token)).json()).toEqual({
       kind: 'service',
       name: 'noticeos-laptop',
       projects: [{ projectId: granted, access: 'write' }],
     });
+  });
+
+  it('through the Worker, reads its project and gets 404 for another, as if it did not exist', async () => {
+    const granted = await createProject('Granted');
+    const other = await createProject('Other');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const { service } = await (
+      await createService(browser, 'one-project', [{ projectId: granted, access: 'read' }])
+    ).json<{ service: CreatedService }>();
+
+    const listed = await getWith(service.token, '/api/tasks/projects');
+    expect(listed.status).toBe(200);
+    expect((listed.body.projects as { projectId: string }[]).map((project) => project.projectId)).toEqual([granted]);
+    expect((await getWith(service.token, `/api/tasks?project=${granted}`)).status).toBe(200);
+    expect(await getWith(service.token, `/api/tasks?project=${other}`)).toEqual({
+      status: 404,
+      body: { error: 'not_found', detail: `no project ${other}; /api/tasks/projects lists them` },
+    });
+    expect((await getWith(service.token, `/api/changes?project=${other}`)).status).toBe(404);
+
+    // The owner, signed in in the browser, reaches both.
+    const owned = await (
+      await browser.fetch('/api/tasks/projects', { method: 'GET' })
+    ).json<{
+      projects: { projectId: string }[];
+    }>();
+    expect(owned.projects.map((project) => project.projectId)).toEqual(expect.arrayContaining([granted, other]));
+  });
+
+  it('through the Worker, is refused with a bearer challenge once revoked', async () => {
+    const project = await createProject('Cut');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const { service } = await (
+      await createService(browser, 'cut-off', [{ projectId: project, access: 'read' }])
+    ).json<{ service: CreatedService }>();
+    expect((await getWith(service.token, '/api/tasks/projects')).status).toBe(200);
+
+    await browser.fetch(`/api/access/services/${service.id}/revoke`, { method: 'POST' });
+    const refused = await call('/api/tasks/projects', { headers: { authorization: `Bearer ${service.token}` } });
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get('www-authenticate')).toContain('error="invalid_token"');
   });
 
   it('with a read grant may read the project but not change it', async () => {
@@ -61,8 +115,8 @@ describe('a service credential', () => {
     ).json<{ service: CreatedService }>();
 
     const principal = await principalFor(service.token);
-    expect(may(principal, project, 'read')).toBe(true);
-    expect(may(principal, project, 'write')).toBe(false);
+    expect(mayReach(principal, project, 'read')).toBe(true);
+    expect(mayReach(principal, project, 'write')).toBe(false);
   });
 
   it('is refused once revoked, and a revoked credential cannot be revoked again', async () => {

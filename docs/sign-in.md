@@ -106,14 +106,16 @@ signed token would save no database read.
 
 ## Checking every request
 
-An API or MCP route calls `verifyRequest(request, env)` first. It returns
-the sender as a `Principal`, or a refusal that `refusal()` turns into the
-answer. Then the route checks the project the request names with
-`may(principal, projectId, 'read' | 'write')`. `signInAuthenticator(env)`
-offers the same check as `authenticate(request)` and `challenge(request)`,
-with the sender's scopes; scopes say what the sender may do somewhere, not
-where, so a route still checks each project with `may`. Neither reads the
-request's body.
+The Worker signs every API and MCP request in with `signInAuthenticator(env)`
+([`src/index.ts`](../workers/api/src/index.ts)). `authenticate(request)`
+returns the sender in the API's shape: its id, its actor name, its scopes and
+its projects, `all` for the owner or each project an agent or a service was
+granted. `challenge(request)` answers a request it refused. The API then
+checks each project a request names with `mayReach` in
+[`src/auth.ts`](../workers/api/src/auth.ts), and answers a project the sender
+cannot reach as if it did not exist. Neither step reads the request's body.
+Underneath, `verifyRequest(request, env)` returns the sender as a `Principal`,
+or a refusal that `refusal()` turns into the answer.
 
 | The request carries | The verifier checks, in one D1 query |
 |---|---|

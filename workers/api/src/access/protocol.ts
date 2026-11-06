@@ -6,12 +6,13 @@
  * the MCP endpoint is the protected resource, and this Worker is also its
  * authorization server.
  */
+import { MCP_PATH } from '../api.ts';
 import type { ProjectAccess } from './principal.ts';
 
 /** Better Auth's routes live under this path; the OAuth issuer is the origin plus it. */
 export const AUTH_BASE_PATH = '/api/auth';
 /** The MCP endpoint, the one protected resource agents get tokens for. */
-export const MCP_PATH = '/api/mcp';
+export { MCP_PATH };
 /** The owner's sign-in page. It is also the OAuth login page. */
 export const SIGN_IN_PAGE = '/sign-in';
 /** The page where the owner approves or denies an agent and picks its projects. */

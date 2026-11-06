@@ -1,13 +1,13 @@
 /**
- * Who sent a request, once the token verifier has checked it, and what that
- * sender may do. The API and MCP layers call `verifyRequest` (verify.ts) on
- * every request and decide with the functions here; the task engine never
- * sees a principal, only the `Actor` and retry principal made from it.
+ * Who sent a request, once the token verifier has checked it. The Worker
+ * hands the API the sender in the API's own shape (authenticator.ts), which
+ * src/auth.ts checks each project against; the task engine never sees a
+ * principal, only the `Actor` and retry principal made from it.
  */
 import type { Actor } from '@ntasks/domain';
+import type { ProjectAccess } from '../auth.ts';
 
-/** The most a caller may do in one project. Write includes read. */
-export type ProjectAccess = 'read' | 'write';
+export type { ProjectAccess };
 
 /** The owner, signed in in their own browser. Reaches every project. */
 export interface PersonPrincipal {
@@ -42,18 +42,6 @@ export interface ServicePrincipal {
 
 export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal;
 
-/** What the principal may do in a project: null when it may not reach it. */
-export function projectAccess(principal: Principal, projectId: string): ProjectAccess | null {
-  if (principal.kind === 'person') return 'write';
-  return principal.projects.get(projectId) ?? null;
-}
-
-/** Whether the principal may read (`read`) or change (`write`) the project's tasks. */
-export function may(principal: Principal, projectId: string, needed: ProjectAccess): boolean {
-  const access = projectAccess(principal, projectId);
-  return access === 'write' || (access === 'read' && needed === 'read');
-}
-
 /**
  * Whether an answer from this principal counts as the owner's own decision.
  * Only a person's browser session does. An agent or a service may still pass
@@ -62,12 +50,6 @@ export function may(principal: Principal, projectId: string, needed: ProjectAcce
  */
 export function mayDecide(principal: Principal): boolean {
   return principal.kind === 'person';
-}
-
-/** The projects the principal reaches, or 'all' for the owner. */
-export function reachableProjects(principal: Principal): 'all' | readonly string[] {
-  if (principal.kind === 'person') return 'all';
-  return [...principal.projects.keys()];
 }
 
 /** A name that starts like one of the prefixes actorOf adds. */

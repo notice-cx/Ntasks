@@ -27,7 +27,7 @@ flowchart LR
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts) | The health check at `/healthz` and sign-in; signs each API request in and hands it to the task store, and refuses every API request until the API checks the projects each sender may reach |
+| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts) | The health check at `/healthz` and sign-in; signs each API request in and hands it, with its sender, to the task store |
 | Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds the tasks, applies its schema and answers repeated reads from memory |
 | Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
 | Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | Sign-in's tables, in D1 ([Sign-in](sign-in.md#tables)) |
@@ -76,8 +76,8 @@ check and the sign-in steps themselves answer without it.
   access to named projects, which the owner can revoke.
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
-how to cut a caller off. The API and MCP routes do not use sign-in yet;
-[SECURITY.md](../SECURITY.md) says what that means for a deployment.
+how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
+for a deployment.
 
 ## The free-plan budget
 

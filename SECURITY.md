@@ -17,11 +17,6 @@ health check and the sign-in steps answer without it. The web app's files
 are public and hold no task data. [Sign-in](docs/sign-in.md) describes who
 can sign in and what each caller reaches.
 
-**The API does not use sign-in yet.** Until it checks the projects each
-sender may reach, the Worker refuses every API and MCP request with `401`, so
-a deployment serves no task data. The
-[README's status table](README.md#status) shows when that changes.
-
 A deployment with no sign-in settings refuses every call that needs a
 signed-in sender; it never falls back to no checks.
 

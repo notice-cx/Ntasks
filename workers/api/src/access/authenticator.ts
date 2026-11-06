@@ -4,40 +4,27 @@
  * It reads only the request's headers, never its body, which the MCP
  * endpoint reads afterwards.
  */
-import { actorOf, type Principal, type ProjectAccess } from './principal.ts';
+import { SCOPES, type Authenticator, type Principal as ApiPrincipal } from '../auth.ts';
+import { actorOf, type Principal } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
-/** The OAuth scope names agents ask for (AGENT_SCOPES in protocol.ts). */
-const READ = 'tasks:read';
-const WRITE = 'tasks:write';
+const READ = SCOPES.read;
+const WRITE = SCOPES.write;
 
-/** A signed-in sender for the API layer. */
-export interface SignedIn {
-  /** Stable and opaque: the retry principal. */
-  readonly id: string;
-  /** The actor the engine records (`actorOf`). */
-  readonly name: string;
-  /**
-   * The most this sender may do in any project: `tasks:read`, and
-   * `tasks:write` when it may change tasks somewhere. They do not say where.
-   */
-  readonly scopes: readonly string[];
-  /**
-   * Where the sender may act: `all` for the owner, or each project an agent
-   * or a service was granted, with the most it may do there. A project not
-   * in the map is one the sender may not reach.
-   */
-  readonly projects: 'all' | ReadonlyMap<string, ProjectAccess>;
-  /**
-   * The full sender, for `may(principal, projectId, ...)` and for
-   * `mayDecide(principal)`: whether an answer is the owner's own decision.
-   */
+/**
+ * A signed-in sender, in the API's shape (src/auth.ts): its id is the retry
+ * principal, its name the actor the engine records (`actorOf`), its scopes
+ * what it may do somewhere, and its projects where: `all` for the owner, or
+ * each project an agent or a service was granted, with the most it may do
+ * there. The API checks each project with `mayReach`.
+ */
+export interface SignedIn extends ApiPrincipal {
+  /** The full sender, for `mayDecide(principal)`: whether an answer is the owner's own decision. */
   readonly principal: Principal;
 }
 
-export interface SignInAuthenticator {
+export interface SignInAuthenticator extends Authenticator {
   authenticate(request: Request): Promise<SignedIn | null>;
-  challenge(request: Request): Response;
 }
 
 /** The scopes for the most the principal may do in any one project; none for a sender with no grants. */

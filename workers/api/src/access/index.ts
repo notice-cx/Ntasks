@@ -1,18 +1,16 @@
 /**
- * Sign-in and access, as the rest of the Worker uses them. An API or MCP
- * route calls `verifyRequest` first and answers a refusal with `refusal`;
- * then it checks the project the request names with `may`, and whether an
- * answer is the owner's own decision with `mayDecide`.
+ * Sign-in and access, as the rest of the Worker uses them. The Worker signs
+ * every API and MCP request in with `signInAuthenticator`, whose sender the
+ * API checks each project against (`mayReach` in src/auth.ts); whether an
+ * answer is the owner's own decision is `mayDecide`. `handleAccess` answers
+ * the sign-in paths themselves.
  */
 export { signInAuthenticator, type SignedIn, type SignInAuthenticator } from './authenticator.ts';
 export { handleAccess, isAccessPath, type AccessEnv } from './routes.ts';
 export { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 export {
   actorOf,
-  may,
   mayDecide,
-  projectAccess,
-  reachableProjects,
   type AgentPrincipal,
   type PersonPrincipal,
   type Principal,

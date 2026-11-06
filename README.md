@@ -40,9 +40,9 @@ Ntasks is under construction. The repository holds its skeleton:
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
 | Writes through the API | Being built |
 
-Sign-in is built, but the API does not use it yet: until the API checks the
-projects each sender may reach, it refuses every request, so a deployment
-serves no task data. [SECURITY.md](SECURITY.md) has the details.
+Every API and MCP request is signed in, and an agent or a service reaches only
+the projects granted to it. A deployment without its sign-in settings refuses
+every request. [SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 

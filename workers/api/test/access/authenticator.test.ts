@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator } from '../../src/access/authenticator.ts';
-import { may } from '../../src/access/principal.ts';
+import { mayReach } from '../../src/auth.ts';
 import { Browser, connectAgent, createProject, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -62,8 +62,8 @@ describe('the authenticator the API layer calls', () => {
       principal: { kind: 'agent', clientId: client.clientId, userId },
     });
     expect(signedIn?.projects).toEqual(new Map([[granted, 'read']]));
-    expect(signedIn && may(signedIn.principal, granted, 'read')).toBe(true);
-    expect(signedIn && may(signedIn.principal, other, 'read')).toBe(false);
+    expect(signedIn && mayReach(signedIn, granted, 'read')).toBe(true);
+    expect(signedIn && mayReach(signedIn, other, 'read')).toBe(false);
     // The body is still there for the MCP endpoint to read.
     expect(await request.text()).toBe('{}');
   });
