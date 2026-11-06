@@ -34,18 +34,27 @@ interface Shot {
   address: string;
   width: number;
   height: number;
+  /** Image pixels per page pixel. The README shows a desktop shot 800 pixels wide and the phone shot 320, so 1.5
+   * and 2 keep their text sharp on a high-density screen without making the files larger than that needs. */
+  scale: number;
   /** An element that is on the page once it has drawn what the shot shows. */
   ready: string;
 }
 
 const SHOTS: readonly Shot[] = [
-  { name: 'board', address: '/tasks', width: 1280, height: 860, ready: '[data-page-answer]' },
-  { name: 'task', address: '/tasks/web-b2r6', width: 1280, height: 1040, ready: '[data-markdown] pre .hljs-keyword' },
-  { name: 'phone', address: '/tasks', width: 390, height: 844, ready: '[data-page-answer]' },
+  // Tall enough to reach past the decisions into the first rows of the task list.
+  { name: 'board', address: '/tasks', width: 1280, height: 1520, scale: 1.5, ready: '[data-task-row]' },
+  {
+    name: 'task',
+    address: '/tasks/web-b2r6',
+    width: 1280,
+    height: 1040,
+    scale: 1.5,
+    ready: '[data-markdown] pre .hljs-keyword',
+  },
+  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-page-answer]' },
 ];
 const THEMES = ['light', 'dark'] as const;
-/** Twice the page's pixels, so text stays sharp on a high-density screen. */
-const SCALE = 2;
 /** WebP quality: small files with no visible loss in flat interface colours. */
 const QUALITY = 82;
 
@@ -178,7 +187,7 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   await send('Emulation.setDeviceMetricsOverride', {
     width: shot.width,
     height: shot.height,
-    deviceScaleFactor: SCALE,
+    deviceScaleFactor: shot.scale,
     mobile: shot.width < 768,
   });
   // The app follows the system's theme; reduced motion skips its arrival animations.

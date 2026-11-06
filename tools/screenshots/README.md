@@ -13,12 +13,13 @@ It writes six WebP files to `docs/images/`:
 
 | File | Shows |
 |---|---|
-| `board-light.webp`, `board-dark.webp` | The Tasks board, 1280 pixels wide |
+| `board-light.webp`, `board-dark.webp` | The Tasks board, 1280 pixels wide: the decisions, then the first rows of the task list |
 | `task-light.webp`, `task-dark.webp` | The page of task `web-b2r6`, whose description uses headings, lists, a code block and a task-id link |
 | `phone-light.webp`, `phone-dark.webp` | The Tasks board, 390 pixels wide |
 
-Each picture is drawn at twice those sizes, so its text stays sharp on a
-high-density screen.
+The desktop pictures are drawn at 1.5 times those sizes and the phone pictures
+at twice, so their text stays sharp on a high-density screen at the width the
+README shows them.
 
 ## What it needs
 

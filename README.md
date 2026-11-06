@@ -32,11 +32,11 @@ the light or the dark version to match your theme.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board. Its heading reads 4 decisions for you, beside counts of urgent, blocked and done tasks. Below it, the list of decisions: an approval with an Approve button, then two choices, each showing its options.">
+  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board. Its heading reads 4 decisions for you, beside counts of urgent, blocked and done tasks. Below it, the four decisions: an approval with an Approve button, two choices showing their options, and a question with an Answer button. Under them, filters and the list of all tasks, one row each with its id, project, assignee, age and state.">
 </picture>
 
 The board. The decisions waiting on you come first, and each is answered where
-it is listed.
+it is listed; every task follows in one list, which the filters narrow.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
