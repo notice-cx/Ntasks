@@ -28,7 +28,7 @@ flowchart LR
 | Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
-| Web app | [`apps/web/`](../apps/web/) | A placeholder page |
+| Web app | [`apps/web/`](../apps/web/) | The task pages. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
 | API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
 | Sign-in | | Not yet |
 
