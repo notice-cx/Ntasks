@@ -12,6 +12,7 @@
  */
 import type { TaskResolution } from '@ntasks/domain';
 import type {
+  ChangesPage,
   CloseOptions,
   LiveTaskDetail,
   LiveTasksPayload,
@@ -38,6 +39,8 @@ export interface TasksApi {
   /** One project's board: unfinished tasks and the last week's closes. */
   board(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
+  /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
+  changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -270,6 +273,17 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     async board(project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
+    },
+    async changes(after, signal) {
+      const page = await read<unknown>(
+        `/api/changes?${new URLSearchParams({ after: String(after) })}`,
+        'The change list',
+        signal,
+      );
+      if (!isRecord(page) || !Array.isArray(page.events) || typeof page.lastSeq !== 'number') {
+        throw new Error('The change list could not be read.');
+      }
+      return page as unknown as ChangesPage;
     },
     async task(id, project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });

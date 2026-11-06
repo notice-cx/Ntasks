@@ -50,6 +50,17 @@ describe('the HTTP Tasks API client', () => {
     ]);
   });
 
+  it('asks the change feed for the changes after a sequence number', async () => {
+    const { api, sent } = server(() =>
+      Response.json({ events: [{ seq: 8, projectId: 'p-web', taskId: 'web-a1' }], lastSeq: 8 }),
+    );
+    await expect(api.changes(7)).resolves.toEqual({
+      events: [{ seq: 8, projectId: 'p-web', taskId: 'web-a1' }],
+      lastSeq: 8,
+    });
+    expect(sent.map((request) => `${request.method} ${request.url}`)).toEqual(['GET /api/changes?after=7']);
+  });
+
   it('refuses a project the list does not hold, without a request', async () => {
     const { api, sent } = server();
     await expect(api.board('other')).rejects.toBeInstanceOf(ApiError);
