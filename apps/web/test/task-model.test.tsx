@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import type { LiveTask } from '@/api/types';
 import { createAnswerQueue, HIDE_AFTER_SEND_MS, UNDO_WINDOW_MS } from '@/lib/answer-queue';
-import { boardRows, closeAsReason, closeNote, inboxAsk, inboxOrder, waitsOnPerson } from '@/lib/task-model';
+import {
+  boardRows,
+  claimedModel,
+  closeAttribution,
+  closeAsReason,
+  closeNote,
+  inboxAsk,
+  inboxOrder,
+  waitsOnPerson,
+} from '@/lib/task-model';
 import { MarkdownText, taskListItems, toggleTaskListLine } from '@/routes/tasks/task-markdown';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -153,6 +162,26 @@ describe('the fixture API retry keys on answers', () => {
     ).rejects.toMatchObject({
       code: 'idempotency_conflict',
     });
+  });
+});
+
+describe('who closed and claimed a task', () => {
+  it("reads the server's own fields first, and NoticeOS's metadata keys otherwise", () => {
+    const at = '2026-11-01T00:00:00.000Z';
+    const closed = task({
+      status: 'closed',
+      closedAt: at,
+      metadata: { noticeos_closed_by: 'older', noticeos_closed_at: at },
+    });
+    expect(closeAttribution({ ...closed, closedBy: 'Example Owner', closedModel: 'example-model' })).toEqual({
+      by: 'Example Owner',
+      model: 'example-model',
+    });
+    expect(closeAttribution(closed)).toEqual({ by: 'older', model: null });
+    expect(claimedModel(task({ assigneeModel: 'example-model', metadata: { noticeos_claimed_model: 'older' } }))).toBe(
+      'example-model',
+    );
+    expect(claimedModel(task({ metadata: { noticeos_claimed_model: 'older' } }))).toBe('older');
   });
 });
 

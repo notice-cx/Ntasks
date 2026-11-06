@@ -97,6 +97,8 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
   const closedDays = wholeOf(query, 'closedDays', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
   const project = await projectOf(context, query.project);
   const active = statuses.some((status) => status !== 'closed');
+  // Read before the board, so a change the board misses is after it in the feed.
+  const lastSeq = await engine.latestChange();
   const [found, epics] = await Promise.all([
     board(engine, project.id, statuses as TaskStatus[], closedDays, {}, now),
     active ? engine.listEpics(project.id) : null,
@@ -110,6 +112,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     tasks: found.tasks.map(webTask),
     epics: epics?.map(epicView) ?? null,
     actors: [],
+    lastSeq,
   });
 }
 

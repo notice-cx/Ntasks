@@ -85,6 +85,11 @@ export interface LiveTask {
   closeReason: string | null;
   /** `human` on an approval a person answers; null on every other task. */
   awaitType: string | null;
+  /** Who closed the task and the model they named, when the server sends them. */
+  closedBy?: string | null;
+  closedModel?: string | null;
+  /** The model the assignee named when they claimed the task, when the server sends it. */
+  assigneeModel?: string | null;
 }
 
 /** An epic with its all-time child progress. */

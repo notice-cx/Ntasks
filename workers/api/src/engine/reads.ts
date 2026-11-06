@@ -364,6 +364,12 @@ export class Reads {
     return results.map(toEvent);
   }
 
+  async latestChange(): Promise<number> {
+    // seq is the table's integer primary key, so max() reads one entry.
+    const row = await this.#db.prepare('SELECT coalesce(max(seq), 0) AS seq FROM task_events').first<{ seq: number }>();
+    return row?.seq ?? 0;
+  }
+
   async listChanges(after: number, limit: number, projectId?: string): Promise<ChangePage> {
     if (!Number.isInteger(after) || after < 0) invalid('after must be a whole number of 0 or more');
     if (!Number.isInteger(limit) || limit < 1 || limit > TASK_LIMITS.page)

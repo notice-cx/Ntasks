@@ -12,13 +12,13 @@ maintainers agree a fix or a disclosure plan with you.
 ## Deployment boundaries
 
 Ntasks is designed to be reachable from the internet. Every API and MCP
-request will be signed in and checked against what its sender may do; only
-the health check and the sign-in steps answer without it. The web app's files
-are public and hold no task data.
+request is signed in and checked against what its sender may do; only the
+health check and the sign-in steps answer without it. The web app's files
+are public and hold no task data. [Sign-in](docs/sign-in.md) describes who
+can sign in and what each caller reaches.
 
-**Sign-in is not built yet.** Until it is, the Worker refuses every API and
-MCP request with `401`, so a deployment serves no task data. The
-[README's status table](README.md#status) shows when sign-in is available.
+A deployment with no sign-in settings refuses every call that needs a
+signed-in sender; it never falls back to no checks.
 
 Keep secrets out of `wrangler.jsonc` and out of the repository. Set a deployed
 secret with `wrangler secret put`; put local values in `.dev.vars`, which git

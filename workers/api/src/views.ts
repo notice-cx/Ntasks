@@ -60,6 +60,11 @@ export function webTask(task: Task) {
     assignee: task.assignee,
     updatedAt: task.updatedAt,
     closedAt: task.close?.at ?? null,
+    /** Who closed it and the model they named; null when imported without them. */
+    closedBy: task.close?.by ?? null,
+    closedModel: task.close?.model ?? null,
+    /** The model the assignee named when they claimed it. */
+    assigneeModel: task.assigneeModel,
     parent: task.parentId,
     deferUntil: task.deferUntil,
     description: task.description,

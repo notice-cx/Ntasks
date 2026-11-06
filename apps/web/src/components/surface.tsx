@@ -4,7 +4,8 @@
  * failed and loading states.
  */
 import type { ReactNode } from 'react';
-import { RotateCw } from 'lucide-react';
+import { LogIn, RotateCw } from 'lucide-react';
+import { needsSignIn, SIGN_IN_PATH } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { eyebrowClass } from '@/components/ui/chrome';
@@ -163,6 +164,7 @@ export function ReadFailed({
   retrying: boolean;
   onRetry: () => void;
 }) {
+  if (needsSignIn(error)) return <SignIn />;
   const said = error instanceof Error && error.message !== '' ? error.message : null;
   return (
     <Card
@@ -178,6 +180,22 @@ export function ReadFailed({
       <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={onRetry}>
         <RotateCw aria-hidden className={cn(retrying && 'motion-safe:animate-spin')} />
         {retrying ? 'Retrying…' : 'Retry'}
+      </Button>
+    </Card>
+  );
+}
+
+/** The step a signed-out visitor takes: the Worker's sign-in page, which returns here. */
+export function SignIn() {
+  return (
+    <Card kind="neutral" className="flex flex-wrap items-center justify-between gap-3 p-4" data-sign-in="">
+      <span className="text-sm font-medium text-foreground">Sign in to see your tasks</span>
+      <Button asChild>
+        {/* A full page load: the Worker serves the sign-in page, not this app. */}
+        <a href={SIGN_IN_PATH}>
+          <LogIn aria-hidden />
+          Sign in
+        </a>
       </Button>
     </Card>
   );
