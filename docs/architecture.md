@@ -2,9 +2,9 @@
 
 Ntasks is one Cloudflare Worker and one D1 database. A **Worker** is a program
 Cloudflare runs on its servers in answer to web requests, and **D1** is
-Cloudflare's SQLite database. The Worker will answer the API, the MCP endpoint
-that AI agents connect to and sign-in; Cloudflare serves the web app's files
-from the same deployment. This page shows how the parts fit, the limits the
+Cloudflare's SQLite database. The Worker answers the API and the MCP endpoint
+that AI agents connect to, and will answer sign-in; Cloudflare serves the web
+app's files from the same deployment. This page shows how the parts fit, the limits the
 design keeps to, and the rules every change keeps. Read
 [Concepts](concepts.md) first for the task model itself.
 
@@ -24,12 +24,12 @@ flowchart LR
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz` |
+| Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz`, and the API under `/api`, which refuses every request until sign-in is built |
 | Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | A placeholder page |
-| MCP endpoint for agents | | Not yet |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
 | Sign-in | | Not yet |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
