@@ -240,6 +240,7 @@ describe('list_tasks', () => {
     expect(
       idsOf(await listed({ created_after: '2026-11-06T12:03:00Z', created_before: '2026-11-06T12:04:00Z' })),
     ).toEqual([ids.blocked]);
+    expect(idsOf(await listed({ created_after: '2028-02-29' }))).toEqual([]);
   });
 
   it('takes as many labels and words as its arguments allow', async () => {
@@ -284,6 +285,14 @@ describe('list_tasks', () => {
     expect(await refused({ created_after: 'yesterday' })).toBe(
       'invalid arguments: created_after (YYYY-MM-DD or an ISO time)',
     );
+    // A day the month does not have is refused, not read as a day of the next month.
+    for (const [name, value] of [
+      ['created_after', '2026-02-31'],
+      ['updated_before', '2026-02-30T10:00:00Z'],
+      ['created_before', '2027-02-29T23:00+02:00'],
+    ]) {
+      expect(await refused({ [name!]: value }), value).toBe(`invalid arguments: ${name} (YYYY-MM-DD or an ISO time)`);
+    }
     expect(await refused({ project: 'no such project' })).toBe(
       'invalid arguments: project (a projectId from list_projects)',
     );

@@ -98,9 +98,11 @@ export function stringsArg(args: Args, name: string): readonly string[] | undefi
 export function instantArg(args: Args, name: string): string | undefined {
   const value = args[name];
   if (value === undefined) return undefined;
+  // Date.parse reads 2026-02-31 as 3 March, so the day is checked against its month first.
   const at =
     typeof value === 'string' &&
-    /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/u.test(value)
+    /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/u.test(value) &&
+    isCalendarDate(value.slice(0, 10))
       ? Date.parse(value)
       : Number.NaN;
   if (!Number.isFinite(at)) refuse(`invalid arguments: ${name} (YYYY-MM-DD or an ISO time)`);
