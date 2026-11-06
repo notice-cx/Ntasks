@@ -141,3 +141,21 @@ export async function get(target: TestApi, path: string): Promise<{ status: numb
   const response = await target.fetch(new Request(`${ORIGIN}${path}`));
   return { status: response.status, body: (await response.json()) as Record<string, unknown> };
 }
+
+/** Sends an HTTP write with a JSON body. */
+export async function send(
+  target: TestApi,
+  method: string,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await target.fetch(
+    new Request(`${ORIGIN}${path}`, {
+      method,
+      headers: { 'content-type': 'application/json', ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    }),
+  );
+  return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+}

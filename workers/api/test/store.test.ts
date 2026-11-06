@@ -10,7 +10,7 @@ import { cachedReads } from '../src/store/cache.ts';
 import type { TaskStore } from '../src/store/index.ts';
 import { migrate, MIGRATIONS } from '../src/store/schema.ts';
 import { newMeter } from '../src/store/sqlite.ts';
-import { grantedOnly, ORIGIN, READER, worker } from './api/helpers.ts';
+import { grantedOnly, ORIGIN, READER, worker, WRITER } from './api/helpers.ts';
 import { AGENT, clock } from './engine/helpers.ts';
 import { store, storeDatabase } from './store.ts';
 
@@ -44,6 +44,27 @@ describe('the Worker and the store', () => {
 
     const { projects } = (await response.json()) as { projects: { projectId: string }[] };
     expect(projects.map((entry) => entry.projectId)).toEqual([granted.id]);
+  });
+
+  it('hands a signed-in write to the store, whose next read of a board shows it', async () => {
+    const project = await runInDurableObject(store(), (instance: TaskStore) => newProject(instance.tasks));
+    const board = async () => {
+      const response = await worker(WRITER).fetch(new Request(`${ORIGIN}/api/tasks?project=${project.id}`), env);
+      return ((await response.json()) as { tasks: { title: string }[] }).tasks.map((task) => task.title);
+    };
+    expect(await board()).toEqual([]);
+
+    const filed = await worker(WRITER).fetch(
+      new Request(`${ORIGIN}/api/tasks`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, title: 'Filed through the API' }),
+      }),
+      env,
+    );
+
+    expect(filed.status).toBe(200);
+    expect(await board()).toEqual(['Filed through the API']);
   });
 
   it('lists its projects to the rest of the Worker', async () => {

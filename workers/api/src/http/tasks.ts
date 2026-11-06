@@ -13,10 +13,11 @@ import {
   type TaskEngine,
   type TaskStatus,
 } from '@ntasks/domain';
-import { mayReach, reachable, type Principal } from '../auth.ts';
+import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
 import { commentView, historyView, proposalOf, webTask } from '../views.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
+import { EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
 
 export interface ReadContext {
   readonly engine: TaskEngine;
@@ -58,10 +59,20 @@ export async function projects({ engine, principal }: ReadContext, url: URL): Pr
   });
 }
 
-/** GET /api/tasks/capabilities: what the web app may offer. Writes arrive in a later release. */
-export function capabilities(_context: ReadContext, url: URL): Response {
+/** GET /api/tasks/capabilities: what the web app may offer this sender. It
+ * may write when it holds the write scope and may change some project. */
+export function capabilities({ principal }: ReadContext, url: URL): Response {
   queryOf(url, []);
-  return json({ live: true, writable: false, projectSelection: true, operations: [], editableFields: [] });
+  const writable =
+    principal.scopes.includes(SCOPES.write) &&
+    (principal.projects === 'all' || [...principal.projects.values()].includes('write'));
+  return json({
+    live: true,
+    writable,
+    projectSelection: true,
+    operations: writable ? WRITE_OPERATIONS : [],
+    editableFields: writable ? EDITABLE_FIELDS : [],
+  });
 }
 
 /**
@@ -153,9 +164,12 @@ export async function changesRoute(context: ReadContext, url: URL): Promise<Resp
   return json({ events: page.events.filter((event) => mayReach(principal, event.projectId)), lastSeq: page.lastSeq });
 }
 
-/** The task id in /api/tasks/:id and /api/tasks/:id/history, or null for another path. */
-export function taskPath(pathname: string): { readonly taskId: string; readonly history: boolean } | null {
-  const match = /^\/api\/tasks\/([^/]+)(\/history)?$/u.exec(pathname);
+/** The task id in /api/tasks/:id and the part of the task a path under it
+ * names (its history, comments or close), or null for another path. */
+export function taskPath(
+  pathname: string,
+): { readonly taskId: string; readonly part: 'history' | 'comments' | 'close' | null } | null {
+  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close))?$/u.exec(pathname);
   if (!match || !isTaskId(match[1])) return null;
-  return { taskId: match[1]!, history: match[2] !== undefined };
+  return { taskId: match[1]!, part: (match[2] as 'history' | 'comments' | 'close' | undefined) ?? null };
 }
