@@ -21,6 +21,8 @@
     "wrangler": "4.158.0"
   },
   "dependencies": {
-    "@ntasks/domain": "workspace:*"
+    "@better-auth/oauth-provider": "1.7.12",
+    "@ntasks/domain": "workspace:*",
+    "better-auth": "1.7.12"
   }
 }
