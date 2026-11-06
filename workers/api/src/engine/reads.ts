@@ -1,11 +1,10 @@
 // Every query the engine reads with. Statements number their parameters:
 // ?1 is always the project and ?2 the current time; others follow.
 //
-// D1 bills, and its free plan limits, the rows a statement reads, and each
-// statement is a round trip from the Worker to the database. So every read
-// reaches its rows through an index, never by scanning a project's history,
-// and returns a task with its labels and links in the same statement.
-// test/api/read-cost.test.ts holds each read to a budget.
+// Cloudflare bills, and its free plan limits, the rows a statement reads. So
+// every read reaches its rows through an index, never by scanning a project's
+// history, and returns a task with its labels and links in the same
+// statement. test/api/read-cost.test.ts holds each read to a budget.
 import {
   isTaskStatus,
   isTaskType,
@@ -34,6 +33,7 @@ import {
   type ProjectRow,
   type TaskRow,
 } from './rows.ts';
+import type { Bindable, Database, Statement } from './database.ts';
 import { instant } from './validate.ts';
 
 /** The statuses of a task that is not closed, which the (project_id, status) index reaches. */
@@ -180,21 +180,21 @@ function statusList(statuses: readonly string[]): string {
   return `(${statuses.map((status) => `'${status}'`).join(', ')})`;
 }
 
-/** A statement under construction: its WHERE clauses and its values, numbered after ?1 and ?2. */
-class Statement {
-  readonly args: unknown[];
+/** A query under construction: its WHERE clauses and its values, numbered after ?1 and ?2. */
+class Query {
+  readonly args: Bindable[];
   readonly where: string[] = [];
   constructor(projectId: string | null, now: string) {
     this.args = [projectId, now];
   }
-  param(value: unknown): string {
+  param(value: Bindable): string {
     this.args.push(value);
     return `?${this.args.length}`;
   }
 }
 
 /** The clauses for the filters lists share. */
-function filter(statement: Statement, query: TaskFilters): void {
+function filter(statement: Query, query: TaskFilters): void {
   const { where } = statement;
   if (query.ready === true) where.push(READY);
   if (query.ready === false) where.push(`NOT ${READY}`);
@@ -223,10 +223,10 @@ function filter(statement: Statement, query: TaskFilters): void {
 }
 
 export class Reads {
-  readonly #db: D1Database;
+  readonly #db: Database;
   readonly #now: () => string;
 
-  constructor(db: D1Database, now: () => string) {
+  constructor(db: Database, now: () => string) {
     this.#db = db;
     this.#now = now;
   }
@@ -259,7 +259,7 @@ export class Reads {
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > TASK_LIMITS.page) {
       invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
     }
-    const statement = new Statement(projectId, this.#now());
+    const statement = new Query(projectId, this.#now());
     const { where } = statement;
     if (query.statuses !== undefined) where.push(`t.status IN ${statusList(query.statuses)}`);
     if (query.closedSince !== undefined)
@@ -292,9 +292,9 @@ export class Reads {
   async listBoard(projectId: string | null, query: BoardQuery): Promise<Task[]> {
     const scope: Scope = projectId === null ? 'every' : 'project';
     const now = this.#now();
-    const statements: D1PreparedStatement[] = [];
+    const statements: Statement[] = [];
     const add = (statuses: readonly string[], closedSince: string | undefined) => {
-      const statement = new Statement(projectId, now);
+      const statement = new Query(projectId, now);
       if (closedSince === undefined) statement.where.push(`t.status IN ${statusList(statuses)}`);
       // Only a closed task has a closed_at (the schema checks it), so a close date reads closed tasks alone.
       else statement.where.push(`t.closed_at >= ${statement.param(instant(closedSince, 'closedSince'))}`);
@@ -324,6 +324,15 @@ export class Reads {
       .bind(projectId)
       .all<EpicRow>();
     return results.map(toEpic);
+  }
+
+  async nextDeferralAfter(time: string): Promise<string | null> {
+    // The partial index tasks_by_defer_until answers this from one entry.
+    const row = await this.#db
+      .prepare("SELECT min(defer_until) AS next FROM tasks WHERE status <> 'closed' AND defer_until > ?1")
+      .bind(instant(time, 'time'))
+      .first<{ next: string | null }>();
+    return row?.next ?? null;
   }
 
   async listComments(projectId: string, taskId: string): Promise<TaskComment[]> {

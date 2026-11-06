@@ -1,10 +1,10 @@
 // The HTTP reads the web app uses: their shapes, their parameters, and who
 // may call them.
 import type { Project, TaskEngine } from '@ntasks/domain';
-import { exports } from 'cloudflare:workers';
+import { env, exports } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, get, NOBODY, ORIGIN, type TestApi } from './helpers.ts';
+import { api, get, NOBODY, ORIGIN, worker, type TestApi } from './helpers.ts';
 
 const time = clock('2026-11-06T12:00:00.000Z');
 let target: TestApi;
@@ -34,7 +34,7 @@ beforeAll(async () => {
 
 describe('who may read', () => {
   it('answers the sign-in challenge when nobody is signed in', async () => {
-    const response = await api({ principal: null }).fetch(new Request(`${ORIGIN}/api/tasks/projects`));
+    const response = await worker(null).fetch(new Request(`${ORIGIN}/api/tasks/projects`), env);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: 'sign_in_required' });
   });
@@ -56,9 +56,11 @@ describe('who may read', () => {
     }
   });
 
-  it('answers 404 for a path it does not serve, signed in or not', async () => {
-    expect((await get(api({ principal: null }), '/api/tasks/Not-An-Id')).status).toBe(404);
-    expect((await get(target, '/api/elsewhere')).status).toBe(404);
+  it('answers 404 for a path it does not serve, before anyone signs in', async () => {
+    for (const path of ['/api/tasks/Not-An-Id', '/api/elsewhere']) {
+      const response = await worker(null).fetch(new Request(`${ORIGIN}${path}`), env);
+      expect(response.status, path).toBe(404);
+    }
   });
 
   it('serves reads only', async () => {

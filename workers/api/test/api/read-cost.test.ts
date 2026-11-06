@@ -1,12 +1,13 @@
-// What each read costs the database, on a store the size of a busy
+// What each read costs the task store, on a store the size of a busy
 // installation: eight projects, one much larger than the rest, about a
-// thousand tasks open and several thousand closed. D1's free plan allows 50
-// queries per request and 5 million rows read per day, and refuses every
-// query for the rest of the day once that allowance is spent; these budgets
-// keep each read far inside both.
-import { env } from 'cloudflare:workers';
+// thousand tasks open and several thousand closed. The free plan allows 5
+// million rows read per day and refuses reads for the rest of the day once
+// that allowance is spent; these budgets keep each read far inside it. They
+// measure a read the store has not cached; a cached one reads no rows
+// (store.test.ts).
 import { beforeAll, describe, expect, it } from 'vitest';
-import { countingDb, type DbCost } from './count-db.ts';
+import { newMeter, type Meter } from '../../src/store/sqlite.ts';
+import { storeDatabase } from '../store.ts';
 import { api, get, read, type TestApi } from './helpers.ts';
 
 const NOW = '2026-11-06T12:00:00.000Z';
@@ -24,7 +25,8 @@ const SIZES = [
 /** Closed in the last week, per project; the rest closed earlier. */
 const RECENTLY_CLOSED = 20;
 
-const counted = countingDb(env.DB);
+const meter = newMeter();
+const db = storeDatabase();
 let target: TestApi;
 let big: { id: string; prefix: string };
 
@@ -68,9 +70,10 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
   ];
   const values = [projectId, prefix, total, active, NOW, RECENTLY_CLOSED];
   for (const sql of statements) {
-    // D1 takes exactly as many values as the statement's highest ?N.
+    // SQLite takes exactly as many values as the statement's highest ?N.
     const used = Math.max(...Array.from(sql.matchAll(/\?(\d)/gu), (match) => Number(match[1])));
-    await env.DB.prepare(sql)
+    await db
+      .prepare(sql)
       .bind(...values.slice(0, used))
       .run();
   }
@@ -94,34 +97,34 @@ beforeAll(async () => {
     await seed(project.id, prefix, total, active);
     if (index === 0) big = { id: project.id, prefix };
   }
-  target = api({ now: () => NOW, db: counted.db });
+  target = api({ now: () => NOW, meter });
 }, 60_000);
 
 /** What one read cost. */
-async function costOf(work: () => Promise<unknown>) {
-  counted.reset();
+async function costOf(work: () => Promise<unknown>): Promise<Meter> {
+  Object.assign(meter, newMeter());
   await work();
-  return { ...counted.cost };
+  return { ...meter };
 }
 
 /**
- * Each read's most round trips and rows read on this store. A read of one
+ * Each read's most statements and rows read on this store. A read of one
  * task costs what that task and its links cost; a list costs about ten rows
- * for each task it returns. Round trips do not grow with the number of
- * projects, and every read stays far inside D1's 50 queries per request.
+ * for each task it returns. The statements do not grow with the number of
+ * projects.
  */
-const BUDGETS: Record<string, { readonly roundTrips: number; readonly rowsRead: number }> = {
-  'HTTP board, largest project': { roundTrips: 3, rowsRead: 7_000 },
-  'HTTP task page': { roundTrips: 3, rowsRead: 60 },
-  'HTTP task history': { roundTrips: 3, rowsRead: 60 },
-  'HTTP change feed, 200 changes': { roundTrips: 1, rowsRead: 250 },
-  list_projects: { roundTrips: 1, rowsRead: 20 },
-  'list_tasks ready, every project': { roundTrips: 2, rowsRead: 10_000 },
-  'list_tasks, every project': { roundTrips: 2, rowsRead: 16_000 },
-  'list_tasks search, every project': { roundTrips: 2, rowsRead: 22_000 },
-  'list_tasks, largest project': { roundTrips: 2, rowsRead: 6_000 },
-  get_task: { roundTrips: 3, rowsRead: 60 },
-  get_task_history: { roundTrips: 3, rowsRead: 60 },
+const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
+  'HTTP board, largest project': { statements: 4, rowsRead: 7_000 },
+  'HTTP task page': { statements: 3, rowsRead: 60 },
+  'HTTP task history': { statements: 3, rowsRead: 60 },
+  'HTTP change feed, 200 changes': { statements: 1, rowsRead: 250 },
+  list_projects: { statements: 1, rowsRead: 20 },
+  'list_tasks ready, every project': { statements: 2, rowsRead: 10_000 },
+  'list_tasks, every project': { statements: 3, rowsRead: 16_000 },
+  'list_tasks search, every project': { statements: 3, rowsRead: 22_000 },
+  'list_tasks, largest project': { statements: 3, rowsRead: 6_000 },
+  get_task: { statements: 3, rowsRead: 60 },
+  get_task_history: { statements: 3, rowsRead: 60 },
 };
 
 describe('the cost of each read', () => {
@@ -141,14 +144,13 @@ describe('the cost of each read', () => {
       get_task_history: () => read(target, 'get_task_history', { project: big.id, task }),
     };
     expect(Object.keys(reads)).toEqual(Object.keys(BUDGETS));
-    const costs: Record<string, DbCost> = {};
+    const costs: Record<string, Meter> = {};
     for (const [name, work] of Object.entries(reads)) costs[name] = await costOf(work);
     // Shown with --silent=false, to compare a change against these numbers.
     console.log(JSON.stringify(costs));
     for (const [name, cost] of Object.entries(costs)) {
       const budget = BUDGETS[name]!;
-      expect(cost.statements, name).toBeLessThanOrEqual(10);
-      expect(cost.roundTrips, name).toBeLessThanOrEqual(budget.roundTrips);
+      expect(cost.statements, name).toBeLessThanOrEqual(budget.statements);
       expect(cost.rowsRead, name).toBeLessThanOrEqual(budget.rowsRead);
     }
   }, 60_000);

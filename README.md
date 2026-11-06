@@ -21,8 +21,8 @@ AI agents will connect from wherever they run, over the
 way agents call tools on a server. People will use the web app.
 
 Ntasks runs as a Cloudflare **Worker**, a program Cloudflare runs on its
-servers in answer to web requests, and keeps its data in **D1**, Cloudflare's
-SQLite database. It stays available when your own computer is off, and it is
+servers in answer to web requests, and keeps its tasks in a **Durable
+Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
 designed to fit Cloudflare's free plan.
 
 ## Status
@@ -31,10 +31,10 @@ Ntasks is under construction. The repository holds its skeleton:
 
 | Part | Today |
 |---|---|
-| Worker | Answers a health check at `/healthz` |
+| Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
 | Web app | A placeholder page |
 | Task model | The task id format, the vocabulary and the engine contract |
-| Task store | The database tables and the rules the database enforces |
+| Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
 | Writes through the API, sign-in | Being built |

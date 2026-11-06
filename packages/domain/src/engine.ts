@@ -1,14 +1,15 @@
 /**
  * The task engine's contract: the one interface through which the API, the
- * MCP tools and imports read and change tasks. workers/api implements it on
- * D1. docs/task-store.md maps each operation NoticeOS used to send to Beads
- * onto these methods.
+ * MCP tools and imports read and change tasks. workers/api implements it in
+ * the task store, a Durable Object with its own SQLite database.
+ * docs/task-store.md maps each operation NoticeOS used to send to Beads onto
+ * these methods.
  *
  * The engine checks the task model's rules; it does not check who may act.
  * The API layer signs the sender in, decides what they may do, and passes the
  * engine an `Actor` it has already authenticated.
  *
- * Every write is one D1 batch, which commits whole or not at all: the change,
+ * Every write is one batch, which commits whole or not at all: the change,
  * its history event and its retry record land together. The rules in
  * docs/architecture.md ("Rules every change keeps") are the engine's
  * guarantees, and each method's comment names the ones it relies on.
@@ -222,6 +223,10 @@ export interface TaskEngine {
    * every task it matches, most urgent first, in one round trip and not paged. */
   listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
+  /** The earliest time after `time` at which a task that is not closed stops
+   * being deferred, or null when none will. Ready work changes then without
+   * any write, so a cached read of it stays true until that time. */
+  nextDeferralAfter(time: string): Promise<string | null>;
   listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
   /** The task's changes, newest first. */
   listHistory(
@@ -249,7 +254,7 @@ export interface TaskEngine {
 
 /**
  * Why the engine refused a write. The first three can come from the database's
- * write guard (workers/api/migrations/0001_task_store.sql), which reports them
+ * write guard (workers/api/src/store/migrations/0001_task_store.sql), which reports them
  * as "ntasks refused: <refusal>".
  */
 export const TASK_REFUSALS = ['not_found', 'version_conflict', 'cycle', 'held', 'retry_conflict', 'invalid'] as const;
@@ -269,7 +274,7 @@ export class TaskRefused extends Error {
 
 const GUARD_MESSAGE = /ntasks refused: ([a-z_]+)/u;
 
-/** The guard refusal named in a D1 error message, or null when the error came from elsewhere. */
+/** The guard refusal named in a database error message, or null when the error came from elsewhere. */
 export function guardRefusalOf(message: string): (typeof GUARD_REFUSALS)[number] | null {
   const name = GUARD_MESSAGE.exec(message)?.[1];
   return (GUARD_REFUSALS as readonly string[]).includes(name ?? '') ? (name as (typeof GUARD_REFUSALS)[number]) : null;
