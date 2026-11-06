@@ -2,12 +2,21 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator } from '../../src/access/authenticator.ts';
 import { may } from '../../src/access/principal.ts';
-import { Browser, connectAgent, createProject, ORIGIN } from './client.ts';
+import { Browser, connectAgent, createProject, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
 standInForGitHub();
 
 const authenticator = signInAuthenticator(env);
+
+/** The id of the person the allowlisted owner's GitHub account belongs to. */
+async function ownerUserId(): Promise<string> {
+  const row = await env.DB.prepare("SELECT user_id FROM auth_account WHERE provider_id = 'github' AND account_id = ?")
+    .bind(String(OWNER_GITHUB_ID))
+    .first<{ user_id: string }>();
+  if (!row) throw new Error('the owner has not signed in');
+  return row.user_id;
+}
 
 function bearer(token: string): Request {
   return new Request(`${ORIGIN}/api/mcp`, {
@@ -26,8 +35,14 @@ describe('the authenticator the API layer calls', () => {
     });
 
     const signedIn = await authenticator.authenticate(request);
-    expect(signedIn).toMatchObject({ name: 'Person 1001', scopes: ['tasks:read', 'tasks:write'], projects: 'all' });
-    expect(signedIn?.id).toMatch(/^person:/u);
+    const userId = await ownerUserId();
+    expect(signedIn).toMatchObject({
+      id: `person:${userId}`,
+      name: `Person ${OWNER_GITHUB_ID}`,
+      scopes: ['tasks:read', 'tasks:write'],
+      projects: 'all',
+      principal: { kind: 'person', userId },
+    });
   });
 
   it('gives a read-only agent the read scope, its prefixed actor name and its projects', async () => {
@@ -35,11 +50,17 @@ describe('the authenticator the API layer calls', () => {
     const other = await createProject('Other');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { tokens } = await connectAgent(browser, [granted], 'tasks:read offline_access');
+    const { client, tokens } = await connectAgent(browser, [granted], 'tasks:read offline_access');
 
     const request = bearer(tokens.access_token);
     const signedIn = await authenticator.authenticate(request);
-    expect(signedIn).toMatchObject({ name: 'agent:Example Agent', scopes: ['tasks:read'] });
+    const userId = await ownerUserId();
+    expect(signedIn).toMatchObject({
+      id: `agent:${client.clientId}:${userId}`,
+      name: 'agent:Example Agent',
+      scopes: ['tasks:read'],
+      principal: { kind: 'agent', clientId: client.clientId, userId },
+    });
     expect(signedIn?.projects).toEqual(new Map([[granted, 'read']]));
     expect(signedIn && may(signedIn.principal, granted, 'read')).toBe(true);
     expect(signedIn && may(signedIn.principal, other, 'read')).toBe(false);
