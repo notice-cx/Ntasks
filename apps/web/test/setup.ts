@@ -1,6 +1,11 @@
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { toast } from 'sonner';
 import { afterAll, afterEach } from 'vitest';
+
+// A page's first render in a run loads its code for the first time, and the
+// Markdown renderer alone can take more than a second to load cold, longer
+// than the default one-second wait of findBy and waitFor.
+configure({ asyncUtilTimeout: 5000 });
 
 /** Longer than the toaster's own exit timer. */
 const TOAST_EXIT_MS = 300;

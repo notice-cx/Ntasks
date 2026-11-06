@@ -42,12 +42,11 @@ import yaml from 'highlight.js/lib/languages/yaml';
 import { CheckSquare, Image as ImageIcon, Square } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { eyebrowClass, inlineLinkClass } from '@/components/ui/chrome';
-import { taskPath } from '@/lib/task-path';
+import { isAppPage, taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
+import { TaskPrefixes } from './task-prefixes';
 
-/** The task id prefixes a text may link. */
-const TaskPrefixes = createContext<ReadonlySet<string>>(new Set());
-export const TaskPrefixesProvider = TaskPrefixes.Provider;
+export { TaskPrefixesProvider } from './task-prefixes';
 
 /** The languages a code block is highlighted in, named after its opening fence (```ts). A block in any other
  * language shows plain. A short list keeps the task page's download small. */
@@ -227,17 +226,22 @@ function MarkdownLink({ href = '', children, node }: ComponentProps<'a'> & Extra
   // An address the sanitizer removed, such as a javascript: link, leaves the words alone.
   if (href === '') return <span>{children}</span>;
   const url = resolved(href);
-  if (url !== null && sameSite(url) && !href.startsWith('#')) {
-    return (
-      <Link to={`${url.pathname}${url.search}${url.hash}`} className={className}>
-        {children}
-      </Link>
-    );
-  }
-  if (url === null) {
-    // mailto: or a fragment on this page: nothing to open in a new tab.
+  // A fragment points into this page, and mailto: opens the mail app: neither opens a tab.
+  if (href.startsWith('#') || url === null) {
     return (
       <a href={href} className={className}>
+        {children}
+      </a>
+    );
+  }
+  if (sameSite(url)) {
+    const path = `${url.pathname}${url.search}${url.hash}`;
+    return isAppPage(url.pathname) ? (
+      <Link to={path} className={className}>
+        {children}
+      </Link>
+    ) : (
+      <a href={path} className={className}>
         {children}
       </a>
     );

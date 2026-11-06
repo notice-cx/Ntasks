@@ -1,5 +1,5 @@
 import { fireEvent, render, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from '@/routes/tasks/task-markdown';
 
@@ -78,6 +78,37 @@ describe('task text as Markdown', () => {
     const mail = within(root).getByRole('link', { name: 'mail' });
     expect(mail.getAttribute('href')).toBe('mailto:owner@example.com');
     expect(mail.getAttribute('target')).toBeNull();
+  });
+
+  it("routes only the app's own pages, loads the Worker's, and keeps a fragment in the tab", () => {
+    function Here() {
+      return <output data-here="">{useLocation().pathname}</output>;
+    }
+    const view = render(
+      <MemoryRouter initialEntries={['/tasks/web-a1b2']}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <Here />
+                <MarkdownText source="[sign in](/sign-in) [api](/api/tasks) [top](#top) [board](/tasks)" />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const here = () => view.container.querySelector('[data-here]')?.textContent;
+    // A click on a router link changes the page in place; a plain link leaves the router where it was.
+    fireEvent.click(view.getByRole('link', { name: 'sign in' }));
+    fireEvent.click(view.getByRole('link', { name: 'api' }));
+    expect(here()).toBe('/tasks/web-a1b2');
+    const top = view.getByRole('link', { name: 'top' });
+    expect(top.getAttribute('href')).toBe('#top');
+    expect(top.getAttribute('target')).toBeNull();
+    fireEvent.click(view.getByRole('link', { name: 'board' }));
+    expect(here()).toBe('/tasks');
   });
 
   it("links a known project's task ids to their pages, but not inside code", () => {
