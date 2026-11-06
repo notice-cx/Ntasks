@@ -10,7 +10,7 @@ import { cachedReads } from '../src/store/cache.ts';
 import type { TaskStore } from '../src/store/index.ts';
 import { migrate, MIGRATIONS } from '../src/store/schema.ts';
 import { newMeter } from '../src/store/sqlite.ts';
-import { ORIGIN, READER, worker } from './api/helpers.ts';
+import { grantedOnly, ORIGIN, READER, worker } from './api/helpers.ts';
 import { AGENT, clock } from './engine/helpers.ts';
 import { store, storeDatabase } from './store.ts';
 
@@ -33,6 +33,17 @@ describe('the Worker and the store', () => {
     expect(response.status).toBe(200);
     const { projects } = (await response.json()) as { projects: { projectId: string }[] };
     expect(projects.map((entry) => entry.projectId)).toContain(project.id);
+  });
+
+  it('receives the projects a sender may reach along with the request', async () => {
+    const [granted] = await runInDurableObject(store(), (instance: TaskStore) =>
+      Promise.all([newProject(instance.tasks), newProject(instance.tasks)]),
+    );
+
+    const response = await worker(grantedOnly(granted.id)).fetch(new Request(`${ORIGIN}/api/tasks/projects`), env);
+
+    const { projects } = (await response.json()) as { projects: { projectId: string }[] };
+    expect(projects.map((entry) => entry.projectId)).toEqual([granted.id]);
   });
 
   it('lists its projects to the rest of the Worker', async () => {

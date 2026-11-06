@@ -14,7 +14,7 @@ import {
   type TaskStatus,
   type TaskType,
 } from '@ntasks/domain';
-import type { Principal } from '../auth.ts';
+import { reachable, type Principal } from '../auth.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, type Workspace } from '../service.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
 import {
@@ -60,9 +60,10 @@ export function schema(properties: Record<string, unknown>, required: readonly s
 
 const projectNamed = (project: Project) => `projectId ${project.id} (${project.name})`;
 
-/** The project a call names, or a refusal that says how to find one. */
-export async function projectOf(engine: TaskEngine, projectId: string): Promise<Project> {
-  const project = (await engine.listProjects()).find((candidate) => candidate.id === projectId);
+/** The project a call names, among those the sender reaches, or a refusal
+ * that says how to find one. */
+export async function projectOf({ engine, principal }: ToolContext, projectId: string): Promise<Project> {
+  const project = reachable(principal, await engine.listProjects()).find((candidate) => candidate.id === projectId);
   return (
     project ??
     refuse(
@@ -73,14 +74,14 @@ export async function projectOf(engine: TaskEngine, projectId: string): Promise<
 
 /** The task a call names, or a refusal that says where to look: the project
  * whose prefix the id starts with, when that is another one. */
-export async function taskOf(engine: TaskEngine, project: Project, taskId: string): Promise<Task> {
+export async function taskOf({ engine, principal }: ToolContext, project: Project, taskId: string): Promise<Task> {
   const task = await engine.getTask(project.id, taskId);
   if (task) return task;
   const prefix = taskId.slice(0, taskId.indexOf('-'));
   const owner =
     prefix === project.prefix
       ? undefined
-      : (await engine.listProjects()).find((candidate) => candidate.prefix === prefix);
+      : reachable(principal, await engine.listProjects()).find((candidate) => candidate.prefix === prefix);
   return owner
     ? refuse(
         `refused: ${taskId} is not in ${projectNamed(project)}, whose tasks start ${project.prefix}-; tasks with prefix ${owner.prefix} are in ${projectNamed(owner)}.`,
@@ -95,10 +96,10 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     inputSchema: schema({}),
     annotations: READ,
     scope: 'tasks:read',
-    async run({ engine }, args) {
+    async run({ engine, principal }, args) {
       only(args, []);
       return {
-        projects: (await engine.listProjects()).map((project) => ({
+        projects: reachable(principal, await engine.listProjects()).map((project) => ({
           projectId: project.id,
           key: project.key,
           name: project.name,
@@ -156,7 +157,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     }),
     annotations: READ,
     scope: 'tasks:read',
-    async run({ engine, principal, now }, args) {
+    async run(context, args) {
+      const { engine, principal, now } = context;
       only(args, [
         'project',
         'query',
@@ -206,7 +208,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       if (filters.types?.some((type) => !isTaskType(type))) refuse('invalid arguments: type');
       const nextOf = (shown: number, total: number) => (offset + shown < total ? offset + shown : null);
       if (args.project !== undefined) {
-        const project = await projectOf(engine, projectArg(args));
+        const project = await projectOf(context, projectArg(args));
         const found = await board(engine, project.id, statuses as TaskStatus[], closedDays, filters, now);
         const page = found.tasks.slice(offset, offset + limit);
         return {
@@ -219,10 +221,12 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         };
       }
       // Every project in one read, each task then naming its project.
-      const [projects, found] = await Promise.all([
+      const [projects, everything] = await Promise.all([
         engine.listProjects(),
         board(engine, null, statuses as TaskStatus[], closedDays, filters, now),
       ]);
+      const reached = new Set(reachable(principal, projects).map((project) => project.id));
+      const found = { ...everything, tasks: everything.tasks.filter((task) => reached.has(task.projectId)) };
       const where = new Map(
         projects.map((project) => [
           project.id,
@@ -245,12 +249,13 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     inputSchema: schema({ project: PROJECT, task: TASK }, ['project', 'task']),
     annotations: READ,
     scope: 'tasks:read',
-    async run({ engine, now }, args) {
+    async run(context, args) {
+      const { engine, now } = context;
       only(args, ['project', 'task']);
-      const project = await projectOf(engine, projectArg(args));
+      const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
       const [task, comments] = await Promise.all([
-        taskOf(engine, project, taskId),
+        taskOf(context, project, taskId),
         engine.listComments(project.id, taskId),
       ]);
       return {
@@ -280,13 +285,14 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     ),
     annotations: READ,
     scope: 'tasks:read',
-    async run({ engine }, args) {
+    async run(context, args) {
+      const { engine } = context;
       only(args, ['project', 'task', 'limit', 'snapshots']);
       const limit = integerArg(args, 'limit', 1, 200, 50);
       const snapshots = booleanArg(args, 'snapshots') ?? false;
-      const project = await projectOf(engine, projectArg(args));
+      const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
-      const [, events] = await Promise.all([taskOf(engine, project, taskId), allEvents(engine, project.id, taskId)]);
+      const [, events] = await Promise.all([taskOf(context, project, taskId), allEvents(engine, project.id, taskId)]);
       return { changes: historyView(events, limit, snapshots) };
     },
   },
