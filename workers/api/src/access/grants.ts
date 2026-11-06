@@ -230,3 +230,40 @@ export async function revokeServiceCredential(db: D1Database, id: string): Promi
     .run();
   return result.meta.changes === 1;
 }
+
+/**
+ * At most this many agents register in one UTC day, across every Cloudflare
+ * location. Each registration writes a handful of rows, so the budget keeps
+ * registrations far below the free plan's 100,000 rows written a day.
+ */
+export const REGISTRATIONS_PER_DAY = 100;
+
+/** The UTC day of `now`, such as 2026-11-06, which registrations are counted under. */
+export function registrationDay(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** How many agents registered on `day`. */
+export async function registrationsOn(db: D1Database, day: string): Promise<number> {
+  const row = await db
+    .prepare('SELECT registrations FROM access_registration_days WHERE day = ?')
+    .bind(day)
+    .first<{ registrations: number }>();
+  return row?.registrations ?? 0;
+}
+
+/**
+ * Counts one registration on `day`. Called after the library made the
+ * client, so a refused or malformed registration spends none of the budget.
+ * Registrations checked at the same moment can each pass, so the budget can
+ * be passed by as many as run at once; the rate limits keep that number small.
+ */
+export async function countRegistration(db: D1Database, day: string): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO access_registration_days (day, registrations) VALUES (?, 1)
+       ON CONFLICT (day) DO UPDATE SET registrations = registrations + 1`,
+    )
+    .bind(day)
+    .run();
+}

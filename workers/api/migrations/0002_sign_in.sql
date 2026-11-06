@@ -253,6 +253,15 @@ BEGIN
   SELECT raise(ABORT, 'ntasks: a service credential only changes by being revoked, once');
 END;
 
+-- How many agents registered on each UTC day. Anyone may register, and each
+-- registration writes to D1. The per-minute rate limits count separately in
+-- each Cloudflare location; this count is the same for every location, so
+-- the daily budget it enforces bounds those writes everywhere.
+CREATE TABLE access_registration_days (
+  day TEXT PRIMARY KEY CHECK (length(day) = 10 AND day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  registrations INTEGER NOT NULL CHECK (registrations >= 1)
+) STRICT, WITHOUT ROWID;
+
 -- The projects a service credential may reach. It reaches no other project.
 CREATE TABLE access_service_grants (
   credential_id TEXT NOT NULL REFERENCES access_service_credentials (id),

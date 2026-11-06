@@ -41,6 +41,8 @@ const server = createTestHarness({
 
 before(async () => {
   await server.listen();
+  // The sign-in paths read and write the sign-in tables.
+  await server.getWorker().applyD1Migrations('DB');
 });
 
 after(async () => {
@@ -109,22 +111,26 @@ test('a page address gets the web app', async () => {
 });
 
 // The Vitest suite raises the shared registration limit so its tests can
-// register freely; this checks the limits wrangler.jsonc sets. This harness's
-// database has no tables, so an admitted registration fails, but it is not
-// refused by a limit.
+// register freely; this checks the limits wrangler.jsonc sets.
 test('agent registration takes 10 a minute from all addresses, 3 from one', async () => {
-  const register = (address: string) =>
-    server.fetch('/api/auth/oauth2/register', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
-      body: JSON.stringify({ client_name: 'Example Agent', redirect_uris: ['http://127.0.0.1:43110/callback'] }),
-    });
+  const register = async (address: string) =>
+    (
+      await server.fetch('/api/auth/oauth2/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
+        body: JSON.stringify({
+          client_name: 'Example Agent',
+          redirect_uris: ['http://127.0.0.1:43110/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+    ).status;
 
   const fromOne = [];
-  for (let i = 0; i < 4; i += 1) fromOne.push((await register('203.0.113.1')).status === 429);
-  assert.deepEqual(fromOne, [false, false, false, true]);
+  for (let i = 0; i < 4; i += 1) fromOne.push(await register('203.0.113.1'));
+  assert.deepEqual(fromOne, [201, 201, 201, 429]);
   // The fourth was refused before the shared limit counted it: 3 of 10 used.
   const fromMany = [];
-  for (let i = 0; i < 8; i += 1) fromMany.push((await register(`203.0.113.${10 + i}`)).status === 429);
-  assert.deepEqual(fromMany, [false, false, false, false, false, false, false, true]);
+  for (let i = 0; i < 8; i += 1) fromMany.push(await register(`203.0.113.${10 + i}`));
+  assert.deepEqual(fromMany, [201, 201, 201, 201, 201, 201, 201, 429]);
 });

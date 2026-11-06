@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createAuth } from '../../src/access/auth.ts';
 import { signInConfig } from '../../src/access/config.ts';
+import { registrationDay, registrationsOn, REGISTRATIONS_PER_DAY } from '../../src/access/grants.ts';
 import { handleAccess } from '../../src/access/routes.ts';
 import { refusal, verifyRequest } from '../../src/access/verify.ts';
 import { call, freshAddress, ORIGIN } from './client.ts';
@@ -122,16 +123,18 @@ describe('the sign-in rate limit', () => {
     };
   }
 
-  function register(address: string, shared: RateLimit): Promise<Response | null> {
+  const validRegistration = {
+    client_name: 'Example Agent',
+    redirect_uris: ['http://127.0.0.1:43110/callback'],
+    token_endpoint_auth_method: 'none',
+  };
+
+  function register(address: string, shared: RateLimit, body: unknown = validRegistration): Promise<Response | null> {
     return handleAccess(
       new Request(`${ORIGIN}/api/auth/oauth2/register`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
-        body: JSON.stringify({
-          client_name: 'Example Agent',
-          redirect_uris: ['http://127.0.0.1:43110/callback'],
-          token_endpoint_auth_method: 'none',
-        }),
+        body: JSON.stringify(body),
       }),
       { ...env, REGISTER_LIMIT: shared },
     );
@@ -158,6 +161,36 @@ describe('the sign-in rate limit', () => {
     expect(statuses).toEqual([201, 201, 201, 429]);
     expect(shared.keys).toHaveLength(3);
     expect((await register(freshAddress(), shared))?.status).toBe(201);
+  });
+
+  it('counts each day’s registrations in D1, only those that succeed', async () => {
+    const day = registrationDay();
+    const before = await registrationsOn(env.DB, day);
+
+    expect((await register(freshAddress(), sharedLimit(1_000)))?.status).toBe(201);
+    expect(await registrationsOn(env.DB, day)).toBe(before + 1);
+    const malformed = await register(freshAddress(), sharedLimit(1_000), { client_name: 'No Redirect' });
+    expect(malformed?.status).toBe(400);
+    expect(await registrationsOn(env.DB, day)).toBe(before + 1);
+  });
+
+  it('refuses registration once the day’s budget is spent, until 00:00 UTC', async () => {
+    const day = registrationDay();
+    await env.DB.prepare(
+      'INSERT INTO access_registration_days (day, registrations) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET registrations = excluded.registrations',
+    )
+      .bind(day, REGISTRATIONS_PER_DAY)
+      .run();
+    try {
+      const response = await register(freshAddress(), sharedLimit(1_000));
+      expect(response?.status).toBe(429);
+      expect(await response?.json()).toEqual({ error: 'registration_budget_spent' });
+      const retryAfter = Number(response?.headers.get('retry-after'));
+      expect(retryAfter).toBeGreaterThan(0);
+      expect(retryAfter).toBeLessThanOrEqual(86_400);
+    } finally {
+      await env.DB.prepare('DELETE FROM access_registration_days WHERE day = ?').bind(day).run();
+    }
   });
 
   it('leaves the resource metadata unlimited, since it reads nothing', async () => {

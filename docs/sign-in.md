@@ -174,7 +174,17 @@ Cloudflare's rate limiting binding, answer `429` once reached:
 These limits are approximate. Cloudflare counts each one separately in each
 of its locations, and a location can let a few more requests through before
 it refuses, so registrations from many locations can add up to more than 10
-a minute in all. Allow for that when estimating D1 writes.
+a minute in all.
+
+So agent registration also has a daily budget that holds across every
+location: at most 100 agents register in one UTC day
+(`REGISTRATIONS_PER_DAY` in `src/access/grants.ts`). The count is kept in D1,
+in `access_registration_days`, and only a registration that succeeds counts.
+Once it is spent, registration answers `429` with
+`{"error":"registration_budget_spent"}` and a `Retry-After` of the seconds
+until 00:00 UTC. A registration writes a handful of rows, so the budget keeps
+registrations to well under 1% of the free plan's 100,000 rows written a day.
+Registrations checked at the same moment can pass the budget by a few.
 
 | Route | Answer |
 |---|---|
@@ -205,6 +215,7 @@ make or revoke; an agent or a service gets `403` with `{"error":"owner_only"}`.
 | `auth_oauth_resource`, `auth_oauth_client_resource`, `auth_oauth_client_assertion` | The MCP endpoint as a protected resource, and other OAuth provider records |
 | `access_agent_grants` | The projects each agent may reach for the owner who approved it |
 | `access_service_credentials`, `access_service_grants` | Service credentials, with the SHA-256 of each secret, and their projects |
+| `access_registration_days` | How many agents registered on each UTC day, for the daily registration budget |
 
 The task store holds no sign-in data: it records the actor name and model the
 API passes it, and the retry principal as an opaque string.
