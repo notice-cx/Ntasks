@@ -30,7 +30,7 @@ flowchart LR
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | A placeholder page |
 | MCP endpoint for agents | | Not yet |
-| Sign-in | | Not yet |
+| Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Owner sign-in with GitHub, OAuth 2.1 for AI agents, service credentials, and the token verifier every route calls ([Sign-in](sign-in.md)) |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
 AI agents call tools on a server. Ntasks will offer its task operations, such
@@ -39,8 +39,9 @@ as listing ready work or claiming a task, as MCP tools.
 ## How a request is routed
 
 The Worker's configuration, [`wrangler.jsonc`](../workers/api/wrangler.jsonc),
-lists the paths the Worker answers in `assets.run_worker_first`: `/healthz`
-and every path under `/api/`. Any other path is a file from the web app's
+lists the paths the Worker answers in `assets.run_worker_first`: `/healthz`,
+every path under `/api/`, the sign-in pages and the OAuth discovery documents
+([Sign-in](sign-in.md#routes)). Any other path is a file from the web app's
 build. A page address with no file of its own returns the app's `index.html`,
 and the app shows that page in the browser.
 [`workers/api/test/node/routing.ts`](../workers/api/test/node/routing.ts)
@@ -53,18 +54,20 @@ the app asks the API for everything it shows.
 ## Who connects, and how they sign in
 
 Ntasks is designed to be reachable from the internet, so authentication is its
-boundary. Every API and MCP request will name who sends it, and the Worker
-will check what that sender may do in the project the request names. Only the
-health check and the sign-in steps themselves answer without it.
+boundary. Every API and MCP request names who sends it, and the Worker checks
+what that sender may do in the project the request names. Only the health
+check and the sign-in steps themselves answer without it.
 
-- **People** will sign in in the browser.
-- **AI agents** will connect with OAuth 2.1, the sign-in method MCP clients
-  use, and the person approves which projects each agent may reach.
-- **Services**, such as a NoticeOS installation, will use a named credential
-  with access to named projects, which the owner can revoke.
+- **The owner** signs in in the browser with an allowlisted GitHub account.
+- **AI agents** connect with OAuth 2.1, the sign-in method MCP clients use,
+  and the owner approves which projects each agent may reach.
+- **Services**, such as a NoticeOS installation, use a named credential with
+  access to named projects, which the owner can revoke.
 
-None of this is built yet; [SECURITY.md](../SECURITY.md) says what that means
-for a deployment.
+[Sign-in](sign-in.md) describes each, the check made on every request, and
+how to cut a caller off. The API and MCP routes that make that check are not
+built yet; [SECURITY.md](../SECURITY.md) says what that means for a
+deployment.
 
 ## The free-plan budget
 

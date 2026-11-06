@@ -30,7 +30,7 @@ contributors working on the engine, the API or the import from Beads. Read
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 
 A task's parent is the `parent_id` column, not a link. Sign-in and access
-grants have their own tables, in their own migration.
+grants have their own tables, in their own migration ([Sign-in](sign-in.md#tables)).
 
 ## Rules the database enforces
 

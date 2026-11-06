@@ -36,10 +36,11 @@ Ntasks is under construction. The repository holds its skeleton:
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | The database tables and the rules the database enforces |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API, MCP endpoint, sign-in | Being built |
+| Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
+| API, MCP endpoint | Being built |
 
-Until sign-in is built, a deployed Ntasks has no access control; do not store
-real tasks in one. [SECURITY.md](SECURITY.md) has the details.
+Until the API is built, a deployed Ntasks serves no task data.
+[SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 
@@ -50,6 +51,8 @@ real tasks in one. [SECURITY.md](SECURITY.md) has the details.
   rules every change keeps.
 - [The task store](docs/task-store.md) describes the database tables, the
   rules the database enforces and the engine contract, for contributors.
+- [Sign-in](docs/sign-in.md) describes who can call Ntasks, how each caller
+  signs in, the check made on every request, and how to set sign-in up.
 
 ## Run it locally
 
