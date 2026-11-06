@@ -163,4 +163,5 @@ describe.
 | Labels, comments, metadata and the full history of every task | |
 
 An import from Beads refuses a task that uses something out of scope and
-names it, rather than dropping it.
+names it, rather than dropping it. [`tools/migrate`](../tools/migrate/README.md)
+is that import, with the export before it and a verifier after.

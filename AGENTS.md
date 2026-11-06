@@ -24,6 +24,7 @@ invariants. A change that weakens one is the owner's decision, not a refactor.
 | `apps/web/` | The web app. Its build in `dist/` is the Worker's static assets |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The test that `pnpm lint` reports the mistakes it exists to catch. The lint configuration itself is `eslint.config.js` at the root |
+| `tools/migrate/` | The export from a Beads hub on Dolt, the import into D1 and the verifier |
 | `docs/` | Concepts and architecture |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
