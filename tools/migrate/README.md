@@ -1,18 +1,28 @@
 # @ntasks/migrate
 
 Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
-Dolt into Ntasks' D1 database, with its full history. Three commands do it:
+Dolt into the Ntasks task store, with its full history. **Dolt** is the
+versioned SQL database Beads stores tasks in. The **task store** is the
+Durable Object that holds Ntasks' tasks in its own SQLite database
+([The task store](../../docs/task-store.md)). Three commands do it:
 
 | Command | Reads | Writes |
 |---|---|---|
-| `export` | The hub, through a Dolt SQL client, with read-only `SELECT` queries | One export file, readable only by its owner (mode 600). It never writes over an existing file |
-| `import` | The export file | A local D1 database, which must hold no projects or tasks |
-| `verify` | The export file and the D1 database | Nothing. It prints the comparison and fails on any difference |
+| `export` | The hub, through a Dolt SQL client, with read-only queries | One export file, readable only by its owner (mode 600). It never writes over an existing file |
+| `import` | The export file | With `--check`, nothing. With `--store`, a new local copy of the task store: a SQLite file with the store's schema |
+| `verify` | The export file and a store copy | Nothing. It prints the comparison and fails on any difference |
 
-`import` and `verify` use a local D1 database only: wrangler's `--local`
-with a `--persist-to` folder. Nothing here reaches Cloudflare. **Dolt** is
-the versioned SQL database Beads stores tasks in; **D1** is Cloudflare's
-SQLite database, which Ntasks uses.
+A store copy is made from the store's own migration files
+([`workers/api/src/store/migrations/`](../../workers/api/src/store/migrations/))
+and loaded with the same statements the store runs
+([`packages/domain/src/store-rows.ts`](../../packages/domain/src/store-rows.ts)),
+so a dry run needs no Worker and reaches nothing outside the machine.
+
+The task store loads an import itself with `importRows`, in one
+transaction, and returns each table's rows with `tableRows`
+([`workers/api/src/store/import.ts`](../../workers/api/src/store/import.ts)).
+No route reaches them yet: they are for an owner-only Worker route, which
+needs sign-in. Until then, the store's tests call them.
 
 ## Run a migration
 
@@ -32,32 +42,33 @@ Run each command from the repository root with the Node.js version in
    node tools/migrate/src/cli.ts export --hub hub.json --out export.json
    ```
 
-3. Check that the export imports. This prints every refusal, or what would be
-   written, and writes nothing:
+3. Check that the export imports. This prints every refusal, or what the
+   import holds, and writes nothing:
 
    ```sh
-   node tools/migrate/src/cli.ts import --from export.json --persist-to d1-folder --check
+   node tools/migrate/src/cli.ts import --from export.json --check
    ```
 
-4. Import it into a local D1 database in a new folder. The import applies
-   the Worker's migrations first, then writes every row:
+4. Import it into a new store copy:
 
    ```sh
-   node tools/migrate/src/cli.ts import --from export.json --persist-to d1-folder
+   node tools/migrate/src/cli.ts import --from export.json --store store.sqlite
    ```
 
-5. Verify the database against the export:
+5. Verify the store copy against the export:
 
    ```sh
-   node tools/migrate/src/cli.ts verify --from export.json --persist-to d1-folder
+   node tools/migrate/src/cli.ts verify --from export.json --store store.sqlite
    ```
 
-`import` and `verify` name the database `ntasks` from
-[`workers/api/wrangler.jsonc`](../../workers/api/wrangler.jsonc) unless
-`--database` and `--config` say otherwise. Both print the database's size
-against D1's 500 MB limit for one database.
+`import` and `verify` print what a store holding the import costs against
+the free plan's limits ([Architecture](../../docs/architecture.md)): its
+size, against the 5 GB that Durable Objects store, and the rows written to
+load it, against the 100,000 the task store may write in a day. The rows
+written count each row and each index entry on its table, so it is an upper
+bound.
 
-The export file holds the hub's task data. Keep it, and the D1 folder,
+The export file and the store copy hold the hub's task data. Keep them
 private, and delete them when the migration is done.
 
 ### The hub file
@@ -199,8 +210,8 @@ Data the import cannot carry whole:
 
 ## What the verifier checks
 
-[`src/verify.ts`](src/verify.ts) compares the D1 database with the export
-three ways:
+[`src/verify.ts`](src/verify.ts) compares a store with the export it was
+imported from, three ways:
 
 1. **Against the export's own rows:** tasks per project and status, every id,
    label, link, parent and comment, every close's time and reason, the
@@ -224,8 +235,8 @@ pnpm --filter @ntasks/migrate typecheck
 The tests use invented hubs only. [`test/fake-hub.ts`](test/fake-hub.ts)
 builds a hub commit by commit and records each change as Dolt would;
 [`test/scenario.ts`](test/scenario.ts) is a hub with claims, closes, an
-approval, a decision, a duplicate, a reopen and a link across projects. Most
-tests import into an in-memory SQLite database with the Worker's migrations;
-[`test/wrangler.test.ts`](test/wrangler.test.ts) imports and verifies through
-wrangler and a local D1 database. [`test/fake-dolt.mjs`](test/fake-dolt.mjs)
-stands in for the `dolt` client.
+approval, a decision, a duplicate, a reopen and a link across projects. The
+tests import into store copies in memory and in temporary files, and
+[`test/fake-dolt.mjs`](test/fake-dolt.mjs) stands in for the `dolt` client.
+The task store's own loading is tested in workerd, in
+[`workers/api/test/store-import.test.ts`](../../workers/api/test/store-import.test.ts).

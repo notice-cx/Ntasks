@@ -4,8 +4,9 @@
  *
  *   node tools/migrate/src/cli.ts export --hub <hub.json> --describe
  *   node tools/migrate/src/cli.ts export --hub <hub.json> --out <export.json>
- *   node tools/migrate/src/cli.ts import --from <export.json> --persist-to <folder> [--check]
- *   node tools/migrate/src/cli.ts verify --from <export.json> --persist-to <folder>
+ *   node tools/migrate/src/cli.ts import --from <export.json> --check
+ *   node tools/migrate/src/cli.ts import --from <export.json> --store <new-file.sqlite>
+ *   node tools/migrate/src/cli.ts verify --from <export.json> --store <file.sqlite>
  */
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -13,30 +14,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { readExport, type BeadsExport } from './beads.ts';
-import { localD1, type Database, type LocalD1 } from './d1.ts';
 import { doltClient } from './dolt-client.ts';
 import { describeExport, exportHub, readHubFile } from './export.ts';
+import { openLocalStore, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
-import { importStatements, oversizedStatements } from './sql.ts';
 import { verify } from './verify.ts';
 
-/** D1's largest database on the Workers Paid plan (developers.cloudflare.com/d1/platform/limits). */
-export const D1_DATABASE_LIMIT = 500 * 1000 * 1000;
-
-export const DEFAULT_CONFIG = fileURLToPath(new URL('../../../workers/api/wrangler.jsonc', import.meta.url));
+/** The free plan's limits an import meets (docs/architecture.md): data that Durable Objects store, in all, and rows the task store writes in a day. */
+export const FREE_PLAN = Object.freeze({ storedBytes: 5 * 1000 ** 3, rowsWrittenPerDay: 100_000 });
 
 export interface Io {
   readonly out: (line: string) => void;
   readonly err: (line: string) => void;
-  /** The database a command writes or reads; wrangler's local D1 unless a test supplies another. */
-  readonly database?: (target: LocalD1) => Database;
 }
 
 const USAGE = `Usage:
   cli.ts export --hub <hub.json> --describe
   cli.ts export --hub <hub.json> --out <export.json>
-  cli.ts import --from <export.json> --persist-to <folder> [--database ntasks] [--config <wrangler.jsonc>] [--check]
-  cli.ts verify --from <export.json> --persist-to <folder> [--database ntasks] [--config <wrangler.jsonc>]`;
+  cli.ts import --from <export.json> --check
+  cli.ts import --from <export.json> --store <new-file.sqlite>
+  cli.ts verify --from <export.json> --store <file.sqlite>`;
 
 class UsageError extends Error {}
 
@@ -44,14 +41,18 @@ function count(value: number): string {
   return value.toLocaleString('en-US');
 }
 
-function megabytes(bytes: number): string {
-  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+function share(part: number, whole: number): string {
+  return `${((part / whole) * 100).toFixed(1)}%`;
 }
 
-function sizeLine(bytes: number | null): string {
-  if (bytes === null) return 'Database size: unknown.';
-  const share = ((bytes / D1_DATABASE_LIMIT) * 100).toFixed(1);
-  return `Database size: ${megabytes(bytes)}, ${share}% of D1's 500 MB limit for one database.`;
+/** What a store holding the import costs against the free plan's limits. */
+function costLines(store: LocalStore): string[] {
+  const bytes = store.size();
+  const written = store.rowsWrittenAtMost();
+  return [
+    `Size: ${(bytes / 1_000_000).toFixed(1)} MB, ${share(bytes, FREE_PLAN.storedBytes)} of the 5 GB the free plan stores.`,
+    `Rows written to load it: at most ${count(written)}, ${share(written, FREE_PLAN.rowsWrittenPerDay)} of the 100,000 the free plan writes in a day.`,
+  ];
 }
 
 function printRefusals(refusals: readonly Refusal[], io: Io) {
@@ -66,10 +67,10 @@ function planSummary(plan: ImportPlan): string {
   return [
     `${count(plan.projects.length)} projects`,
     `${count(plan.tasks.length)} tasks`,
-    `${count(plan.events.length)} history events`,
-    `${count(plan.comments.length)} comments`,
-    `${count(plan.edges.length)} links`,
-    `${count(plan.labels.length)} labels`,
+    `${count(plan.task_events.length)} history events`,
+    `${count(plan.task_comments.length)} comments`,
+    `${count(plan.task_edges.length)} links`,
+    `${count(plan.task_labels.length)} labels`,
   ].join(', ');
 }
 
@@ -81,14 +82,6 @@ function option(values: Record<string, string | boolean | undefined>, name: stri
 
 async function loadExport(file: string): Promise<BeadsExport> {
   return readExport(await readFile(file, 'utf8'));
-}
-
-function target(values: Record<string, string | boolean | undefined>): LocalD1 {
-  return {
-    database: typeof values.database === 'string' ? values.database : 'ntasks',
-    persistTo: path.resolve(option(values, 'persist-to')),
-    config: path.resolve(typeof values.config === 'string' ? values.config : DEFAULT_CONFIG),
-  };
 }
 
 async function runExport(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
@@ -123,65 +116,63 @@ async function runExport(values: Record<string, string | boolean | undefined>, i
 
 async function runImport(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
   const data = await loadExport(option(values, 'from'));
+  const check = values.check === true;
+  const file = check ? ':memory:' : option(values, 'store');
+  if (check && values.store !== undefined) throw new UsageError('Give --check or --store, not both.');
   const { plan, refusals } = planImport(data);
   if (plan === null) {
     printRefusals(refusals, io);
     return 1;
   }
-  const statements = importStatements(plan);
-  const oversized = oversizedStatements(statements);
-  if (values.check === true) {
-    io.out(`The export imports: ${planSummary(plan)}. Nothing was written.`);
-    if (oversized > 0)
-      io.out(`${count(oversized)} statements are longer than D1 accepts from a remote client (100 KB).`);
+  const store = await openLocalStore(check ? file : path.resolve(file), { create: true });
+  try {
+    store.load(plan);
+    if (check) {
+      io.out(`The export imports: ${planSummary(plan)}. Nothing was written.`);
+    } else {
+      io.out(`Imported ${planSummary(plan)} into ${store.description}.`);
+    }
+    for (const line of costLines(store)) io.out(line);
+    if (!check) io.out('Next: run verify with the same --from and --store.');
     return 0;
+  } finally {
+    store.close();
   }
-  const where = target(values);
-  const db = (io.database ?? localD1)(where);
-  await db.migrate();
-  const [row] = await db.all('SELECT (SELECT COUNT(*) FROM projects) + (SELECT COUNT(*) FROM tasks) AS n');
-  if (Number(row?.n) !== 0) {
-    io.err(
-      `Refused: ${db.description} already holds projects or tasks. The import writes only into an empty database.`,
-    );
-    return 1;
-  }
-  await db.run(statements);
-  io.out(`Imported ${planSummary(plan)} into ${db.description}.`);
-  io.out(sizeLine(await db.size()));
-  if (oversized > 0) io.out(`${count(oversized)} statements are longer than D1 accepts from a remote client (100 KB).`);
-  io.out('Next: run verify with the same --from and --persist-to.');
-  return 0;
 }
 
 async function runVerify(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
   const data = await loadExport(option(values, 'from'));
+  const file = path.resolve(option(values, 'store'));
   const { plan, refusals } = planImport(data);
   if (plan === null) {
     io.err('The export does not import, so there is nothing to verify.');
     printRefusals(refusals, io);
     return 1;
   }
-  const db = (io.database ?? localD1)(target(values));
-  const report = await verify(data, plan, db);
-  const totals = report.totals;
-  io.out(`Verified ${db.description} against ${String(values.from)}.`);
-  io.out(
-    `D1 holds ${count(totals.projects)} projects, ${count(totals.tasks)} tasks, ${count(totals.events)} history events, ` +
-      `${count(totals.comments)} comments, ${count(totals.links)} links and ${count(totals.labels)} labels; ` +
-      `${count(report.approvals)} approvals, ${count(report.decisions)} decisions and ${count(report.frozenCards)} frozen cards among them.`,
-  );
-  io.out('Tasks per project and status (export / D1):');
-  for (const entry of report.counts)
-    io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
-  io.out(sizeLine(await db.size()));
-  if (report.differences.length === 0) {
-    io.out('0 differences.');
-    return 0;
+  const store = await openLocalStore(file, { create: false });
+  try {
+    const report = await verify(data, plan, (table) => store.read(table));
+    const totals = report.totals;
+    io.out(`Verified ${store.description} against ${String(values.from)}.`);
+    io.out(
+      `The store holds ${count(totals.projects)} projects, ${count(totals.tasks)} tasks, ${count(totals.events)} history events, ` +
+        `${count(totals.comments)} comments, ${count(totals.links)} links and ${count(totals.labels)} labels; ` +
+        `${count(report.approvals)} approvals, ${count(report.decisions)} decisions and ${count(report.frozenCards)} frozen cards among them.`,
+    );
+    io.out('Tasks per project and status (export / store):');
+    for (const entry of report.counts)
+      io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
+    for (const line of costLines(store)) io.out(line);
+    if (report.differences.length === 0) {
+      io.out('0 differences.');
+      return 0;
+    }
+    io.err(`${count(report.differences.length)} differences:`);
+    for (const difference of report.differences) io.err(`- ${difference.subject}: ${difference.difference}`);
+    return 1;
+  } finally {
+    store.close();
   }
-  io.err(`${count(report.differences.length)} differences:`);
-  for (const difference of report.differences) io.err(`- ${difference.subject}: ${difference.difference}`);
-  return 1;
 }
 
 export async function main(argv: readonly string[], io: Io): Promise<number> {
@@ -194,9 +185,7 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
         out: { type: 'string' },
         describe: { type: 'boolean' },
         from: { type: 'string' },
-        'persist-to': { type: 'string' },
-        database: { type: 'string' },
-        config: { type: 'string' },
+        store: { type: 'string' },
         check: { type: 'boolean' },
       },
       strict: true,

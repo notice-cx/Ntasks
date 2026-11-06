@@ -16,6 +16,8 @@ contributors working on the engine, the API or the import from Beads. Read
 | Engine contract | [`packages/domain/src/engine.ts`](../packages/domain/src/engine.ts) |
 | The engine | [`workers/api/src/engine/`](../workers/api/src/engine/) |
 | Lint rules, from Beads | [`packages/domain/src/lint.ts`](../packages/domain/src/lint.ts) |
+| The tables' rows, as an import writes and reads them | [`packages/domain/src/store-rows.ts`](../packages/domain/src/store-rows.ts) |
+| Loading an import from Beads | [`workers/api/src/store/import.ts`](../workers/api/src/store/import.ts) |
 | Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
 | Tests of the engine | [`workers/api/test/engine/`](../workers/api/test/engine/) |
 

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { main, type Io } from '../src/cli.ts';
 import { exportOf, scenario, t } from './scenario.ts';
 import { FakeHub, serverAnswers } from './fake-hub.ts';
 import { acmeHub, betaHub } from './scenario.ts';
-import { sqliteDatabase } from './sqlite.ts';
+import { DatabaseSync } from 'node:sqlite';
 
 const FAKE_DOLT = fileURLToPath(new URL('./fake-dolt.mjs', import.meta.url));
 
@@ -16,11 +17,11 @@ beforeEach(async () => {
   folder = await mkdtemp(path.join(tmpdir(), 'ntasks-migrate-test-'));
 });
 
-function io(database = sqliteDatabase()) {
+function io() {
   const out: string[] = [];
   const err: string[] = [];
-  const value: Io = { out: (line) => out.push(line), err: (line) => err.push(line), database: () => database };
-  return { io: value, out, err, database };
+  const value: Io = { out: (line) => out.push(line), err: (line) => err.push(line) };
+  return { io: value, out, err };
 }
 
 async function writeJson(name: string, value: unknown): Promise<string> {
@@ -88,44 +89,50 @@ describe('export', () => {
 });
 
 describe('import and verify', () => {
-  it('checks an export without writing anything', async () => {
+  const COST = [
+    /^Size: 0\.\d MB, 0\.0% of the 5 GB the free plan stores\.$/u,
+    /^Rows written to load it: at most \d+, \d+\.\d% of the 100,000 the free plan writes in a day\.$/u,
+  ];
+
+  it('checks an export against the store schema without writing anything', async () => {
     const from = await writeJson('export.json', scenario());
     const run = io();
-    expect(await main(['import', '--from', from, '--persist-to', folder, '--check'], run.io)).toBe(0);
-    expect(run.out).toEqual([
+    expect(await main(['import', '--from', from, '--check'], run.io), run.err.join('\n')).toBe(0);
+    expect(run.out[0]).toBe(
       'The export imports: 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels. Nothing was written.',
-    ]);
-    expect(await run.database.all("SELECT name FROM sqlite_master WHERE name = 'tasks'")).toEqual([]);
+    );
+    expect(run.out.slice(1)).toEqual([expect.stringMatching(COST[0]!), expect.stringMatching(COST[1]!)]);
   });
 
-  it('imports into an empty database, verifies it, and refuses to import twice', async () => {
+  it('imports into a new store copy, verifies it, and never writes over a store file', async () => {
     const from = await writeJson('export.json', scenario());
+    const store = path.join(folder, 'store.sqlite');
     const run = io();
-    expect(await main(['import', '--from', from, '--persist-to', folder], run.io)).toBe(0);
+    expect(await main(['import', '--from', from, '--store', store], run.io), run.err.join('\n')).toBe(0);
     expect(run.out[0]).toBe(
-      'Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the test database.',
+      `Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the store copy ${store}.`,
     );
-    expect(run.out[1]).toMatch(/^Database size: 0\.\d MB, 0\.0% of D1's 500 MB limit for one database\.$/u);
+    expect(run.out[1]).toMatch(COST[0]!);
 
-    const check = io(run.database);
-    expect(await main(['verify', '--from', from, '--persist-to', folder], check.io)).toBe(0);
+    const check = io();
+    expect(await main(['verify', '--from', from, '--store', store], check.io), check.err.join('\n')).toBe(0);
     expect(check.out).toContain('0 differences.');
     expect(check.out).toContain('  acme.example.com  closed: 4 / 4');
 
-    const twice = io(run.database);
-    expect(await main(['import', '--from', from, '--persist-to', folder], twice.io)).toBe(1);
-    expect(twice.err).toEqual([
-      'Refused: the test database already holds projects or tasks. The import writes only into an empty database.',
-    ]);
+    const twice = io();
+    expect(await main(['import', '--from', from, '--store', store], twice.io)).toBe(1);
+    expect(twice.err).toEqual([`${store} already exists. The import writes only a new store file.`]);
   });
 
-  it('lists the differences and fails when the database differs', async () => {
+  it('lists the differences and fails when the store differs', async () => {
     const from = await writeJson('export.json', scenario());
-    const run = io();
-    await main(['import', '--from', from, '--persist-to', folder], run.io);
-    run.database.raw.exec("DELETE FROM task_labels WHERE task_id = 'acme-e1.1'");
-    const check = io(run.database);
-    expect(await main(['verify', '--from', from, '--persist-to', folder], check.io)).toBe(1);
+    const store = path.join(folder, 'store.sqlite');
+    await main(['import', '--from', from, '--store', store], io().io);
+    const raw = new DatabaseSync(store);
+    raw.exec("DELETE FROM task_labels WHERE task_id = 'acme-e1.1'");
+    raw.close();
+    const check = io();
+    expect(await main(['verify', '--from', from, '--store', store], check.io)).toBe(1);
     expect(check.err[0]).toMatch(/^\d+ differences:$/u);
     expect(check.err).toContain('- acme-e1.1: label content is missing');
   });
@@ -138,19 +145,23 @@ describe('import and verify', () => {
       c.link('web-a1', 'web-a2', 'waits-for');
     });
     const from = await writeJson('export.json', exportOf(hub));
+    const store = path.join(folder, 'store.sqlite');
     const run = io();
-    expect(await main(['import', '--from', from, '--persist-to', folder], run.io)).toBe(1);
+    expect(await main(['import', '--from', from, '--store', store], run.io)).toBe(1);
     expect(run.err).toEqual([
       'Refused: 1 problems in 1 tasks or projects. Nothing was written.',
       '- web-a1: its link to web-a2 has the type waits-for, which is out of scope',
     ]);
-    expect(await run.database.all("SELECT name FROM sqlite_master WHERE name = 'tasks'")).toEqual([]);
+    expect(existsSync(store)).toBe(false);
   });
 
   it('explains how to call it when the command is wrong', async () => {
     const run = io();
-    expect(await main(['import', '--persist-to', folder], run.io)).toBe(2);
+    expect(await main(['import', '--check'], run.io)).toBe(2);
     expect(run.err[0]).toContain('--from is required.');
+    const from = await writeJson('export.json', scenario());
+    expect(await main(['import', '--from', from], run.io)).toBe(2);
+    expect(await main(['import', '--from', from, '--check', '--store', 'x.sqlite'], run.io)).toBe(2);
     expect(await main(['launch'], run.io)).toBe(2);
     expect(await main(['verify', '--nope'], run.io)).toBe(2);
   });

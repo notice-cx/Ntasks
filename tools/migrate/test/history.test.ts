@@ -4,7 +4,7 @@ import { scenario, t } from './scenario.ts';
 
 function eventsOf(taskId: string) {
   const { plan } = planImport(scenario());
-  return plan!.events
+  return plan!.task_events
     .filter((event) => event.task_id === taskId)
     .map((event) => ({ ...event, changes: JSON.parse(event.changes) }));
 }

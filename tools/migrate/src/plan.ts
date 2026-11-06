@@ -3,7 +3,16 @@
  * file, or the refusals that stop it. Nothing is written unless the whole
  * export maps, so an import is complete or does not happen.
  */
-import type { DependencyType } from '@ntasks/domain';
+import type {
+  CommentRow,
+  DependencyType,
+  EdgeRow,
+  EventRow,
+  LabelRow,
+  ProjectRow,
+  StoreRows,
+  TaskRow,
+} from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './beads.ts';
 import {
   projectComments,
@@ -22,83 +31,8 @@ export interface Refusal {
   readonly reason: string;
 }
 
-export interface ProjectRow {
-  readonly id: string;
-  readonly key: string;
-  readonly name: string;
-  readonly prefix: string;
-  readonly created_at: string;
-}
-
-export interface TaskRow {
-  readonly id: string;
-  readonly project_id: string;
-  readonly parent_id: string | null;
-  readonly type: string;
-  readonly await_type: string | null;
-  readonly status: string;
-  readonly priority: number;
-  readonly title: string;
-  readonly description: string;
-  readonly acceptance: string;
-  readonly assignee: string | null;
-  readonly assignee_model: string | null;
-  readonly defer_until: string | null;
-  readonly due_at: string | null;
-  readonly choices: string | null;
-  readonly choice: string | null;
-  readonly metadata: string;
-  readonly filed_by: string | null;
-  readonly filed_model: string | null;
-  readonly close_reason: string | null;
-  readonly resolution: string | null;
-  readonly duplicate_of: string | null;
-  readonly closed_by: string | null;
-  readonly closed_model: string | null;
-  readonly version: number;
-  readonly created_at: string;
-  readonly updated_at: string;
-  readonly started_at: string | null;
-  readonly closed_at: string | null;
-}
-
-export interface EdgeRow {
-  readonly task_id: string;
-  readonly depends_on_id: string;
-  readonly type: DependencyType;
-  readonly created_at: string;
-  readonly created_by: string | null;
-}
-
-export interface EventRow {
-  /** The order the import inserts it in, from 1; the database gives the same numbers to an empty `task_events`. */
-  readonly seq: number;
-  readonly task_id: string;
-  readonly project_id: string;
-  readonly version: number;
-  readonly kind: string;
-  readonly actor: string;
-  readonly model: string | null;
-  readonly at: string;
-  readonly changes: string;
-}
-
-export interface ImportPlan {
-  readonly projects: readonly ProjectRow[];
-  /** A parent and a task closed as its duplicate come before the tasks that name them. */
-  readonly tasks: readonly TaskRow[];
-  readonly labels: readonly { readonly task_id: string; readonly label: string }[];
-  readonly edges: readonly EdgeRow[];
-  readonly comments: readonly {
-    readonly id: string;
-    readonly task_id: string;
-    readonly author: string;
-    readonly text: string;
-    readonly created_at: string;
-  }[];
-  /** In the order of their sequence numbers. */
-  readonly events: readonly EventRow[];
-}
+/** Every row the import writes, in the task store's tables. */
+export type ImportPlan = StoreRows;
 
 /** Tables Beads keeps for its own bookkeeping, with no task data the import needs. */
 const BOOKKEEPING_TABLES = new Set([
@@ -364,9 +298,9 @@ export function planImport(data: BeadsExport): {
   if (refusals.length > 0 || order === null) return { plan: null, refusals: sortRefusals(refusals) };
 
   const tasks: TaskRow[] = [];
-  const labels: { task_id: string; label: string }[] = [];
+  const labels: LabelRow[] = [];
   const edges: EdgeRow[] = [];
-  const comments: ImportPlan['comments'][number][] = [];
+  const comments: CommentRow[] = [];
   const perTask: EventRecord[][] = [];
   for (const taskId of order) {
     const history = histories.get(taskId)!;
@@ -416,7 +350,10 @@ export function planImport(data: BeadsExport): {
     at: event.at,
     changes: JSON.stringify(event.changes),
   }));
-  return { plan: { projects, tasks, labels, edges, comments, events }, refusals: [] };
+  return {
+    plan: { projects, tasks, task_labels: labels, task_edges: edges, task_comments: comments, task_events: events },
+    refusals: [],
+  };
 }
 
 function sortRefusals(refusals: readonly Refusal[]): Refusal[] {

@@ -1,25 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { readExport } from '../src/beads.ts';
 import { exportHub } from '../src/export.ts';
+import { openLocalStore, type LocalStore } from '../src/local-store.ts';
 import { planImport, type ImportPlan } from '../src/plan.ts';
-import { importStatements } from '../src/sql.ts';
 import { verify } from '../src/verify.ts';
 import { fakeServer } from './fake-hub.ts';
 import { acmeHub, betaHub, scenario } from './scenario.ts';
-import { sqliteDatabase } from './sqlite.ts';
+
+/** A store copy in memory with the plan loaded, by the statements the task store runs. */
+async function loaded(plan: ImportPlan): Promise<LocalStore> {
+  const store = await openLocalStore(':memory:', { create: true });
+  store.load(plan);
+  return store;
+}
 
 async function imported() {
   const data = scenario();
   const { plan, refusals } = planImport(data);
   expect(refusals).toEqual([]);
-  const db = sqliteDatabase();
-  await db.migrate();
-  await db.run(importStatements(plan!));
-  return { data, plan: plan!, db };
+  const store = await loaded(plan!);
+  const all = (sql: string) => store.raw.prepare(sql).all() as Record<string, unknown>[];
+  return { data, plan: plan!, store, db: { all } };
 }
 
+const reader = (store: LocalStore) => (table: Parameters<LocalStore['read']>[0]) => store.read(table);
+
 describe('export, import and verify', () => {
-  it('carries a hub into D1 with zero differences', async () => {
+  it('carries a hub into the task store with zero differences', async () => {
     const acme = acmeHub();
     const beta = betaHub();
     const hub = {
@@ -31,10 +38,8 @@ describe('export, import and verify', () => {
     const data = readExport(JSON.stringify(exported));
     const { plan, refusals } = planImport(data);
     expect(refusals).toEqual([]);
-    const db = sqliteDatabase();
-    await db.migrate();
-    await db.run(importStatements(plan!));
-    const report = await verify(data, plan!, db);
+    const store = await loaded(plan!);
+    const report = await verify(data, plan!, reader(store));
     expect(report.differences).toEqual([]);
     expect(report.totals).toEqual({
       projects: 2,
@@ -42,7 +47,7 @@ describe('export, import and verify', () => {
       labels: 2,
       links: 5,
       comments: 4,
-      events: plan!.events.length,
+      events: plan!.task_events.length,
     });
     expect(report.approvals).toBe(1);
     expect(report.decisions).toBe(1);
@@ -189,22 +194,22 @@ describe('export, import and verify', () => {
   it('numbers history events in time order across every task', async () => {
     const { db, plan } = await imported();
     const events = await db.all('SELECT seq, at FROM task_events ORDER BY seq');
-    expect(events.map((event) => event.seq)).toEqual(plan.events.map((event) => event.seq));
+    expect(events.map((event) => event.seq)).toEqual(plan.task_events.map((event) => event.seq));
     const times = events.map((event) => String(event.at));
     expect(times).toEqual([...times].sort());
   });
 });
 
 describe('the verifier', () => {
-  async function differencesAfter(change: (db: ReturnType<typeof sqliteDatabase>, plan: ImportPlan) => void) {
-    const { data, plan, db } = await imported();
-    change(db, plan);
-    return (await verify(data, plan, db)).differences;
+  async function differencesAfter(change: (store: LocalStore) => void) {
+    const { data, plan, store } = await imported();
+    change(store);
+    return (await verify(data, plan, reader(store))).differences;
   }
 
   it('reports a missing label', async () => {
-    const differences = await differencesAfter((db) =>
-      db.raw.exec("DELETE FROM task_labels WHERE task_id = 'acme-t1'"),
+    const differences = await differencesAfter((store) =>
+      store.raw.exec("DELETE FROM task_labels WHERE task_id = 'acme-t1'"),
     );
     expect(differences).toContainEqual({ subject: 'acme-t1', difference: 'label backend is missing' });
     expect(
@@ -215,8 +220,8 @@ describe('the verifier', () => {
   });
 
   it('reports a changed task, against the export, the plan and its own history', async () => {
-    const differences = await differencesAfter((db) =>
-      db.raw.exec("UPDATE tasks SET title = 'Edited', version = version + 1 WHERE id = 'acme-t2'"),
+    const differences = await differencesAfter((store) =>
+      store.raw.exec("UPDATE tasks SET title = 'Edited', version = version + 1 WHERE id = 'acme-t2'"),
     );
     expect(differences).toEqual(
       expect.arrayContaining([
@@ -229,9 +234,9 @@ describe('the verifier', () => {
   });
 
   it('reports a missing link and a comment not in the export', async () => {
-    const differences = await differencesAfter((db) => {
-      db.raw.exec("DELETE FROM task_edges WHERE task_id = 'acme-t2'");
-      db.raw.exec(
+    const differences = await differencesAfter((store) => {
+      store.raw.exec("DELETE FROM task_edges WHERE task_id = 'acme-t2'");
+      store.raw.exec(
         "INSERT INTO task_comments (id, task_id, author, text, created_at) VALUES ('k-9999', 'beta-x1', 'someone', 'Extra', '2026-03-03T00:00:00.000Z')",
       );
     });
@@ -244,24 +249,20 @@ describe('the verifier', () => {
     );
   });
 
-  it('reports a task missing from D1 in the counts', async () => {
+  it('reports a task missing from the store in the counts', async () => {
     const { data, plan } = await imported();
-    const partial = sqliteDatabase();
-    await partial.migrate();
-    const without = {
+    const partial = await loaded({
       ...plan,
       tasks: plan.tasks.filter((task) => task.id !== 'beta-x2'),
-      labels: plan.labels,
-      edges: plan.edges.filter((e) => e.task_id !== 'beta-x2'),
-      comments: plan.comments.filter((c) => c.task_id !== 'beta-x2'),
-      events: plan.events.filter((e) => e.task_id !== 'beta-x2'),
-    };
-    await partial.run(importStatements(without));
-    const report = await verify(data, plan, partial);
+      task_edges: plan.task_edges.filter((e) => e.task_id !== 'beta-x2'),
+      task_comments: plan.task_comments.filter((c) => c.task_id !== 'beta-x2'),
+      task_events: plan.task_events.filter((e) => e.task_id !== 'beta-x2'),
+    });
+    const report = await verify(data, plan, reader(partial));
     expect(report.counts).toContainEqual({ project: 'beta.example.com', status: 'open', expected: 2, actual: 1 });
     expect(report.differences).toEqual(
       expect.arrayContaining([
-        { subject: 'project beta.example.com', difference: '2 tasks are open in the export, 1 in D1' },
+        { subject: 'project beta.example.com', difference: '2 tasks are open in the export, 1 in the store' },
         { subject: 'project beta.example.com', difference: 'task beta-x2 is missing' },
         { subject: 'beta-x2', difference: 'comment k-0100 is missing' },
       ]),

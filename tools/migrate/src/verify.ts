@@ -1,5 +1,5 @@
 /**
- * The verifier: compares a D1 database with the export it was imported from.
+ * The verifier: compares the task store with the export it was imported from.
  *
  * It checks three ways, so a mistake in one is caught by another:
  *
@@ -12,9 +12,8 @@
  *    the task as it stands, with one version per change.
  */
 import { isTaskId } from '@ntasks/domain';
-import type { Json, JsonObject } from '@ntasks/domain';
+import type { Json, JsonObject, StoreTable } from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport } from './beads.ts';
-import type { Database, Row } from './d1.ts';
 import { isJsonObject, sameJson, stableJson } from './json.ts';
 import type { ImportPlan } from './plan.ts';
 import { COLUMN_METADATA_KEYS, linkTarget, sortLinks } from './task-state.ts';
@@ -42,27 +41,29 @@ export interface VerifyReport {
 
 const IN_SCOPE_LINKS = new Set(['blocks', 'related', 'discovered-from', 'parent-child']);
 
-interface D1Contents {
-  readonly projects: Row[];
-  readonly tasks: Row[];
-  readonly labels: Row[];
-  readonly edges: Row[];
-  readonly comments: Row[];
-  readonly events: Row[];
+/** One row of the store, as it reads back. */
+export type Row = Record<string, unknown>;
+
+/** Reads one table of the store whose import is verified: a local copy of it (local-store.ts), or the store itself. */
+export type StoreReader = (table: StoreTable) => Promise<readonly Row[]> | readonly Row[];
+
+interface StoreContents {
+  readonly projects: readonly Row[];
+  readonly tasks: readonly Row[];
+  readonly labels: readonly Row[];
+  readonly edges: readonly Row[];
+  readonly comments: readonly Row[];
+  readonly events: readonly Row[];
 }
 
-async function readD1(db: Database): Promise<D1Contents> {
+async function readStore(read: StoreReader): Promise<StoreContents> {
   return {
-    projects: await db.all('SELECT id, key, name, prefix, created_at FROM projects ORDER BY id'),
-    tasks: await db.all('SELECT * FROM tasks ORDER BY id'),
-    labels: await db.all('SELECT task_id, label FROM task_labels ORDER BY task_id, label'),
-    edges: await db.all(
-      'SELECT task_id, depends_on_id, type, created_at, created_by FROM task_edges ORDER BY task_id, depends_on_id',
-    ),
-    comments: await db.all('SELECT id, task_id, author, text, created_at FROM task_comments ORDER BY id'),
-    events: await db.all(
-      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq',
-    ),
+    projects: await read('projects'),
+    tasks: await read('tasks'),
+    labels: await read('task_labels'),
+    edges: await read('task_edges'),
+    comments: await read('task_comments'),
+    events: await read('task_events'),
   };
 }
 
@@ -70,7 +71,7 @@ function parse(text: unknown): Json {
   return typeof text === 'string' ? (JSON.parse(text) as Json) : null;
 }
 
-/** The task as D1 holds it, in the shape its history records. */
+/** The task as the store holds it, in the shape its history records. */
 function storedState(task: Row, labels: readonly string[], edges: readonly Row[]): JsonObject {
   const closed = task.status === 'closed';
   return {
@@ -139,25 +140,25 @@ function groupRows(rows: readonly Row[], column: string): Map<string, Row[]> {
 /** Check 1: the database against the export's rows. */
 function againstExport(
   data: BeadsExport,
-  d1: D1Contents,
+  held: StoreContents,
   out: Difference[],
 ): { counts: StatusCount[]; approvals: number; decisions: number; frozenCards: number } {
   const counts: StatusCount[] = [];
-  const tasksById = new Map(d1.tasks.map((task) => [String(task.id), task]));
-  const labelsByTask = groupRows(d1.labels, 'task_id');
-  const edgesByTask = groupRows(d1.edges, 'task_id');
-  const commentsById = new Map(d1.comments.map((comment) => [String(comment.id), comment]));
+  const tasksById = new Map(held.tasks.map((task) => [String(task.id), task]));
+  const labelsByTask = groupRows(held.labels, 'task_id');
+  const edgesByTask = groupRows(held.edges, 'task_id');
+  const commentsById = new Map(held.comments.map((comment) => [String(comment.id), comment]));
   let approvals = 0;
   let decisions = 0;
   let frozenCards = 0;
 
-  for (const task of d1.tasks)
+  for (const task of held.tasks)
     if (!isTaskId(task.id))
       out.push({ subject: String(task.id), difference: 'its id is not a task id Ntasks accepts' });
 
   for (const project of data.projects) {
     const subject = `project ${project.key}`;
-    const stored = d1.projects.find((row) => row.id === project.id);
+    const stored = held.projects.find((row) => row.id === project.id);
     if (stored === undefined) out.push({ subject, difference: `project ${project.id} is missing` });
     else if (stored.key !== project.key || stored.name !== project.name || stored.prefix !== project.prefix) {
       out.push({ subject, difference: 'its key, name or prefix differs' });
@@ -169,7 +170,7 @@ function againstExport(
       expected.set(status, (expected.get(status) ?? 0) + 1);
     }
     const actual = new Map<string, number>();
-    for (const task of d1.tasks) {
+    for (const task of held.tasks) {
       if (task.project_id === project.id) actual.set(String(task.status), (actual.get(String(task.status)) ?? 0) + 1);
     }
     for (const status of [...new Set([...expected.keys(), ...actual.keys()])].sort()) {
@@ -181,13 +182,16 @@ function againstExport(
       };
       counts.push(count);
       if (count.expected !== count.actual)
-        out.push({ subject, difference: `${count.expected} tasks are ${status} in the export, ${count.actual} in D1` });
+        out.push({
+          subject,
+          difference: `${count.expected} tasks are ${status} in the export, ${count.actual} in the store`,
+        });
     }
     compareSets(
       subject,
       'task',
       project.rows.issues.map((issue) => textOf(issue.id) ?? ''),
-      d1.tasks.filter((task) => task.project_id === project.id).map((task) => String(task.id)),
+      held.tasks.filter((task) => task.project_id === project.id).map((task) => String(task.id)),
       out,
     );
 
@@ -287,7 +291,7 @@ function againstExport(
   const exported = new Set(
     data.projects.flatMap((project) => project.rows.comments.map((row) => textOf(row.id) ?? '')),
   );
-  for (const comment of d1.comments) {
+  for (const comment of held.comments) {
     if (!exported.has(String(comment.id)))
       out.push({ subject: String(comment.task_id), difference: `comment ${String(comment.id)} is not in the export` });
   }
@@ -295,7 +299,7 @@ function againstExport(
 }
 
 /** Check 2: every table against the import plan, row by row. */
-function againstPlan(plan: ImportPlan, d1: D1Contents, out: Difference[]) {
+function againstPlan(plan: ImportPlan, held: StoreContents, out: Difference[]) {
   const compare = (
     table: string,
     expected: readonly object[],
@@ -324,36 +328,42 @@ function againstPlan(plan: ImportPlan, d1: D1Contents, out: Difference[]) {
   compare(
     'projects',
     plan.projects,
-    d1.projects,
+    held.projects,
     (row) => String(row.id),
     (row) => `project ${String(row.key)}`,
   );
   compare(
     'tasks',
     plan.tasks,
-    d1.tasks,
+    held.tasks,
     (row) => String(row.id),
     (row) => String(row.id),
   );
-  compare('task_labels', plan.labels, d1.labels, (row) => `${String(row.task_id)} ${String(row.label)}`, task);
-  compare('task_edges', plan.edges, d1.edges, (row) => `${String(row.task_id)} -> ${String(row.depends_on_id)}`, task);
-  compare('task_comments', plan.comments, d1.comments, (row) => String(row.id), task);
+  compare('task_labels', plan.task_labels, held.labels, (row) => `${String(row.task_id)} ${String(row.label)}`, task);
+  compare(
+    'task_edges',
+    plan.task_edges,
+    held.edges,
+    (row) => `${String(row.task_id)} -> ${String(row.depends_on_id)}`,
+    task,
+  );
+  compare('task_comments', plan.task_comments, held.comments, (row) => String(row.id), task);
   compare(
     'task_events',
-    plan.events.map((event) => ({ ...event, changes: parse(event.changes) })),
-    d1.events.map((event) => ({ ...event, changes: parse(event.changes) })),
+    plan.task_events.map((event) => ({ ...event, changes: parse(event.changes) })),
+    held.events.map((event) => ({ ...event, changes: parse(event.changes) })),
     (row) => String(row.seq),
     task,
   );
 }
 
 /** Check 3: each task's history, replayed, rebuilds the task. */
-function againstHistory(d1: D1Contents, out: Difference[]) {
-  const eventsByTask = groupRows(d1.events, 'task_id');
-  const labelsByTask = groupRows(d1.labels, 'task_id');
-  const edgesByTask = groupRows(d1.edges, 'task_id');
-  const commentsByTask = groupRows(d1.comments, 'task_id');
-  for (const task of d1.tasks) {
+function againstHistory(held: StoreContents, out: Difference[]) {
+  const eventsByTask = groupRows(held.events, 'task_id');
+  const labelsByTask = groupRows(held.labels, 'task_id');
+  const edgesByTask = groupRows(held.edges, 'task_id');
+  const commentsByTask = groupRows(held.comments, 'task_id');
+  for (const task of held.tasks) {
     const id = String(task.id);
     const differ = (difference: string) => out.push({ subject: id, difference });
     const events = eventsByTask.get(id) ?? [];
@@ -406,23 +416,23 @@ function againstHistory(d1: D1Contents, out: Difference[]) {
   }
 }
 
-export async function verify(data: BeadsExport, plan: ImportPlan, db: Database): Promise<VerifyReport> {
-  const d1 = await readD1(db);
+export async function verify(data: BeadsExport, plan: ImportPlan, read: StoreReader): Promise<VerifyReport> {
+  const held = await readStore(read);
   const differences: Difference[] = [];
-  const fromExport = againstExport(data, d1, differences);
-  againstPlan(plan, d1, differences);
-  againstHistory(d1, differences);
+  const fromExport = againstExport(data, held, differences);
+  againstPlan(plan, held, differences);
+  againstHistory(held, differences);
   const unique = new Map(differences.map((difference) => [stableJson(difference), difference]));
   return {
     differences: [...unique.values()],
     counts: fromExport.counts,
     totals: {
-      projects: d1.projects.length,
-      tasks: d1.tasks.length,
-      labels: d1.labels.length,
-      links: d1.edges.length,
-      comments: d1.comments.length,
-      events: d1.events.length,
+      projects: held.projects.length,
+      tasks: held.tasks.length,
+      labels: held.labels.length,
+      links: held.edges.length,
+      comments: held.comments.length,
+      events: held.events.length,
     },
     approvals: fromExport.approvals,
     decisions: fromExport.decisions,
