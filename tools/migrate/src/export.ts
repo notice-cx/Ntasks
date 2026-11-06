@@ -30,8 +30,11 @@ export interface HubProject {
   /** The project's key and name in Ntasks. */
   readonly key: string;
   readonly name: string;
-  /** When given, the export refuses a database whose `_project_id` differs. */
+  /** The project's id in Ntasks. Give the NoticeOS project id, so the ids agents use keep
+   * working; left out, it is the database's own `_project_id`. */
   readonly id?: string;
+  /** When given, the export refuses a database whose `_project_id` differs. */
+  readonly beadsProjectId?: string;
   /** When given, the export refuses a database whose `issue_prefix` differs. */
   readonly prefix?: string;
 }
@@ -82,15 +85,27 @@ export function readHubFile(json: string): HubFile {
     throw new Error('projects must list at least one project.');
   const projects = value.projects.map((entry, index): HubProject => {
     if (!isJsonObject(entry)) throw new Error(`projects[${index}] must be an object.`);
-    const { database, key, name, id, prefix } = entry;
+    const { database, key, name, id, beadsProjectId, prefix } = entry;
     if (typeof database !== 'string' || !DATABASE.test(database))
       throw new Error(`projects[${index}].database must be a database name.`);
     if (typeof key !== 'string' || typeof name !== 'string')
       throw new Error(`projects[${index}] needs a key and a name.`);
-    if ((id !== undefined && typeof id !== 'string') || (prefix !== undefined && typeof prefix !== 'string')) {
-      throw new Error(`projects[${index}].id and .prefix must be text.`);
+    for (const [field, value] of [
+      ['id', id],
+      ['beadsProjectId', beadsProjectId],
+      ['prefix', prefix],
+    ] as const) {
+      if (value !== undefined && typeof value !== 'string')
+        throw new Error(`projects[${index}].${field} must be text.`);
     }
-    return { database, key, name, ...(id === undefined ? {} : { id }), ...(prefix === undefined ? {} : { prefix }) };
+    return {
+      database,
+      key,
+      name,
+      ...(typeof id === 'string' ? { id } : {}),
+      ...(typeof beadsProjectId === 'string' ? { beadsProjectId } : {}),
+      ...(typeof prefix === 'string' ? { prefix } : {}),
+    };
   });
   return {
     client: client as string[],
@@ -186,17 +201,19 @@ export async function exportHub(hub: HubFile, read: Reader, now: () => Date = ()
   const doltVersion = single(version, 'Dolt version');
   const before = await statesOf(hub, read);
 
-  const found: { project: HubProject; id: string; prefix: string; names: string[] }[] = [];
+  const found: { project: HubProject; beadsProjectId: string; prefix: string; names: string[] }[] = [];
   for (const project of hub.projects) {
     const q = databaseQueries(project.database);
     const [idRows, prefixRows, tableRows] = await read([q.projectId, q.prefix, q.tables]);
-    const id = single(idRows, `project id in ${project.database}`);
+    const beadsProjectId = single(idRows, `project id in ${project.database}`);
     const prefix = single(prefixRows, `prefix in ${project.database}`);
-    if (project.id !== undefined && project.id !== id)
-      throw new Error(`${project.database} holds project ${id}, not ${project.id} as the hub file says.`);
+    if (project.beadsProjectId !== undefined && project.beadsProjectId !== beadsProjectId)
+      throw new Error(
+        `${project.database} holds project ${beadsProjectId}, not ${project.beadsProjectId} as the hub file says.`,
+      );
     if (project.prefix !== undefined && project.prefix !== prefix)
       throw new Error(`${project.database} uses the prefix ${prefix}, not ${project.prefix} as the hub file says.`);
-    found.push({ project, id, prefix, names: tableNames(tableRows) });
+    found.push({ project, beadsProjectId, prefix, names: tableNames(tableRows) });
   }
 
   // Counting every table first makes the transaction read every database at its start.
@@ -212,11 +229,11 @@ export async function exportHub(hub: HubFile, read: Reader, now: () => Date = ()
   const results = await read(queries);
   const answer = (sql: string): BeadsRow[] => results[queries.indexOf(sql)] ?? [];
 
-  const projects = found.map(({ project, id, prefix, names }): BeadsProject => {
+  const projects = found.map(({ project, beadsProjectId, prefix, names }): BeadsProject => {
     const q = databaseQueries(project.database);
     // What step 3 found must hold in the snapshot too, or a change made and undone could pair it with other data.
     if (
-      single(answer(q.projectId), `project id in ${project.database}`) !== id ||
+      single(answer(q.projectId), `project id in ${project.database}`) !== beadsProjectId ||
       single(answer(q.prefix), `prefix in ${project.database}`) !== prefix ||
       tableNames(answer(q.tables)).join() !== names.join()
     ) {
@@ -238,7 +255,8 @@ export async function exportHub(hub: HubFile, read: Reader, now: () => Date = ()
       database: project.database,
       key: project.key,
       name: project.name,
-      id,
+      id: project.id ?? beadsProjectId,
+      beadsProjectId,
       prefix,
       tables,
       branches: answer(q.branches),
