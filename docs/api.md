@@ -27,6 +27,12 @@ make: `tasks:read` to read and `tasks:write` to change tasks.
 | `401` | Nobody is signed in. |
 | `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs. An MCP tool refuses the same call with a sentence instead. |
 
+A sender also reaches certain **projects**. The owner reaches every project;
+an agent or a service reaches only the projects it was granted, each for
+reading or for writing too. Lists and the change feed leave the other
+projects out, and a request that names one gets the same answer as a project
+that does not exist, so a sender learns nothing of projects it cannot reach.
+
 Sign-in is being built. Until it is, the Worker answers `401` with
 `{"error":"sign_in_required"}` to every request under `/api`, so a deployment
 serves no task data.

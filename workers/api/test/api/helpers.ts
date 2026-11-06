@@ -12,8 +12,23 @@ import { storeDatabase } from '../store.ts';
 export const WORKSPACE = Object.freeze({ id: 'workspace-test', name: 'Test workspace' });
 export const ORIGIN = 'https://ntasks.test';
 
-export const READER: Principal = Object.freeze({ id: 'principal-reader', name: 'agent-a', scopes: [SCOPES.read] });
-export const NOBODY: Principal = Object.freeze({ id: 'principal-none', name: 'agent-z', scopes: [] });
+export const READER: Principal = Object.freeze({
+  id: 'principal-reader',
+  name: 'agent-a',
+  scopes: [SCOPES.read],
+  projects: 'all',
+});
+export const NOBODY: Principal = Object.freeze({ id: 'principal-none', name: 'agent-z', scopes: [], projects: 'all' });
+
+/** A sender granted only these projects, for reading. */
+export function grantedOnly(...projectIds: readonly string[]): Principal {
+  return Object.freeze({
+    id: 'principal-granted',
+    name: 'agent-g',
+    scopes: [SCOPES.read],
+    projects: new Map(projectIds.map((id) => [id, 'read'] as const)),
+  });
+}
 
 /** Signs every request in as `principal`, or refuses every one when it is null. */
 export function signedInAs(principal: Principal | null): Authenticator {

@@ -4,12 +4,13 @@ import type { Project, TaskEngine } from '@ntasks/domain';
 import { env, exports } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, get, NOBODY, ORIGIN, worker, type TestApi } from './helpers.ts';
+import { api, get, grantedOnly, NOBODY, ORIGIN, worker, type TestApi } from './helpers.ts';
 
 const time = clock('2026-11-06T12:00:00.000Z');
 let target: TestApi;
 let engine: TaskEngine;
 let project: Project;
+let other: Project;
 const ids: Record<string, string> = {};
 
 beforeAll(async () => {
@@ -30,6 +31,8 @@ beforeAll(async () => {
     OWNER,
   );
   await engine.addComment(project.id, ids.child, 'Draft ready.', OWNER);
+  other = await newProject(engine);
+  ids.other = (await engine.createTask(other.id, { title: 'Elsewhere' }, AGENT)).task.id;
 });
 
 describe('who may read', () => {
@@ -184,5 +187,40 @@ describe('GET /api/changes', () => {
   it('keeps its limit within 1 to 200', async () => {
     expect((await get(target, '/api/changes?limit=0')).body.detail).toBe('limit must be a whole number from 1 to 200');
     expect((await get(target, '/api/changes?after=-1')).status).toBe(400);
+  });
+});
+
+describe('a sender granted some projects', () => {
+  it('reads only those, and answers the others as missing', async () => {
+    const granted = api({ principal: grantedOnly(project.id), now: time.now });
+
+    const listed = await get(granted, '/api/tasks/projects');
+    expect((listed.body.projects as { projectId: string }[]).map((entry) => entry.projectId)).toEqual([project.id]);
+    for (const path of [
+      `/api/tasks?project=${other.id}`,
+      `/api/tasks/${ids.other}?project=${other.id}`,
+      `/api/tasks/${ids.other}/history?project=${other.id}`,
+      `/api/changes?project=${other.id}`,
+    ]) {
+      expect(await get(granted, path), path).toEqual({
+        status: 404,
+        body: { error: 'not_found', detail: `no project ${other.id}; /api/tasks/projects lists them` },
+      });
+    }
+    expect((await get(granted, `/api/tasks?project=${project.id}`)).status).toBe(200);
+  });
+
+  it('sees only their changes, and is told where to ask next past the others', async () => {
+    const everything = await get(target, '/api/changes?after=0&limit=200');
+    const granted = await get(
+      api({ principal: grantedOnly(project.id), now: time.now }),
+      '/api/changes?after=0&limit=200',
+    );
+
+    const projectsOf = (body: Record<string, unknown>) =>
+      new Set((body.events as { projectId: string }[]).map((event) => event.projectId));
+    expect(projectsOf(everything.body)).toContain(other.id);
+    expect([...projectsOf(granted.body)]).toEqual([project.id]);
+    expect(granted.body.lastSeq).toBe(everything.body.lastSeq);
   });
 });
