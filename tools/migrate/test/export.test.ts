@@ -4,9 +4,9 @@ import { databaseQueries, describeExport, exportHub, readHubFile, type HubFile }
 import { fakeServer } from './fake-hub.ts';
 import { acmeHub, betaHub } from './scenario.ts';
 
-const hubFile = (hubs: readonly { database: string; key: string; name: string }[]): HubFile => ({
+const hubFile = (hubs: readonly { database: string; key: string; name: string; id: string }[]): HubFile => ({
   client: ['dolt', 'sql', '--result-format=json', '--query'],
-  projects: hubs.map((hub) => ({ database: hub.database, key: hub.key, name: hub.name })),
+  projects: hubs.map((hub) => ({ database: hub.database, key: hub.key, name: hub.name, id: hub.id })),
 });
 
 describe('export', () => {
@@ -19,7 +19,7 @@ describe('export', () => {
       () => new Date('2026-03-03T00:00:00.000Z'),
     );
     expect(data).toEqual({
-      format: 'ntasks-beads-export-v1',
+      format: 'ntasks-beads-export-v2',
       exportedAt: '2026-03-03T00:00:00.000Z',
       doltVersion: '2.4.0',
       projects: [acme.project(), beta.project()],
@@ -51,6 +51,21 @@ describe('export', () => {
     const changing = async (queries: readonly string[]) =>
       queries[0] === state ? [[stateAt((reads += 1))]] : server(queries);
     await expect(exportHub(hubFile([acme]), changing)).rejects.toThrow('acme_tasks changed while the export read it');
+  });
+
+  it("gives each project the hub file's id, and keeps Beads' own id beside it", async () => {
+    const acme = acmeHub();
+    const data = await exportHub(hubFile([acme]), fakeServer([acme]));
+    expect(data.projects[0]).toMatchObject({ id: acme.id, beadsProjectId: acme.beadsProjectId });
+    const unnamed: HubFile = { client: ['dolt'], projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme' }] };
+    expect((await exportHub(unnamed, fakeServer([acme]))).projects[0]!.id).toBe(acme.beadsProjectId);
+    const wrong: HubFile = {
+      client: ['dolt'],
+      projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme', beadsProjectId: 'beads-other' }],
+    };
+    await expect(exportHub(wrong, fakeServer([acme]))).rejects.toThrow(
+      `acme_tasks holds project ${acme.beadsProjectId}, not beads-other as the hub file says.`,
+    );
   });
 
   it('refuses a database that is not the project the hub file names', async () => {

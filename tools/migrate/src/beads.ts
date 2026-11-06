@@ -7,7 +7,7 @@
 import type { Json } from '@ntasks/domain';
 import { isJsonObject } from './json.ts';
 
-export const EXPORT_FORMAT = 'ntasks-beads-export-v1';
+export const EXPORT_FORMAT = 'ntasks-beads-export-v2';
 
 /**
  * A row as the Dolt SQL client prints it with `--result-format=json`: a
@@ -30,8 +30,10 @@ export interface BeadsProject {
   /** The project's key and name in Ntasks, from the hub file. */
   readonly key: string;
   readonly name: string;
-  /** The database's `_project_id` metadata value: the project's id in NoticeOS and in Ntasks. */
+  /** The project's id in Ntasks: the hub file's, which is the NoticeOS project id, or else the database's `_project_id`. */
   readonly id: string;
+  /** The database's `_project_id` metadata value: Beads' own id for the project. */
+  readonly beadsProjectId: string;
   /** The database's `issue_prefix` setting. */
   readonly prefix: string;
   /** Every base table of the database and how many rows it holds. */
@@ -88,6 +90,7 @@ export function readExport(json: string): BeadsExport {
       key: text(entry.key, `${where}.key`),
       name: text(entry.name, `${where}.name`),
       id: text(entry.id, `${where}.id`),
+      beadsProjectId: text(entry.beadsProjectId, `${where}.beadsProjectId`),
       prefix: text(entry.prefix, `${where}.prefix`),
       tables,
       branches: rows(entry.branches, `${where}.branches`),
