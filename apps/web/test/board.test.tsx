@@ -1,6 +1,7 @@
 import { focusManager } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '@/api/client';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { FIXTURE_ACTOR } from '@/api/fixture-data';
 import { newQueryClient, SOURCE_URL } from '@/App';
@@ -127,6 +128,21 @@ describe('the board', () => {
     expect(read.complete).toBe(false);
     expect(read.broken.map((project) => project.key)).toEqual(['docs']);
     expect(read.allTasks.some((task) => task.project === 'docs')).toBe(false);
+  });
+
+  it('offers the sign-in page when nobody is signed in', async () => {
+    const api = createFixtureTasksApi();
+    const signedOut = {
+      ...api,
+      capabilities: () => Promise.reject(new ApiError('Sign in to see your tasks.', 401, 'sign_in_required')),
+      projects: () => Promise.reject(new ApiError('Sign in to see your tasks.', 401, 'sign_in_required')),
+    };
+    for (const path of ['/tasks', '/tasks/web-b2r6', '/tasks/focus']) {
+      const { unmount } = renderApp(path, signedOut);
+      expect(await screen.findByText('Sign in to see your tasks')).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/sign-in');
+      unmount();
+    }
   });
 
   it('links to its source code on every page', async () => {

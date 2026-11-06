@@ -140,9 +140,9 @@ export function actorLabel(actor: string, actors?: readonly TaskActor[]): string
 }
 
 /**
- * Who closed a task and the model they named, and the model a claimer named.
- * NoticeOS's API carries these in the task's metadata under these names; the
- * one place they are read is here.
+ * Who closed a task and the model they named, and the model a claimer named:
+ * the server's own fields when it sends them, else the metadata keys
+ * NoticeOS's API carries them under. The one place they are read is here.
  */
 const CLOSED_BY = 'noticeos_closed_by';
 const CLOSED_MODEL = 'noticeos_closed_model';
@@ -157,17 +157,19 @@ function metadataText(metadata: Record<string, unknown> | null, name: string): s
 }
 
 export function closeAttribution(
-  task: Pick<LiveTask, 'status' | 'closedAt' | 'metadata'>,
+  task: Pick<LiveTask, 'status' | 'closedAt' | 'metadata' | 'closedBy' | 'closedModel'>,
 ): { by: string; model: string | null } | null {
   if (task.status !== 'closed' || task.closedAt === null) return null;
+  // The server's own fields describe the current close; the metadata keys may describe an earlier one.
+  if (task.closedBy) return { by: task.closedBy, model: task.closedModel ?? null };
   const by = metadataText(task.metadata, CLOSED_BY);
   const at = Date.parse(metadataText(task.metadata, CLOSED_AT) ?? '');
   if (by === null || !Number.isFinite(at) || Math.abs(at - Date.parse(task.closedAt)) > SAME_CLOSE_MS) return null;
   return { by, model: metadataText(task.metadata, CLOSED_MODEL) };
 }
 
-export function claimedModel(task: Pick<LiveTask, 'metadata'>): string | null {
-  return metadataText(task.metadata, CLAIMED_MODEL);
+export function claimedModel(task: Pick<LiveTask, 'metadata' | 'assigneeModel'>): string | null {
+  return task.assigneeModel ?? metadataText(task.metadata, CLAIMED_MODEL);
 }
 
 /** A board row: a task with the project key it was read from. */

@@ -55,6 +55,23 @@ export interface TasksApi {
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions): Promise<void>;
 }
 
+/** Where the owner signs in: the Worker's own page, outside this app. */
+export const SIGN_IN_PATH = '/sign-in';
+
+/** Whether a refusal means nobody is signed in, so the next step is signing in. */
+export function needsSignIn(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+/**
+ * Whether a failed read is worth trying again: a lost connection or a server
+ * error may pass, but a refusal (sign in, not found, a bad request) answers
+ * the same way every time, and retrying only delays saying so.
+ */
+export function retryRead(failures: number, error: unknown): boolean {
+  return failures < 3 && !(error instanceof ApiError && error.status < 500);
+}
+
 /** A refused request, with the server's own sentence when it sent one. */
 export class ApiError extends Error {
   readonly status: number;
@@ -90,11 +107,13 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
   }
   const sentence =
     detail ??
-    (response.status === 404
-      ? `${what}: not found.`
-      : response.status === 401 || response.status === 403
-        ? `${what}: this sign-in may not do that.`
-        : `${what}: the server answered ${response.status}.`);
+    (response.status === 401
+      ? 'Sign in to see your tasks.'
+      : response.status === 404
+        ? `${what}: not found.`
+        : response.status === 401 || response.status === 403
+          ? `${what}: this sign-in may not do that.`
+          : `${what}: the server answered ${response.status}.`);
   return new ApiError(sentence, response.status, code);
 }
 
