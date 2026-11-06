@@ -134,6 +134,7 @@ defines where each NoticeOS metadata key goes; the import follows it.
 |---|---|
 | Project | `projects.id` is the hub file's id, else the database's `_project_id`; `projects.prefix` is the database's `issue_prefix`; the key and name come from the hub file, and the creation time is the earliest commit or task |
 | Issue id, title, description, status, priority, type, assignee, start, defer and due times | The same `tasks` columns; `acceptance_criteria` is `acceptance` |
+| Type `spike`, which Ntasks lacks | Type `task`, with the label `spike` |
 | `created_at`, `updated_at` | `tasks.created_at`, `tasks.updated_at`, kept as they are |
 | `created_by` | `tasks.filed_by`, unless NoticeOS recorded `noticeos_filed_by` |
 | `await_type` `human` on a gate | `tasks.await_type` |
@@ -200,7 +201,7 @@ lists:
 - wisps, molecules, formulas and templates, and approvals that wait on
   anything but a person;
 - links to wisps or to tasks outside the hub;
-- leases, and tasks Beads compacted;
+- tasks Beads compacted;
 - a Dolt database with more than one branch.
 
 Data the import cannot carry whole:
@@ -210,10 +211,24 @@ Data the import cannot carry whole:
 - a table holding rows that the import neither reads nor knows to be Beads'
   own bookkeeping;
 - a link, parent or duplicate that names a task not in the export;
-- tasks that wait on each other in a loop;
+- tasks that wait on each other in a loop, other than the one below that is
+  left out;
 - a task whose Dolt history does not rebuild it as it stands;
 - out-of-scope data in a task's past versions, with the time;
 - empty comments and comments without an author or time.
+
+## What the import leaves out
+
+By the owner's choice, the import leaves these out. It lists each one it
+leaves out, after what it imported:
+
+- the `owner` column, which holds one identity, the same on every task of the
+  NoticeOS hub;
+- lease rows, which record when a claim expires: Ntasks never expires a claim,
+  and the claim itself is the task's assignee;
+- a parent's `blocks` link onto its own child, which makes each wait on the
+  other. It is left out of every past version too, so the history still
+  rebuilds the task.
 
 ## What the verifier checks
 

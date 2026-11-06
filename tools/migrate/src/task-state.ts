@@ -94,6 +94,12 @@ const ISSUE_COLUMNS = new Set([
 /** Columns Beads computes from the others or keeps for its own bookkeeping, such as
  * row_lock, a token for locking the row: nothing is lost by leaving them. */
 const ISSUE_DERIVED = new Set(['content_hash', 'is_blocked', 'row_lock']);
+/** Columns left out by the owner's choice: `owner` holds one identity, the same on every
+ * task of the NoticeOS hub, so it records nothing about any one task. */
+const ISSUE_LEFT_OUT = new Set(['owner']);
+const ISSUE_SKIPPED = new Set([...ISSUE_DERIVED, ...ISSUE_LEFT_OUT]);
+/** Beads types Ntasks lacks, each imported as a type Ntasks has, labelled with its own name. */
+export const TYPES_AS_LABELS: Readonly<Record<string, TaskType>> = { spike: 'task' };
 const LINK_COLUMNS = new Set(['issue_id', 'depends_on_issue_id', 'depends_on_id', 'type', 'created_at', 'created_by']);
 /** A link's row id, which Beads numbers again whenever it migrates its schema. */
 const LINK_DERIVED = new Set(['id']);
@@ -261,11 +267,14 @@ export function mapTask(input: {
     };
   }
   if (!id.startsWith(`${prefix}-`)) problems.push(`its id does not start with the project's prefix ${prefix}-`);
-  problems.push(...unmappedProblems(issue, ISSUE_COLUMNS, ISSUE_DERIVED, 'its'));
+  problems.push(...unmappedProblems(issue, ISSUE_COLUMNS, ISSUE_SKIPPED, 'its'));
 
   const typeValue = textOf(issue.issue_type);
-  const type: TaskType = isTaskType(typeValue) ? typeValue : 'task';
-  if (!isTaskType(typeValue)) problems.push(`its type "${excerpt(issue.issue_type)}" is not one of Ntasks' types`);
+  const typeLabel = typeValue !== null && Object.hasOwn(TYPES_AS_LABELS, typeValue) ? typeValue : null;
+  const type: TaskType = typeLabel !== null ? TYPES_AS_LABELS[typeLabel]! : isTaskType(typeValue) ? typeValue : 'task';
+  if (typeLabel === null && !isTaskType(typeValue)) {
+    problems.push(`its type "${excerpt(issue.issue_type)}" is not one of Ntasks' types`);
+  }
   const statusValue = textOf(issue.status);
   const status: TaskStatus = isTaskStatus(statusValue) ? statusValue : 'open';
   if (!isTaskStatus(statusValue)) problems.push(`its status "${excerpt(issue.status)}" is not one of Ntasks' statuses`);
@@ -354,6 +363,7 @@ export function mapTask(input: {
       problems.push(`its label "${excerpt(row.label)}" is empty or longer than ${NAME_LIMIT} characters`);
     else if (!labels.includes(label)) labels.push(label);
   }
+  if (typeLabel !== null && !labels.includes(typeLabel)) labels.push(typeLabel);
   labels.sort();
 
   let parentId: string | null = null;
