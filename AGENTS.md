@@ -38,7 +38,7 @@ the pnpm version in `package.json`'s `packageManager` field:
 
 ```sh
 pnpm install
-pnpm lint          # ESLint: promises that nothing awaits, returns or hands to ctx.waitUntil()
+pnpm lint          # ESLint: promises that nothing handles (await, return, void, .catch)
 pnpm format:check  # Prettier; `pnpm format` rewrites the files it would change
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
@@ -76,9 +76,12 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
 - **Worker code** follows the rules in
   [CONTRIBUTING.md](CONTRIBUTING.md#rules-for-worker-code): no floating
   promises, no request data in module scope, Web Crypto for tokens and secret
-  comparisons, no secrets in config or source. `pnpm lint` checks the first;
-  review checks the rest. A change to `eslint.config.js` keeps
-  `tools/lint`'s test passing.
+  comparisons, no secrets in config or source. `pnpm lint` catches an
+  unhandled promise but accepts `void promise` and `promise.catch(handler)`,
+  which do not keep the Worker running after the response. Review checks that
+  work which must outlive the response uses `ctx.waitUntil()`, and checks the
+  other rules. A change to `eslint.config.js` keeps `tools/lint`'s test
+  passing.
 - **Prettier formats `.ts`, `.tsx`, `.js` and `.mjs` files**
   (`.prettierrc.json`). The files listed in `.prettierignore` are exempt until
   formatted; never add one to it. Run `pnpm format` before committing.

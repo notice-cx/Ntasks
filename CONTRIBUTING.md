@@ -28,7 +28,7 @@ Run these from the repository root.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Builds the web app and starts the Worker at http://localhost:8787 |
-| `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing awaits, returns or hands to `ctx.waitUntil()`, and a promise used where the code expects none |
+| `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing handles (awaits, returns, marks `void` or gives a `.catch()`), and a promise used where the code expects none |
 | `pnpm format:check` | Checks that every file is formatted the way Prettier formats it. `pnpm format` rewrites the files that are not |
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
 | `pnpm test` | Runs every workspace's tests |
@@ -75,7 +75,8 @@ pnpm --filter @ntasks/domain test
 
 ### Rules for Worker code
 
-`pnpm lint` checks the first rule. Review checks the others.
+`pnpm lint` catches most breaks of the first rule. Review checks that rule's
+remaining cases and the other four.
 
 - Every promise is awaited, returned, or passed to `ctx.waitUntil()`. A
   promise left floating can be cut off when the response is sent, and its

@@ -2,10 +2,10 @@
 
 Tests for the repository's lint check. The check itself is
 [`eslint.config.js`](../../eslint.config.js) at the repository root, run by
-`pnpm lint`: it reports a promise that is not awaited, returned or passed to
-`ctx.waitUntil()` (`@typescript-eslint/no-floating-promises`), and a promise
-used where the code expects no promise
-(`@typescript-eslint/no-misused-promises`).
+`pnpm lint`: it reports a promise that nothing handles, meaning it is not
+awaited, returned, marked `void` or given a `.catch()`
+(`@typescript-eslint/no-floating-promises`), and a promise used where the code
+expects no promise (`@typescript-eslint/no-misused-promises`).
 
 | File | Holds |
 |---|---|
