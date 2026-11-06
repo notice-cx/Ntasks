@@ -246,6 +246,16 @@ describe('input checks', () => {
     );
   });
 
+  it('refuses removeLinks that is not a list, or longer than the link limit', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Linked' }, AGENT);
+
+    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: 'web-a1b2' as never }, AGENT), 'invalid');
+    const tooMany = Array.from({ length: 33 }, (_, index) => `${project.prefix}-x${index}`);
+    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: tooMany }, AGENT), 'invalid');
+  });
+
   it('refuses a task in a project that does not exist', async () => {
     const tasks = engine();
     await expectRefusal(tasks.createTask(crypto.randomUUID(), { title: 'Nowhere' }, AGENT), 'not_found');

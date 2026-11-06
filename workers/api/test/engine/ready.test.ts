@@ -118,6 +118,44 @@ describe('links', () => {
   });
 });
 
+describe('reading one task and listing the project', () => {
+  it('give every task the same ready answer, before and after its blockers close', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const elsewhere = await newProject(tasks);
+    const later = new Date(Date.parse(time.now()) + 60 * 60_000).toISOString();
+    const blocker = await make(tasks, project.id, 'Blocker');
+    const foreign = (await tasks.createTask(elsewhere.id, { title: 'Foreign blocker' }, AGENT)).task;
+    const epic = await make(tasks, project.id, 'Epic', { title: '', type: 'epic', links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }] });
+    const child = await make(tasks, project.id, 'Child', { title: '', parentId: epic.id });
+    await make(tasks, project.id, 'Grandchild', { title: '', parentId: child.id });
+    const closedParent = await make(tasks, project.id, 'Closed parent', { title: '', links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }] });
+    await make(tasks, project.id, 'Under a closed parent', { title: '', parentId: closedParent.id });
+    await close(tasks, project.id, closedParent);
+    const deferred = await make(tasks, project.id, 'Deferred', { title: '', deferUntil: later });
+    await make(tasks, project.id, 'Under a deferred parent', { title: '', parentId: deferred.id });
+    await make(tasks, project.id, 'Blocked from another project', { title: '', links: [{ direction: 'depends-on', taskId: foreign.id, type: 'blocks' }] });
+    const gated = await make(tasks, project.id, 'Waits on approval');
+    await tasks.writeTask(project.id, gated.id, { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } }, AGENT);
+    await make(tasks, project.id, 'Plain');
+
+    const compare = async () => {
+      const ready = new Set(await readyIds(tasks, project.id));
+      const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
+      for (const listed of all) {
+        const alone = await tasks.getTask(project.id, listed.id);
+        expect(alone?.ready, listed.title).toBe(ready.has(listed.id));
+        expect(listed.ready, listed.title).toBe(ready.has(listed.id));
+      }
+    };
+    await compare();
+    await close(tasks, project.id, blocker);
+    await tasks.writeTask(elsewhere.id, foreign.id, { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } }, AGENT);
+    await compare();
+  });
+});
+
 describe('ready work', () => {
   it('holds a task until every task blocking it is closed', async () => {
     const tasks = engine();

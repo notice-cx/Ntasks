@@ -25,8 +25,9 @@ import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
 const RECEIPT_DAYS = 7;
-/** How many times a write draws a new task id after a collision before giving up. */
-const ID_ATTEMPTS = 5;
+/** How many times a write tries again, with a new task id or a fresh read,
+ * after another write took its id or changed a task it also changes. */
+const ATTEMPTS = 5;
 
 const MESSAGES: Readonly<Record<TaskRefusal, string>> = Object.freeze({
   not_found: 'The task does not exist in this project.',
@@ -48,8 +49,12 @@ export function randomKey(length = 4): string {
 }
 
 /** What a failed batch means for the caller: a refusal is thrown; a collision is returned for a retry. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function failureOf(error: unknown): 'id_taken' | 'receipt_taken' {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = messageOf(error);
   const refusal = guardRefusalOf(message);
   if (refusal !== null) refuse(refusal);
   if (message.includes('UNIQUE constraint failed: tasks.id')) return 'id_taken';
@@ -235,10 +240,13 @@ export class Writes {
     await this.#existing(null, fields.links.map((link) => link.taskId));
     // A `blocks`-direction link changes the other task too: its version, and its history.
     const changedOthers = [...new Set(fields.links.filter((link) => link.direction === 'blocks').map((link) => link.taskId))];
-    const others = await this.#reads.hydrate(await this.#reads.taskRows(projectId, changedOthers));
-    if (others.length !== changedOthers.length) refuse('not_found', 'A task this new one blocks is not in this project.');
 
-    for (let attempt = 0; attempt < ID_ATTEMPTS; attempt += 1) {
+    let lastFailure: 'id_taken' | 'version_conflict' = 'id_taken';
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      // Read again on every attempt: the caller named no version for these
+      // tasks, so a change to one of them since is retried, not refused.
+      const others = await this.#reads.hydrate(await this.#reads.taskRows(projectId, changedOthers));
+      if (others.length !== changedOthers.length) refuse('not_found', 'A task this new one blocks is not in this project.');
       const id = fields.parentId === null ? `${project.prefix}-${this.#newKey()}` : await this.#childId(fields.parentId);
       const at = this.#now();
       const dependencies = new Map<string, DependencyType>();
@@ -277,8 +285,9 @@ export class Writes {
         for (const link of fields.links) if (link.direction === 'blocks' && link.taskId === other.id) otherLinks.set(id, link.type);
         statements.push(
           this.#db
-            .prepare('UPDATE tasks SET version = version + 1, updated_at = ?1 WHERE id = ?2')
-            .bind(at, other.id),
+            .prepare('UPDATE tasks SET version = version + 1, updated_at = ?1 WHERE id = ?2 AND version = ?3')
+            .bind(at, other.id, other.version),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
           this.#event(other, other.version + 1, 'updated', actor, at, { dependencies: linkList(otherLinks) }),
         );
       }
@@ -314,12 +323,20 @@ export class Writes {
         await this.#db.batch(statements);
         return await this.#result(projectId, id, [], false);
       } catch (error) {
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
+          lastFailure = 'version_conflict';
+          continue;
+        }
         const failure = failureOf(error);
-        if (failure === 'id_taken') continue;
+        if (failure === 'id_taken') {
+          lastFailure = 'id_taken';
+          continue;
+        }
         return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
       }
     }
-    throw new Error(`No free task id in project ${projectId} after ${ID_ATTEMPTS} attempts.`);
+    if (lastFailure === 'version_conflict') refuse('version_conflict', 'A task this new one blocks kept changing; try again.');
+    throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
   }
 
   async writeTask(projectId: string, taskId: string, writeInput: TaskWrite, actorInput: Actor, retryInput?: Retry): Promise<WriteResult> {
@@ -432,7 +449,7 @@ export class Writes {
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
 
-    for (let attempt = 0; attempt < ID_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
       const taskLinks = new Map(links);
       if (gateId !== null) taskLinks.set(gateId, 'blocks');
@@ -533,12 +550,18 @@ export class Writes {
         await this.#db.batch(statements);
         return await this.#result(projectId, taskId, gateId === null ? [] : [gateId], false);
       } catch (error) {
+        // The same retried request may have committed while this attempt ran;
+        // its version then moved on, and the recorded result is the answer.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
+          const replay = await this.#replay(retry, projectId);
+          if (replay !== null) return replay;
+        }
         const failure = failureOf(error);
         if (failure === 'id_taken') continue;
         return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
       }
     }
-    throw new Error(`No free task id in project ${projectId} after ${ID_ATTEMPTS} attempts.`);
+    throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
   }
 
   async addComment(projectId: string, taskId: string, textInput: string, actorInput: Actor, retryInput?: Retry): Promise<CommentResult> {

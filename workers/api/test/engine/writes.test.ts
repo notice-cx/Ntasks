@@ -295,6 +295,47 @@ describe('retries (rule 3)', () => {
     expect(replayed).toBe(false);
     expect(after.priority).toBe(0);
   });
+
+  it('answers two copies of one retried write sent at once with the same result, changing the task once', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Sent twice' }, OWNER);
+    const write = { expectedVersion: 1, set: { priority: 0 }, comment: 'Raised.' };
+    const retry = await retryFor(`twice-${crypto.randomUUID()}`, write, 'update_task');
+
+    const outcomes = await Promise.allSettled([1, 2].map(() => tasks.writeTask(project.id, task.id, write, AGENT, retry)));
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['fulfilled', 'fulfilled']);
+    const results = outcomes.map((outcome) => (outcome as PromiseFulfilledResult<Awaited<ReturnType<TaskEngine['writeTask']>>>).value);
+    expect(results.map((result) => result.replayed).sort()).toEqual([false, true]);
+    expect(results.map((result) => result.task.version)).toEqual([2, 2]);
+    expect((await tasks.getTask(project.id, task.id))?.commentCount).toBe(1);
+  });
+});
+
+describe('a new task that blocks another', () => {
+  it('keeps the other task\'s history whole while that task changes at the same moment', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const waiting = (await tasks.createTask(project.id, { title: 'Waiting' }, OWNER)).task;
+
+    // Each round races a create, which links into `waiting`, against a direct edit of it.
+    for (let round = 0; round < 10; round += 1) {
+      const current = (await tasks.getTask(project.id, waiting.id))!;
+      await Promise.allSettled([
+        tasks.createTask(project.id, { title: `Blocker ${round}`, links: [{ direction: 'blocks', taskId: waiting.id, type: 'blocks' }] }, AGENT),
+        tasks.writeTask(project.id, waiting.id, { expectedVersion: current.version, set: { priority: round % 5 } }, OWNER),
+      ]);
+    }
+
+    const after = (await tasks.getTask(project.id, waiting.id))!;
+    const versions = (await historyOf(tasks, project.id, waiting.id)).filter((event) => event.kind !== 'commented').map((event) => event.version);
+    expect(versions).toEqual(Array.from({ length: after.version }, (_, index) => index + 1));
+    const rebuilt: Record<string, Json> = {};
+    for (const event of await historyOf(tasks, project.id, waiting.id)) Object.assign(rebuilt, event.changes);
+    expect(rebuilt.dependencies).toEqual(after.dependencies.map((link) => ({ taskId: link.taskId, type: link.type })));
+    expect(after.dependencies).toHaveLength(10);
+  });
 });
 
 describe('decisions', () => {

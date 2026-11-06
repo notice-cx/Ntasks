@@ -187,6 +187,8 @@ export function write(input: TaskWrite): CheckedWrite {
   const close = input.close === undefined ? null : closing(input.close);
   if (close !== null && set.status !== undefined) invalid('a write that closes a task does not also set its status');
   const metadata = input.metadata === undefined ? null : (jsonObject(input.metadata, 'metadata') as Record<string, Json | null>);
+  const removeLinks: unknown = input.removeLinks ?? [];
+  if (!Array.isArray(removeLinks) || removeLinks.length > TASK_LIMITS.links) invalid(`removeLinks must be a list of at most ${TASK_LIMITS.links} task ids`);
   const checked: CheckedWrite = {
     expectedVersion: input.expectedVersion,
     set,
@@ -194,7 +196,7 @@ export function write(input: TaskWrite): CheckedWrite {
     removeLabels: labels(input.removeLabels ?? [], 'removeLabels'),
     metadata,
     addLinks: links(input.addLinks ?? []),
-    removeLinks: (input.removeLinks ?? []).map((id, index) => taskId(id, `removeLinks[${index}]`)),
+    removeLinks: [...new Set(removeLinks.map((id, index) => taskId(id, `removeLinks[${index}]`)))],
     requestApproval: input.requestApproval === undefined ? null : { reason: text(input.requestApproval?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) },
     close,
     reopen: input.reopen === true,

@@ -33,15 +33,40 @@ import { instant } from './validate.ts';
 /**
  * The tasks of project ?1 that are blocked, as Beads derives it: a task that
  * is not closed is blocked when it has a `blocks` link onto a task that is not
- * closed, or when its parent is blocked, down any depth of children.
+ * closed, or when its parent is blocked, down any depth of children. Lists use
+ * this form: one pass over the project answers for every task in it.
  */
-const BLOCKED = `blocked(id) AS (
+const BLOCKED_IN_PROJECT = `blocked(id) AS (
   SELECT e.task_id FROM task_edges e
     JOIN tasks waiting ON waiting.id = e.task_id
     JOIN tasks blocker ON blocker.id = e.depends_on_id
   WHERE e.type = 'blocks' AND blocker.status <> 'closed' AND waiting.status <> 'closed' AND waiting.project_id = ?1
   UNION
   SELECT child.id FROM tasks child JOIN blocked ON child.parent_id = blocked.id WHERE child.status <> 'closed'
+)`;
+
+/**
+ * The same predicate for only the tasks in ?3, worked upwards: such a task is
+ * blocked when it, or an ancestor reached through parents that are not
+ * closed, has a `blocks` link onto a task that is not closed. A read of a few
+ * tasks then reads their ancestors and links, not every link in the project,
+ * which keeps it inside D1's daily read budget. test/engine/ready.test.ts
+ * checks that both forms give every task the same answer.
+ */
+const BLOCKED_AMONG = `chain(task_id, ancestor_id) AS (
+  SELECT id, id FROM tasks WHERE project_id = ?1 AND id IN (SELECT value FROM json_each(?3)) AND status <> 'closed'
+  UNION
+  SELECT chain.task_id, parent.id FROM chain
+    JOIN tasks child ON child.id = chain.ancestor_id
+    JOIN tasks parent ON parent.id = child.parent_id
+  WHERE parent.status <> 'closed'
+),
+blocked(id) AS (
+  SELECT DISTINCT chain.task_id FROM chain
+  WHERE EXISTS (
+    SELECT 1 FROM task_edges e JOIN tasks blocker ON blocker.id = e.depends_on_id
+    WHERE e.task_id = chain.ancestor_id AND e.type = 'blocks' AND blocker.status <> 'closed'
+  )
 )`;
 
 /**
@@ -55,11 +80,18 @@ const READY = `(t.status = 'open' AND t.type <> 'gate'
   AND (p.defer_until IS NULL OR p.defer_until <= ?2)
   AND t.id NOT IN (SELECT id FROM blocked))`;
 
-const TASKS = `WITH RECURSIVE ${BLOCKED}
-SELECT t.*, ${READY} AS ready,
+const SELECT_TASKS = `SELECT t.*, ${READY} AS ready,
   (SELECT count(*) FROM task_comments m WHERE m.task_id = t.id) AS comment_count
 FROM tasks t LEFT JOIN tasks p ON p.id = t.parent_id
 WHERE t.project_id = ?1`;
+
+/** Tasks of project ?1, for lists. */
+const TASKS = `WITH RECURSIVE ${BLOCKED_IN_PROJECT}
+${SELECT_TASKS}`;
+
+/** The tasks of project ?1 whose ids are in the JSON array ?3. */
+const TASKS_AMONG = `WITH RECURSIVE ${BLOCKED_AMONG}
+${SELECT_TASKS} AND t.id IN (SELECT value FROM json_each(?3))`;
 
 const ORDER = 'ORDER BY t.priority, t.created_at, t.id';
 
@@ -123,7 +155,7 @@ export class Reads {
 
   async taskRows(projectId: string, taskIds: readonly string[]): Promise<TaskRow[]> {
     const { results } = await this.#db
-      .prepare(`${TASKS} AND t.id IN (SELECT value FROM json_each(?3)) ${ORDER}`)
+      .prepare(`${TASKS_AMONG} ${ORDER}`)
       .bind(projectId, this.#now(), JSON.stringify(taskIds))
       .all<TaskRow>();
     return results;
