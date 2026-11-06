@@ -40,6 +40,7 @@ export function makeIds(): string[] {
 declare const token: string;
 declare const expected: string;
 declare const session: { token: string; signature: string; kind: string; tokenType: string };
+declare const record: Record<string, string>;
 declare function timingSafeEqual(a: string, b: string): boolean;
 
 export function compare(): boolean {
@@ -50,11 +51,15 @@ export function compare(): boolean {
   if ((token as string) === expected) return true; // no-restricted-syntax
   if (session?.token === expected) return true; // no-restricted-syntax
   if (expected !== (session?.signature as string)) return false; // no-restricted-syntax
+  if (session['token'] === expected) return true; // no-restricted-syntax
+  if (expected !== session?.['signature']) return false; // no-restricted-syntax
 
   // Not a comparison of a secret with another value.
   if (token === undefined || session.token === null || token === '') return false;
   if (token! === undefined || (session?.token as string) === '') return false;
   if (session.kind === 'token' || session.tokenType === 'bearer' || session?.kind! === 'token') return false;
+  // A key held in a variable names no secret, and a string key that is not one is not either.
+  if (record[token] === 'x' || record?.[token] === 'y' || session['kind'] === 'token') return false;
   if (token.length === 0 || typeof token === 'string') return timingSafeEqual(token, expected);
   return false;
 }

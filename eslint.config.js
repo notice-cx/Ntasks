@@ -10,20 +10,26 @@ const SECRET_NAME = '/(secret|token|password|passcode|signature|hmac|api_?key)$/
 // The declarations at the top of a module, with and without `export`.
 const MODULE_DECLARATION = ':matches(Program, Program > ExportNamedDeclaration) > VariableDeclaration';
 
-// Where a comparison's operand shows its name: the operand itself (`token`,
-// `session.token`), or inside a non-null assertion, a cast or an optional
-// chain, each of which wraps it in a node with an `expression`. Two wrappers
-// deep covers `(session?.token as string)`.
-const NAME_PATHS = [
-  'name',
-  'property.name',
-  'expression.name',
-  'expression.property.name',
-  'expression.expression.name',
-  'expression.expression.property.name',
-];
+// Where a comparison's operand shows its name: the operand itself, or inside a
+// non-null assertion, a cast or an optional chain, each of which wraps it in a
+// node with an `expression`. Two wrappers deep covers `(session?.token as
+// string)`. The node that holds the name is a variable (`token`), a property
+// read with a dot (`session.token`, whose `computed` is false), or a property
+// read with a string in brackets (`session['token']`, whose `computed` is
+// true). A key held in a variable (`record[token]`) names nothing, so it is
+// not read.
+const WRAPPERS = ['', 'expression.', 'expression.expression.'];
 const SECRET_OPERAND = ['left', 'right']
-  .flatMap((side) => NAME_PATHS.map((path) => `[${side}.${path}=${SECRET_NAME}]`))
+  .flatMap((side) =>
+    WRAPPERS.flatMap((wrapper) => {
+      const node = `${side}.${wrapper}`;
+      return [
+        `[${node}name=${SECRET_NAME}]`,
+        `[${node}computed=false][${node}property.name=${SECRET_NAME}]`,
+        `[${node}computed=true][${node}property.value=${SECRET_NAME}]`,
+      ];
+    }),
+  )
   .join(', ');
 
 // A collection that starts empty is there to be filled while the Worker runs.

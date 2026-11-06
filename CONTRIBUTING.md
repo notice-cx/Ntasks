@@ -104,9 +104,11 @@ Each rule below says which part a tool checks.
   `workers/*/src` and `packages/*/src`, `pnpm lint` reports `===`, `!==`, `==`
   or `!=` when an operand is a variable or property whose name ends in
   `secret`, `token`, `password`, `passcode`, `signature`, `hmac` or `apiKey`
-  (`no-restricted-syntax`), also when `!`, `as` or `?.` wraps the operand, as
-  in `token! === expected` or `(session?.token as string) === expected`. A
-  comparison with `null`, `undefined` or `''` passes. Review checks a secret
+  (`no-restricted-syntax`). The property can be written `session.token` or
+  `session['token']`, and `!`, `as` or `?.` can wrap the operand, as in
+  `token! === expected` or `(session?.token as string) === expected`. A key
+  held in a variable, as in `record[token]`, names nothing and passes, and so
+  does a comparison with `null`, `undefined` or `''`. Review checks a secret
   held under another name, and one compared inside a helper.
 - Never write a secret into `wrangler.jsonc`, the source or a test. Local
   values go in `.dev.vars`, which git ignores. `pnpm test` fails when a
