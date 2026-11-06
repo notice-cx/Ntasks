@@ -115,6 +115,8 @@ describe('routes and methods', () => {
       await send(target, 'POST', '/api/tasks', { projectId: project.id }, { 'content-type': 'text/plain' }),
     ).toEqual(invalid(body));
     expect(await send(target, 'POST', '/api/tasks', [1])).toEqual(invalid('the body must be one JSON object'));
+    const large = { projectId: project.id, title: 'T', description: 'd'.repeat(33 * 1024) };
+    expect(await send(target, 'POST', '/api/tasks', large)).toEqual(invalid(body));
     expect(
       await send(target, 'POST', `/api/tasks?project=${project.id}`, { projectId: project.id, title: 'T' }),
     ).toEqual(invalid('unknown parameter project; this route takes none'));
@@ -284,6 +286,21 @@ describe('PATCH /api/tasks/:id', () => {
       status: 404,
       body: { error: 'not_found', detail: `${project.prefix}-none is not a task in ${project.name}.` },
     });
+  });
+
+  it('answers a retried change once, and refuses its key for the same change to another task', async () => {
+    const [first, second] = [await task(), await task()];
+    const headers = { 'idempotency-key': key() };
+    const body = { projectId: project.id, priority: 0 };
+    const changed = await send(target, 'PATCH', `/api/tasks/${first.id}`, body, headers);
+    expect(changed.status).toBe(200);
+    expect(await send(target, 'PATCH', `/api/tasks/${first.id}`, body, headers)).toEqual(changed);
+    expect((await current(first.id)).version).toBe(2);
+    expect(await send(target, 'PATCH', `/api/tasks/${second.id}`, body, headers)).toMatchObject({
+      status: 409,
+      body: { error: 'idempotency_conflict' },
+    });
+    expect((await current(second.id)).priority).toBe(2);
   });
 });
 

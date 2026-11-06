@@ -340,6 +340,52 @@ describe('create_task', () => {
     );
     expect((await current(project, reply.id)).metadata.noticeos_card).toMatchObject({ measurability: 'holdout' });
   });
+
+  it('reads object text in an entry of create_tasks and a null in update_task, and refuses text that is no object', async () => {
+    const project = await newProject(engine);
+    const guide = (await callTool<{ version: string }>(target, 'get_task_guide')).value!.version;
+    const stale = (names: string) =>
+      `${names} arrived as text: your client's copy of the task tools predates this server (guide version ${guide}); reconnect this server to get the current tools`;
+    const card = { valuePerMonth: 1, likelihood: 0.5, reviewMinutes: 1, daysToSignal: 1, measurability: 'cohort' };
+    const batch = await write<{ staleClient: string; created: { id: string }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Plain' }, { title: 'Carded', card: JSON.stringify(card) }],
+      idempotency_key: key(),
+    });
+    expect(batch.staleClient).toBe(stale('tasks[1].card'));
+    expect((await current(project, batch.created[1]!.id)).metadata.noticeos_card).toMatchObject(card);
+
+    const chosen = await task(project, {
+      title: 'Choices',
+      choices: {
+        question: 'Which?',
+        options: [
+          { key: 'a', label: 'One', recommended: true },
+          { key: 'b', label: 'Two' },
+        ],
+      },
+    });
+    const cleared = await write<{ staleClient: string }>(target, 'update_task', {
+      project: project.id,
+      task: chosen.id,
+      choices: 'null',
+      idempotency_key: key(),
+    });
+    expect(cleared.staleClient).toBe(stale('choices'));
+    expect((await current(project, chosen.id)).choices).toBeNull();
+
+    const refused = await refusal(target, 'create_task', {
+      workspace: WORKSPACE.id,
+      project: project.id,
+      title: 'Bad card',
+      card: 'not an object',
+      idempotency_key: key(),
+    });
+    // Text that is no object stays text, for the card's own check to refuse.
+    expect(refused).toBe(
+      `${stale('card')}. invalid arguments: card (an object with valuePerMonth, likelihood, reviewMinutes, daysToSignal and measurability)`,
+    );
+  });
 });
 
 describe('a create whose blocked task keeps changing', () => {
