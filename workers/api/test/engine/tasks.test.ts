@@ -13,7 +13,13 @@ describe('creating and reading a task', () => {
 
     const { task, created, replayed } = await tasks.createTask(
       project.id,
-      { title: 'Write the guide', description: 'For new contributors.', acceptance: 'The guide is merged.', priority: 1, labels: ['docs'] },
+      {
+        title: 'Write the guide',
+        description: 'For new contributors.',
+        acceptance: 'The guide is merged.',
+        priority: 1,
+        labels: ['docs'],
+      },
       AGENT,
     );
 
@@ -88,7 +94,10 @@ describe('creating and reading a task', () => {
 
   it('refuses a project prefix with a hyphen', async () => {
     const tasks = engine();
-    await expectRefusal(tasks.createProject({ id: crypto.randomUUID(), key: 'web-app.example.com', name: 'Web app', prefix: 'web-app' }), 'invalid');
+    await expectRefusal(
+      tasks.createProject({ id: crypto.randomUUID(), key: 'web-app.example.com', name: 'Web app', prefix: 'web-app' }),
+      'invalid',
+    );
   });
 });
 
@@ -99,20 +108,40 @@ describe('searching and paging', () => {
     const project = await newProject(tasks);
     const make = async (title: string, priority: number, labels: string[] = [], parentId?: string) => {
       time.advance(1);
-      return (await tasks.createTask(project.id, { title, priority, labels, ...(parentId === undefined ? {} : { parentId }) }, AGENT)).task;
+      return (
+        await tasks.createTask(
+          project.id,
+          { title, priority, labels, ...(parentId === undefined ? {} : { parentId }) },
+          AGENT,
+        )
+      ).task;
     };
     const low = await make('Low', 3);
     const urgent = await make('Urgent', 0, ['ops']);
     const epic = await make('Epic', 2);
     const child = await make('Child', 2, ['ops'], epic.id);
-    await tasks.writeTask(project.id, low.id, { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      low.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
 
     const all = await tasks.listTasks(project.id, { limit: 50 });
     expect(all.tasks.map((task) => task.title)).toEqual(['Urgent', 'Epic', 'Child', 'Low']);
-    expect((await tasks.listTasks(project.id, { limit: 50, statuses: ['in_progress'] })).tasks.map((task) => task.id)).toEqual([low.id]);
-    expect((await tasks.listTasks(project.id, { limit: 50, assignee: AGENT.name })).tasks.map((task) => task.id)).toEqual([low.id]);
-    expect((await tasks.listTasks(project.id, { limit: 50, parentId: epic.id })).tasks.map((task) => task.id)).toEqual([child.id]);
-    expect((await tasks.listTasks(project.id, { limit: 50, labels: ['ops'] })).tasks.map((task) => task.id)).toEqual([urgent.id, child.id]);
+    expect(
+      (await tasks.listTasks(project.id, { limit: 50, statuses: ['in_progress'] })).tasks.map((task) => task.id),
+    ).toEqual([low.id]);
+    expect(
+      (await tasks.listTasks(project.id, { limit: 50, assignee: AGENT.name })).tasks.map((task) => task.id),
+    ).toEqual([low.id]);
+    expect((await tasks.listTasks(project.id, { limit: 50, parentId: epic.id })).tasks.map((task) => task.id)).toEqual([
+      child.id,
+    ]);
+    expect((await tasks.listTasks(project.id, { limit: 50, labels: ['ops'] })).tasks.map((task) => task.id)).toEqual([
+      urgent.id,
+      child.id,
+    ]);
   });
 
   it('pages through every task once, in order, with a cursor', async () => {
@@ -142,13 +171,27 @@ describe('searching and paging', () => {
     const project = await newProject(tasks);
     const early = (await tasks.createTask(project.id, { title: 'Early' }, AGENT)).task;
     const late = (await tasks.createTask(project.id, { title: 'Late' }, AGENT)).task;
-    await tasks.writeTask(project.id, early.id, { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      early.id,
+      { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
+      AGENT,
+    );
     time.advance(60);
     const cut = time.now();
-    await tasks.writeTask(project.id, late.id, { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      late.id,
+      { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
+      AGENT,
+    );
 
-    expect((await tasks.listTasks(project.id, { limit: 50, closedSince: cut })).tasks.map((task) => task.id)).toEqual([late.id]);
-    expect((await tasks.listTasks(project.id, { limit: 50, closedBefore: cut })).tasks.map((task) => task.id)).toEqual([early.id]);
+    expect((await tasks.listTasks(project.id, { limit: 50, closedSince: cut })).tasks.map((task) => task.id)).toEqual([
+      late.id,
+    ]);
+    expect((await tasks.listTasks(project.id, { limit: 50, closedBefore: cut })).tasks.map((task) => task.id)).toEqual([
+      early.id,
+    ]);
   });
 
   it('refuses a limit outside 1 to 200 and a cursor it did not make', async () => {
@@ -167,7 +210,12 @@ describe('labels and metadata', () => {
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Tagged', labels: ['a', 'b'] }, AGENT);
 
-    const { task: after } = await tasks.writeTask(project.id, task.id, { expectedVersion: 1, addLabels: ['b', 'c'], removeLabels: ['a', 'z'] }, AGENT);
+    const { task: after } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, addLabels: ['b', 'c'], removeLabels: ['a', 'z'] },
+      AGENT,
+    );
 
     expect(after.labels).toEqual(['b', 'c']);
   });
@@ -175,9 +223,18 @@ describe('labels and metadata', () => {
   it('merges metadata, removing a key set to null', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
-    const { task } = await tasks.createTask(project.id, { title: 'Annotated', metadata: { keep: 1, drop: 'x' } }, AGENT);
+    const { task } = await tasks.createTask(
+      project.id,
+      { title: 'Annotated', metadata: { keep: 1, drop: 'x' } },
+      AGENT,
+    );
 
-    const { task: after } = await tasks.writeTask(project.id, task.id, { expectedVersion: 1, metadata: { drop: null, add: { nested: true } } }, AGENT);
+    const { task: after } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, metadata: { drop: null, add: { nested: true } } },
+      AGENT,
+    );
 
     expect(after.metadata).toEqual({ keep: 1, add: { nested: true } });
   });
@@ -215,12 +272,17 @@ describe('lint', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const bare = (await tasks.createTask(project.id, { title: 'Bare task' }, AGENT)).task;
-    const bug = (await tasks.createTask(project.id, { title: 'Bug', type: 'bug', acceptance: 'It stops crashing.' }, AGENT)).task;
+    const bug = (
+      await tasks.createTask(project.id, { title: 'Bug', type: 'bug', acceptance: 'It stops crashing.' }, AGENT)
+    ).task;
     const complete = (await tasks.createTask(project.id, { title: 'Complete', acceptance: 'Merged.' }, AGENT)).task;
 
     const missing = await tasks.lint(project.id, [bare.id, bug.id, complete.id]);
 
-    expect(Object.fromEntries(missing)).toEqual({ [bare.id]: ['## Acceptance Criteria'], [bug.id]: ['## Steps to Reproduce'] });
+    expect(Object.fromEntries(missing)).toEqual({
+      [bare.id]: ['## Acceptance Criteria'],
+      [bug.id]: ['## Steps to Reproduce'],
+    });
   });
 });
 
@@ -241,7 +303,12 @@ describe('input checks', () => {
 
     await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1 }, AGENT), 'invalid');
     await expectRefusal(
-      tasks.writeTask(project.id, task.id, { expectedVersion: 1, reopen: true, close: { reason: 'x', resolution: 'done' } }, AGENT),
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, reopen: true, close: { reason: 'x', resolution: 'done' } },
+        AGENT,
+      ),
       'invalid',
     );
   });
@@ -251,9 +318,15 @@ describe('input checks', () => {
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Linked' }, AGENT);
 
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: 'web-a1b2' as never }, AGENT), 'invalid');
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: 'web-a1b2' as never }, AGENT),
+      'invalid',
+    );
     const tooMany = Array.from({ length: 33 }, (_, index) => `${project.prefix}-x${index}`);
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: tooMany }, AGENT), 'invalid');
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: 1, removeLinks: tooMany }, AGENT),
+      'invalid',
+    );
   });
 
   it('refuses a task in a project that does not exist', async () => {
