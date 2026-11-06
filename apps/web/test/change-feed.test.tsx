@@ -73,6 +73,31 @@ describe('the change feed', () => {
     expect(boardReads.get('docs')).toBe(docsReads);
   });
 
+  it('reads a board again on the next poll when the read after a change failed', async () => {
+    const { api, wrapped } = counted();
+    let failures = 0;
+    const flaky = {
+      ...wrapped,
+      board: (project: string, signal?: AbortSignal) => {
+        if (project === 'web' && failures > 0) {
+          failures -= 1;
+          return Promise.reject(new Error('The task list: the server answered 503.'));
+        }
+        return wrapped.board(project, signal);
+      },
+    };
+    renderApp('/tasks', flaky);
+    await screen.findByText('Rename the Settings tab to Account');
+    await api.updateTask('web-t5w3', 'web', { title: 'Rename the Settings tab to Profile' });
+    failures = 1;
+    await waitOnePoll();
+    expect(await screen.findByText(/1 project could not be read/)).toBeTruthy();
+    // No new change arrives, but the project's read is still owed.
+    await waitOnePoll();
+    expect(await screen.findByText('Rename the Settings tab to Profile')).toBeTruthy();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
+  });
+
   it('asks nothing while the page is hidden', async () => {
     const { wrapped, pollsAfter } = counted();
     renderApp('/tasks', wrapped);

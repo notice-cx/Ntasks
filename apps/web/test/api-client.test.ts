@@ -44,6 +44,20 @@ describe('which failed reads are tried again', () => {
     expect(error).toBeInstanceOf(UnreadableAnswer);
     expect(retryRead(0, error)).toBe(false);
   });
+
+  it('does not retry a successful answer whose body is not JSON', async () => {
+    const page = () => new Response('<html>Sign in</html>', { headers: { 'content-type': 'text/html' } });
+    const { api } = server(page);
+    for (const read of [
+      () => api.board('web'),
+      () => api.changes(0),
+      () => createHttpTasksApi(async () => page()).projects(),
+    ]) {
+      const error: unknown = await read().catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(UnreadableAnswer);
+      expect(retryRead(0, error)).toBe(false);
+    }
+  });
 });
 
 describe('the HTTP Tasks API client', () => {

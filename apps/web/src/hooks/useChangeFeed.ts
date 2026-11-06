@@ -7,7 +7,8 @@
  * not yet reflect.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import { retryRead } from '@/api/client';
 import { useTasksApi } from '@/api/context';
 import type { TaskProject } from '@/api/types';
 
@@ -28,15 +29,33 @@ export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonl
   );
   // Every board reflects every change up to the oldest of their positions, so the feed starts there.
   const start = reflected.size === 0 ? null : Math.min(...reflected.values());
-  // The latest render's facts, for a poll that a timer starts.
-  const latest = useRef({ start, reflected, keys: new Map<string, string>() });
-  latest.current = {
-    start,
-    reflected,
-    keys: new Map((catalog ?? []).map((project) => [project.projectId, project.logicalKey])),
-  };
+  const keys = new Map((catalog ?? []).map((project) => [project.projectId, project.logicalKey]));
+  // The committed render's facts, for a poll that a timer starts. They are set
+  // once React commits, since a render it discards must not move the feed, and
+  // in a layout effect, which runs before the query's own effects start a poll.
+  const latest = useRef({ start, reflected, keys });
+  useLayoutEffect(() => {
+    latest.current = { start, reflected, keys };
+  });
   // Where the last poll got to; a later board position takes over from it.
   const polled = useRef<number | null>(null);
+  // Projects whose changes the feed has passed but whose pages have not yet
+  // been read again. A project stays here until a read succeeds, because no
+  // later poll names those changes again.
+  const unread = useRef(new Set<string>());
+
+  async function readAgain(project: string): Promise<void> {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ['tasks', project] }),
+      client.invalidateQueries({ queryKey: ['task', project] }),
+    ]);
+    const failure = [
+      ...client.getQueryCache().findAll({ queryKey: ['tasks', project], type: 'active' }),
+      ...client.getQueryCache().findAll({ queryKey: ['task', project], type: 'active' }),
+    ].find((query) => query.state.status === 'error')?.state.error;
+    // A refusal answers the same way every time, so only a failure worth retrying keeps the project here.
+    if (failure === undefined || !retryRead(0, failure)) unread.current.delete(project);
+  }
 
   useQuery({
     queryKey: ['changes'],
@@ -45,20 +64,16 @@ export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonl
     // Stopped while the page is hidden; asked again the moment it shows.
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }) => {
-      const { start: from, reflected: shown, keys } = latest.current;
+      const { start: from, reflected: shown, keys: projects } = latest.current;
       const after = Math.max(from ?? 0, polled.current ?? 0);
       const page = await api.changes(after, signal);
-      const changed = new Set<string>();
       for (const event of page.events) {
-        const key = keys.get(event.projectId);
+        const key = projects.get(event.projectId);
         if (key === undefined) continue;
-        if (event.seq > (shown.get(key) ?? -1)) changed.add(key);
+        if (event.seq > (shown.get(key) ?? -1)) unread.current.add(key);
       }
       polled.current = page.lastSeq;
-      for (const key of changed) {
-        void client.invalidateQueries({ queryKey: ['tasks', key] });
-        void client.invalidateQueries({ queryKey: ['task', key] });
-      }
+      for (const project of [...unread.current]) void readAgain(project);
       return page.lastSeq;
     },
   });
