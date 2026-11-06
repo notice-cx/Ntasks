@@ -122,6 +122,9 @@ describe('the sign-in rate limit', () => {
 
   /** Limits that never refuse in a test. */
   const OPEN = 1_000;
+  /** Two addresses that are never the same, for the tests whose limiter counts per address. */
+  const ADDRESS = '198.51.100.1';
+  const OTHER_ADDRESS = '198.51.100.2';
 
   it('refuses the 31st sign-in request from one address', async () => {
     const signIn = limiter(30);
@@ -130,13 +133,12 @@ describe('the sign-in rate limit', () => {
         ...env,
         SIGN_IN_LIMIT: signIn,
       });
-    const address = freshAddress();
-    for (let i = 0; i < 30; i += 1) expect((await me(address))?.status).toBe(401);
+    for (let i = 0; i < 30; i += 1) expect((await me(ADDRESS))?.status).toBe(401);
 
-    const limited = await me(address);
+    const limited = await me(ADDRESS);
     expect(limited?.status).toBe(429);
     expect(limited?.headers.get('retry-after')).toBe('60');
-    expect((await me(freshAddress()))?.status).toBe(401);
+    expect((await me(OTHER_ADDRESS))?.status).toBe(401);
     expect(new Set(signIn.keys).size).toBe(2);
   });
 
@@ -178,14 +180,13 @@ describe('the sign-in rate limit', () => {
   it('refuses a fourth registration from one address, without spending the shared cap', async () => {
     const shared = limiter(OPEN);
     const fromAddress = limiter(3);
-    const address = freshAddress();
 
     const statuses = [];
-    for (let i = 0; i < 4; i += 1) statuses.push((await register(address, { shared, fromAddress }))?.status);
+    for (let i = 0; i < 4; i += 1) statuses.push((await register(ADDRESS, { shared, fromAddress }))?.status);
     expect(statuses).toEqual([201, 201, 201, 429]);
-    expect(fromAddress.keys).toEqual([address, address, address, address]);
+    expect(fromAddress.keys).toEqual([ADDRESS, ADDRESS, ADDRESS, ADDRESS]);
     expect(shared.keys).toHaveLength(3);
-    expect((await register(freshAddress(), { shared, fromAddress }))?.status).toBe(201);
+    expect((await register(OTHER_ADDRESS, { shared, fromAddress }))?.status).toBe(201);
   });
 
   /** Sets today's count of registrations, and clears it after the test. */
