@@ -25,8 +25,9 @@ flowchart LR
 | Part | Code | Built |
 |---|---|---|
 | Worker | [`workers/api/src/`](../workers/api/src/) | The health check at `/healthz` |
-| Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | Not yet |
-| Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format |
+| Database schema | [`workers/api/migrations/`](../workers/api/migrations/) | The task store's tables and the rules the database enforces ([The task store](task-store.md)) |
+| Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
+| Task engine | | Not yet |
 | Web app | [`apps/web/`](../apps/web/) | A placeholder page |
 | MCP endpoint for agents | | Not yet |
 | Sign-in | | Not yet |
@@ -110,6 +111,7 @@ They are what lets many agents work on one graph without corrupting it.
 7. **Time alone never releases a claim.**
 
 D1 runs a batch of statements as one transaction, but a conditional update
-that matches no row does not fail the batch. So each transition makes its
-history entry and retry record conditional, inside the same batch, on its
-update having changed a row.
+that matches no row does not fail the batch. The database's write guard turns
+that case into a failure that rolls back the whole batch, so a refused write
+leaves no history entry or retry record behind.
+[The task store](task-store.md#the-write-guard) shows how.

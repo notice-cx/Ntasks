@@ -1,0 +1,235 @@
+/**
+ * The task engine's contract: the one interface through which the API, the
+ * MCP tools and imports read and change tasks. workers/api implements it on
+ * D1. docs/task-store.md maps each operation NoticeOS used to send to Beads
+ * onto these methods.
+ *
+ * The engine checks the task model's rules; it does not check who may act.
+ * The API layer signs the sender in, decides what they may do, and passes the
+ * engine an `Actor` it has already authenticated.
+ *
+ * Every write is one D1 batch, which commits whole or not at all: the change,
+ * its history event and its retry record land together. The rules in
+ * docs/architecture.md ("Rules every change keeps") are the engine's
+ * guarantees, and each method's comment names the ones it relies on.
+ */
+import type {
+  DependencyType,
+  EpicProgress,
+  Json,
+  JsonObject,
+  Project,
+  Task,
+  TaskComment,
+  TaskEvent,
+  TaskResolution,
+  TaskStatus,
+  TaskType,
+} from './task.ts';
+
+/** The sender of a write, as the API layer authenticated it. */
+export interface Actor {
+  /** Recorded as the filer, assignee, closer or author. */
+  readonly name: string;
+  /** The AI model the sender named, if it is an agent. */
+  readonly model?: string;
+}
+
+/**
+ * Makes a write safe to retry. The engine records the write's answer under
+ * (`principal`, `operation`, `key`) in the same batch as the write. The same
+ * key with the same `requestHash` returns that answer again without writing;
+ * with a different `requestHash` it is refused as `retry_conflict`.
+ */
+export interface Retry {
+  /** The authenticated sender's stable identity, not a display name. */
+  readonly principal: string;
+  /** The operation's name, such as `create_task`. */
+  readonly operation: string;
+  /** The caller's idempotency key, 8 to 128 characters. */
+  readonly key: string;
+  /** SHA-256 of the canonical request, as 64 lowercase hexadecimal characters. */
+  readonly requestHash: string;
+}
+
+export interface CreateProjectInput {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly prefix: string;
+}
+
+/** A link a new task starts with. */
+export interface NewTaskLink {
+  /** `depends-on`: the new task waits on `taskId` (for `blocks`) or links to it.
+   * `blocks`: `taskId` waits on the new task. */
+  readonly direction: 'depends-on' | 'blocks';
+  readonly taskId: string;
+  readonly type: DependencyType;
+}
+
+export interface CreateTaskInput {
+  readonly title: string;
+  readonly description?: string;
+  readonly acceptance?: string;
+  /** `task` when left out. A gate is made with `requestApproval` on a write, not here. */
+  readonly type?: Exclude<TaskType, 'gate'>;
+  readonly priority?: number;
+  /** The new task's id becomes the parent's id with the next child number. */
+  readonly parentId?: string;
+  readonly labels?: readonly string[];
+  readonly links?: readonly NewTaskLink[];
+  readonly deferUntil?: string;
+  readonly dueAt?: string;
+  readonly choices?: JsonObject;
+  readonly metadata?: JsonObject;
+}
+
+/** Field changes. A key left out is unchanged; `null` clears the field. */
+export interface TaskFieldChanges {
+  readonly title?: string;
+  readonly description?: string;
+  readonly acceptance?: string;
+  readonly type?: Exclude<TaskType, 'gate'>;
+  readonly priority?: number;
+  /** Any status but `closed`; a write closes a task with `close`. */
+  readonly status?: Exclude<TaskStatus, 'closed'>;
+  /** Setting yourself as assignee with status `in_progress` is a claim: it
+   * records your model and the start time. */
+  readonly assignee?: string | null;
+  readonly parentId?: string | null;
+  readonly deferUntil?: string | null;
+  readonly dueAt?: string | null;
+  readonly choices?: JsonObject | null;
+  /** A person's pick of one of the task's choices. */
+  readonly choice?: JsonObject | null;
+}
+
+/**
+ * One change to an existing task, written as one batch. Every part named here
+ * lands together or not at all, so an operation that NoticeOS ran as several
+ * Beads commands, such as recording a person's choice, commenting and
+ * closing, is one write.
+ */
+export interface TaskWrite {
+  /** The task's version when the caller read it. If the task has changed
+   * since, the write is refused as `version_conflict` (rules 1 and 2). */
+  readonly expectedVersion: number;
+  readonly set?: TaskFieldChanges;
+  readonly addLabels?: readonly string[];
+  readonly removeLabels?: readonly string[];
+  /** Merged into the task's metadata; a key set to `null` is removed. */
+  readonly metadata?: Readonly<Record<string, Json | null>>;
+  /** Links from this task to others. A `blocks` link that would close a loop
+   * of tasks waiting on each other is refused as `cycle`. */
+  readonly addLinks?: readonly { readonly taskId: string; readonly type: DependencyType }[];
+  readonly removeLinks?: readonly string[];
+  /** Opens an approval: a gate task that this task waits on until a person
+   * answers it. The new gate's id is in the result's `created`. */
+  readonly requestApproval?: { readonly reason: string };
+  /** Closes the task, recording the actor as the closer. Refused on a task
+   * that is already closed. */
+  readonly close?: { readonly reason: string; readonly resolution: TaskResolution; readonly duplicateOf?: string };
+  /** Opens a closed task again. Its earlier close stays in its history (rule 6). */
+  readonly reopen?: true;
+  /** A comment added in the same change, such as the answer behind it. */
+  readonly comment?: string;
+}
+
+export interface TaskQuery {
+  readonly statuses?: readonly TaskStatus[];
+  /** Only tasks someone can start now. */
+  readonly ready?: boolean;
+  readonly parentId?: string;
+  readonly assignee?: string;
+  /** Only tasks carrying every one of these labels. */
+  readonly labels?: readonly string[];
+  /** Only tasks closed at or after this time. */
+  readonly closedSince?: string;
+  /** Only tasks closed before this time. */
+  readonly closedBefore?: string;
+  /** At most this many, up to TASK_LIMITS.page. */
+  readonly limit: number;
+  /** The `nextCursor` of the previous page. */
+  readonly cursor?: string;
+}
+
+export interface TaskPage {
+  readonly tasks: readonly Task[];
+  /** Null on the last page. */
+  readonly nextCursor: string | null;
+}
+
+export interface ChangePage {
+  /** Events after the requested sequence number, oldest first. */
+  readonly events: readonly TaskEvent[];
+  /** The sequence number to ask after next; unchanged when there were none. */
+  readonly lastSeq: number;
+}
+
+export interface WriteResult {
+  readonly task: Task;
+  /** Tasks the write made as well, such as the gate of a requested approval. */
+  readonly created: readonly Task[];
+  /** True when a retry returned the recorded answer and nothing was written. */
+  readonly replayed: boolean;
+}
+
+export interface CommentResult {
+  readonly comment: TaskComment;
+  readonly replayed: boolean;
+}
+
+export interface TaskEngine {
+  listProjects(): Promise<readonly Project[]>;
+  createProject(input: CreateProjectInput): Promise<Project>;
+
+  /** Null when the project holds no such task. */
+  getTask(projectId: string, taskId: string): Promise<Task | null>;
+  /** Which of these ids the project holds, closed or not. */
+  findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
+  /** Most urgent first: priority, then oldest. Ready work is worked out on the server (rule 5). */
+  listTasks(projectId: string, query: TaskQuery): Promise<TaskPage>;
+  listEpics(projectId: string): Promise<readonly EpicProgress[]>;
+  listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
+  /** The task's changes, newest first. */
+  listHistory(projectId: string, taskId: string, options: { readonly limit: number; readonly beforeSeq?: number }): Promise<readonly TaskEvent[]>;
+  /** Every change after `after`, across projects or in one, for clients that keep a copy. */
+  listChanges(query: { readonly after: number; readonly limit: number; readonly projectId?: string }): Promise<ChangePage>;
+  /** For each task, the sections its type expects that it still lacks. */
+  lint(projectId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
+
+  createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
+  /** Changes an existing task in one batch (rules 1 to 4). */
+  writeTask(projectId: string, taskId: string, write: TaskWrite, actor: Actor, retry?: Retry): Promise<WriteResult>;
+  /** Adds a comment. It does not change the task's version, so it never conflicts with a write. */
+  addComment(projectId: string, taskId: string, text: string, actor: Actor, retry?: Retry): Promise<CommentResult>;
+}
+
+/**
+ * Why the engine refused a write. The first three can come from the database's
+ * write guard (workers/api/migrations/0001_task_store.sql), which reports them
+ * as "ntasks refused: <refusal>".
+ */
+export const TASK_REFUSALS = ['not_found', 'version_conflict', 'cycle', 'retry_conflict', 'invalid'] as const;
+export type TaskRefusal = (typeof TASK_REFUSALS)[number];
+
+/** The refusals the database's write guard can report. */
+export const GUARD_REFUSALS = ['not_found', 'version_conflict', 'cycle'] as const satisfies readonly TaskRefusal[];
+
+export class TaskRefused extends Error {
+  override name = 'TaskRefused';
+  readonly refusal: TaskRefusal;
+  constructor(refusal: TaskRefusal, message: string) {
+    super(message);
+    this.refusal = refusal;
+  }
+}
+
+const GUARD_MESSAGE = /ntasks refused: ([a-z_]+)/u;
+
+/** The guard refusal named in a D1 error message, or null when the error came from elsewhere. */
+export function guardRefusalOf(message: string): (typeof GUARD_REFUSALS)[number] | null {
+  const name = GUARD_MESSAGE.exec(message)?.[1];
+  return (GUARD_REFUSALS as readonly string[]).includes(name ?? '') ? (name as (typeof GUARD_REFUSALS)[number]) : null;
+}

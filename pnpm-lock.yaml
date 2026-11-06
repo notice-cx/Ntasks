@@ -201,6 +201,10 @@ importers:
         version: 5.1.0(vite@8.3.6)
 
   workers/api:
+    dependencies:
+      '@ntasks/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: 1.6.0

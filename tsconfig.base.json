@@ -7,6 +7,9 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
+    // Code that Node runs as is names each relative import's .ts file, and
+    // every workspace that compiles that code must accept the extension.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

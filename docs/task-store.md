@@ -1,0 +1,142 @@
+# The task store
+
+The task store is the D1 database behind Ntasks: the tables that hold projects
+and tasks, the rules the database itself enforces, and the engine contract
+that every part of Ntasks reads and writes through. It is written for
+contributors working on the engine, the API or the import from Beads. Read
+[Concepts](concepts.md) first for the task model, and
+[Architecture](architecture.md) for where the store sits.
+
+| Part | Where |
+|---|---|
+| Schema | [`workers/api/migrations/0001_task_store.sql`](../workers/api/migrations/0001_task_store.sql) |
+| Vocabulary and record shapes | [`packages/domain/src/task.ts`](../packages/domain/src/task.ts) |
+| Engine contract | [`packages/domain/src/engine.ts`](../packages/domain/src/engine.ts) |
+| Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
+
+The engine that implements the contract on D1 is being built.
+
+## Tables
+
+| Table | Holds |
+|---|---|
+| `projects` | Each project's id, key, name and task id prefix |
+| `tasks` | One row per task: its fields, its current close, its version |
+| `task_labels` | A task's labels, one row each |
+| `task_edges` | Links between tasks: `blocks`, `related` and `discovered-from` |
+| `task_comments` | Comments, in the order they were added |
+| `task_events` | Every change to every task, in order |
+| `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
+
+A task's parent is the `parent_id` column, not a link. Sign-in and access
+grants have their own tables, in their own migration.
+
+## Rules the database enforces
+
+These hold whatever code writes to the database. Each has a test in
+`schema.test.ts`.
+
+- The CHECK lists of statuses, types, link types, resolutions and history
+  event kinds match the lists in `packages/domain/src/task.ts`.
+- A task is closed exactly when it records when and how it closed, and close
+  details are empty while it is not closed.
+- Every update of a task raises its `version` by exactly one.
+- A task keeps its id, its project and its creation time.
+- Tasks, their history and their comments are never deleted, and history and
+  comments are never edited.
+- A project prefix has no hyphen, and a task never depends on itself.
+
+### The write guard
+
+D1 runs a batch of statements as one transaction, but a conditional update
+that matches no row does not fail it. The `write_guard` view turns that case
+into a failure. Right after a statement that must change exactly one row, the
+engine inserts into the view whether it did:
+
+```sql
+UPDATE tasks SET title = ?, version = version + 1, updated_at = ?
+  WHERE id = ? AND version = ?;
+INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict');
+INSERT INTO task_events (...) VALUES (...);
+```
+
+When the update matched no row, the insert fails with
+`ntasks refused: version_conflict`, D1 rolls back the whole batch, and
+`guardRefusalOf()` in the domain package reads the refusal from the error.
+The guard reports `not_found`, `version_conflict` and `cycle`.
+
+## The engine contract
+
+`TaskEngine` in `engine.ts` has three kinds of methods:
+
+- **Reads:** `getTask`, `findTasks`, `listTasks`, `listEpics`,
+  `listComments`, `listHistory`, `listChanges` and `lint`.
+- **Writes:** `createTask`, `writeTask` and `addComment`. Each is one batch.
+  `writeTask` takes everything one change does at once: field changes,
+  labels, links, metadata, a close or a reopen, an approval request and a
+  comment.
+- **Projects:** `listProjects` and `createProject`.
+
+The engine checks the task model's rules. It does not check who may act: the
+API layer signs the sender in and passes the engine an `Actor`.
+
+### Where each NoticeOS operation goes
+
+NoticeOS sent these operations to Beads, some of them as several `bd`
+commands in a row (`scripts/hosted-task-command.mts` in NoticeOS). Each is one
+engine call. Its checks of who may decide, such as matching an owner's answer
+to the proposal they saw, stay in the API layer, which is ported from that
+file.
+
+| NoticeOS operation | Engine call |
+|---|---|
+| `list`, `active-board`, `closed-board` | `listTasks` with statuses or close times |
+| `ready` | `listTasks` with `ready: true` |
+| `show` | `getTask` |
+| `find` | `findTasks` |
+| `history` | `listHistory` |
+| `comments` | `listComments` |
+| `epics` | `listEpics` |
+| `snapshot` | `listChanges` |
+| `lint` | `lint` |
+| `create` | `createTask` |
+| `update`, `depend`, `undepend`, `relate`, `hand-back` | `writeTask` with `set`, labels, `addLinks` or `removeLinks` |
+| `comment` | `addComment` |
+| `close`, `dismiss` | `writeTask` with `close` |
+| `attribute` | Nothing separate: the close records the closer, model and resolution itself |
+| `gate` | `writeTask` with `requestApproval` |
+| `resolve-gate` | `writeTask` with `close` on the gate |
+| `dispute` | `writeTask` with `reopen` on the gate |
+| `respond`, `choose`, `record-choice` | One `writeTask`: the choice, the comment, and the close or hand-back |
+| `maintain`, `record-maintenance` | One `writeTask`: the maintenance record in metadata, the comment, and the close or hand-back |
+
+### Where NoticeOS's task metadata goes
+
+Beads had no fields for some facts, so NoticeOS kept them in task metadata.
+In Ntasks they are columns, written in the same batch as the change they
+describe.
+
+| NoticeOS metadata | Ntasks |
+|---|---|
+| `noticeos_filed_by`, `noticeos_filed_model` | `tasks.filed_by`, `tasks.filed_model` |
+| `noticeos_claimed_model` | `tasks.assignee_model` |
+| `noticeos_closed_by`, `noticeos_closed_model`, `noticeos_closed_at` | `tasks.closed_by`, `tasks.closed_model`, `tasks.closed_at` |
+| `noticeos_resolution`, `noticeos_duplicate_of` | `tasks.resolution`, `tasks.duplicate_of` |
+| `noticeos_choices`, `noticeos_choice` | `tasks.choices`, `tasks.choice` |
+| `noticeos_related_tasks` | `task_edges` rows of type `related` |
+| `noticeos_operation_id` | `write_receipts` |
+| Every other key, such as `noticeos_card` | `tasks.metadata`, stored and returned as given |
+
+## Beads behaviour in and out of scope
+
+| In scope | Out of scope |
+|---|---|
+| Tasks as a graph with `blocks`, `related` and `discovered-from` links | The `waits-for` and `conditional-blocks` link types |
+| Parents and children, with child ids such as `web-a1b2.3` | Prefixes with hyphens, and ids whose key has hyphens |
+| Ready work, worked out on the server | Claims that expire as leases, and heartbeats |
+| Epics that can close once their children have | Formulas, molecules and wisps |
+| Approvals (gates a person answers) and decisions | Dolt branches, merges and sync |
+| Labels, comments, metadata and the full history of every task | |
+
+An import from Beads refuses a task that uses something out of scope and
+names it, rather than dropping it.

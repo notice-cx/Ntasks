@@ -9,7 +9,6 @@
     // refuses TypeScript syntax that Node cannot strip.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
   "include": ["src", "test"]
