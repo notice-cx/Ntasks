@@ -5,11 +5,14 @@ clients must agree on, kept in one place so they cannot drift apart. It has no
 runtime dependencies and uses no platform's globals, so the same code runs in
 workerd, in the browser and in Node.
 
-| Export | What it does |
+| File | Holds |
 |---|---|
-| `isTaskId(value)` | Whether a value has the form of a task id, such as `web-a1b2` or `web-a1b2.3` |
+| [`src/task-id.ts`](src/task-id.ts) | `isTaskId`: whether a value has the form of a task id, such as `web-a1b2` or `web-a1b2.3` |
+| [`src/task.ts`](src/task.ts) | The vocabulary (statuses, types, link types, resolutions, history event kinds), the API's limits, and the shapes of a project, task, comment and history event |
+| [`src/engine.ts`](src/engine.ts) | `TaskEngine`, the contract every read and write goes through, and the refusals it reports |
 
-[Concepts](../../docs/concepts.md) describes the model these rules belong to.
+[Concepts](../../docs/concepts.md) describes the model these rules belong to,
+and [The task store](../../docs/task-store.md) the database behind the engine.
 
 ## Commands
 

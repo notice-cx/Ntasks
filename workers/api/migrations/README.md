@@ -3,6 +3,8 @@
 This folder holds the Worker's D1 schema as numbered SQL files. Wrangler applies
 them in number order and records each applied file in the database's
 `d1_migrations` table, so a database only ever receives the files it lacks.
+[The task store](../../../docs/task-store.md) describes the tables and the
+rules they enforce.
 
 ## Add a migration
 

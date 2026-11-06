@@ -7,7 +7,6 @@
     "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
   "include": [".", "../../vitest.config.ts"]

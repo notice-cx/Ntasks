@@ -33,7 +33,8 @@ Ntasks is under construction. The repository holds its skeleton:
 |---|---|
 | Worker | Answers a health check at `/healthz` |
 | Web app | A placeholder page |
-| Task model | The task id format |
+| Task model | The task id format, the vocabulary and the engine contract |
+| Task store | The database tables and the rules the database enforces |
 | Task engine, API, MCP endpoint, sign-in | Being built |
 
 Until sign-in is built, a deployed Ntasks has no access control; do not store
@@ -46,6 +47,8 @@ real tasks in one. [SECURITY.md](SECURITY.md) has the details.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.
+- [The task store](docs/task-store.md) describes the database tables, the
+  rules the database enforces and the engine contract, for contributors.
 
 ## Run it locally
 

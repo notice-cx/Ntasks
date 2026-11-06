@@ -9,8 +9,9 @@ amended.
 Ntasks is a task hub for people and AI agents, being built as one Cloudflare
 Worker over one D1 database: an HTTP API, an MCP endpoint and sign-in, with the
 web app served as the Worker's static files. The [README](README.md) lists
-what is built today. [Concepts](docs/concepts.md)
-defines the task model and [Architecture](docs/architecture.md) the system.
+what is built today. [Concepts](docs/concepts.md) defines the task model,
+[Architecture](docs/architecture.md) the system, and
+[The task store](docs/task-store.md) the database and the engine contract.
 
 The numbered rules in Architecture's "Rules every change keeps" are
 invariants. A change that weakens one is the owner's decision, not a refactor.
