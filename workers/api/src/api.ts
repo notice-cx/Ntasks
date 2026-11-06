@@ -72,7 +72,7 @@ export async function serveApi(request: Request, principal: Principal, context: 
     return json({ error: 'insufficient_scope', detail: `this route needs ${SCOPES.read}` }, 403);
   }
   try {
-    return await route({ engine, now }, url);
+    return await route({ engine, principal, now }, url);
   } catch (error) {
     if (error instanceof HttpRefused) return error.response();
     throw error;

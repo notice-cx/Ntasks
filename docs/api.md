@@ -27,11 +27,18 @@ make: `tasks:read` to read and `tasks:write` to change tasks.
 | `401` | Nobody is signed in. |
 | `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs. An MCP tool refuses the same call with a sentence instead. |
 
-[Sign-in](sign-in.md) is built, but the API does not use it yet: until the API
-checks the projects each sender may reach, the Worker answers `401` with
-`{"error":"sign_in_required"}` to every API and MCP request, so a deployment
-serves no task data. The sign-in routes under `/api/auth` and `/api/access`
-answer as [Sign-in](sign-in.md#routes) describes.
+A sender also reaches certain **projects**. The owner reaches every project;
+an agent or a service reaches only the projects it was granted, each for
+reading or for writing too. Lists and the change feed leave the other
+projects out, and a request that names one gets the same answer as a project
+that does not exist, so a sender learns nothing of projects it cannot reach.
+
+The Worker signs every request in as [Sign-in](sign-in.md) describes: the
+owner's browser session, an agent's OAuth access token, or a service
+credential. A request with none, or with one that is invalid, revoked or
+expired, gets `401` with a bearer challenge that tells an MCP client where to
+sign in. The sign-in routes under `/api/auth` and `/api/access` answer as
+[Sign-in](sign-in.md#routes) describes.
 
 ## The workspace
 
