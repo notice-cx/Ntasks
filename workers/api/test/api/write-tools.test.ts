@@ -637,6 +637,52 @@ describe('update_task', () => {
     expect((await assign('')).task.assignee).toBeNull();
   });
 
+  it('records the key of a change that changed nothing, so a retry replays it and the key stays its own', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project, { title: 'Same', priority: 2 });
+    const args = { project: project.id, task: id, title: 'Same', idempotency_key: key() };
+    expect(await write(target, 'update_task', args)).toMatchObject({ replayed: false, task: { title: 'Same' } });
+    await engine.writeTask(project.id, id, { expectedVersion: 1, set: { title: 'Renamed since' } }, OWNER);
+
+    // The retry answers what the first call did; it does not write "Same" over the newer title.
+    expect(await write(target, 'update_task', args)).toMatchObject({
+      replayed: true,
+      task: { title: 'Renamed since' },
+    });
+    expect(await current(project, id)).toMatchObject({ title: 'Renamed since', version: 2 });
+    expect(await refusal(target, 'update_task', { workspace: WORKSPACE.id, ...args, priority: 0 })).toMatch(
+      /^conflict: this idempotency_key was first used for a different change/u,
+    );
+  });
+
+  it('plans a change that changed nothing again when another write lands before its key is recorded', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project, { title: 'Same' });
+    let raced = false;
+    const racing = api({
+      principal: WRITER,
+      engine,
+      wrap: (inner) => ({
+        ...inner,
+        async recordUnchanged(...args) {
+          if (!raced) {
+            raced = true;
+            await inner.writeTask(args[0], args[1], { expectedVersion: args[2], set: { title: 'Renamed' } }, OWNER);
+          }
+          return inner.recordUnchanged(...args);
+        },
+      }),
+    });
+    const reply = await write<{ task: Record<string, unknown>; replayed: boolean }>(racing, 'update_task', {
+      project: project.id,
+      task: id,
+      title: 'Same',
+      idempotency_key: key(),
+    });
+    expect(reply).toMatchObject({ task: { title: 'Same' }, replayed: false });
+    expect((await current(project, id)).version).toBe(3);
+  });
+
   it('opens a closed task again when given a status', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);

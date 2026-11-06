@@ -82,10 +82,13 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   answered, so the API can answer a retry before it checks a rule that the
   write's own effect would break, such as a close's rule that the task is
   open.
-- **Writes:** `createTask`, `writeTask` and `addComment`. Each is one batch.
-  `createTask` can open an approval the new task waits on. `writeTask` takes
-  everything one change does at once: field changes, labels, links, metadata,
-  a close or a reopen, an approval request and a comment.
+- **Writes:** `createTask`, `writeTask`, `addComment` and `recordUnchanged`.
+  Each is one batch. `createTask` can open an approval the new task waits on.
+  `writeTask` takes everything one change does at once: field changes,
+  labels, links, metadata, a close or a reopen, an approval request and a
+  comment. `recordUnchanged` writes only the retry record of a change that
+  found nothing to change, so its key answers a retry and cannot be reused
+  for another change; the task's version and history stay as they were.
 - **Projects:** `listProjects` and `createProject`.
 
 The engine checks the task model's rules. It does not check who may act: the

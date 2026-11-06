@@ -159,7 +159,10 @@ to 128 letters, digits, dots, underscores, colons or hyphens: the
 same arguments answers what the first call answered, with the tasks as they
 stand now and `replayed: true`, and changes nothing. The same key with other
 arguments, for another task or in another project is refused. A key is kept
-for seven days, for each sender and each tool.
+for seven days, for each sender and each tool. A call that finds nothing to
+change, such as a title set to the title the task has, still keeps its key,
+so a retry of it answers again rather than writing that title over a newer
+one.
 
 `add_dependency`, `remove_dependency` and `request_human_approval` take no
 key, because asking again changes nothing.

@@ -429,6 +429,42 @@ describe('retries (rule 3)', () => {
     expect(await historyOf(tasks, project.id, task.id)).toHaveLength(3);
   });
 
+  it('records the key of a write that changed nothing, without a new version or history', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Already so' }, OWNER);
+    const key = `noop-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, { title: 'Already so' }, 'update_task');
+
+    const recorded = await tasks.recordUnchanged(project.id, task.id, 1, retry);
+    expect(recorded).toMatchObject({ task: { id: task.id, version: 1 }, created: [], replayed: false });
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(1);
+
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved on' } }, OWNER);
+    expect(await tasks.recordUnchanged(project.id, task.id, 1, retry)).toMatchObject({
+      task: { title: 'Moved on', version: 2 },
+      replayed: true,
+    });
+    expect(await tasks.recordedWrite(project.id, retry)).toMatchObject({ replayed: true });
+    await expectRefusal(
+      tasks.recordedWrite(project.id, await retryFor(key, { title: 'Other' }, 'update_task')),
+      'retry_conflict',
+    );
+  });
+
+  it('records nothing for a task that changed since it was read, or that does not exist', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Moving' }, OWNER);
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved' } }, OWNER);
+    const retry = await retryFor(`stale-${crypto.randomUUID()}`, { title: 'Moved' }, 'update_task');
+
+    await expectRefusal(tasks.recordUnchanged(project.id, task.id, 1, retry), 'version_conflict');
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await expectRefusal(tasks.recordUnchanged(project.id, `${project.prefix}-none`, 1, retry), 'not_found');
+    expect(await tasks.recordUnchanged(project.id, task.id, 2, retry)).toMatchObject({ replayed: false });
+  });
+
   it('answers a repeated comment with the same comment', async () => {
     const tasks = engine();
     const project = await newProject(tasks);

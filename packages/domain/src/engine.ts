@@ -263,6 +263,13 @@ export interface TaskEngine {
    * rule that the task is open, so a retried close answers instead of being
    * refused. */
   recordedWrite(projectId: string, retry: Retry): Promise<WriteResult | null>;
+  /** Records a retry identity for a write that changed nothing, with the task
+   * as its answer, so a retry of it replays and the same key with another
+   * request is refused as `retry_conflict`. It writes only the retry record:
+   * the task's version and history stay as they were. Refused as
+   * `version_conflict`, recording nothing, when the task is no longer at
+   * `expectedVersion`, so the caller reads the task again and decides again. */
+  recordUnchanged(projectId: string, taskId: string, expectedVersion: number, retry: Retry): Promise<WriteResult>;
 
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
   /** Changes an existing task in one batch (rules 1 to 4). */

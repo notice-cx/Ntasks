@@ -187,7 +187,10 @@ async function recorded({ engine }: Reader, project: Project, retry: Retry | und
  * Changes a task: `plan` reads the task as it stands and returns the write,
  * or null when it changes nothing, or throws the refusal its state calls for.
  * When another write changes the task first, it reads the task again and
- * plans again, so a write that names no version still keeps rule 2.
+ * plans again, so a write that names no version still keeps rule 2. A keyed
+ * write that changes nothing still records its key, with the task as its
+ * answer, so a retry replays it rather than writing what it sent once the
+ * task has moved on, and the key cannot be reused for another change.
  */
 async function changing(
   context: WriteContext,
@@ -201,9 +204,11 @@ async function changing(
   let task = first;
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     const write = await plan(task);
-    if (write === null) return { task, created: [], replayed: false };
+    if (write === null && retry === undefined) return { task, created: [], replayed: false };
     try {
-      return await context.engine.writeTask(project.id, task.id, write, actor, retry);
+      return write === null
+        ? await context.engine.recordUnchanged(project.id, task.id, task.version, retry!)
+        : await context.engine.writeTask(project.id, task.id, write, actor, retry);
     } catch (error) {
       const raced = error instanceof TaskRefused && (error.refusal === 'version_conflict' || error.refusal === 'held');
       if (!raced) throw fromEngine(error, { loop });

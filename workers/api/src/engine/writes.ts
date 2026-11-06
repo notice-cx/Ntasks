@@ -290,6 +290,47 @@ export class Writes {
     return this.#result(projectId, recorded.taskId, recorded.created as string[], true);
   }
 
+  async recordUnchanged(
+    projectId: string,
+    taskId: string,
+    expectedVersion: number,
+    retryInput: Retry,
+  ): Promise<WriteResult> {
+    const retry = check.retry(retryInput) ?? check.invalid('a retry identity is required');
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1)
+      check.invalid('expectedVersion must be the version you read, a whole number of 1 or more');
+    const replayed = await this.#replay(retry, projectId);
+    if (replayed !== null) return replayed;
+    try {
+      await this.#db.batch([
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+               SELECT 1 FROM tasks WHERE id = ?1 AND project_id = ?2
+             ), 'not_found'`,
+          )
+          .bind(taskId, projectId),
+        // The guard, not an earlier read, decides: the task must stand at the
+        // version the caller planned from when the record lands.
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+               SELECT 1 FROM tasks WHERE id = ?1 AND project_id = ?2 AND version = ?3
+             ), 'version_conflict'`,
+          )
+          .bind(taskId, projectId, expectedVersion),
+        ...this.#receipt(retry, projectId, { taskId, created: [] }, this.#now()),
+      ]);
+    } catch (error) {
+      // The same retried request may have recorded its answer while this one ran.
+      const replay = await this.#replay(retry, projectId);
+      if (replay !== null) return replay;
+      failureOf(error);
+      refuse('retry_conflict');
+    }
+    return this.#result(projectId, taskId, [], false);
+  }
+
   async #projectOf(projectId: string): Promise<Project> {
     return (await this.#reads.project(projectId)) ?? refuse('not_found', 'The project does not exist.');
   }
