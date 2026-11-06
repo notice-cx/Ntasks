@@ -1,4 +1,5 @@
 export { isTaskId } from './task-id.ts';
+export { missingSections, requiredSections } from './lint.ts';
 export {
   DEPENDENCY_TYPES,
   isDependencyType,

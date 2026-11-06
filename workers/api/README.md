@@ -7,6 +7,7 @@ Cloudflare serves the web app's build for every other path.
 | Path | Holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The request handler |
+| [`src/engine/`](src/engine/) | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md)) |
 | [`migrations/`](migrations/) | The D1 schema, as numbered SQL files ([rules](migrations/README.md)) |
 | [`test/`](test/) | Tests that run in workerd on a local D1 database |
 | [`test/node/`](test/node/) | The routing test, which Node runs: it puts the Worker behind Cloudflare's static-file layer, with the real `wrangler.jsonc` and a fixture web build |
