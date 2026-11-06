@@ -6,7 +6,7 @@
  */
 import type { Json } from '@ntasks/domain';
 import type { BeadsProject, BeadsRow } from '../src/beads.ts';
-import type { Query } from '../src/export.ts';
+import type { Reader } from '../src/export.ts';
 import { databaseQueries, VERSION_QUERY } from '../src/export.ts';
 
 type Value = Json | undefined;
@@ -269,17 +269,19 @@ export class FakeHub {
   }
 }
 
-/** A query function over several hubs, as one Dolt server holding their databases. */
-export function fakeServer(hubs: readonly FakeHub[], version = '2.4.0'): Query & { readonly sent: string[] } {
-  const sent: string[] = [];
+/** A reader over several hubs, as one Dolt server holding their databases. It records every step it is sent. */
+export function fakeServer(hubs: readonly FakeHub[], version = '2.4.0'): Reader & { readonly steps: string[][] } {
+  const steps: string[][] = [];
   const answers = serverAnswers(hubs, version);
-  const query = async (sql: string) => {
-    sent.push(sql);
-    const rows = answers.get(sql);
-    if (rows === undefined) throw new Error(`The fake server does not know the query: ${sql}`);
-    return [...rows];
+  const read = async (queries: readonly string[]) => {
+    steps.push([...queries]);
+    return queries.map((sql) => {
+      const rows = answers.get(sql);
+      if (rows === undefined) throw new Error(`The fake server does not know the query: ${sql}`);
+      return [...rows];
+    });
   };
-  return Object.assign(query, { sent });
+  return Object.assign(read, { steps });
 }
 
 /** Every query the export sends to these hubs, with the answer. */

@@ -52,7 +52,9 @@ describe('export', () => {
     });
     const run = io();
     expect(await main(['export', '--hub', hub, '--describe'], run.io)).toBe(0);
-    expect(run.out.join('\n')).toContain('The export sends only these read-only queries, in this order:');
+    expect(run.out.join('\n')).toContain(
+      'The export sends only these read-only queries. Each step runs as one read-only transaction,',
+    );
   });
 
   it('writes a private export file through the SQL client, and never over an existing one', async () => {

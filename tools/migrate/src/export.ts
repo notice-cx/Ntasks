@@ -2,6 +2,12 @@
  * The export: reads a Beads hub on Dolt with read-only SELECT queries and
  * returns the export file's content. It never writes to the hub and never
  * runs Beads itself; `describeExport` lists every query it sends.
+ *
+ * Everything it keeps is read in one read-only transaction, so it is one
+ * snapshot of the hub. Around that, it compares each database's branch head
+ * and working set before and after, and refuses if any of them changed, so
+ * the snapshots of different databases belong together too. Tables Dolt is
+ * told to ignore, such as Beads' audit log, are part of the working set.
  */
 import {
   EXPORT_FORMAT,
@@ -43,7 +49,12 @@ export interface HubFile {
   readonly projects: readonly HubProject[];
 }
 
-export type Query = (sql: string) => Promise<BeadsRow[]>;
+/**
+ * Sends queries to the hub and returns each one's rows, in order. The queries
+ * of one call run in one read-only transaction, so they read one snapshot of
+ * the hub however it changes meanwhile.
+ */
+export type Reader = (queries: readonly string[]) => Promise<BeadsRow[][]>;
 
 const DATABASE = /^[A-Za-z0-9_]{1,64}$/u;
 const TABLE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/u;
@@ -109,91 +120,129 @@ export const VERSION_QUERY = 'SELECT DOLT_VERSION() AS version';
 
 /** Every query the export sends, in order, for review before it runs. */
 export function describeExport(hub: HubFile): string {
-  const lines = ['The export sends only these read-only queries, in this order:', '', `  ${VERSION_QUERY}`];
-  for (const project of hub.projects) {
-    const q = databaseQueries(project.database);
-    lines.push(
-      '',
-      `Database ${project.database} (project ${project.key}):`,
-      `  ${q.state}`,
-      `  ${q.projectId}`,
-      `  ${q.prefix}`,
-      `  ${q.tables}`,
-      `  ${q.count('TABLE')}   (once for each table the previous query lists)`,
-      `  ${q.branches}`,
-      `  ${q.commits}`,
-      ...READ_TABLES.map((table) => `  ${q.rows(table)}   (if the table exists)`),
-      ...HISTORY_TABLES.map((table) => `  ${q.diff(table)}   (if ${table} exists)`),
-      `  ${q.state}   (again: the export refuses if the database changed meanwhile)`,
-    );
-  }
-  lines.push('', `Each runs as: ${hub.client.join(' ')} '<query>'`);
+  const all = hub.projects.map((project) => ({ project, q: databaseQueries(project.database) }));
+  const lines = [
+    'The export sends only these read-only queries. Each step runs as one read-only transaction,',
+    'which it ends with ROLLBACK.',
+    '',
+    `1. ${VERSION_QUERY}`,
+    '',
+    "2. Each database's branch head and working set:",
+    ...all.map(({ q }) => `   ${q.state}`),
+    '',
+    '3. For each database, what it holds (one step per database):',
+    ...all.flatMap(({ q }) => [`   ${q.projectId}`, `   ${q.prefix}`, `   ${q.tables}`]),
+    '',
+    '4. One snapshot of every database:',
+    ...all.map(({ q }) => `   ${q.count('TABLE')}   (for each table step 3 found)`),
+    ...all.flatMap(({ q }) => [
+      `   ${q.tables}`,
+      `   ${q.branches}`,
+      `   ${q.commits}`,
+      ...READ_TABLES.map((table) => `   ${q.rows(table)}   (if the table exists)`),
+      ...HISTORY_TABLES.map((table) => `   ${q.diff(table)}   (if ${table} exists)`),
+    ]),
+    '',
+    '5. Step 2 again. The export refuses if any database changed meanwhile.',
+    '',
+    `Each step runs as: ${hub.client.join(' ')} '<the step's queries>'`,
+  ];
   return lines.join('\n');
 }
 
-function single(rows: readonly BeadsRow[], what: string): string {
-  const value = rows.length === 1 ? textOf(rows[0]!.value ?? rows[0]!.version) : null;
-  if (value === null) throw new Error(`The hub returned no ${what}.`);
+function single(rows: readonly BeadsRow[] | undefined, what: string): string {
+  const value = rows?.length === 1 ? textOf(rows[0]!.value ?? rows[0]!.version) : null;
+  if (value === null || value === undefined) throw new Error(`The hub returned no ${what}.`);
   return value;
 }
 
-/** The branch head and working set hashes, as one text to compare. */
-async function stateOf(query: Query, sql: string, database: string): Promise<string> {
-  const rows = await query(sql);
-  const head = textOf(rows[0]?.head);
-  const working = textOf(rows[0]?.working);
-  if (rows.length !== 1 || head === null || working === null)
-    throw new Error(`The hub returned no branch head and working set hash for ${database}.`);
-  return `${head} ${working}`;
+/** Each database's branch head and working set hash, read at one moment. */
+async function statesOf(hub: HubFile, read: Reader): Promise<string[]> {
+  const results = await read(hub.projects.map((project) => databaseQueries(project.database).state));
+  return hub.projects.map((project, index) => {
+    const rows = results[index] ?? [];
+    const head = textOf(rows[0]?.head);
+    const working = textOf(rows[0]?.working);
+    if (rows.length !== 1 || head === null || working === null) {
+      throw new Error(`The hub returned no branch head and working set hash for ${project.database}.`);
+    }
+    return `${head} ${working}`;
+  });
 }
 
-async function exportProject(project: HubProject, query: Query): Promise<BeadsProject> {
-  const q = databaseQueries(project.database);
-  const stateBefore = await stateOf(query, q.state, project.database);
-  const id = single(await query(q.projectId), `project id in ${project.database}`);
-  const prefix = single(await query(q.prefix), `prefix in ${project.database}`);
-  if (project.id !== undefined && project.id !== id)
-    throw new Error(`${project.database} holds project ${id}, not ${project.id} as the hub file says.`);
-  if (project.prefix !== undefined && project.prefix !== prefix)
-    throw new Error(`${project.database} uses the prefix ${prefix}, not ${project.prefix} as the hub file says.`);
-  const names = (await query(q.tables))
-    .map((row) => textOf(row.name) ?? '')
-    .filter((name) => !name.startsWith('dolt_'));
-  const tables: { name: string; rows: number }[] = [];
-  for (const name of names) {
-    const [row] = await query(q.count(name));
-    const count = Number(row?.count);
-    if (!Number.isSafeInteger(count)) throw new Error(`The hub returned no row count for ${project.database}.${name}.`);
-    tables.push({ name, rows: count });
-  }
-  const branches = await query(q.branches);
-  const commits = await query(q.commits);
-  const rows = {} as Record<ReadTable, BeadsRow[]>;
-  for (const table of READ_TABLES) rows[table] = names.includes(table) ? await query(q.rows(table)) : [];
-  const diffs = {} as Record<HistoryTable, BeadsRow[]>;
-  for (const table of HISTORY_TABLES) diffs[table] = names.includes(table) ? await query(q.diff(table)) : [];
-  if ((await stateOf(query, q.state, project.database)) !== stateBefore) {
-    throw new Error(
-      `${project.database} changed while the export read it, so the export is not one consistent copy. Run it again, or stop writers first.`,
-    );
-  }
-  return {
-    database: project.database,
-    key: project.key,
-    name: project.name,
-    id,
-    prefix,
-    tables,
-    branches,
-    commits,
-    rows,
-    diffs,
-  };
+function tableNames(rows: readonly BeadsRow[] | undefined): string[] {
+  return (rows ?? []).map((row) => textOf(row.name) ?? '').filter((name) => !name.startsWith('dolt_'));
 }
 
-export async function exportHub(hub: HubFile, query: Query, now: () => Date = () => new Date()): Promise<BeadsExport> {
-  const doltVersion = single(await query(VERSION_QUERY), 'Dolt version');
-  const projects: BeadsProject[] = [];
-  for (const project of hub.projects) projects.push(await exportProject(project, query));
+export async function exportHub(hub: HubFile, read: Reader, now: () => Date = () => new Date()): Promise<BeadsExport> {
+  const [version] = await read([VERSION_QUERY]);
+  const doltVersion = single(version, 'Dolt version');
+  const before = await statesOf(hub, read);
+
+  const found: { project: HubProject; id: string; prefix: string; names: string[] }[] = [];
+  for (const project of hub.projects) {
+    const q = databaseQueries(project.database);
+    const [idRows, prefixRows, tableRows] = await read([q.projectId, q.prefix, q.tables]);
+    const id = single(idRows, `project id in ${project.database}`);
+    const prefix = single(prefixRows, `prefix in ${project.database}`);
+    if (project.id !== undefined && project.id !== id)
+      throw new Error(`${project.database} holds project ${id}, not ${project.id} as the hub file says.`);
+    if (project.prefix !== undefined && project.prefix !== prefix)
+      throw new Error(`${project.database} uses the prefix ${prefix}, not ${project.prefix} as the hub file says.`);
+    found.push({ project, id, prefix, names: tableNames(tableRows) });
+  }
+
+  // Counting every table first makes the transaction read every database at its start.
+  const queries: string[] = [];
+  for (const { project, names } of found)
+    queries.push(...names.map((name) => databaseQueries(project.database).count(name)));
+  for (const { project, names } of found) {
+    const q = databaseQueries(project.database);
+    queries.push(q.tables, q.branches, q.commits);
+    queries.push(...READ_TABLES.filter((table) => names.includes(table)).map(q.rows));
+    queries.push(...HISTORY_TABLES.filter((table) => names.includes(table)).map(q.diff));
+  }
+  const results = await read(queries);
+  const answer = (sql: string): BeadsRow[] => results[queries.indexOf(sql)] ?? [];
+
+  const projects = found.map(({ project, id, prefix, names }): BeadsProject => {
+    const q = databaseQueries(project.database);
+    if (tableNames(answer(q.tables)).join() !== names.join()) {
+      throw new Error(
+        `The tables of ${project.database} changed while the export read it. Run it again, or stop writers first.`,
+      );
+    }
+    const tables = names.map((name) => {
+      const count = Number(answer(q.count(name))[0]?.count);
+      if (!Number.isSafeInteger(count))
+        throw new Error(`The hub returned no row count for ${project.database}.${name}.`);
+      return { name, rows: count };
+    });
+    const rows = {} as Record<ReadTable, BeadsRow[]>;
+    for (const table of READ_TABLES) rows[table] = names.includes(table) ? answer(q.rows(table)) : [];
+    const diffs = {} as Record<HistoryTable, BeadsRow[]>;
+    for (const table of HISTORY_TABLES) diffs[table] = names.includes(table) ? answer(q.diff(table)) : [];
+    return {
+      database: project.database,
+      key: project.key,
+      name: project.name,
+      id,
+      prefix,
+      tables,
+      branches: answer(q.branches),
+      commits: answer(q.commits),
+      rows,
+      diffs,
+    };
+  });
+
+  const after = await statesOf(hub, read);
+  hub.projects.forEach((project, index) => {
+    if (after[index] !== before[index]) {
+      throw new Error(
+        `${project.database} changed while the export read it, so the export is not one consistent copy. Run it again, or stop writers first.`,
+      );
+    }
+  });
   return { format: EXPORT_FORMAT, exportedAt: now().toISOString(), doltVersion, projects };
 }

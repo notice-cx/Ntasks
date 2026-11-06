@@ -1,5 +1,7 @@
-// A stand-in for the dolt SQL client: answers the query given as its last
-// argument from a JSON file of canned answers, in Dolt's JSON result format.
+// A stand-in for the dolt SQL client: answers each query of a step from a
+// JSON file of canned answers, printing them as dolt 2.6.1 does: `{}` and an
+// empty line for START TRANSACTION and ROLLBACK, and one result line for each
+// SELECT.
 import { readFileSync } from 'node:fs';
 
 const [answersFile, ...rest] = process.argv.slice(2);
@@ -14,11 +16,26 @@ if (process.env.HOME === home || process.env.DOLT_DISABLE_EVENT_FLUSH !== '1') {
   process.stderr.write("The client ran with the caller's home or with usage reporting on\n");
   process.exit(1);
 }
-if (!Object.hasOwn(queries, sql)) {
-  process.stderr.write(`unknown query: ${sql}\n`);
+const markers = /SELECT '(ntasks-[^']+)' AS ntasks_query(?:; |$)/gu;
+if (!sql.startsWith('START TRANSACTION READ ONLY; ') || !sql.endsWith('; ROLLBACK')) {
+  process.stderr.write('A step must run in a read-only transaction\n');
   process.exit(1);
 }
-const rows = queries[sql];
-// A `USE` statement prints its own empty result line first.
-if (sql.startsWith('USE ')) process.stdout.write('{}\n');
-process.stdout.write(rows.length === 0 ? '{}\n' : `${JSON.stringify({ rows })}\n`);
+const body = sql.slice('START TRANSACTION READ ONLY; '.length, -'; ROLLBACK'.length);
+// With a capture group, split() gives the text before the first marker, then each marker and the text after it.
+const parts = body.split(markers);
+const out = ['{}', ''];
+for (let index = 1; index < parts.length; index += 2) {
+  const marker = parts[index];
+  out.push(`{"rows": [{"ntasks_query":"${marker}"}]}`);
+  if (marker.endsWith(':end')) break;
+  const query = parts[index + 1].replace(/; $/u, '');
+  if (!Object.hasOwn(queries, query)) {
+    process.stderr.write(`unknown query: ${query}\n`);
+    process.exit(1);
+  }
+  const rows = queries[query];
+  out.push(rows.length === 0 ? '{}\n' : JSON.stringify({ rows }));
+}
+out.push('{}', '');
+process.stdout.write(`${out.join('\n')}\n`);

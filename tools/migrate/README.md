@@ -90,20 +90,24 @@ setting reaches it. Dolt's usage reporting is turned off.
 
 ## What the export reads
 
-For each database, in this order (`export --describe` prints the exact
-queries):
+The export works in five steps. Each step runs as one read-only transaction,
+which the export ends with `ROLLBACK`, so it cannot write to the hub.
+`export --describe` prints the exact queries.
 
-- the hash of the branch head, which changes with any commit, and of the
-  working set, which changes with any write;
-- the project id (`_project_id` in the `metadata` table) and the task id
-  prefix (`issue_prefix` in the `config` table), and no other setting;
-- the name and row count of every table;
-- the Dolt branches and the commits (`dolt_log`);
-- every row of `issues`, `labels`, `dependencies`, `comments` and `events`;
-- every change ever made to `issues`, `labels` and `dependencies`, commit by
-  commit (`dolt_diff_<table>`);
-- both hashes again. If either changed, the hub was written to during the
-  export, and the export stops without writing a file.
+1. The Dolt version.
+2. For every database, the hash of its branch head, which changes with any
+   commit, and of its working set, which changes with any write, including
+   to tables Dolt is told to ignore, such as Beads' audit log.
+3. For each database, the project id (`_project_id` in the `metadata` table),
+   the task id prefix (`issue_prefix` in the `config` table), and no other
+   setting, and the names of its tables.
+4. In one transaction for all databases, so it is one snapshot of the hub:
+   the row count of every table, the Dolt branches and commits (`dolt_log`),
+   every row of `issues`, `labels`, `dependencies`, `comments` and `events`,
+   and every change ever made to `issues`, `labels` and `dependencies`,
+   commit by commit (`dolt_diff_<table>`).
+5. Step 2 again. If any database's hashes changed, the hub was written to
+   during the export, and the export stops without writing a file.
 
 ## How Beads data becomes Ntasks rows
 

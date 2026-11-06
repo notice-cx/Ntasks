@@ -105,7 +105,7 @@ async function runExport(values: Record<string, string | boolean | undefined>, i
   const client = await doltClient(hub);
   let data: BeadsExport;
   try {
-    data = await exportHub(hub, client.query);
+    data = await exportHub(hub, client.read);
   } finally {
     await client.close();
   }
