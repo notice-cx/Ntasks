@@ -111,7 +111,9 @@ store 5,000,000 rows read a day ([architecture](architecture.md#the-free-plan-bu
 
 A board, a list of tasks, the epics or the project list that the store has
 read since the last write comes from its memory and reads no rows. It stays
-there until a write changes a task or a deferred task's time comes. When the
+there until a write changes a task or a deferred task's time comes. The store
+keeps at most 32 MB of answers, the oldest going first, and reads an answer
+larger than 8 MB afresh each time, since the object has 128 MB in all. When the
 store does read, each read reaches its rows through an index and returns a
 task's labels and links in the same query:
 

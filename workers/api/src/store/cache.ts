@@ -7,32 +7,79 @@
  */
 import type { TaskEngine } from '@ntasks/domain';
 
-/** How many answers it keeps; the oldest goes first. */
-const ENTRIES = 64;
+/** How much the cache may hold. An object has 128 MB in all, which its
+ * requests need too. */
+export interface CacheLimits {
+  /** The most answers it keeps; the oldest goes first. */
+  readonly entries: number;
+  /** The most bytes of answers it keeps, as their JSON measures them. */
+  readonly bytes: number;
+  /** An answer larger than this is served but not kept. */
+  readonly entryBytes: number;
+}
 
-export function cachedReads(engine: TaskEngine, now: () => string): TaskEngine {
-  let entries = new Map<string, Promise<unknown>>();
+export const CACHE_LIMITS: CacheLimits = Object.freeze({ entries: 64, bytes: 32 * 2 ** 20, entryBytes: 8 * 2 ** 20 });
+
+/** One generation of answers; a write starts a new one. */
+interface Generation {
+  readonly answers: Map<string, Promise<unknown>>;
+  readonly sizes: Map<string, number>;
+  bytes: number;
+}
+
+/** About how many bytes an answer holds in memory: two per character of its JSON. */
+function sizeOf(value: unknown): number {
+  return JSON.stringify(value).length * 2;
+}
+
+export function cachedReads(engine: TaskEngine, now: () => string, limits: CacheLimits = CACHE_LIMITS): TaskEngine {
+  const fresh = (): Generation => ({ answers: new Map(), sizes: new Map(), bytes: 0 });
+  let generation = fresh();
   /** When ready work next changes without a write; null when no deferral is ahead. */
   let until: Promise<string | null> | null = null;
 
   const forget = () => {
-    entries = new Map();
+    generation = fresh();
     until = null;
   };
+
+  /** Drops the oldest answers until the kept ones fit. */
+  function trim(kept: Generation) {
+    for (const key of kept.answers.keys()) {
+      if (kept.answers.size <= limits.entries && kept.bytes <= limits.bytes) break;
+      kept.answers.delete(key);
+      kept.bytes -= kept.sizes.get(key) ?? 0;
+      kept.sizes.delete(key);
+    }
+  }
 
   async function cached<T>(key: string, read: () => Promise<T>): Promise<T> {
     until ??= engine.nextDeferralAfter(now());
     const expires = await until;
     if (expires !== null && now() >= expires) forget();
-    // A write meanwhile replaced the map; this answer then belongs to no map.
-    const current = entries;
-    const found = current.get(key);
+    // A write meanwhile starts a new generation; this answer then belongs to none.
+    const current = generation;
+    const found = current.answers.get(key);
     if (found) return found as Promise<T>;
-    if (current.size >= ENTRIES) current.delete(current.keys().next().value!);
     // Frozen, so no caller can reorder a list another caller is served.
     const answer = read().then((value) => (Array.isArray(value) ? Object.freeze(value) : value));
-    current.set(key, answer);
-    answer.catch(() => current.delete(key));
+    current.answers.set(key, answer);
+    void answer.then(
+      (value) => {
+        // Already dropped to make room; it no longer counts.
+        if (current.answers.get(key) !== answer) return;
+        const size = sizeOf(value);
+        if (size > limits.entryBytes) {
+          current.answers.delete(key);
+          return;
+        }
+        current.sizes.set(key, size);
+        current.bytes += size;
+        trim(current);
+      },
+      () => current.answers.delete(key),
+    );
+    trim(current);
     return answer;
   }
 

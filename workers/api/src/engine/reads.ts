@@ -334,7 +334,7 @@ export class Reads {
   async nextDeferralAfter(time: string): Promise<string | null> {
     // The partial index tasks_by_defer_until answers this from one entry.
     const row = await this.#db
-      .prepare("SELECT min(defer_until) AS next FROM tasks WHERE status <> 'closed' AND defer_until > ?1")
+      .prepare('SELECT min(defer_until) AS next FROM tasks WHERE defer_until > ?1')
       .bind(instant(time, 'time'))
       .first<{ next: string | null }>();
     return row?.next ?? null;

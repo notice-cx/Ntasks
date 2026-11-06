@@ -223,9 +223,10 @@ export interface TaskEngine {
    * every task it matches, most urgent first, in one round trip and not paged. */
   listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
-  /** The earliest time after `time` at which a task that is not closed stops
-   * being deferred, or null when none will. Ready work changes then without
-   * any write, so a cached read of it stays true until that time. */
+  /** The earliest time after `time` at which any task stops being deferred,
+   * or null when none will. Ready work can change then without any write,
+   * since a deferred parent holds its children back even once it is closed,
+   * so a cached read of it stays true until that time. */
   nextDeferralAfter(time: string): Promise<string | null>;
   listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
   /** The task's changes, newest first. */
