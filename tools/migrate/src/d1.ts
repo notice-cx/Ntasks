@@ -46,9 +46,14 @@ function wrangler(args: readonly string[]): Promise<string> {
       process.execPath,
       [wranglerBin(), ...args],
       // CI makes wrangler go ahead without asking, as a person at a terminal would be asked.
-      { env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true' }, maxBuffer: OUTPUT_LIMIT, encoding: 'utf8' },
+      {
+        env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true' },
+        maxBuffer: OUTPUT_LIMIT,
+        encoding: 'utf8',
+      },
       (error, stdout, stderr) => {
-        if (error) reject(new Error(`wrangler ${args.slice(0, 3).join(' ')} failed:\n${stderr || stdout || error.message}`));
+        if (error)
+          reject(new Error(`wrangler ${args.slice(0, 3).join(' ')} failed:\n${stderr || stdout || error.message}`));
         else resolve(stdout);
       },
     );
@@ -68,7 +73,9 @@ async function localBytes(folder: string): Promise<number> {
     if (!name.endsWith('.sqlite') || name === 'metadata.sqlite') continue;
     const file = new DatabaseSync(path.join(folder, name), { readOnly: true });
     try {
-      const row = file.prepare('SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()').get() as { bytes: number };
+      const row = file
+        .prepare('SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()')
+        .get() as { bytes: number };
       total += Number(row.bytes);
     } finally {
       file.close();

@@ -67,7 +67,8 @@ function text(value: unknown, where: string): string {
 /** Reads an export file's JSON, checking its shape. Its content is checked by the import. */
 export function readExport(json: string): BeadsExport {
   const value: unknown = JSON.parse(json);
-  if (!isJsonObject(value) || value.format !== EXPORT_FORMAT) throw new Error(`The file is not an export in the ${EXPORT_FORMAT} format.`);
+  if (!isJsonObject(value) || value.format !== EXPORT_FORMAT)
+    throw new Error(`The file is not an export in the ${EXPORT_FORMAT} format.`);
   if (!Array.isArray(value.projects)) throw new Error('projects must be a list.');
   const projects = value.projects.map((entry: unknown, index): BeadsProject => {
     const where = `projects[${index}]`;
@@ -78,7 +79,8 @@ export function readExport(json: string): BeadsExport {
       return rows(holder[name], `${where}.${group}.${name}`);
     };
     const tables = rows(entry.tables, `${where}.tables`).map((row, at) => {
-      if (typeof row.name !== 'string' || typeof row.rows !== 'number') throw new Error(`${where}.tables[${at}] needs a name and a row count.`);
+      if (typeof row.name !== 'string' || typeof row.rows !== 'number')
+        throw new Error(`${where}.tables[${at}] needs a name and a row count.`);
       return { name: row.name, rows: row.rows };
     });
     return {
@@ -135,7 +137,8 @@ export function timeOf(value: Json | undefined): string | null | undefined {
   const [, date, clock, fraction, zone] = match;
   if (date === '0000-00-00' || (date === '0001-01-01' && clock === '00:00:00' && !Number(fraction ?? 0))) return null;
   const millis = (fraction ?? '').padEnd(3, '0').slice(0, 3);
-  const offset = zone === undefined ? 'Z' : zone === 'Z' || zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  const offset =
+    zone === undefined ? 'Z' : zone === 'Z' || zone.includes(':') ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`;
   const parsed = new Date(`${date}T${clock}.${millis}${offset}`);
   if (Number.isNaN(parsed.getTime())) return undefined;
   const iso = parsed.toISOString();

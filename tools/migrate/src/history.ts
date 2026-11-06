@@ -66,7 +66,13 @@ function sides(diff: BeadsRow): { readonly from: BeadsRow | null; readonly to: B
   const from: Record<string, Json> = {};
   const to: Record<string, Json> = {};
   for (const [column, value] of Object.entries(diff)) {
-    if (column === 'from_commit' || column === 'from_commit_date' || column === 'to_commit' || column === 'to_commit_date') continue;
+    if (
+      column === 'from_commit' ||
+      column === 'from_commit_date' ||
+      column === 'to_commit' ||
+      column === 'to_commit_date'
+    )
+      continue;
     if (column.startsWith('from_')) from[column.slice('from_'.length)] = value;
     else if (column.startsWith('to_')) to[column.slice('to_'.length)] = value;
   }
@@ -75,7 +81,12 @@ function sides(diff: BeadsRow): { readonly from: BeadsRow | null; readonly to: B
 }
 
 function linkKey(row: BeadsRow): string {
-  return stableJson([linkTarget(row), textOf(row.depends_on_wisp_id), textOf(row.depends_on_external), textOf(row.type)]);
+  return stableJson([
+    linkTarget(row),
+    textOf(row.depends_on_wisp_id),
+    textOf(row.depends_on_external),
+    textOf(row.type),
+  ]);
 }
 
 function groupBy(rows: readonly BeadsRow[], column: string): Map<string, BeadsRow[]> {
@@ -119,19 +130,26 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
   const log = [...project.commits].reverse();
   log.forEach((row, index) => {
     const hash = textOf(row.commit_hash);
-    if (hash !== null) commits.set(hash, { order: index, at: timeOf(row.date) ?? null, committer: textOf(row.committer) });
+    if (hash !== null)
+      commits.set(hash, { order: index, at: timeOf(row.date) ?? null, committer: textOf(row.committer) });
   });
   commits.set('STAGED', { order: log.length, at: null, committer: null });
   commits.set('WORKING', { order: log.length + 1, at: null, committer: null });
 
-  type Change = { readonly table: 'issues' | 'labels' | 'dependencies'; readonly from: BeadsRow | null; readonly to: BeadsRow | null };
+  type Change = {
+    readonly table: 'issues' | 'labels' | 'dependencies';
+    readonly from: BeadsRow | null;
+    readonly to: BeadsRow | null;
+  };
   const changesByCommit = new Map<string, { commit: Commit; date: string | null; changes: Change[] }>();
   for (const table of ['issues', 'labels', 'dependencies'] as const) {
     for (const diff of project.diffs[table]) {
       const hash = textOf(diff.to_commit) ?? '';
       const commit = commits.get(hash);
       if (commit === undefined) {
-        projectProblems.push(`its Dolt history has a change in commit "${excerpt(hash)}", which is not on the branch the hub reads`);
+        projectProblems.push(
+          `its Dolt history has a change in commit "${excerpt(hash)}", which is not on the branch the hub reads`,
+        );
         continue;
       }
       const group = changesByCommit.get(hash) ?? { commit, date: timeOf(diff.to_commit_date) ?? null, changes: [] };
@@ -147,7 +165,9 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
   const historyProblems = new Map<string, Map<string, string>>();
   const rowsOf = (map: Map<string, Map<string, BeadsRow>>, id: string) => [...(map.get(id)?.values() ?? [])];
 
-  for (const { commit, date, changes } of [...changesByCommit.values()].sort((a, b) => a.commit.order - b.commit.order)) {
+  for (const { commit, date, changes } of [...changesByCommit.values()].sort(
+    (a, b) => a.commit.order - b.commit.order,
+  )) {
     const touched = new Set<string>();
     for (const { table, from, to } of changes) {
       if (table === 'issues') {
@@ -168,7 +188,10 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
       }
       const map = table === 'labels' ? labels : links;
       const keyOf = table === 'labels' ? (row: BeadsRow) => textOf(row.label) ?? '' : linkKey;
-      for (const [row, present] of [[from, false], [to, true]] as const) {
+      for (const [row, present] of [
+        [from, false],
+        [to, true],
+      ] as const) {
         if (row === null) continue;
         const issueId = textOf(row.issue_id);
         if (issueId === null) continue;
@@ -182,7 +205,13 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
     for (const id of touched) {
       const issue = issues.get(id);
       if (issue === undefined) continue;
-      const mapped = mapTask({ issue, labels: rowsOf(labels, id), links: rowsOf(links, id), projectId: project.id, prefix: project.prefix });
+      const mapped = mapTask({
+        issue,
+        labels: rowsOf(labels, id),
+        links: rowsOf(links, id),
+        projectId: project.id,
+        prefix: project.prefix,
+      });
       const at = commit.at ?? date ?? mapped.updatedAt;
       if (mapped.state === null || at === null) {
         const found = historyProblems.get(id) ?? new Map<string, string>();
@@ -197,7 +226,8 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
       }
       const list = versions.get(id) ?? [];
       const last = list.at(-1);
-      if (last === undefined || !sameJson(last.state, mapped.state)) list.push({ state: mapped.state, at, committer: commit.committer });
+      if (last === undefined || !sameJson(last.state, mapped.state))
+        list.push({ state: mapped.state, at, committer: commit.committer });
       versions.set(id, list);
     }
   }
@@ -230,7 +260,10 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
     if (tasks.has(id)) projectProblems.push(`it holds two issues with the id ${id}`);
     tasks.set(id, { id, current, links: currentLinks.get(id) ?? [], versions: list, problems });
   }
-  for (const [table, groups] of [['label', currentLabels], ['link', currentLinks]] as const) {
+  for (const [table, groups] of [
+    ['label', currentLabels],
+    ['link', currentLinks],
+  ] as const) {
     for (const issueId of groups.keys()) {
       if (!tasks.has(issueId)) projectProblems.push(`${table} rows name ${issueId}, which is not one of its issues`);
     }
@@ -239,7 +272,10 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
 }
 
 /** The project's comments by task, with the problems that refuse them. */
-export function projectComments(project: BeadsProject): { readonly byTask: Map<string, CommentRecord[]>; readonly problems: Map<string, string[]> } {
+export function projectComments(project: BeadsProject): {
+  readonly byTask: Map<string, CommentRecord[]>;
+  readonly problems: Map<string, string[]>;
+} {
   const byTask = new Map<string, CommentRecord[]>();
   const problems = new Map<string, string[]>();
   for (const row of project.rows.comments) {
@@ -250,7 +286,8 @@ export function projectComments(project: BeadsProject): { readonly byTask: Map<s
     const text = typeof row.text === 'string' ? row.text : '';
     const createdAt = timeOf(row.created_at);
     if (id === null) found.push('a comment has no id');
-    if (author === null || author.length > 255) found.push(`a comment's author "${excerpt(row.author)}" is empty or longer than 255 characters`);
+    if (author === null || author.length > 255)
+      found.push(`a comment's author "${excerpt(row.author)}" is empty or longer than 255 characters`);
     if (text === '' || text.includes('\u0000')) found.push(`comment ${id ?? ''} is empty or holds a NUL character`);
     if (createdAt === undefined || createdAt === null) found.push(`comment ${id ?? ''} has no time`);
     if (found.length > 0) {
@@ -261,7 +298,8 @@ export function projectComments(project: BeadsProject): { readonly byTask: Map<s
     list.push({ id: id ?? '', taskId, author: author ?? '', text, createdAt: createdAt ?? '' });
     byTask.set(taskId, list);
   }
-  for (const list of byTask.values()) list.sort((a, b) => (a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt < b.createdAt ? -1 : 1));
+  for (const list of byTask.values())
+    list.sort((a, b) => (a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt < b.createdAt ? -1 : 1));
   return { byTask, problems };
 }
 
@@ -277,7 +315,12 @@ function second(at: string): number {
  * A model is known only where NoticeOS recorded it: the filer's, the
  * claimer's and the closer's.
  */
-export function taskEvents(history: TaskHistory, createdAt: string, comments: readonly CommentRecord[], audit: readonly BeadsRow[]): EventRecord[] {
+export function taskEvents(
+  history: TaskHistory,
+  createdAt: string,
+  comments: readonly CommentRecord[],
+  audit: readonly BeadsRow[],
+): EventRecord[] {
   const actorsBySecond = new Map<number, Set<string>>();
   for (const row of audit) {
     const at = timeOf(row.created_at);

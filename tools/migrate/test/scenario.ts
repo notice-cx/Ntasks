@@ -16,20 +16,49 @@ export function t(n: number, second = 0): string {
   return new Date(base + n * 60_000 + second * 1000).toISOString();
 }
 
-export const AWKWARD_TEXT = "Quotes ' and \" ; semicolons; -- not a comment /* nor this */\nA second line, ünïcödé and 🧪.";
+export const AWKWARD_TEXT =
+  'Quotes \' and " ; semicolons; -- not a comment /* nor this */\nA second line, ünïcödé and 🧪.';
 
-export const CARD: JsonObject = { valuePerMonth: 120, likelihood: 0.4, reviewMinutes: 5, daysToSignal: 14, measurability: 'cohort' };
+export const CARD: JsonObject = {
+  valuePerMonth: 120,
+  likelihood: 0.4,
+  reviewMinutes: 5,
+  daysToSignal: 14,
+  measurability: 'cohort',
+};
 export const SHIPPED: JsonObject = { card: CARD, closedAt: t(40), commit: 'abc1234' };
 
 export function acmeHub(): FakeHub {
-  const hub = new FakeHub({ database: 'acme_tasks', key: 'acme.example.com', name: 'Acme', id: ACME_ID, prefix: 'acme' });
+  const hub = new FakeHub({
+    database: 'acme_tasks',
+    key: 'acme.example.com',
+    name: 'Acme',
+    id: ACME_ID,
+    prefix: 'acme',
+  });
 
   // An epic and two children, filed by an agent through NoticeOS.
-  hub.commit(t(0), 'noticeos', (c) => {
-    c.create({ id: 'acme-e1', title: 'Launch the shop', issue_type: 'epic', priority: 1, metadata: { noticeos_filed_by: 'agent-a', noticeos_filed_model: 'model-one' } });
-  }, { issue: 'acme-e1', event: 'created', actor: 'agent-a' });
+  hub.commit(
+    t(0),
+    'noticeos',
+    (c) => {
+      c.create({
+        id: 'acme-e1',
+        title: 'Launch the shop',
+        issue_type: 'epic',
+        priority: 1,
+        metadata: { noticeos_filed_by: 'agent-a', noticeos_filed_model: 'model-one' },
+      });
+    },
+    { issue: 'acme-e1', event: 'created', actor: 'agent-a' },
+  );
   hub.commit(t(1), 'noticeos', (c) => {
-    c.create({ id: 'acme-e1.1', title: 'Write the product pages', description: AWKWARD_TEXT, acceptance_criteria: 'Pages render.' });
+    c.create({
+      id: 'acme-e1.1',
+      title: 'Write the product pages',
+      description: AWKWARD_TEXT,
+      acceptance_criteria: 'Pages render.',
+    });
     c.link('acme-e1.1', 'acme-e1', 'parent-child');
     c.label('acme-e1.1', 'content');
   });
@@ -40,30 +69,51 @@ export function acmeHub(): FakeHub {
   });
 
   // A task claimed, worked, closed and attributed, with a card frozen on close.
-  hub.commit(t(10), 'noticeos', (c) => {
-    c.create({
-      id: 'acme-t1',
-      title: 'Add the price feed',
-      metadata: { noticeos_filed_by: 'agent-a', noticeos_filed_model: 'model-one', noticeos_card: CARD, noticeos_change_class: 'feature', noticeos_operation_id: 'op-0001' },
-    });
-    c.label('acme-t1', 'feed');
-  }, { issue: 'acme-t1', event: 'created', actor: 'agent-a' });
-  hub.commit(t(20), 'noticeos', (c) => {
-    c.update('acme-t1', {
-      status: 'in_progress',
-      assignee: 'agent-b',
-      started_at: '2026-03-02 09:20:00',
-      metadata: { ...(hub.issues.get('acme-t1')!.metadata as object), noticeos_claimed_model: 'model-two' },
-    });
-  }, { issue: 'acme-t1', event: 'claimed', actor: 'agent-b' });
+  hub.commit(
+    t(10),
+    'noticeos',
+    (c) => {
+      c.create({
+        id: 'acme-t1',
+        title: 'Add the price feed',
+        metadata: {
+          noticeos_filed_by: 'agent-a',
+          noticeos_filed_model: 'model-one',
+          noticeos_card: CARD,
+          noticeos_change_class: 'feature',
+          noticeos_operation_id: 'op-0001',
+        },
+      });
+      c.label('acme-t1', 'feed');
+    },
+    { issue: 'acme-t1', event: 'created', actor: 'agent-a' },
+  );
+  hub.commit(
+    t(20),
+    'noticeos',
+    (c) => {
+      c.update('acme-t1', {
+        status: 'in_progress',
+        assignee: 'agent-b',
+        started_at: '2026-03-02 09:20:00',
+        metadata: { ...(hub.issues.get('acme-t1')!.metadata as object), noticeos_claimed_model: 'model-two' },
+      });
+    },
+    { issue: 'acme-t1', event: 'claimed', actor: 'agent-b' },
+  );
   hub.comment('acme-t1', 'k-0001', 'agent-b', 'Started on the feed.', t(25));
   hub.commit(t(30), 'noticeos', (c) => {
     c.label('acme-t1', 'backend');
     c.unlabel('acme-t1', 'feed');
   });
-  hub.commit(t(40), 'noticeos', (c) => {
-    c.update('acme-t1', { status: 'closed', closed_at: '2026-03-02 09:40:00', close_reason: 'Shipped in abc1234.' });
-  }, { issue: 'acme-t1', event: 'closed', actor: 'agent-b' });
+  hub.commit(
+    t(40),
+    'noticeos',
+    (c) => {
+      c.update('acme-t1', { status: 'closed', closed_at: '2026-03-02 09:40:00', close_reason: 'Shipped in abc1234.' });
+    },
+    { issue: 'acme-t1', event: 'closed', actor: 'agent-b' },
+  );
   hub.commit(t(40, 1), 'noticeos', (c) => {
     c.update('acme-t1', {
       metadata: {
@@ -84,7 +134,13 @@ export function acmeHub(): FakeHub {
     c.create({ id: 'acme-t2', title: 'Turn on the new checkout', metadata: { noticeos_filed_by: 'agent-a' } });
   });
   hub.commit(t(51), 'noticeos', (c) => {
-    c.create({ id: 'acme-g1', title: 'Approve turning on the new checkout', issue_type: 'gate', await_type: 'human', description: 'It changes live payments.' });
+    c.create({
+      id: 'acme-g1',
+      title: 'Approve turning on the new checkout',
+      issue_type: 'gate',
+      await_type: 'human',
+      description: 'It changes live payments.',
+    });
     c.link('acme-t2', 'acme-g1', 'blocks');
   });
   hub.commit(t(60), 'noticeos', (c) => {
@@ -100,12 +156,20 @@ export function acmeHub(): FakeHub {
     ],
   };
   hub.commit(t(70), 'noticeos', (c) => {
-    c.create({ id: 'acme-d1', title: 'Choose a carrier', issue_type: 'decision', metadata: { noticeos_choices: choices } });
+    c.create({
+      id: 'acme-d1',
+      title: 'Choose a carrier',
+      issue_type: 'decision',
+      metadata: { noticeos_choices: choices },
+    });
     c.label('acme-d1', 'human');
   });
   hub.commit(t(80), 'noticeos', (c) => {
     c.update('acme-d1', {
-      metadata: { noticeos_choices: choices, noticeos_choice: { option: 'a', label: 'Carrier one', by: 'owner', at: t(80) } },
+      metadata: {
+        noticeos_choices: choices,
+        noticeos_choice: { option: 'a', label: 'Carrier one', by: 'owner', at: t(80) },
+      },
     });
     c.unlabel('acme-d1', 'human');
   });
@@ -134,14 +198,29 @@ export function acmeHub(): FakeHub {
       status: 'closed',
       closed_at: '2026-03-02 10:31:00',
       close_reason: 'Same as acme-t2.',
-      metadata: { noticeos_closed_by: 'agent-a', noticeos_closed_at: t(91), noticeos_resolution: 'duplicate', noticeos_duplicate_of: 'acme-t2' },
+      metadata: {
+        noticeos_closed_by: 'agent-a',
+        noticeos_closed_at: t(91),
+        noticeos_resolution: 'duplicate',
+        noticeos_duplicate_of: 'acme-t2',
+      },
     });
   });
   hub.commit(t(100), 'noticeos', (c) => {
-    c.create({ id: 'acme-t4', title: 'Tidy the footer', defer_until: '2026-04-01 00:00:00', due_at: '2026-04-15 00:00:00' });
+    c.create({
+      id: 'acme-t4',
+      title: 'Tidy the footer',
+      defer_until: '2026-04-01 00:00:00',
+      due_at: '2026-04-15 00:00:00',
+    });
   });
   hub.commit(t(101), 'noticeos', (c) => {
-    c.update('acme-t4', { status: 'closed', closed_at: '2026-03-02 10:41:00', close_reason: 'Done.', metadata: { noticeos_closed_by: 'agent-a', noticeos_closed_at: t(101), noticeos_resolution: 'done' } });
+    c.update('acme-t4', {
+      status: 'closed',
+      closed_at: '2026-03-02 10:41:00',
+      close_reason: 'Done.',
+      metadata: { noticeos_closed_by: 'agent-a', noticeos_closed_at: t(101), noticeos_resolution: 'done' },
+    });
   });
   hub.commit(t(102), 'noticeos', (c) => {
     // Beads clears the close time on reopen; NoticeOS's closer stays in metadata, describing the old close.
@@ -150,17 +229,31 @@ export function acmeHub(): FakeHub {
   // A link to a task in the other project, as NoticeOS records it.
   hub.commit(t(110), 'noticeos', (c) => {
     c.update('acme-t4', {
-      metadata: { ...(hub.issues.get('acme-t4')!.metadata as object), noticeos_related_tasks: [{ projectId: BETA_ID, taskId: 'beta-x1' }] },
+      metadata: {
+        ...(hub.issues.get('acme-t4')!.metadata as object),
+        noticeos_related_tasks: [{ projectId: BETA_ID, taskId: 'beta-x1' }],
+      },
     });
   });
   return hub;
 }
 
 export function betaHub(): FakeHub {
-  const hub = new FakeHub({ database: 'beta_tasks', key: 'beta.example.com', name: 'Beta', id: BETA_ID, prefix: 'beta' });
-  hub.commit(t(5), 'beads', (c) => {
-    c.create({ id: 'beta-x1', title: 'Index the archive' });
-  }, { issue: 'beta-x1', event: 'created' });
+  const hub = new FakeHub({
+    database: 'beta_tasks',
+    key: 'beta.example.com',
+    name: 'Beta',
+    id: BETA_ID,
+    prefix: 'beta',
+  });
+  hub.commit(
+    t(5),
+    'beads',
+    (c) => {
+      c.create({ id: 'beta-x1', title: 'Index the archive' });
+    },
+    { issue: 'beta-x1', event: 'created' },
+  );
   hub.commit(t(6), 'beads', (c) => {
     c.create({ id: 'beta-x2', title: 'Blocked by the archive', priority: 3 });
     c.link('beta-x2', 'beta-x1', 'blocks', { created_by: '' });
@@ -174,7 +267,12 @@ export function betaHub(): FakeHub {
 }
 
 export function exportOf(...hubs: readonly FakeHub[]): BeadsExport {
-  return { format: EXPORT_FORMAT, exportedAt: t(200), doltVersion: '2.4.0', projects: hubs.map((hub) => hub.project()) };
+  return {
+    format: EXPORT_FORMAT,
+    exportedAt: t(200),
+    doltVersion: '2.4.0',
+    projects: hubs.map((hub) => hub.project()),
+  };
 }
 
 export function scenario(): BeadsExport {

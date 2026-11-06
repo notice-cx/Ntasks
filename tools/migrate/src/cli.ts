@@ -56,7 +56,9 @@ function sizeLine(bytes: number | null): string {
 
 function printRefusals(refusals: readonly Refusal[], io: Io) {
   const subjects = new Set(refusals.map((refusal) => refusal.subject));
-  io.err(`Refused: ${count(refusals.length)} problems in ${count(subjects.size)} tasks or projects. Nothing was written.`);
+  io.err(
+    `Refused: ${count(refusals.length)} problems in ${count(subjects.size)} tasks or projects. Nothing was written.`,
+  );
   for (const refusal of refusals) io.err(`- ${refusal.subject}: ${refusal.reason}`);
 }
 
@@ -130,7 +132,8 @@ async function runImport(values: Record<string, string | boolean | undefined>, i
   const oversized = oversizedStatements(statements);
   if (values.check === true) {
     io.out(`The export imports: ${planSummary(plan)}. Nothing was written.`);
-    if (oversized > 0) io.out(`${count(oversized)} statements are longer than D1 accepts from a remote client (100 KB).`);
+    if (oversized > 0)
+      io.out(`${count(oversized)} statements are longer than D1 accepts from a remote client (100 KB).`);
     return 0;
   }
   const where = target(values);
@@ -138,7 +141,9 @@ async function runImport(values: Record<string, string | boolean | undefined>, i
   await db.migrate();
   const [row] = await db.all('SELECT (SELECT COUNT(*) FROM projects) + (SELECT COUNT(*) FROM tasks) AS n');
   if (Number(row?.n) !== 0) {
-    io.err(`Refused: ${db.description} already holds projects or tasks. The import writes only into an empty database.`);
+    io.err(
+      `Refused: ${db.description} already holds projects or tasks. The import writes only into an empty database.`,
+    );
     return 1;
   }
   await db.run(statements);
@@ -167,7 +172,8 @@ async function runVerify(values: Record<string, string | boolean | undefined>, i
       `${count(report.approvals)} approvals, ${count(report.decisions)} decisions and ${count(report.frozenCards)} frozen cards among them.`,
   );
   io.out('Tasks per project and status (export / D1):');
-  for (const entry of report.counts) io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
+  for (const entry of report.counts)
+    io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
   io.out(sizeLine(await db.size()));
   if (report.differences.length === 0) {
     io.out('0 differences.');

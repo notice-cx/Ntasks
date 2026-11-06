@@ -34,13 +34,17 @@ export function sqliteDatabase(): Database & { readonly raw: DatabaseSync } {
     },
     async migrate() {
       if (migrated) return;
-      for (const file of readdirSync(MIGRATIONS).filter((name) => name.endsWith('.sql')).sort()) {
+      for (const file of readdirSync(MIGRATIONS)
+        .filter((name) => name.endsWith('.sql'))
+        .sort()) {
         raw.exec(readFileSync(path.join(MIGRATIONS, file), 'utf8'));
       }
       migrated = true;
     },
     async size() {
-      const row = raw.prepare('SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()').get() as { bytes: number };
+      const row = raw
+        .prepare('SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()')
+        .get() as { bytes: number };
       return row.bytes;
     },
   };

@@ -30,7 +30,11 @@ async function writeJson(name: string, value: unknown): Promise<string> {
 }
 
 async function hubFileFor(hubs: readonly FakeHub[]): Promise<string> {
-  const answers = await writeJson('answers.json', { password: 'synthetic-password', home: homedir(), queries: Object.fromEntries(serverAnswers(hubs)) });
+  const answers = await writeJson('answers.json', {
+    password: 'synthetic-password',
+    home: homedir(),
+    queries: Object.fromEntries(serverAnswers(hubs)),
+  });
   const passwordFile = path.join(folder, 'password');
   await writeFile(passwordFile, 'synthetic-password\n', { mode: 0o600 });
   return writeJson('hub.json', {
@@ -42,7 +46,10 @@ async function hubFileFor(hubs: readonly FakeHub[]): Promise<string> {
 
 describe('export', () => {
   it('describes its queries without running the client', async () => {
-    const hub = await writeJson('hub.json', { client: [path.join(folder, 'no-such-client')], projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme' }] });
+    const hub = await writeJson('hub.json', {
+      client: [path.join(folder, 'no-such-client')],
+      projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme' }],
+    });
     const run = io();
     expect(await main(['export', '--hub', hub, '--describe'], run.io)).toBe(0);
     expect(run.out.join('\n')).toContain('The export sends only these read-only queries, in this order:');
@@ -83,7 +90,9 @@ describe('import and verify', () => {
     const from = await writeJson('export.json', scenario());
     const run = io();
     expect(await main(['import', '--from', from, '--persist-to', folder, '--check'], run.io)).toBe(0);
-    expect(run.out).toEqual(['The export imports: 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels. Nothing was written.']);
+    expect(run.out).toEqual([
+      'The export imports: 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels. Nothing was written.',
+    ]);
     expect(await run.database.all("SELECT name FROM sqlite_master WHERE name = 'tasks'")).toEqual([]);
   });
 
@@ -91,7 +100,9 @@ describe('import and verify', () => {
     const from = await writeJson('export.json', scenario());
     const run = io();
     expect(await main(['import', '--from', from, '--persist-to', folder], run.io)).toBe(0);
-    expect(run.out[0]).toBe('Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the test database.');
+    expect(run.out[0]).toBe(
+      'Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the test database.',
+    );
     expect(run.out[1]).toMatch(/^Database size: 0\.\d MB, 0\.0% of D1's 500 MB limit for one database\.$/u);
 
     const check = io(run.database);
@@ -101,7 +112,9 @@ describe('import and verify', () => {
 
     const twice = io(run.database);
     expect(await main(['import', '--from', from, '--persist-to', folder], twice.io)).toBe(1);
-    expect(twice.err).toEqual(['Refused: the test database already holds projects or tasks. The import writes only into an empty database.']);
+    expect(twice.err).toEqual([
+      'Refused: the test database already holds projects or tasks. The import writes only into an empty database.',
+    ]);
   });
 
   it('lists the differences and fails when the database differs', async () => {

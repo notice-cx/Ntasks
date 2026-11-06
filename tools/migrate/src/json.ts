@@ -29,7 +29,7 @@ export function isJsonObject(value: unknown): value is JsonObject {
 
 /** Text of at most `max` characters, for quoting a stored value in a report. */
 export function excerpt(value: Json | undefined, max = 60): string {
-  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
   const line = text.replace(/\s+/gu, ' ').trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }

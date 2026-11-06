@@ -5,7 +5,13 @@ import { exportOf, t } from './scenario.ts';
 
 function hubWith(change: (c: Change) => void, options: Partial<{ prefix: string; id: string }> = {}): FakeHub {
   const prefix = options.prefix ?? 'web';
-  const hub = new FakeHub({ database: 'web_tasks', key: 'web.example.com', name: 'Web', id: options.id ?? 'w-1', prefix });
+  const hub = new FakeHub({
+    database: 'web_tasks',
+    key: 'web.example.com',
+    name: 'Web',
+    id: options.id ?? 'w-1',
+    prefix,
+  });
   hub.commit(t(0), 'beads', (c) => {
     c.create({ id: `${prefix}-a1`, title: 'First' });
     c.create({ id: `${prefix}-a2`, title: 'Second' });
@@ -31,17 +37,23 @@ describe('the import refuses what is out of scope, naming it', () => {
     const refusals = refusalsOf(hubWith(() => {}, { prefix: 'web-app' }));
     expect(refusals).toEqual(
       expect.arrayContaining([
-        { subject: 'project web.example.com', reason: 'its prefix "web-app" is not 1 to 32 lowercase letters and digits; prefixes with hyphens are out of scope' },
+        {
+          subject: 'project web.example.com',
+          reason:
+            'its prefix "web-app" is not 1 to 32 lowercase letters and digits; prefixes with hyphens are out of scope',
+        },
         { subject: 'web-app-a1', reason: 'its id "web-app-a1" is not a task id Ntasks accepts' },
       ]),
     );
   });
 
-  it('a status or type outside Ntasks\' lists', () => {
-    const refusals = refusalsOf(hubWith((c) => {
-      c.update('web-a1', { status: 'pinned' });
-      c.update('web-a2', { issue_type: 'molecule' });
-    }));
+  it("a status or type outside Ntasks' lists", () => {
+    const refusals = refusalsOf(
+      hubWith((c) => {
+        c.update('web-a1', { status: 'pinned' });
+        c.update('web-a2', { issue_type: 'molecule' });
+      }),
+    );
     expect(refusals).toEqual(
       expect.arrayContaining([
         { subject: 'web-a1', reason: 'its status "pinned" is not one of Ntasks\' statuses' },
@@ -57,10 +69,12 @@ describe('the import refuses what is out of scope, naming it', () => {
   });
 
   it('a wisp, a molecule and an approval waiting on something other than a person', () => {
-    const refusals = refusalsOf(hubWith((c) => {
-      c.update('web-a1', { ephemeral: 1, mol_type: 'swarm' });
-      c.create({ id: 'web-a3', title: 'Wait for CI', issue_type: 'gate', await_type: 'gh:run', await_id: '123' });
-    }));
+    const refusals = refusalsOf(
+      hubWith((c) => {
+        c.update('web-a1', { ephemeral: 1, mol_type: 'swarm' });
+        c.create({ id: 'web-a3', title: 'Wait for CI', issue_type: 'gate', await_type: 'gh:run', await_id: '123' });
+      }),
+    );
     expect(refusals).toEqual(
       expect.arrayContaining([
         { subject: 'web-a1', reason: 'its column ephemeral holds "1": it is a wisp, and wisps are out of scope' },
@@ -78,7 +92,8 @@ describe('the import refuses what is out of scope, naming it', () => {
     expect(refusalsOf(hub)).toEqual([
       {
         subject: 'web-a1',
-        reason: 'a link column depends_on_external holds "external:other:thing": it links to a task outside the hub, and external links are out of scope',
+        reason:
+          'a link column depends_on_external holds "external:other:thing": it links to a task outside the hub, and external links are out of scope',
       },
     ]);
   });
@@ -88,8 +103,14 @@ describe('the import refuses what is out of scope, naming it', () => {
     hub.otherTables.push({ name: 'leases', rows: 2 }, { name: 'mystery', rows: 1 });
     hub.otherTables.find((table) => table.name === 'wisps')!.rows = 3;
     expect(refusalsOf(hub)).toEqual([
-      { subject: 'project web.example.com', reason: 'its table leases holds 2 rows: claims that expire as leases are out of scope' },
-      { subject: 'project web.example.com', reason: 'its table mystery holds 1 rows: the import does not know what it holds' },
+      {
+        subject: 'project web.example.com',
+        reason: 'its table leases holds 2 rows: claims that expire as leases are out of scope',
+      },
+      {
+        subject: 'project web.example.com',
+        reason: 'its table mystery holds 1 rows: the import does not know what it holds',
+      },
       { subject: 'project web.example.com', reason: 'its table wisps holds 3 rows: wisps are out of scope' },
     ]);
   });
@@ -98,7 +119,11 @@ describe('the import refuses what is out of scope, naming it', () => {
     const hub = hubWith(() => {});
     hub.branches = [...hub.branches, { name: 'experiment', hash: 'h9' }];
     expect(refusalsOf(hub)).toEqual([
-      { subject: 'project web.example.com', reason: 'its database has 2 Dolt branches (main, experiment); branches are out of scope, and the export reads only one' },
+      {
+        subject: 'project web.example.com',
+        reason:
+          'its database has 2 Dolt branches (main, experiment); branches are out of scope, and the export reads only one',
+      },
     ]);
   });
 });
@@ -119,19 +144,24 @@ describe('the import refuses data it cannot carry whole', () => {
     ]);
   });
 
-  it('out-of-scope data in a task\'s past, saying when', () => {
+  it("out-of-scope data in a task's past, saying when", () => {
     const hub = hubWith((c) => c.update('web-a1', { notes: 'Old note' }));
     hub.commit(t(2), 'beads', (c) => c.update('web-a1', { notes: '' }));
     expect(refusalsOf(hub)).toEqual([
-      { subject: 'web-a1', reason: `its column notes holds "Old note", and Ntasks has no field for it (in its history, at ${t(1)})` },
+      {
+        subject: 'web-a1',
+        reason: `its column notes holds "Old note", and Ntasks has no field for it (in its history, at ${t(1)})`,
+      },
     ]);
   });
 
   it('tasks that wait on each other in a loop', () => {
-    const refusals = refusalsOf(hubWith((c) => {
-      c.link('web-a1', 'web-a2', 'blocks');
-      c.link('web-a2', 'web-a1', 'blocks');
-    }));
+    const refusals = refusalsOf(
+      hubWith((c) => {
+        c.link('web-a1', 'web-a2', 'blocks');
+        c.link('web-a2', 'web-a1', 'blocks');
+      }),
+    );
     expect(refusals).toEqual([
       { subject: 'web-a1', reason: 'it is in a loop of tasks that wait on each other through blocks links or parents' },
       { subject: 'web-a2', reason: 'it is in a loop of tasks that wait on each other through blocks links or parents' },
@@ -151,16 +181,26 @@ describe('the import refuses data it cannot carry whole', () => {
 
   it('two projects with the same prefix', () => {
     const one = hubWith(() => {});
-    const two = new FakeHub({ database: 'web2_tasks', key: 'web2.example.com', name: 'Web 2', id: 'w-2', prefix: 'web' });
+    const two = new FakeHub({
+      database: 'web2_tasks',
+      key: 'web2.example.com',
+      name: 'Web 2',
+      id: 'w-2',
+      prefix: 'web',
+    });
     two.commit(t(0), 'beads', (c) => c.create({ id: 'web-b1', title: 'Other' }));
-    expect(refusalsOf(one, two)).toEqual([{ subject: 'project web2.example.com', reason: 'another project in the export has the same prefix, web' }]);
+    expect(refusalsOf(one, two)).toEqual([
+      { subject: 'project web2.example.com', reason: 'another project in the export has the same prefix, web' },
+    ]);
   });
 
   it('reports every refusal of an export at once', () => {
-    const refusals = refusalsOf(hubWith((c) => {
-      c.link('web-a1', 'web-a2', 'waits-for');
-      c.update('web-a2', { design: 'A sketch.' });
-    }));
+    const refusals = refusalsOf(
+      hubWith((c) => {
+        c.link('web-a1', 'web-a2', 'waits-for');
+        c.update('web-a2', { design: 'A sketch.' });
+      }),
+    );
     expect(refusals.map((refusal) => refusal.subject)).toEqual(['web-a1', 'web-a2']);
   });
 });

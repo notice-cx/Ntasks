@@ -91,7 +91,11 @@ export class FakeHub {
   ];
   branches: BeadsRow[] = [{ name: 'main', hash: 'h0' }];
   readonly log: MutableRow[] = [];
-  readonly diffs: { issues: MutableRow[]; labels: MutableRow[]; dependencies: MutableRow[] } = { issues: [], labels: [], dependencies: [] };
+  readonly diffs: { issues: MutableRow[]; labels: MutableRow[]; dependencies: MutableRow[] } = {
+    issues: [],
+    labels: [],
+    dependencies: [],
+  };
   #working = 'w0';
   #now = '';
   #actor = '';
@@ -167,12 +171,23 @@ export class FakeHub {
   }
 
   /** One Beads write, committed at `at` by `actor`, with the audit event Beads logs for it, which may name another actor. */
-  commit(at: string, actor: string, apply: (change: Change) => void, audit?: { readonly issue: string; readonly event: string; readonly actor?: string }): string {
+  commit(
+    at: string,
+    actor: string,
+    apply: (change: Change) => void,
+    audit?: { readonly issue: string; readonly event: string; readonly actor?: string },
+  ): string {
     this.#now = at;
     this.#actor = actor;
     const hash = `c${String(this.log.length + 1).padStart(4, '0')}${this.database.length}`;
     this.#record(hash, doltTime(at), apply);
-    this.log.push({ commit_hash: hash, committer: actor, email: `${actor}@example.com`, date: doltTime(at), message: `bd: ${audit?.event ?? 'change'}` });
+    this.log.push({
+      commit_hash: hash,
+      committer: actor,
+      email: `${actor}@example.com`,
+      date: doltTime(at),
+      message: `bd: ${audit?.event ?? 'change'}`,
+    });
     if (audit !== undefined) this.audit(audit.issue, audit.event, audit.actor ?? actor, at);
     this.branches = [{ name: 'main', hash }];
     return hash;
@@ -191,7 +206,13 @@ export class FakeHub {
   }
 
   audit(issue: string, event: string, actor: string, at: string) {
-    this.events.push({ id: String(this.events.length + 1), issue_id: issue, event_type: event, actor, created_at: doltTime(at) });
+    this.events.push({
+      id: String(this.events.length + 1),
+      issue_id: issue,
+      event_type: event,
+      actor,
+      created_at: doltTime(at),
+    });
   }
 
   /** The project as `export` would write it. */
@@ -241,7 +262,8 @@ export class FakeHub {
       [q.commits, project.commits],
     ]);
     for (const table of project.tables) answers.set(q.count(table.name), [{ count: table.rows }]);
-    for (const table of ['issues', 'labels', 'dependencies', 'comments', 'events'] as const) answers.set(q.rows(table), project.rows[table]);
+    for (const table of ['issues', 'labels', 'dependencies', 'comments', 'events'] as const)
+      answers.set(q.rows(table), project.rows[table]);
     for (const table of ['issues', 'labels', 'dependencies'] as const) answers.set(q.diff(table), project.diffs[table]);
     return answers;
   }

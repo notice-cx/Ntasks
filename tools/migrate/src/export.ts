@@ -3,7 +3,17 @@
  * returns the export file's content. It never writes to the hub and never
  * runs Beads itself; `describeExport` lists every query it sends.
  */
-import { EXPORT_FORMAT, HISTORY_TABLES, READ_TABLES, textOf, type BeadsExport, type BeadsProject, type BeadsRow, type HistoryTable, type ReadTable } from './beads.ts';
+import {
+  EXPORT_FORMAT,
+  HISTORY_TABLES,
+  READ_TABLES,
+  textOf,
+  type BeadsExport,
+  type BeadsProject,
+  type BeadsRow,
+  type HistoryTable,
+  type ReadTable,
+} from './beads.ts';
 import { isJsonObject } from './json.ts';
 
 /** One project of the hub, as the hub file names it. */
@@ -50,17 +60,21 @@ export function readHubFile(json: string): HubFile {
   if (!Array.isArray(client) || client.length === 0 || !client.every((part) => typeof part === 'string')) {
     throw new Error('client must be the SQL client command, as a list of its program and arguments.');
   }
-  if (value.passwordFile !== undefined && typeof value.passwordFile !== 'string') throw new Error('passwordFile must be a path.');
+  if (value.passwordFile !== undefined && typeof value.passwordFile !== 'string')
+    throw new Error('passwordFile must be a path.');
   const env = value.env;
   if (env !== undefined && (!isJsonObject(env) || !Object.values(env).every((entry) => typeof entry === 'string'))) {
     throw new Error('env must map names to text.');
   }
-  if (!Array.isArray(value.projects) || value.projects.length === 0) throw new Error('projects must list at least one project.');
+  if (!Array.isArray(value.projects) || value.projects.length === 0)
+    throw new Error('projects must list at least one project.');
   const projects = value.projects.map((entry, index): HubProject => {
     if (!isJsonObject(entry)) throw new Error(`projects[${index}] must be an object.`);
     const { database, key, name, id, prefix } = entry;
-    if (typeof database !== 'string' || !DATABASE.test(database)) throw new Error(`projects[${index}].database must be a database name.`);
-    if (typeof key !== 'string' || typeof name !== 'string') throw new Error(`projects[${index}] needs a key and a name.`);
+    if (typeof database !== 'string' || !DATABASE.test(database))
+      throw new Error(`projects[${index}].database must be a database name.`);
+    if (typeof key !== 'string' || typeof name !== 'string')
+      throw new Error(`projects[${index}] needs a key and a name.`);
     if ((id !== undefined && typeof id !== 'string') || (prefix !== undefined && typeof prefix !== 'string')) {
       throw new Error(`projects[${index}].id and .prefix must be text.`);
     }
@@ -127,9 +141,13 @@ async function exportProject(project: HubProject, query: Query): Promise<BeadsPr
   const workingBefore = single(await query(q.working), `working set hash for ${project.database}`);
   const id = single(await query(q.projectId), `project id in ${project.database}`);
   const prefix = single(await query(q.prefix), `prefix in ${project.database}`);
-  if (project.id !== undefined && project.id !== id) throw new Error(`${project.database} holds project ${id}, not ${project.id} as the hub file says.`);
-  if (project.prefix !== undefined && project.prefix !== prefix) throw new Error(`${project.database} uses the prefix ${prefix}, not ${project.prefix} as the hub file says.`);
-  const names = (await query(q.tables)).map((row) => textOf(row.name) ?? '').filter((name) => !name.startsWith('dolt_'));
+  if (project.id !== undefined && project.id !== id)
+    throw new Error(`${project.database} holds project ${id}, not ${project.id} as the hub file says.`);
+  if (project.prefix !== undefined && project.prefix !== prefix)
+    throw new Error(`${project.database} uses the prefix ${prefix}, not ${project.prefix} as the hub file says.`);
+  const names = (await query(q.tables))
+    .map((row) => textOf(row.name) ?? '')
+    .filter((name) => !name.startsWith('dolt_'));
   const tables: { name: string; rows: number }[] = [];
   for (const name of names) {
     const [row] = await query(q.count(name));
@@ -145,9 +163,22 @@ async function exportProject(project: HubProject, query: Query): Promise<BeadsPr
   for (const table of HISTORY_TABLES) diffs[table] = names.includes(table) ? await query(q.diff(table)) : [];
   const workingAfter = single(await query(q.working), `working set hash for ${project.database}`);
   if (workingAfter !== workingBefore) {
-    throw new Error(`${project.database} changed while the export read it, so the export is not one consistent copy. Run it again, or stop writers first.`);
+    throw new Error(
+      `${project.database} changed while the export read it, so the export is not one consistent copy. Run it again, or stop writers first.`,
+    );
   }
-  return { database: project.database, key: project.key, name: project.name, id, prefix, tables, branches, commits, rows, diffs };
+  return {
+    database: project.database,
+    key: project.key,
+    name: project.name,
+    id,
+    prefix,
+    tables,
+    branches,
+    commits,
+    rows,
+    diffs,
+  };
 }
 
 export async function exportHub(hub: HubFile, query: Query, now: () => Date = () => new Date()): Promise<BeadsExport> {

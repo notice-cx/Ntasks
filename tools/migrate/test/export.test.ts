@@ -13,7 +13,11 @@ describe('export', () => {
   it('reads every project in full, with its history', async () => {
     const acme = acmeHub();
     const beta = betaHub();
-    const data = await exportHub(hubFile([acme, beta]), fakeServer([acme, beta]), () => new Date('2026-03-03T00:00:00.000Z'));
+    const data = await exportHub(
+      hubFile([acme, beta]),
+      fakeServer([acme, beta]),
+      () => new Date('2026-03-03T00:00:00.000Z'),
+    );
     expect(data).toEqual({
       format: 'ntasks-beads-export-v1',
       exportedAt: '2026-03-03T00:00:00.000Z',
@@ -44,21 +48,26 @@ describe('export', () => {
 
   it('refuses a database that is not the project the hub file names', async () => {
     const acme = acmeHub();
-    const hub: HubFile = { client: ['dolt'], projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme', prefix: 'other' }] };
-    await expect(exportHub(hub, fakeServer([acme]))).rejects.toThrow('acme_tasks uses the prefix acme, not other as the hub file says.');
+    const hub: HubFile = {
+      client: ['dolt'],
+      projects: [{ database: 'acme_tasks', key: 'acme', name: 'Acme', prefix: 'other' }],
+    };
+    await expect(exportHub(hub, fakeServer([acme]))).rejects.toThrow(
+      'acme_tasks uses the prefix acme, not other as the hub file says.',
+    );
   });
 
   it('lists every query it would send without sending any', () => {
     const description = describeExport(hubFile([acmeHub()]));
-    expect(description).toContain("SELECT * FROM `acme_tasks`.`dolt_diff_issues`");
+    expect(description).toContain('SELECT * FROM `acme_tasks`.`dolt_diff_issues`');
     expect(description).toContain("USE `acme_tasks`; SELECT DOLT_HASHOF_DB('WORKING') AS working");
     expect(description).toContain("Each runs as: dolt sql --result-format=json --query '<query>'");
   });
 
   it('refuses a database name it could not quote safely', () => {
-    expect(() => readHubFile(JSON.stringify({ client: ['dolt'], projects: [{ database: 'x`; DROP', key: 'k', name: 'n' }] }))).toThrow(
-      'projects[0].database must be a database name.',
-    );
+    expect(() =>
+      readHubFile(JSON.stringify({ client: ['dolt'], projects: [{ database: 'x`; DROP', key: 'k', name: 'n' }] })),
+    ).toThrow('projects[0].database must be a database name.');
   });
 });
 

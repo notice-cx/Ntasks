@@ -72,9 +72,24 @@ export interface MappedTask {
 
 /** Issue columns the import reads. */
 const ISSUE_COLUMNS = new Set([
-  'id', 'title', 'description', 'acceptance_criteria', 'status', 'priority', 'issue_type', 'assignee',
-  'created_at', 'created_by', 'updated_at', 'started_at', 'closed_at', 'close_reason', 'await_type',
-  'due_at', 'defer_until', 'metadata',
+  'id',
+  'title',
+  'description',
+  'acceptance_criteria',
+  'status',
+  'priority',
+  'issue_type',
+  'assignee',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'started_at',
+  'closed_at',
+  'close_reason',
+  'await_type',
+  'due_at',
+  'defer_until',
+  'metadata',
 ]);
 /** Columns Beads computes from the others: nothing is lost by leaving them. */
 const ISSUE_DERIVED = new Set(['content_hash', 'is_blocked']);
@@ -100,9 +115,16 @@ const OUT_OF_SCOPE_COLUMNS: Readonly<Record<string, string>> = {
 
 /** NoticeOS metadata keys that are Ntasks columns or links; every other key stays in metadata as given. */
 export const COLUMN_METADATA_KEYS = [
-  'noticeos_filed_by', 'noticeos_filed_model', 'noticeos_claimed_model',
-  'noticeos_closed_by', 'noticeos_closed_model', 'noticeos_closed_at',
-  'noticeos_resolution', 'noticeos_duplicate_of', 'noticeos_choices', 'noticeos_choice',
+  'noticeos_filed_by',
+  'noticeos_filed_model',
+  'noticeos_claimed_model',
+  'noticeos_closed_by',
+  'noticeos_closed_model',
+  'noticeos_closed_at',
+  'noticeos_resolution',
+  'noticeos_duplicate_of',
+  'noticeos_choices',
+  'noticeos_choice',
   'noticeos_related_tasks',
 ] as const;
 
@@ -113,7 +135,12 @@ const SAME_CLOSE_MS = 1000;
 const NAME_LIMIT = 255;
 const TITLE_LIMIT = 1024;
 
-export function unmappedProblems(row: BeadsRow, mapped: ReadonlySet<string>, derived: ReadonlySet<string>, what: string): string[] {
+export function unmappedProblems(
+  row: BeadsRow,
+  mapped: ReadonlySet<string>,
+  derived: ReadonlySet<string>,
+  what: string,
+): string[] {
   const problems: string[] = [];
   for (const [column, value] of Object.entries(row)) {
     if (mapped.has(column) || derived.has(column) || isEmpty(value)) continue;
@@ -195,7 +222,13 @@ export function mapTask(input: {
 
   const id = textOf(issue.id);
   if (id === null || !isTaskId(id)) {
-    return { state: null, createdAt: null, updatedAt: null, relatedRefs: [], problems: [`its id "${excerpt(issue.id)}" is not a task id Ntasks accepts`] };
+    return {
+      state: null,
+      createdAt: null,
+      updatedAt: null,
+      relatedRefs: [],
+      problems: [`its id "${excerpt(issue.id)}" is not a task id Ntasks accepts`],
+    };
   }
   if (!id.startsWith(`${prefix}-`)) problems.push(`its id does not start with the project's prefix ${prefix}-`);
   problems.push(...unmappedProblems(issue, ISSUE_COLUMNS, ISSUE_DERIVED, 'its'));
@@ -212,10 +245,12 @@ export function mapTask(input: {
   }
   const priorityValue = issue.priority;
   const priority = typeof priorityValue === 'number' ? priorityValue : Number(textOf(priorityValue) ?? Number.NaN);
-  if (!Number.isInteger(priority) || priority < 0 || priority > 4) problems.push(`its priority "${excerpt(priorityValue)}" is not 0 to 4`);
+  if (!Number.isInteger(priority) || priority < 0 || priority > 4)
+    problems.push(`its priority "${excerpt(priorityValue)}" is not 0 to 4`);
 
   const title = longText('title');
-  if (title.length < 1 || title.length > TITLE_LIMIT) problems.push(`its title is empty or longer than ${TITLE_LIMIT} characters`);
+  if (title.length < 1 || title.length > TITLE_LIMIT)
+    problems.push(`its title is empty or longer than ${TITLE_LIMIT} characters`);
 
   const metadata = metadataOf(issue.metadata);
   if (metadata === null) problems.push('its metadata is not a JSON object');
@@ -260,7 +295,9 @@ export function mapTask(input: {
     // NoticeOS's closer, model and resolution describe only the close at
     // noticeos_closed_at; a task closed again since has none recorded.
     const recorded =
-      closedBy !== null && typeof recordedAt === 'string' && closedAt !== null &&
+      closedBy !== null &&
+      typeof recordedAt === 'string' &&
+      closedAt !== null &&
       Math.abs(Date.parse(recordedAt) - Date.parse(closedAt)) <= SAME_CLOSE_MS;
     const resolutionValue = meta.noticeos_resolution;
     const resolution: TaskResolution = recorded && isTaskResolution(resolutionValue) ? resolutionValue : 'done';
@@ -272,7 +309,8 @@ export function mapTask(input: {
       at: closedAt ?? createdAt ?? '',
       reason: textOf(issue.close_reason),
       resolution,
-      duplicateOf: resolution === 'duplicate' && duplicateValue !== null && isTaskId(duplicateValue) ? duplicateValue : null,
+      duplicateOf:
+        resolution === 'duplicate' && duplicateValue !== null && isTaskId(duplicateValue) ? duplicateValue : null,
       by: recorded ? closedBy : null,
       model: recorded ? metaName('noticeos_closed_model') : null,
     };
@@ -282,7 +320,8 @@ export function mapTask(input: {
   for (const row of input.labels) {
     problems.push(...unmappedProblems(row, LABEL_COLUMNS, new Set(), 'a label'));
     const label = textOf(row.label);
-    if (label === null || label.length > NAME_LIMIT || hasNul(label)) problems.push(`its label "${excerpt(row.label)}" is empty or longer than ${NAME_LIMIT} characters`);
+    if (label === null || label.length > NAME_LIMIT || hasNul(label))
+      problems.push(`its label "${excerpt(row.label)}" is empty or longer than ${NAME_LIMIT} characters`);
     else if (!labels.includes(label)) labels.push(label);
   }
   labels.sort();
@@ -292,7 +331,8 @@ export function mapTask(input: {
   const addLink = (target: string, type: DependencyType) => {
     if (target === id) problems.push('it links to itself');
     const existing = links.get(target);
-    if (existing !== undefined && existing !== type) problems.push(`it links to ${target} twice, as ${existing} and ${type}; Ntasks keeps one link per pair`);
+    if (existing !== undefined && existing !== type)
+      problems.push(`it links to ${target} twice, as ${existing} and ${type}; Ntasks keeps one link per pair`);
     links.set(target, type);
   };
   for (const row of input.links) {
@@ -319,7 +359,12 @@ export function mapTask(input: {
     const refs = Array.isArray(related) ? related : null;
     if (refs === null) problems.push('its metadata key noticeos_related_tasks is not a list');
     for (const ref of refs ?? []) {
-      if (!isJsonObject(ref) || typeof ref.projectId !== 'string' || typeof ref.taskId !== 'string' || !isTaskId(ref.taskId)) {
+      if (
+        !isJsonObject(ref) ||
+        typeof ref.projectId !== 'string' ||
+        typeof ref.taskId !== 'string' ||
+        !isTaskId(ref.taskId)
+      ) {
         problems.push(`its related task "${excerpt(ref)}" does not name a project and a task id`);
         continue;
       }

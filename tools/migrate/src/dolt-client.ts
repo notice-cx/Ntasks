@@ -15,7 +15,12 @@ const OUTPUT_LIMIT = 1024 * 1024 * 1024;
 const QUERY_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function parseDoltJson(stdout: string): BeadsRow[] {
-  const line = stdout.trim().split('\n').filter((entry) => entry.trim() !== '').at(-1) ?? '';
+  const line =
+    stdout
+      .trim()
+      .split('\n')
+      .filter((entry) => entry.trim() !== '')
+      .at(-1) ?? '';
   const parsed: unknown = JSON.parse(line);
   if (!isJsonObject(parsed)) throw new Error('The SQL client did not print a JSON object.');
   if (Object.keys(parsed).length === 0) return [];
@@ -29,9 +34,12 @@ export function parseDoltJson(stdout: string): BeadsRow[] {
  * private HOME of its own and only the variables it needs, so no ambient
  * Dolt or Beads setting reaches it; Dolt's usage reporting is off.
  */
-export async function doltClient(hub: HubFile): Promise<{ readonly query: Query; readonly close: () => Promise<void> }> {
+export async function doltClient(
+  hub: HubFile,
+): Promise<{ readonly query: Query; readonly close: () => Promise<void> }> {
   const home = await mkdtemp(path.join(tmpdir(), 'ntasks-export-client-'));
-  const password = hub.passwordFile === undefined ? undefined : (await readFile(hub.passwordFile, 'utf8')).replace(/\r?\n$/u, '');
+  const password =
+    hub.passwordFile === undefined ? undefined : (await readFile(hub.passwordFile, 'utf8')).replace(/\r?\n$/u, '');
   const env: Record<string, string> = {
     PATH: process.env.PATH ?? '/usr/bin:/bin',
     HOME: home,
@@ -43,17 +51,22 @@ export async function doltClient(hub: HubFile): Promise<{ readonly query: Query;
   const [program, ...args] = hub.client;
   const query: Query = (sql) =>
     new Promise((resolve, reject) => {
-      execFile(program!, [...args, sql], { cwd: home, env, maxBuffer: OUTPUT_LIMIT, timeout: QUERY_TIMEOUT_MS, encoding: 'utf8' }, (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(`The SQL client failed on: ${sql}\n${(stderr || error.message).slice(0, 2000)}`));
-          return;
-        }
-        try {
-          resolve(parseDoltJson(stdout));
-        } catch (cause) {
-          reject(new Error(`The SQL client's answer to "${sql}" could not be read: ${(cause as Error).message}`));
-        }
-      });
+      execFile(
+        program!,
+        [...args, sql],
+        { cwd: home, env, maxBuffer: OUTPUT_LIMIT, timeout: QUERY_TIMEOUT_MS, encoding: 'utf8' },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(`The SQL client failed on: ${sql}\n${(stderr || error.message).slice(0, 2000)}`));
+            return;
+          }
+          try {
+            resolve(parseDoltJson(stdout));
+          } catch (cause) {
+            reject(new Error(`The SQL client's answer to "${sql}" could not be read: ${(cause as Error).message}`));
+          }
+        },
+      );
     });
   return { query, close: () => rm(home, { recursive: true, force: true }) };
 }

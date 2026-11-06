@@ -5,7 +5,14 @@
  */
 import type { DependencyType } from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './beads.ts';
-import { projectComments, projectHistory, taskEvents, type CommentRecord, type EventRecord, type TaskHistory } from './history.ts';
+import {
+  projectComments,
+  projectHistory,
+  taskEvents,
+  type CommentRecord,
+  type EventRecord,
+  type TaskHistory,
+} from './history.ts';
 import { stableJson } from './json.ts';
 import type { TaskState } from './task-state.ts';
 
@@ -82,15 +89,28 @@ export interface ImportPlan {
   readonly tasks: readonly TaskRow[];
   readonly labels: readonly { readonly task_id: string; readonly label: string }[];
   readonly edges: readonly EdgeRow[];
-  readonly comments: readonly { readonly id: string; readonly task_id: string; readonly author: string; readonly text: string; readonly created_at: string }[];
+  readonly comments: readonly {
+    readonly id: string;
+    readonly task_id: string;
+    readonly author: string;
+    readonly text: string;
+    readonly created_at: string;
+  }[];
   /** In the order of their sequence numbers. */
   readonly events: readonly EventRow[];
 }
 
 /** Tables Beads keeps for its own bookkeeping, with no task data the import needs. */
 const BOOKKEEPING_TABLES = new Set([
-  'config', 'metadata', 'schema_migrations', 'ignored_schema_migrations', 'local_metadata',
-  'child_counters', 'dirty_issues', 'export_hashes', 'repo_mtimes',
+  'config',
+  'metadata',
+  'schema_migrations',
+  'ignored_schema_migrations',
+  'local_metadata',
+  'child_counters',
+  'dirty_issues',
+  'export_hashes',
+  'repo_mtimes',
 ]);
 const READ_TABLES = new Set(['issues', 'labels', 'dependencies', 'comments', 'events']);
 /** Why a table that holds rows belongs to something out of scope. */
@@ -109,18 +129,28 @@ const PREFIX = /^[a-z0-9]{1,32}$/u;
 
 function projectRefusals(project: BeadsProject): string[] {
   const reasons: string[] = [];
-  if (!PREFIX.test(project.prefix)) reasons.push(`its prefix "${project.prefix}" is not 1 to 32 lowercase letters and digits; prefixes with hyphens are out of scope`);
-  if (project.id.length < 1 || project.id.length > 128) reasons.push('its project id is empty or longer than 128 characters');
-  if (project.key.length < 1 || project.key.length > 128) reasons.push('its key is empty or longer than 128 characters');
-  if (project.name.length < 1 || project.name.length > 128) reasons.push('its name is empty or longer than 128 characters');
+  if (!PREFIX.test(project.prefix))
+    reasons.push(
+      `its prefix "${project.prefix}" is not 1 to 32 lowercase letters and digits; prefixes with hyphens are out of scope`,
+    );
+  if (project.id.length < 1 || project.id.length > 128)
+    reasons.push('its project id is empty or longer than 128 characters');
+  if (project.key.length < 1 || project.key.length > 128)
+    reasons.push('its key is empty or longer than 128 characters');
+  if (project.name.length < 1 || project.name.length > 128)
+    reasons.push('its name is empty or longer than 128 characters');
   if (project.branches.length > 1) {
     const names = project.branches.map((row) => textOf(row.name) ?? '').join(', ');
-    reasons.push(`its database has ${project.branches.length} Dolt branches (${names}); branches are out of scope, and the export reads only one`);
+    reasons.push(
+      `its database has ${project.branches.length} Dolt branches (${names}); branches are out of scope, and the export reads only one`,
+    );
   }
   for (const table of project.tables) {
     if (table.rows === 0 || READ_TABLES.has(table.name) || BOOKKEEPING_TABLES.has(table.name)) continue;
     const scope = OUT_OF_SCOPE_TABLES[table.name];
-    reasons.push(`its table ${table.name} holds ${table.rows} rows: ${scope ?? 'the import does not know what it holds'}`);
+    reasons.push(
+      `its table ${table.name} holds ${table.rows} rows: ${scope ?? 'the import does not know what it holds'}`,
+    );
   }
   return reasons;
 }
@@ -238,7 +268,10 @@ function sequence(perTask: readonly EventRecord[][]): EventRecord[] {
   return keyed.map((entry) => entry.event);
 }
 
-export function planImport(data: BeadsExport): { readonly plan: ImportPlan | null; readonly refusals: readonly Refusal[] } {
+export function planImport(data: BeadsExport): {
+  readonly plan: ImportPlan | null;
+  readonly refusals: readonly Refusal[];
+} {
   const refusals: Refusal[] = [];
   const refuse = (subject: string, reason: string) => refusals.push({ subject, reason });
   const projectOf = new Map<string, string>();
@@ -247,11 +280,21 @@ export function planImport(data: BeadsExport): { readonly plan: ImportPlan | nul
   const auditByTask = new Map<string, BeadsProject['rows']['events'][number][]>();
   const projects: ProjectRow[] = [];
 
-  const seen = { id: new Set<string>(), key: new Set<string>(), prefix: new Set<string>(), database: new Set<string>() };
+  const seen = {
+    id: new Set<string>(),
+    key: new Set<string>(),
+    prefix: new Set<string>(),
+    database: new Set<string>(),
+  };
   for (const project of data.projects) {
     const subject = `project ${project.key}`;
     for (const reason of projectRefusals(project)) refuse(subject, reason);
-    for (const [field, value] of [['id', project.id], ['key', project.key], ['prefix', project.prefix], ['database', project.database]] as const) {
+    for (const [field, value] of [
+      ['id', project.id],
+      ['key', project.key],
+      ['prefix', project.prefix],
+      ['database', project.database],
+    ] as const) {
       if (seen[field].has(value)) refuse(subject, `another project in the export has the same ${field}, ${value}`);
       seen[field].add(value);
     }
@@ -282,7 +325,13 @@ export function planImport(data: BeadsExport): { readonly plan: ImportPlan | nul
       if (typeof at === 'string') times.push(at);
     }
     times.sort();
-    projects.push({ id: project.id, key: project.key, name: project.name, prefix: project.prefix, created_at: times[0] ?? data.exportedAt });
+    projects.push({
+      id: project.id,
+      key: project.key,
+      name: project.name,
+      prefix: project.prefix,
+      created_at: times[0] ?? data.exportedAt,
+    });
   }
 
   const states = new Map<string, TaskState>();
@@ -301,10 +350,15 @@ export function planImport(data: BeadsExport): { readonly plan: ImportPlan | nul
     }
     for (const ref of history.current.relatedRefs) {
       const actual = projectOf.get(ref.taskId);
-      if (actual !== undefined && actual !== ref.projectId) refuse(taskId, `its related task ${ref.taskId} is named with project ${ref.projectId}, but that task is in project ${actual}`);
+      if (actual !== undefined && actual !== ref.projectId)
+        refuse(
+          taskId,
+          `its related task ${ref.taskId} is named with project ${ref.projectId}, but that task is in project ${actual}`,
+        );
     }
   }
-  for (const taskId of waitingLoops(states)) refuse(taskId, 'it is in a loop of tasks that wait on each other through blocks links or parents');
+  for (const taskId of waitingLoops(states))
+    refuse(taskId, 'it is in a loop of tasks that wait on each other through blocks links or parents');
   const order = insertOrder(states);
   if (order === null) refuse('export', 'parents and duplicates form a loop');
   if (refusals.length > 0 || order === null) return { plan: null, refusals: sortRefusals(refusals) };
@@ -325,7 +379,11 @@ export function planImport(data: BeadsExport): { readonly plan: ImportPlan | nul
     const linkRows = new Map<string, { at: string | null; by: string | null }>();
     for (const row of history.links) {
       const target = textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
-      if (target !== null) linkRows.set(target, { at: timeOf(row.created_at) ?? null, by: isEmpty(row.created_by) ? null : textOf(row.created_by) });
+      if (target !== null)
+        linkRows.set(target, {
+          at: timeOf(row.created_at) ?? null,
+          by: isEmpty(row.created_by) ? null : textOf(row.created_by),
+        });
     }
     for (const link of state.dependencies) {
       const row = linkRows.get(link.taskId);
@@ -338,7 +396,13 @@ export function planImport(data: BeadsExport): { readonly plan: ImportPlan | nul
       });
     }
     for (const comment of commentsByTask.get(taskId) ?? []) {
-      comments.push({ id: comment.id, task_id: taskId, author: comment.author, text: comment.text, created_at: comment.createdAt });
+      comments.push({
+        id: comment.id,
+        task_id: taskId,
+        author: comment.author,
+        text: comment.text,
+        created_at: comment.createdAt,
+      });
     }
   }
   const events = sequence(perTask).map((event, index): EventRow => ({

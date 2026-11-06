@@ -56,9 +56,13 @@ async function readD1(db: Database): Promise<D1Contents> {
     projects: await db.all('SELECT id, key, name, prefix, created_at FROM projects ORDER BY id'),
     tasks: await db.all('SELECT * FROM tasks ORDER BY id'),
     labels: await db.all('SELECT task_id, label FROM task_labels ORDER BY task_id, label'),
-    edges: await db.all('SELECT task_id, depends_on_id, type, created_at, created_by FROM task_edges ORDER BY task_id, depends_on_id'),
+    edges: await db.all(
+      'SELECT task_id, depends_on_id, type, created_at, created_by FROM task_edges ORDER BY task_id, depends_on_id',
+    ),
     comments: await db.all('SELECT id, task_id, author, text, created_at FROM task_comments ORDER BY id'),
-    events: await db.all('SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq'),
+    events: await db.all(
+      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq',
+    ),
   };
 }
 
@@ -89,7 +93,9 @@ function storedState(task: Row, labels: readonly string[], edges: readonly Row[]
     choice: parse(task.choice),
     metadata: parse(task.metadata),
     labels: [...labels].sort(),
-    dependencies: sortLinks(edges.map((edge) => ({ taskId: edge.depends_on_id as string, type: edge.type as 'blocks' }))) as unknown as Json,
+    dependencies: sortLinks(
+      edges.map((edge) => ({ taskId: edge.depends_on_id as string, type: edge.type as 'blocks' })),
+    ) as unknown as Json,
     close: closed
       ? {
           at: task.closed_at as string,
@@ -105,11 +111,18 @@ function storedState(task: Row, labels: readonly string[], edges: readonly Row[]
   };
 }
 
-function compareSets(subject: string, what: string, expected: Iterable<string>, actual: Iterable<string>, out: Difference[]) {
+function compareSets(
+  subject: string,
+  what: string,
+  expected: Iterable<string>,
+  actual: Iterable<string>,
+  out: Difference[],
+) {
   const want = new Set(expected);
   const have = new Set(actual);
   for (const item of want) if (!have.has(item)) out.push({ subject, difference: `${what} ${item} is missing` });
-  for (const item of have) if (!want.has(item)) out.push({ subject, difference: `${what} ${item} is not in the export` });
+  for (const item of have)
+    if (!want.has(item)) out.push({ subject, difference: `${what} ${item} is not in the export` });
 }
 
 function groupRows(rows: readonly Row[], column: string): Map<string, Row[]> {
@@ -124,7 +137,11 @@ function groupRows(rows: readonly Row[], column: string): Map<string, Row[]> {
 }
 
 /** Check 1: the database against the export's rows. */
-function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { counts: StatusCount[]; approvals: number; decisions: number; frozenCards: number } {
+function againstExport(
+  data: BeadsExport,
+  d1: D1Contents,
+  out: Difference[],
+): { counts: StatusCount[]; approvals: number; decisions: number; frozenCards: number } {
   const counts: StatusCount[] = [];
   const tasksById = new Map(d1.tasks.map((task) => [String(task.id), task]));
   const labelsByTask = groupRows(d1.labels, 'task_id');
@@ -134,7 +151,9 @@ function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { 
   let decisions = 0;
   let frozenCards = 0;
 
-  for (const task of d1.tasks) if (!isTaskId(task.id)) out.push({ subject: String(task.id), difference: 'its id is not a task id Ntasks accepts' });
+  for (const task of d1.tasks)
+    if (!isTaskId(task.id))
+      out.push({ subject: String(task.id), difference: 'its id is not a task id Ntasks accepts' });
 
   for (const project of data.projects) {
     const subject = `project ${project.key}`;
@@ -154,9 +173,15 @@ function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { 
       if (task.project_id === project.id) actual.set(String(task.status), (actual.get(String(task.status)) ?? 0) + 1);
     }
     for (const status of [...new Set([...expected.keys(), ...actual.keys()])].sort()) {
-      const count = { project: project.key, status, expected: expected.get(status) ?? 0, actual: actual.get(status) ?? 0 };
+      const count = {
+        project: project.key,
+        status,
+        expected: expected.get(status) ?? 0,
+        actual: actual.get(status) ?? 0,
+      };
       counts.push(count);
-      if (count.expected !== count.actual) out.push({ subject, difference: `${count.expected} tasks are ${status} in the export, ${count.actual} in D1` });
+      if (count.expected !== count.actual)
+        out.push({ subject, difference: `${count.expected} tasks are ${status} in the export, ${count.actual} in D1` });
     }
     compareSets(
       subject,
@@ -192,23 +217,36 @@ function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { 
           : {};
       const storedMetadata = parse(task.metadata);
 
-      if (task.type !== textOf(issue.issue_type)) differ(`its type is ${String(task.type)}, not ${textOf(issue.issue_type) ?? ''}`);
+      if (task.type !== textOf(issue.issue_type))
+        differ(`its type is ${String(task.type)}, not ${textOf(issue.issue_type) ?? ''}`);
       if (task.title !== issue.title) differ('its title differs');
-      compareSets(id, 'label', labelsByIssue.get(id) ?? [], (labelsByTask.get(id) ?? []).map((row) => String(row.label)), out);
+      compareSets(
+        id,
+        'label',
+        labelsByIssue.get(id) ?? [],
+        (labelsByTask.get(id) ?? []).map((row) => String(row.label)),
+        out,
+      );
 
       const links = linksByIssue.get(id) ?? [];
       const related = Array.isArray(metadata.noticeos_related_tasks) ? metadata.noticeos_related_tasks : [];
-      for (const ref of related) if (isJsonObject(ref) && typeof ref.taskId === 'string') links.push(`related ${ref.taskId}`);
-      const storedLinks = (edgesByTask.get(id) ?? []).map((edge) => `${String(edge.type)} ${String(edge.depends_on_id)}`);
-      if (task.parent_id !== null && task.parent_id !== undefined) storedLinks.push(`parent-child ${String(task.parent_id)}`);
+      for (const ref of related)
+        if (isJsonObject(ref) && typeof ref.taskId === 'string') links.push(`related ${ref.taskId}`);
+      const storedLinks = (edgesByTask.get(id) ?? []).map(
+        (edge) => `${String(edge.type)} ${String(edge.depends_on_id)}`,
+      );
+      if (task.parent_id !== null && task.parent_id !== undefined)
+        storedLinks.push(`parent-child ${String(task.parent_id)}`);
       compareSets(id, 'link', new Set(links), storedLinks, out);
       for (const edge of edgesByTask.get(id) ?? []) {
-        if (!tasksById.has(String(edge.depends_on_id))) differ(`its link to ${String(edge.depends_on_id)} names no task`);
+        if (!tasksById.has(String(edge.depends_on_id)))
+          differ(`its link to ${String(edge.depends_on_id)} names no task`);
         if (edge.depends_on_id === id) differ('it links to itself');
       }
 
       if (textOf(issue.status) === 'closed') {
-        if (task.closed_at !== timeOf(issue.closed_at)) differ(`it closed at ${String(task.closed_at)}, not ${String(timeOf(issue.closed_at))}`);
+        if (task.closed_at !== timeOf(issue.closed_at))
+          differ(`it closed at ${String(task.closed_at)}, not ${String(timeOf(issue.closed_at))}`);
         if ((task.close_reason ?? null) !== textOf(issue.close_reason)) differ('its close reason differs');
         if (typeof task.resolution !== 'string') differ('its close records no resolution');
       } else if (task.closed_at !== null && task.closed_at !== undefined) {
@@ -217,7 +255,8 @@ function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { 
 
       if (task.type === 'gate') {
         approvals += 1;
-        if ((task.await_type ?? null) !== textOf(issue.await_type)) differ('its approval does not wait on the same answerer');
+        if ((task.await_type ?? null) !== textOf(issue.await_type))
+          differ('its approval does not wait on the same answerer');
       }
       if (task.type === 'decision') decisions += 1;
       if (!sameJson(parse(task.choices), metadata.noticeos_choices ?? null)) differ('its choices differ');
@@ -235,22 +274,38 @@ function againstExport(data: BeadsExport, d1: D1Contents, out: Difference[]): { 
       const comment = commentsById.get(id);
       const subject_ = textOf(row.issue_id) ?? '';
       if (comment === undefined) out.push({ subject: subject_, difference: `comment ${id} is missing` });
-      else if (comment.task_id !== subject_ || comment.author !== textOf(row.author) || comment.text !== row.text || comment.created_at !== timeOf(row.created_at)) {
+      else if (
+        comment.task_id !== subject_ ||
+        comment.author !== textOf(row.author) ||
+        comment.text !== row.text ||
+        comment.created_at !== timeOf(row.created_at)
+      ) {
         out.push({ subject: subject_, difference: `comment ${id} differs` });
       }
     }
   }
-  const exported = new Set(data.projects.flatMap((project) => project.rows.comments.map((row) => textOf(row.id) ?? '')));
+  const exported = new Set(
+    data.projects.flatMap((project) => project.rows.comments.map((row) => textOf(row.id) ?? '')),
+  );
   for (const comment of d1.comments) {
-    if (!exported.has(String(comment.id))) out.push({ subject: String(comment.task_id), difference: `comment ${String(comment.id)} is not in the export` });
+    if (!exported.has(String(comment.id)))
+      out.push({ subject: String(comment.task_id), difference: `comment ${String(comment.id)} is not in the export` });
   }
   return { counts, approvals, decisions, frozenCards };
 }
 
 /** Check 2: every table against the import plan, row by row. */
 function againstPlan(plan: ImportPlan, d1: D1Contents, out: Difference[]) {
-  const compare = (table: string, expected: readonly object[], actual: readonly Row[], keyOf: (row: Record<string, unknown>) => string, subjectOf: (row: Record<string, unknown>) => string) => {
-    const want = new Map(expected.map((row) => [keyOf(row as Record<string, unknown>), row as Record<string, unknown>]));
+  const compare = (
+    table: string,
+    expected: readonly object[],
+    actual: readonly Row[],
+    keyOf: (row: Record<string, unknown>) => string,
+    subjectOf: (row: Record<string, unknown>) => string,
+  ) => {
+    const want = new Map(
+      expected.map((row) => [keyOf(row as Record<string, unknown>), row as Record<string, unknown>]),
+    );
     const have = new Map(actual.map((row) => [keyOf(row), row]));
     for (const [key, row] of want) {
       const stored = have.get(key);
@@ -259,13 +314,27 @@ function againstPlan(plan: ImportPlan, d1: D1Contents, out: Difference[]) {
         continue;
       }
       const fields = Object.keys(row).filter((field) => !sameJson(row[field] ?? null, stored[field] ?? null));
-      if (fields.length > 0) out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} differs in ${fields.join(', ')}` });
+      if (fields.length > 0)
+        out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} differs in ${fields.join(', ')}` });
     }
-    for (const [key, row] of have) if (!want.has(key)) out.push({ subject: subjectOf(row), difference: `${table} row ${key} is not in the plan` });
+    for (const [key, row] of have)
+      if (!want.has(key)) out.push({ subject: subjectOf(row), difference: `${table} row ${key} is not in the plan` });
   };
   const task = (row: Record<string, unknown>) => String(row.task_id);
-  compare('projects', plan.projects, d1.projects, (row) => String(row.id), (row) => `project ${String(row.key)}`);
-  compare('tasks', plan.tasks, d1.tasks, (row) => String(row.id), (row) => String(row.id));
+  compare(
+    'projects',
+    plan.projects,
+    d1.projects,
+    (row) => String(row.id),
+    (row) => `project ${String(row.key)}`,
+  );
+  compare(
+    'tasks',
+    plan.tasks,
+    d1.tasks,
+    (row) => String(row.id),
+    (row) => String(row.id),
+  );
   compare('task_labels', plan.labels, d1.labels, (row) => `${String(row.task_id)} ${String(row.label)}`, task);
   compare('task_edges', plan.edges, d1.edges, (row) => `${String(row.task_id)} -> ${String(row.depends_on_id)}`, task);
   compare('task_comments', plan.comments, d1.comments, (row) => String(row.id), task);
@@ -299,16 +368,25 @@ function againstHistory(d1: D1Contents, out: Difference[]) {
     for (const event of events.slice(1)) {
       const changes = parse(event.changes) as JsonObject;
       if (event.kind === 'commented') {
-        if (Number(event.version) !== version) differ(`its comment event at seq ${String(event.seq)} names version ${String(event.version)}, not ${version}`);
+        if (Number(event.version) !== version)
+          differ(
+            `its comment event at seq ${String(event.seq)} names version ${String(event.version)}, not ${version}`,
+          );
         commented.push(event);
         continue;
       }
       version += 1;
-      if (Number(event.version) !== version) differ(`its history skips from version ${version - 1} to ${String(event.version)}`);
+      if (Number(event.version) !== version)
+        differ(`its history skips from version ${version - 1} to ${String(event.version)}`);
       state = { ...state, ...changes };
     }
-    if (Number(task.version) !== version) differ(`it is at version ${String(task.version)}, but its history has ${version} versions`);
-    const stored = storedState(task, (labelsByTask.get(id) ?? []).map((row) => String(row.label)), edgesByTask.get(id) ?? []);
+    if (Number(task.version) !== version)
+      differ(`it is at version ${String(task.version)}, but its history has ${version} versions`);
+    const stored = storedState(
+      task,
+      (labelsByTask.get(id) ?? []).map((row) => String(row.label)),
+      edgesByTask.get(id) ?? [],
+    );
     if (!sameJson(state, stored)) {
       const fields = Object.keys(stored).filter((field) => !sameJson(state[field] ?? null, stored[field] ?? null));
       differ(`its history does not rebuild it (${fields.join(', ')} differ)`);
@@ -323,7 +401,8 @@ function againstHistory(d1: D1Contents, out: Difference[]) {
         differ(`its comment event at seq ${String(event.seq)} does not match comment ${String(changes.commentId)}`);
       }
     }
-    for (const commentId of comments.keys()) if (!named.has(commentId)) differ(`comment ${commentId} has no history event`);
+    for (const commentId of comments.keys())
+      if (!named.has(commentId)) differ(`comment ${commentId} has no history event`);
   }
 }
 

@@ -11,7 +11,7 @@ if (process.env.DOLT_CLI_PASSWORD !== password) {
 }
 // The client must not see the caller's home folder or its settings.
 if (process.env.HOME === home || process.env.DOLT_DISABLE_EVENT_FLUSH !== '1') {
-  process.stderr.write('The client ran with the caller\'s home or with usage reporting on\n');
+  process.stderr.write("The client ran with the caller's home or with usage reporting on\n");
   process.exit(1);
 }
 if (!Object.hasOwn(queries, sql)) {

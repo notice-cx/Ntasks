@@ -28,12 +28,18 @@ describe('a local D1 database through wrangler', () => {
     const persistTo = path.join(folder, 'd1');
 
     const imported = capture();
-    expect(await main(['import', '--from', from, '--persist-to', persistTo], imported.io), imported.err.join('\n')).toBe(0);
+    expect(
+      await main(['import', '--from', from, '--persist-to', persistTo], imported.io),
+      imported.err.join('\n'),
+    ).toBe(0);
     expect(imported.out[0]).toMatch(/^Imported 2 projects, 11 tasks, 28 history events/u);
     expect(imported.out[1]).toMatch(/^Database size: 0\.\d MB/u);
 
     const verified = capture();
-    expect(await main(['verify', '--from', from, '--persist-to', persistTo], verified.io), verified.err.join('\n')).toBe(0);
+    expect(
+      await main(['verify', '--from', from, '--persist-to', persistTo], verified.io),
+      verified.err.join('\n'),
+    ).toBe(0);
     expect(verified.out).toContain('0 differences.');
   });
 });

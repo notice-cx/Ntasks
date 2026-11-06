@@ -17,7 +17,11 @@ export function sqlValue(value: Value): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function inserts<T extends { readonly [K in keyof T]: Value }>(table: string, columns: readonly (keyof T & string)[], rows: readonly T[]): string[] {
+function inserts<T extends { readonly [K in keyof T]: Value }>(
+  table: string,
+  columns: readonly (keyof T & string)[],
+  rows: readonly T[],
+): string[] {
   const statements: string[] = [];
   const head = `INSERT INTO ${table} (${columns.join(', ')}) VALUES\n`;
   let values: string[] = [];
@@ -49,10 +53,35 @@ export function importStatements(plan: ImportPlan): string[] {
     ...inserts(
       'tasks',
       [
-        'id', 'project_id', 'parent_id', 'type', 'await_type', 'status', 'priority', 'title', 'description', 'acceptance',
-        'assignee', 'assignee_model', 'defer_until', 'due_at', 'choices', 'choice', 'metadata', 'filed_by', 'filed_model',
-        'close_reason', 'resolution', 'duplicate_of', 'closed_by', 'closed_model', 'version', 'created_at', 'updated_at',
-        'started_at', 'closed_at',
+        'id',
+        'project_id',
+        'parent_id',
+        'type',
+        'await_type',
+        'status',
+        'priority',
+        'title',
+        'description',
+        'acceptance',
+        'assignee',
+        'assignee_model',
+        'defer_until',
+        'due_at',
+        'choices',
+        'choice',
+        'metadata',
+        'filed_by',
+        'filed_model',
+        'close_reason',
+        'resolution',
+        'duplicate_of',
+        'closed_by',
+        'closed_model',
+        'version',
+        'created_at',
+        'updated_at',
+        'started_at',
+        'closed_at',
       ],
       plan.tasks,
     ),
