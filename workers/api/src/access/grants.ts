@@ -253,17 +253,21 @@ export async function registrationsOn(db: D1Database, day: string): Promise<numb
 }
 
 /**
- * Counts one registration on `day`. Called after the library made the
- * client, so a refused or malformed registration spends none of the budget.
- * Registrations checked at the same moment can each pass, so the budget can
- * be passed by as many as run at once; the rate limits keep that number small.
+ * Takes one registration from `day`'s budget before the library creates the
+ * client, or returns false when the budget is spent. One statement checks
+ * and counts, so registrations arriving at once cannot take more than the
+ * budget, and a spent budget writes nothing. A taken registration is not
+ * given back if the library then refuses it: failed attempts are bounded by
+ * the same budget as successful ones.
  */
-export async function countRegistration(db: D1Database, day: string): Promise<void> {
-  await db
+export async function takeRegistration(db: D1Database, day: string): Promise<boolean> {
+  const taken = await db
     .prepare(
       `INSERT INTO access_registration_days (day, registrations) VALUES (?, 1)
-       ON CONFLICT (day) DO UPDATE SET registrations = registrations + 1`,
+       ON CONFLICT (day) DO UPDATE SET registrations = registrations + 1 WHERE registrations < ?
+       RETURNING registrations`,
     )
-    .bind(day)
-    .run();
+    .bind(day, REGISTRATIONS_PER_DAY)
+    .first<{ registrations: number }>();
+  return taken !== null;
 }

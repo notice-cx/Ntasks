@@ -10,11 +10,9 @@ import { createAuth, type Auth } from './auth.ts';
 import { signInConfig, type SignInConfig } from './config.ts';
 import {
   AccessRefused,
-  countRegistration,
   createServiceCredential,
   registrationDay,
-  registrationsOn,
-  REGISTRATIONS_PER_DAY,
+  takeRegistration,
   listAgents,
   listProjects,
   listServiceCredentials,
@@ -85,24 +83,18 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   // count toward the shared cap, so one address cannot use all of it.
   // Those limits count separately in each Cloudflare location; the daily
   // budget is counted in D1, which every location shares.
-  const registering = url.pathname === REGISTER_PATH && request.method === 'POST';
-  const day = registrationDay();
-  if (registering) {
+  if (url.pathname === REGISTER_PATH && request.method === 'POST') {
     const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: address });
     if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
     const fromAll = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
     if (!fromAll.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
-    if ((await registrationsOn(env.DB, day)) >= REGISTRATIONS_PER_DAY) {
+    if (!(await takeRegistration(env.DB, registrationDay()))) {
       return json({ error: 'registration_budget_spent' }, 429, { 'retry-after': String(secondsToNextUtcDay()) });
     }
   }
   try {
     if (AUTHORIZATION_SERVER_METADATA_PATHS.includes(url.pathname)) return await serverMetadata(request, env, config);
-    if (url.pathname.startsWith(`${AUTH_BASE_PATH}/`)) {
-      const response = await library(request, env, config, url);
-      if (registering && response.status === 201) await countRegistration(env.DB, day);
-      return response;
-    }
+    if (url.pathname.startsWith(`${AUTH_BASE_PATH}/`)) return await library(request, env, config, url);
     if (url.pathname === SIGN_IN_PAGE) return await signIn(request, env, config, url);
     if (url.pathname === AGENT_ACCESS_PAGE) return await agentAccess(request, env, config, url);
     return await accessApi(request, env, url);

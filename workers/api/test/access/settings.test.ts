@@ -163,34 +163,58 @@ describe('the sign-in rate limit', () => {
     expect((await register(freshAddress(), shared))?.status).toBe(201);
   });
 
-  it('counts each day’s registrations in D1, only those that succeed', async () => {
-    const day = registrationDay();
-    const before = await registrationsOn(env.DB, day);
-
-    expect((await register(freshAddress(), sharedLimit(1_000)))?.status).toBe(201);
-    expect(await registrationsOn(env.DB, day)).toBe(before + 1);
-    const malformed = await register(freshAddress(), sharedLimit(1_000), { client_name: 'No Redirect' });
-    expect(malformed?.status).toBe(400);
-    expect(await registrationsOn(env.DB, day)).toBe(before + 1);
-  });
-
-  it('refuses registration once the day’s budget is spent, until 00:00 UTC', async () => {
+  /** Sets today's count of registrations, and clears it after the test. */
+  async function withRegistrationsToday(count: number, test: (day: string) => Promise<void>): Promise<void> {
     const day = registrationDay();
     await env.DB.prepare(
-      'INSERT INTO access_registration_days (day, registrations) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET registrations = excluded.registrations',
+      `INSERT INTO access_registration_days (day, registrations) VALUES (?, ?)
+       ON CONFLICT (day) DO UPDATE SET registrations = excluded.registrations`,
     )
-      .bind(day, REGISTRATIONS_PER_DAY)
+      .bind(day, count)
       .run();
     try {
+      await test(day);
+    } finally {
+      await env.DB.prepare('DELETE FROM access_registration_days WHERE day = ?').bind(day).run();
+    }
+  }
+
+  it('counts every registration that reaches the library in D1, failed ones too', async () => {
+    await withRegistrationsToday(1, async (day) => {
+      expect((await register(freshAddress(), sharedLimit(1_000)))?.status).toBe(201);
+      expect(await registrationsOn(env.DB, day)).toBe(2);
+      const malformed = await register(freshAddress(), sharedLimit(1_000), { client_name: 'No Redirect' });
+      expect(malformed?.status).toBe(400);
+      expect(await registrationsOn(env.DB, day)).toBe(3);
+    });
+  });
+
+  it('refuses registration once the day’s budget is spent, until 00:00 UTC, writing nothing', async () => {
+    await withRegistrationsToday(REGISTRATIONS_PER_DAY, async (day) => {
+      const clients = await env.DB.prepare('SELECT count(*) AS n FROM auth_oauth_client').first<{ n: number }>();
+
       const response = await register(freshAddress(), sharedLimit(1_000));
       expect(response?.status).toBe(429);
       expect(await response?.json()).toEqual({ error: 'registration_budget_spent' });
       const retryAfter = Number(response?.headers.get('retry-after'));
       expect(retryAfter).toBeGreaterThan(0);
       expect(retryAfter).toBeLessThanOrEqual(86_400);
-    } finally {
-      await env.DB.prepare('DELETE FROM access_registration_days WHERE day = ?').bind(day).run();
-    }
+      expect(await registrationsOn(env.DB, day)).toBe(REGISTRATIONS_PER_DAY);
+      expect(await env.DB.prepare('SELECT count(*) AS n FROM auth_oauth_client').first<{ n: number }>()).toEqual(
+        clients,
+      );
+    });
+  });
+
+  it('lets registrations arriving at once take only what is left of the budget', async () => {
+    await withRegistrationsToday(REGISTRATIONS_PER_DAY - 2, async (day) => {
+      const shared = sharedLimit(1_000);
+      const responses = await Promise.all(Array.from({ length: 5 }, () => register(freshAddress(), shared)));
+
+      const statuses = responses.map((response) => response?.status).sort();
+      expect(statuses).toEqual([201, 201, 429, 429, 429]);
+      expect(await registrationsOn(env.DB, day)).toBe(REGISTRATIONS_PER_DAY);
+    });
   });
 
   it('leaves the resource metadata unlimited, since it reads nothing', async () => {

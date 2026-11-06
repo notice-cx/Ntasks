@@ -179,12 +179,19 @@ a minute in all.
 So agent registration also has a daily budget that holds across every
 location: at most 100 agents register in one UTC day
 (`REGISTRATIONS_PER_DAY` in `src/access/grants.ts`). The count is kept in D1,
-in `access_registration_days`, and only a registration that succeeds counts.
-Once it is spent, registration answers `429` with
-`{"error":"registration_budget_spent"}` and a `Retry-After` of the seconds
-until 00:00 UTC. A registration writes a handful of rows, so the budget keeps
-registrations to well under 1% of the free plan's 100,000 rows written a day.
-Registrations checked at the same moment can pass the budget by a few.
+in `access_registration_days`. A registration takes its place in the count
+before the client is created, in one statement that checks and counts, so
+registrations arriving at once never take more than the budget. Every
+registration that gets that far counts, whether or not it then succeeds, so
+failed attempts cannot cause more writes than the budget allows. Once it is
+spent, registration answers `429` with `{"error":"registration_budget_spent"}`
+and a `Retry-After` of the seconds until 00:00 UTC, and writes nothing. A
+registration writes a handful of rows, so the budget keeps registrations to
+well under 1% of the free plan's 100,000 rows written a day.
+
+Since anyone may register, someone can spend the day's budget on purpose.
+New agents then cannot register until 00:00 UTC; agents already registered,
+and the owner's own sign-in, keep working.
 
 | Route | Answer |
 |---|---|
