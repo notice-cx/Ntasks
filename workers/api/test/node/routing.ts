@@ -110,27 +110,18 @@ test('a page address gets the web app', async () => {
   assert.match(await response.text(), /<title>Ntasks routing fixture<\/title>/u);
 });
 
-// The Vitest suite raises the shared registration limit so its tests can
-// register freely; this checks the limits wrangler.jsonc sets.
-test('agent registration takes 10 a minute from all addresses, 3 from one', async () => {
-  const register = async (address: string) =>
-    (
-      await server.fetch('/api/auth/oauth2/register', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
-        body: JSON.stringify({
-          client_name: 'Example Agent',
-          redirect_uris: ['http://127.0.0.1:43110/callback'],
-          token_endpoint_auth_method: 'none',
-        }),
-      })
-    ).status;
+// The limits the sign-in routes run with. They are read from wrangler.jsonc
+// rather than counted against the running Worker: Cloudflare's rate limiting
+// binding counts in fixed windows, so counting requests fails whenever they
+// straddle the start of a window. test/access/settings.test.ts checks how the
+// routes use each limit.
+test('wrangler.jsonc limits sign-in and agent registration', () => {
+  const bindings = (config.ratelimits ?? []) as { name: string; simple: { limit: number; period: number } }[];
+  const limits = bindings.map(({ name, simple }) => ({ name, ...simple }));
 
-  const fromOne = [];
-  for (let i = 0; i < 4; i += 1) fromOne.push(await register('203.0.113.1'));
-  assert.deepEqual(fromOne, [201, 201, 201, 429]);
-  // The fourth was refused before the shared limit counted it: 3 of 10 used.
-  const fromMany = [];
-  for (let i = 0; i < 8; i += 1) fromMany.push(await register(`203.0.113.${10 + i}`));
-  assert.deepEqual(fromMany, [201, 201, 201, 201, 201, 201, 201, 429]);
+  assert.deepEqual(limits, [
+    { name: 'SIGN_IN_LIMIT', limit: 30, period: 60 },
+    { name: 'REGISTER_LIMIT', limit: 10, period: 60 },
+    { name: 'REGISTER_ADDRESS_LIMIT', limit: 3, period: 60 },
+  ]);
 });
