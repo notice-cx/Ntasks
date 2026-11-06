@@ -1,0 +1,235 @@
+/**
+ * Tasks as the API's clients read them. The field names are the ones NoticeOS's
+ * web pages and task tools used, so the web app and agents written for them
+ * read Ntasks unchanged: `issueType` and `parent` on the web app's task,
+ * `type` and `parent` on an MCP task, and NoticeOS's own fields (card,
+ * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
+ */
+import type { Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
+
+/** NoticeOS's metadata keys for the fields its tools return as their own. */
+const NOTICEOS = Object.freeze({
+  card: 'noticeos_card',
+  cardShipped: 'noticeos_card_shipped',
+  changeClass: 'noticeos_change_class',
+});
+const CHANGE_CLASSES: readonly string[] = ['content-data', 'copy', 'template', 'feature', 'infra'];
+
+function objectOrNull(value: Json | undefined): JsonObject | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : null;
+}
+
+function changeClassOf(metadata: JsonObject): string | null {
+  const value = metadata[NOTICEOS.changeClass];
+  return typeof value === 'string' && CHANGE_CLASSES.includes(value) ? value : null;
+}
+
+/** A gate imported from Beads keeps its ask in its description as
+ * `Reason: <text>`, under the title "Gate: human"; that ask is its title. */
+function titleOf(task: Task): string {
+  if (task.type !== 'gate') return task.title;
+  const reason = /(?:^|\n)Reason:[ \t]*([\s\S]+)$/u.exec(task.description)?.[1]?.trim();
+  return reason ? reason.slice(0, 400) : task.title;
+}
+
+/**
+ * Whether a task waits on a person: an open human gate, which a person
+ * approves, or a ready task labelled `human` that carries no choice yet,
+ * which a person answers. A deferred or closed task waits on nobody.
+ */
+export function waitsOnPerson(task: Task): boolean {
+  if (task.status === 'deferred' || task.status === 'closed') return false;
+  if (task.type === 'gate') return (task.awaitType ?? 'human') === 'human';
+  return task.choice === null && task.type !== 'epic' && task.labels.includes('human') && task.ready;
+}
+
+/**
+ * The text an owner's answer is checked against: the task as the owner saw it
+ * when asked. An answer recorded later must name this exact text, so a task
+ * edited after the question was asked cannot borrow the answer.
+ */
+export function proposalOf(
+  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
+): string {
+  return JSON.stringify([task.id, task.title, task.description, task.acceptance, task.type, task.choices]);
+}
+
+/** A task as the web app's pages read it. */
+export function webTask(task: Task) {
+  return {
+    id: task.id,
+    title: titleOf(task),
+    status: task.status,
+    priority: task.priority,
+    issueType: task.type,
+    assignee: task.assignee,
+    updatedAt: task.updatedAt,
+    closedAt: task.close?.at ?? null,
+    parent: task.parentId,
+    deferUntil: task.deferUntil,
+    description: task.description,
+    acceptance: task.acceptance,
+    labels: task.labels,
+    ready: task.ready,
+    dependencies: task.dependencies.map((link) => ({
+      id: link.taskId,
+      type: link.type,
+      title: link.title,
+      status: link.status,
+    })),
+    comments: task.commentCount,
+    metadata: task.metadata,
+    createdAt: task.createdAt,
+    startedAt: task.startedAt,
+    closeReason: task.close?.reason ?? null,
+    awaitType: task.awaitType,
+    choices: task.choices,
+    choice: task.choice,
+    card: objectOrNull(task.metadata[NOTICEOS.card]),
+    cardShipped: objectOrNull(task.metadata[NOTICEOS.cardShipped]),
+    changeClass: changeClassOf(task.metadata),
+    resolution: task.close?.resolution ?? null,
+    duplicateOf: task.close?.duplicateOf ?? null,
+  };
+}
+
+/** A task in full, as get_task returns it. */
+export function mcpTask(task: Task) {
+  const web = webTask(task);
+  return {
+    id: task.id,
+    title: web.title,
+    status: task.status,
+    priority: task.priority,
+    type: task.type,
+    assignee: task.assignee,
+    labels: task.labels,
+    parent: task.parentId,
+    ready: task.ready,
+    awaitingHuman: waitsOnPerson(task),
+    description: task.description,
+    acceptance: task.acceptance,
+    choices: task.choices,
+    choice: task.choice,
+    card: web.card,
+    cardShipped: web.cardShipped,
+    changeClass: web.changeClass,
+    deferUntil: task.deferUntil,
+    dependencies: web.dependencies,
+    commentCount: task.commentCount,
+    metadata: task.metadata,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    startedAt: task.startedAt,
+    closedAt: web.closedAt,
+    closeReason: web.closeReason,
+    resolution: web.resolution,
+    duplicateOf: web.duplicateOf,
+  };
+}
+
+/** A task as list_tasks shows it: enough to choose one, which get_task then
+ * reads in full. A field with no value is left out, so a long page stays
+ * readable. */
+export function mcpSummary(task: Task): Record<string, unknown> {
+  const full = mcpTask(task);
+  const row: Record<string, unknown> = {
+    id: full.id,
+    title: full.title,
+    status: full.status,
+    priority: full.priority,
+    type: full.type,
+    assignee: full.assignee,
+    labels: full.labels,
+    parent: full.parent,
+    ready: full.ready,
+    awaitingHuman: full.awaitingHuman,
+    choices: full.choices,
+    choice: full.choice,
+    card: full.card,
+    changeClass: full.changeClass,
+    deferUntil: full.deferUntil,
+    createdAt: full.createdAt,
+    updatedAt: full.updatedAt,
+    closedAt: full.closedAt,
+    resolution: full.resolution,
+    duplicateOf: full.duplicateOf,
+  };
+  return Object.fromEntries(
+    Object.entries(row).filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0)),
+  );
+}
+
+export function commentView(comment: TaskComment) {
+  return { id: comment.id, author: comment.author, text: comment.text, createdAt: comment.createdAt };
+}
+
+/** What a history event did, in the words get_task_history uses. */
+function actionOf(event: TaskEvent): string {
+  if (event.kind !== 'updated') return event.kind;
+  if (event.changes.status === 'in_progress' && typeof event.changes.assignee === 'string') return 'claimed';
+  return 'status' in event.changes ? 'status_changed' : 'updated';
+}
+
+/** A task as it stood at one version, rebuilt from its history, in get_task's field names. */
+function snapshotView(state: Record<string, Json>) {
+  const close = objectOrNull(state.close);
+  const metadata = objectOrNull(state.metadata) ?? {};
+  const dependencies = Array.isArray(state.dependencies) ? state.dependencies : [];
+  return {
+    id: state.id ?? null,
+    title: state.title ?? null,
+    status: state.status ?? null,
+    priority: state.priority ?? null,
+    type: state.type ?? null,
+    assignee: state.assignee ?? null,
+    labels: state.labels ?? [],
+    parent: state.parentId ?? null,
+    description: state.description ?? '',
+    acceptance: state.acceptance ?? '',
+    choices: state.choices ?? null,
+    choice: state.choice ?? null,
+    card: objectOrNull(metadata[NOTICEOS.card]),
+    cardShipped: objectOrNull(metadata[NOTICEOS.cardShipped]),
+    changeClass: changeClassOf(metadata),
+    deferUntil: state.deferUntil ?? null,
+    dependencies: dependencies.map((link) => {
+      const entry = objectOrNull(link) ?? {};
+      return { id: entry.taskId ?? null, type: entry.type ?? null };
+    }),
+    metadata,
+    startedAt: state.startedAt ?? null,
+    closedAt: close?.at ?? null,
+    closeReason: close?.reason ?? null,
+    resolution: close?.resolution ?? null,
+    duplicateOf: close?.duplicateOf ?? null,
+  };
+}
+
+/**
+ * A task's history as get_task_history returns it, newest first, from all of
+ * its events oldest first. Each change names the fields it set with their old
+ * and new values; with `snapshots`, each is the whole task as it then stood.
+ */
+export function historyView(events: readonly TaskEvent[], limit: number, snapshots: boolean) {
+  const state: Record<string, Json> = {};
+  const changes = events.map((event) => {
+    const fields: Record<string, { old: Json; new: Json }> = {};
+    if (event.kind === 'commented') {
+      fields.comment = { old: null, new: event.changes.text ?? null };
+    } else {
+      for (const [field, value] of Object.entries(event.changes)) {
+        fields[field] = { old: state[field] ?? null, new: value };
+        state[field] = value;
+      }
+    }
+    const base = { revision: String(event.seq), at: event.at, actor: event.actor, model: event.model };
+    // A comment leaves the task as it was, so it is no version of its own.
+    if (snapshots) return event.kind === 'commented' ? null : { ...base, task: snapshotView({ ...state }) };
+    return { ...base, actions: [actionOf(event)], fields };
+  });
+  return changes
+    .filter((change) => change !== null)
+    .reverse()
+    .slice(0, limit);
+}

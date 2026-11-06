@@ -70,8 +70,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
-- **Reads:** `getTask`, `findTasks`, `listTasks`, `listEpics`,
-  `listComments`, `listHistory`, `listChanges` and `lint`.
+- **Reads:** `getTask`, `findTasks`, `listTasks`, `listBoard`, `listEpics`,
+  `listComments`, `listHistory`, `listChanges` and `lint`. `listTasks` reads
+  one project a page at a time; `listBoard` reads a whole board, in one
+  project or in every project, in one round trip.
 - **Writes:** `createTask`, `writeTask` and `addComment`. Each is one batch.
   `writeTask` takes everything one change does at once: field changes,
   labels, links, metadata, a close or a reopen, an approval request and a
@@ -114,8 +116,9 @@ file.
 
 | NoticeOS operation | Engine call |
 |---|---|
-| `list`, `active-board`, `closed-board` | `listTasks` with statuses or close times |
-| `ready` | `listTasks` with `ready: true` |
+| `list` | `listTasks` with statuses or close times |
+| `active-board`, `closed-board` | One `listBoard` with the open statuses and `closedSince` |
+| `ready` | `listBoard` or `listTasks` with `ready: true` |
 | `show` | `getTask` |
 | `find` | `findTasks` |
 | `history` | `listHistory` |

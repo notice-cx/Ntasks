@@ -36,11 +36,13 @@ Ntasks is under construction. The repository holds its skeleton:
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | The database tables and the rules the database enforces |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
+| API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
-| API, MCP endpoint | Being built |
+| Writes through the API | Being built |
 
-Until the API is built, a deployed Ntasks serves no task data.
-[SECURITY.md](SECURITY.md) has the details.
+Sign-in is built, but the API does not use it yet: until the API checks the
+projects each sender may reach, it refuses every request, so a deployment
+serves no task data. [SECURITY.md](SECURITY.md) has the details.
 
 ## Learn how it works
 
@@ -49,6 +51,8 @@ Until the API is built, a deployed Ntasks serves no task data.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.
+- [The API](docs/api.md) lists the MCP tools and the HTTP routes, and what
+  each read costs.
 - [The task store](docs/task-store.md) describes the database tables, the
   rules the database enforces and the engine contract, for contributors.
 - [Sign-in](docs/sign-in.md) describes who can call Ntasks, how each caller

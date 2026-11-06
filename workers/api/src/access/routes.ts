@@ -5,7 +5,7 @@
  * credentials. Every path here is in wrangler.jsonc's run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
-import { json } from '../http.ts';
+import { json } from '../http/respond.ts';
 import { createAuth, type Auth } from './auth.ts';
 import { signInConfig, type SignInConfig } from './config.ts';
 import {

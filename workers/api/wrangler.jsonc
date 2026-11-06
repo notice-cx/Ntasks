@@ -59,6 +59,14 @@
       "simple": { "limit": 3, "period": 60 }
     }
   ],
+  // The one workspace this installation serves. Agents name it on every task
+  // tool call, as they named a NoticeOS workspace; an installation that takes
+  // over from NoticeOS sets WORKSPACE_ID to that workspace's id, so agents'
+  // instructions keep working.
+  "vars": {
+    "WORKSPACE_ID": "default",
+    "WORKSPACE_NAME": "Ntasks"
+  },
   // The task store. database_id is left out: the first `wrangler deploy`
   // creates the database (wrangler's automatic provisioning). `wrangler dev`
   // and the tests use a local database, so neither needs an account.
