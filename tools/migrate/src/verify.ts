@@ -16,7 +16,7 @@ import type { Json, JsonObject, StoreTable } from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport } from './beads.ts';
 import { isJsonObject, sameJson, stableJson } from './json.ts';
 import type { ImportPlan } from './plan.ts';
-import { COLUMN_METADATA_KEYS, linkTarget, sortLinks } from './task-state.ts';
+import { COLUMN_METADATA_KEYS, linkTarget, sortLinks, TYPES_AS_LABELS } from './task-state.ts';
 
 export interface Difference {
   readonly subject: string;
@@ -156,6 +156,12 @@ function againstExport(
     if (!isTaskId(task.id))
       out.push({ subject: String(task.id), difference: 'its id is not a task id Ntasks accepts' });
 
+  // Every project's parents, as the import reads them: a parent may be in another project.
+  const parentOf = new Map<string, string>();
+  for (const row of data.projects.flatMap((project) => project.rows.dependencies)) {
+    if (textOf(row.type) === 'parent-child') parentOf.set(textOf(row.issue_id) ?? '', linkTarget(row) ?? '');
+  }
+
   for (const project of data.projects) {
     const subject = `project ${project.key}`;
     const stored = held.projects.find((row) => row.id === project.id);
@@ -199,8 +205,11 @@ function againstExport(
     for (const row of project.rows.dependencies) {
       const issueId = textOf(row.issue_id) ?? '';
       const type = textOf(row.type) ?? 'blocks';
+      const target = linkTarget(row) ?? '';
       if (!IN_SCOPE_LINKS.has(type)) continue;
-      linksByIssue.set(issueId, [...(linksByIssue.get(issueId) ?? []), `${type} ${linkTarget(row) ?? ''}`]);
+      // The import leaves out a parent's blocks link onto its own child.
+      if (type === 'blocks' && parentOf.get(target) === issueId) continue;
+      linksByIssue.set(issueId, [...(linksByIssue.get(issueId) ?? []), `${type} ${target}`]);
     }
     const labelsByIssue = new Map<string, string[]>();
     for (const row of project.rows.labels) {
@@ -221,13 +230,16 @@ function againstExport(
           : {};
       const storedMetadata = parse(task.metadata);
 
-      if (task.type !== textOf(issue.issue_type))
-        differ(`its type is ${String(task.type)}, not ${textOf(issue.issue_type) ?? ''}`);
+      // A Beads type Ntasks lacks arrives as another type, labelled with its own name.
+      const beadsType = textOf(issue.issue_type) ?? '';
+      const typeLabel = Object.hasOwn(TYPES_AS_LABELS, beadsType) ? beadsType : null;
+      const expectedType = typeLabel === null ? beadsType : TYPES_AS_LABELS[typeLabel];
+      if (task.type !== expectedType) differ(`its type is ${String(task.type)}, not ${expectedType ?? ''}`);
       if (task.title !== issue.title) differ('its title differs');
       compareSets(
         id,
         'label',
-        labelsByIssue.get(id) ?? [],
+        [...(labelsByIssue.get(id) ?? []), ...(typeLabel === null ? [] : [typeLabel])],
         (labelsByTask.get(id) ?? []).map((row) => String(row.label)),
         out,
       );
