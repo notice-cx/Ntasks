@@ -99,30 +99,48 @@ describe('a request body', () => {
   });
 });
 
+// Cloudflare's rate limiting binding counts in fixed windows of a period, so
+// a test that counts requests against the real binding fails whenever its
+// requests straddle the start of a new window. These tests drive the limits
+// with stand-ins that have no clock; test/node/routing.ts checks the limits
+// wrangler.jsonc sets.
 describe('the sign-in rate limit', () => {
-  it('refuses the 31st sign-in request in a minute from one address', async () => {
-    const address = freshAddress();
-    for (let i = 0; i < 30; i += 1) {
-      expect((await call('/api/access/me', {}, address)).status).toBe(401);
-    }
-
-    const limited = await call('/api/access/me', {}, address);
-    expect(limited.status).toBe(429);
-    expect(limited.headers.get('retry-after')).toBe('60');
-    expect((await call('/api/access/me', {}, freshAddress())).status).toBe(401);
-  });
-
-  /** A stand-in for the shared REGISTER_LIMIT binding that allows `allowed` calls and records their keys. */
-  function sharedLimit(allowed: number): RateLimit & { readonly keys: string[] } {
+  /**
+   * A stand-in for a rate limiting binding: it allows `allowed` calls for
+   * each key, for as long as the test runs, and records every key it is asked.
+   */
+  function limiter(allowed: number): RateLimit & { readonly keys: string[] } {
     const keys: string[] = [];
     return {
       keys,
       limit: ({ key }: RateLimitOptions) => {
         keys.push(key);
-        return Promise.resolve({ success: keys.length <= allowed });
+        return Promise.resolve({ success: keys.filter((asked) => asked === key).length <= allowed });
       },
     };
   }
+
+  /** Limits that never refuse in a test. */
+  const OPEN = 1_000;
+  /** Two addresses that are never the same, for the tests whose limiter counts per address. */
+  const ADDRESS = '198.51.100.1';
+  const OTHER_ADDRESS = '198.51.100.2';
+
+  it('refuses the 31st sign-in request from one address', async () => {
+    const signIn = limiter(30);
+    const me = (address: string) =>
+      handleAccess(new Request(`${ORIGIN}/api/access/me`, { headers: { 'cf-connecting-ip': address } }), {
+        ...env,
+        SIGN_IN_LIMIT: signIn,
+      });
+    for (let i = 0; i < 30; i += 1) expect((await me(ADDRESS))?.status).toBe(401);
+
+    const limited = await me(ADDRESS);
+    expect(limited?.status).toBe(429);
+    expect(limited?.headers.get('retry-after')).toBe('60');
+    expect((await me(OTHER_ADDRESS))?.status).toBe(401);
+    expect(new Set(signIn.keys).size).toBe(2);
+  });
 
   const validRegistration = {
     client_name: 'Example Agent',
@@ -130,38 +148,45 @@ describe('the sign-in rate limit', () => {
     token_endpoint_auth_method: 'none',
   };
 
-  function register(address: string, shared: RateLimit, body: unknown = validRegistration): Promise<Response | null> {
+  function register(
+    address: string,
+    limits: { readonly shared?: RateLimit; readonly fromAddress?: RateLimit } = {},
+    body: unknown = validRegistration,
+  ): Promise<Response | null> {
     return handleAccess(
       new Request(`${ORIGIN}/api/auth/oauth2/register`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'cf-connecting-ip': address },
         body: JSON.stringify(body),
       }),
-      { ...env, REGISTER_LIMIT: shared },
+      {
+        ...env,
+        SIGN_IN_LIMIT: limiter(OPEN),
+        REGISTER_LIMIT: limits.shared ?? limiter(OPEN),
+        REGISTER_ADDRESS_LIMIT: limits.fromAddress ?? limiter(OPEN),
+      },
     );
   }
 
-  // The tests raise the real REGISTER_LIMIT so they can register freely, so
-  // these use a stand-in for it; test/node/routing.ts checks its configured
-  // value. REGISTER_ADDRESS_LIMIT is the binding as wrangler.jsonc sets it.
-  it('caps agent registrations from all addresses together', async () => {
-    const shared = sharedLimit(2);
+  it('caps agent registrations from all addresses together, under one key', async () => {
+    const shared = limiter(2);
 
     const statuses = [];
-    for (let i = 0; i < 3; i += 1) statuses.push((await register(freshAddress(), shared))?.status);
+    for (let i = 0; i < 3; i += 1) statuses.push((await register(freshAddress(), { shared }))?.status);
     expect(statuses).toEqual([201, 201, 429]);
-    expect(new Set(shared.keys).size).toBe(1);
+    expect(shared.keys).toEqual(['registrations', 'registrations', 'registrations']);
   });
 
-  it('refuses a fourth registration a minute from one address, without spending the shared cap', async () => {
-    const shared = sharedLimit(1_000);
-    const address = freshAddress();
+  it('refuses a fourth registration from one address, without spending the shared cap', async () => {
+    const shared = limiter(OPEN);
+    const fromAddress = limiter(3);
 
     const statuses = [];
-    for (let i = 0; i < 4; i += 1) statuses.push((await register(address, shared))?.status);
+    for (let i = 0; i < 4; i += 1) statuses.push((await register(ADDRESS, { shared, fromAddress }))?.status);
     expect(statuses).toEqual([201, 201, 201, 429]);
+    expect(fromAddress.keys).toEqual([ADDRESS, ADDRESS, ADDRESS, ADDRESS]);
     expect(shared.keys).toHaveLength(3);
-    expect((await register(freshAddress(), shared))?.status).toBe(201);
+    expect((await register(OTHER_ADDRESS, { shared, fromAddress }))?.status).toBe(201);
   });
 
   /** Sets today's count of registrations, and clears it after the test. */
@@ -182,9 +207,9 @@ describe('the sign-in rate limit', () => {
 
   it('counts every registration that reaches the library in D1, failed ones too', async () => {
     await withRegistrationsToday(1, async (day) => {
-      expect((await register(freshAddress(), sharedLimit(1_000)))?.status).toBe(201);
+      expect((await register(freshAddress()))?.status).toBe(201);
       expect(await registrationsOn(env.DB, day)).toBe(2);
-      const malformed = await register(freshAddress(), sharedLimit(1_000), { client_name: 'No Redirect' });
+      const malformed = await register(freshAddress(), {}, { client_name: 'No Redirect' });
       expect(malformed?.status).toBe(400);
       expect(await registrationsOn(env.DB, day)).toBe(3);
     });
@@ -194,7 +219,7 @@ describe('the sign-in rate limit', () => {
     await withRegistrationsToday(REGISTRATIONS_PER_DAY, async (day) => {
       const clients = await env.DB.prepare('SELECT count(*) AS n FROM auth_oauth_client').first<{ n: number }>();
 
-      const response = await register(freshAddress(), sharedLimit(1_000));
+      const response = await register(freshAddress());
       expect(response?.status).toBe(429);
       expect(await response?.json()).toEqual({ error: 'registration_budget_spent' });
       const retryAfter = Number(response?.headers.get('retry-after'));
@@ -209,8 +234,7 @@ describe('the sign-in rate limit', () => {
 
   it('lets registrations arriving at once take only what is left of the budget', async () => {
     await withRegistrationsToday(REGISTRATIONS_PER_DAY - 2, async (day) => {
-      const shared = sharedLimit(1_000);
-      const responses = await Promise.all(Array.from({ length: 5 }, () => register(freshAddress(), shared)));
+      const responses = await Promise.all(Array.from({ length: 5 }, () => register(freshAddress())));
 
       const statuses = responses.map((response) => response?.status).sort();
       expect(statuses).toEqual([201, 201, 429, 429, 429]);

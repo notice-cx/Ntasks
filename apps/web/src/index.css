@@ -305,3 +305,38 @@
     animation: none;
   }
 }
+
+/* Code blocks in task text are highlighted by rehype-highlight, which marks
+   each token with an hljs- class. The colors are the theme's own, so a block
+   reads the same in dark and light. */
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-meta {
+  color: var(--primary);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--healthy);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-attr,
+.hljs-attribute {
+  color: var(--warn);
+}
+.hljs-title,
+.hljs-name,
+.hljs-section {
+  font-weight: 600;
+}
+.hljs-deletion {
+  color: var(--error);
+}

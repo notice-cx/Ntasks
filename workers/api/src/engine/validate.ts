@@ -1,6 +1,7 @@
 // Checks of the engine's inputs against the task model and TASK_LIMITS. Each
 // failure is a TaskRefused('invalid') that names the field and the rule.
 import {
+  IDEMPOTENCY_KEY,
   isDependencyType,
   isTaskId,
   isTaskResolution,
@@ -40,7 +41,11 @@ export function text(value: unknown, field: string, max: number, required = fals
 }
 
 export function priority(value: unknown): number {
-  if (!Number.isInteger(value) || (value as number) < TASK_PRIORITY.highest || (value as number) > TASK_PRIORITY.lowest) {
+  if (
+    !Number.isInteger(value) ||
+    (value as number) < TASK_PRIORITY.highest ||
+    (value as number) > TASK_PRIORITY.lowest
+  ) {
     invalid(`priority must be a whole number from ${TASK_PRIORITY.highest} to ${TASK_PRIORITY.lowest}`);
   }
   return value as number;
@@ -52,7 +57,8 @@ export function taskId(value: unknown, field: string): string {
 }
 
 export function labels(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.length > TASK_LIMITS.labels) invalid(`${field} must be a list of at most ${TASK_LIMITS.labels} labels`);
+  if (!Array.isArray(value) || value.length > TASK_LIMITS.labels)
+    invalid(`${field} must be a list of at most ${TASK_LIMITS.labels} labels`);
   return [...new Set(value.map((label, index) => text(label, `${field}[${index}]`, TASK_LIMITS.label, true).trim()))];
 }
 
@@ -75,8 +81,6 @@ export function actor(value: Actor): Actor {
   return { name, model: text(value.model, 'actor.model', TASK_LIMITS.actor, true) };
 }
 
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/u;
-
 export function retry(value: Retry | undefined): Retry | undefined {
   if (value === undefined) return undefined;
   if (typeof value.key !== 'string' || !IDEMPOTENCY_KEY.test(value.key)) {
@@ -85,7 +89,7 @@ export function retry(value: Retry | undefined): Retry | undefined {
   if (typeof value.requestHash !== 'string' || !/^[0-9a-f]{64}$/u.test(value.requestHash)) {
     invalid('requestHash must be 64 lowercase hexadecimal characters');
   }
-  text(value.principal, 'retry.principal', 128, true);
+  text(value.principal, 'retry.principal', TASK_LIMITS.retryPrincipal, true);
   text(value.operation, 'retry.operation', 64, true);
   return value;
 }
@@ -95,7 +99,8 @@ function nullable<T>(value: T | null | undefined, check: (present: T) => T): T |
 }
 
 function links(value: unknown): { taskId: string; type: DependencyType }[] {
-  if (!Array.isArray(value) || value.length > TASK_LIMITS.links) invalid(`links must be a list of at most ${TASK_LIMITS.links}`);
+  if (!Array.isArray(value) || value.length > TASK_LIMITS.links)
+    invalid(`links must be a list of at most ${TASK_LIMITS.links}`);
   return value.map((entry: { taskId?: unknown; type?: unknown }, index) => {
     if (!isDependencyType(entry?.type)) invalid(`links[${index}].type must be blocks, related or discovered-from`);
     return { taskId: taskId(entry.taskId, `links[${index}].taskId`), type: entry.type };
@@ -115,6 +120,7 @@ export interface CreateFields {
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
   readonly metadata: JsonObject;
+  readonly requestApproval: { reason: string } | null;
 }
 
 export function createInput(input: CreateTaskInput): CreateFields {
@@ -123,7 +129,8 @@ export function createInput(input: CreateTaskInput): CreateFields {
   const type: string = input.type ?? 'task';
   if (!isTaskType(type) || type === 'gate') invalid('type must be task, bug, feature, epic, chore or decision');
   const newLinks = (input.links ?? []).map((link, index): NewTaskLink => {
-    if (link?.direction !== 'depends-on' && link?.direction !== 'blocks') invalid(`links[${index}].direction must be depends-on or blocks`);
+    if (link?.direction !== 'depends-on' && link?.direction !== 'blocks')
+      invalid(`links[${index}].direction must be depends-on or blocks`);
     const [checked] = links([{ taskId: link.taskId, type: link.type }]);
     return { direction: link.direction, taskId: checked!.taskId, type: checked!.type };
   });
@@ -141,7 +148,12 @@ export function createInput(input: CreateTaskInput): CreateFields {
     dueAt: input.dueAt === undefined ? null : instant(input.dueAt, 'dueAt'),
     choices: input.choices === undefined ? null : jsonObject(input.choices, 'choices'),
     metadata: input.metadata === undefined ? {} : jsonObject(input.metadata, 'metadata'),
+    requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
   };
+}
+
+function approval(value: { reason: string } | undefined): { reason: string } {
+  return { reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) };
 }
 
 export interface CheckedWrite {
@@ -160,35 +172,49 @@ export interface CheckedWrite {
 
 export function write(input: TaskWrite): CheckedWrite {
   if (input === null || typeof input !== 'object') invalid('the write must be an object');
-  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) invalid('expectedVersion must be the version you read, a whole number of 1 or more');
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+    invalid('expectedVersion must be the version you read, a whole number of 1 or more');
   const given = input.set ?? {};
   // Widened to string: callers send JSON, which the static types do not bind.
   const givenType: string | undefined = given.type;
   const givenStatus: string | undefined = given.status;
-  if (givenType === 'gate' || (givenType !== undefined && !isTaskType(givenType))) invalid('type must be task, bug, feature, epic, chore or decision');
+  if (givenType === 'gate' || (givenType !== undefined && !isTaskType(givenType)))
+    invalid('type must be task, bug, feature, epic, chore or decision');
   if (givenStatus !== undefined && (!isTaskStatus(givenStatus) || givenStatus === 'closed')) {
     invalid('status must be open, in_progress, blocked or deferred; a task is closed with close');
   }
   const set: TaskFieldChanges = {
     ...(given.title === undefined ? {} : { title: text(given.title, 'title', TASK_LIMITS.title, true) }),
-    ...(given.description === undefined ? {} : { description: text(given.description, 'description', TASK_LIMITS.description) }),
-    ...(given.acceptance === undefined ? {} : { acceptance: text(given.acceptance, 'acceptance', TASK_LIMITS.acceptance) }),
+    ...(given.description === undefined
+      ? {}
+      : { description: text(given.description, 'description', TASK_LIMITS.description) }),
+    ...(given.acceptance === undefined
+      ? {}
+      : { acceptance: text(given.acceptance, 'acceptance', TASK_LIMITS.acceptance) }),
     ...(given.type === undefined ? {} : { type: given.type }),
     ...(given.priority === undefined ? {} : { priority: priority(given.priority) }),
     ...(given.status === undefined ? {} : { status: given.status }),
-    ...(given.assignee === undefined ? {} : { assignee: nullable(given.assignee, (name) => text(name, 'assignee', TASK_LIMITS.actor, true)) }),
+    ...(given.assignee === undefined
+      ? {}
+      : { assignee: nullable(given.assignee, (name) => text(name, 'assignee', TASK_LIMITS.actor, true)) }),
     ...(given.parentId === undefined ? {} : { parentId: nullable(given.parentId, (id) => taskId(id, 'parentId')) }),
-    ...(given.deferUntil === undefined ? {} : { deferUntil: nullable(given.deferUntil, (at) => instant(at, 'deferUntil')) }),
+    ...(given.deferUntil === undefined
+      ? {}
+      : { deferUntil: nullable(given.deferUntil, (at) => instant(at, 'deferUntil')) }),
     ...(given.dueAt === undefined ? {} : { dueAt: nullable(given.dueAt, (at) => instant(at, 'dueAt')) }),
-    ...(given.choices === undefined ? {} : { choices: nullable(given.choices, (value) => jsonObject(value, 'choices')) }),
+    ...(given.choices === undefined
+      ? {}
+      : { choices: nullable(given.choices, (value) => jsonObject(value, 'choices')) }),
     ...(given.choice === undefined ? {} : { choice: nullable(given.choice, (value) => jsonObject(value, 'choice')) }),
   };
   if (input.close !== undefined && input.reopen === true) invalid('a write closes or reopens a task, not both');
   const close = input.close === undefined ? null : closing(input.close);
   if (close !== null && set.status !== undefined) invalid('a write that closes a task does not also set its status');
-  const metadata = input.metadata === undefined ? null : (jsonObject(input.metadata, 'metadata') as Record<string, Json | null>);
+  const metadata =
+    input.metadata === undefined ? null : (jsonObject(input.metadata, 'metadata') as Record<string, Json | null>);
   const removeLinks: unknown = input.removeLinks ?? [];
-  if (!Array.isArray(removeLinks) || removeLinks.length > TASK_LIMITS.links) invalid(`removeLinks must be a list of at most ${TASK_LIMITS.links} task ids`);
+  if (!Array.isArray(removeLinks) || removeLinks.length > TASK_LIMITS.links)
+    invalid(`removeLinks must be a list of at most ${TASK_LIMITS.links} task ids`);
   const checked: CheckedWrite = {
     expectedVersion: input.expectedVersion,
     set,
@@ -197,7 +223,7 @@ export function write(input: TaskWrite): CheckedWrite {
     metadata,
     addLinks: links(input.addLinks ?? []),
     removeLinks: [...new Set(removeLinks.map((id, index) => taskId(id, `removeLinks[${index}]`)))],
-    requestApproval: input.requestApproval === undefined ? null : { reason: text(input.requestApproval?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) },
+    requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
     close,
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),

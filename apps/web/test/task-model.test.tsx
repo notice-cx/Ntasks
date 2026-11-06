@@ -316,6 +316,7 @@ describe('task Markdown', () => {
     );
     expect(screen.getByRole('link', { name: 'ok' }).getAttribute('href')).toBe('https://example.com');
     expect(screen.queryByRole('link', { name: 'bad' })).toBeNull();
-    expect(screen.getByText(/<b>raw<\/b>/)).toBeTruthy();
+    expect(document.querySelector('[data-markdown] b')).toBeNull();
+    expect(screen.queryByText(/<b>/)).toBeNull();
   });
 });

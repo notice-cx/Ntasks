@@ -17,13 +17,22 @@ import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './
 import {
   projectComments,
   projectHistory,
+  sharesSecond,
   taskEvents,
   type CommentRecord,
   type EventRecord,
   type TaskHistory,
+  type Version,
 } from './history.ts';
-import { stableJson } from './json.ts';
+import { sameJson, stableJson } from './json.ts';
 import type { TaskState } from './task-state.ts';
+
+/** Data the import leaves out by the owner's choice, reported so nothing goes unseen. */
+export interface LeftOut {
+  /** A task id, or "project <key>". */
+  readonly subject: string;
+  readonly what: string;
+}
 
 export interface Refusal {
   /** A task id, or "project <key>" for what no single task owns. */
@@ -45,6 +54,8 @@ const BOOKKEEPING_TABLES = new Set([
   'dirty_issues',
   'export_hashes',
   'repo_mtimes',
+  // The counter Beads numbers its audit log's entries from.
+  'bd_events_seq',
 ]);
 const READ_TABLES = new Set(['issues', 'labels', 'dependencies', 'comments', 'events']);
 /** Why a table that holds rows belongs to something out of scope. */
@@ -54,9 +65,13 @@ const OUT_OF_SCOPE_TABLES: Readonly<Record<string, string>> = {
   wisp_dependencies: 'wisps are out of scope',
   wisp_comments: 'wisps are out of scope',
   wisp_events: 'wisps are out of scope',
-  leases: 'claims that expire as leases are out of scope',
   issue_snapshots: 'Beads compacted tasks, and their original text is in these snapshots',
   compaction_snapshots: 'Beads compacted tasks, and their original text is in these snapshots',
+};
+
+/** Tables whose rows the owner chose to leave out, and why. */
+const LEFT_OUT_TABLES: Readonly<Record<string, string>> = {
+  leases: 'they record when a claim expires; Ntasks never expires a claim, and the claim itself is the assignee',
 };
 
 const PREFIX = /^[a-z0-9]{1,32}$/u;
@@ -81,12 +96,35 @@ function projectRefusals(project: BeadsProject): string[] {
   }
   for (const table of project.tables) {
     if (table.rows === 0 || READ_TABLES.has(table.name) || BOOKKEEPING_TABLES.has(table.name)) continue;
+    if (Object.hasOwn(LEFT_OUT_TABLES, table.name)) continue;
     const scope = OUT_OF_SCOPE_TABLES[table.name];
     reasons.push(
       `its table ${table.name} holds ${table.rows} rows: ${scope ?? 'the import does not know what it holds'}`,
     );
   }
   return reasons;
+}
+
+/**
+ * The history without the task's `blocks` links onto `children`, in every
+ * version, and without the versions that only added or removed them.
+ */
+function withoutBlocks(history: TaskHistory, children: ReadonlySet<string>): TaskHistory {
+  const strip = (state: TaskState): TaskState => ({
+    ...state,
+    dependencies: state.dependencies.filter((link) => !(link.type === 'blocks' && children.has(link.taskId))),
+  });
+  // Shared seconds are counted before any version is left out, so a kept version
+  // is never matched to the audit entry of one that is gone.
+  const shared = sharesSecond(history.versions, history.current.createdAt ?? history.versions[0]?.at ?? '');
+  const versions: Version[] = [];
+  for (const [index, version] of history.versions.entries()) {
+    const next: Version = { ...version, state: strip(version.state), ...(shared[index] ? { crowded: true } : {}) };
+    const last = versions.at(-1);
+    if (last === undefined || !sameJson(last.state, next.state)) versions.push(next);
+  }
+  const state = history.current.state;
+  return { ...history, current: { ...history.current, state: state === null ? null : strip(state) }, versions };
 }
 
 /** Orders tasks so a parent and a duplicate's original come before the tasks naming them; null when they form a loop. */
@@ -205,7 +243,9 @@ function sequence(perTask: readonly EventRecord[][]): EventRecord[] {
 export function planImport(data: BeadsExport): {
   readonly plan: ImportPlan | null;
   readonly refusals: readonly Refusal[];
+  readonly leftOut: readonly LeftOut[];
 } {
+  const leftOut: LeftOut[] = [];
   const refusals: Refusal[] = [];
   const refuse = (subject: string, reason: string) => refusals.push({ subject, reason });
   const projectOf = new Map<string, string>();
@@ -268,6 +308,29 @@ export function planImport(data: BeadsExport): {
     });
   }
 
+  // A parent's blocks link onto its own child makes each wait on the other: the
+  // parent waits on the child, and the child is held while its parent waits.
+  // The owner chose to leave such links out; any other loop is still refused.
+  const parentOf = new Map(
+    [...histories].map(([taskId, history]) => [taskId, history.current.state?.parentId ?? null]),
+  );
+  for (const [taskId, history] of [...histories]) {
+    const children = (history.current.state?.dependencies ?? [])
+      .filter((link) => link.type === 'blocks' && parentOf.get(link.taskId) === taskId)
+      .map((link) => link.taskId);
+    if (children.length === 0) continue;
+    histories.set(taskId, withoutBlocks(history, new Set(children)));
+    for (const child of children)
+      leftOut.push({ subject: taskId, what: `its blocks link onto its own child ${child}` });
+  }
+  for (const project of data.projects) {
+    for (const table of project.tables) {
+      const why = Object.hasOwn(LEFT_OUT_TABLES, table.name) ? LEFT_OUT_TABLES[table.name] : undefined;
+      if (why !== undefined && table.rows > 0)
+        leftOut.push({ subject: `project ${project.key}`, what: `${table.rows} rows of ${table.name}: ${why}` });
+    }
+  }
+
   const states = new Map<string, TaskState>();
   for (const [taskId, history] of histories) {
     for (const reason of history.problems) refuse(taskId, reason);
@@ -295,7 +358,7 @@ export function planImport(data: BeadsExport): {
     refuse(taskId, 'it is in a loop of tasks that wait on each other through blocks links or parents');
   const order = insertOrder(states);
   if (order === null) refuse('export', 'parents and duplicates form a loop');
-  if (refusals.length > 0 || order === null) return { plan: null, refusals: sortRefusals(refusals) };
+  if (refusals.length > 0 || order === null) return { plan: null, refusals: sortRefusals(refusals), leftOut };
 
   const tasks: TaskRow[] = [];
   const labels: LabelRow[] = [];
@@ -354,6 +417,7 @@ export function planImport(data: BeadsExport): {
   return {
     plan: { projects, tasks, task_labels: labels, task_edges: edges, task_comments: comments, task_events: events },
     refusals: [],
+    leftOut,
   };
 }
 

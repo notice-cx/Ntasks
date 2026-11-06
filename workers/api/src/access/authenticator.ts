@@ -4,9 +4,19 @@
  * It reads only the request's headers, never its body, which the MCP
  * endpoint reads afterwards.
  */
+import { TASK_LIMITS } from '@ntasks/domain';
 import { SCOPES, type Authenticator, type Principal as ApiPrincipal } from '../auth.ts';
-import { actorOf, type Principal } from './principal.ts';
+import { json } from '../http/respond.ts';
+import { actorOf, type Principal, type ServicePrincipal } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
+
+/**
+ * The header a service sends to name the agent a request is for, such as one
+ * of several agents a NoticeOS installation serves through one credential.
+ * The owner and OAuth agents sign in as themselves, so it is ignored for them.
+ */
+export const ON_BEHALF_OF_HEADER = 'x-ntasks-on-behalf-of';
+const ON_BEHALF_OF = /^[A-Za-z0-9._:/-]{1,128}$/u;
 
 const READ = SCOPES.read;
 const WRITE = SCOPES.write;
@@ -35,7 +45,29 @@ function scopesOf(principal: Principal): readonly string[] {
   return access.has('read') ? [READ] : [];
 }
 
-type Refusal = Extract<Verification, { ok: false }>;
+type Refusal = Extract<Verification, { ok: false }> | { readonly ok: false; readonly invalidRequest: string };
+
+/**
+ * The service acting for the agent its request names, or why the name is
+ * refused. The agent's name joins the actor, `service:<credential>/<agent>`,
+ * and the retry principal, `<service id>/<agent>`, so two agents' writes and
+ * idempotency keys stay apart; both must fit the engine's limits.
+ */
+function actingFor(principal: ServicePrincipal, agent: string): ServicePrincipal | string {
+  if (!ON_BEHALF_OF.test(agent)) {
+    return `${ON_BEHALF_OF_HEADER} is 1 to 128 of the characters A-Z a-z 0-9 . _ : / -`;
+  }
+  const acting = { ...principal, id: `${principal.id}/${agent}`, onBehalfOf: agent };
+  const actor = `service:${principal.name}/${agent}`;
+  if (actor.length > TASK_LIMITS.actor || acting.id.length > TASK_LIMITS.retryPrincipal) {
+    const most = Math.min(
+      TASK_LIMITS.actor - `service:${principal.name}/`.length,
+      TASK_LIMITS.retryPrincipal - `${principal.id}/`.length,
+    );
+    return `${ON_BEHALF_OF_HEADER} is at most ${most} characters with this credential`;
+  }
+  return Object.freeze(acting);
+}
 
 /** The authenticator for these bindings. It keeps no request's data but the reason it refused that request. */
 export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
@@ -51,7 +83,16 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
         refusals.set(request, verification);
         return null;
       }
-      const { principal } = verification;
+      let principal = verification.principal;
+      const agent = request.headers.get(ON_BEHALF_OF_HEADER);
+      if (principal.kind === 'service' && agent !== null) {
+        const acting = actingFor(principal, agent);
+        if (typeof acting === 'string') {
+          refusals.set(request, { ok: false, invalidRequest: acting });
+          return null;
+        }
+        principal = acting;
+      }
       return Object.freeze({
         id: principal.id,
         name: actorOf(principal).name,
@@ -61,7 +102,9 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
       });
     },
     challenge(request: Request): Response {
-      return refusal(refusals.get(request) ?? { ok: false, reason: 'unauthenticated' }, env);
+      const refused = refusals.get(request) ?? { ok: false, reason: 'unauthenticated' };
+      if ('invalidRequest' in refused) return json({ error: 'invalid_request', detail: refused.invalidRequest }, 400);
+      return refusal(refused, env);
     },
   });
 }

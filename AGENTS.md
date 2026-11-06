@@ -88,8 +88,9 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   cannot see. A change to `eslint.config.js` keeps `tools/lint`'s tests
   passing.
 - **Prettier formats `.ts`, `.tsx`, `.js` and `.mjs` files**
-  (`.prettierrc.json`). The files listed in `.prettierignore` are exempt until
-  formatted; never add one to it. Run `pnpm format` before committing.
+  (`.prettierrc.json`). `.prettierignore` lists only the generated file and
+  the agent worktrees; never add a source file to it. Run `pnpm format`
+  before committing.
 - **This repository is public.** Code, tests, fixtures, docs and commit
   messages name no private installation, account, real task or personal data.
   Fixtures use `example.com` and `.test` hosts and invented task ids.

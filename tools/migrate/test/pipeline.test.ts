@@ -31,7 +31,7 @@ describe('export, import and verify', () => {
     const beta = betaHub();
     const hub = {
       client: ['dolt'],
-      projects: [acme, beta].map((h) => ({ database: h.database, key: h.key, name: h.name })),
+      projects: [acme, beta].map((h) => ({ database: h.database, key: h.key, name: h.name, id: h.id })),
     };
     const exported = await exportHub(hub, fakeServer([acme, beta]), () => new Date('2026-03-03T00:00:00.000Z'));
     // Through the file format and back, as the commands pass it.
@@ -53,6 +53,28 @@ describe('export, import and verify', () => {
     expect(report.decisions).toBe(1);
     expect(report.frozenCards).toBe(1);
     expect(report.counts).toContainEqual({ project: 'acme.example.com', status: 'closed', expected: 4, actual: 4 });
+  });
+
+  it('carries a hub read through a Dolt server, which prints every value as text', async () => {
+    const acme = acmeHub();
+    const beta = betaHub();
+    acme.valuesAsText = true;
+    beta.valuesAsText = true;
+    const hub = {
+      client: ['dolt'],
+      projects: [acme, beta].map((h) => ({ database: h.database, key: h.key, name: h.name, id: h.id })),
+    };
+    const data = readExport(JSON.stringify(await exportHub(hub, fakeServer([acme, beta]))));
+    expect(data.projects[0]!.rows.issues[0]).toMatchObject({
+      priority: '1',
+      pinned: '0',
+      metadata: expect.any(String),
+    });
+    const { plan, refusals } = planImport(data);
+    expect(refusals).toEqual([]);
+    const report = await verify(data, plan!, reader(await loaded(plan!)));
+    expect(report.differences).toEqual([]);
+    expect(report.totals.tasks).toBe(11);
   });
 
   it('keeps ids, project identities, timestamps and the close details', async () => {

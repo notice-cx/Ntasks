@@ -105,5 +105,6 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
     createTask: writes(engine.createTask),
     writeTask: writes(engine.writeTask),
     addComment: writes(engine.addComment),
+    // recordUnchanged writes only a retry record, which no cached read shows.
   } satisfies TaskEngine);
 }

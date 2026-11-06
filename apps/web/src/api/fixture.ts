@@ -8,7 +8,7 @@
 import { isTaskId, type TaskResolution } from '@ntasks/domain';
 import { ApiError, type TasksApi } from './client';
 import { FIXTURE_ACTOR, fixtureSeed, type FixtureSeed, type FixtureTask } from './fixture-data';
-import type { LiveEpic, LiveTask, TaskComment, TaskProject } from './types';
+import type { LiveEpic, LiveTask, TaskChange, TaskComment, TaskProject } from './types';
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
@@ -117,9 +117,18 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       });
   }
 
+  /** Every change, in order, as the change feed lists it. */
+  const changes: TaskChange[] = [];
+
+  function logChange(task: FixtureTask): void {
+    const projectId = state.projects.find((row) => row.logicalKey === task.project)?.projectId ?? task.project;
+    changes.push({ seq: changes.length + 1, projectId, taskId: task.id });
+  }
+
   function touch(task: FixtureTask): string {
     const at = new Date(now()).toISOString();
     task.updatedAt = at;
+    logChange(task);
     return at;
   }
 
@@ -184,9 +193,15 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         repo: '',
         readAt: new Date(now()).toISOString(),
         closedSince: new Date(since).toISOString(),
+        lastSeq: changes.length,
         tasks,
         epics: epics(key),
       });
+    },
+    async changes(after) {
+      reach();
+      const events = changes.filter((change) => change.seq > after).slice(0, 100);
+      return copy({ events, lastSeq: events.at(-1)?.seq ?? after });
     },
     async task(id, key) {
       reach();
@@ -245,6 +260,8 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
           closeReason: null,
           awaitType: null,
         });
+        const filed = state.tasks.at(-1);
+        if (filed) logChange(filed);
         return { id, project: input.project };
       });
     },

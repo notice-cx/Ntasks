@@ -22,7 +22,8 @@ export default defineConfig({
           OWNER_GITHUB_IDS: '1001',
         },
         // The tests register far more agents a minute than wrangler.jsonc
-        // allows; test/access/settings.test.ts checks that limit with a stand-in.
+        // allows. test/access/settings.test.ts drives every limit with
+        // stand-ins, and test/node/routing.ts checks the values wrangler.jsonc sets.
         ratelimits: { REGISTER_LIMIT: { namespace_id: '1002', simple: { limit: 10_000, period: 60 } } },
       },
     })),

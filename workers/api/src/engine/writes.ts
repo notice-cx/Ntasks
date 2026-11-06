@@ -153,6 +153,75 @@ export class Writes {
       .bind(parentId, taskId);
   }
 
+  /** A new approval: the gate task, its created event, and the link by which `taskId` waits on it. */
+  #gate(
+    gateId: string,
+    taskId: string,
+    projectId: string,
+    priority: number,
+    reason: string,
+    actor: Actor,
+    at: string,
+  ): Statement[] {
+    // The reason holds a line that is not blank: validate.ts refuses one that does not.
+    const title = reason
+      .replace(/\r/gu, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line !== '')!
+      .slice(0, 512);
+    return [
+      this.#insert('tasks', {
+        id: gateId,
+        project_id: projectId,
+        type: 'gate',
+        await_type: 'human',
+        status: 'open',
+        priority,
+        title,
+        description: reason,
+        metadata: '{}',
+        filed_by: actor.name,
+        filed_model: actor.model ?? null,
+        version: 1,
+        created_at: at,
+        updated_at: at,
+      }),
+      this.#event({ id: gateId, projectId }, 1, 'created', actor, at, {
+        id: gateId,
+        projectId,
+        parentId: null,
+        type: 'gate',
+        awaitType: 'human',
+        status: 'open',
+        priority,
+        title,
+        description: reason,
+        acceptance: '',
+        assignee: null,
+        assigneeModel: null,
+        startedAt: null,
+        deferUntil: null,
+        dueAt: null,
+        choices: null,
+        choice: null,
+        metadata: {},
+        labels: [],
+        dependencies: [],
+        close: null,
+        filedBy: actor.name,
+        filedModel: actor.model ?? null,
+      }),
+      this.#insert('task_edges', {
+        task_id: taskId,
+        depends_on_id: gateId,
+        type: 'blocks',
+        created_at: at,
+        created_by: actor.name,
+      }),
+    ];
+  }
+
   #cutoff(): string {
     return new Date(Date.parse(this.#now()) - RECEIPT_DAYS * 86_400_000).toISOString();
   }
@@ -210,6 +279,56 @@ export class Writes {
     const recorded = await this.#recorded(retry, projectId);
     if (recorded === null) return null;
     return this.#result(projectId, recorded.taskId as string, recorded.created as string[], true);
+  }
+
+  async recordedWrite(projectId: string, retryInput: Retry): Promise<WriteResult | null> {
+    const retry = check.retry(retryInput) ?? check.invalid('a retry identity is required');
+    const recorded = await this.#recorded(retry, projectId);
+    if (recorded === null) return null;
+    // A comment's record names no task: its key was used for another kind of request.
+    if (typeof recorded.taskId !== 'string') refuse('retry_conflict');
+    return this.#result(projectId, recorded.taskId, recorded.created as string[], true);
+  }
+
+  async recordUnchanged(
+    projectId: string,
+    taskId: string,
+    expectedVersion: number,
+    retryInput: Retry,
+  ): Promise<WriteResult> {
+    const retry = check.retry(retryInput) ?? check.invalid('a retry identity is required');
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1)
+      check.invalid('expectedVersion must be the version you read, a whole number of 1 or more');
+    const replayed = await this.#replay(retry, projectId);
+    if (replayed !== null) return replayed;
+    try {
+      await this.#db.batch([
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+               SELECT 1 FROM tasks WHERE id = ?1 AND project_id = ?2
+             ), 'not_found'`,
+          )
+          .bind(taskId, projectId),
+        // The guard, not an earlier read, decides: the task must stand at the
+        // version the caller planned from when the record lands.
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+               SELECT 1 FROM tasks WHERE id = ?1 AND project_id = ?2 AND version = ?3
+             ), 'version_conflict'`,
+          )
+          .bind(taskId, projectId, expectedVersion),
+        ...this.#receipt(retry, projectId, { taskId, created: [] }, this.#now()),
+      ]);
+    } catch (error) {
+      // The same retried request may have recorded its answer while this one ran.
+      const replay = await this.#replay(retry, projectId);
+      if (replay !== null) return replay;
+      failureOf(error);
+      refuse('retry_conflict');
+    }
+    return this.#result(projectId, taskId, [], false);
   }
 
   async #projectOf(projectId: string): Promise<Project> {
@@ -290,8 +409,11 @@ export class Writes {
         refuse('not_found', 'A task this new one blocks is not in this project.');
       const id =
         fields.parentId === null ? `${project.prefix}-${this.#newKey()}` : await this.#childId(fields.parentId);
+      const gateId = fields.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+      const created = gateId === null ? [] : [gateId];
       const at = this.#now();
       const dependencies = new Map<string, DependencyType>();
+      if (gateId !== null) dependencies.set(gateId, 'blocks');
       const statements: Statement[] = [
         this.#insert('tasks', {
           id,
@@ -315,6 +437,11 @@ export class Writes {
         }),
         ...fields.labels.map((label) => this.#insert('task_labels', { task_id: id, label })),
       ];
+      if (gateId !== null && fields.requestApproval !== null) {
+        statements.push(
+          ...this.#gate(gateId, id, projectId, fields.priority, fields.requestApproval.reason, actor, at),
+        );
+      }
       for (const link of fields.links) {
         if (link.taskId === id) refuse('invalid', 'A task cannot link to itself.');
         const [from, to] = link.direction === 'depends-on' ? [id, link.taskId] : [link.taskId, id];
@@ -368,11 +495,11 @@ export class Writes {
           filedBy: actor.name,
           filedModel: actor.model ?? null,
         }),
-        ...this.#receipt(retry, projectId, { taskId: id, created: [] }, at),
+        ...this.#receipt(retry, projectId, { taskId: id, created }, at),
       );
       try {
         await this.#db.batch(statements);
-        return await this.#result(projectId, id, [], false);
+        return await this.#result(projectId, id, created, false);
       } catch (error) {
         if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
           lastFailure = 'version_conflict';
@@ -535,57 +662,8 @@ export class Writes {
         statements.push(this.#noParentLoop(set.parentId, taskId));
       }
       if (gateId !== null && write.requestApproval !== null) {
-        const reason = write.requestApproval.reason;
-        const title = reason.split('\n')[0]!.slice(0, 512);
         statements.push(
-          this.#insert('tasks', {
-            id: gateId,
-            project_id: projectId,
-            type: 'gate',
-            await_type: 'human',
-            status: 'open',
-            priority: current.priority,
-            title,
-            description: reason,
-            metadata: '{}',
-            filed_by: actor.name,
-            filed_model: actor.model ?? null,
-            version: 1,
-            created_at: at,
-            updated_at: at,
-          }),
-          this.#event({ id: gateId, projectId }, 1, 'created', actor, at, {
-            id: gateId,
-            projectId,
-            parentId: null,
-            type: 'gate',
-            awaitType: 'human',
-            status: 'open',
-            priority: current.priority,
-            title,
-            description: reason,
-            acceptance: '',
-            assignee: null,
-            assigneeModel: null,
-            startedAt: null,
-            deferUntil: null,
-            dueAt: null,
-            choices: null,
-            choice: null,
-            metadata: {},
-            labels: [],
-            dependencies: [],
-            close: null,
-            filedBy: actor.name,
-            filedModel: actor.model ?? null,
-          }),
-          this.#insert('task_edges', {
-            task_id: taskId,
-            depends_on_id: gateId,
-            type: 'blocks',
-            created_at: at,
-            created_by: actor.name,
-          }),
+          ...this.#gate(gateId, taskId, projectId, current.priority, write.requestApproval.reason, actor, at),
         );
       }
       for (const label of removeLabels) {

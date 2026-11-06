@@ -24,9 +24,9 @@ type Row = Record<string, string | number | null>;
 
 function insert(table: string, row: Row): Statement {
   const columns = Object.keys(row);
-  return db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).bind(
-    ...Object.values(row),
-  );
+  return db
+    .prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`)
+    .bind(...Object.values(row));
 }
 
 /** A new project with a prefix no other test uses. */
@@ -52,7 +52,13 @@ function taskRow(projectId: string, id: string, fields: Row = {}): Row {
   };
 }
 
-const CLOSED: Row = { status: 'closed', closed_at: LATER, resolution: 'done', close_reason: 'Shipped', closed_by: 'tester' };
+const CLOSED: Row = {
+  status: 'closed',
+  closed_at: LATER,
+  resolution: 'done',
+  close_reason: 'Shipped',
+  closed_by: 'tester',
+};
 
 async function newTask(fields: Row = {}): Promise<{ projectId: string; taskId: string }> {
   const project = await newProject();
@@ -62,12 +68,24 @@ async function newTask(fields: Row = {}): Promise<{ projectId: string; taskId: s
 }
 
 function eventRow(projectId: string, taskId: string, fields: Row = {}): Row {
-  return { task_id: taskId, project_id: projectId, version: 1, kind: 'updated', actor: 'tester', at: LATER, changes: '{}', ...fields };
+  return {
+    task_id: taskId,
+    project_id: projectId,
+    version: 1,
+    kind: 'updated',
+    actor: 'tester',
+    at: LATER,
+    changes: '{}',
+    ...fields,
+  };
 }
 
 /** The values a table's CHECK allows for one column, read from the schema itself. */
 async function checkList(table: string, column: string): Promise<string[]> {
-  const row = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first<{ sql: string }>();
+  const row = await db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .bind(table)
+    .first<{ sql: string }>();
   const list = new RegExp(`\\b${column} IN \\(([^)]*)\\)`, 'u').exec(row?.sql ?? '')?.[1];
   if (list === undefined) throw new Error(`${table} has no CHECK list for ${column}`);
   return [...list.matchAll(/'([^']*)'/gu)].map((match) => match[1]!);
@@ -125,7 +143,12 @@ describe('the schema accepts exactly the task model vocabulary', () => {
       insert('tasks', taskRow(project.id, `${project.prefix}-a1`)),
       insert('tasks', taskRow(project.id, `${project.prefix}-b2`)),
     ]);
-    const edge = { task_id: `${project.prefix}-a1`, depends_on_id: `${project.prefix}-b2`, type: 'parent-child', created_at: NOW };
+    const edge = {
+      task_id: `${project.prefix}-a1`,
+      depends_on_id: `${project.prefix}-b2`,
+      type: 'parent-child',
+      created_at: NOW,
+    };
     await expect(insert('task_edges', edge).run()).rejects.toThrow(/CHECK constraint failed/u);
   });
 
@@ -142,10 +165,14 @@ describe('the schema accepts exactly the task model vocabulary', () => {
   });
 
   it.each(GUARD_REFUSALS)('reports the guard refusal %s by name', async (refusal) => {
-    const error = await db.prepare('INSERT INTO write_guard (ok, refusal) VALUES (0, ?)').bind(refusal).run().then(
-      () => null,
-      (failure: unknown) => failure,
-    );
+    const error = await db
+      .prepare('INSERT INTO write_guard (ok, refusal) VALUES (0, ?)')
+      .bind(refusal)
+      .run()
+      .then(
+        () => null,
+        (failure: unknown) => failure,
+      );
     expect(error).toBeInstanceOf(Error);
     expect(guardRefusalOf((error as Error).message)).toBe(refusal);
   });
@@ -155,20 +182,26 @@ describe('the write guard', () => {
   /** A versioned update of the title, guarded, followed by its history event. */
   function guardedTitleChange(projectId: string, taskId: string, readVersion: number, title: string): Statement[] {
     return [
-      db.prepare('UPDATE tasks SET title = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?').bind(
-        title,
-        LATER,
-        taskId,
-        readVersion,
-      ),
+      db
+        .prepare('UPDATE tasks SET title = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?')
+        .bind(title, LATER, taskId, readVersion),
       db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-      insert('task_events', eventRow(projectId, taskId, { version: readVersion + 1, changes: JSON.stringify({ title }) })),
+      insert(
+        'task_events',
+        eventRow(projectId, taskId, { version: readVersion + 1, changes: JSON.stringify({ title }) }),
+      ),
     ];
   }
 
   async function stateOf(taskId: string): Promise<{ title: string; version: number; events: number }> {
-    const task = await db.prepare('SELECT title, version FROM tasks WHERE id = ?').bind(taskId).first<{ title: string; version: number }>();
-    const events = await db.prepare('SELECT count(*) AS n FROM task_events WHERE task_id = ?').bind(taskId).first<{ n: number }>();
+    const task = await db
+      .prepare('SELECT title, version FROM tasks WHERE id = ?')
+      .bind(taskId)
+      .first<{ title: string; version: number }>();
+    const events = await db
+      .prepare('SELECT count(*) AS n FROM task_events WHERE task_id = ?')
+      .bind(taskId)
+      .first<{ n: number }>();
     return { title: task!.title, version: task!.version, events: events!.n };
   }
 
@@ -214,16 +247,18 @@ describe('rules the database keeps whatever code writes to it', () => {
   it('refuses an update that does not raise the version by one', async () => {
     const { taskId } = await newTask();
 
-    await expect(db.prepare('UPDATE tasks SET title = ? WHERE id = ?').bind('Quiet edit', taskId).run()).rejects.toThrow(
-      /must raise its version by one/u,
-    );
+    await expect(
+      db.prepare('UPDATE tasks SET title = ? WHERE id = ?').bind('Quiet edit', taskId).run(),
+    ).rejects.toThrow(/must raise its version by one/u);
   });
 
   it('keeps a task in its project', async () => {
     const { taskId } = await newTask();
     const other = await newProject();
 
-    const move = db.prepare('UPDATE tasks SET project_id = ?, version = version + 1 WHERE id = ?').bind(other.id, taskId);
+    const move = db
+      .prepare('UPDATE tasks SET project_id = ?, version = version + 1 WHERE id = ?')
+      .bind(other.id, taskId);
     await expect(move.run()).rejects.toThrow(/keeps its id, project and creation time/u);
   });
 
@@ -237,9 +272,9 @@ describe('rules the database keeps whatever code writes to it', () => {
     const { projectId, taskId } = await newTask();
     await insert('task_events', eventRow(projectId, taskId)).run();
 
-    await expect(db.prepare("UPDATE task_events SET actor = 'someone else' WHERE task_id = ?").bind(taskId).run()).rejects.toThrow(
-      /history is never edited/u,
-    );
+    await expect(
+      db.prepare("UPDATE task_events SET actor = 'someone else' WHERE task_id = ?").bind(taskId).run(),
+    ).rejects.toThrow(/history is never edited/u);
     await expect(db.prepare('DELETE FROM task_events WHERE task_id = ?').bind(taskId).run()).rejects.toThrow(
       /history is never deleted/u,
     );
@@ -248,7 +283,13 @@ describe('rules the database keeps whatever code writes to it', () => {
   it('never edits or deletes a comment', async () => {
     const { taskId } = await newTask();
     const id = crypto.randomUUID();
-    await insert('task_comments', { id, task_id: taskId, author: 'tester', text: 'Looks right.', created_at: NOW }).run();
+    await insert('task_comments', {
+      id,
+      task_id: taskId,
+      author: 'tester',
+      text: 'Looks right.',
+      created_at: NOW,
+    }).run();
 
     await expect(db.prepare("UPDATE task_comments SET text = 'Changed.' WHERE id = ?").bind(id).run()).rejects.toThrow(
       /comments are never edited/u,
@@ -274,7 +315,9 @@ describe('rules the database keeps whatever code writes to it', () => {
 
   it('refuses a duplicate close left on a task that is not closed', async () => {
     const other = await newTask();
-    await expect(newTask({ resolution: 'duplicate', duplicate_of: other.taskId })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ resolution: 'duplicate', duplicate_of: other.taskId })).rejects.toThrow(
+      /CHECK constraint failed/u,
+    );
   });
 
   it('accepts a task as large as Beads stores one', async () => {
@@ -289,7 +332,13 @@ describe('rules the database keeps whatever code writes to it', () => {
   });
 
   it('refuses a project prefix with a hyphen', async () => {
-    const row = { id: crypto.randomUUID(), key: 'web-app.example.com', name: 'Web app', prefix: 'web-app', created_at: NOW };
+    const row = {
+      id: crypto.randomUUID(),
+      key: 'web-app.example.com',
+      name: 'Web app',
+      prefix: 'web-app',
+      created_at: NOW,
+    };
     await expect(insert('projects', row).run()).rejects.toThrow(/CHECK constraint failed/u);
   });
 

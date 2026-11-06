@@ -1,6 +1,6 @@
 /**
- * The API under /api: the MCP endpoint agents use and the HTTP reads the web
- * app use. The Worker signs the sender in (src/worker.ts); the task store
+ * The API under /api: the MCP endpoint agents use and the HTTP routes the web
+ * app uses. The Worker signs the sender in (src/worker.ts); the task store
  * object then answers here, within the scopes the sender holds.
  */
 import type { TaskEngine } from '@ntasks/domain';
@@ -16,11 +16,15 @@ import {
   taskRoute,
   type ReadContext,
 } from './http/tasks.ts';
+import { closeRoute, commentRoute, createRoute, updateRoute } from './http/writes.ts';
 import { serveMcp } from './mcp/protocol.ts';
 import { taskServer } from './mcp/server.ts';
+import { Refused, type RefusalKind } from './refused.ts';
 import type { Workspace } from './service.ts';
 
 export const MCP_PATH = '/api/mcp';
+/** The largest MCP message: a create_tasks call filing many long tasks fits. */
+const MCP_BYTES = 256 * 1024;
 
 export interface ApiContext {
   readonly engine: TaskEngine;
@@ -29,31 +33,63 @@ export interface ApiContext {
   readonly now: () => string;
 }
 
-type Route = (context: ReadContext, url: URL) => Response | Promise<Response>;
+type Route = (context: ReadContext, url: URL, request: Request) => Response | Promise<Response>;
+/** A path's routes by method. A route that answers GET answers HEAD too. */
+type Routes = Readonly<{ GET?: Route; POST?: Route; PATCH?: Route }>;
 
-/** The HTTP read routes, by path, other than a task's own. */
-const READS: Readonly<Record<string, Route>> = Object.freeze({
-  '/api/tasks': boardRoute,
-  '/api/tasks/projects': projects,
-  '/api/tasks/capabilities': capabilities,
-  '/api/changes': changesRoute,
+/** The routes by path, other than a task's own. */
+const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
+  '/api/tasks': { GET: boardRoute, POST: createRoute },
+  '/api/tasks/projects': { GET: projects },
+  '/api/tasks/capabilities': { GET: capabilities },
+  '/api/changes': { GET: changesRoute },
 });
 
-function routeOf(pathname: string): Route | null {
-  const read = READS[pathname];
-  if (read) return read;
+function routesOf(pathname: string): Routes | null {
+  const routes = PATHS[pathname];
+  if (routes) return routes;
   const task = taskPath(pathname);
   if (!task) return null;
-  return task.history
-    ? (context, url) => historyRoute(context, url, task.taskId)
-    : (context, url) => taskRoute(context, url, task.taskId);
+  const { taskId } = task;
+  switch (task.part) {
+    case 'history':
+      return { GET: (context, url) => historyRoute(context, url, taskId) };
+    case 'comments':
+      return { POST: (context, url, request) => commentRoute(context, url, request, taskId) };
+    case 'close':
+      return { POST: (context, url, request) => closeRoute(context, url, request, taskId) };
+    default:
+      return {
+        GET: (context, url) => taskRoute(context, url, taskId),
+        PATCH: (context, url, request) => updateRoute(context, url, request, taskId),
+      };
+  }
+}
+
+/** The methods a path answers, as an `allow` header lists them. */
+function allowed(routes: Routes): string {
+  return [
+    ...(routes.GET ? ['GET', 'HEAD'] : []),
+    ...(routes.POST ? ['POST'] : []),
+    ...(routes.PATCH ? ['PATCH'] : []),
+  ].join(', ');
 }
 
 /** Whether the API serves this path. The Worker answers 404 for any other
  * before anyone signs in. */
 export function isApiPath(pathname: string): boolean {
-  return pathname === MCP_PATH || routeOf(pathname) !== null;
+  return pathname === MCP_PATH || routesOf(pathname) !== null;
 }
+
+/** The HTTP answer to a refused write: the status for its kind, and the sentence for a person. */
+const REFUSALS: Readonly<Record<RefusalKind, readonly [number, string]>> = Object.freeze({
+  invalid: [400, 'invalid_request'],
+  not_found: [404, 'not_found'],
+  forbidden: [403, 'forbidden'],
+  state: [409, 'task_refused'],
+  retry_conflict: [409, 'idempotency_conflict'],
+  unavailable: [503, 'unavailable'],
+});
 
 /** Answers one request from a signed-in sender. */
 export async function serveApi(request: Request, principal: Principal, context: ApiContext): Promise<Response> {
@@ -61,20 +97,30 @@ export async function serveApi(request: Request, principal: Principal, context: 
   const { engine, workspace, now } = context;
   if (url.pathname === MCP_PATH) {
     if (url.search) return json({ error: 'invalid_request', detail: 'the MCP endpoint takes no query' }, 400);
-    return serveMcp(request, taskServer({ engine, workspace, principal, now }));
+    return serveMcp(request, taskServer({ engine, workspace, principal, now }), { maxBytes: MCP_BYTES });
   }
-  const route = routeOf(url.pathname);
-  if (!route) return json({ error: 'not_found' }, 404);
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
+  const routes = routesOf(url.pathname);
+  if (!routes) return json({ error: 'not_found' }, 404);
+  const method = request.method === 'HEAD' ? 'GET' : request.method;
+  const route = method === 'GET' || method === 'POST' || method === 'PATCH' ? routes[method] : undefined;
+  if (!route) return json({ error: 'method_not_allowed' }, 405, { allow: allowed(routes) });
+  const scope = method === 'GET' ? SCOPES.read : SCOPES.write;
+  if (!principal.scopes.includes(scope)) {
+    return json({ error: 'insufficient_scope', detail: `this route needs ${scope}` }, 403);
   }
-  if (!principal.scopes.includes(SCOPES.read)) {
-    return json({ error: 'insufficient_scope', detail: `this route needs ${SCOPES.read}` }, 403);
+  // A write from a browser comes from the web app's own pages, never another site's.
+  const origin = request.headers.get('origin');
+  if (method !== 'GET' && origin !== null && origin !== url.origin) {
+    return json({ error: 'forbidden', detail: 'origin refused' }, 403);
   }
   try {
-    return await route({ engine, principal, now }, url);
+    return await route({ engine, principal, now }, url, request);
   } catch (error) {
     if (error instanceof HttpRefused) return error.response();
+    if (error instanceof Refused) {
+      const [status, code] = REFUSALS[error.kind];
+      return json({ error: code, detail: error.detail }, status);
+    }
     throw error;
   }
 }

@@ -137,11 +137,39 @@ sign-in routes do. A refused request gets:
 API passes it to the task engine as the retry principal. `actorOf(principal,
 model)` makes the engine's `Actor`, the name the task's history records:
 `agent:` followed by the agent's registered name; `service:` followed by the
-credential's name; or the owner's GitHub name, with `person:` in front when
+credential's name, and by `/<agent>` when the service names the agent it acts
+for ([below](#a-service-acting-for-its-agents)); or the owner's GitHub name, with `person:` in front when
 that name itself starts with `agent:`, `service:` or `person:`. An agent
 chooses its own name when it registers and could choose the owner's, so an
 actor that starts with `agent:` is always an agent and one that starts with
 `service:` always a service.
+
+## A service acting for its agents
+
+One service credential can serve several agents, as a NoticeOS installation
+serves the agents on one machine. To record which agent each request is for,
+the service sends that agent's name in the `x-ntasks-on-behalf-of` header,
+with its credential:
+
+```http
+Authorization: Bearer ntasks_service.<id>.<secret>
+x-ntasks-on-behalf-of: outcome-review-filer
+```
+
+- The name is 1 to 128 of the characters `A-Z a-z 0-9 . _ : / -`.
+- The actor the task's history records, and the assignee a claim sets,
+  become `service:<credential name>/<agent name>`, so "assigned to me" means
+  that agent's tasks.
+- The retry principal becomes `service:<credential id>/<agent name>`, so two
+  agents that send the same idempotency key make two writes.
+- The name grants nothing: the request reaches the credential's projects, no
+  more.
+- A name with another character, or longer than 128 characters, gets `400`
+  with `{"error":"invalid_request"}` and a sentence saying why. So does a name
+  that would make the actor or the retry principal longer than 128
+  characters, the engine's limit. Names of up to 55 characters always fit.
+- The owner and OAuth agents sign in as themselves; the header is ignored for
+  them, whatever its value.
 
 ## Cutting a caller off
 

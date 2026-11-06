@@ -32,13 +32,13 @@ Ntasks is under construction. The repository holds its skeleton:
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
-| Web app | The task pages: the board, a task's page, focus and the composer. Until sign-in and writes through the API are built they work only with invented tasks, on the server `pnpm --filter @ntasks/web dev` starts; `pnpm dev` serves them without tasks |
+| Web app | The task pages: the board, a task's page, focus and the composer, reading the Worker's routes. Until they use the write routes they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's read tools and the HTTP reads ([the API](docs/api.md)) |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links and approval requests ([the API](docs/api.md)) |
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
-| Writes through the API | Being built |
+| A person's decisions through the API | Being built |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses

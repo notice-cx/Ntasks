@@ -119,7 +119,7 @@ async function runImport(values: Record<string, string | boolean | undefined>, i
   const check = values.check === true;
   const file = check ? ':memory:' : option(values, 'store');
   if (check && values.store !== undefined) throw new UsageError('Give --check or --store, not both.');
-  const { plan, refusals } = planImport(data);
+  const { plan, refusals, leftOut } = planImport(data);
   if (plan === null) {
     printRefusals(refusals, io);
     return 1;
@@ -133,6 +133,10 @@ async function runImport(values: Record<string, string | boolean | undefined>, i
       io.out(`Imported ${planSummary(plan)} into ${store.description}.`);
     }
     for (const line of costLines(store)) io.out(line);
+    if (leftOut.length > 0) {
+      io.out(`Left out by the owner's choice (${count(leftOut.length)}):`);
+      for (const entry of leftOut) io.out(`- ${entry.subject}: ${entry.what}`);
+    }
     if (!check) io.out('Next: run verify with the same --from and --store.');
     return 0;
   } finally {

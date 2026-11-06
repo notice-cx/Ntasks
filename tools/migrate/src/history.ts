@@ -19,6 +19,8 @@ export interface Version {
   readonly at: string;
   /** Who Dolt recorded as making the commit; null for a change not yet committed. */
   readonly committer: string | null;
+  /** Another version of the task fell in the same second, though it has since been left out. */
+  readonly crowded?: true;
 }
 
 export interface TaskHistory {
@@ -308,6 +310,23 @@ function second(at: string): number {
 }
 
 /**
+ * Whether each version shares its second with another version of the task,
+ * the first timed at the task's creation. An audit entry from that second
+ * cannot then be told apart, so such a version keeps its committer.
+ */
+export function sharesSecond(versions: readonly Version[], createdAt: string): boolean[] {
+  const timeOfVersion = (index: number, version: Version) => (index === 0 ? createdAt : version.at);
+  const counts = new Map<number, number>();
+  versions.forEach((version, index) => {
+    const key = second(timeOfVersion(index, version));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return versions.map(
+    (version, index) => version.crowded === true || (counts.get(second(timeOfVersion(index, version))) ?? 0) > 1,
+  );
+}
+
+/**
  * A task's history events: one per version, then one per comment placed by
  * time. A version's actor is the one Beads' audit log names for that task in
  * the same second, when exactly one does and no other version of the task
@@ -331,16 +350,12 @@ export function taskEvents(
     set.add(actor);
     actorsBySecond.set(second(at), set);
   }
-  const versionsInSecond = new Map<number, number>();
   const timeOfVersion = (index: number, version: Version) => (index === 0 ? createdAt : version.at);
-  history.versions.forEach((version, index) => {
-    const key = second(timeOfVersion(index, version));
-    versionsInSecond.set(key, (versionsInSecond.get(key) ?? 0) + 1);
-  });
+  const shared = sharesSecond(history.versions, createdAt);
 
   const states: EventRecord[] = history.versions.map((version, index) => {
     const at = timeOfVersion(index, version);
-    const candidates = versionsInSecond.get(second(at)) === 1 ? actorsBySecond.get(second(at)) : undefined;
+    const candidates = shared[index] ? undefined : actorsBySecond.get(second(at));
     const actor = candidates?.size === 1 ? [...candidates][0]! : (version.committer ?? UNKNOWN_ACTOR);
     const previous = index === 0 ? null : history.versions[index - 1]!.state;
     const next = version.state;

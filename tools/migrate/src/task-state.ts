@@ -91,8 +91,15 @@ const ISSUE_COLUMNS = new Set([
   'defer_until',
   'metadata',
 ]);
-/** Columns Beads computes from the others: nothing is lost by leaving them. */
-const ISSUE_DERIVED = new Set(['content_hash', 'is_blocked']);
+/** Columns Beads computes from the others or keeps for its own bookkeeping, such as
+ * row_lock, a token for locking the row: nothing is lost by leaving them. */
+const ISSUE_DERIVED = new Set(['content_hash', 'is_blocked', 'row_lock']);
+/** Columns left out by the owner's choice: `owner` holds one identity, the same on every
+ * task of the NoticeOS hub, so it records nothing about any one task. */
+const ISSUE_LEFT_OUT = new Set(['owner']);
+const ISSUE_SKIPPED = new Set([...ISSUE_DERIVED, ...ISSUE_LEFT_OUT]);
+/** Beads types Ntasks lacks, each imported as a type Ntasks has, labelled with its own name. */
+export const TYPES_AS_LABELS: Readonly<Record<string, TaskType>> = { spike: 'task' };
 const LINK_COLUMNS = new Set(['issue_id', 'depends_on_issue_id', 'depends_on_id', 'type', 'created_at', 'created_by']);
 /** A link's row id, which Beads numbers again whenever it migrates its schema. */
 const LINK_DERIVED = new Set(['id']);
@@ -135,6 +142,35 @@ const SAME_CLOSE_MS = 1000;
 const NAME_LIMIT = 255;
 const TITLE_LIMIT = 1024;
 
+/**
+ * Beads' number and JSON columns. Through a Dolt server, the SQL client prints
+ * every value as text, so such a column holds "0" or "{}" where it is empty.
+ * Only these columns read that text as empty: "0" in a text column such as
+ * notes is something someone wrote.
+ */
+const NUMBER_COLUMNS = new Set([
+  'compaction_level',
+  'ephemeral',
+  'is_template',
+  'no_history',
+  'pinned',
+  'timeout_ns',
+  'has_attachments',
+  'estimated_minutes',
+  'original_size',
+  'crystallizes',
+  'row_lock',
+]);
+const JSON_COLUMNS = new Set(['metadata', 'waiters']);
+
+function emptyIn(column: string, value: Json | undefined): boolean {
+  if (isEmpty(value)) return true;
+  if (typeof value !== 'string') return false;
+  if (NUMBER_COLUMNS.has(column)) return /^0+(?:\.0+)?$/u.test(value);
+  if (JSON_COLUMNS.has(column)) return value === '{}' || value === '[]' || value === 'null';
+  return false;
+}
+
 export function unmappedProblems(
   row: BeadsRow,
   mapped: ReadonlySet<string>,
@@ -143,7 +179,7 @@ export function unmappedProblems(
 ): string[] {
   const problems: string[] = [];
   for (const [column, value] of Object.entries(row)) {
-    if (mapped.has(column) || derived.has(column) || isEmpty(value)) continue;
+    if (mapped.has(column) || derived.has(column) || emptyIn(column, value)) continue;
     const scope = OUT_OF_SCOPE_COLUMNS[column];
     problems.push(
       scope === undefined
@@ -231,11 +267,14 @@ export function mapTask(input: {
     };
   }
   if (!id.startsWith(`${prefix}-`)) problems.push(`its id does not start with the project's prefix ${prefix}-`);
-  problems.push(...unmappedProblems(issue, ISSUE_COLUMNS, ISSUE_DERIVED, 'its'));
+  problems.push(...unmappedProblems(issue, ISSUE_COLUMNS, ISSUE_SKIPPED, 'its'));
 
   const typeValue = textOf(issue.issue_type);
-  const type: TaskType = isTaskType(typeValue) ? typeValue : 'task';
-  if (!isTaskType(typeValue)) problems.push(`its type "${excerpt(issue.issue_type)}" is not one of Ntasks' types`);
+  const typeLabel = typeValue !== null && Object.hasOwn(TYPES_AS_LABELS, typeValue) ? typeValue : null;
+  const type: TaskType = typeLabel !== null ? TYPES_AS_LABELS[typeLabel]! : isTaskType(typeValue) ? typeValue : 'task';
+  if (typeLabel === null && !isTaskType(typeValue)) {
+    problems.push(`its type "${excerpt(issue.issue_type)}" is not one of Ntasks' types`);
+  }
   const statusValue = textOf(issue.status);
   const status: TaskStatus = isTaskStatus(statusValue) ? statusValue : 'open';
   if (!isTaskStatus(statusValue)) problems.push(`its status "${excerpt(issue.status)}" is not one of Ntasks' statuses`);
@@ -324,6 +363,7 @@ export function mapTask(input: {
       problems.push(`its label "${excerpt(row.label)}" is empty or longer than ${NAME_LIMIT} characters`);
     else if (!labels.includes(label)) labels.push(label);
   }
+  if (typeLabel !== null && !labels.includes(typeLabel)) labels.push(typeLabel);
   labels.sort();
 
   let parentId: string | null = null;

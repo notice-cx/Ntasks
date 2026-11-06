@@ -19,19 +19,40 @@ describe('claiming a task (rule 1)', () => {
     const { task } = await tasks.createTask(project.id, { title: 'Claim me' }, OWNER);
     time.advance(5);
 
-    const { task: claimed } = await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } }, AGENT);
+    const { task: claimed } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
 
-    expect(claimed).toMatchObject({ assignee: 'agent-a', assigneeModel: 'model-a', status: 'in_progress', startedAt: time.now(), version: 2 });
+    expect(claimed).toMatchObject({
+      assignee: 'agent-a',
+      assigneeModel: 'model-a',
+      status: 'in_progress',
+      startedAt: time.now(),
+      version: 2,
+    });
   });
 
   it('refuses a claim on a task someone else holds, naming the holder', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Taken' }, OWNER);
-    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
 
     const refusal = await expectRefusal(
-      tasks.writeTask(project.id, task.id, { expectedVersion: 2, set: { assignee: OTHER.name, status: 'in_progress' } }, OTHER),
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 2, set: { assignee: OTHER.name, status: 'in_progress' } },
+        OTHER,
+      ),
       'held',
     );
     expect(refusal.message).toContain('agent-a');
@@ -41,12 +62,27 @@ describe('claiming a task (rule 1)', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Handed over' }, OWNER);
-    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
 
-    const { task: given } = await tasks.writeTask(project.id, task.id, { expectedVersion: 2, set: { assignee: OTHER.name } }, OWNER);
+    const { task: given } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 2, set: { assignee: OTHER.name } },
+      OWNER,
+    );
     expect(given).toMatchObject({ assignee: 'agent-b', assigneeModel: null });
 
-    const { task: released } = await tasks.writeTask(project.id, task.id, { expectedVersion: 3, set: { assignee: null, status: 'open' } }, OWNER);
+    const { task: released } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 3, set: { assignee: null, status: 'open' } },
+      OWNER,
+    );
     expect(released).toMatchObject({ assignee: null, status: 'open', ready: true });
   });
 
@@ -57,7 +93,16 @@ describe('claiming a task (rule 1)', () => {
 
     const outcomes = await Promise.allSettled(
       [AGENT, OTHER].map((actor) =>
-        tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { assignee: actor.name, status: 'in_progress' }, comment: `${actor.name} starts.` }, actor),
+        tasks.writeTask(
+          project.id,
+          task.id,
+          {
+            expectedVersion: 1,
+            set: { assignee: actor.name, status: 'in_progress' },
+            comment: `${actor.name} starts.`,
+          },
+          actor,
+        ),
       ),
     );
 
@@ -69,7 +114,11 @@ describe('claiming a task (rule 1)', () => {
     const after = (await tasks.getTask(project.id, task.id))!;
     expect(after.version).toBe(2);
     expect(after.commentCount).toBe(1);
-    expect((await historyOf(tasks, project.id, task.id)).map((event) => event.kind)).toEqual(['created', 'commented', 'updated']);
+    expect((await historyOf(tasks, project.id, task.id)).map((event) => event.kind)).toEqual([
+      'created',
+      'commented',
+      'updated',
+    ]);
   });
 
   it('lets exactly one of two closes of the same version succeed', async () => {
@@ -78,8 +127,18 @@ describe('claiming a task (rule 1)', () => {
     const { task } = await tasks.createTask(project.id, { title: 'Closed twice' }, OWNER);
 
     const outcomes = await Promise.allSettled([
-      tasks.writeTask(project.id, task.id, { expectedVersion: 1, close: { reason: 'Shipped.', resolution: 'done' } }, AGENT),
-      tasks.writeTask(project.id, task.id, { expectedVersion: 1, close: { reason: 'Not needed.', resolution: 'wont-do' } }, OTHER),
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, close: { reason: 'Shipped.', resolution: 'done' } },
+        AGENT,
+      ),
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, close: { reason: 'Not needed.', resolution: 'wont-do' } },
+        OTHER,
+      ),
     ]);
 
     expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
@@ -94,7 +153,10 @@ describe('claiming a task (rule 1)', () => {
     const { task } = await tasks.createTask(project.id, { title: 'Moving' }, OWNER);
     await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved' } }, OWNER);
 
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { priority: 0 }, addLabels: ['late'] }, AGENT), 'version_conflict');
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { priority: 0 }, addLabels: ['late'] }, AGENT),
+      'version_conflict',
+    );
     expect((await tasks.getTask(project.id, task.id))?.labels).toEqual([]);
   });
 });
@@ -107,10 +169,22 @@ describe('closing and reopening', () => {
     const { task } = await tasks.createTask(project.id, { title: 'Finish' }, OWNER);
     time.advance(10);
 
-    const { task: closed } = await tasks.writeTask(project.id, task.id, { expectedVersion: 1, close: { reason: 'Merged as #3.', resolution: 'done' } }, AGENT);
+    const { task: closed } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, close: { reason: 'Merged as #3.', resolution: 'done' } },
+      AGENT,
+    );
 
     expect(closed.status).toBe('closed');
-    expect(closed.close).toEqual({ at: time.now(), reason: 'Merged as #3.', resolution: 'done', duplicateOf: null, by: 'agent-a', model: 'model-a' });
+    expect(closed.close).toEqual({
+      at: time.now(),
+      reason: 'Merged as #3.',
+      resolution: 'done',
+      duplicateOf: null,
+      by: 'agent-a',
+      model: 'model-a',
+    });
     expect(closed.ready).toBe(false);
   });
 
@@ -129,7 +203,12 @@ describe('closing and reopening', () => {
 
     expect(task.close).toMatchObject({ resolution: 'duplicate', duplicateOf: original.id });
     await expectRefusal(
-      tasks.writeTask(project.id, original.id, { expectedVersion: 1, close: { reason: 'x', resolution: 'duplicate', duplicateOf: original.id } }, AGENT),
+      tasks.writeTask(
+        project.id,
+        original.id,
+        { expectedVersion: 1, close: { reason: 'x', resolution: 'duplicate', duplicateOf: original.id } },
+        AGENT,
+      ),
       'invalid',
     );
   });
@@ -138,9 +217,19 @@ describe('closing and reopening', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Again' }, OWNER);
-    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, close: { reason: 'Thought done.', resolution: 'done' } }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, close: { reason: 'Thought done.', resolution: 'done' } },
+      AGENT,
+    );
 
-    const { task: reopened } = await tasks.writeTask(project.id, task.id, { expectedVersion: 2, reopen: true, comment: 'It broke again.' }, OWNER);
+    const { task: reopened } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 2, reopen: true, comment: 'It broke again.' },
+      OWNER,
+    );
 
     expect(reopened).toMatchObject({ status: 'open', close: null, version: 3, ready: true });
     const closes = (await historyOf(tasks, project.id, task.id)).filter((event) => event.kind === 'closed');
@@ -154,9 +243,25 @@ describe('closing and reopening', () => {
     const { task } = await tasks.createTask(project.id, { title: 'Strict' }, OWNER);
 
     await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, reopen: true }, OWNER), 'invalid');
-    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } }, OWNER);
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 2, close: { reason: 'Again.', resolution: 'done' } }, OWNER), 'invalid');
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 2, set: { status: 'open' } }, OWNER), 'invalid');
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } },
+      OWNER,
+    );
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 2, close: { reason: 'Again.', resolution: 'done' } },
+        OWNER,
+      ),
+      'invalid',
+    );
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: 2, set: { status: 'open' } }, OWNER),
+      'invalid',
+    );
   });
 });
 
@@ -191,9 +296,21 @@ describe('history (rule 4)', () => {
     const rebuilt: Record<string, Json> = {};
     for (const event of events) Object.assign(rebuilt, event.changes);
     const current = (await tasks.getTask(project.id, task.id))!;
-    const fields = ['title', 'priority', 'status', 'assignee', 'assigneeModel', 'startedAt', 'labels', 'metadata', 'close'] as const;
+    const fields = [
+      'title',
+      'priority',
+      'status',
+      'assignee',
+      'assigneeModel',
+      'startedAt',
+      'labels',
+      'metadata',
+      'close',
+    ] as const;
     for (const field of fields) expect(rebuilt[field], field).toEqual(current[field]);
-    expect(rebuilt.dependencies).toEqual(current.dependencies.map((link) => ({ taskId: link.taskId, type: link.type })));
+    expect(rebuilt.dependencies).toEqual(
+      current.dependencies.map((link) => ({ taskId: link.taskId, type: link.type })),
+    );
   });
 
   it('pages history newest first', async () => {
@@ -246,7 +363,11 @@ describe('retries (rule 3)', () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Commented once' }, OWNER);
-    const write = { expectedVersion: 1, comment: 'Shipped in #4.', close: { reason: 'Done.', resolution: 'done' as const } };
+    const write = {
+      expectedVersion: 1,
+      comment: 'Shipped in #4.',
+      close: { reason: 'Done.', resolution: 'done' as const },
+    };
     const retry = await retryFor(`close-${crypto.randomUUID()}`, write, 'close_task');
 
     await tasks.writeTask(project.id, task.id, write, AGENT, retry);
@@ -262,10 +383,86 @@ describe('retries (rule 3)', () => {
     const project = await newProject(tasks);
     const other = await newProject(tasks);
     const key = `create-${crypto.randomUUID()}`;
-    await tasks.createTask(project.id, { title: 'First' }, AGENT, await retryFor(key, { title: 'First' }, 'create_task'));
+    await tasks.createTask(
+      project.id,
+      { title: 'First' },
+      AGENT,
+      await retryFor(key, { title: 'First' }, 'create_task'),
+    );
 
-    await expectRefusal(tasks.createTask(project.id, { title: 'Second' }, AGENT, await retryFor(key, { title: 'Second' }, 'create_task')), 'retry_conflict');
-    await expectRefusal(tasks.createTask(other.id, { title: 'First' }, AGENT, await retryFor(key, { title: 'First' }, 'create_task')), 'retry_conflict');
+    await expectRefusal(
+      tasks.createTask(project.id, { title: 'Second' }, AGENT, await retryFor(key, { title: 'Second' }, 'create_task')),
+      'retry_conflict',
+    );
+    await expectRefusal(
+      tasks.createTask(other.id, { title: 'First' }, AGENT, await retryFor(key, { title: 'First' }, 'create_task')),
+      'retry_conflict',
+    );
+  });
+
+  it('reads back an earlier write by its key, without writing, for the API to check before a rule the write broke', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const other = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Closed once' }, OWNER);
+    const write = { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' as const } };
+    const key = `close-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, write, 'close_task');
+
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await tasks.writeTask(project.id, task.id, write, AGENT, retry);
+    const recorded = await tasks.recordedWrite(project.id, retry);
+
+    expect(recorded).toMatchObject({
+      task: { id: task.id, status: 'closed', version: 2 },
+      created: [],
+      replayed: true,
+    });
+    await expectRefusal(
+      tasks.recordedWrite(project.id, await retryFor(key, { other: true }, 'close_task')),
+      'retry_conflict',
+    );
+    await expectRefusal(tasks.recordedWrite(other.id, retry), 'retry_conflict');
+    const commented = await retryFor(`comment-${crypto.randomUUID()}`, 'Hi.', 'close_task');
+    await tasks.addComment(project.id, task.id, 'Hi.', AGENT, commented);
+    await expectRefusal(tasks.recordedWrite(project.id, commented), 'retry_conflict');
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(3);
+  });
+
+  it('records the key of a write that changed nothing, without a new version or history', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Already so' }, OWNER);
+    const key = `noop-${crypto.randomUUID()}`;
+    const retry = await retryFor(key, { title: 'Already so' }, 'update_task');
+
+    const recorded = await tasks.recordUnchanged(project.id, task.id, 1, retry);
+    expect(recorded).toMatchObject({ task: { id: task.id, version: 1 }, created: [], replayed: false });
+    expect(await historyOf(tasks, project.id, task.id)).toHaveLength(1);
+
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved on' } }, OWNER);
+    expect(await tasks.recordUnchanged(project.id, task.id, 1, retry)).toMatchObject({
+      task: { title: 'Moved on', version: 2 },
+      replayed: true,
+    });
+    expect(await tasks.recordedWrite(project.id, retry)).toMatchObject({ replayed: true });
+    await expectRefusal(
+      tasks.recordedWrite(project.id, await retryFor(key, { title: 'Other' }, 'update_task')),
+      'retry_conflict',
+    );
+  });
+
+  it('records nothing for a task that changed since it was read, or that does not exist', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Moving' }, OWNER);
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Moved' } }, OWNER);
+    const retry = await retryFor(`stale-${crypto.randomUUID()}`, { title: 'Moved' }, 'update_task');
+
+    await expectRefusal(tasks.recordUnchanged(project.id, task.id, 1, retry), 'version_conflict');
+    expect(await tasks.recordedWrite(project.id, retry)).toBeNull();
+    await expectRefusal(tasks.recordUnchanged(project.id, `${project.prefix}-none`, 1, retry), 'not_found');
+    expect(await tasks.recordUnchanged(project.id, task.id, 2, retry)).toMatchObject({ replayed: false });
   });
 
   it('answers a repeated comment with the same comment', async () => {
@@ -303,18 +500,84 @@ describe('retries (rule 3)', () => {
     const write = { expectedVersion: 1, set: { priority: 0 }, comment: 'Raised.' };
     const retry = await retryFor(`twice-${crypto.randomUUID()}`, write, 'update_task');
 
-    const outcomes = await Promise.allSettled([1, 2].map(() => tasks.writeTask(project.id, task.id, write, AGENT, retry)));
+    const outcomes = await Promise.allSettled(
+      [1, 2].map(() => tasks.writeTask(project.id, task.id, write, AGENT, retry)),
+    );
 
     expect(outcomes.map((outcome) => outcome.status)).toEqual(['fulfilled', 'fulfilled']);
-    const results = outcomes.map((outcome) => (outcome as PromiseFulfilledResult<Awaited<ReturnType<TaskEngine['writeTask']>>>).value);
+    const results = outcomes.map(
+      (outcome) => (outcome as PromiseFulfilledResult<Awaited<ReturnType<TaskEngine['writeTask']>>>).value,
+    );
     expect(results.map((result) => result.replayed).sort()).toEqual([false, true]);
     expect(results.map((result) => result.task.version)).toEqual([2, 2]);
     expect((await tasks.getTask(project.id, task.id))?.commentCount).toBe(1);
   });
 });
 
+describe('a new task that asks for an approval', () => {
+  it('opens the approval in the same batch, and answers a retry with both', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const input = {
+      title: 'Deploy',
+      priority: 1,
+      requestApproval: { reason: 'Deploy to production.\nIt creates the database.' },
+    };
+    const retry = await retryFor(`create-${crypto.randomUUID()}`, input, 'create_task');
+
+    const { task, created } = await tasks.createTask(project.id, input, AGENT, retry);
+
+    const [gate] = created;
+    expect(gate).toMatchObject({
+      type: 'gate',
+      awaitType: 'human',
+      status: 'open',
+      priority: 1,
+      title: 'Deploy to production.',
+      filedBy: AGENT.name,
+    });
+    expect(task.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks', title: gate!.title, status: 'open' }]);
+    expect(task.ready).toBe(false);
+    const [event] = await historyOf(tasks, project.id, task.id);
+    expect(event!.changes.dependencies).toEqual([{ taskId: gate!.id, type: 'blocks' }]);
+
+    const again = await tasks.createTask(project.id, input, AGENT, retry);
+    expect(again).toMatchObject({ replayed: true, task: { id: task.id }, created: [{ id: gate!.id }] });
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+  });
+
+  it("titles the approval with the reason's first line that is not blank, without its spaces or carriage return", async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const reason = '\n  \r\n  Rotate the signing key.  \r\nIt signs every session out.';
+    const { created } = await tasks.createTask(project.id, { title: 'Rotate', requestApproval: { reason } }, AGENT);
+    const { task } = await tasks.createTask(project.id, { title: 'Later' }, AGENT);
+    const asked = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, requestApproval: { reason } },
+      AGENT,
+    );
+
+    for (const gate of [created[0]!, asked.created[0]!]) {
+      expect(gate).toMatchObject({ title: 'Rotate the signing key.', description: reason });
+    }
+  });
+
+  it('refuses an approval with no reason, filing nothing', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    await expectRefusal(
+      tasks.createTask(project.id, { title: 'Ask', requestApproval: { reason: ' ' } }, AGENT),
+      'invalid',
+    );
+    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+  });
+});
+
 describe('a new task that blocks another', () => {
-  it('keeps the other task\'s history whole while that task changes at the same moment', async () => {
+  it("keeps the other task's history whole while that task changes at the same moment", async () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const waiting = (await tasks.createTask(project.id, { title: 'Waiting' }, OWNER)).task;
@@ -323,13 +586,24 @@ describe('a new task that blocks another', () => {
     for (let round = 0; round < 10; round += 1) {
       const current = (await tasks.getTask(project.id, waiting.id))!;
       await Promise.allSettled([
-        tasks.createTask(project.id, { title: `Blocker ${round}`, links: [{ direction: 'blocks', taskId: waiting.id, type: 'blocks' }] }, AGENT),
-        tasks.writeTask(project.id, waiting.id, { expectedVersion: current.version, set: { priority: round % 5 } }, OWNER),
+        tasks.createTask(
+          project.id,
+          { title: `Blocker ${round}`, links: [{ direction: 'blocks', taskId: waiting.id, type: 'blocks' }] },
+          AGENT,
+        ),
+        tasks.writeTask(
+          project.id,
+          waiting.id,
+          { expectedVersion: current.version, set: { priority: round % 5 } },
+          OWNER,
+        ),
       ]);
     }
 
     const after = (await tasks.getTask(project.id, waiting.id))!;
-    const versions = (await historyOf(tasks, project.id, waiting.id)).filter((event) => event.kind !== 'commented').map((event) => event.version);
+    const versions = (await historyOf(tasks, project.id, waiting.id))
+      .filter((event) => event.kind !== 'commented')
+      .map((event) => event.version);
     expect(versions).toEqual(Array.from({ length: after.version }, (_, index) => index + 1));
     const rebuilt: Record<string, Json> = {};
     for (const event of await historyOf(tasks, project.id, waiting.id)) Object.assign(rebuilt, event.changes);
@@ -339,11 +613,21 @@ describe('a new task that blocks another', () => {
 });
 
 describe('decisions', () => {
-  it('records a person\'s choice and the close in one write', async () => {
+  it("records a person's choice and the close in one write", async () => {
     const tasks = engine();
     const project = await newProject(tasks);
-    const choices = { question: 'Which database?', options: [{ key: 'a', label: 'D1', recommended: true }, { key: 'b', label: 'Postgres' }] } as const;
-    const { task } = await tasks.createTask(project.id, { title: 'Pick the database', type: 'decision', choices }, AGENT);
+    const choices = {
+      question: 'Which database?',
+      options: [
+        { key: 'a', label: 'D1', recommended: true },
+        { key: 'b', label: 'Postgres' },
+      ],
+    } as const;
+    const { task } = await tasks.createTask(
+      project.id,
+      { title: 'Pick the database', type: 'decision', choices },
+      AGENT,
+    );
 
     const { task: decided } = await tasks.writeTask(
       project.id,
@@ -357,7 +641,13 @@ describe('decisions', () => {
       OWNER,
     );
 
-    expect(decided).toMatchObject({ choices, choice: { option: 'a', label: 'D1' }, status: 'closed', commentCount: 1, version: 2 });
+    expect(decided).toMatchObject({
+      choices,
+      choice: { option: 'a', label: 'D1' },
+      status: 'closed',
+      commentCount: 1,
+      version: 2,
+    });
   });
 
   it('refuses a choice on a task with no choices', async () => {
@@ -365,7 +655,10 @@ describe('decisions', () => {
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Not a decision' }, AGENT);
 
-    await expectRefusal(tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { choice: { option: 'a' } } }, OWNER), 'invalid');
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { choice: { option: 'a' } } }, OWNER),
+      'invalid',
+    );
   });
 });
 
@@ -375,7 +668,12 @@ describe('the result of a write', () => {
     const project = await newProject(tasks);
     const { task } = await tasks.createTask(project.id, { title: 'Fresh' }, OWNER);
 
-    const { task: written } = await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { title: 'Fresher' }, comment: 'Renamed.' }, AGENT);
+    const { task: written } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, set: { title: 'Fresher' }, comment: 'Renamed.' },
+      AGENT,
+    );
 
     expect(written).toEqual((await tasks.getTask(project.id, task.id)) as Task);
   });

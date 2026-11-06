@@ -81,7 +81,7 @@ per project. It names the file that holds the password, never the password.
   "client": ["/usr/local/bin/dolt", "--host=127.0.0.1", "--port=3306", "--user=tasks", "--no-tls", "sql", "--result-format=json", "--query"],
   "passwordFile": "/path/to/private/password",
   "projects": [
-    { "database": "acme_tasks", "key": "acme.example.com", "name": "Acme", "prefix": "acme" }
+    { "database": "acme_tasks", "key": "acme.example.com", "name": "Acme", "id": "a1111111-0000-4000-8000-000000000001", "prefix": "acme" }
   ]
 }
 ```
@@ -93,7 +93,8 @@ per project. It names the file that holds the password, never the password.
 | `env` | Optional. More environment variables for the client |
 | `projects[].database` | The Dolt database that holds the project |
 | `projects[].key`, `.name` | The project's key and name in Ntasks |
-| `projects[].id`, `.prefix` | Optional. The export stops if the database holds a different project id or prefix |
+| `projects[].id` | Optional. The project's id in Ntasks. Give the NoticeOS project id, so the ids agents use keep working. Left out, it is the database's own `_project_id`, which Beads chose and NoticeOS does not use |
+| `projects[].beadsProjectId`, `.prefix` | Optional. The export stops if the database holds a different `_project_id` or prefix |
 
 The client runs with an empty, private home folder of its own and only
 `PATH`, the password and the variables in `env`, so no other Dolt or Beads
@@ -131,8 +132,9 @@ defines where each NoticeOS metadata key goes; the import follows it.
 
 | Beads | Ntasks |
 |---|---|
-| Project id, prefix | `projects.id`, `projects.prefix`; the key and name come from the hub file, and the creation time is the earliest commit or task |
+| Project | `projects.id` is the hub file's id, else the database's `_project_id`; `projects.prefix` is the database's `issue_prefix`; the key and name come from the hub file, and the creation time is the earliest commit or task |
 | Issue id, title, description, status, priority, type, assignee, start, defer and due times | The same `tasks` columns; `acceptance_criteria` is `acceptance` |
+| Type `spike`, which Ntasks lacks | Type `task`, with the label `spike` |
 | `created_at`, `updated_at` | `tasks.created_at`, `tasks.updated_at`, kept as they are |
 | `created_by` | `tasks.filed_by`, unless NoticeOS recorded `noticeos_filed_by` |
 | `await_type` `human` on a gate | `tasks.await_type` |
@@ -146,10 +148,16 @@ defines where each NoticeOS metadata key goes; the import follows it.
 | `noticeos_related_tasks` | `related` rows in `task_edges`, dated by the change that added them |
 | Labels | `task_labels` |
 | Comments | `task_comments`, ids kept, and a `commented` history event each |
-| `content_hash`, `is_blocked` | Nothing: Beads computes them from the other columns |
+| `content_hash`, `is_blocked`, `row_lock` | Nothing: Beads computes them from the other columns, or keeps them to lock a row |
 
 Times become UTC ISO 8601 with milliseconds. Dolt prints a time without a
 zone, and Beads writes them in UTC.
+
+Through a Dolt server, the SQL client prints every value as text. So `"0"` in
+one of Beads' number columns, such as `pinned`, and `"{}"` in a JSON column,
+such as a link's `metadata`, read as empty
+([`src/task-state.ts`](src/task-state.ts) lists those columns). The same text
+in a text column, such as `notes`, is something someone wrote, and is refused.
 
 A task that is not closed has no close in Ntasks. A close time, reason or
 closer that Beads or NoticeOS left behind from an earlier close stays in
@@ -193,7 +201,7 @@ lists:
 - wisps, molecules, formulas and templates, and approvals that wait on
   anything but a person;
 - links to wisps or to tasks outside the hub;
-- leases, and tasks Beads compacted;
+- tasks Beads compacted;
 - a Dolt database with more than one branch.
 
 Data the import cannot carry whole:
@@ -203,10 +211,24 @@ Data the import cannot carry whole:
 - a table holding rows that the import neither reads nor knows to be Beads'
   own bookkeeping;
 - a link, parent or duplicate that names a task not in the export;
-- tasks that wait on each other in a loop;
+- tasks that wait on each other in a loop, other than the one below that is
+  left out;
 - a task whose Dolt history does not rebuild it as it stands;
 - out-of-scope data in a task's past versions, with the time;
 - empty comments and comments without an author or time.
+
+## What the import leaves out
+
+By the owner's choice, the import leaves these out. It lists each one it
+leaves out, after what it imported:
+
+- the `owner` column, which holds one identity, the same on every task of the
+  NoticeOS hub;
+- lease rows, which record when a claim expires: Ntasks never expires a claim,
+  and the claim itself is the task's assignee;
+- a parent's `blocks` link onto its own child, which makes each wait on the
+  other. It is left out of every past version too, so the history still
+  rebuilds the task.
 
 ## What the verifier checks
 

@@ -3,20 +3,3 @@ workers/api/worker-configuration.d.ts
 
 # Agent worktrees are full checkouts of this repository.
 .claude/
-
-# Files written before the formatter, not yet formatted. Formatting one means
-# deleting its line here and running `pnpm format`. A new file never goes on
-# this list.
-packages/domain/src/engine.ts
-packages/domain/src/lint.ts
-packages/domain/src/task.ts
-packages/domain/test/lint.test.ts
-workers/api/src/engine/reads.ts
-workers/api/src/engine/rows.ts
-workers/api/src/engine/validate.ts
-workers/api/src/engine/writes.ts
-workers/api/test/engine/helpers.ts
-workers/api/test/engine/ready.test.ts
-workers/api/test/engine/tasks.test.ts
-workers/api/test/engine/writes.test.ts
-workers/api/test/schema.test.ts

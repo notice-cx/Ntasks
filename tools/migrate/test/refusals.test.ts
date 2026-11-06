@@ -68,6 +68,23 @@ describe('the import refuses what is out of scope, naming it', () => {
     ]);
   });
 
+  it('accepts what a Dolt server prints for empty number and JSON columns, and Beads bookkeeping', () => {
+    const hub = hubWith((c) => {
+      c.update('web-a1', {
+        pinned: '0',
+        ephemeral: '0',
+        estimated_minutes: '0',
+        compaction_level: '0',
+        row_lock: '-8564433141813951760',
+      });
+      c.link('web-a1', 'web-a2', 'blocks', { metadata: '{}' });
+    });
+    hub.otherTables.push({ name: 'bd_events_seq', rows: 1 });
+    const { plan, refusals } = planImport(exportOf(hub));
+    expect(refusals).toEqual([]);
+    expect(plan!.task_edges).toHaveLength(1);
+  });
+
   it('text that looks like zero or an empty list, which someone still wrote', () => {
     const refusals = refusalsOf(
       hubWith((c) => {
@@ -114,13 +131,9 @@ describe('the import refuses what is out of scope, naming it', () => {
 
   it('a table of out-of-scope data, and one the import does not know', () => {
     const hub = hubWith(() => {});
-    hub.otherTables.push({ name: 'leases', rows: 2 }, { name: 'mystery', rows: 1 });
+    hub.otherTables.push({ name: 'mystery', rows: 1 });
     hub.otherTables.find((table) => table.name === 'wisps')!.rows = 3;
     expect(refusalsOf(hub)).toEqual([
-      {
-        subject: 'project web.example.com',
-        reason: 'its table leases holds 2 rows: claims that expire as leases are out of scope',
-      },
       {
         subject: 'project web.example.com',
         reason: 'its table mystery holds 1 rows: the import does not know what it holds',

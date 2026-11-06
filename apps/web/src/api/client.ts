@@ -12,6 +12,7 @@
  */
 import type { TaskResolution } from '@ntasks/domain';
 import type {
+  ChangesPage,
   CloseOptions,
   LiveTaskDetail,
   LiveTasksPayload,
@@ -38,6 +39,8 @@ export interface TasksApi {
   /** One project's board: unfinished tasks and the last week's closes. */
   board(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
+  /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
+  changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -126,6 +129,16 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
   return new ApiError(sentence, response.status, code);
 }
 
+/** A successful answer's body. A body that is not JSON is an `UnreadableAnswer`, which is not retried. */
+async function answerJson(response: Response, unreadable: string): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new UnreadableAnswer(unreadable);
+    throw error;
+  }
+}
+
 function readProjects(payload: unknown): readonly TaskProject[] {
   if (!isRecord(payload) || !Array.isArray(payload.projects))
     throw new UnreadableAnswer('The project list could not be read.');
@@ -199,7 +212,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     const read = (async () => {
       const response = await fetch('/api/tasks/projects', { headers: JSON_READ });
       if (!response.ok) throw await refusal(response, 'The project list');
-      return readProjects(await response.json());
+      return readProjects(await answerJson(response, 'The project list could not be read.'));
     })();
     catalog = read;
     // A failed read is not kept: the next request asks again.
@@ -220,7 +233,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
   async function read<T>(path: string, what: string, signal?: AbortSignal): Promise<T> {
     const response = await fetch(path, { headers: JSON_READ, ...(signal ? { signal } : {}) });
     if (!response.ok) throw await refusal(response, what);
-    return (await response.json()) as T;
+    return (await answerJson(response, `${what}: the answer could not be read.`)) as T;
   }
 
   /** Every write carries a retry key: the caller's, for a second attempt at
@@ -281,6 +294,17 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
     },
+    async changes(after, signal) {
+      const page = await read<unknown>(
+        `/api/changes?${new URLSearchParams({ after: String(after) })}`,
+        'The change list',
+        signal,
+      );
+      if (!isRecord(page) || !Array.isArray(page.events) || typeof page.lastSeq !== 'number') {
+        throw new UnreadableAnswer('The change list could not be read.');
+      }
+      return page as unknown as ChangesPage;
+    },
     async task(id, project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
@@ -293,9 +317,9 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         'The new task',
         options,
       );
-      const created: unknown = await response.json();
-      if (!isRecord(created) || typeof created.id !== 'string')
-        throw new UnreadableAnswer('The new task was filed, but its id could not be read.');
+      const unreadable = 'The new task was filed, but its id could not be read.';
+      const created = await answerJson(response, unreadable);
+      if (!isRecord(created) || typeof created.id !== 'string') throw new UnreadableAnswer(unreadable);
       return { id: created.id, project };
     },
     async updateTask(id, project, edit, options) {
