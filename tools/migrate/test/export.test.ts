@@ -70,7 +70,10 @@ describe('export', () => {
     expect(description).toContain(
       "USE `acme_tasks`; SELECT DOLT_HASHOF('HEAD') AS head, DOLT_HASHOF_DB('WORKING') AS working",
     );
-    expect(description).toContain("Each step runs as: dolt sql --result-format=json --query '<the step's queries>'");
+    expect(description).toContain("Each step runs as: dolt sql --result-format=json --query '<the step's statements>'");
+    expect(description).toContain(
+      "START TRANSACTION READ ONLY; SELECT '<marker>:0' AS ntasks_query; <query 1>; SELECT '<marker>:1' AS ntasks_query; <query 2>; SELECT '<marker>:end' AS ntasks_query; ROLLBACK",
+    );
   });
 
   it('refuses a database name it could not quote safely', () => {

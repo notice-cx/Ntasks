@@ -91,8 +91,10 @@ setting reaches it. Dolt's usage reporting is turned off.
 ## What the export reads
 
 The export works in five steps. Each step runs as one read-only transaction,
-which the export ends with `ROLLBACK`, so it cannot write to the hub.
-`export --describe` prints the exact queries.
+which the export ends with `ROLLBACK`, so it cannot write to the hub. Before
+each query, and after the last, it sends a marker query that only prints a
+random value back, so it can tell which output answers which query.
+`export --describe` prints every statement it sends.
 
 1. The Dolt version.
 2. For every database, the hash of its branch head, which changes with any

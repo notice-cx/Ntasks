@@ -20,6 +20,7 @@ import {
   type HistoryTable,
   type ReadTable,
 } from './beads.ts';
+import { stepSql } from './dolt-client.ts';
 import { isJsonObject } from './json.ts';
 
 /** One project of the hub, as the hub file names it. */
@@ -145,7 +146,11 @@ export function describeExport(hub: HubFile): string {
     '',
     '5. Step 2 again. The export refuses if any database changed meanwhile.',
     '',
-    `Each step runs as: ${hub.client.join(' ')} '<the step's queries>'`,
+    `Each step runs as: ${hub.client.join(' ')} '<the step's statements>'`,
+    'with these statements around its queries, shown here for a step of two queries:',
+    `   ${stepSql(['<query 1>', '<query 2>'], '<marker>')}`,
+    '<marker> is a new random value for each step. The marker queries only print it back,',
+    'so the export can tell which output answers which query.',
   ];
   return lines.join('\n');
 }
