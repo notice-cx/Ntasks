@@ -27,7 +27,11 @@ describe('the sign-in settings', () => {
   };
 
   it('read an https origin, a long secret and numeric GitHub ids', () => {
-    expect(signInConfig(valid)).toMatchObject({ origin: 'https://ntasks.example.com', secure: true, owners: new Set(['1001', '1002']) });
+    expect(signInConfig(valid)).toMatchObject({
+      origin: 'https://ntasks.example.com',
+      secure: true,
+      owners: new Set(['1001', '1002']),
+    });
   });
 
   it('accept a local http origin without the Secure cookie flag', () => {
@@ -47,7 +51,9 @@ describe('the sign-in settings', () => {
 
   it('refuse every caller while sign-in is off', async () => {
     const off = { DB: env.DB, SIGN_IN_LIMIT: env.SIGN_IN_LIMIT };
-    const request = new Request(`${ORIGIN}/api/access/me`, { headers: { authorization: 'Bearer some-token-of-sixteen-or-more' } });
+    const request = new Request(`${ORIGIN}/api/access/me`, {
+      headers: { authorization: 'Bearer some-token-of-sixteen-or-more' },
+    });
 
     const verification = await verifyRequest(request, off);
     expect(verification).toEqual({ ok: false, reason: 'not_configured' });

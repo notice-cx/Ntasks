@@ -62,7 +62,9 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   if (!config) return json({ error: 'sign_in_not_configured' }, 503);
   if (url.pathname === PROTECTED_RESOURCE_METADATA_PATH) {
     if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
-    return Response.json(protectedResourceMetadata(config.origin), { headers: { 'cache-control': 'public, max-age=300' } });
+    return Response.json(protectedResourceMetadata(config.origin), {
+      headers: { 'cache-control': 'public, max-age=300' },
+    });
   }
   const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const { success } = await env.SIGN_IN_LIMIT.limit({ key: address });
@@ -104,15 +106,26 @@ async function library(request: Request, env: AccessEnv, config: SignInConfig, u
   const method = PUBLIC_AUTH_ROUTES[url.pathname];
   if (!method) return json({ error: 'not_found' }, 404);
   if (request.method !== method) return json({ error: 'method_not_allowed' }, 405, { allow: method });
-  const forwarded = method === 'POST'
-    ? new Request(request.url, { method, headers: request.headers, body: await boundedText(request) })
-    : request;
+  const forwarded =
+    method === 'POST'
+      ? new Request(request.url, { method, headers: request.headers, body: await boundedText(request) })
+      : request;
   return createAuth(env.DB, config).handler(forwarded);
 }
 
 /** Calls a Better Auth endpoint for one of this Worker's pages, as the browser that submitted the page. */
-async function callLibrary(auth: Auth, config: SignInConfig, request: Request, path: string, body: unknown): Promise<Response> {
-  const headers = new Headers({ 'content-type': 'application/json', accept: 'application/json', origin: config.origin });
+async function callLibrary(
+  auth: Auth,
+  config: SignInConfig,
+  request: Request,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  const headers = new Headers({
+    'content-type': 'application/json',
+    accept: 'application/json',
+    origin: config.origin,
+  });
   for (const name of ['cookie', 'user-agent', 'cf-connecting-ip']) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
@@ -182,18 +195,24 @@ async function signIn(request: Request, env: AccessEnv, config: SignInConfig, ur
 }
 
 async function agentAccess(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
-  if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
+  if (request.method !== 'GET' && request.method !== 'POST')
+    return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
   const form = request.method === 'POST' ? new URLSearchParams(await boundedText(request)) : null;
   const oauthQuery = await signedQuery(form ? (form.get('oauth_query') ?? '') : url.search.slice(1), config);
   if (oauthQuery === null) return expiredPage();
   const verification = await verifyRequest(request, env);
   if (!verification.ok && verification.reason === 'cross_site') return refusal(verification, env);
   const person = personOf(verification);
-  if (!person) return new Response(null, { status: 303, headers: { location: `${SIGN_IN_PAGE}?${oauthQuery}`, 'cache-control': 'no-store' } });
+  if (!person)
+    return new Response(null, {
+      status: 303,
+      headers: { location: `${SIGN_IN_PAGE}?${oauthQuery}`, 'cache-control': 'no-store' },
+    });
   const params = new URLSearchParams(oauthQuery);
   const clientId = params.get('client_id') ?? '';
-  const client = await env.DB
-    .prepare('SELECT name, uri FROM auth_oauth_client WHERE client_id = ? AND coalesce(disabled, 0) = 0')
+  const client = await env.DB.prepare(
+    'SELECT name, uri FROM auth_oauth_client WHERE client_id = ? AND coalesce(disabled, 0) = 0',
+  )
     .bind(clientId)
     .first<{ name: string | null; uri: string | null }>();
   if (!client) return expiredPage();
@@ -225,7 +244,12 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
     if (chosen.length === 0) return show('Choose at least one project.');
     if (!chosen.every((id) => known.has(id))) return show('A chosen project no longer exists. Choose again.');
     // Grants first: a consent without grants would let the agent reach nothing.
-    await setAgentGrants(env.DB, person.userId, clientId, chosen.map((projectId) => ({ projectId, access })));
+    await setAgentGrants(
+      env.DB,
+      person.userId,
+      clientId,
+      chosen.map((projectId) => ({ projectId, access })),
+    );
   } else if (form.get('decision') !== 'deny') {
     return show('Choose Allow or Deny.');
   }
@@ -252,13 +276,16 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
   }
   // Managing access is the owner's own act, never an agent's or a service's.
   if (principal.kind !== 'person') return json({ error: 'owner_only' }, 403);
-  if (path === '/agents' && request.method === 'GET') return json({ agents: await listAgents(env.DB, principal.userId) }, 200);
+  if (path === '/agents' && request.method === 'GET')
+    return json({ agents: await listAgents(env.DB, principal.userId) }, 200);
   const agent = /^\/agents\/([A-Za-z0-9_-]{1,255})\/revoke$/u.exec(path);
   if (agent?.[1] && request.method === 'POST') {
-    if (!(await revokeAgent(env.DB, principal.userId, agent[1]))) throw new AccessRefused('not_found', 'no such connected agent');
+    if (!(await revokeAgent(env.DB, principal.userId, agent[1])))
+      throw new AccessRefused('not_found', 'no such connected agent');
     return json({ revoked: true }, 200);
   }
-  if (path === '/services' && request.method === 'GET') return json({ services: await listServiceCredentials(env.DB) }, 200);
+  if (path === '/services' && request.method === 'GET')
+    return json({ services: await listServiceCredentials(env.DB) }, 200);
   if (path === '/services' && request.method === 'POST') {
     if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
       throw new AccessRefused('invalid_request', 'send the credential as application/json');
@@ -270,20 +297,24 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
       if (error instanceof BodyTooLarge) throw error;
       throw new AccessRefused('invalid_request', 'the body is not JSON');
     }
-    const created = await createServiceCredential(env.DB, { name: body?.name, grants: body?.grants, createdBy: principal.userId });
+    const created = await createServiceCredential(env.DB, {
+      name: body?.name,
+      grants: body?.grants,
+      createdBy: principal.userId,
+    });
     return json({ service: created }, 201);
   }
   const service = /^\/services\/([0-9a-f-]{36})\/revoke$/u.exec(path);
   if (service?.[1] && request.method === 'POST') {
-    if (!(await revokeServiceCredential(env.DB, service[1]))) throw new AccessRefused('not_found', 'no such unrevoked service credential');
+    if (!(await revokeServiceCredential(env.DB, service[1])))
+      throw new AccessRefused('not_found', 'no such unrevoked service credential');
     return json({ revoked: true }, 200);
   }
   return json({ error: 'not_found' }, 404);
 }
 
 function describe(principal: Principal): Record<string, unknown> {
-  const projects = principal.kind === 'person'
-    ? 'all'
-    : [...principal.projects].map(([projectId, access]) => ({ projectId, access }));
+  const projects =
+    principal.kind === 'person' ? 'all' : [...principal.projects].map(([projectId, access]) => ({ projectId, access }));
   return { kind: principal.kind, name: principal.name, projects };
 }

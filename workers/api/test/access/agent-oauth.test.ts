@@ -47,7 +47,9 @@ describe('OAuth discovery for MCP clients', () => {
         revocation_endpoint: `${ORIGIN}/api/auth/oauth2/revoke`,
         code_challenge_methods_supported: ['S256'],
       });
-      expect(metadata.scopes_supported).toEqual(expect.arrayContaining(['tasks:read', 'tasks:write', 'offline_access']));
+      expect(metadata.scopes_supported).toEqual(
+        expect.arrayContaining(['tasks:read', 'tasks:write', 'offline_access']),
+      );
     },
   );
 
@@ -93,7 +95,11 @@ describe('an agent connecting over OAuth', () => {
 
     const me = await meWithToken(tokens.access_token);
     expect(me.status).toBe(200);
-    expect(await me.json()).toEqual({ kind: 'agent', name: 'Example Agent', projects: [{ projectId: chosen, access: 'write' }] });
+    expect(await me.json()).toEqual({
+      kind: 'agent',
+      name: 'Example Agent',
+      projects: [{ projectId: chosen, access: 'write' }],
+    });
 
     const verified = await verifyRequest(
       new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${tokens.access_token}` } }),
@@ -134,7 +140,9 @@ describe('an agent connecting over OAuth', () => {
     await client.register();
     const { landing } = await client.authorize(browser, 'tasks:write');
 
-    const denied = await browser.fetch('/agent-access', { form: { oauth_query: landing.search.slice(1), decision: 'deny' } });
+    const denied = await browser.fetch('/agent-access', {
+      form: { oauth_query: landing.search.slice(1), decision: 'deny' },
+    });
     const back = locationOf(denied);
     expect(`${back.origin}${back.pathname}`).toBe(REDIRECT_URI);
     expect(back.searchParams.get('error')).toBe('access_denied');
@@ -152,7 +160,9 @@ describe('an agent connecting over OAuth', () => {
     await client.register();
     const { landing } = await client.authorize(browser, 'tasks:write');
 
-    const response = await browser.fetch('/agent-access', { form: { oauth_query: landing.search.slice(1), decision: 'allow' } });
+    const response = await browser.fetch('/agent-access', {
+      form: { oauth_query: landing.search.slice(1), decision: 'allow' },
+    });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('Choose at least one project.');
   });
@@ -164,7 +174,10 @@ describe('an agent connecting over OAuth', () => {
     const client = new McpClient();
     await client.register();
     const { landing } = await client.authorize(browser, 'tasks:read');
-    const changed = landing.search.slice(1).replace('tasks%3Aread', 'tasks%3Awrite').replace('tasks:read', 'tasks:write');
+    const changed = landing.search
+      .slice(1)
+      .replace('tasks%3Aread', 'tasks%3Awrite')
+      .replace('tasks:read', 'tasks:write');
 
     const response = await browser.fetch(`/agent-access?${changed}`);
     expect(response.status).toBe(400);
@@ -177,7 +190,9 @@ describe('an agent connecting over OAuth', () => {
     await browser.signInAsOwner();
     const { tokens } = await connectAgent(browser, [project]);
 
-    const response = await call('/api/access/services', { headers: { authorization: `Bearer ${tokens.access_token}` } });
+    const response = await call('/api/access/services', {
+      headers: { authorization: `Bearer ${tokens.access_token}` },
+    });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'owner_only' });
   });
@@ -217,7 +232,11 @@ describe('revoking an agent', () => {
     const response = await call('/api/auth/oauth2/revoke', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: tokens.access_token, token_type_hint: 'access_token', client_id: client.clientId }).toString(),
+      body: new URLSearchParams({
+        token: tokens.access_token,
+        token_type_hint: 'access_token',
+        client_id: client.clientId,
+      }).toString(),
     });
     expect(response.status).toBe(200);
     expect((await meWithToken(tokens.access_token)).status).toBe(401);
@@ -243,6 +262,9 @@ describe('revoking an agent', () => {
     const request = new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
 
     expect((await verifyRequest(request, env)).ok).toBe(true);
-    expect(await verifyRequest(request, { ...env, OWNER_GITHUB_IDS: '3003' })).toEqual({ ok: false, reason: 'invalid_token' });
+    expect(await verifyRequest(request, { ...env, OWNER_GITHUB_IDS: '3003' })).toEqual({
+      ok: false,
+      reason: 'invalid_token',
+    });
   });
 });

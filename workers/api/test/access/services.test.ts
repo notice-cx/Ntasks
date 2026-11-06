@@ -19,7 +19,10 @@ async function createService(browser: Browser, name: string, grants: unknown): P
 }
 
 async function principalFor(token: string): Promise<Principal> {
-  const verification = await verifyRequest(new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${token}` } }), env);
+  const verification = await verifyRequest(
+    new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${token}` } }),
+    env,
+  );
   if (!verification.ok) throw new Error(`refused: ${verification.reason}`);
   return verification.principal;
 }
@@ -52,7 +55,9 @@ describe('a service credential', () => {
     const project = await createProject('ReadOnly');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { service } = await (await createService(browser, 'reader', [{ projectId: project, access: 'read' }])).json<{ service: CreatedService }>();
+    const { service } = await (
+      await createService(browser, 'reader', [{ projectId: project, access: 'read' }])
+    ).json<{ service: CreatedService }>();
 
     const principal = await principalFor(service.token);
     expect(may(principal, project, 'read')).toBe(true);
@@ -63,7 +68,9 @@ describe('a service credential', () => {
     const project = await createProject('Revocable');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { service } = await (await createService(browser, 'revocable', [{ projectId: project, access: 'write' }])).json<{ service: CreatedService }>();
+    const { service } = await (
+      await createService(browser, 'revocable', [{ projectId: project, access: 'write' }])
+    ).json<{ service: CreatedService }>();
     expect((await meWithToken(service.token)).status).toBe(200);
 
     const revoked = await browser.fetch(`/api/access/services/${service.id}/revoke`, { method: 'POST' });
@@ -73,7 +80,9 @@ describe('a service credential', () => {
     expect(refused.headers.get('www-authenticate')).toContain('error="invalid_token"');
 
     expect((await browser.fetch(`/api/access/services/${service.id}/revoke`, { method: 'POST' })).status).toBe(404);
-    const listed = await (await browser.fetch('/api/access/services')).json<{ services: { id: string; revokedAt: string | null }[] }>();
+    const listed = await (
+      await browser.fetch('/api/access/services')
+    ).json<{ services: { id: string; revokedAt: string | null }[] }>();
     expect(listed.services.find((item) => item.id === service.id)?.revokedAt).toBeTruthy();
   });
 
@@ -81,7 +90,9 @@ describe('a service credential', () => {
     const project = await createProject('Guarded');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { service } = await (await createService(browser, 'guarded', [{ projectId: project, access: 'write' }])).json<{ service: CreatedService }>();
+    const { service } = await (
+      await createService(browser, 'guarded', [{ projectId: project, access: 'write' }])
+    ).json<{ service: CreatedService }>();
     const wrong = service.token.slice(0, -4) + (service.token.endsWith('AAAA') ? 'BBBB' : 'AAAA');
 
     expect((await meWithToken(wrong)).status).toBe(401);
@@ -91,10 +102,14 @@ describe('a service credential', () => {
     const project = await createProject('Hashed');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { service } = await (await createService(browser, 'hashed', [{ projectId: project, access: 'read' }])).json<{ service: CreatedService }>();
+    const { service } = await (
+      await createService(browser, 'hashed', [{ projectId: project, access: 'read' }])
+    ).json<{ service: CreatedService }>();
     const secret = service.token.split('.')[2] ?? '';
 
-    const row = await env.DB.prepare('SELECT secret_hash FROM access_service_credentials WHERE id = ?').bind(service.id).first<{ secret_hash: string }>();
+    const row = await env.DB.prepare('SELECT secret_hash FROM access_service_credentials WHERE id = ?')
+      .bind(service.id)
+      .first<{ secret_hash: string }>();
     expect(row?.secret_hash).toMatch(/^[0-9a-f]{64}$/u);
     expect(row?.secret_hash).not.toContain(secret);
   });
@@ -117,7 +132,9 @@ describe('a service credential', () => {
     const project = await createProject('Owned');
     const browser = new Browser();
     await browser.signInAsOwner();
-    const { service } = await (await createService(browser, 'not-an-owner', [{ projectId: project, access: 'write' }])).json<{ service: CreatedService }>();
+    const { service } = await (
+      await createService(browser, 'not-an-owner', [{ projectId: project, access: 'write' }])
+    ).json<{ service: CreatedService }>();
 
     const response = await call('/api/access/services', {
       method: 'POST',

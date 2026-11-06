@@ -65,7 +65,11 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
       // Runs before a person is created, before a GitHub account is linked,
       // and on every GitHub sign-in, with the profile GitHub just returned.
       validateUserInfo: ({ source }) => {
-        if (source.method === 'oauth' && source.oauth?.providerId === 'github' && isOwnerProfile(config, source.oauth.profile)) {
+        if (
+          source.method === 'oauth' &&
+          source.oauth?.providerId === 'github' &&
+          isOwnerProfile(config, source.oauth.profile)
+        ) {
           return;
         }
         return { error: 'not_an_owner', errorDescription: 'This GitHub account may not sign in to this Ntasks.' };

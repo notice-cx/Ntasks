@@ -24,7 +24,9 @@ describe('owner sign-in with GitHub', () => {
     const browser = new Browser();
     await browser.signInAsOwner();
 
-    const row = await env.DB.prepare("SELECT access_token FROM auth_account WHERE provider_id = 'github' AND account_id = ?")
+    const row = await env.DB.prepare(
+      "SELECT access_token FROM auth_account WHERE provider_id = 'github' AND account_id = ?",
+    )
       .bind(String(OWNER_GITHUB_ID))
       .first<{ access_token: string }>();
     expect(row?.access_token).toBeTruthy();
@@ -38,7 +40,9 @@ describe('owner sign-in with GitHub', () => {
     expect(next.pathname).toBe('/sign-in');
     expect(next.searchParams.get('error')).toBe('not_an_owner');
     expect(browser.cookie(SESSION_COOKIE)).toBeUndefined();
-    const people = await env.DB.prepare("SELECT count(*) AS n FROM auth_account WHERE account_id = '2002'").first<{ n: number }>();
+    const people = await env.DB.prepare("SELECT count(*) AS n FROM auth_account WHERE account_id = '2002'").first<{
+      n: number;
+    }>();
     expect(people?.n).toBe(0);
 
     const page = await browser.fetch(next.pathname + next.search);
@@ -52,7 +56,10 @@ describe('owner sign-in with GitHub', () => {
 
     const still = await verifyRequest(new Request(`${ORIGIN}/api/access/me`, { headers }), env);
     expect(still.ok).toBe(true);
-    const removed = await verifyRequest(new Request(`${ORIGIN}/api/access/me`, { headers }), { ...env, OWNER_GITHUB_IDS: '3003' });
+    const removed = await verifyRequest(new Request(`${ORIGIN}/api/access/me`, { headers }), {
+      ...env,
+      OWNER_GITHUB_IDS: '3003',
+    });
     expect(removed).toEqual({ ok: false, reason: 'invalid_token' });
   });
 
@@ -81,7 +88,10 @@ describe('owner sign-in with GitHub', () => {
 
   it('refuses a sign-in form posted from another site', async () => {
     const browser = new Browser();
-    const response = await browser.fetch('/sign-in', { form: { action: 'github' }, origin: 'https://elsewhere.example.com' });
+    const response = await browser.fetch('/sign-in', {
+      form: { action: 'github' },
+      origin: 'https://elsewhere.example.com',
+    });
     expect(response.status).toBe(403);
   });
 

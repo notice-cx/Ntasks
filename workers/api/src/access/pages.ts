@@ -57,7 +57,8 @@ ${body}
       // No script, no framing: another site cannot overlay the approval
       // buttons. form-action is left out because an approval redirects to the
       // agent's own address.
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+      'content-security-policy':
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
       'x-frame-options': 'DENY',
       'referrer-policy': 'no-referrer',
     },
@@ -90,10 +91,12 @@ ${alert}
 </form>`,
     );
   }
-  const agent = input.oauthQuery === null
-    ? ''
-    : '<p>An AI agent asked to connect to this Ntasks. Sign in, then choose the projects it may reach.</p>';
-  const query = input.oauthQuery === null ? '' : `<input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">`;
+  const agent =
+    input.oauthQuery === null
+      ? ''
+      : '<p>An AI agent asked to connect to this Ntasks. Sign in, then choose the projects it may reach.</p>';
+  const query =
+    input.oauthQuery === null ? '' : `<input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">`;
   return page(
     'Sign in',
     `<h1>Sign in to Ntasks</h1>
@@ -123,14 +126,16 @@ export function agentAccessPage(input: {
 }): Response {
   const from = input.client.uri ? ` (${escape(input.client.uri)})` : '';
   const alert = input.error ? `<p class="alert" role="alert">${escape(input.error)}</p>` : '';
-  const ask = input.access === null
-    ? `<p>${escape(input.client.name)}${from} asks for no access to tasks, so it cannot be allowed.</p>`
-    : `<p>${escape(input.client.name)}${from} asks to ${input.access === 'write' ? 'read and change tasks' : 'read tasks'} for you, ${escape(input.personName)}, in the projects you choose.</p>`;
-  const projects = input.access === null
-    ? ''
-    : input.projects.length === 0
-    ? '<p>There are no projects yet. Create a project before allowing an agent.</p>'
-    : `<fieldset>
+  const ask =
+    input.access === null
+      ? `<p>${escape(input.client.name)}${from} asks for no access to tasks, so it cannot be allowed.</p>`
+      : `<p>${escape(input.client.name)}${from} asks to ${input.access === 'write' ? 'read and change tasks' : 'read tasks'} for you, ${escape(input.personName)}, in the projects you choose.</p>`;
+  const projects =
+    input.access === null
+      ? ''
+      : input.projects.length === 0
+        ? '<p>There are no projects yet. Create a project before allowing an agent.</p>'
+        : `<fieldset>
 <legend>Projects it may reach</legend>
 ${input.projects
   .map(
@@ -139,9 +144,10 @@ ${input.projects
   )
   .join('\n')}
 </fieldset>`;
-  const allow = input.access === null || input.projects.length === 0
-    ? ''
-    : '<button type="submit" name="decision" value="allow" class="primary">Allow</button>';
+  const allow =
+    input.access === null || input.projects.length === 0
+      ? ''
+      : '<button type="submit" name="decision" value="allow" class="primary">Allow</button>';
   return page(
     'Allow an agent',
     `<h1>Allow ${escape(input.client.name)} to use Ntasks?</h1>

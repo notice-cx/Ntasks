@@ -28,12 +28,22 @@ export function standInForGitHub(): void {
         const code = new URLSearchParams(await bodyText(init?.body)).get('code') ?? '';
         const id = /^github-user-(\d+)$/u.exec(code)?.[1];
         if (!id) return Response.json({ error: 'bad_verification_code' });
-        return Response.json({ access_token: `stand-in-token-${id}`, token_type: 'bearer', scope: 'read:user,user:email' });
+        return Response.json({
+          access_token: `stand-in-token-${id}`,
+          token_type: 'bearer',
+          scope: 'read:user,user:email',
+        });
       }
       const id = /^Bearer stand-in-token-(\d+)$/iu.exec(request.headers.get('authorization') ?? '')?.[1];
       if (url.href === 'https://api.github.com/user') {
         if (!id) return Response.json({ message: 'Bad credentials' }, { status: 401 });
-        return Response.json({ id: Number(id), login: `person-${id}`, name: `Person ${id}`, email: null, avatar_url: null });
+        return Response.json({
+          id: Number(id),
+          login: `person-${id}`,
+          name: `Person ${id}`,
+          email: null,
+          avatar_url: null,
+        });
       }
       if (url.href === 'https://api.github.com/user/emails') {
         if (!id) return Response.json({ message: 'Bad credentials' }, { status: 401 });

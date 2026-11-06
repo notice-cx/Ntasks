@@ -71,12 +71,18 @@ export async function verifyRequest(request: Request, env: VerifierEnv): Promise
 export function refusal(verification: Extract<Verification, { ok: false }>, env: SignInSecrets): Response {
   const config = signInConfig(env);
   if (verification.reason === 'not_configured' || !config) {
-    return Response.json({ error: 'sign_in_not_configured' }, { status: 503, headers: { 'cache-control': 'no-store' } });
+    return Response.json(
+      { error: 'sign_in_not_configured' },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
+    );
   }
   if (verification.reason === 'cross_site') {
     return Response.json({ error: 'cross_site_request' }, { status: 403, headers: { 'cache-control': 'no-store' } });
   }
-  return bearerChallenge(config.origin, verification.reason === 'invalid_token' ? { error: 'invalid_token' } : undefined);
+  return bearerChallenge(
+    config.origin,
+    verification.reason === 'invalid_token' ? { error: 'invalid_token' } : undefined,
+  );
 }
 
 /** The session cookie's name, as Better Auth sets it for this origin. */
@@ -147,7 +153,12 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
     .bind(token, new Date().toISOString())
     .first<{ user_id: string; name: string; github_ids: string | null }>();
   if (!row || !hasOwnerAccount(config, row.github_ids)) return null;
-  return Object.freeze({ kind: 'person', id: `person:${row.user_id}`, userId: row.user_id, name: displayName(row.name, 'owner') });
+  return Object.freeze({
+    kind: 'person',
+    id: `person:${row.user_id}`,
+    userId: row.user_id,
+    name: displayName(row.name, 'owner'),
+  });
 }
 
 async function verifyAgentToken(db: D1Database, config: SignInConfig, token: string): Promise<AgentPrincipal | null> {

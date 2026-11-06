@@ -21,7 +21,10 @@ export interface ProjectSummary {
 /** Why a change to access records was refused. */
 export class AccessRefused extends Error {
   override name = 'AccessRefused';
-  constructor(readonly code: 'invalid_request' | 'unknown_project' | 'name_taken' | 'not_found', message: string) {
+  constructor(
+    readonly code: 'invalid_request' | 'unknown_project' | 'name_taken' | 'not_found',
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -38,8 +41,13 @@ export function parseGrants(value: unknown): ProjectGrant[] {
     const grant = item as { projectId?: unknown; access?: unknown } | null;
     const projectId = grant?.projectId;
     const access = grant?.access;
-    if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 255 || seen.has(projectId)
-      || (access !== 'read' && access !== 'write')) {
+    if (
+      typeof projectId !== 'string' ||
+      projectId.length === 0 ||
+      projectId.length > 255 ||
+      seen.has(projectId) ||
+      (access !== 'read' && access !== 'write')
+    ) {
       throw new AccessRefused('invalid_request', 'each grant names a project once, with access read or write');
     }
     seen.add(projectId);
@@ -48,7 +56,9 @@ export function parseGrants(value: unknown): ProjectGrant[] {
 }
 
 export async function listProjects(db: D1Database): Promise<ProjectSummary[]> {
-  const { results } = await db.prepare('SELECT id, key, name FROM projects ORDER BY key LIMIT 500').all<ProjectSummary>();
+  const { results } = await db
+    .prepare('SELECT id, key, name FROM projects ORDER BY key LIMIT 500')
+    .all<ProjectSummary>();
   return results;
 }
 
@@ -59,21 +69,29 @@ async function assertProjectsExist(db: D1Database, grants: readonly ProjectGrant
     .prepare(`SELECT count(*) AS found FROM projects WHERE id IN (SELECT value FROM json_each(?))`)
     .bind(JSON.stringify(ids))
     .first<{ found: number }>();
-  if (row?.found !== ids.length) throw new AccessRefused('unknown_project', 'a grant names a project that does not exist');
+  if (row?.found !== ids.length)
+    throw new AccessRefused('unknown_project', 'a grant names a project that does not exist');
 }
 
 /**
  * Replaces the projects an agent may reach for a person, in one batch. Called
  * when the person approves the agent, before its consent is recorded.
  */
-export async function setAgentGrants(db: D1Database, userId: string, clientId: string, grants: readonly ProjectGrant[]): Promise<void> {
+export async function setAgentGrants(
+  db: D1Database,
+  userId: string,
+  clientId: string,
+  grants: readonly ProjectGrant[],
+): Promise<void> {
   await assertProjectsExist(db, grants);
   const now = new Date().toISOString();
   await db.batch([
     db.prepare('DELETE FROM access_agent_grants WHERE user_id = ? AND client_id = ?').bind(userId, clientId),
     ...grants.map((grant) =>
       db
-        .prepare('INSERT INTO access_agent_grants (user_id, client_id, project_id, access, created_at) VALUES (?, ?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO access_agent_grants (user_id, client_id, project_id, access, created_at) VALUES (?, ?, ?, ?, ?)',
+        )
         .bind(userId, clientId, grant.projectId, grant.access, now),
     ),
   ]);
@@ -99,7 +117,14 @@ export async function listAgents(db: D1Database, userId: string): Promise<Connec
        WHERE k.user_id = ? GROUP BY k.client_id ORDER BY approved_at DESC LIMIT 200`,
     )
     .bind(userId)
-    .all<{ client_id: string; name: string | null; uri: string | null; scopes: string; approved_at: string; grants: string }>();
+    .all<{
+      client_id: string;
+      name: string | null;
+      uri: string | null;
+      scopes: string;
+      approved_at: string;
+      grants: string;
+    }>();
   return results.map((row) => ({
     clientId: row.client_id,
     name: row.name,
@@ -123,7 +148,9 @@ export async function revokeAgent(db: D1Database, userId: string, clientId: stri
       .prepare('UPDATE auth_oauth_access_token SET revoked = ? WHERE user_id = ? AND client_id = ? AND revoked IS NULL')
       .bind(now, userId, clientId),
     db
-      .prepare('UPDATE auth_oauth_refresh_token SET revoked = ? WHERE user_id = ? AND client_id = ? AND revoked IS NULL')
+      .prepare(
+        'UPDATE auth_oauth_refresh_token SET revoked = ? WHERE user_id = ? AND client_id = ? AND revoked IS NULL',
+      )
       .bind(now, userId, clientId),
     db.prepare('DELETE FROM auth_oauth_consent WHERE user_id = ? AND client_id = ?').bind(userId, clientId),
   ]);
@@ -155,7 +182,9 @@ export async function createServiceCredential(
   try {
     await db.batch([
       db
-        .prepare('INSERT INTO access_service_credentials (id, name, secret_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO access_service_credentials (id, name, secret_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?)',
+        )
         .bind(id, name, hex(await sha256(secret)), input.createdBy, createdAt),
       ...grants.map((grant) =>
         db

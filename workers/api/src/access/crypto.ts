@@ -46,6 +46,8 @@ export async function verifyCookieSignature(value: string, signature: string, se
   } catch {
     return false;
   }
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'verify',
+  ]);
   return crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(value));
 }

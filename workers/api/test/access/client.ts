@@ -101,7 +101,9 @@ export class Browser {
     expect(`${github.origin}${github.pathname}`).toBe(GITHUB_AUTHORIZE);
     expect(github.searchParams.get('redirect_uri')).toBe(`${ORIGIN}/api/auth/callback/github`);
     const state = github.searchParams.get('state') ?? '';
-    const back = await this.fetch(`/api/auth/callback/github?code=${codeFor(githubId)}&state=${encodeURIComponent(state)}`);
+    const back = await this.fetch(
+      `/api/auth/callback/github?code=${codeFor(githubId)}&state=${encodeURIComponent(state)}`,
+    );
     return locationOf(back);
   }
 
@@ -129,9 +131,14 @@ export async function createProject(name = 'Example'): Promise<string> {
 
 async function pkce(): Promise<{ verifier: string; challenge: string }> {
   const verifier = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
-    .replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
+    .replace(/\+/gu, '-')
+    .replace(/\//gu, '_')
+    .replace(/=+$/u, '');
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  const challenge = btoa(String.fromCharCode(...digest)).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
+  const challenge = btoa(String.fromCharCode(...digest))
+    .replace(/\+/gu, '-')
+    .replace(/\//gu, '_')
+    .replace(/=+$/u, '');
   return { verifier, challenge };
 }
 
@@ -148,18 +155,22 @@ export class McpClient {
   clientId = '';
 
   async register(name = 'Example Agent', scope = 'tasks:read tasks:write offline_access'): Promise<void> {
-    const response = await call('/api/auth/oauth2/register', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        client_name: name,
-        redirect_uris: [REDIRECT_URI],
-        token_endpoint_auth_method: 'none',
-        grant_types: ['authorization_code', 'refresh_token'],
-        response_types: ['code'],
-        scope,
-      }),
-    }, this.address);
+    const response = await call(
+      '/api/auth/oauth2/register',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          client_name: name,
+          redirect_uris: [REDIRECT_URI],
+          token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+          scope,
+        }),
+      },
+      this.address,
+    );
     expect(response.status).toBe(201);
     const body = await response.json<{ client_id: string }>();
     this.clientId = body.client_id;
@@ -186,11 +197,15 @@ export class McpClient {
   }
 
   async token(form: Record<string, string>): Promise<Response> {
-    return call('/api/auth/oauth2/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-      body: new URLSearchParams({ client_id: this.clientId, ...form }).toString(),
-    }, this.address);
+    return call(
+      '/api/auth/oauth2/token',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+        body: new URLSearchParams({ client_id: this.clientId, ...form }).toString(),
+      },
+      this.address,
+    );
   }
 
   async exchange(code: string, verifier: string): Promise<Tokens> {
