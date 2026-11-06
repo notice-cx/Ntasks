@@ -291,7 +291,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         signal,
       );
       if (!isRecord(page) || !Array.isArray(page.events) || typeof page.lastSeq !== 'number') {
-        throw new Error('The change list could not be read.');
+        throw new UnreadableAnswer('The change list could not be read.');
       }
       return page as unknown as ChangesPage;
     },
