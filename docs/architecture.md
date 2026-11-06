@@ -4,11 +4,11 @@ Ntasks is one Cloudflare Worker and one task store. A **Worker** is a program
 Cloudflare runs on its servers in answer to web requests. The **task store**
 is a Durable Object: a single Cloudflare object with its own SQLite database,
 which holds every task and runs the task engine beside it. Sign-in keeps its
-data in **D1**, Cloudflare's SQLite database service. The Worker will answer the API, the MCP endpoint
-that AI agents connect to and sign-in; Cloudflare serves the web app's files
-from the same deployment. This page shows how the parts fit, the limits the
-design keeps to, and the rules every change keeps. Read
-[Concepts](concepts.md) first for the task model itself.
+data in **D1**, Cloudflare's SQLite database service. The Worker answers the
+API and the MCP endpoint that AI agents connect to, and will answer sign-in;
+Cloudflare serves the web app's files from the same deployment. This page
+shows how the parts fit, the limits the design keeps to, and the rules every
+change keeps. Read [Concepts](concepts.md) first for the task model itself.
 
 ## The parts
 
@@ -27,13 +27,13 @@ flowchart LR
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts) | The health check at `/healthz`; signs each API request in and hands it to the task store |
+| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts) | The health check at `/healthz`; signs each API request in and hands it to the task store, and until sign-in is built refuses every one |
 | Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds the tasks, applies its schema and answers repeated reads from memory |
 | Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | A placeholder page |
-| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)) |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/) | The read tools and the HTTP reads ([The API](api.md)); the write tools are not built yet |
 | Sign-in | | Not yet |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
