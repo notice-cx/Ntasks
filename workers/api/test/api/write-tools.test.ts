@@ -985,6 +985,35 @@ describe('request_human_approval', () => {
     expect((await current(project, id)).dependencies).toHaveLength(1);
   });
 
+  it('opens a new approval when only the start of an open one asks the same', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const start = `Delete the old backups ${'x'.repeat(377)}`;
+    expect(start).toHaveLength(400);
+    const { created } = await engine.writeTask(
+      project.id,
+      id,
+      { expectedVersion: 1, requestApproval: { reason: `${start}\nAnd the logs older than a year.` } },
+      OWNER,
+    );
+    const ask = (reason: string) =>
+      write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', {
+        project: project.id,
+        task: id,
+        reason,
+      });
+    const asked = await ask(start);
+    expect(asked).toMatchObject({ created: true, approval: { reason: start } });
+    expect(asked.approval.id).not.toBe(created[0]!.id);
+    // A request sent again with Windows line ends asks the same.
+    const first = await ask('Rotate the key.\r\nThen sign everyone out.');
+    expect(await ask('Rotate the key.\nThen sign everyone out.')).toMatchObject({
+      created: false,
+      approval: { id: first.approval.id },
+    });
+    expect((await current(project, id)).dependencies).toHaveLength(3);
+  });
+
   it('refuses a closed task', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);

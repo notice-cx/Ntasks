@@ -403,10 +403,17 @@ export const SOURCE_METADATA_KEYS: readonly string[] = Object.freeze([
 /** The longest reason an approval asks with. */
 export const GATE_REASON_MAX = 400;
 
-/** What an approval asks, from its gate's description: the text after
- * "Reason:" in a gate imported from Beads, else the whole description. */
-export function gateReason(description: string): string | null {
+/** Everything an approval asks, from its gate's description: the text after
+ * "Reason:" in a gate imported from Beads, else the whole description, with
+ * its line ends made alike and the spaces around it taken off. Two requests
+ * ask the same only when these are equal. */
+export function askedOf(description: string): string | null {
   const imported = /(?:^|\n)Reason:[ \t]*([\s\S]+)$/u.exec(description);
-  const reason = (imported ? (imported[1] ?? '') : description).trim();
-  return reason === '' ? null : reason.slice(0, GATE_REASON_MAX);
+  const reason = (imported ? (imported[1] ?? '') : description).replace(/\r\n?/gu, '\n').trim();
+  return reason === '' ? null : reason;
+}
+
+/** What an approval asks, as an answer shows it: at most GATE_REASON_MAX characters. */
+export function gateReason(description: string): string | null {
+  return askedOf(description)?.slice(0, GATE_REASON_MAX) ?? null;
 }
