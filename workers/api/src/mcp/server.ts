@@ -4,10 +4,12 @@
  * request, around the sender that request signed in as.
  */
 import { SCOPES, type Principal } from '../auth.ts';
+import { Refused } from '../refused.ts';
 import type { McpServer, McpTool } from './protocol.ts';
 import { McpToolError } from './protocol.ts';
 import { READ, READ_TOOLS, schema, type TaskTool, type ToolContext } from './read-tools.ts';
 import { TASK_GUIDE_TOOL, taskGuide, taskInstructions } from './guide.ts';
+import { objectsFromText, staleClientLine, WRITE_TOOLS } from './write-tools.ts';
 
 export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
 
@@ -44,8 +46,8 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
   annotations: READ,
 });
 
-/** The tools in the order tools/list returns them. */
-const TASK_TOOLS: readonly TaskTool[] = READ_TOOLS;
+/** The tools in the order tools/list returns them, which is NoticeOS's order. */
+const TASK_TOOLS: readonly TaskTool[] = [...READ_TOOLS, ...WRITE_TOOLS];
 export const MCP_TOOLS: readonly McpTool[] = Object.freeze([
   LIST_WORKSPACES,
   GET_TASK_GUIDE,
@@ -102,7 +104,28 @@ export function taskServer(context: ToolContext): McpServer {
             `where you have ${access.join(', ') || 'no access'}; list_workspaces shows what you may do in each.`,
         );
       }
-      return tool.run(context, rest);
+      return runTool(tool, context, rest);
     },
   });
+}
+
+/**
+ * Runs a tool, its refusals becoming answers the model reads. An object
+ * argument that arrived as text is read as JSON, and the reply or refusal
+ * then opens by saying the client's copy of the tools is out of date.
+ */
+async function runTool(tool: TaskTool, context: ToolContext, args: Record<string, unknown>): Promise<unknown> {
+  const read = objectsFromText(tool.inputSchema, args);
+  const sent = [...read.text, ...read.unread];
+  const line = sent.length === 0 ? null : staleClientLine(sent, (await taskGuide(OFFERED)).version);
+  let reply: unknown;
+  try {
+    reply = await tool.run(context, read.args);
+  } catch (error) {
+    if (error instanceof Refused || error instanceof McpToolError) {
+      throw new McpToolError(line === null ? error.message : `${line}. ${error.message}`);
+    }
+    throw error;
+  }
+  return line === null ? reply : { staleClient: line, ...(reply as Record<string, unknown>) };
 }

@@ -3,7 +3,7 @@
 // its MCP endpoint and HTTP routes.
 import type { TaskEngine } from '@ntasks/domain';
 import { serveApi } from '../../src/api.ts';
-import { SCOPES, type Authenticator, type Principal } from '../../src/auth.ts';
+import { SCOPES, type Authenticator, type Principal, type ProjectAccess } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
 import type { Meter } from '../../src/store/sqlite.ts';
 import { createWorker } from '../../src/worker.ts';
@@ -19,6 +19,24 @@ export const READER: Principal = Object.freeze({
   projects: 'all',
 });
 export const NOBODY: Principal = Object.freeze({ id: 'principal-none', name: 'agent-z', scopes: [], projects: 'all' });
+
+/** A sender who may read and change every project. */
+export const WRITER: Principal = Object.freeze({
+  id: 'principal-writer',
+  name: 'agent-w',
+  scopes: [SCOPES.read, SCOPES.write],
+  projects: 'all',
+});
+
+/** A sender with both scopes, granted these projects, each for reading or for writing too. */
+export function granted(grants: Readonly<Record<string, ProjectAccess>>, name = 'agent-g'): Principal {
+  return Object.freeze({
+    id: `principal-${name}`,
+    name,
+    scopes: [SCOPES.read, SCOPES.write],
+    projects: new Map(Object.entries(grants)),
+  });
+}
 
 /** A sender granted only these projects, for reading. */
 export function grantedOnly(...projectIds: readonly string[]): Principal {
@@ -49,12 +67,22 @@ export interface TestApi {
 }
 
 /** The API as the task store answers it for `principal`, on the store's
- * storage, with a clock the test sets and its statements counted in `meter`. */
-export function api(options: { principal?: Principal; now?: () => string; meter?: Meter } = {}): TestApi {
+ * storage, with a clock the test sets and its statements counted in `meter`.
+ * `wrap` puts a test's own engine around the store's, to stage a race. */
+export function api(
+  options: {
+    principal?: Principal;
+    now?: () => string;
+    meter?: Meter;
+    engine?: TaskEngine;
+    wrap?: (engine: TaskEngine) => TaskEngine;
+  } = {},
+): TestApi {
   const now = options.now ?? (() => new Date().toISOString());
-  const engine = createEngine(storeDatabase(options.meter), { now });
+  const engine = options.engine ?? createEngine(storeDatabase(options.meter), { now });
+  const served = options.wrap?.(engine) ?? engine;
   const principal = options.principal ?? READER;
-  return { engine, fetch: (request) => serveApi(request, principal, { engine, workspace: WORKSPACE, now }) };
+  return { engine, fetch: (request) => serveApi(request, principal, { engine: served, workspace: WORKSPACE, now }) };
 }
 
 /** A JSON-RPC reply to a tools/call, with the fields the tests read. */
@@ -97,6 +125,9 @@ export async function read<T = Record<string, unknown>>(
   if (answer.refused !== null) throw new Error(`${name} refused: ${answer.refused}`);
   return answer.value;
 }
+
+/** Calls a write tool that must answer; fails the test with its refusal otherwise. */
+export const write = read;
 
 /** Calls a tool that must refuse; returns the sentence. */
 export async function refusal(target: TestApi, name: string, args: Record<string, unknown>): Promise<string> {

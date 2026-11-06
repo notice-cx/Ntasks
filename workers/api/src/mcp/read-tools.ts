@@ -8,13 +8,12 @@ import {
   isTaskType,
   TASK_LIMITS,
   TASK_STATUSES,
-  type Project,
-  type Task,
   type TaskEngine,
   type TaskStatus,
   type TaskType,
 } from '@ntasks/domain';
 import { reachable, type Principal } from '../auth.ts';
+import { projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, type Workspace } from '../service.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
 import {
@@ -28,7 +27,7 @@ import {
   taskArg,
   textArg,
   type Args,
-} from './args.ts';
+} from '../args.ts';
 
 export interface ToolContext {
   readonly engine: TaskEngine;
@@ -49,44 +48,13 @@ export interface TaskTool {
 
 export const READ = Object.freeze({ readOnlyHint: true, idempotentHint: true, openWorldHint: false });
 
-const PROJECT = { type: 'string', description: 'The projectId from list_projects.' };
-const TASK = { type: 'string', description: 'The task id, such as abc-1x2.' };
+export const PROJECT = Object.freeze({ type: 'string', description: 'The projectId from list_projects.' });
+export const TASK = Object.freeze({ type: 'string', description: 'The task id, such as abc-1x2.' });
 /** The most tasks one list_tasks call returns when it names no limit. */
 const PAGE = 50;
 
 export function schema(properties: Record<string, unknown>, required: readonly string[] = []): Record<string, unknown> {
   return { type: 'object', properties, required, additionalProperties: false };
-}
-
-const projectNamed = (project: Project) => `projectId ${project.id} (${project.name})`;
-
-/** The project a call names, among those the sender reaches, or a refusal
- * that says how to find one. */
-export async function projectOf({ engine, principal }: ToolContext, projectId: string): Promise<Project> {
-  const project = reachable(principal, await engine.listProjects()).find((candidate) => candidate.id === projectId);
-  return (
-    project ??
-    refuse(
-      `refused: projectId ${projectId} names no project in this workspace; list_projects lists the current projectIds.`,
-    )
-  );
-}
-
-/** The task a call names, or a refusal that says where to look: the project
- * whose prefix the id starts with, when that is another one. */
-export async function taskOf({ engine, principal }: ToolContext, project: Project, taskId: string): Promise<Task> {
-  const task = await engine.getTask(project.id, taskId);
-  if (task) return task;
-  const prefix = taskId.slice(0, taskId.indexOf('-'));
-  const owner =
-    prefix === project.prefix
-      ? undefined
-      : reachable(principal, await engine.listProjects()).find((candidate) => candidate.prefix === prefix);
-  return owner
-    ? refuse(
-        `refused: ${taskId} is not in ${projectNamed(project)}, whose tasks start ${project.prefix}-; tasks with prefix ${owner.prefix} are in ${projectNamed(owner)}.`,
-      )
-    : refuse(`refused: ${taskId} is not a task in ${projectNamed(project)}; list_tasks lists its tasks.`);
 }
 
 export const READ_TOOLS: readonly TaskTool[] = Object.freeze([

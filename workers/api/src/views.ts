@@ -6,14 +6,9 @@
  * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
  */
 import type { Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
+import { NOTICEOS_METADATA as NOTICEOS, TASK_CHANGE_CLASSES } from './noticeos-fields.ts';
 
-/** NoticeOS's metadata keys for the fields its tools return as their own. */
-const NOTICEOS = Object.freeze({
-  card: 'noticeos_card',
-  cardShipped: 'noticeos_card_shipped',
-  changeClass: 'noticeos_change_class',
-});
-const CHANGE_CLASSES: readonly string[] = ['content-data', 'copy', 'template', 'feature', 'infra'];
+const CHANGE_CLASSES: readonly string[] = TASK_CHANGE_CLASSES;
 
 function objectOrNull(value: Json | undefined): JsonObject | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : null;

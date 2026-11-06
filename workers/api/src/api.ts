@@ -21,6 +21,8 @@ import { taskServer } from './mcp/server.ts';
 import type { Workspace } from './service.ts';
 
 export const MCP_PATH = '/api/mcp';
+/** The largest MCP message: a create_tasks call filing many long tasks fits. */
+const MCP_BYTES = 256 * 1024;
 
 export interface ApiContext {
   readonly engine: TaskEngine;
@@ -61,7 +63,7 @@ export async function serveApi(request: Request, principal: Principal, context: 
   const { engine, workspace, now } = context;
   if (url.pathname === MCP_PATH) {
     if (url.search) return json({ error: 'invalid_request', detail: 'the MCP endpoint takes no query' }, 400);
-    return serveMcp(request, taskServer({ engine, workspace, principal, now }));
+    return serveMcp(request, taskServer({ engine, workspace, principal, now }), { maxBytes: MCP_BYTES });
   }
   const route = routeOf(url.pathname);
   if (!route) return json({ error: 'not_found' }, 404);
