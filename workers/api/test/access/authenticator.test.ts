@@ -46,15 +46,41 @@ describe('the authenticator the API layer calls', () => {
     expect(await request.text()).toBe('{}');
   });
 
-  it('signs nobody in without a valid credential, and challenges with the resource metadata', async () => {
+  it('challenges a request with no credential, naming the resource metadata', async () => {
+    const request = new Request(`${ORIGIN}/api/mcp`, { method: 'POST', body: '{}' });
+
+    expect(await authenticator.authenticate(request)).toBeNull();
+    const challenge = authenticator.challenge(request);
+    expect(challenge.status).toBe(401);
+    expect(challenge.headers.get('www-authenticate')).toBe(
+      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="tasks:read tasks:write"`,
+    );
+  });
+
+  it('challenges an invalid token as invalid_token', async () => {
     const request = bearer('not-a-real-token-at-all');
 
     expect(await authenticator.authenticate(request)).toBeNull();
     const challenge = authenticator.challenge(request);
     expect(challenge.status).toBe(401);
-    expect(challenge.headers.get('www-authenticate')).toContain(
-      `resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/api/mcp"`,
-    );
+    expect(challenge.headers.get('www-authenticate')).toContain('error="invalid_token"');
+  });
+
+  it('refuses a cookie-signed change from another site with 403', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const request = new Request(`${ORIGIN}/api/tasks`, {
+      method: 'POST',
+      headers: {
+        cookie: `__Secure-ntasks.session_token=${browser.cookie('__Secure-ntasks.session_token')}`,
+        origin: 'https://elsewhere.example.com',
+      },
+    });
+
+    expect(await authenticator.authenticate(request)).toBeNull();
+    const challenge = authenticator.challenge(request);
+    expect(challenge.status).toBe(403);
+    expect(await challenge.json()).toEqual({ error: 'cross_site_request' });
   });
 
   it('answers 503 while sign-in is off', async () => {

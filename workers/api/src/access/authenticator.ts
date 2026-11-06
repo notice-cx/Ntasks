@@ -4,10 +4,8 @@
  * It reads only the request's headers, never its body, which the MCP
  * endpoint reads afterwards.
  */
-import { signInConfig } from './config.ts';
 import { actorOf, type Principal } from './principal.ts';
-import { bearerChallenge } from './protocol.ts';
-import { verifyRequest, type VerifierEnv } from './verify.ts';
+import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
 /** The OAuth scope names agents ask for (AGENT_SCOPES in protocol.ts). */
 const READ = 'tasks:read';
@@ -45,23 +43,26 @@ function scopesOf(principal: Principal): readonly string[] {
   return access.has('read') ? [READ] : [];
 }
 
+type Refusal = Extract<Verification, { ok: false }>;
+
 export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
+  // Why authenticate refused each request, for challenge to answer with: an
+  // invalid token, a cross-site change or sign-in being off each answer
+  // differently. Keyed by the request object, and weakly, so one request's
+  // refusal never reaches another and goes when the request does.
+  const refusals = new WeakMap<Request, Refusal>();
   return Object.freeze({
     async authenticate(request: Request): Promise<SignedIn | null> {
       const verification = await verifyRequest(request, env);
-      if (!verification.ok) return null;
+      if (!verification.ok) {
+        refusals.set(request, verification);
+        return null;
+      }
       const { principal } = verification;
       return Object.freeze({ id: principal.id, name: actorOf(principal).name, scopes: scopesOf(principal), principal });
     },
-    challenge(): Response {
-      const config = signInConfig(env);
-      if (!config) {
-        return Response.json(
-          { error: 'sign_in_not_configured' },
-          { status: 503, headers: { 'cache-control': 'no-store' } },
-        );
-      }
-      return bearerChallenge(config.origin);
+    challenge(request: Request): Response {
+      return refusal(refusals.get(request) ?? { ok: false, reason: 'unauthenticated' }, env);
     },
   });
 }
