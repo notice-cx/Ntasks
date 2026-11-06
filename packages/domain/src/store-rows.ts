@@ -1,0 +1,177 @@
+/**
+ * The task store's rows, table by table, as an import writes them and a
+ * verifier reads them back. The column lists are the tables' columns in
+ * workers/api/src/store/migrations; an import from Beads (tools/migrate)
+ * builds these rows, and the store loads them with these statements.
+ */
+
+/** The tables that hold tasks, in an order their foreign keys accept. */
+export const STORE_TABLES = ['projects', 'tasks', 'task_labels', 'task_edges', 'task_comments', 'task_events'] as const;
+export type StoreTable = (typeof STORE_TABLES)[number];
+
+export interface ProjectRow {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly created_at: string;
+}
+
+export interface TaskRow {
+  readonly id: string;
+  readonly project_id: string;
+  readonly parent_id: string | null;
+  readonly type: string;
+  readonly await_type: string | null;
+  readonly status: string;
+  readonly priority: number;
+  readonly title: string;
+  readonly description: string;
+  readonly acceptance: string;
+  readonly assignee: string | null;
+  readonly assignee_model: string | null;
+  readonly defer_until: string | null;
+  readonly due_at: string | null;
+  readonly choices: string | null;
+  readonly choice: string | null;
+  readonly metadata: string;
+  readonly filed_by: string | null;
+  readonly filed_model: string | null;
+  readonly close_reason: string | null;
+  readonly resolution: string | null;
+  readonly duplicate_of: string | null;
+  readonly closed_by: string | null;
+  readonly closed_model: string | null;
+  readonly version: number;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly started_at: string | null;
+  readonly closed_at: string | null;
+}
+
+export interface LabelRow {
+  readonly task_id: string;
+  readonly label: string;
+}
+
+export interface EdgeRow {
+  readonly task_id: string;
+  readonly depends_on_id: string;
+  readonly type: string;
+  readonly created_at: string;
+  readonly created_by: string | null;
+}
+
+export interface CommentRow {
+  readonly id: string;
+  readonly task_id: string;
+  readonly author: string;
+  readonly text: string;
+  readonly created_at: string;
+}
+
+export interface EventRow {
+  /** Kept as given, so an imported history keeps its order. */
+  readonly seq: number;
+  readonly task_id: string;
+  readonly project_id: string;
+  readonly version: number;
+  readonly kind: string;
+  readonly actor: string;
+  readonly model: string | null;
+  readonly at: string;
+  /** JSON text. */
+  readonly changes: string;
+}
+
+/** Every row of the tables that hold tasks. A task's parent and the task it duplicates come before it. */
+export interface StoreRows {
+  readonly projects: readonly ProjectRow[];
+  readonly tasks: readonly TaskRow[];
+  readonly task_labels: readonly LabelRow[];
+  readonly task_edges: readonly EdgeRow[];
+  readonly task_comments: readonly CommentRow[];
+  readonly task_events: readonly EventRow[];
+}
+
+type RowOf<T extends StoreTable> = StoreRows[T][number];
+
+/** Each table's columns, in the order the statements below name them. */
+export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<T> & string)[] } = Object.freeze({
+  projects: ['id', 'key', 'name', 'prefix', 'created_at'],
+  tasks: [
+    'id',
+    'project_id',
+    'parent_id',
+    'type',
+    'await_type',
+    'status',
+    'priority',
+    'title',
+    'description',
+    'acceptance',
+    'assignee',
+    'assignee_model',
+    'defer_until',
+    'due_at',
+    'choices',
+    'choice',
+    'metadata',
+    'filed_by',
+    'filed_model',
+    'close_reason',
+    'resolution',
+    'duplicate_of',
+    'closed_by',
+    'closed_model',
+    'version',
+    'created_at',
+    'updated_at',
+    'started_at',
+    'closed_at',
+  ],
+  task_labels: ['task_id', 'label'],
+  task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],
+  task_comments: ['id', 'task_id', 'author', 'text', 'created_at'],
+  task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
+});
+
+/** The order a table's rows are read back in. */
+const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
+  projects: 'id',
+  tasks: 'id',
+  task_labels: 'task_id, label',
+  task_edges: 'task_id, depends_on_id',
+  task_comments: 'id',
+  task_events: 'seq',
+});
+
+export type StoreValue = string | number | null;
+
+/** One parameterized INSERT: the column names are fixed here, and every value is bound. */
+export interface StoreStatement {
+  readonly sql: string;
+  readonly values: readonly StoreValue[];
+}
+
+export function isStoreTable(value: unknown): value is StoreTable {
+  return typeof value === 'string' && (STORE_TABLES as readonly string[]).includes(value);
+}
+
+/** One INSERT per row, table by table in STORE_TABLES' order. */
+export function insertStatements(rows: StoreRows): StoreStatement[] {
+  const statements: StoreStatement[] = [];
+  for (const table of STORE_TABLES) {
+    const columns = STORE_COLUMNS[table] as readonly string[];
+    const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
+    for (const row of rows[table] as readonly object[] as readonly Readonly<Record<string, StoreValue>>[]) {
+      statements.push({ sql, values: columns.map((column) => row[column] ?? null) });
+    }
+  }
+  return statements;
+}
+
+/** The query that reads every row of a table, in a fixed order. */
+export function selectAllSql(table: StoreTable): string {
+  return `SELECT ${(STORE_COLUMNS[table] as readonly string[]).join(', ')} FROM ${table} ORDER BY ${STORE_ORDER[table]}`;
+}

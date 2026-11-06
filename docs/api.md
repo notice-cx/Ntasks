@@ -33,9 +33,12 @@ reading or for writing too. Lists and the change feed leave the other
 projects out, and a request that names one gets the same answer as a project
 that does not exist, so a sender learns nothing of projects it cannot reach.
 
-Sign-in is being built. Until it is, the Worker answers `401` with
-`{"error":"sign_in_required"}` to every request under `/api`, so a deployment
-serves no task data.
+The Worker signs every request in as [Sign-in](sign-in.md) describes: the
+owner's browser session, an agent's OAuth access token, or a service
+credential. A request with none, or with one that is invalid, revoked or
+expired, gets `401` with a bearer challenge that tells an MCP client where to
+sign in. The sign-in routes under `/api/auth` and `/api/access` answer as
+[Sign-in](sign-in.md#routes) describes.
 
 ## The workspace
 
@@ -88,7 +91,7 @@ fails instead of being ignored.
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer; `writable` is `false` until writes are built |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, and `closedSince`. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
@@ -106,9 +109,9 @@ change in the installation. `GET /api/changes?after=N` returns the events
 after `N`, oldest first, and `lastSeq`, the number to ask after next. When
 nothing changed it returns no events and the same `lastSeq`.
 
-This is the cheapest read the API has. A client that shows a board asks for
-the changes since its last read, and reloads the board only when an event
-arrives.
+This is the cheapest read the API has. A client that shows a board starts
+from the board's own `lastSeq`, asks for the changes after it, and reloads
+the board only when an event arrives.
 
 ## What a read costs
 

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import type { TasksApi } from '@/api/client';
+import { retryRead, type TasksApi } from '@/api/client';
 import { TasksApiProvider } from '@/api/context';
 import { EmptyState, PageSkeleton } from '@/components/surface';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
 export const SOURCE_URL = 'https://github.com/notice-cx/Ntasks';
 
 export function newQueryClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true } } });
+  return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true, retry: retryRead } } });
 }
 
 /** The app: its providers and its pages. The router is the caller's, so tests can start at any address. */
