@@ -25,12 +25,11 @@ servers in answer to web requests, and keeps its tasks in a **Durable
 Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
 designed to fit Cloudflare's free plan.
 
-<img src="docs/images/what-ntasks-does.svg"
-  alt="Diagram of you and two AI agents sharing one task list with four columns: Waiting, Ready, In progress and Done. Agent 1 takes the ready task Write the plan and finishes it. Build the page, which waited on it, becomes ready, and Agent 2 takes it. Publish the site waits for you until you approve it, then becomes ready. A history line records each change and who made it.">
+<img src="docs/images/what-ntasks-does.svg" width="100%"
+  alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
 
-You and your AI agents share one task list: an agent takes a ready task, a
-task that needs you waits for your answer, and every change is recorded with
-who made it.
+Your AI agents keep taking ready work while a task that needs your decision
+waits for you, and the work it blocks moves on once you answer.
 
 ## Status
 

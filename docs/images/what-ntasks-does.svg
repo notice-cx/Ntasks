@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 388" width="800" height="388" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560" width="800" height="560" role="img" aria-labelledby="title desc">
   <title id="title">What Ntasks does</title>
-  <desc id="desc">You and two AI agents share one task list with four columns: Waiting, Ready, In progress and Done. Agent 1 takes the ready task "Write the plan" and finishes it. "Build the page", which waited on it, becomes ready, and Agent 2 takes it. "Publish the site" waits for you; once you approve it, it becomes ready. The history records each change and who made it.</desc>
+  <desc id="desc">One task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while "Choose sign-in" waits for your decision and "Build sign-in" is blocked on it. When you decide, "Build sign-in" moves to Ready and Claude takes it. A history line records each change and who made it.</desc>
   <defs>
+    <!-- Claude's mark: the "Claude" icon from Simple Icons 16.36.0 (CC0-1.0), in its brand colour. -->
+    <path id="claude" fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/>
     <g id="person" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
       <circle cx="0" cy="-4" r="3.6"/>
       <path d="M-6.5 7 A6.5 6.5 0 0 1 6.5 7"/>
@@ -13,171 +15,213 @@
       <circle cx="-3" cy="1.5" r="1.3" fill="currentColor" stroke="none"/>
       <circle cx="3" cy="1.5" r="1.3" fill="currentColor" stroke="none"/>
     </g>
+    <g id="lock" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <rect x="-6" y="-2" width="12" height="9" rx="2"/>
+      <path d="M-3.5 -2 V-4.5 A3.5 3.5 0 0 1 3.5 -4.5 V-2"/>
+    </g>
   </defs>
   <style>
     svg {
       --bg: #ffffff; --card: #f6f8fa; --line: #d0d7de; --edge: #818b98;
-      --text: #1f2328; --muted: #59636e;
-      --blue: #0969da; --blue-soft: #ddf4ff; --green: #1a7f37; --green-soft: #dafbe1;
+      --text: #1f2328; --muted: #59636e; --blue: #0969da;
+      --amber: #9a6700; --amber-line: #bf8700; --amber-soft: #fff8c5;
+      --red: #cf222e;
     }
     @media (prefers-color-scheme: dark) {
       svg {
         --bg: #0d1117; --card: #161b22; --line: #3d444d; --edge: #768390;
-        --text: #e6edf3; --muted: #9198a1;
-        --blue: #4493f8; --blue-soft: #121d2f; --green: #3fb950; --green-soft: #12261e;
+        --text: #e6edf3; --muted: #9198a1; --blue: #4493f8;
+        --amber: #d29922; --amber-line: #9e6a03; --amber-soft: #272115;
+        --red: #f85149;
       }
     }
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: var(--text); }
     .panel { fill: var(--bg); stroke: var(--line); }
-    .lead { font-size: 18px; font-weight: 600; }
-    .chip { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
-    .chip-on { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 2; opacity: 0; }
-    .name { font-size: 16px; font-weight: 600; }
+    .chip { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+    .chip-on { fill: none; stroke: var(--blue); stroke-width: 3; opacity: 0; }
+    .you-on { fill: none; stroke: var(--amber-line); stroke-width: 3; opacity: 0; }
+    .name { font-size: 19px; font-weight: 600; }
+    .lead { font-size: 19px; fill: var(--muted); }
     .column { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
-    .head { font-size: 17px; font-weight: 600; }
-    .note { font-size: 14px; fill: var(--muted); }
+    .lane { fill: var(--amber-soft); stroke: var(--amber-line); stroke-width: 1.5; }
+    .head { font-size: 22px; font-weight: 600; }
     .card { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
-    .task { font-size: 16px; font-weight: 600; }
-    .tag { font-size: 14px; font-weight: 600; }
-    .blue { fill: var(--blue); color: var(--blue); }
-    .green { fill: var(--green); color: var(--green); }
+    .card-decision { fill: var(--bg); stroke: var(--amber-line); stroke-width: 2.5; }
+    .card-blocked { fill: none; stroke: var(--red); stroke-width: 2.5; }
+    .task { font-size: 22px; font-weight: 600; }
+    .tag { font-size: 16px; font-weight: 600; }
+    .amber { fill: var(--amber); color: var(--amber); }
+    .red { fill: var(--red); }
+    .red-line { fill: var(--red); stroke: var(--red); }
     .ink { color: var(--text); }
+    .muted { fill: var(--muted); }
+    .c { text-anchor: middle; }
     .timeline { stroke: var(--line); stroke-width: 2; }
-    .event-dot { fill: var(--blue); }
-    .event { font-size: 15px; font-weight: 600; }
+    .dot-agent { fill: var(--blue); }
+    .dot-you { fill: var(--amber-line); }
+    .event { font-size: 16px; font-weight: 600; }
+    .event-task { font-size: 15px; fill: var(--muted); }
+    .quiet { font-size: 17px; fill: var(--muted); }
 
     /* Drawn as the list stands at the end. The animation starts each card
-       where it began and moves it column by column. */
-    .run { animation-duration: 18s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+       where it began and moves it, one change at a time. */
+    .run { animation-duration: 20s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
     .loop { animation-name: loop; animation-timing-function: linear; }
-    #plan { animation-name: plan; }
-    #page { animation-name: page; }
-    #site { animation-name: site; }
-    #plan-agent { animation-name: plan-agent; }
-    #page-after { animation-name: page-after; opacity: 0; }
-    #page-agent { animation-name: page-agent; }
-    #site-waiting { animation-name: site-waiting; opacity: 0; }
-    #site-approved { animation-name: site-approved; }
-    #agent1-on { animation-name: agent1-on; }
+    #docs { animation-name: docs; }
+    #search { animation-name: search; }
+    #choose { animation-name: choose; }
+    #build { animation-name: build; }
+    #docs-agent { animation-name: docs-agent; }
+    #search-agent { animation-name: search-agent; }
+    #choose-needs { animation-name: choose-needs; opacity: 0; }
+    #choose-decided { animation-name: choose-decided; }
+    #build-blocked { animation-name: build-blocked; opacity: 0; }
+    #build-agent { animation-name: build-agent; }
+    #lane-arrow { animation-name: lane-arrow; opacity: 0; }
+    #lane-empty { animation-name: lane-empty; }
+    #claude-on { animation-name: claude-on; }
+    #codex-on { animation-name: codex-on; }
     #you-on { animation-name: you-on; }
-    #agent2-on { animation-name: agent2-on; }
     #event-1 { animation-name: event-1; }
     #event-2 { animation-name: event-2; }
     #event-3 { animation-name: event-3; }
     #event-4 { animation-name: event-4; }
+    #event-5 { animation-name: event-5; }
 
     @keyframes loop { 0% { opacity: 0; } 1.5%, 96% { opacity: 1; } 99.5%, 100% { opacity: 0; } }
-    @keyframes plan { 0%, 13.9% { transform: translate(-388px, 0); } 17.2%, 30.6% { transform: translate(-194px, 0); } 33.9%, 100% { transform: translate(0, 0); } }
-    @keyframes page { 0%, 36.1% { transform: translate(-388px, 0); } 39.4%, 69.4% { transform: translate(-194px, 0); } 72.8%, 100% { transform: translate(0, 0); } }
-    @keyframes site { 0%, 52.8% { transform: translate(-194px, 66px); } 56.1%, 69.4% { transform: translate(0, 66px); } 72.8%, 100% { transform: translate(0, 0); } }
-    @keyframes plan-agent { 0%, 13.9% { opacity: 0; } 15.5%, 100% { opacity: 1; } }
-    @keyframes page-after { 0%, 34% { opacity: 1; } 35.5%, 100% { opacity: 0; } }
-    @keyframes page-agent { 0%, 69.4% { opacity: 0; } 71%, 100% { opacity: 1; } }
-    @keyframes site-waiting { 0%, 51% { opacity: 1; } 52.8%, 100% { opacity: 0; } }
-    @keyframes site-approved { 0%, 52.8% { opacity: 0; } 54.5%, 100% { opacity: 1; } }
-    @keyframes agent1-on { 0%, 12.5% { opacity: 0; } 13.9%, 17.2% { opacity: 1; } 19%, 29% { opacity: 0; } 30.6%, 33.9% { opacity: 1; } 35.5%, 100% { opacity: 0; } }
-    @keyframes you-on { 0%, 48% { opacity: 0; } 50%, 56.1% { opacity: 1; } 58%, 100% { opacity: 0; } }
-    @keyframes agent2-on { 0%, 68% { opacity: 0; } 69.4%, 72.8% { opacity: 1; } 74.5%, 100% { opacity: 0; } }
-    @keyframes event-1 { 0%, 15% { opacity: 0; } 17.2%, 100% { opacity: 1; } }
-    @keyframes event-2 { 0%, 32% { opacity: 0; } 33.9%, 100% { opacity: 1; } }
-    @keyframes event-3 { 0%, 54% { opacity: 0; } 56.1%, 100% { opacity: 1; } }
-    @keyframes event-4 { 0%, 71% { opacity: 0; } 72.8%, 100% { opacity: 1; } }
+    @keyframes docs { 0%, 12.5% { transform: translate(-520px, 0); } 15.5%, 37.5% { transform: translate(-260px, 0); } 40.5%, 100% { transform: translate(0, 0); } }
+    @keyframes search { 0%, 22.5% { transform: translate(-260px, 0); } 25.5%, 100% { transform: translate(0, 0); } }
+    @keyframes choose { 0%, 52% { transform: translate(0, 146px); } 55.5%, 100% { transform: translate(0, 0); } }
+    @keyframes build { 0%, 58% { transform: translate(-260px, 228px); } 61.5%, 70% { transform: translate(-260px, 0); } 73%, 100% { transform: translate(0, 0); } }
+    @keyframes docs-agent { 0%, 13% { opacity: 0; } 15%, 100% { opacity: 1; } }
+    @keyframes search-agent { 0%, 23% { opacity: 0; } 25%, 100% { opacity: 1; } }
+    @keyframes choose-needs { 0%, 49.5% { opacity: 1; } 51%, 100% { opacity: 0; } }
+    @keyframes choose-decided { 0%, 50% { opacity: 0; } 51.5%, 100% { opacity: 1; } }
+    @keyframes build-blocked { 0%, 55.5% { opacity: 1; } 57.5%, 100% { opacity: 0; } }
+    @keyframes build-agent { 0%, 71% { opacity: 0; } 73%, 100% { opacity: 1; } }
+    @keyframes lane-arrow { 0%, 49.5% { opacity: 1; } 51%, 100% { opacity: 0; } }
+    @keyframes lane-empty { 0%, 60% { opacity: 0; } 62%, 100% { opacity: 1; } }
+    @keyframes claude-on { 0%, 11% { opacity: 0; } 12.5%, 15.5% { opacity: 1; } 17%, 36% { opacity: 0; } 37.5%, 40.5% { opacity: 1; } 42%, 68.5% { opacity: 0; } 70%, 73% { opacity: 1; } 74.5%, 100% { opacity: 0; } }
+    @keyframes codex-on { 0%, 21% { opacity: 0; } 22.5%, 25.5% { opacity: 1; } 27%, 100% { opacity: 0; } }
+    @keyframes you-on { 0%, 48% { opacity: 0; } 49.5%, 55.5% { opacity: 1; } 57%, 100% { opacity: 0; } }
+    @keyframes event-1 { 0%, 15% { opacity: 0; } 16.5%, 100% { opacity: 1; } }
+    @keyframes event-2 { 0%, 25% { opacity: 0; } 26.5%, 100% { opacity: 1; } }
+    @keyframes event-3 { 0%, 40% { opacity: 0; } 41.5%, 100% { opacity: 1; } }
+    @keyframes event-4 { 0%, 53% { opacity: 0; } 54.5%, 100% { opacity: 1; } }
+    @keyframes event-5 { 0%, 72.5% { opacity: 0; } 74%, 100% { opacity: 1; } }
 
     @media (prefers-reduced-motion: reduce) {
       .run { animation: none; }
     }
   </style>
 
-  <rect class="panel" x="0.5" y="0.5" width="799" height="387" rx="14"/>
+  <rect class="panel" x="0.5" y="0.5" width="799" height="559" rx="14"/>
 
   <!-- Who shares the list -->
-  <text class="lead" x="16" y="45">You and your AI agents share one task list</text>
-  <rect class="chip" x="476" y="22" width="76" height="36" rx="18"/>
-  <rect class="chip" x="560" y="22" width="108" height="36" rx="18"/>
-  <rect class="chip" x="676" y="22" width="108" height="36" rx="18"/>
-  <g class="loop run">
-    <rect id="you-on" class="chip-on run" x="476" y="22" width="76" height="36" rx="18"/>
-    <rect id="agent1-on" class="chip-on run" x="560" y="22" width="108" height="36" rx="18"/>
-    <rect id="agent2-on" class="chip-on run" x="676" y="22" width="108" height="36" rx="18"/>
-  </g>
-  <use href="#person" class="ink" x="496" y="40"/>
-  <text class="name" x="512" y="46">You</text>
-  <use href="#robot" class="ink" x="580" y="40"/>
-  <text class="name" x="596" y="46">Agent 1</text>
-  <use href="#robot" class="ink" x="696" y="40"/>
-  <text class="name" x="712" y="46">Agent 2</text>
+  <rect class="chip" x="16" y="18" width="100" height="44" rx="22"/>
+  <use href="#person" class="ink" transform="translate(40 41) scale(1.25)"/>
+  <text class="name" x="58" y="47">You</text>
+  <rect class="chip" x="126" y="18" width="128" height="44" rx="22"/>
+  <use href="#claude" transform="translate(141 29) scale(0.9167)"/>
+  <text class="name" x="171" y="47">Claude</text>
+  <rect class="chip" x="264" y="18" width="96" height="44" rx="22"/>
+  <text class="name c" x="312" y="47">Codex</text>
+  <rect class="chip" x="370" y="18" width="168" height="44" rx="22"/>
+  <use href="#robot" class="ink" transform="translate(394 41) scale(1.25)"/>
+  <text class="name" x="412" y="47">any AI agent</text>
+  <text class="lead" x="552" y="47">share one task list</text>
 
   <!-- The list -->
-  <rect class="column" x="16" y="72" width="186" height="200" rx="12"/>
-  <text class="head" x="30" y="98">Waiting</text>
-  <text class="note" x="30" y="118">on a task or on you</text>
-  <rect class="column" x="210" y="72" width="186" height="200" rx="12"/>
-  <text class="head" x="224" y="98">Ready</text>
-  <text class="note" x="224" y="118">any agent can take it</text>
-  <rect class="column" x="404" y="72" width="186" height="200" rx="12"/>
-  <text class="head" x="418" y="98">In progress</text>
-  <text class="note" x="418" y="118">one agent at a time</text>
-  <rect class="column" x="598" y="72" width="186" height="200" rx="12"/>
-  <text class="head" x="612" y="98">Done</text>
-  <text class="note" x="612" y="118">finished, with proof</text>
+  <rect class="column" x="16" y="80" width="248" height="216" rx="14"/>
+  <text class="head" x="32" y="116">Ready</text>
+  <rect class="column" x="276" y="80" width="248" height="216" rx="14"/>
+  <text class="head" x="292" y="116">In progress</text>
+  <rect class="column" x="536" y="80" width="248" height="216" rx="14"/>
+  <text class="head" x="552" y="116">Done</text>
 
-  <text class="head" x="16" y="302">History</text>
-  <text class="note" x="90" y="302">every change, with who made it</text>
-  <line class="timeline" x1="26" y1="322" x2="774" y2="322"/>
+  <rect class="lane" x="16" y="312" width="768" height="132" rx="14"/>
+  <text class="head amber" x="32" y="346">Waiting for you</text>
+
+  <text class="head" x="16" y="480">History</text>
+  <line class="timeline" x1="26" y1="496" x2="774" y2="496"/>
 
   <g class="loop run">
-    <g id="plan" class="run">
-      <rect class="card" x="608" y="132" width="166" height="58" rx="10"/>
-      <text class="task" x="620" y="157">Write the plan</text>
-      <g id="plan-agent" class="run blue">
-        <use href="#robot" x="627" y="174"/>
-        <text class="tag blue" x="640" y="179">Agent 1</text>
+    <rect id="you-on" class="you-on run" x="16" y="18" width="100" height="44" rx="22"/>
+    <rect id="claude-on" class="chip-on run" x="126" y="18" width="128" height="44" rx="22"/>
+    <rect id="codex-on" class="chip-on run" x="264" y="18" width="96" height="44" rx="22"/>
+
+    <g id="lane-arrow" class="run red-line">
+      <line x1="538" y1="395" x2="268" y2="395" stroke-width="2.5"/>
+      <polygon points="268,388 268,402 256,395" stroke="none"/>
+    </g>
+    <text id="lane-empty" class="quiet c run" x="400" y="402">nothing is waiting for you now</text>
+
+    <g id="docs" class="run">
+      <rect class="card" x="546" y="132" width="228" height="70" rx="12"/>
+      <text class="task" x="560" y="162">Write the docs</text>
+      <g id="docs-agent" class="run">
+        <use href="#claude" transform="translate(560 174) scale(0.6667)"/>
+        <text class="tag" x="582" y="188">Claude</text>
       </g>
     </g>
 
-    <g id="page" class="run">
-      <rect class="card" x="414" y="132" width="166" height="58" rx="10"/>
-      <text class="task" x="426" y="157">Build the page</text>
-      <text id="page-after" class="note run" x="426" y="179">after Write the plan</text>
-      <g id="page-agent" class="run blue">
-        <use href="#robot" x="433" y="174"/>
-        <text class="tag blue" x="446" y="179">Agent 2</text>
+    <g id="search" class="run">
+      <rect class="card" x="286" y="214" width="228" height="70" rx="12"/>
+      <text class="task" x="300" y="244">Fix the search</text>
+      <text id="search-agent" class="tag run" x="300" y="270">Codex</text>
+    </g>
+
+    <g id="choose" class="run">
+      <rect class="card-decision" x="546" y="214" width="228" height="70" rx="12"/>
+      <text class="task" x="560" y="244">Choose sign-in</text>
+      <g id="choose-needs" class="run amber">
+        <use href="#person" transform="translate(568 264)"/>
+        <text class="tag amber" x="582" y="270">needs your decision</text>
+      </g>
+      <g id="choose-decided" class="run amber">
+        <use href="#person" transform="translate(568 264)"/>
+        <text class="tag amber" x="582" y="270">decided by you</text>
       </g>
     </g>
 
-    <g id="site" class="run">
-      <rect class="card" x="220" y="132" width="166" height="58" rx="10"/>
-      <text class="task" x="232" y="157">Publish the site</text>
-      <g id="site-waiting" class="run blue">
-        <use href="#person" x="239" y="174"/>
-        <text class="tag blue" x="252" y="179">waiting for you</text>
+    <g id="build" class="run">
+      <rect class="card" x="286" y="132" width="228" height="70" rx="12"/>
+      <g id="build-blocked" class="run">
+        <rect class="card-blocked" x="286" y="132" width="228" height="70" rx="12"/>
+        <text class="tag red" x="300" y="188">blocked on your decision</text>
       </g>
-      <g id="site-approved" class="run green">
-        <use href="#person" x="239" y="174"/>
-        <text class="tag green" x="252" y="179">approved by you</text>
+      <text class="task" x="300" y="162">Build sign-in</text>
+      <g id="build-agent" class="run">
+        <use href="#claude" transform="translate(300 174) scale(0.6667)"/>
+        <text class="tag" x="322" y="188">Claude</text>
       </g>
     </g>
 
     <!-- History -->
     <g id="event-1" class="run">
-      <circle class="event-dot" cx="31" cy="322" r="5"/>
-      <text class="event" x="26" y="348">Agent 1 took</text>
-      <text class="note" x="26" y="368">Write the plan</text>
+      <circle class="dot-agent" cx="31" cy="496" r="6"/>
+      <text class="event" x="26" y="522">Claude took</text>
+      <text class="event-task" x="26" y="542">Write the docs</text>
     </g>
     <g id="event-2" class="run">
-      <circle class="event-dot" cx="225" cy="322" r="5"/>
-      <text class="event" x="220" y="348">Agent 1 finished</text>
-      <text class="note" x="220" y="368">Write the plan</text>
+      <circle class="dot-agent" cx="183" cy="496" r="6"/>
+      <text class="event" x="178" y="522">Codex took</text>
+      <text class="event-task" x="178" y="542">Fix the search</text>
     </g>
     <g id="event-3" class="run">
-      <circle class="event-dot" cx="419" cy="322" r="5"/>
-      <text class="event" x="414" y="348">You approved</text>
-      <text class="note" x="414" y="368">Publish the site</text>
+      <circle class="dot-agent" cx="335" cy="496" r="6"/>
+      <text class="event" x="330" y="522">Claude finished</text>
+      <text class="event-task" x="330" y="542">Write the docs</text>
     </g>
     <g id="event-4" class="run">
-      <circle class="event-dot" cx="613" cy="322" r="5"/>
-      <text class="event" x="608" y="348">Agent 2 took</text>
-      <text class="note" x="608" y="368">Build the page</text>
+      <circle class="dot-you" cx="487" cy="496" r="6"/>
+      <text class="event" x="482" y="522">You decided</text>
+      <text class="event-task" x="482" y="542">Choose sign-in</text>
+    </g>
+    <g id="event-5" class="run">
+      <circle class="dot-agent" cx="639" cy="496" r="6"/>
+      <text class="event" x="634" y="522">Claude took</text>
+      <text class="event-task" x="634" y="542">Build sign-in</text>
     </g>
   </g>
 </svg>
