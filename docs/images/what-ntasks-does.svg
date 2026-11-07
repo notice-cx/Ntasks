@@ -110,8 +110,10 @@
     @keyframes event-4 { 0%, 53% { opacity: 0; } 54.5%, 100% { opacity: 1; } }
     @keyframes event-5 { 0%, 72.5% { opacity: 0; } 74%, 100% { opacity: 1; } }
 
+    /* With reduced motion, every animation holds still at 8.5 s: agents at
+       work while the decision and the task blocked on it wait. */
     @media (prefers-reduced-motion: reduce) {
-      .run { animation: none; }
+      .run { animation-delay: -8.5s; animation-play-state: paused; }
     }
   </style>
 
