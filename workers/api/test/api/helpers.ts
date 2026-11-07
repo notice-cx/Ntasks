@@ -2,15 +2,33 @@
 // sender the Worker signed in with the scopes a test gives them, and calls to
 // its MCP endpoint and HTTP routes.
 import type { TaskEngine } from '@ntasks/domain';
-import { serveApi } from '../../src/api.ts';
+import { MCP_PATH, serveApi } from '../../src/api.ts';
 import { SCOPES, type Authenticator, type Principal, type ProjectAccess } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
+import { runTaskTool, serveTaskMcp } from '../../src/mcp/server.ts';
 import type { Meter } from '../../src/store/sqlite.ts';
 import { createWorker } from '../../src/worker.ts';
-import { store, storeDatabase } from '../store.ts';
+import type { Sender, WorkspaceReach } from '../../src/workspaces.ts';
+import { store, storeDatabase, TEST_WORKSPACE } from '../store.ts';
 
-export const WORKSPACE = Object.freeze({ id: 'workspace-test', name: 'Test workspace' });
+export const WORKSPACE = TEST_WORKSPACE;
 export const ORIGIN = 'https://ntasks.test';
+
+/** The sender as sign-in gives it: reaching the test workspace alone, with `principal`'s scopes and projects there. */
+export function senderOf(principal: Principal): Sender {
+  const reach: WorkspaceReach = {
+    workspace: WORKSPACE,
+    role: null,
+    scopes: principal.scopes,
+    projects: principal.projects,
+  };
+  return Object.freeze({
+    id: principal.id,
+    name: principal.name,
+    ...(principal.person === undefined ? {} : { person: principal.person }),
+    workspaces: [reach],
+  });
+}
 
 export const READER: Principal = Object.freeze({
   id: 'principal-reader',
@@ -48,10 +66,10 @@ export function grantedOnly(...projectIds: readonly string[]): Principal {
   });
 }
 
-/** Signs every request in as `principal`, or refuses every one when it is null. */
+/** Signs every request in as `principal`, in the test workspace, or refuses every one when it is null. */
 export function signedInAs(principal: Principal | null): Authenticator {
   return {
-    authenticate: async () => principal,
+    authenticate: async () => (principal === null ? null : senderOf(principal)),
     challenge: () => Response.json({ error: 'sign_in_required' }, { status: 401 }),
   };
 }
@@ -66,9 +84,11 @@ export interface TestApi {
   fetch(request: Request): Promise<Response>;
 }
 
-/** The API as the task store answers it for `principal`, on the store's
- * storage, with a clock the test sets and its statements counted in `meter`.
- * `wrap` puts a test's own engine around the store's, to stage a race. */
+/** The API as the Worker and the task store answer it for `principal`, in
+ * the test workspace, on the store's storage, with a clock the test sets and
+ * its statements counted in `meter`: the MCP endpoint as the Worker answers
+ * it, running each tool as the store does, and the HTTP routes as the store
+ * answers them. `wrap` puts a test's own engine around the store's, to stage a race. */
 export function api(
   options: {
     principal?: Principal;
@@ -85,18 +105,21 @@ export function api(
   return {
     engine,
     fetch: (request) =>
-      serveApi(request, principal, {
-        engine: served,
-        workspace: WORKSPACE,
-        now,
-        backup: (token) => store().backupPage(token),
-        load: {
-          begin: (migrations, by) => store().loadBegin(migrations, by),
-          rows: (load, table, rows) => store().loadRows(load, table, rows),
-          commit: (load, counts) => store().loadCommit(load, counts),
-          abort: (load) => store().loadAbort(load),
-        },
-      }),
+      new URL(request.url).pathname === MCP_PATH
+        ? serveTaskMcp(request, senderOf(principal).workspaces, (reach, name, args) =>
+            runTaskTool({ engine: served, workspace: reach.workspace, principal, now }, name, args),
+          )
+        : serveApi(request, principal, {
+            engine: served,
+            now,
+            backup: (token) => store().backupPage(token),
+            load: {
+              begin: (migrations, by) => store().loadBegin(migrations, by),
+              rows: (load, table, rows) => store().loadRows(load, table, rows),
+              commit: (load, counts) => store().loadCommit(load, counts),
+              abort: (load) => store().loadAbort(load),
+            },
+          }),
   };
 }
 

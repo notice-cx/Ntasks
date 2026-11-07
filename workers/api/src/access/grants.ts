@@ -1,21 +1,26 @@
 /**
- * Ntasks' own access records: the projects each agent may reach, and the
- * named service credentials with their project grants. The owner manages
- * them through the routes in routes.ts.
+ * Ntasks' own access records: the workspaces and their owners, the projects
+ * each agent may reach in each workspace, and the named service credentials
+ * of each workspace with their project grants. They are managed through the
+ * routes in routes.ts.
  */
-import { STORE_NAME, type TaskStore } from '../store/index.ts';
+import { workspaceStore, type StoreBinding } from '../store/index.ts';
+import type { Workspace } from '../workspaces.ts';
 import { hex, randomSecret, sha256 } from './crypto.ts';
 import type { ProjectAccess } from './principal.ts';
 import { serviceToken } from './service-token.ts';
 
 /** The bindings the grant records read projects through. */
-export interface ProjectSource {
-  readonly TASK_STORE: DurableObjectNamespace<TaskStore>;
-}
+export type ProjectSource = StoreBinding;
 
 export interface ProjectGrant {
   readonly projectId: string;
   readonly access: ProjectAccess;
+}
+
+/** A project grant of an agent, which names the workspace it is in. */
+export interface AgentGrant extends ProjectGrant {
+  readonly workspaceId: string;
 }
 
 export interface ProjectSummary {
@@ -33,6 +38,38 @@ export class AccessRefused extends Error {
   ) {
     super(message);
   }
+}
+
+/** A workspace's name: one line of 1 to 128 characters, without spaces at either end. */
+export function workspaceNameOf(value: unknown): string | null {
+  const name = typeof value === 'string' ? value.trim() : '';
+  return name.length >= 1 && name.length <= 128 && !/[\u0000-\u001f\u007f]/u.test(name) ? name : null;
+}
+
+/** A workspace id as a request may give one: a lowercase UUID. */
+export const WORKSPACE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * Creates a workspace with `userId` as its owner, in one batch. Its task store
+ * is created by the first request that reaches it. False when a workspace
+ * already has this id.
+ */
+export async function createWorkspace(db: D1Database, workspace: Workspace, userId: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  try {
+    await db.batch([
+      db
+        .prepare('INSERT INTO workspaces (id, name, created_by, created_at) VALUES (?, ?, ?, ?)')
+        .bind(workspace.id, workspace.name, userId, now),
+      db
+        .prepare("INSERT INTO workspace_members (workspace_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)")
+        .bind(workspace.id, userId, now),
+    ]);
+  } catch (error) {
+    if (String(error).includes('UNIQUE constraint failed: workspaces.id')) return false;
+    throw error;
+  }
+  return true;
 }
 
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
@@ -62,12 +99,12 @@ export function parseGrants(value: unknown): ProjectGrant[] {
 }
 
 /**
- * Every project, by key, read from the task store. The approval page lists
- * them all and checks the owner's choices against them, so it has no limit: a
- * project left off would be one the owner could not grant.
+ * Every project of a workspace, by key, read from its task store. The
+ * approval page lists them all and checks the person's choices against them,
+ * so it has no limit: a project left off would be one they could not grant.
  */
-export async function listProjects(env: ProjectSource): Promise<ProjectSummary[]> {
-  const projects = await env.TASK_STORE.getByName(STORE_NAME).projects();
+export async function listProjects(env: ProjectSource, workspaceId: string): Promise<ProjectSummary[]> {
+  const projects = await workspaceStore(env, workspaceId).projects();
   return projects
     .map(({ id, key, name }) => ({ id, key, name }))
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -86,15 +123,15 @@ export function assertProjectsExist(projects: readonly ProjectSummary[], grants:
 }
 
 /**
- * Replaces the projects an agent may reach for a person, in one batch. Called
- * when the person approves the agent, before its consent is recorded, with
- * grants already checked against the task store's projects.
+ * Replaces the projects an agent may reach for a person, in every workspace,
+ * in one batch. Called when the person approves the agent, before its consent
+ * is recorded, with grants already checked against each workspace's projects.
  */
 export async function setAgentGrants(
   db: D1Database,
   userId: string,
   clientId: string,
-  grants: readonly ProjectGrant[],
+  grants: readonly AgentGrant[],
 ): Promise<void> {
   const now = new Date().toISOString();
   await db.batch([
@@ -102,9 +139,9 @@ export async function setAgentGrants(
     ...grants.map((grant) =>
       db
         .prepare(
-          'INSERT INTO access_agent_grants (user_id, client_id, project_id, access, created_at) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO access_agent_grants (user_id, client_id, workspace_id, project_id, access, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .bind(userId, clientId, grant.projectId, grant.access, now),
+        .bind(userId, clientId, grant.workspaceId, grant.projectId, grant.access, now),
     ),
   ]);
 }
@@ -115,7 +152,7 @@ export interface ConnectedAgent {
   readonly uri: string | null;
   readonly scopes: readonly string[];
   readonly approvedAt: string;
-  readonly grants: readonly ProjectGrant[];
+  readonly grants: readonly AgentGrant[];
 }
 
 /** The agents a person approved and has not revoked. */
@@ -123,8 +160,8 @@ export async function listAgents(db: D1Database, userId: string): Promise<Connec
   const { results } = await db
     .prepare(
       `SELECT k.client_id, c.name, c.uri, k.scopes, max(k.updated_at) AS approved_at,
-         (SELECT json_group_array(json_object('projectId', g.project_id, 'access', g.access)) FROM access_agent_grants g
-           WHERE g.user_id = k.user_id AND g.client_id = k.client_id) AS grants
+         (SELECT json_group_array(json_object('workspaceId', g.workspace_id, 'projectId', g.project_id, 'access', g.access))
+           FROM access_agent_grants g WHERE g.user_id = k.user_id AND g.client_id = k.client_id) AS grants
        FROM auth_oauth_consent k JOIN auth_oauth_client c ON c.client_id = k.client_id
        WHERE k.user_id = ? GROUP BY k.client_id ORDER BY approved_at DESC LIMIT 200`,
     )
@@ -143,7 +180,7 @@ export async function listAgents(db: D1Database, userId: string): Promise<Connec
     uri: row.uri,
     scopes: JSON.parse(row.scopes) as string[],
     approvedAt: row.approved_at,
-    grants: JSON.parse(row.grants) as ProjectGrant[],
+    grants: JSON.parse(row.grants) as AgentGrant[],
   }));
 }
 
@@ -175,26 +212,28 @@ export interface ServiceCredential {
   readonly createdAt: string;
   readonly revokedAt: string | null;
   readonly grants: readonly ProjectGrant[];
-  /** Whether it may read the whole store for a backup (GET /api/backup). */
+  /** Whether it may read its workspace's whole store for a backup (GET /api/backup). */
   readonly backup: boolean;
-  /** Whether it may load rows into the store while it is empty (POST /api/restore). */
+  /** Whether it may load rows into its workspace's store while it is empty (POST /api/restore). */
   readonly restore: boolean;
 }
 
 /**
- * Makes a credential and returns it with its token, which is never shown
- * again. A backup or restore credential may have no project grants: it
- * reaches the store only through the backup and restore routes.
+ * Makes a credential in a workspace and returns it with its token, which is
+ * never shown again. A backup or restore credential may have no project
+ * grants: it reaches the workspace's store only through the backup and
+ * restore routes.
  */
 export async function createServiceCredential(
   db: D1Database,
   input: {
+    readonly workspaceId: string;
     readonly name: unknown;
     readonly grants: unknown;
     readonly backup?: unknown;
     readonly restore?: unknown;
     readonly createdBy: string;
-    /** The task store's projects, which every grant must name. */
+    /** The workspace's projects, which every grant must name. */
     readonly projects: readonly ProjectSummary[];
   },
 ): Promise<ServiceCredential & { readonly token: string }> {
@@ -219,9 +258,18 @@ export async function createServiceCredential(
     await db.batch([
       db
         .prepare(
-          'INSERT INTO access_service_credentials (id, name, secret_hash, created_by, created_at, backup, restore) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO access_service_credentials (id, workspace_id, name, secret_hash, created_by, created_at, backup, restore) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(id, name, hex(await sha256(secret)), input.createdBy, createdAt, backup ? 1 : 0, restore ? 1 : 0),
+        .bind(
+          id,
+          input.workspaceId,
+          name,
+          hex(await sha256(secret)),
+          input.createdBy,
+          createdAt,
+          backup ? 1 : 0,
+          restore ? 1 : 0,
+        ),
       ...grants.map((grant) =>
         db
           .prepare('INSERT INTO access_service_grants (credential_id, project_id, access) VALUES (?, ?, ?)')
@@ -229,22 +277,25 @@ export async function createServiceCredential(
       ),
     ]);
   } catch (error) {
-    if (String(error).includes('UNIQUE constraint failed: access_service_credentials.name')) {
-      throw new AccessRefused('name_taken', 'a service credential already has this name');
+    // The unique key is the workspace and the name: another workspace may use the same name.
+    if (String(error).includes('UNIQUE constraint failed: access_service_credentials.workspace_id')) {
+      throw new AccessRefused('name_taken', 'a service credential in this workspace already has this name');
     }
     throw error;
   }
   return { id, name, createdAt, revokedAt: null, grants, backup, restore, token: serviceToken(id, secret) };
 }
 
-export async function listServiceCredentials(db: D1Database): Promise<ServiceCredential[]> {
+/** A workspace's service credentials, newest first. */
+export async function listServiceCredentials(db: D1Database, workspaceId: string): Promise<ServiceCredential[]> {
   const { results } = await db
     .prepare(
       `SELECT c.id, c.name, c.created_at, c.revoked_at, c.backup, c.restore,
          (SELECT json_group_array(json_object('projectId', g.project_id, 'access', g.access)) FROM access_service_grants g
            WHERE g.credential_id = c.id) AS grants
-       FROM access_service_credentials c ORDER BY c.created_at DESC LIMIT 200`,
+       FROM access_service_credentials c WHERE c.workspace_id = ? ORDER BY c.created_at DESC LIMIT 200`,
     )
+    .bind(workspaceId)
     .all<{
       id: string;
       name: string;
@@ -265,11 +316,14 @@ export async function listServiceCredentials(db: D1Database): Promise<ServiceCre
   }));
 }
 
-/** Revokes a credential: its next request is refused. False when there is no such unrevoked credential. */
-export async function revokeServiceCredential(db: D1Database, id: string): Promise<boolean> {
+/** Revokes a workspace's credential: its next request is refused. False when
+ * the workspace has no such unrevoked credential. */
+export async function revokeServiceCredential(db: D1Database, workspaceId: string, id: string): Promise<boolean> {
   const result = await db
-    .prepare('UPDATE access_service_credentials SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
-    .bind(new Date().toISOString(), id)
+    .prepare(
+      'UPDATE access_service_credentials SET revoked_at = ? WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL',
+    )
+    .bind(new Date().toISOString(), id, workspaceId)
     .run();
   return result.meta.changes === 1;
 }

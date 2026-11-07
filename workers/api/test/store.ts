@@ -3,11 +3,20 @@
 import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import type { Database } from '../src/engine/database.ts';
-import { STORE_NAME, type TaskStore } from '../src/store/index.ts';
+import { workspaceStore, type TaskStore } from '../src/store/index.ts';
 import { sqliteDatabase, type Meter } from '../src/store/sqlite.ts';
+import type { Workspace } from '../src/workspaces.ts';
 
-export function store(): DurableObjectStub<TaskStore> {
-  return env.TASK_STORE.getByName(STORE_NAME);
+/** The workspace most tests work in. A person who signs in through
+ * test/access/client.ts becomes its owner. */
+export const TEST_WORKSPACE: Workspace = Object.freeze({
+  id: '7c1e5a90-3b2d-4f6e-9a18-2d4c6b8e0f13',
+  name: 'Test workspace',
+});
+
+/** The task store of `workspaceId`, the test workspace's by default. */
+export function store(workspaceId = TEST_WORKSPACE.id): DurableObjectStub<TaskStore> {
+  return workspaceStore(env, workspaceId);
 }
 
 /** The store's database, counting into `meter` when given. Writes made

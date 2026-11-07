@@ -8,7 +8,9 @@ The Worker answers under `/api` in two ways, both over the same task engine:
 - **The HTTP routes** under `/api/tasks` and `/api/changes` are for the web
   app.
 
-Two more serve the store as a whole: `/api/backup` hands it out for a backup
+`/api/workspaces` lists the workspaces a sender reaches and creates one
+([below](#workspaces)). Two more serve a workspace's store as a whole:
+`/api/backup` hands it out for a backup
 ([below](#backing-up-the-whole-store)), and `/api/restore` loads an import or
 a backup into an empty store ([below](#loading-an-empty-store)).
 
@@ -35,21 +37,25 @@ give the answers NoticeOS's task pages used, with the same additions.
 ## Signing in
 
 Every request under `/api` names who sends it, and the Worker checks it
-before anything else. A sender holds **scopes**, the kinds of call it may
-make: `tasks:read` to read and `tasks:write` to change tasks. A person
+before anything else. Each request reaches one workspace
+([below](#workspaces)). In it, a sender holds **scopes**, the kinds of call it
+may make: `tasks:read` to read and `tasks:write` to change tasks. A person
 signed in to the web app also holds `tasks:decide`, which a person's
-decisions need; no agent or service holds it, whatever it was granted.
+decisions need; no agent or service holds it, whatever it was granted. A
+workspace's owner also holds `tasks:backup`, `tasks:restore` and
+`workspace:manage`, which creating a project needs.
 
 | Answer | When |
 |---|---|
 | `401` | Nobody is signed in. |
-| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person signed in to the web app says so in `detail`, which a client relaying a person's click can show as it is. |
+| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs in the request's workspace. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person signed in to the web app says so in `detail`, which a client relaying a person's click can show as it is. |
 
-A sender also reaches certain **projects**. The owner reaches every project;
-an agent or a service reaches only the projects it was granted, each for
-reading or for writing too. Lists and the change feed leave the other
-projects out, and a request that names one gets the same answer as a project
-that does not exist, so a sender learns nothing of projects it cannot reach.
+A sender also reaches certain **projects** of the workspace. A person
+reaches every project of a workspace they belong to; an agent or a service
+reaches only the projects it was granted, each for reading or for writing
+too. Lists and the change feed leave the other projects out, and a request
+that names one gets the same answer as a project that does not exist, so a
+sender learns nothing of projects it cannot reach.
 For the same reason, a link between a task the sender reaches and a task in a
 project it cannot reach is left out of every task the API answers with, and
 of the task's history and the change feed. The other task's project is the
@@ -57,8 +63,8 @@ one whose prefix starts its id.
 A write to a project granted for reading only is refused: `403` with
 `forbidden` on an HTTP route, and a `refused: …` sentence from an MCP tool.
 
-The Worker signs every request in as [Sign-in](sign-in.md) describes: the
-owner's browser session, an agent's OAuth access token, or a service
+The Worker signs every request in as [Sign-in](sign-in.md) describes: a
+person's browser session, an agent's OAuth access token, or a service
 credential. A request with none, or with one that is invalid, revoked or
 expired, gets `401` with a bearer challenge that tells an MCP client where to
 sign in. A service names the agent each request is for in the
@@ -66,15 +72,43 @@ sign in. A service names the agent each request is for in the
 ([A service acting for its agents](sign-in.md#a-service-acting-for-its-agents)). The sign-in routes under `/api/auth` and `/api/access` answer as
 [Sign-in](sign-in.md#routes) describes.
 
-## The workspace
+## Workspaces
 
-One Ntasks installation serves one **workspace**: the set of projects its
-people and agents share. Every MCP tool but `list_workspaces` and
-`get_task_guide` takes a `workspace` argument naming it, as NoticeOS's tools
-did. Its id and name are `WORKSPACE_ID` and `WORKSPACE_NAME` in the `vars` of
-[`wrangler.jsonc`](../workers/api/wrangler.jsonc). An installation that takes
-over from NoticeOS sets `WORKSPACE_ID` to that NoticeOS workspace's id, so
-agent instructions that name it keep working.
+One Ntasks deployment holds several **workspaces**, each the set of projects
+its people, agents and services share, kept in its own task store
+([Architecture](architecture.md#workspaces)). A workspace's id is a UUID.
+
+Which workspace a request reaches:
+
+| The sender | Reaches |
+|---|---|
+| A service | Its credential's one workspace. It may leave the header out; a header naming another workspace gets `404`. |
+| A person or an agent, over HTTP | The workspace the `x-ntasks-workspace` header names, or the only one it reaches when the header is left out. |
+| Anyone, over MCP | The workspace a tool call's `workspace` argument names. Every MCP tool but `list_workspaces` and `get_task_guide` takes it, as NoticeOS's tools did, and the header is not read. |
+
+A person reaches the workspaces they belong to, an agent the workspaces where
+it was granted a project, and a service its credential's workspace.
+
+| Answer | When |
+|---|---|
+| `400` with `{ "error": "workspace_required", "detail": … }` | The header is left out and the sender reaches several workspaces. |
+| `404` with `{ "error": "not_found", "detail": … }` | The header names a workspace the sender does not reach, whether or not it exists, or the sender reaches none. |
+| `refused: workspace <id> is not one of yours; list_workspaces lists yours.` | An MCP tool call names a workspace the sender does not reach. |
+| `invalid arguments: workspace (a workspaceId from list_workspaces)` | An MCP tool call names none. |
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /api/workspaces` | none | `{ workspaces }`: each workspace the sender reaches, ordered by name, with its `workspaceId`, `name` and the sender's `role`: `owner` or `member` for a person, `null` for an agent or a service |
+| `POST /api/workspaces` | `name`, one line of 1 to 128 characters, and optionally `workspaceId`, a lowercase UUID | `201` with `{ workspace: { workspaceId, name, role: "owner" } }`. Only a deployment admin may send it, and becomes the new workspace's owner; anyone else gets `403` with `admin_only`. A workspace that takes over a NoticeOS workspace's tasks can keep that workspace's id, so agent instructions that name it keep working. |
+
+`POST /api/workspaces` refuses a bad `name` or `workspaceId` with `400` and
+`invalid_request`, and an id another workspace has with `409` and
+`workspace_exists`; each refusal names the body field in `field`. These two
+routes, like `GET /api/access/me`, do not read the `x-ntasks-workspace`
+header, so a client that sends a workspace the sender no longer reaches still
+gets its list. They are answered beside sign-in, so they count against its
+limit of about 30 requests a minute from one address
+([Sign-in](sign-in.md#routes)).
 
 ## The MCP endpoint
 
@@ -82,18 +116,20 @@ agent instructions that name it keep working.
 versions of the protocol in use: the 2026-07-28 revision, where every request
 names its version, and the earlier revisions that agree a version in an
 `initialize` handshake. It keeps no session and streams nothing. A browser
-may call it only from the Worker's own origin.
+may call it only from the Worker's own origin. The Worker answers the list
+of tools, `list_workspaces` and `get_task_guide` from the sender's sign-in,
+and runs every other tool in the task store of the workspace the call names.
 
 The server's instructions, which an agent reads when it connects, carry the
 start of the task guide and its rules for writing a task.
 
 | Tool | What it returns | Arguments |
 |---|---|---|
-| `list_workspaces` | The workspace, the sender's role and access in it, and the guide's version | none |
+| `list_workspaces` | Every workspace the sender reaches, ordered by name, each with its `workspaceId`, `name`, `status`, the sender's `role` in NoticeOS's words (`owner` for its owner, otherwise `operator` with `tasks:write` or `viewer`) and `access`, the scopes the sender holds there; and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
 | `reconcile_task` | The task as the disposition left it, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `project`, `task`, `action`, `proposal`, `explanation`, `evidence`, `idempotency_key`, and as the action needs `response`, `owner`, `source`, `scope`, `answer_mode`, `question`, `approval_item`, `option`, `duplicate_of`, `holder`, `inactive`, `activity_check`, `progress` and `model` |
 | `list_projects` | Each project's `projectId`, key, name and prefix | `workspace` |
-| `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches |
+| `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
 | `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
@@ -110,8 +146,8 @@ start of the task guide and its rules for writing a task.
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `idempotency_key`, and `options` for a choice field |
 | `retire_field` | The field as retired, and `replayed` | `workspace`, `project`, `field` (its key), `idempotency_key` |
 
-`list_tasks` without a `project` reads every project, and each task then names
-its project.
+`list_tasks` without a `project` reads every project of the workspace that the
+sender reaches, and each task then names its project.
 
 `notes` and `design` are Markdown, at most 8,192 characters each, and
 `estimate_minutes` is a whole number of minutes from 0 to 525,600 (a year).
@@ -330,7 +366,9 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 ## The HTTP routes
 
-Every route answers JSON with `cache-control: no-store`.
+Every route answers JSON with `cache-control: no-store`. Each acts in the
+workspace the request reaches ([above](#workspaces)): a person or an agent who
+reaches several names it in the `x-ntasks-workspace` header.
 
 ### Reads
 
@@ -364,6 +402,12 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution` and `duplicateOf` | `{ task }`, the task as closed |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
+| `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |
+
+A refused project names the body field at fault in `field`: `400` with
+`invalid_request` for a `name`, `prefix` or `key` that breaks its rule, and
+`409` with `project_exists` for a prefix or key another project of the
+workspace has. Two workspaces may each have a project with the same prefix.
 
 A new task's `metadata` holds where it came from, under the keys NoticeOS
 used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,
@@ -426,10 +470,12 @@ A refusal from a route carries a `detail` sentence a person can read.
 
 | Error | Answer |
 |---|---|
-| A parameter, the body or a field is missing, unknown, repeated or out of range | `400` with `{ "error": "invalid_request", "detail": … }` |
+| A parameter, the body or a field is missing, unknown, repeated or out of range | `400` with `{ "error": "invalid_request", "detail": … }`, and `field` naming the body field where a form shows the sentence |
+| The sender reaches several workspaces and the request names none | `400` with `workspace_required` |
 | The sender lacks the scope the route needs, such as a decision from an agent or a service | `403` with `insufficient_scope` |
 | The sender may read the project but not change it, or a write comes from another site's page | `403` with `forbidden` |
-| The project or a task the request names does not exist | `404` with `{ "error": "not_found", "detail": … }` |
+| The workspace, the project or a task the request names does not exist, or the sender does not reach it | `404` with `{ "error": "not_found", "detail": … }` |
+| A new project's prefix or key is another project's | `409` with `project_exists` |
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
@@ -440,7 +486,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 ## Reading changes instead of reloading
 
 Every change to a task is an event with a sequence number that orders every
-change in the installation. `GET /api/changes?after=N` returns the events
+change in the workspace. `GET /api/changes?after=N` returns the events
 after `N`, oldest first, and `lastSeq`, the number to ask after next. When
 nothing changed it returns no events and the same `lastSeq`.
 
@@ -450,14 +496,16 @@ the board only when an event arrives.
 
 ## Backing up the whole store
 
-`GET /api/backup` hands out every row the task store keeps, page by page:
-the rows of each table [the task store](task-store.md#tables) lists, retry
-records included, exactly as stored, so a backup loads into an empty store
-as the same rows. It needs the `tasks:backup` scope, which the owner's
-browser session holds, and a service credential holds when the owner made it
-with `"backup": true` ([Sign-in](sign-in.md#routes)). It reads every
-project, whatever projects the sender was granted. Any other sender gets
-`403` with `insufficient_scope`.
+`GET /api/backup` hands out every row the request's workspace's task store
+keeps, page by page: the rows of each table
+[the task store](task-store.md#tables) lists, retry records included, exactly
+as stored, so a backup loads into an empty store as the same rows. It holds
+no row of any other workspace. It needs the `tasks:backup` scope, which the
+workspace owner's browser session holds, and a service credential of the
+workspace holds when its owner made it with `"backup": true`
+([Sign-in](sign-in.md#routes)). It reads every project of the workspace,
+whatever projects the sender was granted. Any other sender gets `403` with
+`insufficient_scope`.
 
 | Request | Answer |
 |---|---|
@@ -495,15 +543,16 @@ pages to one file and restores the file into an empty store copy.
 
 ## Loading an empty store
 
-`POST /api/restore` and the routes under it load rows into the store while it
-holds none: an import from Beads, or a backup. The rows arrive in pages, wait
-in the store, and are written together when the load is committed, in one
-transaction. So a load lands whole or not at all, and nobody reading the
-store sees part of one. They need the `tasks:restore` scope, which the
-owner's browser session holds, and a service credential holds when the owner
-made it with `"restore": true` ([Sign-in](sign-in.md#routes)). Any other
-sender gets `403` with `insufficient_scope`. Each takes one JSON object, of
-at most 1 MB, and no query.
+`POST /api/restore` and the routes under it load rows into the request's
+workspace's store while it holds none: an import from Beads, or a backup. The
+rows arrive in pages, wait in the store, and are written together when the
+load is committed, in one transaction. So a load lands whole or not at all,
+and nobody reading the store sees part of one. They need the `tasks:restore`
+scope, which the workspace owner's browser session holds, and a service
+credential of the workspace holds when its owner made it with
+`"restore": true` ([Sign-in](sign-in.md#routes)). Any other sender gets `403`
+with `insufficient_scope`. Each takes one JSON object, of at most 1 MB, and no
+query.
 
 | Route | Body | Answer |
 |---|---|---|

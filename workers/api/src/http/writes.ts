@@ -5,7 +5,15 @@
  * MCP tool that does the same thing (task-writes.ts), checked by the same
  * rules (args.ts). An Idempotency-Key header makes a write safe to retry.
  */
-import { IDEMPOTENCY_KEY, TASK_LIMITS, type DefineFieldInput, type JsonObject, type TaskStatus } from '@ntasks/domain';
+import {
+  IDEMPOTENCY_KEY,
+  TASK_LIMITS,
+  TaskRefused,
+  type DefineFieldInput,
+  type JsonObject,
+  type Project,
+  type TaskStatus,
+} from '@ntasks/domain';
 import {
   addsOrRemoves,
   assigneeArg,
@@ -48,7 +56,7 @@ import {
 import { linksSeenBy } from '../lookup.ts';
 import { commentView, fieldView, webTask } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
-import { invalidRequest, json, queryOf } from './respond.ts';
+import { HttpRefused, invalidRequest, json, queryOf } from './respond.ts';
 
 /** The header a write's retry key arrives in. */
 export const IDEMPOTENCY_HEADER = 'idempotency-key';
@@ -262,6 +270,47 @@ export async function retireFieldRoute(
   const projectId = projectArg(body, 'projectId', 'http');
   const { field } = await retireField(context, projectId, key, retry(body));
   return json({ field: fieldView(field) });
+}
+
+/** Whether text is a project's name or key: one line of 1 to 128 characters, as the engine keeps them. */
+function oneLine(text: string): boolean {
+  return text.length >= 1 && text.length <= 128 && !/[\u0000-\u001f\u007f]/u.test(text);
+}
+
+/**
+ * POST /api/tasks/projects: creates a project in the workspace, from its
+ * `name` and `prefix`, and optionally the `key` people know it by, which is
+ * the prefix when left out. A field at fault is named in the refusal.
+ */
+export async function createProjectRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
+  const { body } = await writeOf(request, url, 'create_project', {});
+  only(body, ['name', 'prefix', 'key']);
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (!oneLine(name)) throw new HttpRefused(400, 'invalid_request', 'name is one line of 1 to 128 characters', 'name');
+  const prefix = typeof body.prefix === 'string' ? body.prefix : '';
+  if (!/^[a-z0-9]{1,32}$/u.test(prefix)) {
+    const detail = 'prefix is 1 to 32 lowercase letters or digits, with no hyphen; it starts every task id';
+    throw new HttpRefused(400, 'invalid_request', detail, 'prefix');
+  }
+  const key = body.key === undefined ? prefix : typeof body.key === 'string' ? body.key.trim() : '';
+  if (!oneLine(key)) throw new HttpRefused(400, 'invalid_request', 'key is one line of 1 to 128 characters', 'key');
+  const taken = (which: 'prefix' | 'key') =>
+    new HttpRefused(409, 'project_exists', `another project in this workspace uses this ${which}`, which);
+  const existing = await context.engine.listProjects();
+  if (existing.some((project) => project.prefix === prefix)) throw taken('prefix');
+  if (existing.some((project) => project.key === key)) throw taken('key');
+  let project: Project;
+  try {
+    project = await context.engine.createProject({ id: crypto.randomUUID(), key, name, prefix });
+  } catch (error) {
+    // Another request made a project with this prefix or key since the check above.
+    if (error instanceof TaskRefused && error.refusal === 'invalid') throw taken('prefix');
+    throw error;
+  }
+  return json(
+    { project: { projectId: project.id, logicalKey: project.key, displayName: project.name, prefix: project.prefix } },
+    201,
+  );
 }
 
 /** POST /api/tasks/:id/close: closes a task with its reason. */

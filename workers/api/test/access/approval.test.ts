@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { actorOf, personOf } from '../../src/access/principal.ts';
 import { verifyRequest } from '../../src/access/verify.ts';
+import { TEST_WORKSPACE } from '../store.ts';
 import { Browser, connectAgent, createProjects, McpClient, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -70,6 +71,7 @@ describe('the actor an agent writes as', () => {
       id: 'service:x',
       credentialId: 'x',
       name: 'noticeos',
+      workspace: TEST_WORKSPACE,
       projects: new Map(),
       backup: false,
       restore: false,
@@ -78,7 +80,14 @@ describe('the actor an agent writes as', () => {
   });
 
   it('marks an owner whose own name starts like an agent’s, so the two never meet', () => {
-    const owner = { kind: 'person', id: 'person:x', userId: 'x', name: 'agent:Alice' } as const;
+    const owner = {
+      kind: 'person',
+      id: 'person:x',
+      userId: 'x',
+      name: 'agent:Alice',
+      admin: true,
+      memberships: [],
+    } as const;
     const agent = {
       kind: 'agent',
       id: 'agent:c:x',
@@ -86,7 +95,7 @@ describe('the actor an agent writes as', () => {
       personName: 'agent:Alice',
       clientId: 'c',
       name: 'Alice',
-      projects: new Map(),
+      workspaces: [],
     } as const;
 
     expect(actorOf(owner)).toEqual({ name: 'person:agent:Alice' });

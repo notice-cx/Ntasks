@@ -1,6 +1,6 @@
 /**
- * The reads the MCP tools and the HTTP routes share: the workspace this
- * installation serves, a board, and a task's whole history.
+ * The reads the MCP tools and the HTTP routes share: a board, and a task's
+ * whole history.
  */
 import {
   TASK_LIMITS,
@@ -10,14 +10,6 @@ import {
   type TaskEvent,
   type TaskStatus,
 } from '@ntasks/domain';
-
-/** The one workspace an installation serves. NoticeOS's task tools named a
- * workspace on every call; Ntasks keeps that shape so their callers work
- * unchanged, with its id and name set where the Worker is deployed. */
-export interface Workspace {
-  readonly id: string;
-  readonly name: string;
-}
 
 /** How many days of closed tasks a board shows, and the most a reader may ask for. */
 export const CLOSED_DAYS = 7;

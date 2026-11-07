@@ -17,7 +17,12 @@ describe('owner sign-in with GitHub', () => {
     expect(cookie).toBeDefined();
     const response = await browser.me();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ kind: 'person', name: `Person ${OWNER_GITHUB_ID}`, projects: 'all' });
+    expect(await response.json()).toEqual({
+      kind: 'person',
+      name: `Person ${OWNER_GITHUB_ID}`,
+      deploymentAdmin: true,
+      projects: 'all',
+    });
   });
 
   it('keeps the GitHub token from sign-in encrypted', async () => {
