@@ -25,6 +25,10 @@ const SIZES = [
 ] as const;
 /** Closed in the last week, per project; the rest closed earlier. */
 const RECENTLY_CLOSED = 20;
+/** A label every project carries on a few tasks, half of them closed long ago:
+ * the label read's cost follows these, not the project's size. */
+const TRIAGE = 'triage';
+const TRIAGED = [1, 2, 3, 4, 5, 6, 500, 501, 502, 503, 504, 505];
 
 const meter = newMeter();
 const db = storeDatabase();
@@ -100,6 +104,12 @@ beforeAll(async () => {
       prefix,
     });
     await seed(project.id, prefix, total, active);
+    for (const i of TRIAGED) {
+      await db
+        .prepare('INSERT INTO task_labels (task_id, label) VALUES (?1, ?2)')
+        .bind(`${prefix}-t${i}`, TRIAGE)
+        .run();
+    }
     if (index === 0) big = { id: project.id, prefix };
   }
   target = api({ now: () => NOW, meter });
@@ -123,6 +133,8 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP task page': { statements: 3, rowsRead: 60 },
   'HTTP task history': { statements: 3, rowsRead: 60 },
   'HTTP change feed, 200 changes': { statements: 1, rowsRead: 250 },
+  'HTTP label read, 12 tasks in the largest project': { statements: 2, rowsRead: 300 },
+  'HTTP label read, a page of 200 in the largest project': { statements: 2, rowsRead: 3_500 },
   list_projects: { statements: 1, rowsRead: 20 },
   'list_tasks ready, every project': { statements: 2, rowsRead: 10_000 },
   'list_tasks, every project': { statements: 3, rowsRead: 16_000 },
@@ -140,6 +152,10 @@ describe('the cost of each read', () => {
       'HTTP task page': () => get(target, `/api/tasks/${task}?project=${big.id}`),
       'HTTP task history': () => get(target, `/api/tasks/${task}/history?project=${big.id}`),
       'HTTP change feed, 200 changes': () => get(target, '/api/changes?after=0&limit=200'),
+      'HTTP label read, 12 tasks in the largest project': () =>
+        get(target, `/api/tasks?project=${big.id}&label=${TRIAGE}`),
+      'HTTP label read, a page of 200 in the largest project': () =>
+        get(target, `/api/tasks?project=${big.id}&label=seo&limit=200`),
       list_projects: () => read(target, 'list_projects'),
       'list_tasks ready, every project': () => read(target, 'list_tasks', { ready: true }),
       'list_tasks, every project': () => read(target, 'list_tasks', {}),
@@ -159,6 +175,25 @@ describe('the cost of each read', () => {
       expect(cost.rowsRead, name).toBeLessThanOrEqual(budget.rowsRead);
     }
   }, 60_000);
+
+  it('reads a label through its index: the cost follows the tasks carrying it, not the project', async () => {
+    const triaged = await costOf(() => get(target, `/api/tasks?project=${big.id}&label=${TRIAGE}`));
+    const small = await costOf(async () => {
+      const [, other] = await read<{ projects: { projectId: string }[] }>(target, 'list_projects').then(
+        (body) => body.projects,
+      );
+      Object.assign(meter, newMeter());
+      return get(target, `/api/tasks?project=${other!.projectId}&label=${TRIAGE}`);
+    });
+    const [total] = SIZES[0];
+    expect(triaged.rowsRead).toBeLessThan(total / 10);
+    // Eight times the tasks in the project, the same twelve carrying the label: about the same cost.
+    expect(Math.abs(triaged.rowsRead - small.rowsRead)).toBeLessThan(60);
+    const page = await get(target, `/api/tasks?project=${big.id}&label=${TRIAGE}`);
+    expect((page.body.tasks as { id: string }[]).map((task) => task.id).sort()).toEqual(
+      TRIAGED.map((i) => `${big.prefix}-t${i}`).sort(),
+    );
+  });
 
   it('answers what was seeded', async () => {
     const board = await get(target, `/api/tasks?project=${big.id}`);
