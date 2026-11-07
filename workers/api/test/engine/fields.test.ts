@@ -158,6 +158,13 @@ describe('values', () => {
       expect(refused.message, key).toBe(message);
     }
     expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    // A year below 100 is a date like any other, and a leap day only in a leap year.
+    const early = await tasks.createTask(project.id, { title: 'Early', fields: { launch: '0050-01-01' } }, AGENT);
+    expect(early.task.fields).toMatchObject({ launch: '0050-01-01' });
+    await expectRefusal(
+      tasks.createTask(project.id, { title: 'T', fields: { launch: '0050-02-29' } }, AGENT),
+      'invalid',
+    );
     await expectRefusal(
       tasks.createTask(project.id, { title: 'T', fields: { points: null } as never }, AGENT),
       'invalid',

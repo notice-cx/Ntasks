@@ -254,7 +254,9 @@ function checkedValue(field: CustomField, value: unknown, filter: boolean): Fiel
       const parts = typeof value === 'string' ? CALENDAR_DATE.exec(value) : null;
       if (parts === null) return null;
       const [year, month, day] = parts.slice(1).map(Number) as [number, number, number];
-      const date = new Date(Date.UTC(year, month - 1, day));
+      // Date.UTC reads years 0 to 99 as 1900 to 1999; setUTCFullYear keeps the year given.
+      const date = new Date(0);
+      date.setUTCFullYear(year, month - 1, day);
       return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
         ? (value as string)
         : null;
