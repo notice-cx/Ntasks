@@ -133,6 +133,29 @@ describe('the board', () => {
     expect(api.state.tasks.find((entry) => entry.id === 'web-t5w3')?.status).toBe('closed');
   });
 
+  it("copies a task's id from its menu, and says when it could not", async () => {
+    renderApp('/tasks');
+    await group('Open');
+    const copy = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Actions for web-t5w3' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /Copy id/ }));
+    };
+    // jsdom has no clipboard, as a page served without HTTPS has none.
+    await copy();
+    expect(await screen.findByText('Could not copy web-t5w3')).toBeTruthy();
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      await copy();
+      await waitFor(() => expect(screen.getAllByText('Could not copy web-t5w3')).toHaveLength(2));
+      await copy();
+      expect(await screen.findByText('Copied web-t5w3')).toBeTruthy();
+      expect(writeText).toHaveBeenLastCalledWith('web-t5w3');
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
   it('says which project could not be read, and counts only what it could', async () => {
     const api = createFixtureTasksApi();
     const failing = {

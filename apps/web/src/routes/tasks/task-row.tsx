@@ -346,18 +346,25 @@ function TaskMenu({
               Close as
             </MenuItem>
           ) : null}
-          <MenuItem
-            icon={<Copy aria-hidden />}
-            onSelect={() => {
-              void navigator.clipboard?.writeText(task.id).then(() => toast.success(`Copied ${task.id}`));
-            }}
-          >
+          <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyId(task.id)}>
             Copy id
           </MenuItem>
         </MenuContent>
       )}
     </Menu>
   );
+}
+
+/** Copies an id and says so. A page served without HTTPS has no clipboard, and a browser can refuse the write. */
+async function copyId(id: string): Promise<void> {
+  try {
+    if (!navigator.clipboard) throw new Error('No clipboard');
+    await navigator.clipboard.writeText(id);
+  } catch {
+    toast.error(`Could not copy ${id}`);
+    return;
+  }
+  toast.success(`Copied ${id}`);
 }
 
 /** Park a task until a date. */
