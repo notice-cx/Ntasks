@@ -16,7 +16,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DevTools, navigate, until } from './devtools.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -40,16 +40,37 @@ interface Shot {
   ready: string;
   /** Capture the whole page, however tall, instead of `height` pixels of it. */
   fullPage?: boolean;
+  /**
+   * A page the Worker writes, drawn in place of the app's document at
+   * `address`, so the fonts it loads from its origin come from the app's
+   * server as they come from the Worker's static files.
+   */
+  workerPage?: (pages: WorkerPages) => Response;
 }
 
+/** The Worker's own pages (workers/api/src/access/pages.ts), as far as this script calls them. */
+interface WorkerPages {
+  signInPage(input: { signedInAs: string | null; oauthQuery: string | null; error: string | null }): Response;
+  agentAccessPage(input: {
+    personName: string;
+    client: { name: string; uri: string | null };
+    returnsTo: string;
+    access: 'read' | 'write' | null;
+    projects: readonly { id: string; key: string; name: string }[];
+    oauthQuery: string;
+    error: string | null;
+  }): Response;
+}
+
+// The desktop shots are 1100 pixels wide, so the README's 800-pixel pictures keep their text readable.
 const SHOTS: readonly Shot[] = [
   // Tall enough to show every group, Waiting for you to Done.
   { name: 'board', address: '/tasks', width: 1100, height: 960, scale: 1.5, ready: '[data-task-row]' },
   {
     name: 'task',
     address: '/tasks/web-b2r6',
-    width: 1280,
-    height: 1040,
+    width: 1100,
+    height: 1120,
     scale: 1.5,
     ready: '[data-markdown] pre .hljs-keyword',
   },
@@ -62,7 +83,38 @@ const SHOTS: readonly Shot[] = [
     scale: 1.5,
     ready: '[data-focus-decision] [role="radio"]',
   },
-  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' }, // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
+  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' },
+  {
+    name: 'sign-in',
+    address: '/',
+    width: 560,
+    height: 440,
+    scale: 1.5,
+    ready: 'main h1',
+    workerPage: (pages) => pages.signInPage({ signedInAs: null, oauthQuery: null, error: null }),
+  },
+  {
+    name: 'agent-access',
+    address: '/',
+    width: 560,
+    height: 700,
+    scale: 1.5,
+    ready: 'main h1',
+    workerPage: (pages) =>
+      pages.agentAccessPage({
+        personName: 'Example Owner',
+        client: { name: 'Example Agent', uri: 'https://agent.example.com' },
+        returnsTo: 'https://agent.example.com',
+        access: 'write',
+        projects: [
+          { id: 'p-web', key: 'web', name: 'Example web app' },
+          { id: 'p-docs', key: 'docs', name: 'Example docs' },
+        ],
+        oauthQuery: 'client_id=example',
+        error: null,
+      }),
+  },
+  // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
   {
     name: 'design',
     address: '/design',
@@ -194,7 +246,7 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
     width: shot.width,
     height: shot.height,
     deviceScaleFactor: shot.scale,
-    mobile: shot.width < 768,
+    mobile: shot.width < 480,
   });
   // The app follows the system's theme; reduced motion skips its arrival animations.
   await send('Emulation.setEmulatedMedia', {
@@ -205,6 +257,16 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   });
   // The readiness check below must read the new document, not the one the previous shot left.
   await navigate(send, `${ORIGIN}${shot.address}`, { waitMs: WAIT_MS });
+  if (shot.workerPage) {
+    const html = await shot.workerPage(await workerPages()).text();
+    const { frameTree } = await send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
+    await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html });
+    // The new document starts loading its fonts only once it lays out its text.
+    await send('Runtime.evaluate', {
+      expression: 'document.fonts.load(\'600 20px "Inter Variable"\')',
+      awaitPromise: true,
+    });
+  }
   const drawn = `document.querySelector(${JSON.stringify(shot.ready)}) !== null && document.querySelector('.skeleton') === null && document.fonts.status === 'loaded'`;
   // A failed request, as when Chrome exits, ends the wait at once.
   await until(
@@ -240,6 +302,15 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   const file = path.join(OUT, `${shot.name}-${theme}.webp`);
   await writeFile(file, Buffer.from(data, 'base64'));
   return file;
+}
+
+/**
+ * The Worker's page module, loaded by its address so that this script's
+ * typecheck does not reach into the Worker's source. The module imports no
+ * Worker runtime, so Node runs it as it is.
+ */
+async function workerPages(): Promise<WorkerPages> {
+  return (await import(pathToFileURL(path.join(ROOT, 'workers/api/src/access/pages.ts')).href)) as WorkerPages;
 }
 
 /** The shots named on the command line, or every shot when none is named. */
