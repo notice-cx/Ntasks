@@ -42,7 +42,7 @@
         "description": "A client secret generated for that GitHub OAuth app."
       },
       "OWNER_GITHUB_IDS": {
-        "description": "The numeric GitHub user ids that may sign in, separated by commas, such as `1001`. `https://api.github.com/users/<login>` shows an account's id."
+        "description": "The numeric GitHub user ids of the deployment's admins, who create workspaces and invite everyone else, separated by commas, such as `1001`. `https://api.github.com/users/<login>` shows an account's id."
       }
     }
   },
