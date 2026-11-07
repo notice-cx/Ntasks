@@ -32,7 +32,7 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
   '2026-10-21: create_task, create_tasks and update_task take card, what the work is worth, which the board ranks tasks by, and change_class; update_task takes null to take either off; get_task and list_tasks return them as card and changeClass.',
   "2026-10-21: close_task as done keeps the task's card as it stood, with the commit its reason names, and get_task returns it as cardShipped; update_task then refuses a card for that task.",
-  '2026-11-03: reconcile_task supports answer_mode relayed for local Claude Code sessions and quoted task comments, owner_performed for the owner’s completed action, and no-longer-needed for retirement. Relayed approvals close immediately and can be disputed on Tasks.',
+  '2026-11-07: reconcile_task records an owner’s answer as the option they chose on the proposal_version get_task returned, with their exact words as quote and where they said it as source; nothing reads the quote, and an answer to an older version is refused.',
 ]);
 
 /** How a session starts. */
