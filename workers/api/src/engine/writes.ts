@@ -4,12 +4,14 @@
 // loop.
 import {
   guardRefusalOf,
+  TASK_LIMITS,
   TaskRefused,
   type Actor,
   type CommentResult,
   type CreateProjectInput,
   type CreateTaskInput,
   type DependencyType,
+  type ExternalLink,
   type Json,
   type JsonObject,
   type Project,
@@ -79,6 +81,13 @@ function linkList(links: ReadonlyMap<string, DependencyType>): Json {
   return [...links].sort(([a], [b]) => a.localeCompare(b)).map(([taskId, type]) => ({ taskId, type }));
 }
 
+/** External links as history events record them: the full list, ordered by URL as a read orders them. */
+function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
+  return [...links.values()]
+    .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0))
+    .map(({ url, title, kind }) => ({ url, title, kind }));
+}
+
 export class Writes {
   readonly #db: Database;
   readonly #reads: Reads;
@@ -119,6 +128,16 @@ export class Writes {
       at,
       changes: JSON.stringify(changes),
     });
+  }
+
+  /** Adds an external link, or gives the one to the same URL this title and kind. */
+  #externalLink(taskId: string, link: ExternalLink, actor: Actor, at: string): Statement {
+    return this.#db
+      .prepare(
+        `INSERT INTO task_external_links (task_id, url, title, kind, created_at, created_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (task_id, url) DO UPDATE SET title = excluded.title, kind = excluded.kind`,
+      )
+      .bind(taskId, link.url, link.title, link.kind, at, actor.name);
   }
 
   /** Fails the batch with `cycle` if `from` already waits, through blocks links, on `to`. */
@@ -198,6 +217,9 @@ export class Writes {
         title,
         description: reason,
         acceptance: '',
+        notes: '',
+        design: '',
+        estimateMinutes: null,
         assignee: null,
         assigneeModel: null,
         startedAt: null,
@@ -208,6 +230,7 @@ export class Writes {
         metadata: {},
         labels: [],
         dependencies: [],
+        externalLinks: [],
         close: null,
         filedBy: actor.name,
         filedModel: actor.model ?? null,
@@ -425,6 +448,9 @@ export class Writes {
           title: fields.title,
           description: fields.description,
           acceptance: fields.acceptance,
+          notes: fields.notes,
+          design: fields.design,
+          estimate_minutes: fields.estimateMinutes,
           defer_until: fields.deferUntil,
           due_at: fields.dueAt,
           choices: fields.choices === null ? null : JSON.stringify(fields.choices),
@@ -436,6 +462,7 @@ export class Writes {
           updated_at: at,
         }),
         ...fields.labels.map((label) => this.#insert('task_labels', { task_id: id, label })),
+        ...fields.externalLinks.map((link) => this.#externalLink(id, link, actor, at)),
       ];
       if (gateId !== null && fields.requestApproval !== null) {
         statements.push(
@@ -481,6 +508,9 @@ export class Writes {
           title: fields.title,
           description: fields.description,
           acceptance: fields.acceptance,
+          notes: fields.notes,
+          design: fields.design,
+          estimateMinutes: fields.estimateMinutes,
           assignee: null,
           assigneeModel: null,
           startedAt: null,
@@ -491,6 +521,7 @@ export class Writes {
           metadata: fields.metadata,
           labels: [...fields.labels].sort(),
           dependencies: linkList(dependencies),
+          externalLinks: externalList(new Map(fields.externalLinks.map((link) => [link.url, link]))),
           close: null,
           filedBy: actor.name,
           filedModel: actor.model ?? null,
@@ -553,6 +584,9 @@ export class Writes {
     if (set.title !== undefined) change('title', 'title', set.title);
     if (set.description !== undefined) change('description', 'description', set.description);
     if (set.acceptance !== undefined) change('acceptance', 'acceptance', set.acceptance);
+    if (set.notes !== undefined) change('notes', 'notes', set.notes);
+    if (set.design !== undefined) change('design', 'design', set.design);
+    if (set.estimateMinutes !== undefined) change('estimate_minutes', 'estimateMinutes', set.estimateMinutes);
     if (set.type !== undefined) change('type', 'type', set.type);
     if (set.priority !== undefined) change('priority', 'priority', set.priority);
     if (set.deferUntil !== undefined) change('defer_until', 'deferUntil', set.deferUntil);
@@ -641,6 +675,19 @@ export class Writes {
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
 
+    const external = new Map(current.externalLinks.map((link) => [link.url, link]));
+    const removeExternal = write.removeExternalLinks.filter((url) => external.has(url));
+    for (const url of removeExternal) external.delete(url);
+    const addExternal = write.addExternalLinks.filter((link) => {
+      const standing = external.get(link.url);
+      return standing?.title !== link.title || standing.kind !== link.kind;
+    });
+    for (const link of addExternal) external.set(link.url, link);
+    // Only a write that adds is held to the limit, so a task imported with more can still lose some.
+    if (addExternal.length > 0 && external.size > TASK_LIMITS.externalLinks)
+      refuse('invalid', `a task links to at most ${TASK_LIMITS.externalLinks} pages outside Ntasks`);
+    if (addExternal.length > 0 || removeExternal.length > 0) changes.externalLinks = externalList(external);
+
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
       const taskLinks = new Map(links);
@@ -688,6 +735,12 @@ export class Writes {
         );
         if (link.type === 'blocks') statements.push(this.#noBlockingLoop(link.taskId, taskId));
       }
+      for (const url of removeExternal) {
+        statements.push(
+          this.#db.prepare('DELETE FROM task_external_links WHERE task_id = ?1 AND url = ?2').bind(taskId, url),
+        );
+      }
+      for (const link of addExternal) statements.push(this.#externalLink(taskId, link, actor, at));
       if (write.comment !== null) {
         const commentId = crypto.randomUUID();
         statements.push(

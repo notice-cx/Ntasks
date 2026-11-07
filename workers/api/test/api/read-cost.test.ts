@@ -1,6 +1,7 @@
 // What each read costs the task store, on a store the size of a busy
 // installation: eight projects, one much larger than the rest, about a
-// thousand tasks open and several thousand closed. The free plan allows 5
+// thousand tasks open and several thousand closed, a quarter of them linking
+// a pull request. The free plan allows 5
 // million rows read per day and refuses reads for the rest of the day once
 // that allowance is spent; these budgets keep each read far inside it. They
 // measure a read the store has not cached; a cached one reads no rows
@@ -63,6 +64,10 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
      INSERT INTO task_edges (task_id, depends_on_id, type, created_at)
      SELECT ${id('i')}, ${id('i - 1')}, CASE WHEN i <= ?4 THEN 'blocks' ELSE 'discovered-from' END, ?5 FROM n WHERE i % 3 = 0`,
     `${numbers}
+     INSERT INTO task_external_links (task_id, url, title, kind, created_at)
+     SELECT ${id('i')}, 'https://example.com/' || ?2 || '/pull/' || i, 'Seeded change ' || i, 'pull-request', ?5
+     FROM n WHERE i % 4 = 2`,
+    `${numbers}
      INSERT INTO task_labels (task_id, label)
      SELECT ${id('i')}, 'area-' || (i % 7) FROM n UNION ALL SELECT ${id('i')}, 'seo' FROM n WHERE i % 5 = 0`,
     `${numbers}, k(j) AS (VALUES (1), (2), (3))
@@ -121,7 +126,8 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
  * Each read's most statements and rows read on this store. A read of one
  * task costs what that task and its links cost; a list costs about ten rows
  * for each task it returns. The statements do not grow with the number of
- * projects.
+ * projects. list_tasks reads the external links of the page it returns in a
+ * statement of its own, after the board.
  */
 const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
   'HTTP board, largest project': { statements: 5, rowsRead: 7_000 },
@@ -131,10 +137,10 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP label read, 12 tasks in the largest project': { statements: 2, rowsRead: 300 },
   'HTTP label read, a page of 200 in the largest project': { statements: 2, rowsRead: 3_500 },
   list_projects: { statements: 1, rowsRead: 20 },
-  'list_tasks ready, every project': { statements: 2, rowsRead: 10_000 },
-  'list_tasks, every project': { statements: 3, rowsRead: 16_000 },
-  'list_tasks search, every project': { statements: 3, rowsRead: 22_000 },
-  'list_tasks, largest project': { statements: 3, rowsRead: 6_000 },
+  'list_tasks ready, every project': { statements: 3, rowsRead: 10_000 },
+  'list_tasks, every project': { statements: 4, rowsRead: 16_000 },
+  'list_tasks search, every project': { statements: 4, rowsRead: 22_000 },
+  'list_tasks, largest project': { statements: 4, rowsRead: 6_000 },
   get_task: { statements: 3, rowsRead: 60 },
   get_task_history: { statements: 3, rowsRead: 60 },
 };
@@ -199,4 +205,46 @@ describe('the cost of each read', () => {
     const open = SIZES.reduce((sum, [, count]) => sum + count, 0);
     expect(every.total).toBe(open + RECENTLY_CLOSED * SIZES.length);
   });
+
+  // Last, since its project would change what the reads of every project above cost.
+  it("reads the external links of a page's tasks only, however many the other matching tasks hold", async () => {
+    const tasks = 400;
+    const links = 32;
+    const prefix = `l${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+    const project = await target.engine.createProject({
+      id: crypto.randomUUID(),
+      key: `${prefix}.example.com`,
+      name: 'Many links',
+      prefix,
+    });
+    const numbers = 'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?3)';
+    await db
+      .prepare(
+        `${numbers}
+         INSERT INTO tasks (id, project_id, type, status, priority, title, created_at, updated_at, filed_by)
+         SELECT ?2 || '-t' || i, ?1, 'task', 'open', 2, 'Linked task ' || i,
+           strftime('%Y-%m-%dT%H:%M:%fZ', ?4, '-' || i || ' minutes'), ?4, 'seed' FROM n`,
+      )
+      .bind(project.id, prefix, tasks, NOW)
+      .run();
+    await db
+      .prepare(
+        `${numbers}, k(j) AS (SELECT 1 UNION ALL SELECT j + 1 FROM k WHERE j < ?4)
+         INSERT INTO task_external_links (task_id, url, title, kind, created_at)
+         SELECT ?1 || '-t' || i, 'https://example.com/' || ?1 || '/' || i || '/' || j,
+           'Page ' || j || ' of task ' || i, 'document', ?2 FROM n, k`,
+      )
+      .bind(prefix, NOW, tasks, links)
+      .run();
+
+    let page: { total: number; tasks: { id: string; externalLinks: unknown[] }[] } | undefined;
+    const cost = await costOf(async () => {
+      page = await read(target, 'list_tasks', { project: project.id, limit: 5 });
+    });
+    console.log(JSON.stringify({ 'list_tasks, 5 of 400 tasks with 32 links each': cost }));
+    expect(page!.total).toBe(tasks);
+    expect(page!.tasks.map((task) => task.externalLinks.length)).toEqual([links, links, links, links, links]);
+    // Reading every matching task's links would read more than tasks * links rows.
+    expect(cost.rowsRead).toBeLessThan(5 * (links + 1) + 10 * tasks);
+  }, 60_000);
 });

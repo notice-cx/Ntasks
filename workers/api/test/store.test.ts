@@ -118,6 +118,57 @@ describe('reads from memory', () => {
     });
   });
 
+  it('shows an external link added or taken off on the next board and list it had served from memory', async () => {
+    await runInDurableObject(store(), async (instance: TaskStore) => {
+      const project = await newProject(instance.tasks);
+      const { task } = await instance.tasks.createTask(project.id, { title: 'Linked' }, AGENT);
+      const board = async () => {
+        const response = await instance.serve(new Request(`${ORIGIN}/api/tasks?project=${project.id}`), READER);
+        const { tasks } = (await response.json()) as { tasks: { externalLinks: { url: string }[] }[] };
+        return tasks[0]!.externalLinks.map((link) => link.url);
+      };
+      // list_tasks reads its page's links apart from the board, and both are kept in memory.
+      const listed = async () => {
+        const response = await instance.serve(
+          new Request(`${ORIGIN}/api/mcp`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'tools/call',
+              params: { name: 'list_tasks', arguments: { workspace: env.WORKSPACE_ID, project: project.id } },
+            }),
+          }),
+          READER,
+        );
+        const { result } = (await response.json()) as { result: { content: { text: string }[] } };
+        const { tasks } = JSON.parse(result.content[0]!.text) as { tasks: { externalLinks?: { url: string }[] }[] };
+        return (tasks[0]!.externalLinks ?? []).map((link) => link.url);
+      };
+      const links = async () => {
+        const both = [await board(), await listed()];
+        Object.assign(instance.meter, newMeter());
+        const again = [await board(), await listed()];
+        expect(again).toEqual(both);
+        expect(instance.meter.rowsRead).toBe(0);
+        return both;
+      };
+      const url = 'https://example.com/acme/web/pull/1';
+
+      expect(await links()).toEqual([[], []]);
+      await instance.tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, addExternalLinks: [{ url, title: 'The change' }] },
+        AGENT,
+      );
+      expect(await links()).toEqual([[url], [url]]);
+      await instance.tasks.writeTask(project.id, task.id, { expectedVersion: 2, removeExternalLinks: [url] }, AGENT);
+      expect(await links()).toEqual([[], []]);
+    });
+  });
+
   it("reads again once a deferred task's time comes", async () => {
     const time = clock();
     const meter = newMeter();

@@ -103,10 +103,23 @@ const ROWS: StoreRows = {
       close_reason: 'Done.',
       resolution: 'done',
       closed_by: 'agent-a',
+      notes: 'Two pages left for later.',
+      design: 'One page per product.',
+      estimate_minutes: 240,
     },
   ],
   task_labels: [{ task_id: 'acme-e1.1', label: 'content' }],
   task_edges: [{ task_id: 'acme-e1.1', depends_on_id: 'acme-e1', type: 'related', created_at: AT, created_by: null }],
+  task_external_links: [
+    {
+      task_id: 'acme-e1.1',
+      url: 'https://example.com/acme/pages/pull/3',
+      title: 'Write the pages',
+      kind: 'pull-request',
+      created_at: AT,
+      created_by: 'agent-a',
+    },
+  ],
   task_comments: [{ id: 'k-0001', task_id: 'acme-e1.1', author: 'owner', text: 'Thanks!', created_at: CLOSED }],
   task_events: [
     {
@@ -165,12 +178,16 @@ const ROWS: StoreRows = {
 };
 
 describe('an import into the task store', () => {
-  it('writes every row, and reads each table back as it was given', async () => {
+  it('writes every row, and reads each table back as it was given, with the defaults of columns it left out', async () => {
     const stub = freshStore();
     const result = await stub.importRows(ROWS);
-    expect(result.rows).toBe(10);
-    expect(result.rowsWritten).toBeGreaterThanOrEqual(10);
-    for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(ROWS[table]);
+    expect(result.rows).toBe(11);
+    expect(result.rowsWritten).toBeGreaterThanOrEqual(11);
+    const stored: StoreRows = {
+      ...ROWS,
+      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, ...row })),
+    };
+    for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });
 
   it('names every column of each table it writes', async () => {
@@ -213,6 +230,7 @@ describe('an import into the task store', () => {
       version: 2,
       parentId: 'acme-e1',
       labels: ['content'],
+      externalLinks: [{ url: 'https://example.com/acme/pages/pull/3', title: 'Write the pages', kind: 'pull-request' }],
       close: { resolution: 'done', by: 'agent-a' },
     });
     expect(history.map((event) => [event.seq, event.kind])).toEqual([

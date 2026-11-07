@@ -4,10 +4,10 @@
  */
 import {
   TASK_LIMITS,
+  type BoardQuery,
   type Task,
   type TaskEngine,
   type TaskEvent,
-  type TaskFilters,
   type TaskStatus,
 } from '@ntasks/domain';
 
@@ -42,7 +42,7 @@ export async function board(
   projectId: string | null,
   statuses: readonly TaskStatus[],
   closedDays: number,
-  filters: TaskFilters,
+  filters: Omit<BoardQuery, 'statuses' | 'closedSince'>,
   now: () => string,
 ): Promise<Board> {
   const readAt = now();
@@ -54,6 +54,16 @@ export async function board(
     ...(statuses.includes('closed') ? { closedSince: `${closedSince}T00:00:00.000Z` } : {}),
   });
   return { readAt, closedSince, tasks };
+}
+
+/** These tasks, read from a board without their external links, with their
+ * external links: one read of these tasks' links alone, so a page of a board
+ * costs the links it shows and no other task's. */
+export async function withExternalLinks(engine: TaskEngine, tasks: readonly Task[]): Promise<Task[]> {
+  if (tasks.length === 0) return [];
+  const read = await engine.listExternalLinks(tasks.map((task) => task.id));
+  const links = new Map(read.map((entry) => [entry.taskId, entry.externalLinks]));
+  return tasks.map((task) => ({ ...task, externalLinks: links.get(task.id) ?? [] }));
 }
 
 /** Every event of a task, oldest first. */
