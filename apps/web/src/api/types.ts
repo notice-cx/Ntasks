@@ -102,6 +102,9 @@ export interface LiveTask {
   dueAt?: string | null;
   choices?: TaskChoices | null;
   choice?: TaskChoice | null;
+  /** While the task waits on a person, the version of the proposal they answer,
+   * which an answer sends back; null otherwise, and absent when the server sends none. */
+  proposalVersion?: string | null;
   /** How a closed task's close ended; null on a task that is not closed. */
   resolution?: TaskResolution | null;
   duplicateOf?: string | null;

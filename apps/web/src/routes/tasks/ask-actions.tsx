@@ -19,6 +19,7 @@ export function useAskActions({
   id,
   title,
   project,
+  proposalVersion = null,
   choices = null,
   disabledReason = null,
   chooseDisabledReason = disabledReason,
@@ -27,6 +28,8 @@ export function useAskActions({
   id: string;
   title: string;
   project: string;
+  /** The proposal version the row shows, which every answer sends. */
+  proposalVersion?: string | null;
   choices?: TaskChoices | null;
   /** Why the verbs cannot run here, or null. */
   disabledReason?: string | null;
@@ -45,14 +48,14 @@ export function useAskActions({
   function send() {
     const words = text.trim();
     if (words === '') return;
-    answer({ kind: 'answer', id, title, project, text: words });
+    answer({ kind: 'answer', id, title, project, proposalVersion, text: words });
     setText('');
     setAnswering(false);
   }
 
   function choose(option: TaskChoiceKey) {
     const label = choices?.options.find((entry) => entry.key === option)?.label;
-    answer({ kind: 'choose', id, title, project, option, ...(label === undefined ? {} : { label }) });
+    answer({ kind: 'choose', id, title, project, proposalVersion, option, ...(label === undefined ? {} : { label }) });
   }
 
   // A row has no room to write why its controls are disabled, so each one
@@ -68,7 +71,7 @@ export function useAskActions({
         disabled={disabled}
         title={disabledReason || undefined}
         aria-describedby={described}
-        onClick={() => answer({ kind: 'approve', id, title, project })}
+        onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
         data-task-action="approve"
       >
         <Check aria-hidden strokeWidth={2} />

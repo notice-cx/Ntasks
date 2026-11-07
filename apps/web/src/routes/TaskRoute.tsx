@@ -225,6 +225,7 @@ function TaskPage({
     id: task.id,
     title: task.title,
     project: key,
+    proposalVersion: task.proposalVersion ?? null,
     ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}),
     onOpen: () => setPanel(null),
   });
@@ -233,7 +234,7 @@ function TaskPage({
   const answered = hides(task.id, fetchedAt);
   const ask = answered ? null : inboxAsk(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
-  const scope = { id: task.id, title: task.title, project: key };
+  const scope = { id: task.id, title: task.title, project: key, proposalVersion: task.proposalVersion ?? null };
   const reasonFor = (available: boolean) => verbReason(capabilities, available, UNAVAILABLE);
   const askReason = reasonFor(operationAvailable(capabilities, ask === 'approve' ? 'resolve' : 'respond'));
   const chooseReason = reasonFor(operationAvailable(capabilities, 'choose'));

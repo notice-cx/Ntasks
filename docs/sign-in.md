@@ -47,10 +47,10 @@ choice in a decision, but that is a relayed answer, not the person's own
 decision. `mayDecide(principal)` is true only for a person's browser
 session, so the API can record the two apart: only that session holds
 `tasks:decide`, which the decision routes need, and an agent records an
-answer it holds with `reconcile_task` ([API](api.md#recording-an-owner-answer)).
-An agent's sign-in also names the person who approved it, so a comment that
-person wrote counts as their own words when the agent cites it; a service
-names no person.
+answer it holds with `reconcile_task` ([API](api.md#recording-an-owner-answer)),
+which records it as relayed by that agent or service. An agent's sign-in also
+names the person who approved it, so a pick the agent relays names that
+person as the one who chose; a service names no person.
 
 ## Settings
 

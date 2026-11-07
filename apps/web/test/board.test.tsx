@@ -443,25 +443,29 @@ describe('a row waiting for you', () => {
     vi.useRealTimers();
   });
 
-  it("sends each row's answer through a person's decision route", async () => {
+  it("sends each row's answer through a person's decision route, with the proposal version the row showed", async () => {
     const api = createFixtureTasksApi();
     const calls: unknown[][] = [];
     const spied = {
       ...api,
+      board: async (...args: Parameters<typeof api.board>) => {
+        const board = await api.board(...args);
+        return { ...board, tasks: board.tasks.map((task) => ({ ...task, proposalVersion: `${task.id}-shown` })) };
+      },
       resolveGate: (...args: Parameters<typeof api.resolveGate>) => {
-        calls.push(['resolveGate', args[0], args[1], args[2]]);
+        calls.push(['resolveGate', args[0], args[1], args[2], args[3]?.proposalVersion]);
         return api.resolveGate(...args);
       },
       choose: (...args: Parameters<typeof api.choose>) => {
-        calls.push(['choose', args[0], args[1], args[2], args[3]]);
+        calls.push(['choose', args[0], args[1], args[2], args[3], args[4]?.proposalVersion]);
         return api.choose(...args);
       },
       respond: (...args: Parameters<typeof api.respond>) => {
-        calls.push(['respond', args[0], args[1], args[2]]);
+        calls.push(['respond', args[0], args[1], args[2], args[3]?.proposalVersion]);
         return api.respond(...args);
       },
       dismiss: (...args: Parameters<typeof api.dismiss>) => {
-        calls.push(['dismiss', args[0], args[1], args[2], args[3]?.resolution]);
+        calls.push(['dismiss', args[0], args[1], args[2], args[3]?.resolution, args[3]?.proposalVersion]);
         return api.dismiss(...args);
       },
     };
@@ -485,10 +489,10 @@ describe('a row waiting for you', () => {
     await waitFor(() => expect(calls).toHaveLength(4));
     expect(calls).toEqual(
       expect.arrayContaining([
-        ['resolveGate', 'web-g7p2', 'web', undefined],
-        ['choose', 'web-d4x1', 'web', 'b', undefined],
-        ['respond', 'web-q8n5', 'web', 'support@example.com'],
-        ['dismiss', 'docs-r4s9', 'docs', 'The docs stay put.', 'wont-do'],
+        ['resolveGate', 'web-g7p2', 'web', undefined, 'web-g7p2-shown'],
+        ['choose', 'web-d4x1', 'web', 'b', undefined, 'web-d4x1-shown'],
+        ['respond', 'web-q8n5', 'web', 'support@example.com', 'web-q8n5-shown'],
+        ['dismiss', 'docs-r4s9', 'docs', 'The docs stay put.', 'wont-do', 'docs-r4s9-shown'],
       ]),
     );
   });

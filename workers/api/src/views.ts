@@ -7,6 +7,7 @@
  */
 import type { CustomField, Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
 import { NOTICEOS_METADATA as NOTICEOS, TASK_CHANGE_CLASSES } from './noticeos-fields.ts';
+import { shortHash } from './short-hash.ts';
 
 const CHANGE_CLASSES: readonly string[] = TASK_CHANGE_CLASSES;
 
@@ -47,6 +48,47 @@ export function proposalOf(
   task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
 ): string {
   return JSON.stringify([task.id, task.title, task.description, task.acceptance, task.type, task.choices]);
+}
+
+/** The proposal's version, which an owner's answer names: the short hash of `proposalOf(task)`. */
+export function proposalVersionOf(
+  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
+): Promise<string> {
+  return shortHash(proposalOf(task));
+}
+
+/** The actions that record an owner's answer, as the answer record names them. */
+const OWNER_ANSWERS: readonly Json[] = ['answer', 'declined', 'owner_performed'];
+
+/**
+ * The latest owner answer recorded on a task: what was chosen, the owner's
+ * words, where they said it, who recorded it and how, and the proposal
+ * version it answered; null when none is recorded. `option` is a letter on a
+ * task with choices, `approve` or `decline` on an approval, and null when the
+ * answer chose none of the options.
+ */
+export function answerOf(task: Pick<Task, 'type' | 'metadata'>) {
+  const record = objectOrNull(task.metadata[NOTICEOS.maintenance]);
+  if (record === null) return null;
+  const events = Array.isArray(record.events) ? record.events : [];
+  // The record holds the latest disposition, and `events` the earlier ones, oldest first.
+  const answer = [record, ...[...events].reverse()]
+    .map(objectOrNull)
+    .find((entry) => entry !== null && OWNER_ANSWERS.includes(entry.action ?? null));
+  if (!answer || typeof answer.by !== 'string' || typeof answer.at !== 'string') return null;
+  const text = (value: Json | undefined) => (typeof value === 'string' ? value : null);
+  const disputed = objectOrNull(answer.disputed);
+  return {
+    option: task.type === 'gate' ? (answer.action === 'declined' ? 'decline' : 'approve') : text(answer.option),
+    quote: text(answer.response),
+    source: text(answer.source),
+    recordedBy: answer.by,
+    /** A person who answered in the web app recorded it directly; an agent or a service relayed it. */
+    relayed: answer.verification !== 'person',
+    proposalVersion: text(answer.proposalVersion),
+    at: answer.at,
+    disputedBy: text(disputed?.by),
+  };
 }
 
 /** A task as the web app's pages read it. */
@@ -91,12 +133,25 @@ export function webTask(task: Task) {
     awaitType: task.awaitType,
     choices: task.choices,
     choice: task.choice,
+    answer: answerOf(task),
     card: objectOrNull(task.metadata[NOTICEOS.card]),
     cardShipped: objectOrNull(task.metadata[NOTICEOS.cardShipped]),
     changeClass: changeClassOf(task.metadata),
     resolution: task.close?.resolution ?? null,
     duplicateOf: task.close?.duplicateOf ?? null,
   };
+}
+
+/** Tasks as the web app's pages read them, each with `proposalVersion`: its
+ * proposal's version while it waits on a person, which their answer names,
+ * and null otherwise, so a long board hashes only the tasks someone answers. */
+export function webTasks(tasks: readonly Task[]) {
+  return Promise.all(
+    tasks.map(async (task) => ({
+      ...webTask(task),
+      proposalVersion: waitsOnPerson(task) ? await proposalVersionOf(task) : null,
+    })),
+  );
 }
 
 /** A task in full, as get_task returns it. */
@@ -120,6 +175,7 @@ export function mcpTask(task: Task) {
     estimateMinutes: task.estimateMinutes,
     choices: task.choices,
     choice: task.choice,
+    answer: web.answer,
     card: web.card,
     cardShipped: web.cardShipped,
     changeClass: web.changeClass,

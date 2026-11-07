@@ -51,6 +51,12 @@ export interface WriteOptions {
   idempotencyKey?: string;
 }
 
+export interface AnswerOptions {
+  /** The proposal version the page showed. The server refuses the answer once
+   * the task's proposal has changed from it; null sends none. */
+  proposalVersion?: string | null;
+}
+
 export interface TasksApi {
   /** The workspace every call after this one is made in; null names none, as a sender who reaches one may. */
   selectWorkspace(workspaceId: string | null): void;
@@ -76,15 +82,26 @@ export interface TasksApi {
   closeTask(id: string, project: string, reason: string, options?: CloseOptions & WriteOptions): Promise<void>;
   comment(id: string, project: string, text: string, options?: WriteOptions): Promise<void>;
   /** Answer a task waiting on a person: a decision closes with the answer, any other task goes back to ready work. */
-  respond(id: string, project: string, response: string, options?: WriteOptions): Promise<void>;
+  respond(id: string, project: string, response: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Pick one of a decision's options, with an optional note. */
-  choose(id: string, project: string, option: TaskChoiceKey, note?: string, options?: WriteOptions): Promise<void>;
+  choose(
+    id: string,
+    project: string,
+    option: TaskChoiceKey,
+    note?: string,
+    options?: WriteOptions & AnswerOptions,
+  ): Promise<void>;
   /** Decline a task waiting on a person. It closes as Won't do unless another resolution is named. */
-  dismiss(id: string, project: string, reason?: string, options?: CloseOptions & WriteOptions): Promise<void>;
+  dismiss(
+    id: string,
+    project: string,
+    reason?: string,
+    options?: CloseOptions & WriteOptions & AnswerOptions,
+  ): Promise<void>;
   /** Reopen an approval whose recorded answer the person disputes. */
   dispute(id: string, project: string): Promise<void>;
   /** Approve the action an approval names. */
-  resolveGate(id: string, project: string, reason?: string, options?: WriteOptions): Promise<void>;
+  resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Only the workspace's owners may create a project. */
   createProject(input: NewProject, options?: WriteOptions): Promise<void>;
   /** The workspace's members and pending invitations; only its owners may read them. */
@@ -487,6 +504,11 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     );
   }
 
+  /** The body field naming the proposal version an answer's page showed, when it names one. */
+  function shownIn({ proposalVersion }: AnswerOptions) {
+    return typeof proposalVersion === 'string' ? { proposalVersion } : {};
+  }
+
   function ended(resolution: TaskResolution | undefined, unmarked: TaskResolution, duplicateOf: string | undefined) {
     return {
       ...(resolution === undefined || resolution === unmarked ? {} : { resolution }),
@@ -546,14 +568,14 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       await act(id, project, 'comments', { text }, options);
     },
     async respond(id, project, response, sending = {}) {
-      await act(id, project, 'respond', { response }, sending);
+      await act(id, project, 'respond', { response, ...shownIn(sending) }, sending);
     },
     async choose(id, project, option, note, sending = {}) {
       await act(
         id,
         project,
         'choose',
-        { option, ...(note === undefined || note.trim() === '' ? {} : { note }) },
+        { option, ...(note === undefined || note.trim() === '' ? {} : { note }), ...shownIn(sending) },
         sending,
       );
     },
@@ -562,7 +584,11 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         id,
         project,
         'dismiss',
-        { ...(reason === undefined ? {} : { reason }), ...ended(resolution, 'wont-do', duplicateOf) },
+        {
+          ...(reason === undefined ? {} : { reason }),
+          ...ended(resolution, 'wont-do', duplicateOf),
+          ...shownIn(sending),
+        },
         sending,
       );
     },
@@ -574,7 +600,7 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       await write(
         'POST',
         path,
-        { ...(reason === undefined ? {} : { reason }), projectId: await projectId(project) },
+        { ...(reason === undefined ? {} : { reason }), ...shownIn(sending), projectId: await projectId(project) },
         `Approval ${id}`,
         sending,
       );

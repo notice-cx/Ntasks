@@ -153,6 +153,7 @@ export function TaskRow({ task, context }: { task: BoardTask; context: RowContex
     id: task.id,
     title: task.title,
     project: task.project,
+    proposalVersion: task.proposalVersion ?? null,
     ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}),
     onOpen: () => setForm(null),
   });
@@ -237,6 +238,7 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
     id: task.id,
     title: task.title,
     project: task.project,
+    proposalVersion: task.proposalVersion ?? null,
     via: 'dismiss',
   });
   const { buttons, box } = useAskActions({
@@ -244,6 +246,7 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
     id: task.id,
     title: task.title,
     project: task.project,
+    proposalVersion: task.proposalVersion ?? null,
     choices: task.choices ?? null,
     disabledReason: verbReason(
       capabilities,

@@ -17,7 +17,7 @@ import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
-import { commentView, fieldView, historyView, proposalOf, webTask } from '../views.ts';
+import { commentView, fieldView, historyView, proposalOf, proposalVersionOf, webTasks } from '../views.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
 import { DECISION_OPERATIONS, EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
 
@@ -108,7 +108,7 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
     repo: '',
     readAt: now(),
     label,
-    tasks: page.tasks.map((task) => webTask(links.task(task))),
+    tasks: await webTasks(page.tasks.map(links.task)),
     next: page.next,
   });
 }
@@ -157,7 +157,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     repo: '',
     readAt: found.readAt,
     closedSince: found.closedSince,
-    tasks: found.tasks.map((task) => webTask(links.task(task))),
+    tasks: await webTasks(found.tasks.map(links.task)),
     epics: epics?.map(epicView) ?? null,
     actors: [],
     lastSeq,
@@ -211,15 +211,17 @@ export async function taskRoute(context: ReadContext, url: URL, taskId: string):
     engine.listComments(project.id, taskId),
     linksSeenBy(context),
   ]);
+  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)]), proposalVersionOf(task)]);
   return json({
     project: project.key,
     prefix: project.prefix,
     repo: '',
     readAt: now(),
-    task: webTask(links.task(task)),
+    task: view,
     comments: comments.map(commentView),
     actors: [],
     proposal: proposalOf(task),
+    proposalVersion,
   });
 }
 

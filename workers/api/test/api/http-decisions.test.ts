@@ -227,26 +227,21 @@ describe('POST /api/tasks/:id/respond', () => {
     expect(await texts(decision.id)).toEqual(['Response: Use OAuth2']);
   });
 
-  it('reads a reply that names an option as that pick', async () => {
-    const { task: decision } = await task({ type: 'decision', choices: CHOICES });
-    const answered = await post(`/api/tasks/${decision.id}/respond`, { response: 'yes, your recommendation' });
-    expect(answered.body.task).toMatchObject({
-      status: 'closed',
-      closeReason: 'Chose (a) Keep the old page',
-      choice: { option: 'a', by: 'Person' },
-    });
-    expect(await texts(decision.id)).toEqual(['Chose (a) Keep the old page.']);
+  it('records a reply as given, never reading it as a pick of an option', async () => {
+    for (const response of ['yes, your recommendation', 'Maybe the first?']) {
+      const { task: decision } = await task({ type: 'decision', choices: CHOICES });
+      const answered = await post(`/api/tasks/${decision.id}/respond`, { response });
+      expect(answered.body.task, response).toMatchObject({
+        status: 'closed',
+        closeReason: 'Responded',
+        choice: null,
+        answer: { option: null, quote: response, recordedBy: 'Person', relayed: false },
+      });
+    }
   });
 
-  it('refuses an unclear reply, a task that waits on nobody, an approval and a reply too long for a comment', async () => {
+  it('refuses a task that waits on nobody, an approval and a reply too long for a comment', async () => {
     const { task: asked } = await task({ choices: CHOICES });
-    expect(await post(`/api/tasks/${asked.id}/respond`, { response: 'Maybe the first?' })).toEqual({
-      status: 409,
-      body: {
-        error: 'task_refused',
-        detail: 'This reply leaves the decision unresolved. Ask one clarification covering only the uncertainty.',
-      },
-    });
     const { task: plain } = await engine.createTask(project.id, { title: 'Nobody asked' }, OWNER);
     expect((await post(`/api/tasks/${plain.id}/respond`, { response: 'Yes' })).body).toEqual({
       error: 'task_refused',
@@ -382,9 +377,60 @@ describe('POST /api/tasks/:id/dispute', () => {
   it('needs an approval an agent recorded', async () => {
     const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
     await post(`/api/gates/${created[0]!.id}/resolve`, {});
-    expect((await post(`/api/tasks/${created[0]!.id}/dispute`, {})).body).toEqual({
-      error: 'task_refused',
-      detail: 'dispute requires a recorded agent-relayed approval on this gate.',
+    expect(await post(`/api/tasks/${created[0]!.id}/dispute`, {})).toMatchObject({
+      status: 409,
+      body: { error: 'task_refused' },
+    });
+    expect((await current(created[0]!.id)).status).toBe('closed');
+  });
+});
+
+describe('the proposal version a person answers', () => {
+  const detail = async (id: string) => (await get(target, `/api/tasks/${id}?project=${project.id}`)).body;
+
+  it('is on the task read, and on a board task while it waits on a person', async () => {
+    const { task: asked } = await task({ choices: CHOICES });
+    const { task: plain } = await engine.createTask(project.id, { title: 'Nobody asked' }, OWNER);
+    const read = await detail(asked.id);
+    expect(read.proposalVersion).toMatch(/^[0-9a-f]{12}$/u);
+    expect((await detail(plain.id)).proposalVersion).toMatch(/^[0-9a-f]{12}$/u);
+    const board = (await get(target, `/api/tasks?project=${project.id}`)).body.tasks as {
+      id: string;
+      proposalVersion: string | null;
+    }[];
+    expect(board.find((row) => row.id === asked.id)?.proposalVersion).toBe(read.proposalVersion);
+    expect(board.find((row) => row.id === plain.id)?.proposalVersion).toBeNull();
+  });
+
+  it('records an answer with the version its page showed, and refuses one whose proposal changed since, writing nothing', async () => {
+    const { task: asked } = await task({ choices: CHOICES });
+    const shown = (await detail(asked.id)).proposalVersion as string;
+    await engine.writeTask(project.id, asked.id, { expectedVersion: 1, set: { title: 'Asks a person again' } }, OWNER);
+    const before = await current(asked.id);
+
+    const stale = await post(`/api/tasks/${asked.id}/choose`, { option: 'b', proposalVersion: shown });
+
+    expect(stale).toMatchObject({ status: 409, body: { error: 'task_refused', field: 'proposalVersion' } });
+    expect(await current(asked.id)).toEqual(before);
+    const fresh = (await detail(asked.id)).proposalVersion as string;
+    const picked = await post(`/api/tasks/${asked.id}/choose`, { option: 'b', proposalVersion: fresh });
+    expect(picked.body.task).toMatchObject({
+      choice: { option: 'b' },
+      answer: { option: 'b', quote: null, source: null, recordedBy: 'Person', relayed: false, proposalVersion: fresh },
+    });
+    expect(
+      (await post(`/api/tasks/${asked.id}/respond`, { response: 'Yes', proposalVersion: 'x' })).body,
+    ).toMatchObject({ error: 'invalid_request', field: 'proposalVersion' });
+  });
+
+  it('records an approval with the version its page showed', async () => {
+    const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
+    const gate = created[0]!;
+    const shown = (await detail(gate.id)).proposalVersion as string;
+    const approved = await post(`/api/gates/${gate.id}/resolve`, { proposalVersion: shown });
+    expect(approved.body.task).toMatchObject({
+      status: 'closed',
+      answer: { option: 'approve', relayed: false, proposalVersion: shown },
     });
   });
 });
