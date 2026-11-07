@@ -5,15 +5,16 @@
  * endpoint reads afterwards.
  */
 import { TASK_LIMITS } from '@ntasks/domain';
-import { SCOPES, type Authenticator, type Principal as ApiPrincipal } from '../auth.ts';
+import { SCOPES, type Authenticator, type ProjectAccess } from '../auth.ts';
 import { json } from '../http/respond.ts';
+import { byName, type Sender, type WorkspaceReach, type WorkspaceRole } from '../workspaces.ts';
 import { actorOf, personOf, type Principal, type ServicePrincipal } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
 /**
  * The header a service sends to name the agent a request is for, such as one
  * of several agents a NoticeOS installation serves through one credential.
- * The owner and OAuth agents sign in as themselves, so it is ignored for them.
+ * People and OAuth agents sign in as themselves, so it is ignored for them.
  */
 export const ON_BEHALF_OF_HEADER = 'x-ntasks-on-behalf-of';
 const ON_BEHALF_OF = /^[A-Za-z0-9._:/-]{1,128}$/u;
@@ -23,16 +24,24 @@ const WRITE = SCOPES.write;
 const BACKUP = SCOPES.backup;
 const RESTORE = SCOPES.restore;
 const DECIDE = SCOPES.decide;
+const MANAGE = SCOPES.manage;
+
+/** What a person may do in a workspace, by their role there. Only an owner
+ * backs up, loads or manages it; the decide scope is a person's alone (`mayDecide`). */
+const ROLE_SCOPES: Readonly<Record<WorkspaceRole, readonly string[]>> = Object.freeze({
+  owner: Object.freeze([READ, WRITE, BACKUP, RESTORE, DECIDE, MANAGE]),
+  member: Object.freeze([READ, WRITE, DECIDE]),
+});
 
 /**
- * A signed-in sender, in the API's shape (src/auth.ts): its id is the retry
- * principal, its name the actor the engine records (`actorOf`), its scopes
- * what it may do somewhere, and its projects where: `all` for the owner, or
+ * A signed-in sender (src/workspaces.ts): its id is the retry principal, its
+ * name the actor the engine records (`actorOf`), and its workspaces what it
+ * may do in each, by scopes, and where, by projects: `all` for a person, or
  * each project an agent or a service was granted, with the most it may do
  * there. The API checks each project with `mayReach`.
  */
-export interface SignedIn extends ApiPrincipal {
-  /** The full sender, for `mayDecide(principal)`: whether an answer is the owner's own decision. */
+export interface SignedIn extends Sender {
+  /** The full sender, for `mayDecide(principal)`: whether an answer is a person's own decision. */
   readonly principal: Principal;
 }
 
@@ -40,16 +49,47 @@ export interface SignInAuthenticator extends Authenticator {
   authenticate(request: Request): Promise<SignedIn | null>;
 }
 
-/** The scopes for the most the principal may do in any one project, none
- * for a sender with no grants, the backup and restore scopes for the owner
- * and for a credential the owner made with each, and the decide scope for the
- * owner alone (`mayDecide`). */
-function scopesOf(principal: Principal): readonly string[] {
-  if (principal.kind === 'person') return [READ, WRITE, BACKUP, RESTORE, DECIDE];
-  const access = new Set(principal.projects.values());
-  const scopes = access.has('write') ? [READ, WRITE] : access.has('read') ? [READ] : [];
-  if (principal.kind !== 'service') return scopes;
-  return [...scopes, ...(principal.backup ? [BACKUP] : []), ...(principal.restore ? [RESTORE] : [])];
+/** The scopes for the most a sender may do in any one of these projects: none when it was granted none. */
+function grantScopes(projects: ReadonlyMap<string, ProjectAccess>): string[] {
+  const access = new Set(projects.values());
+  return access.has('write') ? [READ, WRITE] : access.has('read') ? [READ] : [];
+}
+
+/**
+ * Every workspace the principal reaches, with what it may do there: a person
+ * the workspaces they belong to, by their role; an agent the workspaces where
+ * its person granted it projects; a service its credential's one workspace,
+ * with the backup and restore scopes when its owner made it with each.
+ */
+export function reachesOf(principal: Principal): WorkspaceReach[] {
+  const reaches: WorkspaceReach[] =
+    principal.kind === 'person'
+      ? principal.memberships.map(({ workspace, role }) => ({
+          workspace,
+          role,
+          scopes: ROLE_SCOPES[role],
+          projects: 'all',
+        }))
+      : principal.kind === 'agent'
+        ? principal.workspaces.map(({ workspace, projects }) => ({
+            workspace,
+            role: null,
+            scopes: grantScopes(projects),
+            projects,
+          }))
+        : [
+            {
+              workspace: principal.workspace,
+              role: null,
+              scopes: [
+                ...grantScopes(principal.projects),
+                ...(principal.backup ? [BACKUP] : []),
+                ...(principal.restore ? [RESTORE] : []),
+              ],
+              projects: principal.projects,
+            },
+          ];
+  return reaches.sort(byName);
 }
 
 type Refusal = Extract<Verification, { ok: false }> | { readonly ok: false; readonly invalidRequest: string };
@@ -104,9 +144,8 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
       return Object.freeze({
         id: principal.id,
         name: actorOf(principal).name,
-        scopes: scopesOf(principal),
-        projects: principal.kind === 'person' ? 'all' : principal.projects,
         ...(person === undefined ? {} : { person }),
+        workspaces: reachesOf(principal),
         principal,
       });
     },

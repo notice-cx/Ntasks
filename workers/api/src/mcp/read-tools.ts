@@ -15,7 +15,8 @@ import {
 } from '@ntasks/domain';
 import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
-import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks, type Workspace } from '../service.ts';
+import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
+import type { Workspace } from '../workspaces.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
 import {

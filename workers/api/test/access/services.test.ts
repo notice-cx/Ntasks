@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator, type SignedIn } from '../../src/access/authenticator.ts';
-import { mayReach } from '../../src/auth.ts';
+import { mayReach, type Principal } from '../../src/auth.ts';
+import { scopedTo } from '../../src/workspaces.ts';
+import { TEST_WORKSPACE } from '../store.ts';
 import { Browser, call, connectAgent, createProject, meWithToken, ORIGIN } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -18,13 +20,20 @@ async function createService(browser: Browser, name: string, grants: unknown): P
   return browser.fetchJson('/api/access/services', { name, grants });
 }
 
-/** The sender a bearer token signs in as, as the API sees it; fails the test when it is refused. */
-async function principalFor(token: string): Promise<SignedIn> {
+/** The sender a bearer token signs in as; fails the test when it is refused. */
+async function senderFor(token: string): Promise<SignedIn> {
   const signedIn = await signInAuthenticator(env).authenticate(
     new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${token}` } }),
   );
   if (!signedIn) throw new Error('refused');
   return signedIn;
+}
+
+/** The sender a bearer token signs in as, as the test workspace's store sees it. A service reaches only its credential's workspace. */
+async function principalFor(token: string): Promise<Principal> {
+  const sender = await senderFor(token);
+  expect(sender.workspaces.map((reach) => reach.workspace)).toEqual([TEST_WORKSPACE]);
+  return scopedTo(sender, sender.workspaces[0]!);
 }
 
 /** GET an API path with a bearer token, through the Worker. */
@@ -45,13 +54,15 @@ describe('a service credential', () => {
     const { service } = await response.json<{ service: CreatedService }>();
     expect(service.token).toMatch(/^ntasks_service\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/u);
 
+    expect(await senderFor(service.token)).toMatchObject({
+      principal: { kind: 'service', name: 'noticeos-laptop', workspace: TEST_WORKSPACE },
+    });
     const principal = await principalFor(service.token);
-    expect(principal).toMatchObject({
+    expect(principal).toEqual({
       id: `service:${service.id}`,
       name: 'service:noticeos-laptop',
       scopes: ['tasks:read', 'tasks:write'],
       projects: new Map([[granted, 'write']]),
-      principal: { kind: 'service', name: 'noticeos-laptop' },
     });
     expect(mayReach(principal, granted, 'read')).toBe(true);
     expect(mayReach(principal, granted, 'write')).toBe(true);
@@ -61,7 +72,8 @@ describe('a service credential', () => {
     expect(await (await meWithToken(service.token)).json()).toEqual({
       kind: 'service',
       name: 'noticeos-laptop',
-      projects: [{ projectId: granted, access: 'write' }],
+      deploymentAdmin: false,
+      projects: [{ workspaceId: TEST_WORKSPACE.id, projectId: granted, access: 'write' }],
     });
   });
 

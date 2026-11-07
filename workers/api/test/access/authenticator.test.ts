@@ -2,7 +2,9 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator } from '../../src/access/authenticator.ts';
 import { mayReach } from '../../src/auth.ts';
-import { Browser, connectAgent, createProject, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
+import { scopedTo } from '../../src/workspaces.ts';
+import { TEST_WORKSPACE } from '../store.ts';
+import { addMember, Browser, connectAgent, createProject, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
 standInForGitHub();
@@ -27,23 +29,32 @@ function bearer(token: string): Request {
 }
 
 describe('the authenticator the API layer calls', () => {
-  it('signs in the owner with every scope', async () => {
+  it("signs in a workspace's owner with every scope there, and a member without the owner's", async () => {
     const browser = new Browser();
     await browser.signInAsOwner();
     const request = new Request(`${ORIGIN}/api/tasks`, {
       headers: { cookie: `__Secure-ntasks.session_token=${browser.cookie('__Secure-ntasks.session_token')}` },
     });
+    const userId = await ownerUserId();
+    const joined = { id: crypto.randomUUID(), name: 'Joined workspace' };
+    await addMember(joined, userId, 'member');
 
     const signedIn = await authenticator.authenticate(request);
-    const userId = await ownerUserId();
     expect(signedIn).toMatchObject({
       id: `person:${userId}`,
       name: `Person ${OWNER_GITHUB_ID}`,
-      scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:restore', 'tasks:decide'],
-      projects: 'all',
       person: `Person ${OWNER_GITHUB_ID}`,
-      principal: { kind: 'person', userId },
+      principal: { kind: 'person', userId, admin: true },
     });
+    expect(signedIn?.workspaces).toEqual([
+      { workspace: joined, role: 'member', scopes: ['tasks:read', 'tasks:write', 'tasks:decide'], projects: 'all' },
+      {
+        workspace: TEST_WORKSPACE,
+        role: 'owner',
+        scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:restore', 'tasks:decide', 'workspace:manage'],
+        projects: 'all',
+      },
+    ]);
   });
 
   it('gives a read-only agent the read scope, its prefixed actor name and its projects', async () => {
@@ -59,14 +70,17 @@ describe('the authenticator the API layer calls', () => {
     expect(signedIn).toMatchObject({
       id: `agent:${client.clientId}:${userId}`,
       name: 'agent:Example Agent',
-      scopes: ['tasks:read'],
       // The person who approved it, whose own comments are their words.
       person: `Person ${OWNER_GITHUB_ID}`,
       principal: { kind: 'agent', clientId: client.clientId, userId },
     });
-    expect(signedIn?.projects).toEqual(new Map([[granted, 'read']]));
-    expect(signedIn && mayReach(signedIn, granted, 'read')).toBe(true);
-    expect(signedIn && mayReach(signedIn, other, 'read')).toBe(false);
+    expect(signedIn?.workspaces).toEqual([
+      { workspace: TEST_WORKSPACE, role: null, scopes: ['tasks:read'], projects: new Map([[granted, 'read']]) },
+    ]);
+    const [reach] = signedIn?.workspaces ?? [];
+    if (!signedIn || !reach) throw new Error('the agent should reach the test workspace');
+    expect(mayReach(scopedTo(signedIn, reach), granted, 'read')).toBe(true);
+    expect(mayReach(scopedTo(signedIn, reach), other, 'read')).toBe(false);
     // The body is still there for the MCP endpoint to read.
     expect(await request.text()).toBe('{}');
   });

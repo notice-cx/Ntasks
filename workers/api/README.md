@@ -8,7 +8,7 @@ every other path. Wrangler commands run in this folder read that file.
 | Path | Holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The request handler |
-| [`src/access/`](src/access/) | Sign-in: the owner, AI agents over OAuth, service credentials, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
+| [`src/access/`](src/access/) | Sign-in: people, AI agents over OAuth, service credentials, the workspace routes, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
 | [`src/engine/`](src/engine/) | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md)) |
 | [`migrations/`](migrations/) | The D1 schema, as numbered SQL files ([rules](migrations/README.md)) |
 | [`test/`](test/) | Tests that run in workerd on a local D1 database |

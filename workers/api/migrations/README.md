@@ -1,8 +1,9 @@
 # D1 migrations
 
 This folder holds the Worker's D1 schema as numbered SQL files. D1 keeps the
-data that is not tasks: sign-in's tables. Tasks live in the task store, a
-Durable Object with its own schema in
+data that is not tasks: sign-in's tables, and the workspaces with their
+members, invitations, agent grants and service credentials. Tasks live in
+each workspace's task store, a Durable Object with its own schema in
 [`src/store/migrations`](../src/store/migrations).
 
 Wrangler applies these files in number order and records each applied file in

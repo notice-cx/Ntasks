@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ON_BEHALF_OF_HEADER, signInAuthenticator, type SignedIn } from '../../src/access/authenticator.ts';
 import { actorOf } from '../../src/access/principal.ts';
 import type { TaskStore } from '../../src/store/index.ts';
-import { store } from '../store.ts';
+import { store, TEST_WORKSPACE } from '../store.ts';
 import { Browser, call, connectAgent, createProject, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -66,8 +66,7 @@ describe('a service acting for an agent it names', () => {
     expect(forAgent).toMatchObject({
       id: `service:${service.id}/outcome-review-filer`,
       name: 'service:noticeos/outcome-review-filer',
-      scopes: plain.scopes,
-      projects: plain.projects,
+      workspaces: plain.workspaces,
     });
   });
 
@@ -95,7 +94,7 @@ describe('a service acting for an agent it names', () => {
 
     // Through the Worker, "assigned to me" means the agent the header names.
     const mine = (headers: Record<string, string>) =>
-      tool(headers, 'list_tasks', { workspace: env.WORKSPACE_ID, project, assignee: 'me' }) as Promise<{
+      tool(headers, 'list_tasks', { workspace: TEST_WORKSPACE.id, project, assignee: 'me' }) as Promise<{
         tasks: { id: string }[];
       }>;
     expect((await mine({ ...bearer, [ON_BEHALF_OF_HEADER]: 'agent-a' })).tasks.map((found) => found.id)).toEqual([
@@ -137,7 +136,7 @@ describe('a service acting for an agent it names', () => {
     const bearer = { authorization: `Bearer ${service.token}` };
     const agentA = { ...bearer, [ON_BEHALF_OF_HEADER]: 'agent-a' };
     const agentB = { ...bearer, [ON_BEHALF_OF_HEADER]: 'agent-b' };
-    const workspace = env.WORKSPACE_ID;
+    const workspace = TEST_WORKSPACE.id;
     const create = (headers: Record<string, string>) =>
       tool(headers, 'create_task', {
         workspace,

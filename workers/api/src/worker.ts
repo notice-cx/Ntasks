@@ -1,12 +1,16 @@
 /**
  * The Worker: it answers the health check, signs each API request in, and
- * hands the request with its sender to the task store object, which holds
- * the tasks and answers it.
+ * picks the workspace the request reaches before any task store is called. An
+ * HTTP route goes to that workspace's store with the sender scoped to it; the
+ * MCP endpoint is answered here, and each of its tool calls goes to the store
+ * of the workspace its `workspace` argument names.
  */
-import { isApiPath } from './api.ts';
+import { isApiPath, MCP_PATH } from './api.ts';
 import type { Authenticator } from './auth.ts';
 import { json } from './http/respond.ts';
-import { STORE_NAME } from './store/index.ts';
+import { serveTaskMcp } from './mcp/server.ts';
+import { workspaceStore } from './store/index.ts';
+import { chooseWorkspace, scopedTo, WORKSPACE_HEADER, type Sender } from './workspaces.ts';
 
 export interface WorkerOptions {
   /** How this deployment signs a request in. */
@@ -21,9 +25,16 @@ export function createWorker(options: WorkerOptions) {
       if (!isApiPath(pathname)) return json({ error: 'not_found' }, 404);
       try {
         const authenticator = options.authenticator(env);
-        const principal = await signedIn(authenticator, request);
-        if (!principal) return authenticator.challenge(request);
-        return await env.TASK_STORE.getByName(STORE_NAME).serve(request, principal);
+        const sender = await signedIn(authenticator, request);
+        if (!sender) return authenticator.challenge(request);
+        if (pathname === MCP_PATH) {
+          return await serveTaskMcp(request, sender.workspaces, (reach, name, args) =>
+            workspaceStore(env, reach.workspace.id).callTool(name, args, scopedTo(sender, reach), reach.workspace),
+          );
+        }
+        const chosen = chooseWorkspace(sender.workspaces, request.headers.get(WORKSPACE_HEADER));
+        if ('refused' in chosen) return chosen.refused;
+        return await workspaceStore(env, chosen.reach.workspace.id).serve(request, scopedTo(sender, chosen.reach));
       } catch {
         // A fault's message can carry storage internals: only the path is logged.
         console.error('request failed', pathname);
@@ -33,7 +44,7 @@ export function createWorker(options: WorkerOptions) {
   } satisfies ExportedHandler<Env>;
 }
 
-async function signedIn(authenticator: Authenticator, request: Request) {
+async function signedIn(authenticator: Authenticator, request: Request): Promise<Sender | null> {
   try {
     return await authenticator.authenticate(request);
   } catch {

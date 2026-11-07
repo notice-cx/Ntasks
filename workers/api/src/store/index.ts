@@ -1,14 +1,17 @@
 /**
- * The task store: one Durable Object that holds every task in its own SQLite
- * database and runs the engine beside it. The Worker signs each request in
- * and hands it here; the object answers it with no network trip per query,
- * and serves repeated reads from memory (cache.ts).
+ * The task store: one Durable Object for each workspace, which holds the
+ * workspace's tasks in its own SQLite database and runs the engine beside it.
+ * The Worker signs each request in, picks its workspace and hands it to that
+ * workspace's store with the sender scoped to it; the object answers it with
+ * no network trip per query, and serves repeated reads from memory (cache.ts).
  */
 import type { BackupRows, BackupTable, Project, TaskEngine } from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
 import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
 import { createEngine } from '../engine/index.ts';
+import { runTaskTool, type ToolAnswer } from '../mcp/server.ts';
+import { storeName, type Workspace } from '../workspaces.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
 import { abortLoad, beginLoad, commitLoad, stageRows, type LoadAnswer } from './load.ts';
@@ -16,8 +19,15 @@ import { loadRows, readRows, type ImportResult } from './import.ts';
 import { migrate } from './schema.ts';
 import { newMeter, objectDatabase, type Meter } from './sqlite.ts';
 
-/** The name of the one store an installation keeps. */
-export const STORE_NAME = 'tasks';
+/** The bindings a workspace's store is reached through. */
+export interface StoreBinding {
+  readonly TASK_STORE: DurableObjectNamespace<TaskStore>;
+}
+
+/** The task store of one workspace. Workspaces never share a store. */
+export function workspaceStore(env: StoreBinding, workspaceId: string): DurableObjectStub<TaskStore> {
+  return env.TASK_STORE.getByName(storeName(workspaceId));
+}
 
 export class TaskStore extends DurableObject<Env> {
   /** The rows the store's statements have read and written since it started. */
@@ -46,7 +56,7 @@ export class TaskStore extends DurableObject<Env> {
   }
 
   /** Loads an import from Beads, or a backup, into this store, which must
-   * hold no projects or tasks (import.ts). Only the owner may run it. */
+   * hold no projects or tasks (import.ts). No route reaches it. */
   async importRows(rows: BackupRows): Promise<ImportResult> {
     try {
       return loadRows(this.ctx.storage, rows, this.meter);
@@ -56,19 +66,19 @@ export class TaskStore extends DurableObject<Env> {
     }
   }
 
-  /** One table's rows, for verifying an import against the export it came from. Only the owner may read them. */
+  /** One table's rows, for verifying an import against the export it came from. No route reaches it. */
   async tableRows(table: BackupTable): Promise<Record<string, SqlStorageValue>[]> {
     return readRows(this.ctx.storage, table);
   }
 
   /** One page of a backup of the whole store (backup.ts): the first when
-   * `token` is null. Only the owner and a service with the backup scope may read it. */
+   * `token` is null. Only senders with the backup scope reach it. */
   async backupPage(token: string | null): Promise<BackupAnswer> {
     return readBackupPage(this.ctx.storage, this.#run, token, () => new Date().toISOString());
   }
 
-  /** Begins a load into this store, which must be empty (load.ts). Only the
-   * owner and a service with the restore scope may load. */
+  /** Begins a load into this store, which must be empty (load.ts). Only
+   * senders with the restore scope reach it. */
   async loadBegin(migrations: unknown, by: string): Promise<LoadAnswer<{ readonly load: string }>> {
     return beginLoad(this.ctx.storage, migrations, by, () => new Date().toISOString());
   }
@@ -94,16 +104,26 @@ export class TaskStore extends DurableObject<Env> {
   }
 
   /** Every project, for parts of the Worker outside the API that name
-   * projects, such as sign-in's page where the owner grants an agent some. */
+   * projects, such as sign-in's page where a person grants an agent some. */
   async projects(): Promise<readonly Project[]> {
     return this.tasks.listProjects();
   }
 
-  /** Answers one API request, sent by `principal`, whom the Worker signed in. */
+  /** Runs one MCP task tool for `principal`, whom the Worker signed in and
+   * scoped to `workspace`, this store's. `args` no longer holds the workspace. */
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    principal: Principal,
+    workspace: Workspace,
+  ): Promise<ToolAnswer> {
+    return runTaskTool({ engine: this.tasks, workspace, principal, now: () => new Date().toISOString() }, name, args);
+  }
+
+  /** Answers one HTTP API request, sent by `principal`, whom the Worker signed in and scoped to this store's workspace. */
   async serve(request: Request, principal: Principal): Promise<Response> {
     return serveApi(request, principal, {
       engine: this.tasks,
-      workspace: { id: this.env.WORKSPACE_ID, name: this.env.WORKSPACE_NAME },
       now: () => new Date().toISOString(),
       backup: (token) => this.backupPage(token),
       load: {

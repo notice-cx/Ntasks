@@ -2,10 +2,11 @@
 // cookies and submits forms; an MCP client registers, sends the person
 // through authorization and exchanges the code for tokens.
 import { runInDurableObject } from 'cloudflare:test';
-import { exports } from 'cloudflare:workers';
+import { env, exports } from 'cloudflare:workers';
 import { expect } from 'vitest';
+import { projectChoice } from '../../src/access/pages.ts';
 import type { TaskStore } from '../../src/store/index.ts';
-import { store } from '../store.ts';
+import { store, TEST_WORKSPACE } from '../store.ts';
 import { codeFor, GITHUB_AUTHORIZE } from './github.ts';
 
 export const ORIGIN = 'https://ntasks.test';
@@ -36,9 +37,45 @@ export function locationOf(response: Response): URL {
   return new URL(location ?? '', ORIGIN);
 }
 
+/** The id of the person a GitHub account belongs to, once it has signed in. */
+export async function userIdOf(githubId: number): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT user_id FROM auth_account WHERE provider_id = 'github' AND account_id = ?")
+    .bind(String(githubId))
+    .first<{ user_id: string }>();
+  return row?.user_id ?? null;
+}
+
+/** Makes the person a member of the workspace, with this role, creating the
+ * workspace when it does not exist yet. Invitations are how a person joins
+ * one through the API; tests write the rows. */
+export async function addMember(
+  workspace: { readonly id: string; readonly name: string },
+  userId: string,
+  role: 'owner' | 'member',
+): Promise<void> {
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO workspaces (id, name, created_by, created_at) VALUES (?, ?, ?, ?)').bind(
+      workspace.id,
+      workspace.name,
+      userId,
+      now,
+    ),
+    env.DB.prepare(
+      'INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at) VALUES (?, ?, ?, ?)',
+    ).bind(workspace.id, userId, role, now),
+  ]);
+}
+
 export class Browser {
   readonly address = freshAddress();
   private readonly cookies = new Map<string, string>();
+  /** Whether a person who signs in becomes an owner of the test workspace, where most tests work. */
+  private readonly joinTestWorkspace: boolean;
+
+  constructor(options: { readonly joinTestWorkspace?: boolean } = {}) {
+    this.joinTestWorkspace = options.joinTestWorkspace ?? true;
+  }
 
   cookie(name: string): string | undefined {
     return this.cookies.get(name);
@@ -56,10 +93,16 @@ export class Browser {
   /** Loads a page or submits a form, as a browser on this origin does. */
   async fetch(
     path: string,
-    init: { method?: string; form?: Record<string, string | string[]>; json?: unknown; origin?: string } = {},
+    init: {
+      method?: string;
+      form?: Record<string, string | string[]>;
+      json?: unknown;
+      origin?: string;
+      headers?: Record<string, string>;
+    } = {},
   ): Promise<Response> {
     const method = init.method ?? (init.form ? 'POST' : 'GET');
-    const headers = new Headers({ accept: 'text/html', 'sec-fetch-mode': 'navigate' });
+    const headers = new Headers({ accept: 'text/html', 'sec-fetch-mode': 'navigate', ...init.headers });
     if (this.cookies.size > 0) {
       headers.set('cookie', [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; '));
     }
@@ -107,6 +150,8 @@ export class Browser {
     const back = await this.fetch(
       `/api/auth/callback/github?code=${codeFor(githubId)}&state=${encodeURIComponent(state)}`,
     );
+    const userId = await userIdOf(githubId);
+    if (this.joinTestWorkspace && userId !== null) await addMember(TEST_WORKSPACE, userId, 'owner');
     return locationOf(back);
   }
 
@@ -251,9 +296,15 @@ export class McpClient {
   }
 }
 
+/** The approval page's value for a project: one of the test workspace's, unless it already names its workspace. */
+export function choiceOf(project: string): string {
+  return project.includes('/') ? project : projectChoice(TEST_WORKSPACE.id, project);
+}
+
 /**
- * The whole connection: register, authorize through the owner's signed-in
- * browser, allow the given projects, and exchange the code for tokens.
+ * The whole connection: register, authorize through the person's signed-in
+ * browser, allow the given projects, and exchange the code for tokens. A
+ * project is the test workspace's unless it is named with `projectChoice`.
  */
 export async function connectAgent(
   browser: Browser,
@@ -266,7 +317,7 @@ export async function connectAgent(
   const { landing, verifier } = await client.authorize(browser, scope);
   expect(landing.pathname).toBe('/agent-access');
   const approved = await browser.fetch('/agent-access', {
-    form: { oauth_query: landing.search.slice(1), decision: 'allow', project: [...projects] },
+    form: { oauth_query: landing.search.slice(1), decision: 'allow', project: projects.map(choiceOf) },
   });
   const back = locationOf(approved);
   expect(`${back.origin}${back.pathname}`).toBe(REDIRECT_URI);
