@@ -94,16 +94,21 @@ export function backupSelectSql(table: BackupTable): string {
   return `SELECT ${backupColumns(table).join(', ')} FROM ${table} ORDER BY ${backupKey(table).join(', ')}`;
 }
 
+/** Where a page of a table starts: at its first row, after a key, or at a key. */
+export type BackupStart = 'first' | 'after' | 'at';
+
 /**
- * One page of a table: in key order, at most as many rows as the last bound
- * value, and with `after`, only rows whose key comes after the key bound
- * first. The key's columns compare as one row value, so each page starts
- * right after the last row of the page before, and reads no row twice.
+ * One page of a table, in key order: rows after the key bound first, or at
+ * it or after, or from the table's first row, then at most as many rows as
+ * the next bound value, past as many as the last. The key's columns compare
+ * as one row value, so a page can start right after the last row of the page
+ * before, and read no row twice.
  */
-export function backupPageSql(table: BackupTable, after: boolean): string {
+export function backupPageSql(table: BackupTable, start: BackupStart): string {
   const key = backupKey(table);
-  const where = after ? ` WHERE (${key.join(', ')}) > (${key.map(() => '?').join(', ')})` : '';
-  return `SELECT ${backupColumns(table).join(', ')} FROM ${table}${where} ORDER BY ${key.join(', ')} LIMIT ?`;
+  const bound = `(${key.join(', ')}) ${start === 'after' ? '>' : '>='} (${key.map(() => '?').join(', ')})`;
+  const where = start === 'first' ? '' : ` WHERE ${bound}`;
+  return `SELECT ${backupColumns(table).join(', ')} FROM ${table}${where} ORDER BY ${key.join(', ')} LIMIT ? OFFSET ?`;
 }
 
 /** One INSERT per row, as insertStatements writes the tables that hold tasks, then one per retry record. */

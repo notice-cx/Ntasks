@@ -37,16 +37,28 @@ interface Position {
   readonly changes: number;
   readonly takenAt: string;
   readonly table: BackupTable;
-  /** The key of the last row read from the table; null before its first. */
+  /** Null before the table's first row. Otherwise the key of the last row read, when `skip` is 0, and the next
+   * page starts after it; or that key with each text cut short, when `skip` counts the rows read from there on. */
   readonly after: readonly StoreValue[] | null;
+  readonly skip: number;
 }
 
-/** The longest page token the route reads: a table's longest key, encoded, fits well within it. */
+/**
+ * The most characters of each key text a token holds. Some keys have no
+ * limit, such as a project's id, and an external link's URL may be 2,048
+ * characters, each up to 4 bytes. A character is at most 6 bytes in JSON, and
+ * a key has at most 3 texts, so a token stays under TOKEN_CHARS.
+ */
+const KEY_CHARS = 128;
+
+/** The longest page token the route reads. */
 const TOKEN_CHARS = 4096;
 
+const UTF8 = new TextEncoder();
+
 function encode(position: Position): string {
-  const bytes = new TextEncoder().encode(
-    JSON.stringify([position.run, position.changes, position.takenAt, position.table, position.after]),
+  const bytes = UTF8.encode(
+    JSON.stringify([position.run, position.changes, position.takenAt, position.table, position.after, position.skip]),
   );
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -63,14 +75,53 @@ function decode(token: string): Position | null {
   } catch {
     return null;
   }
-  if (!Array.isArray(value) || value.length !== 5) return null;
-  const [run, changes, takenAt, table, after] = value as unknown[];
+  if (!Array.isArray(value) || value.length !== 6) return null;
+  const [run, changes, takenAt, table, after, skip] = value as unknown[];
   if (typeof run !== 'string' || typeof takenAt !== 'string' || !isBackupTable(table)) return null;
-  if (typeof changes !== 'number' || !Number.isSafeInteger(changes) || changes < 0) return null;
+  const count = (item: unknown) => typeof item === 'number' && Number.isSafeInteger(item) && item >= 0;
+  if (!count(changes) || !count(skip)) return null;
   const key = backupKey(table);
   const keyValue = (item: unknown) => typeof item === 'string' || (typeof item === 'number' && Number.isFinite(item));
-  if (after !== null && !(Array.isArray(after) && after.length === key.length && after.every(keyValue))) return null;
-  return { run, changes, takenAt, table, after: after as readonly StoreValue[] | null };
+  if (after === null ? skip !== 0 : !(Array.isArray(after) && after.length === key.length && after.every(keyValue)))
+    return null;
+  return {
+    run,
+    changes: changes as number,
+    takenAt,
+    table,
+    after: after as readonly StoreValue[] | null,
+    skip: skip as number,
+  };
+}
+
+/** The first KEY_CHARS characters of a text, cut between characters, never inside one. */
+function cut(text: string): string {
+  if (text.length <= KEY_CHARS) return text;
+  return Array.from(text).slice(0, KEY_CHARS).join('');
+}
+
+/**
+ * Where the page after `last` starts. A key short enough goes in the token
+ * whole. Otherwise its texts are cut short: a cut text is a byte prefix of
+ * the text, so in SQLite it sorts at or before it, and the cut key at or
+ * before the row. The rows from the cut key to the row were all read, since
+ * nothing was written in between, so the next page skips that many.
+ */
+function positionAfter(storage: DurableObjectStorage, position: Position, last: BackupRow): Position {
+  const columns = backupKey(position.table);
+  const key = columns.map((column) => last[column] ?? null);
+  const short = key.map((value) => (typeof value === 'string' ? cut(value) : value));
+  if (short.every((value, index) => value === key[index])) return { ...position, after: key, skip: 0 };
+  const row = `(${columns.join(', ')})`;
+  const values = `(${columns.map(() => '?').join(', ')})`;
+  const [read] = storage.sql
+    .exec<{ rows: number }>(
+      `SELECT COUNT(*) AS rows FROM ${position.table} WHERE ${row} >= ${values} AND ${row} <= ${values}`,
+      ...short,
+      ...key,
+    )
+    .toArray();
+  return { ...position, after: short, skip: Number(read?.rows) };
 }
 
 /**
@@ -83,10 +134,10 @@ function changesSoFar(storage: DurableObjectStorage): number {
   return Number(row?.changes);
 }
 
-/** About how many bytes a row takes in JSON: its text, and 8 for each other value. */
+/** About how many bytes a row takes in JSON: its text in UTF-8, and 8 for each other value. */
 function sizeOf(row: BackupRow): number {
   let bytes = 0;
-  for (const value of Object.values(row)) bytes += typeof value === 'string' ? value.length : 8;
+  for (const value of Object.values(row)) bytes += typeof value === 'string' ? UTF8.encode(value).byteLength : 8;
   return bytes;
 }
 
@@ -105,7 +156,7 @@ export function readBackupPage(
   const changes = changesSoFar(storage);
   let position: Position;
   if (token === null) {
-    position = { run, changes, takenAt: now(), table: BACKUP_TABLES[0], after: null };
+    position = { run, changes, takenAt: now(), table: BACKUP_TABLES[0], after: null, skip: 0 };
   } else {
     const named = decode(token);
     if (named === null) {
@@ -131,8 +182,9 @@ export function readBackupPage(
     .exec<{ name: string }>('SELECT name FROM store_migrations ORDER BY name')
     .toArray()
     .map((row) => row.name);
-  const { table, after } = position;
-  const cursor = storage.sql.exec<BackupRow>(backupPageSql(table, after !== null), ...(after ?? []), most.rows);
+  const { table, after, skip } = position;
+  const start = after === null ? 'first' : skip === 0 ? 'after' : 'at';
+  const cursor = storage.sql.exec<BackupRow>(backupPageSql(table, start), ...(after ?? []), most.rows, skip);
   const rows: BackupRow[] = [];
   let bytes = 0;
   let full = false;
@@ -148,10 +200,10 @@ export function readBackupPage(
   const following = BACKUP_TABLES[BACKUP_TABLES.indexOf(table) + 1];
   const next: Position | null =
     full && last !== undefined
-      ? { ...position, after: backupKey(table).map((column) => last[column] ?? null) }
+      ? positionAfter(storage, position, last)
       : following === undefined
         ? null
-        : { ...position, table: following, after: null };
+        : { ...position, table: following, after: null, skip: 0 };
   const page: BackupPage = {
     format: BACKUP_FORMAT,
     takenAt: position.takenAt,

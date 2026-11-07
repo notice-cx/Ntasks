@@ -41,12 +41,15 @@ describe('backup rows', () => {
     expect(backupKey('write_receipts')).toEqual(['principal', 'operation', 'idempotency_key']);
   });
 
-  it('pages a table after the last key it read, comparing the whole key as one value', () => {
-    expect(backupPageSql('task_labels', true)).toBe(
-      'SELECT task_id, label FROM task_labels WHERE (task_id, label) > (?, ?) ORDER BY task_id, label LIMIT ?',
+  it('pages a table after or at a key, comparing the whole key as one value', () => {
+    expect(backupPageSql('task_labels', 'after')).toBe(
+      'SELECT task_id, label FROM task_labels WHERE (task_id, label) > (?, ?) ORDER BY task_id, label LIMIT ? OFFSET ?',
     );
-    expect(backupPageSql('task_events', false)).toBe(
-      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq LIMIT ?',
+    expect(backupPageSql('task_labels', 'at')).toBe(
+      'SELECT task_id, label FROM task_labels WHERE (task_id, label) >= (?, ?) ORDER BY task_id, label LIMIT ? OFFSET ?',
+    );
+    expect(backupPageSql('task_events', 'first')).toBe(
+      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq LIMIT ? OFFSET ?',
     );
     expect(backupSelectSql('write_receipts')).toBe(
       'SELECT principal, operation, idempotency_key, project_id, request_hash, result, created_at FROM write_receipts ORDER BY principal, operation, idempotency_key',

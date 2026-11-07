@@ -11,6 +11,8 @@ import {
   BACKUP_TABLES,
   backupKey,
   backupPageSql,
+  type BackupFile,
+  type BackupRow,
   type BackupRows,
   type BackupTable,
   type TaskRow,
@@ -18,6 +20,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main, type Io } from '../src/cli.ts';
 import { openLocalStore, storeMigrations, type LocalStore } from '../src/local-store.ts';
+import { verifyBackup } from '../src/verify.ts';
 
 const API = 'https://ntasks.test';
 const TOKEN = 'ntasks_service.00000000-0000-4000-8000-000000000001.synthetic-secret';
@@ -224,10 +227,9 @@ function backupRoute(db: DatabaseSync, options: { readonly rows: number; readonl
       token === null
         ? { table: BACKUP_TABLES[0], after: null }
         : (JSON.parse(Buffer.from(token, 'base64url').toString()) as Position);
-    const rows = db.prepare(backupPageSql(table, after !== null)).all(...(after ?? []), options.rows) as Record<
-      string,
-      string | number
-    >[];
+    const rows = db
+      .prepare(backupPageSql(table, after === null ? 'first' : 'after'))
+      .all(...(after ?? []), options.rows, 0) as Record<string, string | number>[];
     const last = rows.at(-1);
     const following = BACKUP_TABLES[BACKUP_TABLES.indexOf(table) + 1];
     const next: Position | null =
@@ -330,9 +332,29 @@ describe('a backup through the command line', () => {
     expect(await main(['verify', '--from', taken.file, '--store', restored], run.io)).toBe(1);
     expect(run.err).toEqual([
       '3 differences:',
-      '- acme-a1: its task_labels row acme-a1 backend is missing',
-      '- acme-a1: task_labels row acme-a1 frontend is not in the backup',
-      '- retry record of service:noticeos/agent: its write_receipts row service:noticeos/agent create_task key-00000001 is missing',
+      '- acme-a1: its task_labels row ["acme-a1","backend"] is missing',
+      '- acme-a1: task_labels row ["acme-a1","frontend"] is not in the backup',
+      '- retry record of service:noticeos/agent: its write_receipts row ["service:noticeos/agent","create_task","key-00000001"] is missing',
+    ]);
+  });
+
+  it('tells apart two keys whose columns would read the same joined with a space', async () => {
+    const receipt = ROWS.write_receipts![0]!;
+    const spaced = { ...receipt, principal: 'service:a b', operation: 'x' };
+    const split = { ...receipt, principal: 'service:a', operation: 'b x' };
+    const tables = Object.fromEntries(BACKUP_TABLES.map((table) => [table, [] as BackupRow[]])) as Record<
+      BackupTable,
+      BackupRow[]
+    >;
+    tables.projects = ROWS.projects.map((row) => ({ ...row }));
+    tables.write_receipts = [spaced, split];
+    const file: BackupFile = { format: BACKUP_FORMAT, takenAt: AT, migrations: storeMigrations(), tables };
+    const report = await verifyBackup(file, (table) => (table === 'write_receipts' ? [split] : tables[table]));
+    expect(report.differences).toEqual([
+      {
+        subject: 'retry record of service:a b',
+        difference: 'its write_receipts row ["service:a b","x","key-00000001"] is missing',
+      },
     ]);
   });
 

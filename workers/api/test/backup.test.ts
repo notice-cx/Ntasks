@@ -275,6 +275,53 @@ async function tablesOf(
   return tables;
 }
 
+/** Every page of a store's backup, read inside the object with these bounds, and the tokens between them. */
+async function readPages(stub: DurableObjectStub<TaskStore>, most: { rows: number; bytes: number }) {
+  const pages: { table: string; rows: number }[] = [];
+  const tokens: string[] = [];
+  const { file } = await collectBackup((token) =>
+    runInDurableObject(stub, (_instance: TaskStore, state): BackupPage => {
+      const answer = readBackupPage(state.storage, 'test-run', token, () => AT, most);
+      if (!answer.ok) throw new Error(answer.detail);
+      pages.push({ table: answer.page.table, rows: answer.page.rows.length });
+      if (answer.page.next !== null) tokens.push(answer.page.next);
+      return answer.page;
+    }),
+  );
+  return { file, pages, tokens };
+}
+
+/** A three-byte character in UTF-8. */
+const WIDE = '你';
+
+/** Rows whose keys are long: keys no limit bounds, and URLs that share their first 1,500 characters. */
+function longKeyRows(): BackupRows {
+  const project = `p-${'é'.repeat(3000)}`;
+  const base = `https://example.com/${WIDE.repeat(1500)}`;
+  return {
+    projects: [{ id: project, key: 'long.example.com', name: 'Long', prefix: 'long', created_at: AT }],
+    tasks: [{ ...task, id: 'long-a1', project_id: project, title: 'Long keys' }],
+    task_labels: [{ task_id: 'long-a1', label: WIDE.repeat(255) }],
+    task_edges: [],
+    task_external_links: [`${base}a`, `${base}b`, `${base}c`, 'https://example.com/short'].map((url) => ({
+      task_id: 'long-a1',
+      url,
+      title: 'A page',
+      kind: null,
+      created_at: AT,
+      created_by: null,
+    })),
+    task_comments: [1, 2].map((n) => ({
+      id: `k-${'é'.repeat(3000)}-${n}`,
+      task_id: 'long-a1',
+      author: 'owner',
+      text: 'A long id.',
+      created_at: AT,
+    })),
+    task_events: [],
+  };
+}
+
 describe('a backup of the task store', () => {
   it('exports every row of every table, which loads into an empty store as the same rows', async () => {
     const source = await seededStore();
@@ -321,6 +368,26 @@ describe('a backup of the task store', () => {
       expect(byRows.file.tables[table], table).toEqual(held[table]);
       expect(byBytes.file.tables[table], table).toEqual(held[table]);
     }
+  });
+
+  it('pages rows whose keys are too long for a token whole, with every token short enough for the route', async () => {
+    const stub = freshStore();
+    await stub.importRows(longKeyRows());
+    const held = await tablesOf(stub);
+    for (const rows of [1, 2]) {
+      const { file, tokens } = await readPages(stub, { rows, bytes: 10_000_000 });
+      for (const table of BACKUP_TABLES) expect(file.tables[table], `${table}, ${rows} a page`).toEqual(held[table]);
+      expect(Math.max(...tokens.map((token) => token.length))).toBeLessThanOrEqual(4096);
+    }
+  });
+
+  it('counts the size of a page in UTF-8 bytes, so text of three-byte characters fills a page sooner', async () => {
+    const stub = freshStore();
+    // Each description is 1,000 characters and 3,000 bytes, above a 2,500-byte page.
+    await stub.importRows({ ...ROWS, tasks: TASKS.map((row) => ({ ...row, description: WIDE.repeat(1000) })) });
+    const { pages } = await readPages(stub, { rows: 500, bytes: 2500 });
+    const taskPages = pages.filter((page) => page.table === 'tasks' && page.rows > 0);
+    expect(taskPages).toEqual(TASKS.map(() => ({ table: 'tasks', rows: 1 })));
   });
 
   it('refuses a page once the store has changed since the first, and a new export then reads it whole', async () => {

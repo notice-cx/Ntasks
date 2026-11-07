@@ -82,4 +82,4 @@ export {
   isBackupTable,
   loadStatements,
 } from './backup.ts';
-export type { BackupFile, BackupPage, BackupRow, BackupRows, BackupTable, ReceiptRow } from './backup.ts';
+export type { BackupFile, BackupPage, BackupRow, BackupRows, BackupStart, BackupTable, ReceiptRow } from './backup.ts';

@@ -488,7 +488,8 @@ export async function verifyBackup(file: BackupFile, read: StoreReader): Promise
       table,
       file.tables[table],
       held[table],
-      (row) => key.map((column) => String(row[column])).join(' '),
+      // JSON keeps the columns apart: joined with a separator, two keys could read the same.
+      (row) => JSON.stringify(key.map((column) => row[column] ?? null)),
       (row) =>
         typeof row.task_id === 'string'
           ? row.task_id
