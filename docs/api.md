@@ -108,15 +108,16 @@ its project.
 tasks this one replaces. `get_task` lists them among `dependencies`, with
 those types.
 
-Each of `external_links` and `add_external_links` is an object with a `url`,
-an http or https URL of at most 2,048 characters, a `title`, one line of at
-most 512 characters, and optionally a `kind`: `pull-request`, `document` or
-`other`. `remove_external_links` lists URLs. A task links to at most 32
-pages, and to a URL once: a URL is kept as the URL standard writes it, so
-`HTTPS://Example.com` and `https://example.com/` are one URL, and adding a URL
-the task has gives that link the new title and kind. `get_task` and
-`list_tasks` return them as `externalLinks`, ordered by URL, each with its
-`url`, `title` and `kind`, which is null when none was given.
+`external_links` and `add_external_links` are each an array of objects, and
+each object has a `url`, an http or https URL of at most 2,048 characters, a
+`title`, one line of at most 512 characters, and optionally a `kind`:
+`pull-request`, `document` or `other`. `remove_external_links` is an array of
+URLs. A task links to at most 32 pages, and to a URL once: a URL is kept as
+the URL standard writes it, so `HTTPS://Example.com` and
+`https://example.com/` are one URL, and adding a URL the task has gives that
+link the new title and kind. `get_task` and `list_tasks` return them as
+`externalLinks`, ordered by URL, each with its `url`, `title` and `kind`,
+which is null when none was given.
 
 In `update_task`, `""` releases the task (`assignee`), takes it out of its
 parent (`parent`) or clears its defer date (`defer`), and `null` takes off its
@@ -238,14 +239,24 @@ used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,
 `noticeos_panel_date`, `noticeos_panel_version` and
 `noticeos_task_map_asset`. In a change, `""` releases the task, takes it out
 of its parent or clears its defer date, and `null` takes off its card, change
-class, estimate or due date. `dueAt` is a date, `YYYY-MM-DD`, or an ISO time
-with its offset, and the task answers it as `dueAt` in UTC. A card's kill
-date is also the task's due date, so a body that gives a card with a kill
-date gives no `dueAt`. `externalLinks`, `addExternalLinks` and
-`removeExternalLinks` take what `external_links`, `add_external_links` and
-`remove_external_links` take over MCP. NoticeOS answered a change, a comment and a close with its task
-client's own output; Ntasks answers them with the task or the comment, in the
-shapes the reads use.
+class, estimate or due date.
+
+`dueAt` is a date, `YYYY-MM-DD`, or an ISO time with its offset, and the task
+answers it as `dueAt` in UTC. Writing a card with a kill date also sets the
+task's `dueAt` to that date, so one body gives either a card with a kill date
+or a `dueAt`, not both. After that each changes on its own: a later change
+can set or clear `dueAt` and leave the card as it is, and taking the card off
+leaves `dueAt`, so the two dates can differ until a card with a kill date is
+written again.
+
+`externalLinks` and `addExternalLinks` are each an array of objects, and each
+object has a `url`, a `title` and optionally a `kind`, with the limits that
+[`external_links`](#the-mcp-endpoint) has over MCP. `removeExternalLinks` is
+an array of URLs.
+
+NoticeOS answered a change, a comment and a close with its task client's own
+output; Ntasks answers them with the task or the comment, in the shapes the
+reads use.
 
 ### Errors
 

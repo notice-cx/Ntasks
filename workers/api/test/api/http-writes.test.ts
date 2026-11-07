@@ -317,6 +317,16 @@ describe('PATCH /api/tasks/:id', () => {
       await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-01', card }),
     ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
     expect((await current(id)).dueAt).toBeNull();
+
+    // After the card sets it, the due date changes on its own and the card stays as it was.
+    const carded = await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'Carded', card });
+    const cardedId = carded.body.id as string;
+    expect((await current(cardedId)).dueAt).toBe('2027-04-01T00:00:00.000Z');
+    const later = await send(target, 'PATCH', `/api/tasks/${cardedId}`, { projectId: project.id, dueAt: '2027-05-01' });
+    expect(later.body.task).toMatchObject({
+      dueAt: '2027-05-01T00:00:00.000Z',
+      card: { kill: { state: 'No lift', date: '2027-04-01' } },
+    });
   });
 
   it('files a task with external links, adds and takes them off, and refuses a URL that is not http or https', async () => {
