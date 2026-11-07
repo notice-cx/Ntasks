@@ -56,6 +56,12 @@ A ticked box in Done when writes the text back with only that box changed.
 
 Every read and write goes through one module, `src/api/client.ts`. It speaks
 the `/api/tasks` format NoticeOS's Tower reads, which the Ntasks API keeps.
+A person's answers go to the decision routes ([the API](../../docs/api.md#a-persons-decisions)):
+Approve to `POST /api/gates/:id/resolve`, an option to `/choose`, Answer to
+`/respond`, Close as on a question to `/dismiss`, and a disputed approval to
+`/dispute`. Only a person signed in to the web app may send them; anyone
+else gets `403` with `insufficient_scope`, and the app shows the server's own
+sentence.
 
 A visitor who is not signed in sees a Sign in step, which opens the Worker's
 own sign-in page; a refused read is shown at once, never retried.

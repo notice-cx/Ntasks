@@ -392,6 +392,74 @@ describe('a row waiting for you', () => {
     vi.useRealTimers();
   });
 
+  it("sends each row's answer through a person's decision route", async () => {
+    const api = createFixtureTasksApi();
+    const calls: unknown[][] = [];
+    const spied = {
+      ...api,
+      resolveGate: (...args: Parameters<typeof api.resolveGate>) => {
+        calls.push(['resolveGate', args[0], args[1], args[2]]);
+        return api.resolveGate(...args);
+      },
+      choose: (...args: Parameters<typeof api.choose>) => {
+        calls.push(['choose', args[0], args[1], args[2], args[3]]);
+        return api.choose(...args);
+      },
+      respond: (...args: Parameters<typeof api.respond>) => {
+        calls.push(['respond', args[0], args[1], args[2]]);
+        return api.respond(...args);
+      },
+      dismiss: (...args: Parameters<typeof api.dismiss>) => {
+        calls.push(['dismiss', args[0], args[1], args[2], args[3]?.resolution]);
+        return api.dismiss(...args);
+      },
+    };
+    renderApp('/tasks', spied);
+    const waiting = await group('Waiting for you');
+    const row = (id: string) => waiting.querySelector(`[data-task-row="${id}"]`) as HTMLElement;
+    fireEvent.click(await enabledButton('Approve', row('web-g7p2')));
+    fireEvent.click(await enabledButton('(b) Email link and password', row('web-d4x1')));
+    fireEvent.click(await enabledButton('Answer', row('web-q8n5')));
+    const box = screen.getByRole('textbox', { name: 'Your answer to web-q8n5' });
+    fireEvent.change(box, { target: { value: 'support@example.com' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for docs-r4s9' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Close as/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: "Won't do" }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Note' }), { target: { value: 'The docs stay put.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close task' }));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() => expect(calls).toHaveLength(4));
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        ['resolveGate', 'web-g7p2', 'web', undefined],
+        ['choose', 'web-d4x1', 'web', 'b', undefined],
+        ['respond', 'web-q8n5', 'web', 'support@example.com'],
+        ['dismiss', 'docs-r4s9', 'docs', 'The docs stay put.', 'wont-do'],
+      ]),
+    );
+  });
+
+  it("shows a refusal of a sign-in that is not a person in the server's words", async () => {
+    const api = createFixtureTasksApi();
+    const agent = {
+      ...api,
+      resolveGate: () =>
+        Promise.reject(
+          new ApiError('Only a person signed in to the web app can approve web-g7p2.', 403, 'insufficient_scope'),
+        ),
+    };
+    renderApp('/tasks', agent);
+    const waiting = await group('Waiting for you');
+    fireEvent.click(await enabledButton('Approve', waiting.querySelector('[data-task-row="web-g7p2"]') as HTMLElement));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    expect(await screen.findByText('Only a person signed in to the web app can approve web-g7p2.')).toBeTruthy();
+  });
+
   it('answers a decision with one press of an option, sent after the Undo window', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);

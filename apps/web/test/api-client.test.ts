@@ -101,6 +101,8 @@ describe('the HTTP Tasks API client', () => {
     await api.dismiss('web-a1b2', 'web');
     await api.dismiss('web-a1b2', 'web', 'Handled elsewhere', { resolution: 'already-handled' });
     await api.resolveGate('web-g1', 'web');
+    await api.resolveGate('web-g1', 'web', 'Ship it');
+    await api.dispute('web-g1', 'web');
 
     expect(created).toEqual({ id: 'web-n1', project: 'web' });
     expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
@@ -122,6 +124,8 @@ describe('the HTTP Tasks API client', () => {
         { reason: 'Handled elsewhere', resolution: 'already-handled', projectId: 'p-web' },
       ],
       ['POST', '/api/gates/web-g1/resolve', { projectId: 'p-web' }],
+      ['POST', '/api/gates/web-g1/resolve', { reason: 'Ship it', projectId: 'p-web' }],
+      ['POST', '/api/tasks/web-g1/dispute', { projectId: 'p-web' }],
     ]);
   });
 
@@ -191,6 +195,20 @@ describe('the HTTP Tasks API client', () => {
     answerList(Response.json(PROJECTS));
     await expect(first).rejects.toBeDefined();
     await expect(second).resolves.toMatchObject({ project: 'web' });
+  });
+
+  it("shows a decision refused to a sign-in that is not a person in the server's own words", async () => {
+    const detail = 'Only a person signed in to the web app can take this decision.';
+    const { api } = server(() => Response.json({ error: 'insufficient_scope', detail }, { status: 403 }));
+    for (const decide of [
+      () => api.respond('web-a1b2', 'web', 'Yes'),
+      () => api.choose('web-a1b2', 'web', 'a'),
+      () => api.dismiss('web-a1b2', 'web'),
+      () => api.dispute('web-a1b2', 'web'),
+      () => api.resolveGate('web-g1', 'web'),
+    ]) {
+      await expect(decide()).rejects.toMatchObject({ status: 403, code: 'insufficient_scope', message: detail });
+    }
   });
 
   it("shows a refusal in the server's own words", async () => {
