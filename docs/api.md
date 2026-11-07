@@ -117,7 +117,7 @@ their refusals. A member, an agent or a service gets `403` with
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /api/access/members` | none | `{ members, invitations }`: each member as `{ userId, name, githubLogin, role }`, and each open invitation as `{ invitationId, githubLogin, role, createdAt }` |
+| `GET /api/access/members` | none | `{ members, invitations }`: each member as `{ userId, name, githubLogin, role }`, and each open invitation that has not expired as `{ invitationId, githubLogin, role, createdAt, expiresAt }` |
 | `POST /api/access/invitations` | `githubLogin`, a GitHub username, and optionally `role`, `owner` or `member` (the default) | `201` with `{ invitation }`. The account holding that login joins the workspace with that role when it next signs in. |
 | `POST /api/access/invitations/<invitation id>/revoke` | none, or `{}` | `{ "revoked": true }` |
 | `POST /api/access/members/<user id>/remove` | none, or `{}` | `{ "removed": true }`. The member's session and their agents stop reaching the workspace; a workspace's only owner cannot be removed. |

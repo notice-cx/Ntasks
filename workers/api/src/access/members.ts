@@ -23,7 +23,13 @@ export interface Invitation {
   readonly githubLogin: string;
   readonly role: WorkspaceRole;
   readonly createdAt: string;
+  /** After this time the invitation admits nobody (INVITATION_DAYS). */
+  readonly expiresAt: string;
 }
+
+/** How long an invitation admits its login. A login can be renamed and then
+ * taken by someone else, so an invitation does not wait for ever. */
+export const INVITATION_DAYS = 7;
 
 /** A GitHub account as sign-in sees it, from the profile GitHub returned. */
 export interface GitHubAccount {
@@ -55,9 +61,11 @@ export function githubAccountOf(profile: Record<string, unknown> | undefined): G
   return { id: String(id), login };
 }
 
-/** Matches the open invitations of login `?`, compared without case, as the
- * index workspace_invitations_by_login holds them. */
-const OPEN_FOR_LOGIN = 'lower(github_login) = lower(?) AND accepted_at IS NULL AND revoked_at IS NULL';
+/** Matches the open, unexpired invitations of login `?` at time `?`, the
+ * login compared without case, as the index workspace_invitations_by_login
+ * holds them. */
+const OPEN_FOR_LOGIN =
+  'lower(github_login) = lower(?) AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?';
 
 /**
  * Whether a GitHub account that is not a deployment admin may sign in: it is
@@ -71,7 +79,7 @@ export async function mayJoin(db: D1Database, account: GitHubAccount): Promise<b
            WHERE a.provider_id = 'github' AND a.account_id = ?) AS member,
          EXISTS (SELECT 1 FROM workspace_invitations WHERE ${OPEN_FOR_LOGIN}) AS invited`,
     )
-    .bind(account.id, account.login)
+    .bind(account.id, account.login, new Date().toISOString())
     .first<{ member: number; invited: number }>();
   return row !== null && (row.member === 1 || row.invited === 1);
 }
@@ -90,14 +98,14 @@ export async function acceptInvitations(db: D1Database, userId: string, login: s
          SELECT workspace_id, ?, role, ? FROM workspace_invitations WHERE ${OPEN_FOR_LOGIN}
          ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = 'owner' WHERE excluded.role = 'owner'`,
       )
-      .bind(userId, now, login),
+      .bind(userId, now, login, now),
     db
       .prepare(`UPDATE workspace_invitations SET accepted_by = ?, accepted_at = ? WHERE ${OPEN_FOR_LOGIN}`)
-      .bind(userId, now, login),
+      .bind(userId, now, login, now),
   ]);
 }
 
-/** A workspace's members, by name, and its open invitations, newest first. */
+/** A workspace's members, by name, and its open, unexpired invitations, newest first. */
 export async function listMembers(
   db: D1Database,
   workspaceId: string,
@@ -115,10 +123,11 @@ export async function listMembers(
       .bind(workspaceId),
     db
       .prepare(
-        `SELECT id, github_login, role, created_at FROM workspace_invitations
-         WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL ORDER BY created_at DESC, id`,
+        `SELECT id, github_login, role, created_at, expires_at FROM workspace_invitations
+         WHERE workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+         ORDER BY created_at DESC, id`,
       )
-      .bind(workspaceId),
+      .bind(workspaceId, new Date().toISOString()),
   ]);
   return {
     members: (members?.results ?? []).map((row) => {
@@ -126,18 +135,26 @@ export async function listMembers(
       return { userId: member.user_id, name: member.name, githubLogin: member.github_login, role: member.role };
     }),
     invitations: (invitations?.results ?? []).map((row) => {
-      const invitation = row as { id: string; github_login: string; role: WorkspaceRole; created_at: string };
+      const invitation = row as {
+        id: string;
+        github_login: string;
+        role: WorkspaceRole;
+        created_at: string;
+        expires_at: string;
+      };
       return {
         invitationId: invitation.id,
         githubLogin: invitation.github_login,
         role: invitation.role,
         createdAt: invitation.created_at,
+        expiresAt: invitation.expires_at,
       };
     }),
   };
 }
 
-/** Invites a GitHub login to a workspace; null when the login already has an open invitation there. */
+/** Invites a GitHub login to a workspace; null when the login already has an
+ * open, unexpired invitation there. An expired one is set aside first. */
 export async function createInvitation(
   db: D1Database,
   input: {
@@ -148,16 +165,29 @@ export async function createInvitation(
   },
 ): Promise<Invitation | null> {
   const id = crypto.randomUUID();
-  const createdAt = new Date().toISOString();
-  // The only unique key besides the id is one open invitation per login in a workspace.
-  const created = await db
-    .prepare(
-      `INSERT INTO workspace_invitations (id, workspace_id, github_login, role, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
-    )
-    .bind(id, input.workspaceId, input.githubLogin, input.role, input.createdBy, createdAt)
-    .first<{ id: string }>();
-  return created === null ? null : { invitationId: id, githubLogin: input.githubLogin, role: input.role, createdAt };
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + INVITATION_DAYS * 86_400_000).toISOString();
+  const [, inserted] = await db.batch<{ id: string }>([
+    // An expired invitation still holds the one open place per login, which
+    // the unique index keeps; it is revoked so the new one can take it.
+    db
+      .prepare(
+        `UPDATE workspace_invitations SET revoked_at = ?
+         WHERE workspace_id = ? AND lower(github_login) = lower(?)
+           AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= ?`,
+      )
+      .bind(createdAt, input.workspaceId, input.githubLogin, createdAt),
+    // The only unique key besides the id is one open invitation per login in a workspace.
+    db
+      .prepare(
+        `INSERT INTO workspace_invitations (id, workspace_id, github_login, role, created_by, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
+      )
+      .bind(id, input.workspaceId, input.githubLogin, input.role, input.createdBy, createdAt, expiresAt),
+  ]);
+  if ((inserted?.results ?? []).length === 0) return null;
+  return { invitationId: id, githubLogin: input.githubLogin, role: input.role, createdAt, expiresAt };
 }
 
 /** Revokes an open invitation of a workspace. False when it has no such open invitation. */

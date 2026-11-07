@@ -4,6 +4,7 @@
 // (vitest.config.ts); the people they invite are 2101 and up.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { INVITATION_DAYS } from '../../src/access/members.ts';
 import { projectChoice } from '../../src/access/pages.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { Browser, call, connectAgent, meWithToken, userIdOf } from './client.ts';
@@ -98,13 +99,15 @@ describe('an invitation', () => {
     const { owner, workspace } = await adminWithWorkspace(1001, 'Invited');
     const answer = await invite(owner, workspace, ' @Person-2101 ');
     expect(answer.status).toBe(201);
-    const invitation = answer.body.invitation as { invitationId: string; createdAt: string };
+    const invitation = answer.body.invitation as { invitationId: string; createdAt: string; expiresAt: string };
     expect(invitation).toEqual({
       invitationId: invitation.invitationId,
       githubLogin: 'Person-2101',
       role: 'member',
       createdAt: invitation.createdAt,
+      expiresAt: invitation.expiresAt,
     });
+    expect(Date.parse(invitation.expiresAt) - Date.parse(invitation.createdAt)).toBe(INVITATION_DAYS * 86_400_000);
     const ownerId = await idOf(1001);
     expect((await members(owner, workspace)).body).toEqual({
       members: [{ userId: ownerId, name: 'Person 1001', githubLogin: null, role: 'owner' }],
@@ -192,6 +195,29 @@ describe('a revoked invitation', () => {
       status: 404,
       body: { error: 'not_found', detail: 'no such open invitation in this workspace' },
     });
+  });
+});
+
+describe('an expired invitation', () => {
+  it('admits nobody and leaves the list, and the login can be invited again', async () => {
+    const { owner, workspace } = await adminWithWorkspace(1004, 'Expired');
+    const invitationId = await invited(owner, workspace, 'person-2111');
+    await env.DB.prepare('UPDATE workspace_invitations SET created_at = ?, expires_at = ? WHERE id = ?')
+      .bind('2026-01-01T00:00:00.000Z', '2026-01-08T00:00:00.000Z', invitationId)
+      .run();
+
+    expect((await members(owner, workspace)).body.invitations).toEqual([]);
+    const refused = await signIn(2111);
+    expect(refused.landed.searchParams.get('error')).toBe('not_invited');
+    expect(await userIdOf(2111)).toBeNull();
+
+    const again = await invite(owner, workspace, 'person-2111');
+    expect(again.status).toBe(201);
+    await admitted(2111);
+    const row = await env.DB.prepare('SELECT revoked_at FROM workspace_invitations WHERE id = ?')
+      .bind(invitationId)
+      .first<{ revoked_at: string | null }>();
+    expect(row?.revoked_at).not.toBeNull();
   });
 });
 

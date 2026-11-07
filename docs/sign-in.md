@@ -211,7 +211,7 @@ A GitHub account may sign in when one of these holds:
 - it is a deployment admin: its numeric id is in `OWNER_GITHUB_IDS`;
 - it is already a member of a workspace;
 - its GitHub login holds an open invitation to a workspace: one nobody has
-  accepted and no owner has revoked.
+  accepted, no owner has revoked and that is less than 7 days old.
 
 Any other account is sent back to `/sign-in?error=not_invited`, and the page
 shows the reason: the account is not a member of a workspace here, and a
@@ -226,7 +226,9 @@ several.
   `{"githubLogin": "...", "role": "member"}` invites a GitHub login as a
   `member` or an `owner`; `role` is `member` when left out. Spaces and a
   leading `@` are dropped, and the login is compared without case. A
-  workspace holds at most one open invitation for a login.
+  workspace holds at most one open invitation for a login. An invitation
+  admits its login for 7 days (`expires_at`); after that it admits nobody,
+  leaves the list, and the login can be invited again.
 - **Joining.** When the account that holds the login next signs in with
   GitHub, each open invitation for that login becomes a membership with the
   invitation's role, bound to the account's user, and the invitation records
@@ -238,8 +240,8 @@ several.
   profile GitHub returns then. After that the membership belongs to the
   account, so renaming the login, or someone else taking the old one,
   changes nothing. Until then the invitation admits whoever holds the login
-  on GitHub when they sign in, so revoke an invitation that is no longer
-  wanted.
+  on GitHub when they sign in, for at most its 7 days, so revoke an
+  invitation that is no longer wanted.
 - **Revoking.** `POST /api/access/invitations/<invitation id>/revoke`
   revokes an open invitation. A revoked invitation admits nobody.
 - **Removing.** `POST /api/access/members/<user id>/remove` removes a member,
@@ -326,7 +328,7 @@ and people's own sign-in, keep working.
 | `GET /api/access/services` | The workspace's service credentials, without their secrets |
 | `POST /api/access/services` | Makes a credential in the workspace from `{"name": "...", "grants": [{"projectId": "...", "access": "read"}]}`, with `"backup": true`, one that may also read the backup route, and with `"restore": true`, one that may load the empty store; such a credential may leave `grants` out. Every grant names a project of the workspace, and the name is the credential's alone in the workspace. The answer holds its token, `ntasks_service.<id>.<secret>`, which is never shown again. Neither choice changes after. |
 | `POST /api/access/services/<credential id>/revoke` | Revokes a credential of the workspace |
-| `GET /api/access/members` | `{ members, invitations }`: the workspace's members, by name, each as `{ userId, name, githubLogin, role }`, where `githubLogin` is the login the member was invited under, or `null` for one who joined without an invitation, such as the workspace's creator; and its open invitations, newest first, each as `{ invitationId, githubLogin, role, createdAt }` |
+| `GET /api/access/members` | `{ members, invitations }`: the workspace's members, by name, each as `{ userId, name, githubLogin, role }`, where `githubLogin` is the login the member was invited under, or `null` for one who joined without an invitation, such as the workspace's creator; and its open invitations that have not expired, newest first, each as `{ invitationId, githubLogin, role, createdAt, expiresAt }` |
 | `POST /api/access/invitations` | Invites a GitHub login to the workspace from `{"githubLogin": "...", "role": "member"}` and answers `201` with `{ invitation }`, shaped as `GET /api/access/members` lists it |
 | `POST /api/access/invitations/<invitation id>/revoke` | Revokes an open invitation of the workspace: `{ "revoked": true }` |
 | `POST /api/access/members/<user id>/remove` | Removes a member of the workspace and their agents' grants there: `{ "removed": true }` |
