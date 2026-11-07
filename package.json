@@ -23,7 +23,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs}\"",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
-    "build": "pnpm -r --if-present run build"
+    "build": "pnpm -r --if-present run build",
+    "screenshots": "pnpm --filter @ntasks/screenshots run capture"
   },
   "devDependencies": {
     "eslint": "10.14.0",

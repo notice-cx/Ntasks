@@ -5,29 +5,59 @@
 [![CI](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 
-Ntasks is a task hub, being built for people and AI agents who share one
-project's work. It keeps that work as a graph of tasks: each task records what
-to do, the proof that it is done, and the other tasks it waits on. From that
-graph, Ntasks will:
+Ntasks is a task hub for people and AI agents working on the same projects.
+Work is a graph of tasks: each one records what to do, the proof that it is
+done, and the tasks it waits on. From that graph, Ntasks:
 
-- list the work that can start now, the same way for every agent;
-- give each task to one agent at a time;
-- hold a task that needs a person's decision or approval until the person
-  answers;
-- record every change, with who made it.
+- lists the work that can start now, the same for every agent;
+- gives each task to one agent at a time;
+- holds a task that needs a person's decision or approval until they answer;
+- records every change and who made it.
 
-AI agents will connect from wherever they run, over the
-[Model Context Protocol](https://modelcontextprotocol.io) (MCP), the standard
-way agents call tools on a server. People will use the web app.
+Agents connect over [MCP](https://modelcontextprotocol.io); people use the web
+app. It runs as a single Cloudflare Worker with a SQLite-backed Durable Object
+for storage, and is designed to fit the free plan.
 
-Ntasks runs as a Cloudflare **Worker**, a program Cloudflare runs on its
-servers in answer to web requests, and keeps its tasks in a **Durable
-Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
-designed to fit Cloudflare's free plan.
+<img src="docs/images/what-ntasks-does.svg" width="100%"
+  alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
+
+Agents keep working on ready tasks while a decision waits for you. Answering
+decisions through Ntasks is still being built (see [Status](#status)).
+
+Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
+
+## The web app
+
+Screenshots from the web app's example data.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
+  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board. Its heading reads 4 decisions for you, beside counts of urgent, blocked and done tasks. Below it, the four decisions: an approval with an Approve button, two choices showing their options, and a question with an Answer button. Under them, filters and the list of all tasks, one row each with its id, project, assignee, age and state.">
+</picture>
+
+The board: decisions waiting on you first, answerable in place, then every
+task.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
+  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug Fix the broken reset link in the welcome email. Its description has two headings, a numbered list, a highlighted code block, a bulleted list and a link to the task web-k3m9.1. Below it, a Done when checklist with two boxes; beside it, the task's project, status, priority and assignee.">
+</picture>
+
+A task page. Text is Markdown; task ids link to their tasks.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">
+  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width: the counts sit under the heading, and the decisions fill the width of the screen.">
+</picture>
+
+The board at phone width.
+
+Regenerate them with `pnpm screenshots`
+([tools/screenshots](tools/screenshots/README.md)).
 
 ## Status
 
-Ntasks is under construction. The repository holds its skeleton:
+Ntasks is in active development ahead of its first release.
 
 | Part | Today |
 |---|---|
@@ -44,10 +74,24 @@ Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses
 every request. [SECURITY.md](SECURITY.md) has the details.
 
+## Architecture
+
+<img src="docs/images/how-ntasks-works.svg"
+  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
+
+Every task request goes through the Worker, which signs it in before the task
+store answers it.
+
+<img src="docs/images/task-lifecycle.svg"
+  alt="Diagram of a task's life in five steps. 1: tasks A and B are filed, and A blocks B, so only A is in the list of ready work. 2: Agent 1 claims A; only one claim succeeds, and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with a commit as proof. 5: B is ready, and the list of ready work that Agent 2 reads shows it.">
+
+B becomes ready work once A is closed, and every agent that asks for ready
+work gets the same list.
+
 ## Learn how it works
 
-- [Concepts](docs/concepts.md) introduces projects, tasks, dependencies, ready
-  work, claims, decisions and approvals, one idea at a time.
+- [Concepts](docs/concepts.md): projects, tasks, dependencies, ready work,
+  claims, decisions and approvals.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.
@@ -93,6 +137,7 @@ pnpm build
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
 | [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, and that no `wrangler.jsonc` names a secret in `vars` |
 | [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, with a verifier |
+| [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app |
 | [`docs/`](docs/) | Concepts and architecture |
 
 ## Where Ntasks comes from

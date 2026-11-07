@@ -1,10 +1,8 @@
 # Architecture
 
-Ntasks is one Cloudflare Worker and one task store. A **Worker** is a program
-Cloudflare runs on its servers in answer to web requests. The **task store**
-is a Durable Object: a single Cloudflare object with its own SQLite database,
-which holds every task and runs the task engine beside it. Sign-in keeps its
-data in **D1**, Cloudflare's SQLite database service. The Worker answers the
+Ntasks is one Cloudflare Worker and one task store. The **task store** is a
+SQLite-backed Durable Object that holds every task and runs the task engine
+beside it. Sign-in keeps its data in D1. The Worker answers the
 API, the MCP endpoint that AI agents connect to, and sign-in; Cloudflare
 serves the web app's files from the same deployment. This page shows how the
 parts fit, the limits the design keeps to, and the rules every change keeps.
