@@ -348,6 +348,23 @@ The last step of moving a hub to Ntasks, once nothing writes to the hub:
 A load refused at its commit writes nothing; `load` aborts it, and the store
 stays empty, ready for another try.
 
+### Updating a deployment made before workspaces
+
+Before workspaces, a deployment kept every task in one store named `tasks`.
+This version reads only each workspace's own store, so the tasks in `tasks`
+are no longer reached after the update, and nothing moves them. To keep them:
+
+1. Before updating, stop every agent and service that writes, and back the
+   old store up with `backup` and a credential made with the backup choice,
+   then check the file with `restore` ([Back up and restore](#back-up-and-restore)).
+2. Update the deployment and apply its D1 migrations. Migration
+   `0004_workspaces.sql` drops the old service credentials and agent grants;
+   make them again in the new workspace after the load.
+3. Create a workspace, make a load credential in it and `load` the backup,
+   as in steps 2 to 4 of [the cutover from a Beads hub](#the-cutover-from-a-beads-hub).
+   The task store's own migrations are unchanged by this update, so the
+   backup loads.
+
 ## Tests
 
 ```sh
