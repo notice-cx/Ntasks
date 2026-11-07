@@ -31,7 +31,7 @@ import { exportFrom, type BeadsExport } from './beads.ts';
 import { doltClient } from './dolt-client.ts';
 import { describeExport, exportHub, readHubFile } from './export.ts';
 import { isJsonObject } from './json.ts';
-import { copyAsBackup, loadIntoStore, verifyLoaded } from './load.ts';
+import { checkReadable, copyAsBackup, loadIntoStore, verifyLoaded } from './load.ts';
 import { openLocalStore, storeMigrations, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
 import { verify, verifyBackup, type Difference } from './verify.ts';
@@ -294,12 +294,28 @@ async function runLoad(
     }
     const rows = copyAsBackup(copy, new Date().toISOString());
     io.out(`Checked in a local copy of the store: ${backupSummary(rowCounts(rows.tables))}.`);
-    const result = await loadIntoStore(rows, { api, token, fetch: network.fetch });
+    const target = { api, token, fetch: network.fetch };
+    await checkReadable(target);
+    const result = await loadIntoStore(rows, target);
     io.out(
       `Loaded ${count(result.rows)} rows into ${api} in ${count(result.pages)} pages, written in one transaction: ` +
         `${count(result.rowsWritten)} rows written as Cloudflare counts them.`,
     );
-    const { report, stored } = await verifyLoaded(rows, { api, token, fetch: network.fetch });
+    let read: Awaited<ReturnType<typeof verifyLoaded>>;
+    try {
+      read = await verifyLoaded(rows, target);
+    } catch (error) {
+      io.err(
+        `The load landed: the store at ${api} now holds the ${count(result.rows)} rows sent, so loading again is refused. ` +
+          `Reading it back to verify them failed: ${(error as Error).message}`,
+      );
+      io.err(
+        `Verify it when the store can be read: back it up with backup --api ${api} --token-file <file> --out <file>, ` +
+          `restore that file into a new store copy with restore, then run verify --from ${from} --store <that copy>.`,
+      );
+      return 1;
+    }
+    const { report, stored } = read;
     io.out(`Read the store back through its backup route: ${backupSummary(report.rows)}.`);
     io.out('Tasks per project and status (file / store):');
     for (const entry of report.counts)

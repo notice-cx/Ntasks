@@ -26,10 +26,17 @@ const TOKEN = 'ntasks_service.00000000-0000-4000-8000-000000000002.synthetic-sec
 /**
  * Stands in for a deployed Ntasks: the restore routes keep pages and load
  * them into `store` at the commit, and the backup route reads `store` back.
- * `drop` leaves one row of a table out at the commit, as a faulty store would.
+ * `drop` leaves one row of a table out at the commit, as a faulty store
+ * would. `backup` refuses the backup route to the token, or fails it once
+ * the load has landed.
  */
-function standIn(store: LocalStore, drop?: BackupTable) {
+function standIn(
+  store: LocalStore,
+  options: { readonly drop?: BackupTable; readonly backup?: 'refused' | 'fails-after-commit' } = {},
+) {
+  const { drop } = options;
   const requests: string[] = [];
+  let committed = false;
   let load: string | null = null;
   let pages: { table: BackupTable; rows: BackupRow[] }[] = [];
   const answer = (body: unknown, status = 200) => Response.json(body, { status });
@@ -40,6 +47,8 @@ function standIn(store: LocalStore, drop?: BackupTable) {
     if (new Headers(init?.headers).get('authorization') !== `Bearer ${TOKEN}`)
       return answer({ error: 'invalid_token' }, 401);
     if (url.pathname === '/api/backup') {
+      if (options.backup === 'refused') return answer({ error: 'insufficient_scope' }, 403);
+      if (options.backup === 'fails-after-commit' && committed) return answer({ error: 'internal_error' }, 500);
       const table = (url.searchParams.get('page') ?? BACKUP_TABLES[0]) as BackupTable;
       const rows = store.raw.prepare(backupPageSql(table, 'first')).all(100_000, 0);
       const next = BACKUP_TABLES[BACKUP_TABLES.indexOf(table) + 1] ?? null;
@@ -67,6 +76,7 @@ function standIn(store: LocalStore, drop?: BackupTable) {
         ) as Record<BackupTable, BackupRow[]>;
         if (drop !== undefined) tables[drop] = tables[drop].slice(1);
         store.load(tables as unknown as BackupRows);
+        committed = true;
         load = null;
         const rows = Object.values(tables).reduce((sum, list) => sum + list.length, 0);
         return answer({ rows, rowsWritten: rows });
@@ -122,7 +132,8 @@ describe('the load command', () => {
     expect(loaded.err).toEqual([]);
     expect(loaded.code).toBe(0);
     expect(loaded.out.at(-1)).toBe('0 differences.');
-    expect(route.requests[0]).toBe('POST /api/restore');
+    // It checks that it can read the store back before it sends anything.
+    expect(route.requests.slice(0, 2)).toEqual(['GET /api/backup', 'POST /api/restore']);
     expect(route.requests).toContain('POST /api/restore/commit');
     const { plan } = planImport(scenario());
     expect(deployed.read('tasks').map((row) => row.id)).toEqual(plan!.tasks.map((row) => row.id).sort());
@@ -149,9 +160,31 @@ describe('the load command', () => {
   });
 
   it('finds a store that does not hold what was sent', async () => {
-    const loaded = await load(await written('export.json', scenario()), standIn(deployed, 'task_labels'));
+    const loaded = await load(await written('export.json', scenario()), standIn(deployed, { drop: 'task_labels' }));
     expect(loaded.code).toBe(1);
     expect(loaded.err[0]).toMatch(/^\d+ differences:$/u);
     expect(loaded.err.some((line) => line.includes('task_labels row'))).toBe(true);
+  });
+
+  it('sends nothing when the credential cannot read the store back', async () => {
+    const route = standIn(deployed, { backup: 'refused' });
+    const loaded = await load(await written('export.json', scenario()), route);
+    expect(loaded.code).toBe(1);
+    expect(loaded.err).toEqual([
+      "The credential cannot read the store back through GET /api/backup (403 insufficient_scope), so nothing was sent. A load's credential needs the backup choice as well as the restore choice.",
+    ]);
+    expect(route.requests).toEqual(['GET /api/backup']);
+  });
+
+  it('says the load landed, and how to verify it, when reading the store back fails after the commit', async () => {
+    const route = standIn(deployed, { backup: 'fails-after-commit' });
+    const from = await written('export.json', scenario());
+    const loaded = await load(from, route);
+    expect(loaded.code).toBe(1);
+    expect(loaded.err[0]).toMatch(
+      /^The load landed: the store at https:\/\/ntasks\.test now holds the [\d,]+ rows sent, so loading again is refused\. Reading it back to verify them failed: The backup route answered 500 internal_error\.$/u,
+    );
+    expect(loaded.err[1]).toContain(`then run verify --from ${from} --store <that copy>.`);
+    expect(route.requests).toContain('POST /api/restore/commit');
   });
 });

@@ -10,6 +10,7 @@
 import {
   BACKUP_FORMAT,
   BACKUP_TABLES,
+  BackupRefused,
   sendLoad,
   type BackupFile,
   type BackupRow,
@@ -35,6 +36,25 @@ export function copyAsBackup(store: LocalStore, takenAt: string): BackupFile {
     BackupRow[]
   >;
   return { format: BACKUP_FORMAT, takenAt, migrations: store.migrations(), tables };
+}
+
+/**
+ * Refuses, before anything is sent, a credential that cannot read the store
+ * back through GET /api/backup: the load would land and then could not be
+ * verified, and a second try would find the store no longer empty.
+ */
+export async function checkReadable(options: LoadOptions): Promise<void> {
+  const response = await options.fetch(backupUrl(options.api), {
+    headers: { authorization: `Bearer ${options.token}`, accept: 'application/json' },
+    redirect: 'error',
+  });
+  if (response.ok) return;
+  const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+  const error = typeof body?.error === 'string' ? ` ${body.error}` : '';
+  throw new BackupRefused(
+    `The credential cannot read the store back through GET /api/backup (${response.status}${error}), so nothing was sent. ` +
+      "A load's credential needs the backup choice as well as the restore choice.",
+  );
 }
 
 /** Sends a store copy's rows to the empty store at `api`, page by page. */

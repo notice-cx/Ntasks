@@ -14,9 +14,9 @@ export const LOAD_PAGE_ROWS = 500;
 
 export type LoadAnswer<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: 400 | 409; readonly error: string; readonly detail: string };
+  | { readonly ok: false; readonly status: 400 | 409 | 500; readonly error: string; readonly detail: string };
 
-function refused(status: 400 | 409, error: string, detail: string): LoadAnswer<never> {
+function refused(status: 400 | 409 | 500, error: string, detail: string): LoadAnswer<never> {
   return { ok: false, status, error, detail };
 }
 
@@ -221,12 +221,22 @@ export function commitLoad(
     });
   } catch (error) {
     if (error instanceof LoadRefused) return error.answer;
-    return refused(
-      409,
-      'load_refused',
-      `a row breaks a rule of the store, so nothing was written: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (brokenRule(message))
+      return refused(409, 'load_refused', `a row breaks a rule of the store, so nothing was written: ${message}`);
+    return refused(500, 'load_failed', `the store could not write the load, so nothing was written: ${message}`);
   }
+}
+
+/**
+ * Whether SQLite refused a row for breaking one of the schema's rules: a
+ * constraint, a column's type in a STRICT table, or one of the store's
+ * triggers. Any other failure is the store's, not the rows'.
+ */
+function brokenRule(message: string): boolean {
+  return /constraint failed|SQLITE_CONSTRAINT|cannot store \S+ value in \S+ column|\bntasks(?: refused)?: /u.test(
+    message,
+  );
 }
 
 /** Drops the waiting load and its pages, writing nothing else. */

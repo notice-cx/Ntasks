@@ -252,6 +252,30 @@ describe('a load into an empty store', () => {
     expect(await stagedPages(target)).toBe(2);
   });
 
+  it('reports a failure of the store itself as load_failed, not as a row breaking a rule', async () => {
+    const target = freshStore();
+    const post = poster(target);
+    const load = ((await post('/api/restore', { migrations: MIGRATION_NAMES })).body as { load: string }).load;
+    const project = {
+      id: 'p1',
+      key: 'web.example.com',
+      name: 'Web',
+      prefix: 'web',
+      created_at: '2026-03-02T09:00:00.000Z',
+    };
+    await post('/api/restore/rows', { load, table: 'projects', rows: [project] });
+    // A fault no row causes: a table the commit writes is gone.
+    await runInDurableObject(target, (_instance: TaskStore, state) =>
+      state.storage.sql.exec('DROP TABLE task_external_links'),
+    );
+    const committed = await post('/api/restore/commit', { load, counts: { projects: 1 } });
+    expect(committed).toMatchObject({ status: 500, body: { error: 'load_failed' } });
+    expect((committed.body as { detail: string }).detail).toMatch(
+      /^the store could not write the load, so nothing was written: .*no such table/u,
+    );
+    expect(await stagedPages(target)).toBe(1);
+  });
+
   it('aborts a load that a page refused, so the store keeps none of it', async () => {
     const target = freshStore();
     const { file } = await backupOfEveryRow();

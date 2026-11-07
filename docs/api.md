@@ -412,6 +412,7 @@ The commit writes nothing unless every check passes:
 | `409` with `counts_differ` | The pages that arrived do not hold the rows `counts` gives, such as when a page was lost |
 | `409` with `load_refused` | A row breaks a rule of the store, such as a check or a link to a task the load does not hold. The load keeps waiting, to be aborted. |
 | `409` with `no_such_load` | No load with this id is waiting |
+| `500` with `load_failed` | The store could not write the load for a reason other than its rows, named in `detail`. Nothing was written, and the load keeps waiting. |
 | `400` with `invalid_request` | A page names another table, holds no row or more than 500, or a row lacks a column, has one the table lacks, or holds a value that is not text, a number or null |
 
 A load does not stop others from writing: the commit finds any row written
