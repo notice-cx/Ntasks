@@ -1,5 +1,152 @@
 [
   {
+    "name": "reconcile_task",
+    "description": "Record an existing owner answer, retire a completed/obsolete/superseded/duplicate human request, record a declined approval gate, remove a routine human label, or release a confirmed inactive assignment. Read get_task first and send its proposal snapshot. For linkless local conversations use answer_mode relayed with the exact question, reply, owner, scope and claude-code:session/<session id> or a comment preserving those words. Relayed approvals close immediately and the owner may dispute them. owner_performed records the owner’s completed result as done without granting an agent permission. Obsolete requests close as no-longer-needed. Evidence and a plain explanation are required. For an answer received directly from the owner in this chat, use answer_mode: direct with the exact question and reply; your authenticated agent identity is recorded as the recorder. Otherwise verify owner identity and the exact proposal in the linked source. Never invent an answer. For batch replies, call once per explicitly named task within the answered scope. Retirement grants no permission; production reads/writes, spending, messages, destructive actions and material commitments still require explicit action-specific approval.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "The workspaceId from list_workspaces."
+        },
+        "project": {
+          "type": "string",
+          "description": "The projectId from list_projects."
+        },
+        "task": {
+          "type": "string",
+          "description": "The task id, such as abc-1x2."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "answer",
+            "declined",
+            "owner_performed",
+            "completed",
+            "obsolete",
+            "superseded",
+            "duplicate",
+            "routine",
+            "release"
+          ]
+        },
+        "proposal": {
+          "type": "string",
+          "description": "The exact proposal snapshot from get_task for the proposal the owner saw."
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 800,
+          "description": "Plain-language reason for this disposition."
+        },
+        "evidence": {
+          "type": "string",
+          "maxLength": 800,
+          "description": "Concrete commit, task, test or source reference proving the reason; code alone never proves approval."
+        },
+        "response": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "For answer, declined or owner_performed: exact owner words. A, a recommendation reply, a clear direction or the explicit refusal."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Required for answer, declined or owner_performed: the human owner, never the relaying agent."
+        },
+        "source": {
+          "type": "string",
+          "description": "Original source: comment:<id> on this task, https:// or codex://threads/ conversation, or claude-code:session/<session id> with answer_mode relayed. owner_performed requires the owner’s reported result, never agent implementation evidence."
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "For answer: exactly what the owner authorized. An approval gate requires its exact full Reason text."
+        },
+        "answer_mode": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "relayed"
+          ],
+          "description": "direct requires a chat URL; relayed also accepts claude-code:session/<session id> or a task comment quoting the exact question and reply. Both record the admitted agent without independent authentication. Relayed approvals close immediately and the owner can dispute them. Omit for source-verified answers."
+        },
+        "question": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "For direct or relayed answers: the exact question presented to the owner. Approval questions must include the complete requested action, environment and verification."
+        },
+        "approval_item": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "description": "For a numbered batch approval relayed from a source comment: the item the gate requests. The source must preserve its number and the exact question and reply."
+        },
+        "option": {
+          "type": "string",
+          "enum": [
+            "a",
+            "b",
+            "c",
+            "d",
+            "e",
+            "f"
+          ],
+          "description": "For a direct decision-card answer: the stored option corresponding to the exact selected reply. Preserve the reply in response; never map an uncertain or conflicting answer."
+        },
+        "duplicate_of": {
+          "type": "string",
+          "description": "For duplicate: open task retaining complete scope. Duplicate gates must match the full request."
+        },
+        "holder": {
+          "type": "string",
+          "description": "For release: exact current assignee."
+        },
+        "inactive": {
+          "type": "boolean",
+          "description": "For release: true only after checking the holder is no longer working; age alone is insufficient."
+        },
+        "activity_check": {
+          "type": "string",
+          "maxLength": 800,
+          "description": "For release: activity evidence and how it was checked."
+        },
+        "progress": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "For release: preserved progress, commits and remaining implementation."
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "The name of the model you run as, as you would say it. Pass it on every new task, claim and close: the Tower shows it beside your name, and the Agents page ranks your work by it."
+        },
+        "idempotency_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+          "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
+        }
+      },
+      "required": [
+        "workspace",
+        "project",
+        "task",
+        "action",
+        "proposal",
+        "explanation",
+        "evidence",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
     "name": "list_projects",
     "description": "List the task projects in this workspace.",
     "inputSchema": {
@@ -8,6 +155,32 @@
         "workspace": {
           "type": "string",
           "description": "The workspaceId from list_workspaces."
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "get_agent_stats",
+    "description": "Agent work statistics grouped by model: current and blocked counts, closes in 7 days and the 7 before, eight weeks of velocity, ranking and leaders. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "The workspaceId from list_workspaces."
+        },
+        "project": {
+          "type": "string",
+          "description": "The projectId from list_projects; omit for workspace totals."
         }
       },
       "required": [

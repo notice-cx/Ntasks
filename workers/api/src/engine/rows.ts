@@ -16,6 +16,7 @@ import type {
   TaskResolution,
   TaskStatus,
   TaskType,
+  WorkItem,
 } from '@ntasks/domain';
 
 /** A `tasks` row as the table stores it. */
@@ -225,6 +226,42 @@ export function toEvent(row: EventRow): TaskEvent {
     model: row.model,
     at: row.at,
     changes: JSON.parse(row.changes) as JsonObject,
+  };
+}
+
+/** The columns of a `tasks` row that agent statistics count. */
+export type WorkRow = Pick<
+  StoredTaskRow,
+  | 'id'
+  | 'project_id'
+  | 'type'
+  | 'await_type'
+  | 'status'
+  | 'priority'
+  | 'assignee'
+  | 'assignee_model'
+  | 'started_at'
+  | 'updated_at'
+  | 'closed_at'
+  | 'closed_by'
+  | 'closed_model'
+>;
+
+export function toWork(row: WorkRow): WorkItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    type: row.type,
+    awaitType: row.await_type,
+    status: row.status,
+    priority: row.priority,
+    assignee: row.assignee,
+    assigneeModel: row.assignee_model,
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+    closedAt: row.closed_at,
+    closedBy: row.closed_by,
+    closedModel: row.closed_model,
   };
 }
 

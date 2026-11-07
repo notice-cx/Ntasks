@@ -9,10 +9,19 @@ import { backupRoute } from './http/backup.ts';
 import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
+  agentStatsRoute,
+  chooseRoute,
+  dismissRoute,
+  disputeRoute,
+  resolveRoute,
+  respondRoute,
+} from './http/decisions.ts';
+import {
   boardRoute,
   capabilities,
   changesRoute,
   fieldsRoute,
+  gatePath,
   historyRoute,
   projects,
   taskPath,
@@ -28,6 +37,7 @@ import {
   updateRoute,
 } from './http/writes.ts';
 import { serveMcp } from './mcp/protocol.ts';
+import { notAPerson } from './owner-answers.ts';
 import { taskServer } from './mcp/server.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { Workspace } from './service.ts';
@@ -72,6 +82,8 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks': { GET: boardRoute, POST: createRoute },
   '/api/tasks/projects': { GET: projects },
   '/api/tasks/capabilities': { GET: capabilities },
+  // Before a task's own paths: agent-stats is also the form of a task id.
+  '/api/tasks/agent-stats': { GET: agentStatsRoute },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
   '/api/backup': { GET: backupRoute, scope: SCOPES.backup },
@@ -89,6 +101,9 @@ function routesOf(pathname: string): Routes | null {
   if (routes) return routes;
   const retire = RETIRE_PATH.exec(pathname);
   if (retire) return { POST: (context, url, request) => retireFieldRoute(context, url, request, retire[1]!) };
+  const gateId = gatePath(pathname);
+  if (gateId !== null)
+    return { POST: (context, url, request) => resolveRoute(context, url, request, gateId), scope: SCOPES.decide };
   const task = taskPath(pathname);
   if (!task) return null;
   const { taskId } = task;
@@ -99,6 +114,14 @@ function routesOf(pathname: string): Routes | null {
       return { POST: (context, url, request) => commentRoute(context, url, request, taskId) };
     case 'close':
       return { POST: (context, url, request) => closeRoute(context, url, request, taskId) };
+    case 'respond':
+      return { POST: (context, url, request) => respondRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'choose':
+      return { POST: (context, url, request) => chooseRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'dismiss':
+      return { POST: (context, url, request) => dismissRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'dispute':
+      return { POST: (context, url, request) => disputeRoute(context, url, request, taskId), scope: SCOPES.decide };
     default:
       return {
         GET: (context, url) => taskRoute(context, url, taskId),
@@ -147,7 +170,9 @@ export async function serveApi(request: Request, principal: Principal, context: 
   if (!route) return json({ error: 'method_not_allowed' }, 405, { allow: allowed(routes) });
   const scope = routes.scope ?? (method === 'GET' ? SCOPES.read : SCOPES.write);
   if (!principal.scopes.includes(scope)) {
-    return json({ error: 'insufficient_scope', detail: `this route needs ${scope}` }, 403);
+    // A client that relays a person's click, such as another service's pages, shows this sentence as it is.
+    const detail = scope === SCOPES.decide ? notAPerson().detail : `this route needs ${scope}`;
+    return json({ error: 'insufficient_scope', detail }, 403);
   }
   // A write from a browser comes from the web app's own pages, never another site's.
   const origin = request.headers.get('origin');

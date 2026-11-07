@@ -5,6 +5,9 @@
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
 import { TaskRefused, type Json, type Task, type TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
+import type { Database } from '../../src/engine/database.ts';
+import { createEngine } from '../../src/engine/index.ts';
+import { storeDatabase } from '../store.ts';
 import { AGENT, clock, engine, expectRefusal, newProject, OTHER, OWNER, retryFor } from './helpers.ts';
 
 async function historyOf(tasks: TaskEngine, projectId: string, taskId: string) {
@@ -673,6 +676,221 @@ describe('decisions', () => {
       tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { choice: { option: 'a' } } }, OWNER),
       'invalid',
     );
+  });
+});
+
+describe('changes to other tasks in the same write', () => {
+  /** An approval with a task waiting on it, the task labelled human and held. */
+  async function waitingOnApproval(tasks: TaskEngine) {
+    const project = await newProject(tasks);
+    const { task, created } = await tasks.createTask(
+      project.id,
+      { title: 'Ship it', labels: ['human'], requestApproval: { reason: 'Deploy once' } },
+      OWNER,
+    );
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { assignee: AGENT.name } }, AGENT);
+    return { project, gate: created[0]!, waiting: (await tasks.getTask(project.id, task.id))! };
+  }
+
+  it('closes an approval, comments on and hands back the task waiting on it, in one batch', async () => {
+    const tasks = engine();
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+
+    const { task: closed } = await tasks.writeTask(
+      project.id,
+      gate.id,
+      {
+        expectedVersion: gate.version,
+        close: { reason: 'Owner approved the recorded scope', resolution: 'done' },
+        others: [
+          {
+            taskId: waiting.id,
+            expectedVersion: waiting.version,
+            set: { status: 'open', assignee: null },
+            removeLabels: ['human'],
+            comment: 'Owner approval recorded.',
+          },
+        ],
+      },
+      OWNER,
+    );
+
+    expect(closed.status).toBe('closed');
+    const after = (await tasks.getTask(project.id, waiting.id))!;
+    expect(after).toMatchObject({ assignee: null, labels: [], ready: true, version: waiting.version + 1 });
+    expect((await tasks.listComments(project.id, waiting.id)).map((comment) => comment.text)).toEqual([
+      'Owner approval recorded.',
+    ]);
+    expect((await historyOf(tasks, project.id, waiting.id)).at(-1)).toMatchObject({ actor: 'owner' });
+  });
+
+  it('leaves the version of a task it only comments on, as a comment does', async () => {
+    const tasks = engine();
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+
+    await tasks.writeTask(
+      project.id,
+      gate.id,
+      {
+        expectedVersion: gate.version,
+        close: { reason: 'Retired', resolution: 'no-longer-needed' },
+        others: [{ taskId: waiting.id, expectedVersion: waiting.version, comment: 'Approval retired.' }],
+      },
+      OWNER,
+    );
+
+    const after = (await tasks.getTask(project.id, waiting.id))!;
+    expect(after).toMatchObject({ version: waiting.version, commentCount: 1 });
+    const events = await historyOf(tasks, project.id, waiting.id);
+    expect(events.at(-1)).toMatchObject({ kind: 'commented', version: waiting.version });
+  });
+
+  it('writes nothing when a task it only comments on changes between its read and its batch', async () => {
+    const inner = storeDatabase();
+    let beforeBatch: (() => Promise<void>) | null = null;
+    const db: Database = {
+      prepare: (sql) => inner.prepare(sql),
+      async batch(statements) {
+        const hook = beforeBatch;
+        beforeBatch = null;
+        if (hook) await hook();
+        return inner.batch(statements);
+      },
+    };
+    const tasks = createEngine(db);
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+    // Another write lands after this one read the task and before its batch.
+    beforeBatch = () =>
+      inner.prepare('UPDATE tasks SET priority = 0, version = version + 1 WHERE id = ?1').bind(waiting.id).run();
+
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        gate.id,
+        {
+          expectedVersion: gate.version,
+          close: { reason: 'Retired', resolution: 'no-longer-needed' },
+          others: [{ taskId: waiting.id, expectedVersion: waiting.version, comment: 'Approval retired.' }],
+        },
+        OWNER,
+      ),
+      'version_conflict',
+    );
+    expect((await tasks.getTask(project.id, gate.id))!.status).toBe('open');
+    expect(await tasks.listComments(project.id, waiting.id)).toEqual([]);
+  });
+
+  it('writes nothing when another task changed since it was read', async () => {
+    const tasks = engine();
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+    await tasks.writeTask(project.id, waiting.id, { expectedVersion: waiting.version, set: { priority: 0 } }, AGENT);
+
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        gate.id,
+        {
+          expectedVersion: gate.version,
+          close: { reason: 'Approved', resolution: 'done' },
+          others: [{ taskId: waiting.id, expectedVersion: waiting.version, set: { assignee: null } }],
+        },
+        OWNER,
+      ),
+      'version_conflict',
+    );
+    expect((await tasks.getTask(project.id, gate.id))!.status).toBe('open');
+  });
+
+  it('refuses another task named twice, the task itself, an approval or a task outside the project', async () => {
+    const tasks = engine();
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+    const outside = await newProject(tasks);
+    const { task: elsewhere } = await tasks.createTask(outside.id, { title: 'Elsewhere' }, OWNER);
+    const base = { expectedVersion: gate.version, close: { reason: 'Approved', resolution: 'done' as const } };
+    const other = { taskId: waiting.id, expectedVersion: waiting.version, comment: 'Told.' };
+
+    await expectRefusal(tasks.writeTask(project.id, gate.id, { ...base, others: [other, other] }, OWNER), 'invalid');
+    await expectRefusal(
+      tasks.writeTask(project.id, gate.id, { ...base, others: [{ ...other, taskId: gate.id }] }, OWNER),
+      'invalid',
+    );
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        gate.id,
+        { ...base, others: [{ ...other, requestApproval: { reason: 'Again' } } as typeof other] },
+        OWNER,
+      ),
+      'invalid',
+    );
+    await expectRefusal(
+      tasks.writeTask(project.id, gate.id, { ...base, others: [{ ...other, taskId: elsewhere.id }] }, OWNER),
+      'not_found',
+    );
+    expect((await tasks.getTask(project.id, gate.id))!.status).toBe('open');
+  });
+});
+
+describe('reading several tasks and the work agents did', () => {
+  it('reads the tasks named, leaving out ids the project does not hold', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task: first } = await tasks.createTask(project.id, { title: 'First' }, OWNER);
+    const { task: second } = await tasks.createTask(project.id, { title: 'Second' }, OWNER);
+
+    const found = await tasks.getTasks(project.id, [second.id, first.id, `${project.prefix}-none`]);
+
+    expect(found.map((task) => task.title).sort()).toEqual(['First', 'Second']);
+  });
+
+  it('lists the work in progress or blocked, and closed from a time, with who held and closed it', async () => {
+    const time = clock('2026-11-01T12:00:00.000Z');
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const make = async (title: string) => (await tasks.createTask(project.id, { title }, OWNER)).task;
+    const held = await make('Held');
+    const waiting = await make('Waiting');
+    const early = await make('Closed early');
+    const late = await make('Closed late');
+    await make('Open');
+    await tasks.writeTask(
+      project.id,
+      held.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
+    await tasks.writeTask(project.id, waiting.id, { expectedVersion: 1, set: { status: 'blocked' } }, OWNER);
+    await tasks.writeTask(
+      project.id,
+      early.id,
+      { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
+      OTHER,
+    );
+    time.advance(60 * 24 * 3);
+    await tasks.writeTask(
+      project.id,
+      late.id,
+      { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
+      OTHER,
+    );
+
+    const work = await tasks.listWork([project.id], '2026-11-02T00:00:00.000Z');
+
+    expect(work.map((item) => item.id).sort()).toEqual([held.id, late.id, waiting.id].sort());
+    expect(work.find((item) => item.id === held.id)).toMatchObject({
+      projectId: project.id,
+      status: 'in_progress',
+      assignee: 'agent-a',
+      assigneeModel: 'model-a',
+      startedAt: '2026-11-01T12:00:00.000Z',
+    });
+    expect(work.find((item) => item.id === late.id)).toMatchObject({
+      status: 'closed',
+      closedBy: 'agent-b',
+      closedModel: 'model-b',
+      closedAt: '2026-11-04T12:00:00.000Z',
+    });
+    expect(await tasks.listWork([], '2026-11-02T00:00:00.000Z')).toEqual([]);
   });
 });
 

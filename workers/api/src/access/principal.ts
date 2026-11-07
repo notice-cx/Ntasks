@@ -24,6 +24,8 @@ export interface AgentPrincipal {
   readonly id: string;
   /** The person the agent acts for. */
   readonly userId: string;
+  /** That person's name, which their own writes are recorded under (`personActor`). */
+  readonly personName: string;
   readonly clientId: string;
   /** The name the agent's client registered with, as the person saw it when approving. */
   readonly name: string;
@@ -78,10 +80,25 @@ const PREFIXED = /^(?:agent|service|person):/u;
  * owner name is cut.
  */
 export function actorOf(principal: Principal, model?: string): Actor {
-  const kind = principal.kind === 'person' && !PREFIXED.test(principal.name) ? null : principal.kind;
-  const base = kind === null ? principal.name : `${kind}:${principal.name}`;
+  const base = principal.kind === 'person' ? personActor(principal.name) : `${principal.kind}:${principal.name}`;
   const full =
     principal.kind === 'service' && principal.onBehalfOf !== undefined ? `${base}/${principal.onBehalfOf}` : base;
   const name = full.slice(0, TASK_LIMITS.actor);
   return model === undefined ? { name } : { name, model };
+}
+
+/** The actor a person with this name is recorded under. */
+export function personActor(name: string): string {
+  return (PREFIXED.test(name) ? `person:${name}` : name).slice(0, TASK_LIMITS.actor);
+}
+
+/**
+ * The actor of the person this sender is, or acts for: a person's own, and
+ * for an agent the person who approved it. A comment under this actor holds
+ * that person's own words. A service acts for no person.
+ */
+export function personOf(principal: Principal): string | undefined {
+  if (principal.kind === 'person') return personActor(principal.name);
+  if (principal.kind === 'agent') return personActor(principal.personName);
+  return undefined;
 }

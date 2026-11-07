@@ -22,7 +22,7 @@ sign-in library, with its OAuth provider plugin, on the Worker's D1 database.
 
 | Caller | How it signs in | What it reaches |
 |---|---|---|
-| **The owner**, a person in a browser | Signs in with GitHub on `/sign-in`. The GitHub account's numeric id must be in `OWNER_GITHUB_IDS`. | Every project, the backup of the whole store (`tasks:backup`) and a load into the empty store (`tasks:restore`). Only the owner's own browser session counts as the owner's decision. |
+| **The owner**, a person in a browser | Signs in with GitHub on `/sign-in`. The GitHub account's numeric id must be in `OWNER_GITHUB_IDS`. | Every project, the backup of the whole store (`tasks:backup`), a load into the empty store (`tasks:restore`), and a person's decisions (`tasks:decide`). Only the owner's own browser session counts as the owner's decision. |
 | **An AI agent**, such as an MCP client | OAuth 2.1, the sign-in method of [MCP's authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization). The owner approves the agent on `/agent-access` and chooses its projects. | The projects the owner chose, to read (`tasks:read`) or to read and change (`tasks:write`) tasks. |
 | **A service**, such as a NoticeOS installation | A service credential the owner made, sent as a bearer token. | The projects named in the credential's grants, each to read or to read and change. A credential the owner made with the backup choice also reads the whole store through the backup route (`tasks:backup`, [API](api.md#backing-up-the-whole-store)), and one made with the restore choice may load rows into the store while it is empty (`tasks:restore`, [API](api.md#loading-an-empty-store)); either needs no grants. |
 
@@ -33,7 +33,12 @@ login, because a login can be renamed and then taken by someone else.
 An agent or a service may pass on an answer the owner gave it, such as a
 choice in a decision, but that is a relayed answer, not the owner's own
 decision. `mayDecide(principal)` is true only for the owner's browser
-session, so the API can record the two apart.
+session, so the API can record the two apart: only that session holds
+`tasks:decide`, which the decision routes need, and an agent records an
+answer it holds with `reconcile_task` ([API](api.md#recording-an-owner-answer)).
+An agent's sign-in also names the person who approved it, so a comment that
+person wrote counts as their own words when the agent cites it; a service
+names no person.
 
 ## Settings
 

@@ -59,7 +59,7 @@ export interface RetryRequest {
 
 /** How many times a write reads its task again after another write changed it first. */
 const ATTEMPTS = 3;
-const OPEN_STATUSES: readonly Exclude<TaskStatus, 'closed'>[] = ['open', 'in_progress', 'blocked', 'deferred'];
+export const OPEN_STATUSES: readonly Exclude<TaskStatus, 'closed'>[] = ['open', 'in_progress', 'blocked', 'deferred'];
 
 // ─── Sentences ────────────────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
-async function retryOf(principal: Principal, retry: RetryRequest | undefined): Promise<Retry | undefined> {
+export async function retryOf(principal: Principal, retry: RetryRequest | undefined): Promise<Retry | undefined> {
   if (retry === undefined) return undefined;
   return {
     principal: principal.id,
@@ -156,12 +156,12 @@ async function retryOf(principal: Principal, retry: RetryRequest | undefined): P
   };
 }
 
-function actorOf(principal: Principal, model: string | undefined): Actor {
+export function actorOf(principal: Principal, model: string | undefined): Actor {
   return model === undefined ? { name: principal.name } : { name: principal.name, model };
 }
 
 /** A gate, or a task labelled human: a person's to answer. */
-function isDecision(task: Pick<Task, 'type' | 'labels'>): boolean {
+export function isDecision(task: Pick<Task, 'type' | 'labels'>): boolean {
   return task.type === 'gate' || task.labels.includes('human');
 }
 
@@ -179,7 +179,11 @@ async function openGates({ engine }: Reader, project: Project, task: Task): Prom
 }
 
 /** The answer an earlier write with this retry identity gave, or null. */
-async function recorded({ engine }: Reader, project: Project, retry: Retry | undefined): Promise<WriteResult | null> {
+export async function recorded(
+  { engine }: Reader,
+  project: Project,
+  retry: Retry | undefined,
+): Promise<WriteResult | null> {
   if (retry === undefined) return null;
   try {
     return await engine.recordedWrite(project.id, retry);
@@ -197,7 +201,7 @@ async function recorded({ engine }: Reader, project: Project, retry: Retry | und
  * answer, so a retry replays it rather than writing what it sent once the
  * task has moved on, and the key cannot be reused for another change.
  */
-async function changing(
+export async function changing(
   context: WriteContext,
   project: Project,
   first: Task,

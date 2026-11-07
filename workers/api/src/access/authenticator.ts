@@ -7,7 +7,7 @@
 import { TASK_LIMITS } from '@ntasks/domain';
 import { SCOPES, type Authenticator, type Principal as ApiPrincipal } from '../auth.ts';
 import { json } from '../http/respond.ts';
-import { actorOf, type Principal, type ServicePrincipal } from './principal.ts';
+import { actorOf, personOf, type Principal, type ServicePrincipal } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
 /**
@@ -22,6 +22,7 @@ const READ = SCOPES.read;
 const WRITE = SCOPES.write;
 const BACKUP = SCOPES.backup;
 const RESTORE = SCOPES.restore;
+const DECIDE = SCOPES.decide;
 
 /**
  * A signed-in sender, in the API's shape (src/auth.ts): its id is the retry
@@ -40,10 +41,11 @@ export interface SignInAuthenticator extends Authenticator {
 }
 
 /** The scopes for the most the principal may do in any one project, none
- * for a sender with no grants, and the backup and restore scopes for the
- * owner and for a credential the owner made with each. */
+ * for a sender with no grants, the backup and restore scopes for the owner
+ * and for a credential the owner made with each, and the decide scope for the
+ * owner alone (`mayDecide`). */
 function scopesOf(principal: Principal): readonly string[] {
-  if (principal.kind === 'person') return [READ, WRITE, BACKUP, RESTORE];
+  if (principal.kind === 'person') return [READ, WRITE, BACKUP, RESTORE, DECIDE];
   const access = new Set(principal.projects.values());
   const scopes = access.has('write') ? [READ, WRITE] : access.has('read') ? [READ] : [];
   if (principal.kind !== 'service') return scopes;
@@ -98,11 +100,13 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
         }
         principal = acting;
       }
+      const person = personOf(principal);
       return Object.freeze({
         id: principal.id,
         name: actorOf(principal).name,
         scopes: scopesOf(principal),
         projects: principal.kind === 'person' ? 'all' : principal.projects,
+        ...(person === undefined ? {} : { person }),
         principal,
       });
     },

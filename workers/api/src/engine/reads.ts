@@ -24,6 +24,7 @@ import {
   type TaskFilters,
   type TaskPage,
   type TaskQuery,
+  type WorkItem,
 } from '@ntasks/domain';
 import {
   externalLinks,
@@ -33,12 +34,14 @@ import {
   toEvent,
   toProject,
   toTask,
+  toWork,
   type CommentRow,
   type EpicRow,
   type EventRow,
   type FieldRow,
   type ProjectRow,
   type TaskRow,
+  type WorkRow,
 } from './rows.ts';
 import type { Bindable, Database, Statement } from './database.ts';
 import { instant } from './validate.ts';
@@ -318,6 +321,32 @@ export class Reads {
   async getTask(projectId: string, taskId: string): Promise<Task | null> {
     const [row] = await this.taskRows(projectId, [taskId]);
     return row === undefined ? null : toTask(row);
+  }
+
+  async getTasks(projectId: string, taskIds: readonly string[]): Promise<Task[]> {
+    if (taskIds.length > TASK_LIMITS.page) invalid(`taskIds must be at most ${TASK_LIMITS.page} task ids`);
+    return (await this.taskRows(projectId, taskIds)).map(toTask);
+  }
+
+  /** The work agent statistics count: in progress or blocked through the
+   * (project_id, status) index, and closed from a time through the
+   * (project_id, closed_at) one, as one statement over every project named. */
+  async listWork(projectIds: readonly string[], closedSince: string): Promise<WorkItem[]> {
+    if (projectIds.length === 0) return [];
+    if (!projectIds.every((id) => typeof id === 'string')) invalid('projectIds must be project ids');
+    const columns = `t.id, t.project_id, t.type, t.await_type, t.status, t.priority, t.assignee, t.assignee_model,
+      t.started_at, t.updated_at, t.closed_at, t.closed_by, t.closed_model`;
+    const { results } = await this.#db
+      .prepare(
+        `SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_status
+           ON t.project_id = wanted.value WHERE t.status IN ('in_progress', 'blocked')
+         UNION ALL
+         SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_closed
+           ON t.project_id = wanted.value WHERE t.closed_at >= ?2`,
+      )
+      .bind(JSON.stringify([...new Set(projectIds)]), instant(closedSince, 'closedSince'))
+      .all<WorkRow>();
+    return results.map(toWork);
   }
 
   async findTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
