@@ -431,7 +431,7 @@ describe('a task page', () => {
       source: 'claude-code:session/example-session',
       recordedBy: 'agent:example',
       relayed: true,
-      proposalVersion: '0123456789ab',
+      proposalVersion: '0123456789abcdef0123456789abcdef',
       at: '2026-11-06T12:00:00.000Z',
       disputedBy: null,
     };

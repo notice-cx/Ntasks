@@ -392,8 +392,8 @@ describe('the proposal version a person answers', () => {
     const { task: asked } = await task({ choices: CHOICES });
     const { task: plain } = await engine.createTask(project.id, { title: 'Nobody asked' }, OWNER);
     const read = await detail(asked.id);
-    expect(read.proposalVersion).toMatch(/^[0-9a-f]{12}$/u);
-    expect((await detail(plain.id)).proposalVersion).toMatch(/^[0-9a-f]{12}$/u);
+    expect(read.proposalVersion).toMatch(/^[0-9a-f]{32}$/u);
+    expect((await detail(plain.id)).proposalVersion).toMatch(/^[0-9a-f]{32}$/u);
     const board = (await get(target, `/api/tasks?project=${project.id}`)).body.tasks as {
       id: string;
       proposalVersion: string | null;
@@ -418,9 +418,19 @@ describe('the proposal version a person answers', () => {
       choice: { option: 'b' },
       answer: { option: 'b', quote: null, source: null, recordedBy: 'Person', relayed: false, proposalVersion: fresh },
     });
-    expect(
-      (await post(`/api/tasks/${asked.id}/respond`, { response: 'Yes', proposalVersion: 'x' })).body,
-    ).toMatchObject({ error: 'invalid_request', field: 'proposalVersion' });
+  });
+
+  it('refuses a version that is not 32 hexadecimal characters, such as one of 12, writing nothing', async () => {
+    const { task: asked } = await task();
+    const shown = (await detail(asked.id)).proposalVersion as string;
+    for (const proposalVersion of ['x', shown.slice(0, 12)]) {
+      const refused = await post(`/api/tasks/${asked.id}/respond`, { response: 'Yes', proposalVersion });
+      expect(refused, proposalVersion).toMatchObject({
+        status: 400,
+        body: { error: 'invalid_request', field: 'proposalVersion' },
+      });
+    }
+    expect(await current(asked.id)).toMatchObject({ version: 1, commentCount: 0 });
   });
 
   it('records an approval with the version its page showed', async () => {

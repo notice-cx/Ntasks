@@ -300,9 +300,10 @@ and hand-backs of the tasks waiting on an approval.
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
 
 Every call names `proposal_version`: the `proposalVersion` that `get_task`
-returned, the first 12 hexadecimal characters of the SHA-256 of the task's
-`proposal`. A task's proposal is its id, title, description, acceptance, type
-and options; an approval's description is the action it asks for, with its
+returned, the first 32 hexadecimal characters (128 bits) of the SHA-256 of
+the task's `proposal`, so nobody can write two proposals with one version. A
+task's proposal is its id, title, description, acceptance, type and options;
+an approval's description is the action it asks for, with its
 environment, scope and verification. A call whose version is not the task's
 current one is refused, so a task edited after the owner saw it cannot borrow
 the answer.

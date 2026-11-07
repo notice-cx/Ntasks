@@ -14,7 +14,7 @@ import { agentStats } from '../agent-stats.ts';
 import { TASK_CHOICE_KEYS, TASK_CHOICE_LIMITS } from '../noticeos-fields.ts';
 import { ANSWERED, approve, choose, DISMISSED, dismiss, dispute, RESPONDED, respond, seen } from '../owner-answers.ts';
 import type { WriteContext, Written } from '../task-writes.ts';
-import { webTasks } from '../views.ts';
+import { PROPOSAL_VERSION, webTasks } from '../views.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
 import { writeOf } from './writes.ts';
 
@@ -29,11 +29,11 @@ async function decided(context: WriteContext, written: Written): Promise<Respons
 function shownOf(body: Args): string | undefined {
   const value = body.proposalVersion;
   if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !/^[0-9a-f]{12}$/u.test(value))
+  if (typeof value !== 'string' || !PROPOSAL_VERSION.test(value))
     throw new HttpRefused(
       400,
       'invalid_request',
-      'proposalVersion must be the 12 hexadecimal characters the task read returned',
+      'proposalVersion must be the 32 hexadecimal characters the task read returned',
       'proposalVersion',
     );
   return value;

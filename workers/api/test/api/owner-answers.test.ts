@@ -241,6 +241,8 @@ describe('an owner answer an agent relays', () => {
       ['action', asked.id, { action: 'owner_performed', quote: 'I did it' }],
       ['task', nobody.id, { quote: 'Yes' }],
       ['proposal_version', asked.id, { option: 'a', quote: 'A', proposal_version: 'not-a-version' }],
+      // A version of 12 hexadecimal characters, which a crafted pair of proposals could share.
+      ['proposal_version', asked.id, { option: 'a', quote: 'A', proposal_version: '0123456789ab' }],
     ];
     for (const [field, id, fields] of cases) {
       const before = await current(project, id);

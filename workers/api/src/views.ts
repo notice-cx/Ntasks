@@ -50,11 +50,16 @@ export function proposalOf(
   return JSON.stringify([task.id, task.title, task.description, task.acceptance, task.type, task.choices]);
 }
 
-/** The proposal's version, which an owner's answer names: the short hash of `proposalOf(task)`. */
+/** A proposal version as an answer names it. 128 bits, so nobody can write two
+ * proposals with one version and swap one for the other under an answer. */
+export const PROPOSAL_VERSION = /^[0-9a-f]{32}$/u;
+
+/** The proposal's version, which an owner's answer names: the first 32
+ * hexadecimal characters of the SHA-256 of `proposalOf(task)`. */
 export function proposalVersionOf(
   task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
 ): Promise<string> {
-  return shortHash(proposalOf(task));
+  return shortHash(proposalOf(task), 32);
 }
 
 /** The actions that record an owner's answer, as the answer record names them. */

@@ -18,7 +18,7 @@ import {
   type TaskMaintenance,
 } from '../owner-answers.ts';
 import { Refused } from '../refused.ts';
-import { mcpTask } from '../views.ts';
+import { mcpTask, PROPOSAL_VERSION } from '../views.ts';
 import { PROJECT, READ, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
 import { IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
 
@@ -42,9 +42,6 @@ const RECONCILE_ARGS = [
   'idempotency_key',
 ] as const;
 
-/** A proposal version as get_task returns it. */
-const PROPOSAL_VERSION = /^[0-9a-f]{12}$/u;
-
 /** An object with the keys whose value is undefined left out, in the order given. */
 function defined<T extends object>(row: T): T {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as T;
@@ -56,7 +53,7 @@ function maintenanceOf(args: Args): TaskMaintenance {
   if (action === undefined) refuse('refused: action is required for reconciliation.');
   const version = args.proposal_version;
   if (typeof version !== 'string' || !PROPOSAL_VERSION.test(version))
-    refuse('invalid arguments: proposal_version (the proposalVersion get_task returned: 12 hexadecimal characters)');
+    refuse('invalid arguments: proposal_version (the proposalVersion get_task returned: 32 hexadecimal characters)');
   // Built in one order: a recorded disposition keeps this object as its identity.
   return defined({
     taskId: taskArg(args),

@@ -114,7 +114,7 @@ function guideBody(offered: readonly string[]): string {
  * its SHA-256 as its version. */
 export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> {
   const body = guideBody(offered);
-  const version = await shortHash(body);
+  const version = await shortHash(body, 12);
   return Object.freeze({
     version,
     guide: `# Working with Ntasks tasks\n\nGuide version ${version}; list_workspaces returns the current one as guideVersion.\n\n${body}\n`,
