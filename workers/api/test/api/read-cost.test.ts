@@ -135,7 +135,8 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
  * task costs what that task and its links cost; a list costs about ten rows
  * for each task it returns. The statements do not grow with the number of
  * projects. list_tasks reads the external links of the page it returns in a
- * statement of its own, after the board.
+ * statement of its own, after the board. Agent statistics read one row for
+ * each task in progress, blocked or closed in the last eight weeks.
  */
 const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
   'HTTP board, largest project': { statements: 5, rowsRead: 7_000 },
@@ -153,6 +154,8 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
   get_task: { statements: 3, rowsRead: 60 },
   get_task_history: { statements: 3, rowsRead: 60 },
+  'get_agent_stats, every project': { statements: 2, rowsRead: 800 },
+  'HTTP agent stats, largest project': { statements: 2, rowsRead: 150 },
 };
 
 describe('the cost of each read', () => {
@@ -177,6 +180,8 @@ describe('the cost of each read', () => {
       'HTTP board by a field, largest project': () => get(target, `/api/tasks?project=${big.id}&field.severity=high`),
       get_task: () => read(target, 'get_task', { project: big.id, task }),
       get_task_history: () => read(target, 'get_task_history', { project: big.id, task }),
+      'get_agent_stats, every project': () => read(target, 'get_agent_stats'),
+      'HTTP agent stats, largest project': () => get(target, `/api/tasks/agent-stats?project=${big.id}`),
     };
     expect(Object.keys(reads)).toEqual(Object.keys(BUDGETS));
     const costs: Record<string, Meter> = {};
@@ -217,6 +222,14 @@ describe('the cost of each read', () => {
     const every = await read<{ total: number }>(target, 'list_tasks', {});
     const open = SIZES.reduce((sum, [, count]) => sum + count, 0);
     expect(every.total).toBe(open + RECENTLY_CLOSED * SIZES.length);
+    const stats = await read<{ projects: number; stats: { week: number } }>(target, 'get_agent_stats');
+    expect(stats).toMatchObject({ projects: SIZES.length, stats: { week: RECENTLY_CLOSED * SIZES.length } });
+  });
+
+  it("reads the agent statistics through the work's indexes: the cost follows the work, not the project", async () => {
+    const [total] = SIZES[0];
+    const cost = await costOf(() => get(target, `/api/tasks/agent-stats?project=${big.id}`));
+    expect(cost.rowsRead).toBeLessThan(total / 20);
   });
 
   // Last, since its project would change what the reads of every project above cost.

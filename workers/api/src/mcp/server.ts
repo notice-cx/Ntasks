@@ -11,6 +11,7 @@ import { READ, READ_TOOLS, schema, type TaskTool, type ToolContext } from './rea
 import { TASK_GUIDE_TOOL, taskGuide, taskInstructions } from './guide.ts';
 import { objectsFromText, staleClientLine, WRITE_TOOLS } from './write-tools.ts';
 import { FIELD_TOOLS } from './field-tools.ts';
+import { GET_AGENT_STATS, RECONCILE_TASK } from './owner-tools.ts';
 
 export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
 
@@ -48,7 +49,14 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
 });
 
 /** The tools in the order tools/list returns them: NoticeOS's, in its order, then Ntasks' own. */
-const TASK_TOOLS: readonly TaskTool[] = [...READ_TOOLS, ...WRITE_TOOLS, ...FIELD_TOOLS];
+const TASK_TOOLS: readonly TaskTool[] = [
+  RECONCILE_TASK,
+  ...READ_TOOLS.filter((tool) => tool.name === 'list_projects'),
+  GET_AGENT_STATS,
+  ...READ_TOOLS.filter((tool) => tool.name !== 'list_projects'),
+  ...WRITE_TOOLS,
+  ...FIELD_TOOLS,
+];
 export const MCP_TOOLS: readonly McpTool[] = Object.freeze([
   LIST_WORKSPACES,
   GET_TASK_GUIDE,

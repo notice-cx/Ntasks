@@ -37,6 +37,8 @@ export const TASK_CHOICE_LIMITS = Object.freeze({
   question: 400,
   label: 120,
   detail: 600,
+  /** The person's note beside a pick. */
+  note: 2000,
   fewest: 2,
   most: TASK_CHOICE_KEYS.length,
 });
