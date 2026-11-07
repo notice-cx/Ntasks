@@ -135,6 +135,8 @@ defines where each NoticeOS metadata key goes; the import follows it.
 |---|---|
 | Project | `projects.id` is the hub file's id, else the database's `_project_id`; `projects.prefix` is the database's `issue_prefix`; the key and name come from the hub file, and the creation time is the earliest commit or task |
 | Issue id, title, description, status, priority, type, assignee, start, defer and due times | The same `tasks` columns; `acceptance_criteria` is `acceptance` |
+| `notes`, `design` | `tasks.notes`, `tasks.design` |
+| `estimated_minutes` | `tasks.estimate_minutes`, in whole minutes; none when Beads recorded none |
 | Type `spike`, which Ntasks lacks | Type `task`, with the label `spike` |
 | `created_at`, `updated_at` | `tasks.created_at`, `tasks.updated_at`, kept as they are |
 | `created_by` | `tasks.filed_by`, unless NoticeOS recorded `noticeos_filed_by` |
@@ -145,7 +147,11 @@ defines where each NoticeOS metadata key goes; the import follows it.
 | `noticeos_choices`, `noticeos_choice` | `tasks.choices`, `tasks.choice` |
 | Every other metadata key, such as `noticeos_card`, `noticeos_card_shipped` and `noticeos_operation_id` | `tasks.metadata`, as given. A retry record needs the sender's key and request, which Beads did not keep, so an operation id stays in metadata |
 | `parent-child` link | `tasks.parent_id` |
-| `blocks`, `related`, `discovered-from` links | `task_edges` rows, with Beads' creation time and author |
+| `blocks`, `related`, `discovered-from`, `duplicates` links | `task_edges` rows of the same type, with Beads' creation time and author |
+| `relates-to` links, which `bd relate` writes in both directions | `related` rows in `task_edges`, both directions kept |
+| `supersedes` links | `supersedes` rows in `task_edges`, turned around: `bd supersede old --with new` records `old supersedes new`, meaning old is superseded, while in Ntasks `new supersedes old` means new replaces old. So the link moves to the replacing task, in every past version too, and the replacing task must be in the same Beads database |
+| A link to a task in another Beads database, which Beads keeps as the task's id in `depends_on_external` | A `task_edges` row of the same type, like any other link between projects |
+| A link to a web address outside the hub (`depends_on_external`) | A `task_external_links` row: the address as the URL standard writes it, also as its title, with Beads' creation time and author |
 | `noticeos_related_tasks` | `related` rows in `task_edges`, dated by the change that added them |
 | Labels | `task_labels` |
 | Comments | `task_comments`, ids kept, and a `commented` history event each |
@@ -195,20 +201,23 @@ problem, each naming the task or project, so one run shows them all.
 Out of scope, as [the task store](../../docs/task-store.md#beads-behaviour-in-and-out-of-scope)
 lists:
 
-- links of any type other than `blocks`, `related`, `discovered-from` and
-  `parent-child`, such as `waits-for` and `conditional-blocks`;
+- links of any type other than `blocks`, `related`, `relates-to`,
+  `discovered-from`, `duplicates`, `supersedes` and `parent-child`, such as
+  `waits-for` and `conditional-blocks`;
 - a prefix with a hyphen, and any id that is not an Ntasks task id;
 - statuses and types outside Ntasks' lists;
 - wisps, molecules, formulas and templates, and approvals that wait on
   anything but a person;
-- links to wisps or to tasks outside the hub;
+- links to wisps, and links outside the hub that are not web addresses, such
+  as Beads' `external:<project>:<capability>`, which waits for another
+  project to ship something;
 - tasks Beads compacted;
 - a Dolt database with more than one branch.
 
 Data the import cannot carry whole:
 
-- a column that holds a value Ntasks has no field for, such as `notes`,
-  `design` or `external_ref`, quoting the value;
+- a column that holds a value Ntasks has no field for, such as
+  `external_ref`, quoting the value;
 - a table holding rows that the import neither reads nor knows to be Beads'
   own bookkeeping;
 - a link, parent or duplicate that names a task not in the export;
@@ -237,9 +246,10 @@ leaves out, after what it imported:
 imported from, three ways:
 
 1. **Against the export's own rows:** tasks per project and status, every id,
-   label, link, parent and comment, every close's time and reason, the
-   choices of decisions, approvals and whom they wait on, and every metadata
-   key, such as the cards NoticeOS froze when a task shipped.
+   label, link, external link, parent and comment, every task's notes,
+   design and estimate, every close's time and reason, the choices of
+   decisions, approvals and whom they wait on, and every metadata key, such
+   as the cards NoticeOS froze when a task shipped.
 2. **Against the import plan,** row by row, for every table.
 3. **Against itself:** each task's history must start with its creation,
    number its versions without gaps, end at the task's version, rebuild the

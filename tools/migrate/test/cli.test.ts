@@ -99,7 +99,7 @@ describe('import and verify', () => {
     const run = io();
     expect(await main(['import', '--from', from, '--check'], run.io), run.err.join('\n')).toBe(0);
     expect(run.out[0]).toBe(
-      'The export imports: 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels. Nothing was written.',
+      'The export imports: 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 0 external links, 2 labels. Nothing was written.',
     );
     expect(run.out.slice(1)).toEqual([expect.stringMatching(COST[0]!), expect.stringMatching(COST[1]!)]);
   });
@@ -110,7 +110,7 @@ describe('import and verify', () => {
     const run = io();
     expect(await main(['import', '--from', from, '--store', store], run.io), run.err.join('\n')).toBe(0);
     expect(run.out[0]).toBe(
-      `Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 2 labels into the store copy ${store}.`,
+      `Imported 2 projects, 11 tasks, 28 history events, 4 comments, 5 links, 0 external links, 2 labels into the store copy ${store}.`,
     );
     expect(run.out[1]).toMatch(COST[0]!);
     // The copy and any file SQLite keeps beside it are private to their owner.
