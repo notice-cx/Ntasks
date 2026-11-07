@@ -25,10 +25,17 @@ page alike, and runs the one change feed (`BoardsProvider` in
 `src/hooks/useBoard.tsx`). On any page, `C` opens the composer, `/` puts the
 cursor in the board's search and `F` opens Focus.
 
-The task pages are those of NoticeOS's Tower, carried over with its copy
-tests (`test/ui-lexicon.test.ts` and `test/ui-noun.test.ts`). They draw in the
-design system's tokens; its components are in `src/components/ui/` and its
-rules in [the design system](../../docs/design.md).
+Every page draws with the design system's tokens and the components in
+`src/components/ui/`; [the design system](../../docs/design.md) gives the
+rules. `test/ui-lexicon.test.ts` and `test/ui-noun.test.ts` fail on an
+internal word in the copy.
+
+The Worker's own pages (sign-in, agent approval) are server-rendered HTML
+that the build does not touch, so they carry their own copy of the tokens
+(`workers/api/src/access/page-look.ts`, which `test/design.test.tsx` checks
+against `src/index.css`). They load Inter from `/fonts/`, where the build
+copies the files they name from the pinned `@fontsource-variable/inter`
+package (`server-fonts.config.ts`); the dev server serves them at the same address.
 
 An answer to a decision waits five seconds before it is sent, with Undo in the
 toast, because an answer cannot be reversed once the server records it

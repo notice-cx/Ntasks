@@ -351,17 +351,13 @@ function TaskMenu({
               Close as
             </MenuItem>
           ) : null}
-          <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyId(task.id)}>
+          <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
             Copy id
           </MenuItem>
         </MenuContent>
       )}
     </Menu>
   );
-}
-
-function copyId(id: string): Promise<void> {
-  return copyText(id, id);
 }
 
 /** Park a task until a date. */

@@ -117,7 +117,7 @@ describe('owner sign-in with GitHub', () => {
 
     await browser.signInAsOwner();
     const after = await browser.fetch('/sign-in');
-    expect(await after.text()).toContain(`You are signed in as Person ${OWNER_GITHUB_ID}.`);
+    expect(await after.text()).toContain(`<dt>Account</dt><dd>Person ${OWNER_GITHUB_ID}</dd>`);
   });
 });
 

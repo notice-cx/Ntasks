@@ -41,11 +41,11 @@ import {
 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { SOURCE_URL } from '@/lib/page-state';
-import type { TaskChoiceKey } from '@/api/types';
+import type { TaskChoiceKey, TaskChoices } from '@/api/types';
 import { Avatar, AvatarGroup, type AvatarSize } from '@/components/ui/avatar';
 import { Badge, Count, Progress } from '@/components/ui/badge';
 import { Button, IconButton } from '@/components/ui/button';
-import { OptionList, Segmented, Tabs, type ChoiceOption } from '@/components/ui/choice';
+import { Segmented, Tabs, type ChoiceOption } from '@/components/ui/choice';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Kbd } from '@/components/ui/kbd';
@@ -83,6 +83,7 @@ import {
   type TypeMark as TypeMarkKey,
 } from '@/lib/symbols';
 import { cn } from '@/lib/utils';
+import { DecisionAnswer } from './tasks/decision-card';
 
 type Theme = 'system' | 'light' | 'dark';
 
@@ -698,8 +699,19 @@ function MenuDemo() {
   );
 }
 
+const SIGN_IN_CHOICES: TaskChoices = {
+  question: 'Which sign-in methods should the page offer?',
+  options: SIGN_IN_OPTIONS.map(({ key, label, detail, recommended }) => ({
+    key,
+    label,
+    ...(detail ? { detail } : {}),
+    ...(recommended ? { recommended: true as const } : {}),
+  })),
+};
+
 function DecisionCard() {
   const [picked, setPicked] = useState<TaskChoiceKey | null>('a');
+  const [note, setNote] = useState('');
   return (
     <div className="rounded-xl bg-background px-5.5 pt-5.5 pb-4.5 shadow-pop">
       <div className="nums flex items-center gap-2 text-meta text-ink-3">
@@ -710,20 +722,20 @@ function DecisionCard() {
         <span className="ms-auto">3d</span>
       </div>
       <h4 className="m-0 mt-2.5 mb-1 text-heading">Choose the sign-in methods the page offers</h4>
-      <p className="m-0 mb-3.5 text-sm text-ink-2">Which sign-in methods should the page offer?</p>
-      <OptionList
-        question="Which sign-in methods should the page offer?"
-        options={SIGN_IN_OPTIONS}
+      <p className="m-0 mb-3.5 text-sm text-ink-2">{SIGN_IN_CHOICES.question}</p>
+      <DecisionAnswer
+        choices={SIGN_IN_CHOICES}
         value={picked}
         onChange={setPicked}
+        note={note}
+        onNote={setNote}
+        onAnswer={() => undefined}
+        footer={
+          <Button type="button" variant="ghost">
+            Not now <Kbd>→</Kbd>
+          </Button>
+        }
       />
-      <div className="mt-3 flex items-center gap-2">
-        <Input placeholder="Note" aria-label="Note" />
-        <Button variant="ghost">Not now</Button>
-        <Button variant="primary">
-          Answer <Kbd>↵</Kbd>
-        </Button>
-      </div>
     </div>
   );
 }

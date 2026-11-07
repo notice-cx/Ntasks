@@ -15,6 +15,7 @@ import { useNow } from '@/hooks/useNow';
 import { operationAvailable, useAnswerHides, useCapabilities, useInboxAnswer, verbReason } from '@/hooks/useTasks';
 import { NO_FILTERS } from '@/lib/board-read';
 import { ageMs, formatAge, formatInt } from '@/lib/format';
+import { typingIn } from '@/lib/symbols';
 import { askVerb, isGate, type BoardTask, type InboxAsk } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
@@ -34,16 +35,6 @@ const ASK_WORDS: Readonly<Record<InboxAsk, string>> = {
 function returnPath(state: unknown): string {
   const path = typeof state === 'object' && state !== null ? (state as { returnTo?: unknown }).returnTo : undefined;
   return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : TASKS_HOME;
-}
-
-/** A key pressed in a field or an open menu is not a Focus command. */
-function typing(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    target.closest(
-      'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"], [role="listbox"]',
-    ) !== null
-  );
 }
 
 /**
@@ -216,7 +207,7 @@ function FocusDecision({
   keys.current = { choose, approve, onSkip, ask, option, options: choices ? cardOptions(choices) : [] };
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || typing(event.target)) return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) return;
       const live = keys.current;
       if (event.key === 'ArrowRight') {
         event.preventDefault();

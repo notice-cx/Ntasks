@@ -8,7 +8,8 @@ Read [Architecture](architecture.md) first for where sign-in sits.
 
 | Part | Where |
 |---|---|
-| Sign-in routes and pages | [`workers/api/src/access/routes.ts`](../workers/api/src/access/routes.ts) |
+| Sign-in routes | [`workers/api/src/access/routes.ts`](../workers/api/src/access/routes.ts) |
+| The sign-in, agent approval and expired-link pages, and their look | [`workers/api/src/access/pages.ts`](../workers/api/src/access/pages.ts), [`page-look.ts`](../workers/api/src/access/page-look.ts) |
 | The token verifier | [`workers/api/src/access/verify.ts`](../workers/api/src/access/verify.ts) |
 | What a caller may do | [`workers/api/src/access/principal.ts`](../workers/api/src/access/principal.ts) |
 | Scopes, paths and discovery documents | [`workers/api/src/access/protocol.ts`](../workers/api/src/access/protocol.ts) |
