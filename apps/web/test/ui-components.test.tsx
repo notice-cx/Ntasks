@@ -220,6 +220,7 @@ describe('the frame on a phone', () => {
     fireEvent.click(opener);
     fireEvent.click(screen.getByRole('link', { name: 'Focus' }));
     expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(document.activeElement).toBe(opener);
 
     fireEvent.click(opener);
     act(() => {

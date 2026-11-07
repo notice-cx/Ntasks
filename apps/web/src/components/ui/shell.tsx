@@ -111,7 +111,7 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
       onClick={(event: MouseEvent<HTMLElement>) => {
         onClick?.(event);
         // Following a link is leaving the sheet.
-        if (open && event.target instanceof Element && event.target.closest('a[href]')) shell?.setOpen(false);
+        if (open && event.target instanceof Element && event.target.closest('a[href]')) shell?.dismiss();
       }}
       {...props}
     >
