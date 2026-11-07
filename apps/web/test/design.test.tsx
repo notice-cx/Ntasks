@@ -1,11 +1,21 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { COLOUR_TOKENS, MARK_TOKENS } from '@/lib/design-tokens';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, TYPE_MARK_LABELS } from '@/lib/symbols';
 import { cn, THEME_SHADOWS, THEME_TEXT_SIZES } from '@/lib/utils';
+import { GITHUB_PATH } from '@/components/ui/brand-marks';
+import { NtasksLogo } from '@/components/ui/symbols';
+import {
+  GITHUB_PATH as PAGE_GITHUB_PATH,
+  LOGO_SVG,
+  PAGE_COLOURS,
+  PAGE_FONT_FILES,
+  PAGE_SHADOWS,
+} from '../../../workers/api/src/access/page-look.ts';
+import { fontSource, serverFonts } from '../server-fonts.config.ts';
 import { renderApp } from './render';
 
 const CSS = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/index.css'), 'utf8');
@@ -45,6 +55,50 @@ describe('the tokens', () => {
     expect(names('shadow')).toEqual([...THEME_SHADOWS].sort());
     expect(cn('text-ink-3 text-meta')).toBe('text-ink-3 text-meta');
     expect(cn('shadow-raise shadow-pop')).toBe('shadow-pop');
+  });
+});
+
+describe("the Worker's own pages", () => {
+  /** A token's value in one theme's rule, with its whitespace made single spaces. */
+  function value(theme: string, name: string): string | undefined {
+    const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(theme)?.[1];
+    return found?.replace(/\s+/g, ' ').trim();
+  }
+
+  it('use the colours and elevations the app defines, in both themes', () => {
+    const themes = [rule(':root,\n.light'), rule('.dark')] as const;
+    for (const [name, values] of Object.entries({ ...PAGE_COLOURS, ...PAGE_SHADOWS })) {
+      themes.forEach((theme, index) => expect(values[index], `${name} in theme ${index}`).toBe(value(theme, name)));
+    }
+  });
+
+  it("draw the app's logo and GitHub mark", () => {
+    expect(PAGE_GITHUB_PATH).toBe(GITHUB_PATH);
+    const { container } = render(<NtasksLogo />);
+    const page = new DOMParser().parseFromString(LOGO_SVG, 'image/svg+xml');
+    for (const [selector, attribute] of [
+      ['rect', 'rx'],
+      ['path', 'd'],
+      ['path', 'stroke-width'],
+      ['svg', 'viewBox'],
+    ] as const) {
+      expect(page.querySelector(selector)?.getAttribute(attribute), `${selector} ${attribute}`).toBe(
+        container.querySelector(selector)?.getAttribute(attribute),
+      );
+    }
+  });
+
+  it('get each font file they name copied by the build from the pinned package, at that address', () => {
+    const emitted: { fileName?: string; source?: unknown }[] = [];
+    const plugin = serverFonts();
+    const generate = plugin.generateBundle as unknown as (this: { emitFile: (file: object) => void }) => void;
+    generate.call({ emitFile: (file) => emitted.push(file) });
+    expect(emitted.map((file) => `/${file.fileName}`)).toEqual([...PAGE_FONT_FILES]);
+    for (const address of PAGE_FONT_FILES) {
+      const source = fontSource(address);
+      expect(source).toContain(`${path.sep}@fontsource-variable${path.sep}inter${path.sep}`);
+      expect(emitted.find((file) => `/${file.fileName}` === address)?.source).toEqual(readFileSync(source));
+    }
   });
 });
 

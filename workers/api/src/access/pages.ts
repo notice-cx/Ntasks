@@ -1,10 +1,17 @@
 /**
- * The two pages the Worker serves itself: signing in, and approving an AI
- * agent. They are plain HTML forms with no script, so they work before the
- * web app loads and hold nothing an agent could read.
+ * The pages the Worker serves itself: signing in, approving an AI agent, and
+ * a link that expired. They are plain HTML forms with no script, so they work
+ * before the web app loads and hold nothing an agent could read. They draw in
+ * the design system's look (page-look.ts). This module imports no runtime
+ * code beyond that, so tools/screenshots can draw the pages in Node.
  */
+import { ALERT_SVG, githubSvg, LOGO_SVG, PAGE_STYLE } from './page-look.ts';
 import type { ProjectAccess } from './principal.ts';
-import { AGENT_ACCESS_PAGE, SIGN_IN_PAGE } from './protocol.ts';
+
+/** The owner's sign-in page. It is also the OAuth login page. */
+export const SIGN_IN_PAGE = '/sign-in';
+/** The page where the owner approves or denies an agent and picks its projects. */
+export const AGENT_ACCESS_PAGE = '/agent-access';
 
 /** AGPL-3.0 section 13: people who use Ntasks over a network can get its source. */
 const SOURCE_URL = 'https://github.com/notice-cx/Ntasks';
@@ -12,26 +19,6 @@ const SOURCE_URL = 'https://github.com/notice-cx/Ntasks';
 function escape(value: string): string {
   return value.replace(/[&<>"']/gu, (char) => `&#${char.charCodeAt(0)};`);
 }
-
-const STYLE = `
-:root { color-scheme: light dark; --text: #1b1b1f; --muted: #5b5b66; --line: #d6d6de; --surface: #ffffff; --page: #f5f5f7; --accent: #1f4fd1; --accent-text: #ffffff; --alert: #a3261c; }
-@media (prefers-color-scheme: dark) { :root { --text: #ececf1; --muted: #a4a4b0; --line: #3a3a44; --surface: #1d1d22; --page: #121215; --accent: #7aa2ff; --accent-text: #0b0b0e; --alert: #ff8a7f; } }
-* { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--page); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
-main { width: 100%; max-width: 440px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
-h1 { font-size: 1.25rem; margin: 0 0 12px; }
-p { margin: 0 0 12px; }
-.muted { color: var(--muted); font-size: 0.875rem; }
-.alert { color: var(--alert); }
-fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 16px; padding: 8px 12px; }
-legend { padding: 0 4px; font-weight: 600; }
-label { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
-button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-a { color: var(--accent); }
-footer { margin-top: 16px; }
-`;
 
 function page(title: string, body: string): Response {
   const html = `<!doctype html>
@@ -41,13 +28,14 @@ function page(title: string, body: string): Response {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>${escape(title)} · Ntasks</title>
-<style>${STYLE}</style>
+<style>${PAGE_STYLE}</style>
 </head>
 <body>
 <main>
+${LOGO_SVG}
 ${body}
-<footer class="muted"><a href="${SOURCE_URL}">Ntasks source code</a></footer>
 </main>
+<footer><a href="${SOURCE_URL}">${githubSvg(14)}Source code</a></footer>
 </body>
 </html>`;
   return new Response(html, {
@@ -56,13 +44,18 @@ ${body}
       'cache-control': 'no-store',
       // No script, no framing: another site cannot overlay the approval
       // buttons. form-action is left out because an approval redirects to the
-      // agent's own address.
+      // agent's own address. Fonts come from this origin's static files.
       'content-security-policy':
-        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
       'x-frame-options': 'DENY',
       'referrer-policy': 'no-referrer',
     },
   });
+}
+
+/** An error's words after the alert icon, in Text: an error is never red. */
+function alert(words: string | null): string {
+  return words ? `<p class="alert" role="alert">${ALERT_SVG}${escape(words)}</p>` : '';
 }
 
 /** What went wrong on the way back from GitHub, in words. */
@@ -81,42 +74,45 @@ export function signInPage(input: {
   readonly oauthQuery: string | null;
   readonly error: string | null;
 }): Response {
-  const error = signInError(input.error);
-  const alert = error ? `<p class="alert" role="alert">${escape(error)}</p>` : '';
+  const error = alert(signInError(input.error));
   if (input.signedInAs !== null && input.oauthQuery === null) {
     return page(
       'Signed in',
       `<h1>Signed in</h1>
-${alert}
-<p>You are signed in as ${escape(input.signedInAs)}.</p>
+${error}
+<dl><dt>Account</dt><dd>${escape(input.signedInAs)}</dd></dl>
 <form method="post" action="${SIGN_IN_PAGE}" class="actions">
-<a href="/">Open Ntasks</a>
-<button type="submit" name="action" value="sign-out">Sign out</button>
+<button type="submit" name="action" value="sign-out" class="button secondary">Sign out</button>
+<a href="/" class="button primary">Open Ntasks</a>
 </form>`,
     );
   }
-  const agent =
-    input.oauthQuery === null
-      ? ''
-      : '<p>An AI agent asked to connect to this Ntasks. Sign in, then choose the projects it may reach.</p>';
+  const agent = input.oauthQuery === null ? '' : '<p class="sub">An agent asks to connect</p>';
   const query =
     input.oauthQuery === null ? '' : `<input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">`;
   return page(
     'Sign in',
     `<h1>Sign in to Ntasks</h1>
-${alert}
 ${agent}
+${error}
 <form method="post" action="${SIGN_IN_PAGE}">
 ${query}
-<button type="submit" name="action" value="github" class="primary">Sign in with GitHub</button>
+<button type="submit" name="action" value="github" class="button primary wide">${githubSvg(16)}Sign in with GitHub</button>
 </form>`,
   );
 }
 
+/** The access an agent's scopes ask for, in words. */
+const ACCESS_WORDS: Readonly<Record<ProjectAccess, string>> = {
+  write: 'Read and change tasks',
+  read: 'Read tasks',
+};
+
 /**
  * The page where the owner allows or denies an agent and chooses its
- * projects. Allow is left out when the agent asked for no access to tasks or
- * there is no project to choose.
+ * projects: who asks, for what access, for whom and where the answer goes.
+ * Allow is left out when the agent asked for no access to tasks or there is
+ * no project to choose.
  */
 export function agentAccessPage(input: {
   readonly personName: string;
@@ -133,42 +129,42 @@ export function agentAccessPage(input: {
   readonly oauthQuery: string;
   readonly error: string | null;
 }): Response {
-  const from = input.client.uri ? ` (${escape(input.client.uri)})` : '';
-  const alert = input.error ? `<p class="alert" role="alert">${escape(input.error)}</p>` : '';
-  const ask =
-    input.access === null
-      ? `<p>${escape(input.client.name)}${from} asks for no access to tasks, so it cannot be allowed.</p>`
-      : `<p>${escape(input.client.name)}${from} asks to ${input.access === 'write' ? 'read and change tasks' : 'read tasks'} for you, ${escape(input.personName)}, in the projects you choose.</p>`;
+  const from = input.client.uri ? ` <span class="quiet">${escape(input.client.uri)}</span>` : '';
+  const access = input.access === null ? '<span class="quiet">None</span>' : ACCESS_WORDS[input.access];
+  const choosing = input.access !== null && input.projects.length > 0;
   const projects =
     input.access === null
       ? ''
-      : input.projects.length === 0
-        ? '<p>There are no projects yet. Create a project before allowing an agent.</p>'
-        : `<fieldset>
-<legend>Projects it may reach</legend>
+      : choosing
+        ? `<fieldset>
+<legend>Projects</legend>
+<div class="options">
 ${input.projects
   .map(
     (project) =>
-      `<label><input type="checkbox" name="project" value="${escape(project.id)}"> ${escape(project.name)} <span class="muted">${escape(project.key)}</span></label>`,
+      `<label><input type="checkbox" name="project" value="${escape(project.id)}">${escape(project.name)}<span class="key">${escape(project.key)}</span></label>`,
   )
   .join('\n')}
-</fieldset>`;
-  const allow =
-    input.access === null || input.projects.length === 0
-      ? ''
-      : '<button type="submit" name="decision" value="allow" class="primary">Allow</button>';
+</div>
+</fieldset>`
+        : '';
   return page(
     'Allow an agent',
     `<h1>Allow ${escape(input.client.name)} to use Ntasks?</h1>
-${alert}
-${ask}
-<p class="muted">After you answer, your browser goes to ${escape(input.returnsTo)}.</p>
+${alert(input.error)}
+<dl>
+<dt>Agent</dt><dd>${escape(input.client.name)}${from}</dd>
+<dt>Access</dt><dd>${access}</dd>
+${input.access !== null && input.projects.length === 0 ? '<dt>Projects</dt><dd><span class="quiet">None yet</span></dd>' : ''}
+<dt>Account</dt><dd>${escape(input.personName)}</dd>
+<dt>Returns to</dt><dd>${escape(input.returnsTo)}</dd>
+</dl>
 <form method="post" action="${AGENT_ACCESS_PAGE}">
 <input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">
 ${projects}
 <div class="actions">
-${allow}
-<button type="submit" name="decision" value="deny">Deny</button>
+<button type="submit" name="decision" value="deny" class="button secondary">Deny</button>
+${choosing ? '<button type="submit" name="decision" value="allow" class="button primary">Allow</button>' : ''}
 </div>
 </form>`,
   );
@@ -179,7 +175,7 @@ export function expiredPage(): Response {
   const response = page(
     'Link expired',
     `<h1>This link has expired</h1>
-<p>Start connecting the agent again from the agent itself.</p>`,
+<p class="sub">Start again from the agent.</p>`,
   );
   return new Response(response.body, { status: 400, headers: response.headers });
 }

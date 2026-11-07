@@ -13,10 +13,8 @@ import type { ProjectAccess } from './principal.ts';
 export const AUTH_BASE_PATH = '/api/auth';
 /** The MCP endpoint, the one protected resource agents get tokens for. */
 export { MCP_PATH };
-/** The owner's sign-in page. It is also the OAuth login page. */
-export const SIGN_IN_PAGE = '/sign-in';
-/** The page where the owner approves or denies an agent and picks its projects. */
-export const AGENT_ACCESS_PAGE = '/agent-access';
+/** The sign-in page, which is also the OAuth login page, and the agent approval page. */
+export { AGENT_ACCESS_PAGE, SIGN_IN_PAGE } from './pages.ts';
 /** RFC 8414 discovery, at the issuer's path and at the root for older MCP clients. */
 export const AUTHORIZATION_SERVER_METADATA_PATHS: readonly string[] = [
   `/.well-known/oauth-authorization-server${AUTH_BASE_PATH}`,

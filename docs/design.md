@@ -94,6 +94,14 @@ never from a font service:
 - **JetBrains Mono**, variable (`@fontsource-variable/jetbrains-mono`), for
   code.
 
+The Worker's own pages (sign-in, agent approval, an expired link) are HTML
+the Worker writes, outside the app's build. They load Inter's Latin file
+from `/fonts/inter-latin-opsz-normal.woff2`, which the build copies from the
+same pinned package (`apps/web/server-fonts.config.ts`), and fall back to the
+system's sans serif for other scripts. Their colours are copies of the tokens
+in `workers/api/src/access/page-look.ts`; `apps/web/test/design.test.tsx`
+fails when one differs from `index.css`.
+
 `nums` sets tabular figures and turns off Inter's contextual alternates, so a
 hyphen between figures stays a hyphen. Ids, ages and counts use it.
 
