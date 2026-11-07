@@ -156,8 +156,7 @@ Motion shows a change and nothing else:
 - a hover or a press recolours in 120 ms (`duration-120 ease-out`);
 - a menu or popover appears in 120 ms, fading in and settling 2 px
   (`motion-safe:animate-pop-in`);
-- a page or region arrives by fading in and rising 6 px (`page-arrive`,
-  `viz-arrive`);
+- a page arrives by fading in and rising 6 px (`page-arrive`);
 - a loading block shimmers after 180 ms (`skeleton`).
 
 Under `prefers-reduced-motion`, nothing moves: components gate movement with

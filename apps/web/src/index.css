@@ -209,10 +209,10 @@
 }
 
 /* Motion shows a change and nothing else: a hover recolours in 120 ms, a
-   menu appears in 120 ms, a region arrives by fading in and rising a few
-   pixels, and a loading block shimmers. Movement stops under
-   prefers-reduced-motion; components gate theirs with `motion-safe:`. */
-@keyframes viz-arrive {
+   menu appears in 120 ms, a page arrives by fading in and rising 6 px, and
+   a loading block shimmers. Movement stops under prefers-reduced-motion;
+   components gate theirs with `motion-safe:`. */
+@keyframes arrive {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -221,10 +221,6 @@
     opacity: 1;
     transform: none;
   }
-}
-.viz-arrive {
-  animation: viz-arrive 360ms var(--ease-out) both;
-  animation-delay: calc(var(--viz-i, 0) * 45ms);
 }
 /* Loading blocks wait 180 ms before they appear, so a fast load goes
    straight to the content. */
@@ -261,7 +257,7 @@
   animation: skeleton-shimmer 1.6s linear infinite;
 }
 .page-arrive > * {
-  animation: viz-arrive 180ms var(--ease-out) both;
+  animation: arrive 180ms var(--ease-out) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -269,7 +265,6 @@
     animation-duration: 1ms;
   }
   .skeleton,
-  .viz-arrive,
   .page-arrive > * {
     animation: none;
   }
