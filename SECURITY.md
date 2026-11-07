@@ -2,10 +2,10 @@
 
 ## Report a vulnerability
 
-Use **Report a vulnerability** on the repository's
+Send a private report with **Report a vulnerability** on the repository's
 [Security tab](https://github.com/notice-cx/Ntasks/security/advisories/new),
-which only the maintainers see, or email
-**[hello@notice.cx](mailto:hello@notice.cx)**. Include the affected commit,
+or email **[hello@notice.cx](mailto:hello@notice.cx)**. Only the maintainers
+see a report. Include the affected commit,
 the steps to reproduce and the impact. Remove credentials and personal data
 from examples and logs.
 
