@@ -84,7 +84,7 @@ Which workspace a request reaches:
 |---|---|
 | A service | Its credential's one workspace. It may leave the header out; a header naming another workspace gets `404`. |
 | A person or an agent, over HTTP | The workspace the `x-ntasks-workspace` header names, or the only one it reaches when the header is left out. Which one that is changes when its memberships or grants change, so a client that writes names the workspace. |
-| Anyone, over MCP | The workspace a tool call's `workspace` argument names. Every MCP tool but `list_workspaces` and `get_task_guide` takes it, as NoticeOS's tools did, and the header is not read. |
+| Anyone, over MCP | The workspace a tool call's `workspace` argument names, or the only one the sender reaches when the argument is left out. Every MCP tool but `list_workspaces` and `get_task_guide` takes it, as NoticeOS's tools did, and the header is not read. |
 
 A person reaches the workspaces they belong to, an agent the workspaces where
 it was granted a project, and a service its credential's workspace.
@@ -94,7 +94,8 @@ it was granted a project, and a service its credential's workspace.
 | `400` with `{ "error": "workspace_required", "detail": … }` | The header is left out and the sender reaches several workspaces. |
 | `404` with `{ "error": "not_found", "detail": … }` | The header names a workspace the sender does not reach, whether or not it exists, or the sender reaches none. |
 | `refused: workspace <id> is not one of yours; list_workspaces lists yours.` | An MCP tool call names a workspace the sender does not reach. |
-| `invalid arguments: workspace (a workspaceId from list_workspaces)` | An MCP tool call names none. |
+| `invalid arguments: workspace (required: you reach 2 workspaces; name one by its workspaceId: …)` | An MCP tool call names none and the sender reaches several. The sentence lists each workspace's id and name. |
+| `invalid arguments: workspace (a workspaceId from list_workspaces)` | An MCP tool call names a workspace with something other than text. |
 
 | Route | Body | Answer |
 |---|---|---|
@@ -157,6 +158,9 @@ start of the task guide and its rules for writing a task.
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
 | `retire_field` | The field as retired, and `replayed` | `workspace`, `project`, `field` (its key), and optionally `model` and `idempotency_key` |
+
+`workspace`, which the table lists first for every tool that takes it, may
+be left out by a sender who reaches one workspace ([above](#workspaces)).
 
 `project` names a project by its `projectId`, its key or its prefix, as
 `list_projects` lists them. A tool that names a task takes the project from

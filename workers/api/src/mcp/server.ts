@@ -1,10 +1,11 @@
 /**
  * The MCP endpoint's server: the task tools, the workspace every tool but
- * list_workspaces and get_task_guide names, and the scope each tool needs.
+ * list_workspaces and get_task_guide acts in, and the scope each tool needs.
  * The Worker answers the endpoint with the sender's workspaces from its
  * sign-in: tools/list, list_workspaces and get_task_guide itself, and every
  * other tool call in the store of the workspace its `workspace` argument
- * names (`runTaskTool`), with the sender scoped to that workspace.
+ * names, or of the sender's only workspace when it names none
+ * (`runTaskTool`), with the sender scoped to that workspace.
  *
  * An argument a tool's schema does not name is refused before the tool runs,
  * naming the argument the sender most likely meant. Every refusal ends with
@@ -12,7 +13,7 @@
  * the change may have been written.
  */
 import { isTaskId } from '@ntasks/domain';
-import { suggestion, unknownArguments, type Args } from '../args.ts';
+import { listed, suggestion, unknownArguments, type Args } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import { json } from '../http/respond.ts';
 import { Refused } from '../refused.ts';
@@ -30,7 +31,10 @@ export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
 /** The largest MCP message: a create_tasks call filing many long tasks fits. */
 const MCP_BYTES = 256 * 1024;
 
-const WORKSPACE = Object.freeze({ type: 'string', description: 'The workspaceId from list_workspaces.' });
+const WORKSPACE = Object.freeze({
+  type: 'string',
+  description: 'The workspaceId from list_workspaces. Left out when you reach only one workspace, the call acts in it.',
+});
 
 /**
  * A refusal as the agent reads it: the sentence that says what to fix, then
@@ -75,19 +79,50 @@ function unknownOf(
   return found;
 }
 
-/** Every tool but list_workspaces and get_task_guide names its workspace. */
+/** Every tool but list_workspaces and get_task_guide acts in a workspace,
+ * which a sender who reaches only one need not name. */
 function inWorkspace(tool: TaskTool): McpTool {
-  const input = tool.inputSchema as { properties?: Record<string, unknown>; required?: readonly string[] };
+  const input = tool.inputSchema as { properties?: Record<string, unknown> };
   return Object.freeze({
     name: tool.name,
     description: tool.description,
     annotations: tool.annotations,
-    inputSchema: Object.freeze({
-      ...input,
-      properties: { workspace: WORKSPACE, ...input.properties },
-      required: ['workspace', ...(input.required ?? [])],
-    }),
+    inputSchema: Object.freeze({ ...input, properties: { workspace: WORKSPACE, ...input.properties } }),
   });
+}
+
+/** How many workspaces a refusal lists before pointing to list_workspaces. */
+const LISTED_WORKSPACES = 10;
+
+/** The workspace a call acts in: the one it names, else the sender's only one. */
+function workspaceOf(
+  workspaces: readonly WorkspaceReach[],
+  named: unknown,
+  rest: Args,
+): WorkspaceReach | { readonly refused: string } {
+  if (named === undefined) {
+    const meant = Object.keys(rest).find((other) => suggestion(other, ['workspace']) !== null);
+    if (meant !== undefined) return { refused: unknownArguments([{ path: meant, meant: 'workspace' }]) };
+    if (workspaces.length === 1) return workspaces[0]!;
+    if (workspaces.length === 0) return { refused: 'refused: you reach no workspace; list_workspaces lists yours.' };
+    const names = workspaces
+      .slice(0, LISTED_WORKSPACES)
+      .map((reach) => `${reach.workspace.id} (${reach.workspace.name})`);
+    const more = workspaces.length - names.length;
+    return {
+      refused:
+        `invalid arguments: workspace (required: you reach ${workspaces.length} workspaces; name one by its workspaceId: ` +
+        `${more > 0 ? `${names.join(', ')} and ${more} more, which list_workspaces lists` : listed(names)})`,
+    };
+  }
+  if (typeof named !== 'string' || !named)
+    return { refused: 'invalid arguments: workspace (a workspaceId from list_workspaces)' };
+  // A workspace the sender does not reach is answered as one that does not exist.
+  return (
+    workspaces.find((candidate) => candidate.workspace.id === named) ?? {
+      refused: `refused: workspace ${named} is not one of yours; list_workspaces lists yours.`,
+    }
+  );
 }
 
 const LIST_WORKSPACES: McpTool = Object.freeze({
@@ -172,17 +207,8 @@ export function taskServer(workspaces: readonly WorkspaceReach[], run: RunTool):
         };
       }
       const { workspace: named, ...rest } = args;
-      if (typeof named !== 'string' || !named) {
-        const meant = Object.keys(rest).find((other) => suggestion(other, ['workspace']) !== null);
-        throw refused(
-          meant === undefined
-            ? 'invalid arguments: workspace (a workspaceId from list_workspaces)'
-            : unknownArguments([{ path: meant, meant: 'workspace' }]),
-        );
-      }
-      // A workspace the sender does not reach is answered as one that does not exist.
-      const reach = workspaces.find((candidate) => candidate.workspace.id === named);
-      if (!reach) throw refused(`refused: workspace ${named} is not one of yours; list_workspaces lists yours.`);
+      const reach = workspaceOf(workspaces, named, rest);
+      if ('refused' in reach) throw refused(reach.refused);
       const answer = await run(reach, name, rest);
       if (!answer.ok) throw new McpToolError(answer.refused);
       return answer.value;

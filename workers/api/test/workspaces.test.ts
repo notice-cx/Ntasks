@@ -328,6 +328,8 @@ describe('an agent', () => {
     expect((listed.value?.projects as { projectId: string }[]).map((project) => project.projectId)).toEqual([
       projectOne,
     ]);
+    // It reaches One alone, so a call that names no workspace acts there.
+    expect(await tool(token, 'list_projects')).toEqual(listed);
     // Three is its person's, but the agent was granted nothing there; Two is not its person's.
     for (const workspace of [three.id, two.id]) {
       expect(await tool(token, 'list_projects', { workspace })).toEqual({

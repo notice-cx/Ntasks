@@ -13,7 +13,7 @@ import {
   unofferedTools,
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
-import { MCP_TOOLS } from '../../src/mcp/server.ts';
+import { MCP_TOOLS, taskServer } from '../../src/mcp/server.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
@@ -82,7 +82,13 @@ describe('tools/list', () => {
       }),
     );
     const { result } = (await response.json()) as {
-      result: { tools: { name: string; inputSchema: { required: string[] }; annotations: object }[] };
+      result: {
+        tools: {
+          name: string;
+          inputSchema: { properties: object; required: string[] };
+          annotations: object;
+        }[];
+      };
     };
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'list_workspaces',
@@ -106,7 +112,10 @@ describe('tools/list', () => {
       'define_field',
       'retire_field',
     ]);
-    for (const tool of result.tools.slice(2)) expect(tool.inputSchema.required[0], tool.name).toBe('workspace');
+    for (const tool of result.tools.slice(2)) {
+      expect(tool.inputSchema.properties, tool.name).toHaveProperty('workspace');
+      expect(tool.inputSchema.required, tool.name).not.toContain('workspace');
+    }
     const reads = [
       'list_workspaces',
       'get_task_guide',
@@ -183,13 +192,38 @@ describe('list_workspaces and get_task_guide', () => {
 });
 
 describe('the workspace and scope of a call', () => {
-  it('refuses a call that names no workspace, or another one', async () => {
-    expect(await refusal(target, 'list_projects', {})).toBe(
-      'invalid arguments: workspace (a workspaceId from list_workspaces)',
-    );
+  it("acts in the sender's only workspace when the call names none, and refuses another one", async () => {
+    const named = await callTool<{ projects: unknown[] }>(target, 'list_projects', { workspace: WORKSPACE.id });
+    expect(await callTool(target, 'list_projects', {})).toEqual(named);
+    expect(named.value?.projects).toContainEqual(expect.objectContaining({ projectId: project.id }));
     expect(await refusal(target, 'list_projects', { workspace: 'elsewhere' })).toBe(
       'refused: workspace elsewhere is not one of yours; list_workspaces lists yours.',
     );
+  });
+
+  it('refuses a call that names no workspace from a sender who reaches several, listing them', async () => {
+    const other = Object.freeze({ id: 'workspace-two', name: 'Second workspace' });
+    const reach = (workspace: typeof WORKSPACE) => ({
+      workspace,
+      role: null,
+      scopes: READER.scopes,
+      projects: 'all' as const,
+    });
+    let ran = 0;
+    const server = taskServer([reach(WORKSPACE), reach(other)], async () => {
+      ran += 1;
+      return { ok: true, value: {} };
+    });
+    const refused = await server.call('list_projects', {}).then(
+      () => null,
+      (error: unknown) => (error as Error).message,
+    );
+    expect(refused).toMatch(/^invalid arguments: workspace /u);
+    for (const workspace of [WORKSPACE, other]) expect(refused).toContain(`${workspace.id} (${workspace.name})`);
+    expect(refused).toMatch(/\nNothing was written; retrying is safe\.$/u);
+    expect(ran).toBe(0);
+    await server.call('list_projects', { workspace: other.id });
+    expect(ran).toBe(1);
   });
 
   it('refuses a sender without the read scope, naming what they hold', async () => {

@@ -31,12 +31,12 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
   "2026-10-21: close_task as done keeps the task's card as it stood, with the commit its reason names, and get_task returns it as cardShipped; update_task then refuses a card for that task.",
   '2026-11-03: reconcile_task supports answer_mode relayed for local Claude Code sessions and quoted task comments, owner_performed for the owner’s completed action, and no-longer-needed for retirement. Relayed approvals close immediately and can be disputed on Tasks.',
-  '2026-11-07: a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
+  '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
 ]);
 
 /** How a session starts. */
 export const TASK_START =
-  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool takes a workspace from it. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional: without one, the same call sent again returns the first result with replayed: true and writes once, so send a new key to make the same change again on purpose. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
+  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional: without one, the same call sent again returns the first result with replayed: true and writes once, so send a new key to make the same change again on purpose. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
 
 /** The order of task work, in the tools' own names. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
