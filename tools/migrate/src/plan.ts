@@ -194,6 +194,7 @@ function taskRow(state: TaskState, version: number, createdAt: string, updatedAt
     notes: state.notes,
     design: state.design,
     estimate_minutes: state.estimateMinutes,
+    field_values: JSON.stringify(state.fields),
     assignee: state.assignee,
     assignee_model: state.assigneeModel,
     defer_until: state.deferUntil,

@@ -52,9 +52,15 @@ describe('notes, design and estimates', () => {
     );
     made.valuesAsText = true;
     const { plan } = await imported(made);
-    expect(plan!.tasks[0]).toMatchObject({ notes: '0', design: 'A grid of three.', estimate_minutes: 0 });
+    expect(plan!.tasks[0]).toMatchObject({
+      notes: '0',
+      design: 'A grid of three.',
+      estimate_minutes: 0,
+      // Beads has no custom fields.
+      field_values: '{}',
+    });
     expect(historyOf(plan!, 'web-a1').map((event) => event.changes)).toEqual([
-      expect.objectContaining({ notes: 'Started on the footer.', design: '', estimateMinutes: null }),
+      expect.objectContaining({ notes: 'Started on the footer.', design: '', estimateMinutes: null, fields: {} }),
       { notes: '0', design: 'A grid of three.', estimateMinutes: 90 },
       { estimateMinutes: 0 },
     ]);

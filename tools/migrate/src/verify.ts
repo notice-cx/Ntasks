@@ -127,6 +127,7 @@ function storedState(
         title: link.title as string,
         kind: (link.kind ?? null) as string | null,
       })),
+    fields: parse(task.field_values),
     close: closed
       ? {
           at: task.closed_at as string,

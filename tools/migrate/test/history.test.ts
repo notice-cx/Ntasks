@@ -38,6 +38,7 @@ describe('history', () => {
       'labels',
       'dependencies',
       'externalLinks',
+      'fields',
       'close',
       'filedBy',
       'filedModel',

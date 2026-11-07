@@ -61,6 +61,8 @@ export interface TaskState {
   readonly dependencies: readonly LinkState[];
   /** Sorted by URL. */
   readonly externalLinks: readonly ExternalLinkState[];
+  /** Custom field values, by key. Beads has no custom fields, so an imported task has none. */
+  readonly fields: JsonObject;
   readonly close: CloseState | null;
   readonly filedBy: string | null;
   readonly filedModel: string | null;
@@ -545,6 +547,7 @@ export function mapTask(input: {
     labels,
     dependencies: sortLinks([...links].map(([taskId, linkType]) => ({ taskId, type: linkType }))),
     externalLinks: [...externalLinks.values()].sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)),
+    fields: {},
     close,
     filedBy,
     filedModel,
