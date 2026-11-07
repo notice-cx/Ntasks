@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { NewTask, TaskProject } from '@/api/types';
-import { Button } from '@/components/ui/button';
+import { Button, IconButton } from '@/components/ui/button';
 import { fieldClass, pillControlClass, pillPickerStateClass } from '@/components/ui/chrome';
 import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
 import { PRIORITY_BANDS } from '@/lib/task-model';
@@ -53,7 +53,7 @@ function DescriptionPreview({ source, prefixes }: { source: string; prefixes: Re
       <p className="m-0 whitespace-pre-wrap">{source}</p>
       <Button
         type="button"
-        variant="outline"
+        variant="secondary"
         size="sm"
         onClick={() => {
           setRenderer(lazyRenderer);
@@ -274,9 +274,7 @@ export function TaskComposer({
           <h2 id={titleId} className="m-0 text-base font-semibold">
             File a task
           </h2>
-          <Button type="button" variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
-            <X aria-hidden />
-          </Button>
+          <IconButton label="Close" shortcut="Esc" icon={<X aria-hidden />} onClick={onClose} />
         </header>
 
         <div
@@ -427,7 +425,7 @@ export function TaskComposer({
                   />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={addLabel}
                     disabled={labelDraft.trim() === ''}
@@ -546,7 +544,13 @@ export function TaskComposer({
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void file()} disabled={filing || loading} data-composer-submit="">
+            <Button
+              variant="primary"
+              type="button"
+              onClick={() => void file()}
+              disabled={filing || loading}
+              data-composer-submit=""
+            >
               {filing ? 'Filing…' : 'File task'}
             </Button>
           </div>

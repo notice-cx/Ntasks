@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode } from 'react';
+import { LucideProvider } from 'lucide-react';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { retryRead, type TasksApi } from '@/api/client';
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils';
 const TasksBoard = lazy(() => import('@/routes/TasksBoard'));
 const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
 const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
+const DesignRoute = lazy(() => import('@/routes/DesignRoute'));
 
 /**
  * AGPL-3.0 section 13 requires a modified copy that people use over a network
@@ -29,30 +31,41 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
   const [client] = useState(() => queryClient ?? newQueryClient());
   return (
     <QueryClientProvider client={client}>
-      <TasksApiProvider api={api}>
-        <Routes>
-          <Route element={<Shell />}>
-            <Route index element={<Navigate to="/tasks" replace />} />
-            <Route path="tasks" element={<TasksBoard />} />
-            <Route path="tasks/focus" element={<FocusRoute />} />
-            <Route path="tasks/:id" element={<TaskRoute />} />
-            <Route path="*" element={<NoPage />} />
-          </Route>
-        </Routes>
-        <Toaster
-          position="bottom-right"
-          closeButton
-          // The toasts wear the page's own tokens, so they follow its theme.
-          style={
-            {
-              '--normal-bg': 'var(--card)',
-              '--normal-text': 'var(--foreground)',
-              '--normal-border': 'var(--border)',
-            } as CSSProperties
-          }
-          toastOptions={{ className: 'font-sans' }}
-        />
-      </TasksApiProvider>
+      {/* Every icon is drawn at 16 px with a 1.75 stroke unless its control sizes it (docs/design.md). */}
+      <LucideProvider size={16} strokeWidth={1.75}>
+        <TasksApiProvider api={api}>
+          <Routes>
+            <Route
+              path="design"
+              element={
+                <Suspense fallback={null}>
+                  <DesignRoute />
+                </Suspense>
+              }
+            />
+            <Route element={<Shell />}>
+              <Route index element={<Navigate to="/tasks" replace />} />
+              <Route path="tasks" element={<TasksBoard />} />
+              <Route path="tasks/focus" element={<FocusRoute />} />
+              <Route path="tasks/:id" element={<TaskRoute />} />
+              <Route path="*" element={<NoPage />} />
+            </Route>
+          </Routes>
+          <Toaster
+            position="bottom-right"
+            closeButton
+            // The toasts wear the page's own tokens, so they follow its theme.
+            style={
+              {
+                '--normal-bg': 'var(--background)',
+                '--normal-text': 'var(--ink)',
+                '--normal-border': 'var(--border)',
+              } as CSSProperties
+            }
+            toastOptions={{ className: 'font-sans' }}
+          />
+        </TasksApiProvider>
+      </LucideProvider>
     </QueryClientProvider>
   );
 }
@@ -158,7 +171,7 @@ export class PageBoundary extends Component<
         data-page-failed=""
       >
         <EmptyState title="This page could not load" hint="Reloading fetches the current version of the app." />
-        <Button type="button" onClick={() => window.location.reload()}>
+        <Button variant="primary" type="button" onClick={() => window.location.reload()}>
           Reload
         </Button>
       </div>
