@@ -169,6 +169,17 @@ describe('a person', () => {
     });
   });
 
+  it('is listed their workspaces and who they are whatever workspace header they send', async () => {
+    const { cai, two } = await world();
+    // A workspace a client kept from before, which this person no longer reaches.
+    const stale = { workspace: two.id };
+    expect(await as(cai, 'GET', '/api/workspaces', stale)).toEqual(await as(cai, 'GET', '/api/workspaces'));
+    expect(await as(cai, 'GET', '/api/access/me', stale)).toEqual({
+      status: 200,
+      body: { kind: 'person', name: 'Person 1004', deploymentAdmin: true, projects: 'all' },
+    });
+  });
+
   it("reaches their own workspace's projects and tasks, and no other's", async () => {
     const { ana, ben, one, two, projectOne, projectTwo, taskOne, taskTwo } = await world();
     // Each reaches one workspace, so each may leave the header out.

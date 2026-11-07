@@ -104,8 +104,11 @@ it was granted a project, and a service its credential's workspace.
 `POST /api/workspaces` refuses a bad `name` or `workspaceId` with `400` and
 `invalid_request`, and an id another workspace has with `409` and
 `workspace_exists`; each refusal names the body field in `field`. These two
-routes are answered beside sign-in, so they count against its limit of about
-30 requests a minute from one address ([Sign-in](sign-in.md#routes)).
+routes, like `GET /api/access/me`, do not read the `x-ntasks-workspace`
+header, so a client that sends a workspace the sender no longer reaches still
+gets its list. They are answered beside sign-in, so they count against its
+limit of about 30 requests a minute from one address
+([Sign-in](sign-in.md#routes)).
 
 ## The MCP endpoint
 
