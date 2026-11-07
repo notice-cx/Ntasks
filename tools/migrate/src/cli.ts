@@ -9,6 +9,7 @@
  *   node tools/migrate/src/cli.ts verify --from <export.json> --store <file.sqlite>
  *   node tools/migrate/src/cli.ts backup --api <https://address> --token-file <file> --out <backup.json>
  *   node tools/migrate/src/cli.ts restore --from <backup.json> --store <new-file.sqlite>
+ *   node tools/migrate/src/cli.ts load --api <https://address> --token-file <file> --from <export.json | backup.json>
  *   node tools/migrate/src/cli.ts verify --from <backup.json> --store <file.sqlite>
  */
 import { existsSync } from 'node:fs';
@@ -30,6 +31,7 @@ import { exportFrom, type BeadsExport } from './beads.ts';
 import { doltClient } from './dolt-client.ts';
 import { describeExport, exportHub, readHubFile } from './export.ts';
 import { isJsonObject } from './json.ts';
+import { copyAsBackup, loadIntoStore, verifyLoaded } from './load.ts';
 import { openLocalStore, storeMigrations, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
 import { verify, verifyBackup, type Difference } from './verify.ts';
@@ -59,6 +61,7 @@ const USAGE = `Usage:
   cli.ts verify --from <export.json> --store <file.sqlite>
   cli.ts backup --api <https://address> --token-file <file> --out <backup.json>
   cli.ts restore --from <backup.json> --store <new-file.sqlite>
+  cli.ts load --api <https://address> --token-file <file> --from <export.json | backup.json>
   cli.ts verify --from <backup.json> --store <file.sqlite>`;
 
 class UsageError extends Error {}
@@ -241,6 +244,76 @@ async function checkBackup(backup: BackupFile, store: LocalStore, from: string, 
   return printDifferences(report.differences, io);
 }
 
+/** The credential in --token-file, without the final line break. */
+async function tokenFrom(values: Record<string, string | boolean | undefined>): Promise<string> {
+  const token = (await readFile(option(values, 'token-file'), 'utf8')).replace(/\r?\n$/u, '');
+  if (token === '') throw new UsageError('The token file is empty.');
+  return token;
+}
+
+/**
+ * Loads an export or a backup into the deployed, empty store at --api: into a
+ * local copy first, verified there; then page by page into the store,
+ * committed in one transaction; then read back and verified against the file.
+ */
+async function runLoad(
+  values: Record<string, string | boolean | undefined>,
+  io: Io,
+  network: Network,
+): Promise<number> {
+  const api = option(values, 'api');
+  const from = option(values, 'from');
+  backupUrl(api);
+  const token = await tokenFrom(values);
+  const loaded = await loadFile(from);
+  const copy = await openLocalStore(':memory:', { create: true });
+  try {
+    let plan: ImportPlan | null = null;
+    if (loaded.kind === 'export') {
+      const planned = planImport(loaded.data);
+      if (planned.plan === null) {
+        printRefusals(planned.refusals, io);
+        return 1;
+      }
+      plan = planned.plan;
+      copy.load(plan);
+      const report = await verify(loaded.data, plan, (table) => copy.read(table));
+      if (report.differences.length > 0) {
+        io.err('The import does not verify in a local copy, so nothing was sent.');
+        return printDifferences(report.differences, io);
+      }
+    } else {
+      checkMigrations(loaded.data, storeMigrations());
+      restoreBackup(loaded.data, copy);
+      const report = await verifyBackup(loaded.data, (table) => copy.read(table));
+      if (report.differences.length > 0) {
+        io.err('The backup does not verify in a local copy, so nothing was sent.');
+        return printDifferences(report.differences, io);
+      }
+    }
+    const rows = copyAsBackup(copy, new Date().toISOString());
+    io.out(`Checked in a local copy of the store: ${backupSummary(rowCounts(rows.tables))}.`);
+    const result = await loadIntoStore(rows, { api, token, fetch: network.fetch });
+    io.out(
+      `Loaded ${count(result.rows)} rows into ${api} in ${count(result.pages)} pages, written in one transaction: ` +
+        `${count(result.rowsWritten)} rows written as Cloudflare counts them.`,
+    );
+    const { report, stored } = await verifyLoaded(rows, { api, token, fetch: network.fetch });
+    io.out(`Read the store back through its backup route: ${backupSummary(report.rows)}.`);
+    io.out('Tasks per project and status (file / store):');
+    for (const entry of report.counts)
+      io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
+    // The store against the file itself: the export, through the import's verifier, or the backup, row by row.
+    const differences =
+      loaded.kind === 'export'
+        ? (await verify(loaded.data, plan!, (table) => stored.tables[table])).differences
+        : (await verifyBackup(loaded.data, (table) => stored.tables[table])).differences;
+    return printDifferences([...report.differences, ...differences], io);
+  } finally {
+    copy.close();
+  }
+}
+
 async function runBackup(
   values: Record<string, string | boolean | undefined>,
   io: Io,
@@ -249,8 +322,7 @@ async function runBackup(
   const api = option(values, 'api');
   const out = option(values, 'out');
   backupUrl(api);
-  const token = (await readFile(option(values, 'token-file'), 'utf8')).replace(/\r?\n$/u, '');
-  if (token === '') throw new UsageError('The token file is empty.');
+  const token = await tokenFrom(values);
   if (existsSync(out)) {
     io.err(`Refused: ${out} already exists. The backup never writes over a file.`);
     return 1;
@@ -317,6 +389,7 @@ export async function main(
     if (command === 'verify') return await runVerify(values, io);
     if (command === 'backup') return await runBackup(values, io, network);
     if (command === 'restore') return await runRestore(values, io);
+    if (command === 'load') return await runLoad(values, io, network);
     throw new UsageError(command === undefined ? 'Name a command.' : `Unknown command ${command}.`);
   } catch (error) {
     if (error instanceof UsageError || (error as { code?: string }).code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {

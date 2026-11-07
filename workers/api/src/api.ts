@@ -6,6 +6,7 @@
 import type { TaskEngine } from '@ntasks/domain';
 import { SCOPES, type Principal } from './auth.ts';
 import { backupRoute } from './http/backup.ts';
+import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
   boardRoute,
@@ -31,6 +32,7 @@ import { taskServer } from './mcp/server.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { Workspace } from './service.ts';
 import type { BackupAnswer } from './store/backup.ts';
+import type { abortLoad, beginLoad, commitLoad, stageRows } from './store/load.ts';
 
 export const MCP_PATH = '/api/mcp';
 /** The largest MCP message: a create_tasks call filing many long tasks fits. */
@@ -43,10 +45,20 @@ export interface ApiContext {
   readonly now: () => string;
   /** One page of a backup of the whole store: the first when the token is null (store/backup.ts). */
   readonly backup: (token: string | null) => Promise<BackupAnswer>;
+  /** A load into the empty store, page by page (store/load.ts). */
+  readonly load: LoadPort;
+}
+
+export interface LoadPort {
+  begin(migrations: unknown, by: string): Promise<ReturnType<typeof beginLoad>>;
+  rows(load: unknown, table: unknown, rows: unknown): Promise<ReturnType<typeof stageRows>>;
+  commit(load: unknown, counts: unknown): Promise<ReturnType<typeof commitLoad>>;
+  abort(load: unknown): Promise<ReturnType<typeof abortLoad>>;
 }
 
 export interface RouteContext extends ReadContext {
   readonly backup: ApiContext['backup'];
+  readonly load: LoadPort;
 }
 
 type Route = (context: RouteContext, url: URL, request: Request) => Response | Promise<Response>;
@@ -63,6 +75,10 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
   '/api/backup': { GET: backupRoute, scope: SCOPES.backup },
+  '/api/restore': { POST: loadBeginRoute, scope: SCOPES.restore },
+  '/api/restore/rows': { POST: loadRowsRoute, scope: SCOPES.restore },
+  '/api/restore/commit': { POST: loadCommitRoute, scope: SCOPES.restore },
+  '/api/restore/abort': { POST: loadAbortRoute, scope: SCOPES.restore },
 });
 
 /** POST /api/fields/:key/retire. */
@@ -119,7 +135,7 @@ const REFUSALS: Readonly<Record<RefusalKind, readonly [number, string]>> = Objec
 /** Answers one request from a signed-in sender. */
 export async function serveApi(request: Request, principal: Principal, context: ApiContext): Promise<Response> {
   const url = new URL(request.url);
-  const { engine, workspace, now, backup } = context;
+  const { engine, workspace, now, backup, load } = context;
   if (url.pathname === MCP_PATH) {
     if (url.search) return json({ error: 'invalid_request', detail: 'the MCP endpoint takes no query' }, 400);
     return serveMcp(request, taskServer({ engine, workspace, principal, now }), { maxBytes: MCP_BYTES });
@@ -139,7 +155,7 @@ export async function serveApi(request: Request, principal: Principal, context: 
     return json({ error: 'forbidden', detail: 'origin refused' }, 403);
   }
   try {
-    return await route({ engine, principal, now, backup }, url, request);
+    return await route({ engine, principal, now, backup, load }, url, request);
   } catch (error) {
     if (error instanceof HttpRefused) return error.response();
     if (error instanceof Refused) {

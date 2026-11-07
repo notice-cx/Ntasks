@@ -256,3 +256,50 @@ describe('the backup route through the Worker', () => {
     expect(await notBoolean.json()).toEqual({ error: 'invalid_request', message: 'backup is true or false' });
   });
 });
+
+describe('the restore route through the Worker', () => {
+  /** POST /api/restore with a bearer token: refused with 409 when the store holds rows, 403 without the scope. */
+  async function beginWith(token: string): Promise<{ status: number; body: Record<string, unknown> }> {
+    const response = await call('/api/restore', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ migrations: [] }),
+    });
+    return { status: response.status, body: await response.json<Record<string, unknown>>() };
+  }
+
+  it('lets a restore credential granted no project reach it, and no project otherwise', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const response = await browser.fetchJson('/api/access/services', { name: 'cutover-load', restore: true });
+    expect(response.status).toBe(201);
+    const { service } = await response.json<{ service: CreatedService & { restore: boolean } }>();
+    expect(service).toMatchObject({ restore: true, backup: false, grants: [] });
+    expect(await principalFor(service.token)).toMatchObject({ scopes: ['tasks:restore'], projects: new Map() });
+    // No migrations match the store's, so the load is refused, after the scope check let it through.
+    expect(await beginWith(service.token)).toMatchObject({ status: 409, body: { error: 'schema_mismatch' } });
+    expect((await getWith(service.token, '/api/tasks/projects')).status).toBe(403);
+  });
+
+  it('lets the owner reach it, and refuses an agent and a credential made without the restore choice', async () => {
+    const project = await createProject('Not loaded');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const owner = await browser.fetch('/api/restore', { method: 'POST', json: { migrations: [] } });
+    expect(owner.status).toBe(409);
+
+    const { service } = await (
+      await createService(browser, 'no-restore', [{ projectId: project, access: 'write' }])
+    ).json<{ service: CreatedService & { restore: boolean } }>();
+    expect(service.restore).toBe(false);
+    const { tokens } = await connectAgent(browser, [project]);
+    for (const token of [service.token, tokens.access_token]) {
+      expect(await beginWith(token)).toEqual({
+        status: 403,
+        body: { error: 'insufficient_scope', detail: 'this route needs tasks:restore' },
+      });
+    }
+    const notBoolean = await browser.fetchJson('/api/access/services', { name: 'yes-restore', restore: 'yes' });
+    expect(await notBoolean.json()).toEqual({ error: 'invalid_request', message: 'restore is true or false' });
+  });
+});
