@@ -77,7 +77,7 @@ Ntasks is in active development ahead of its first release.
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
-| Web app | The task pages: the board, a task's page, focus and the composer, reading the Worker's routes. Until they use the write routes they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
+| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects and Members pages, where an owner creates projects and invites people. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
@@ -144,6 +144,31 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+## First run
+
+A new deployment, or `pnpm dev`, needs its sign-in settings first
+([Sign-in](docs/sign-in.md#settings)). Then:
+
+1. **Sign in.** Open the deployment's address and sign in with GitHub. The
+   GitHub accounts whose ids are in `OWNER_GITHUB_IDS` are the deployment's
+   admins.
+2. **Create a workspace.** An admin who belongs to no workspace sees one
+   step, New workspace, and owns the workspace it creates. A workspace keeps
+   its own projects, tasks and members apart from every other.
+3. **Create a project.** The Projects page opens with New project: a name and
+   a prefix, the letters and digits that start every task id in the project
+   (`web` gives `web-a1b2`). On the Members page, an owner invites people by
+   GitHub username; each joins when they first sign in.
+4. **Connect an agent.** Add the MCP endpoint, `<address>/api/mcp`, to an MCP
+   client, such as Claude Code with
+   `claude mcp add --transport http ntasks https://ntasks.example.com/api/mcp`.
+   The client signs in with OAuth, and you allow it and choose its projects
+   on the approval page
+   ([How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects)).
+
+A person in two or more workspaces switches between them from the workspace
+name at the top of the sidebar.
 
 ## Repository layout
 
