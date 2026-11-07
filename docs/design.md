@@ -236,17 +236,21 @@ and its own word.
 ### Avatars
 
 `Avatar` draws a person or an agent at 18 px (sidebar), 20 px (rows), 28 px
-(headings) or 40 px. `avatarFace` decides what it shows:
+(headings) or 40 px. `avatarFace` decides what it shows. An actor is an
+agent when the API records it as one (`agent:<name>`, or `service:<name>`
+and `service:<name>/<agent>` for a service and the agent it acts for; see
+[Sign-in](sign-in.md)), when it named a model, or when the caller passes
+`agent`. Only an agent gets a mark:
 
-- **Claude**, when the name or the model the actor named mentions Claude or
-  Anthropic: the Simple Icons Claude mark in `#D97757`, on a ringed circle.
-- **Codex**, when the name or model mentions Codex, OpenAI or GPT: OpenAI's
-  Blossom, its path unchanged, black on light and white on dark, on a ringed
-  circle.
-- **Any other agent**, when the actor named a model or is known to be an
-  agent: Lucide's `bot` in Text 2, on a ringed circle.
-- **A person**: up to two initials, the first letters of the first and last
-  words of their name, in Avatar text on Avatar.
+- **Claude**, an agent whose name or model mentions Claude or Anthropic: the
+  Simple Icons Claude mark in `#D97757`, on a ringed circle.
+- **Codex**, an agent whose name or model mentions Codex, OpenAI or GPT:
+  OpenAI's Blossom, its path unchanged, black on light and white on dark, on
+  a ringed circle.
+- **Any other agent**: Lucide's `bot` in Text 2, on a ringed circle.
+- **A person**, whatever their name says: up to two initials, the first
+  letters of the first and last words of their name, in Avatar text on
+  Avatar.
 
 Every mark is drawn at 62% of the circle's width (`avatarMarkSize`). Claude's
 mark fills its box, and the Blossom's box is cropped with a margin around

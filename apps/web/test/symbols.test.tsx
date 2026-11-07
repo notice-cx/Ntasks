@@ -128,15 +128,27 @@ describe('the type mark', () => {
 });
 
 describe('who an avatar shows', () => {
-  it('gives Claude and Codex their marks, by name or by the model they named', () => {
-    expect(avatarFace({ name: 'Claude' }).kind).toBe('claude');
+  it('gives Claude and Codex their marks when the actor is an agent, by its name or the model it named', () => {
+    // The actors the API records: an agent, a service acting for an agent, and an agent that named its model.
+    expect(avatarFace({ name: 'agent:claude' }).kind).toBe('claude');
+    expect(avatarFace({ name: 'service:noticeos/claude-code' }).kind).toBe('claude');
     expect(avatarFace({ name: 'agent-one', model: 'claude-opus-5-5' }).kind).toBe('claude');
-    expect(avatarFace({ name: 'Codex' }).kind).toBe('codex');
+    expect(avatarFace({ name: 'agent:codex' }).kind).toBe('codex');
+    expect(avatarFace({ name: 'service:noticeos/codex' }).kind).toBe('codex');
     expect(avatarFace({ name: 'agent-two', model: 'gpt-5-codex' }).kind).toBe('codex');
+    expect(avatarFace({ name: 'Claude', agent: true }).kind).toBe('claude');
+  });
+
+  it('shows a person as a person, whatever their name says', () => {
+    expect(avatarFace({ name: 'Claude Monet' })).toEqual({ kind: 'person', initials: 'CM' });
+    expect(avatarFace({ name: 'Codex Reader' })).toEqual({ kind: 'person', initials: 'CR' });
+    expect(avatarFace({ name: 'person:agent:claude' })).toEqual({ kind: 'person', initials: 'AC' });
   });
 
   it('gives any other agent the plain agent mark', () => {
     expect(avatarFace({ name: 'Build bot', agent: true }).kind).toBe('agent');
+    expect(avatarFace({ name: 'agent:build-bot' }).kind).toBe('agent');
+    expect(avatarFace({ name: 'service:noticeos' }).kind).toBe('agent');
     expect(avatarFace({ name: 'agent-three', model: 'example-model-1' }).kind).toBe('agent');
   });
 
@@ -189,8 +201,8 @@ describe("Codex's mark beside Claude's", () => {
     for (const size of [18, 20, 28, 40] satisfies AvatarSize[]) {
       const { container, unmount } = render(
         <>
-          <Avatar name="Claude" size={size} />
-          <Avatar name="Codex" size={size} />
+          <Avatar name="Claude" agent size={size} />
+          <Avatar name="Codex" agent size={size} />
         </>,
       );
       const claude = container.querySelector('[data-brand-mark="claude"]');

@@ -98,10 +98,20 @@ const CLAUDE = /\bclaude\b|anthropic/i;
 const CODEX = /codex|openai|\bgpt\b/i;
 
 /**
- * Who an avatar shows. A name or model that names Claude or Codex gets that
- * agent's mark; any other actor that named a model, or is known to be an
- * agent, gets the plain agent mark; everyone else is a person, shown by
- * initials.
+ * The prefixes the API gives a non-person actor: `agent:<name>`, and
+ * `service:<credential>` or `service:<credential>/<agent>` for a service and
+ * the agent it acts for. A person whose own name starts like one is recorded
+ * as `person:<name>` (docs/sign-in.md).
+ */
+const AGENT_ACTOR = /^(?:agent|service):/;
+const PERSON_ACTOR = /^person:/;
+
+/**
+ * Who an avatar shows. Only an agent gets a brand mark: an actor the API
+ * records as an agent or a service, one that named a model, or one the
+ * caller knows to be an agent. Such an actor whose name or model names
+ * Claude or Codex gets that mark, and any other gets the plain agent mark.
+ * Everyone else is a person, shown by initials, whatever their name says.
  */
 export function avatarFace({
   name,
@@ -112,18 +122,19 @@ export function avatarFace({
   model?: string | null;
   agent?: boolean;
 }): AvatarFace {
+  const isAgent = agent || AGENT_ACTOR.test(name) || (model ?? '').trim() !== '';
+  if (!isAgent) return { kind: 'person', initials: initials(name.replace(PERSON_ACTOR, '')) };
   const said = `${name} ${model ?? ''}`;
   if (CLAUDE.test(said)) return { kind: 'claude' };
   if (CODEX.test(said)) return { kind: 'codex' };
-  if (agent || (model ?? '').trim() !== '') return { kind: 'agent' };
-  return { kind: 'person', initials: initials(name) };
+  return { kind: 'agent' };
 }
 
 /** Up to two letters: the first of the first and last words, so "Example Owner" is EO and an address its first letter. */
 export function initials(name: string): string {
   const words = name
     .replace(/@.*$/, '')
-    .split(/[\s._-]+/)
+    .split(/[\s._:/-]+/)
     .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
     .filter(Boolean);
   const first = words[0]?.[0] ?? '';
