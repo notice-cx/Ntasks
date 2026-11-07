@@ -58,7 +58,16 @@ const task = {
 const TASKS: TaskRow[] = [
   // A child whose parent's id sorts after its own.
   { ...task, id: 'acme-a1', project_id: ACME, parent_id: 'acme-z9', title: 'Child', description: 'Ünïcode, "quotes"' },
-  { ...task, id: 'acme-z9', project_id: ACME, type: 'epic', title: 'Parent' },
+  {
+    ...task,
+    id: 'acme-z9',
+    project_id: ACME,
+    type: 'epic',
+    title: 'Parent',
+    notes: 'Notes so far.',
+    design: 'How it is built.',
+    estimate_minutes: 90,
+  },
   // A duplicate of a task whose id sorts after its own.
   {
     ...task,
@@ -116,6 +125,26 @@ const ROWS: BackupRows = {
     { task_id: 'acme-a1', depends_on_id: 'acme-c3', type: 'blocks', created_at: AT, created_by: 'agent-a' },
     { task_id: 'acme-c3', depends_on_id: 'beta-d1', type: 'related', created_at: AT, created_by: null },
     { task_id: 'beta-d1', depends_on_id: 'beta-g1', type: 'discovered-from', created_at: LATER, created_by: 'owner' },
+    { task_id: 'acme-b2', depends_on_id: 'acme-c3', type: 'duplicates', created_at: LATER, created_by: 'owner' },
+    { task_id: 'acme-z9', depends_on_id: 'acme-b2', type: 'supersedes', created_at: LATER, created_by: null },
+  ],
+  task_external_links: [
+    {
+      task_id: 'acme-a1',
+      url: 'https://code.example.com/acme/pull/1',
+      title: 'The pull request',
+      kind: 'pull-request',
+      created_at: AT,
+      created_by: 'agent-a',
+    },
+    {
+      task_id: 'beta-d1',
+      url: 'https://docs.example.com/plan',
+      title: 'The plan',
+      kind: null,
+      created_at: LATER,
+      created_by: null,
+    },
   ],
   task_comments: [{ id: 'k-0001', task_id: 'acme-a1', author: 'owner', text: 'Looks right.', created_at: LATER }],
   task_events: [
@@ -254,7 +283,7 @@ describe('a backup through the command line', () => {
     expect(taken.err).toEqual([]);
     expect(taken.code).toBe(0);
     expect(taken.out[0]).toBe(
-      `Backed up 2 projects, 6 tasks, 3 task_labels, 3 task_edges, 1 task_comments, 8 task_events, 1 write_receipts, as the store stood at ${AT}, in 17 pages.`,
+      `Backed up 2 projects, 6 tasks, 3 task_labels, 5 task_edges, 2 task_external_links, 1 task_comments, 8 task_events, 1 write_receipts, as the store stood at ${AT}, in 20 pages.`,
     );
     expect((await stat(taken.file)).mode & 0o777).toBe(0o600);
 
