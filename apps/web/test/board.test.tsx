@@ -304,7 +304,7 @@ describe('the board', () => {
   it('links to its source code on every page', async () => {
     for (const path of ['/tasks', '/tasks/web-b2r6', '/tasks/focus', '/nowhere']) {
       const { unmount } = renderApp(path);
-      expect(screen.getByRole('link', { name: 'Source code' }).getAttribute('href')).toBe(SOURCE_URL);
+      expect((await screen.findByRole('link', { name: 'Source code' })).getAttribute('href')).toBe(SOURCE_URL);
       unmount();
     }
   });
