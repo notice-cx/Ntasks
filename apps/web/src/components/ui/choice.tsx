@@ -44,6 +44,7 @@ export function Segmented({
   options,
   onChoose,
   disabled = false,
+  describedBy,
   className,
 }: {
   /** What the options answer; the group's name for a screen reader. */
@@ -51,6 +52,8 @@ export function Segmented({
   options: readonly ChoiceOption[];
   onChoose: (key: TaskChoiceKey) => void;
   disabled?: boolean;
+  /** The id of what says more about the options, such as why they are disabled. */
+  describedBy?: string;
   className?: string;
 }) {
   return (
@@ -69,6 +72,7 @@ export function Segmented({
           type="button"
           disabled={disabled}
           aria-label={optionName(option)}
+          aria-describedby={describedBy}
           data-choice-option={option.key}
           className={cn(
             'inline-flex h-6.5 items-center gap-1.5 whitespace-nowrap ps-1.25 pe-2.25 text-meta font-medium text-ink outline-none',

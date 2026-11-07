@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Check, CornerDownLeft, Reply, SendHorizontal } from 'lucide-react';
 import type { TaskChoiceKey, TaskChoices } from '@/api/types';
 import { ChoiceButtons } from '@/components/ChoiceButtons';
@@ -49,6 +49,7 @@ export function useAskActions({
   const [answering, setAnswering] = useState(false);
   const [text, setText] = useState('');
   const answer = useInboxAnswer();
+  const reasonId = useId();
   // The header writes the reason once beside its buttons, so the controls under it are disabled without repeating it.
   const quiet = (reason: string | null) => (placement === 'header' && reason !== null ? '' : reason);
   const closeAs = useCloseAs({
@@ -89,14 +90,19 @@ export function useAskActions({
   }
 
   if (placement === 'row') {
-    const rowButtons =
+    // A row has no room to write why its controls are disabled, so each one
+    // carries the reason as its description, and a pointer shows it as a tip.
+    const reason = choosing ? chooseDisabledReason : disabledReason;
+    const described = reason ? reasonId : undefined;
+    const control =
       ask === 'approve' ? (
         <Button
           variant="primary"
           type="button"
           size="sm"
           disabled={disabled}
-          title={disabledReason ?? undefined}
+          title={disabledReason || undefined}
+          aria-describedby={described}
           onClick={() => answer({ kind: 'approve', id, title, project })}
           data-task-action="approve"
         >
@@ -112,6 +118,7 @@ export function useAskActions({
             recommended: option.recommended === true,
           }))}
           disabled={chooseDisabledReason !== null}
+          describedBy={described}
           onChoose={(option) => choose(option)}
         />
       ) : (
@@ -120,7 +127,8 @@ export function useAskActions({
           size="sm"
           aria-expanded={answering}
           disabled={disabled}
-          title={disabledReason ?? undefined}
+          title={disabledReason || undefined}
+          aria-describedby={described}
           onClick={() => setAnswering((open) => !open)}
           data-task-action="answer"
         >
@@ -166,6 +174,16 @@ export function useAskActions({
         </Button>
       </form>
     ) : null;
+    const rowButtons = (
+      <>
+        {control}
+        {reason ? (
+          <span id={reasonId} className="sr-only">
+            {reason}
+          </span>
+        ) : null}
+      </>
+    );
     return { buttons: rowButtons, box: rowBox };
   }
   // Under a set of options the free-text verbs step back: the options are what this question wants first.

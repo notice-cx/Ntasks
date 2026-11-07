@@ -351,6 +351,39 @@ describe('the keys', () => {
   });
 });
 
+describe('a row waiting for you that this sign-in cannot answer', () => {
+  it('says why on each control it disables', async () => {
+    const api = createFixtureTasksApi();
+    const limited = {
+      ...api,
+      capabilities: async () => ({ live: true, writable: true, operations: ['close', 'update'], reason: null }),
+    };
+    renderApp('/tasks', limited);
+    const waiting = await group('Waiting for you');
+    const reasonOf = (control: HTMLElement) =>
+      (control.getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .join(' ')
+        .trim();
+    const row = (id: string) => waiting.querySelector(`[data-task-row="${id}"]`) as HTMLElement;
+    await waitFor(() =>
+      expect((within(row('web-g7p2')).getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    );
+    const controls = [
+      within(row('web-g7p2')).getByRole('button', { name: 'Approve' }),
+      ...within(row('web-d4x1')).getAllByRole('button', { name: /^\([abc]\)/ }),
+      within(row('web-q8n5')).getByRole('button', { name: 'Answer' }),
+    ];
+    for (const control of controls) {
+      expect((control as HTMLButtonElement).disabled).toBe(true);
+      expect(reasonOf(control)).toBe('This sign-in cannot answer it.');
+    }
+  });
+});
+
 describe('a row waiting for you', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

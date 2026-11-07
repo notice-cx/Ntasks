@@ -369,7 +369,9 @@ focus, and never on a phone; every one is also in the row's menu. A waiting
 row puts its answer in `RowAnswer`: Approve, a `Segmented` choice, or
 Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
 its options take a line of their own under the title, so the title is never
-cut to make room for them.
+cut to make room for them. When this sign-in cannot answer, the controls are
+disabled and each carries the reason as its description (`aria-describedby`;
+`Segmented` takes `describedBy`), shown to a pointer as a tip.
 
 `GroupHeader` heads a group: its status mark, its name and its count on
 Surface, 36 px. The Waiting for you group is Waiting text on Waiting soft. A
