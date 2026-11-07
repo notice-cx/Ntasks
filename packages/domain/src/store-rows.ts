@@ -163,7 +163,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
   task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
 });
 
-/** The order a table's rows are read back in. */
+/** The order a table's rows are read back in: its primary key, which storeKey gives as columns. */
 const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
   projects: 'id',
   tasks: 'id',
@@ -207,4 +207,9 @@ export function insertStatements(rows: StoreRows): StoreStatement[] {
 /** The query that reads every row of a table, in a fixed order. */
 export function selectAllSql(table: StoreTable): string {
   return `SELECT ${(STORE_COLUMNS[table] as readonly string[]).join(', ')} FROM ${table} ORDER BY ${STORE_ORDER[table]}`;
+}
+
+/** A table's primary key columns: no two rows share their values. */
+export function storeKey(table: StoreTable): readonly string[] {
+  return STORE_ORDER[table].split(', ');
 }

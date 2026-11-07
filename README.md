@@ -68,6 +68,7 @@ Ntasks is in active development ahead of its first release.
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links and approval requests ([the API](docs/api.md)) |
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
+| Backups | The owner, or a service credential made for backups, reads the whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file and restores it into a local copy of the store |
 | A person's decisions through the API | Being built |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
@@ -136,7 +137,7 @@ pnpm build
 | [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
 | [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, and that no `wrangler.jsonc` names a secret in `vars` |
-| [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, with a verifier |
+| [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
 | [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app |
 | [`docs/`](docs/) | Concepts and architecture |
 

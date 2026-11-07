@@ -10,7 +10,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync } from 'node
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import { insertStatements, selectAllSql, STORE_TABLES, type StoreRows, type StoreTable } from '@ntasks/domain';
+import { BACKUP_TABLES, backupSelectSql, loadStatements, type BackupRows, type BackupTable } from '@ntasks/domain';
 
 export const STORE_MIGRATIONS = fileURLToPath(new URL('../../../workers/api/src/store/migrations/', import.meta.url));
 
@@ -19,9 +19,11 @@ export type Row = Record<string, unknown>;
 export interface LocalStore {
   readonly description: string;
   /** Writes every row in one transaction, into a copy that holds no projects or tasks. */
-  load(rows: StoreRows): void;
-  /** One table's rows, in the order the store reads them back. */
-  read(table: StoreTable): Row[];
+  load(rows: BackupRows): void;
+  /** One table's rows, in key order, as the store reads them back. */
+  read(table: BackupTable): Row[];
+  /** The store migrations applied to the copy, by name. */
+  migrations(): string[];
   /** The bytes the database takes. */
   size(): number;
   /** At most how many rows the store writes to hold these, as Cloudflare counts them: each row and each index entry. */
@@ -29,6 +31,14 @@ export interface LocalStore {
   close(): void;
   /** The database itself, for tests that change it behind the import. */
   readonly raw: DatabaseSync;
+}
+
+/** The names of the store's migrations, as a copy made here records them. */
+export function storeMigrations(): string[] {
+  return readdirSync(STORE_MIGRATIONS)
+    .filter((name) => name.endsWith('.sql'))
+    .map((name) => name.slice(0, -'.sql'.length))
+    .sort();
 }
 
 /** Applies the store's migration files in name order, each once and in one transaction, as the store does (schema.ts). */
@@ -78,12 +88,14 @@ export async function openLocalStore(file: string, options: { readonly create: b
     load(rows) {
       db.exec('BEGIN');
       try {
+        // Checked at COMMIT, as the store does: a backup lists tasks by id, and a parent's id can sort after its child's.
+        db.exec('PRAGMA defer_foreign_keys = ON');
         const held = db.prepare('SELECT (SELECT COUNT(*) FROM projects) + (SELECT COUNT(*) FROM tasks) AS n').get() as {
           n: number;
         };
         if (held.n !== 0)
           throw new Error('The store already holds projects or tasks. An import writes only into an empty store.');
-        for (const statement of insertStatements(rows)) db.prepare(statement.sql).run(...statement.values);
+        for (const statement of loadStatements(rows)) db.prepare(statement.sql).run(...statement.values);
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
@@ -91,7 +103,12 @@ export async function openLocalStore(file: string, options: { readonly create: b
       }
     },
     read(table) {
-      return db.prepare(selectAllSql(table)).all() as Row[];
+      return db.prepare(backupSelectSql(table)).all() as Row[];
+    },
+    migrations() {
+      return (db.prepare('SELECT name FROM store_migrations ORDER BY name').all() as { name: string }[]).map(
+        (row) => row.name,
+      );
     },
     size() {
       const row = db
@@ -101,7 +118,7 @@ export async function openLocalStore(file: string, options: { readonly create: b
     },
     rowsWrittenAtMost() {
       let total = 0;
-      for (const table of STORE_TABLES) {
+      for (const table of BACKUP_TABLES) {
         const { rows } = db.prepare(`SELECT COUNT(*) AS rows FROM ${table}`).get() as { rows: number };
         const { indexes } = db
           .prepare("SELECT COUNT(*) AS indexes FROM sqlite_master WHERE type = 'index' AND tbl_name = ?")

@@ -7,7 +7,7 @@ import { SCOPES, type Authenticator, type Principal, type ProjectAccess } from '
 import { createEngine } from '../../src/engine/index.ts';
 import type { Meter } from '../../src/store/sqlite.ts';
 import { createWorker } from '../../src/worker.ts';
-import { storeDatabase } from '../store.ts';
+import { store, storeDatabase } from '../store.ts';
 
 export const WORKSPACE = Object.freeze({ id: 'workspace-test', name: 'Test workspace' });
 export const ORIGIN = 'https://ntasks.test';
@@ -82,7 +82,16 @@ export function api(
   const engine = options.engine ?? createEngine(storeDatabase(options.meter), { now });
   const served = options.wrap?.(engine) ?? engine;
   const principal = options.principal ?? READER;
-  return { engine, fetch: (request) => serveApi(request, principal, { engine: served, workspace: WORKSPACE, now }) };
+  return {
+    engine,
+    fetch: (request) =>
+      serveApi(request, principal, {
+        engine: served,
+        workspace: WORKSPACE,
+        now,
+        backup: (token) => store().backupPage(token),
+      }),
+  };
 }
 
 /** A JSON-RPC reply to a tools/call, with the fields the tests read. */
