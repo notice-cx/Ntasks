@@ -1,27 +1,35 @@
 /**
  * Every sign-in path the Worker answers: OAuth discovery, the Better Auth
  * routes MCP clients and browsers use, the sign-in and agent approval pages,
- * and the owner's routes for listing and revoking agents and service
- * credentials. Every path here is in wrangler.jsonc's run_worker_first.
+ * a person's routes for listing and revoking their agents, an owner's routes
+ * for a workspace's service credentials, and the workspace routes, which read
+ * and write D1 beside sign-in. Every path here is in wrangler.jsonc's
+ * run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
 import { json } from '../http/respond.ts';
+import { chooseWorkspace, WORKSPACE_HEADER, type WorkspaceReach } from '../workspaces.ts';
 import { createAuth, type Auth } from './auth.ts';
+import { reachesOf } from './authenticator.ts';
 import { signInConfig, type SignInConfig } from './config.ts';
 import {
   AccessRefused,
   createServiceCredential,
+  createWorkspace,
   registrationDay,
   takeRegistration,
   listAgents,
   listProjects,
+  type AgentGrant,
   type ProjectSource,
   listServiceCredentials,
   revokeAgent,
   revokeServiceCredential,
   setAgentGrants,
+  WORKSPACE_ID,
+  workspaceNameOf,
 } from './grants.ts';
-import { agentAccessPage, expiredPage, signInPage } from './pages.ts';
+import { agentAccessPage, expiredPage, signInPage, type WorkspaceProjects } from './pages.ts';
 import type { PersonPrincipal, Principal } from './principal.ts';
 import {
   AGENT_ACCESS_PAGE,
@@ -47,6 +55,8 @@ export interface AccessEnv extends VerifierEnv, ProjectSource {
 const REGISTER_PATH = `${AUTH_BASE_PATH}/oauth2/register`;
 
 const ACCESS_API = '/api/access';
+/** The workspaces the sender reaches, and where a deployment admin creates one. */
+const WORKSPACES_API = '/api/workspaces';
 /** Sign-in requests are small; a larger body is refused before it is read. */
 const BODY_BYTES = 16 * 1024;
 
@@ -59,7 +69,8 @@ export function isAccessPath(pathname: string): boolean {
     pathname === SIGN_IN_PAGE ||
     pathname === AGENT_ACCESS_PAGE ||
     pathname === ACCESS_API ||
-    pathname.startsWith(`${ACCESS_API}/`)
+    pathname.startsWith(`${ACCESS_API}/`) ||
+    pathname === WORKSPACES_API
   );
 }
 
@@ -98,6 +109,7 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
     if (url.pathname.startsWith(`${AUTH_BASE_PATH}/`)) return await library(request, env, config, url);
     if (url.pathname === SIGN_IN_PAGE) return await signIn(request, env, config, url);
     if (url.pathname === AGENT_ACCESS_PAGE) return await agentAccess(request, env, config, url);
+    if (url.pathname === WORKSPACES_API) return await workspacesApi(request, env);
     return await accessApi(request, env, url);
   } catch (error) {
     if (error instanceof AccessRefused) {
@@ -207,7 +219,7 @@ async function signedQuery(query: string, config: SignInConfig): Promise<string 
   return (await verifyOAuthQueryParams(query, config.secret)) ? query : null;
 }
 
-/** The owner, when a browser session signed the request in; null for an agent, a service or a refusal. */
+/** The person, when a browser session signed the request in; null for an agent, a service or a refusal. */
 function personOf(verification: Verification): PersonPrincipal | null {
   return verification.ok && verification.principal.kind === 'person' ? verification.principal : null;
 }
@@ -253,9 +265,10 @@ async function signIn(request: Request, env: AccessEnv, config: SignInConfig, ur
 }
 
 /**
- * The approval page: GET shows it, POST records the owner's answer. Both need
- * a valid signed OAuth query and an enabled client; without the owner's
- * session the browser is sent to sign in first.
+ * The approval page: GET shows it, with the projects of each workspace the
+ * person belongs to, and POST records their answer. Both need a valid signed
+ * OAuth query and an enabled client; without the person's session the
+ * browser is sent to sign in first.
  */
 async function agentAccess(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'POST')
@@ -288,14 +301,21 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   } catch {
     return expiredPage();
   }
-  const projects = await listProjects(env);
+  // One store read for each workspace the person belongs to.
+  const workspaces: WorkspaceProjects[] = await Promise.all(
+    reachesOf(person).map(async ({ workspace }) => ({
+      id: workspace.id,
+      name: workspace.name,
+      projects: await listProjects(env, workspace.id),
+    })),
+  );
   const show = (error: string | null) =>
     agentAccessPage({
       personName: person.name,
       client: { name: client.name ?? clientId, uri: client.uri },
       returnsTo,
       access,
-      projects,
+      workspaces,
       oauthQuery,
       error,
     });
@@ -303,16 +323,19 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   if (form.get('decision') === 'allow') {
     if (access === null) return show('This agent asks for no access to tasks.');
     const chosen = form.getAll('project');
-    const known = new Set(projects.map((project) => project.id));
     if (chosen.length === 0) return show('Choose at least one project.');
-    if (!chosen.every((id) => known.has(id))) return show('A chosen project no longer exists. Choose again.');
+    const grants = chosen.map((choice): AgentGrant | null => {
+      const slash = choice.indexOf('/');
+      const workspace = workspaces.find((candidate) => candidate.id === choice.slice(0, slash));
+      const projectId = choice.slice(slash + 1);
+      return slash > 0 && workspace?.projects.some((project) => project.id === projectId)
+        ? { workspaceId: workspace.id, projectId, access }
+        : null;
+    });
+    if (!grants.every((grant): grant is AgentGrant => grant !== null))
+      return show('A chosen project no longer exists. Choose again.');
     // Grants first: a consent without grants would let the agent reach nothing.
-    await setAgentGrants(
-      env.DB,
-      person.userId,
-      clientId,
-      chosen.map((projectId) => ({ projectId, access })),
-    );
+    await setAgentGrants(env.DB, person.userId, clientId, grants);
   } else if (form.get('decision') !== 'deny') {
     return show('Choose Allow or Deny.');
   }
@@ -327,7 +350,75 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   return redirectWithCookies(location, response);
 }
 
-/** The owner's JSON routes under /api/access. */
+/** A JSON object body, of at most BODY_BYTES, or the sentence that refuses it; `what` names it. */
+async function jsonBody(request: Request, what: string): Promise<Record<string, unknown> | string> {
+  if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
+    return `send the ${what} as application/json`;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(await boundedText(request));
+  } catch (error) {
+    if (error instanceof BodyTooLarge) throw error;
+    return 'the body is not JSON';
+  }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return 'the body is one JSON object';
+  return body as Record<string, unknown>;
+}
+
+/**
+ * GET /api/workspaces lists the workspaces the sender reaches. POST creates
+ * one, named in the body, with the deployment admin who sends it as its
+ * owner; the body may also give its id, a lowercase UUID, such as the id of
+ * the NoticeOS workspace whose tasks it takes over.
+ */
+async function workspacesApi(request: Request, env: AccessEnv): Promise<Response> {
+  const verification = await verifyRequest(request, env);
+  if (!verification.ok) return refusal(verification, env);
+  const principal = verification.principal;
+  if (request.method === 'GET') {
+    const workspaces = reachesOf(principal).map(({ workspace, role }) => ({
+      workspaceId: workspace.id,
+      name: workspace.name,
+      role,
+    }));
+    return json({ workspaces }, 200);
+  }
+  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
+  if (principal.kind !== 'person' || !principal.admin) {
+    return json({ error: 'admin_only', detail: 'only a deployment admin may create a workspace' }, 403);
+  }
+  const body = await jsonBody(request, 'workspace');
+  if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+  const unknown = Object.keys(body).filter((key) => key !== 'name' && key !== 'workspaceId');
+  if (unknown.length > 0) {
+    return json({ error: 'invalid_request', detail: `unknown ${unknown.join(', ')}; send name and workspaceId` }, 400);
+  }
+  const name = workspaceNameOf(body.name);
+  if (name === null) {
+    return json({ error: 'invalid_request', detail: 'name is one line of 1 to 128 characters', field: 'name' }, 400);
+  }
+  const id = body.workspaceId === undefined ? crypto.randomUUID() : body.workspaceId;
+  if (typeof id !== 'string' || !WORKSPACE_ID.test(id)) {
+    return json({ error: 'invalid_request', detail: 'workspaceId is a lowercase UUID', field: 'workspaceId' }, 400);
+  }
+  if (!(await createWorkspace(env.DB, { id, name }, principal.userId))) {
+    return json({ error: 'workspace_exists', detail: 'a workspace already has this id', field: 'workspaceId' }, 409);
+  }
+  return json({ workspace: { workspaceId: id, name, role: 'owner' } }, 201);
+}
+
+/**
+ * The workspace whose service credentials a request manages: the one its
+ * header names, or the person's only one. Only its owner manages them.
+ */
+function ownedWorkspace(request: Request, principal: PersonPrincipal): WorkspaceReach | Response {
+  const chosen = chooseWorkspace(reachesOf(principal), request.headers.get(WORKSPACE_HEADER));
+  if ('refused' in chosen) return chosen.refused;
+  return chosen.reach.role === 'owner' ? chosen.reach : json({ error: 'owner_only' }, 403);
+}
+
+/** The JSON routes under /api/access: who the sender is, a person's agents, and a workspace's service credentials. */
 async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Response> {
   const verification = await verifyRequest(request, env);
   if (!verification.ok) return refusal(verification, env);
@@ -337,7 +428,7 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
     return json(describe(principal), 200);
   }
-  // Managing access is the owner's own act, never an agent's or a service's.
+  // Managing access is a person's own act, never an agent's or a service's.
   if (principal.kind !== 'person') return json({ error: 'owner_only' }, 403);
   if (path === '/agents' && request.method === 'GET')
     return json({ agents: await listAgents(env.DB, principal.userId) }, 200);
@@ -347,46 +438,47 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
       throw new AccessRefused('not_found', 'no such connected agent');
     return json({ revoked: true }, 200);
   }
-  if (path === '/services' && request.method === 'GET')
-    return json({ services: await listServiceCredentials(env.DB) }, 200);
-  if (path === '/services' && request.method === 'POST') {
-    if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
-      throw new AccessRefused('invalid_request', 'send the credential as application/json');
-    }
-    let body: { name?: unknown; grants?: unknown; backup?: unknown; restore?: unknown };
-    try {
-      body = JSON.parse(await boundedText(request)) as {
-        name?: unknown;
-        grants?: unknown;
-        backup?: unknown;
-        restore?: unknown;
-      };
-    } catch (error) {
-      if (error instanceof BodyTooLarge) throw error;
-      throw new AccessRefused('invalid_request', 'the body is not JSON');
-    }
-    const created = await createServiceCredential(env.DB, {
-      projects: await listProjects(env),
-      name: body?.name,
-      grants: body?.grants,
-      backup: body?.backup,
-      restore: body?.restore,
-      createdBy: principal.userId,
-    });
-    return json({ service: created }, 201);
-  }
   const service = /^\/services\/([0-9a-f-]{36})\/revoke$/u.exec(path);
-  if (service?.[1] && request.method === 'POST') {
-    if (!(await revokeServiceCredential(env.DB, service[1])))
+  const services = path === '/services' && (request.method === 'GET' || request.method === 'POST');
+  if (!services && !(service?.[1] && request.method === 'POST')) return json({ error: 'not_found' }, 404);
+  const owned = ownedWorkspace(request, principal);
+  if (owned instanceof Response) return owned;
+  const workspaceId = owned.workspace.id;
+  if (service?.[1]) {
+    if (!(await revokeServiceCredential(env.DB, workspaceId, service[1])))
       throw new AccessRefused('not_found', 'no such unrevoked service credential');
     return json({ revoked: true }, 200);
   }
-  return json({ error: 'not_found' }, 404);
+  if (request.method === 'GET') return json({ services: await listServiceCredentials(env.DB, workspaceId) }, 200);
+  const body = await jsonBody(request, 'credential');
+  if (typeof body === 'string') throw new AccessRefused('invalid_request', body);
+  const created = await createServiceCredential(env.DB, {
+    workspaceId,
+    projects: await listProjects(env, workspaceId),
+    name: body.name,
+    grants: body.grants,
+    backup: body.backup,
+    restore: body.restore,
+    createdBy: principal.userId,
+  });
+  return json({ service: created }, 201);
 }
 
-/** What GET /api/access/me answers: the sender's kind, name and projects, `all` for the owner. */
+/**
+ * What GET /api/access/me answers: the sender's kind and name, whether it is
+ * a deployment admin, and its projects: `all` for a person, who reaches every
+ * project of their workspaces, or each project an agent or a service was
+ * granted, with its workspace.
+ */
 function describe(principal: Principal): Record<string, unknown> {
+  const deploymentAdmin = principal.kind === 'person' && principal.admin;
   const projects =
-    principal.kind === 'person' ? 'all' : [...principal.projects].map(([projectId, access]) => ({ projectId, access }));
-  return { kind: principal.kind, name: principal.name, projects };
+    principal.kind === 'person'
+      ? 'all'
+      : reachesOf(principal).flatMap(({ workspace, projects: granted }) =>
+          granted === 'all'
+            ? []
+            : [...granted].map(([projectId, access]) => ({ workspaceId: workspace.id, projectId, access })),
+        );
+  return { kind: principal.kind, name: principal.name, deploymentAdmin, projects };
 }

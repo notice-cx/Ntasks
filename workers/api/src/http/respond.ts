@@ -3,18 +3,24 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   return Response.json(body, { status, headers: { ...headers, 'cache-control': 'no-store' } });
 }
 
-/** A request the route cannot serve, with a sentence that says why. */
+/** A request the route cannot serve, with a sentence that says why, and the
+ * body field at fault when one is, so a form can show the sentence beside it. */
 export class HttpRefused extends Error {
   override name = 'HttpRefused';
   readonly status: number;
   readonly error: string;
-  constructor(status: number, error: string, detail: string) {
+  readonly field: string | undefined;
+  constructor(status: number, error: string, detail: string, field?: string) {
     super(detail);
     this.status = status;
     this.error = error;
+    this.field = field;
   }
   response(): Response {
-    return json({ error: this.error, detail: this.message }, this.status);
+    return json(
+      { error: this.error, detail: this.message, ...(this.field === undefined ? {} : { field: this.field }) },
+      this.status,
+    );
   }
 }
 

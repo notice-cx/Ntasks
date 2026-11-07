@@ -6,16 +6,33 @@
  */
 import { TASK_LIMITS, type Actor } from '@ntasks/domain';
 import type { ProjectAccess } from '../auth.ts';
+import type { Workspace, WorkspaceRole } from '../workspaces.ts';
 
 export type { ProjectAccess };
 
-/** The owner, signed in in their own browser. Reaches every project. */
+/** A workspace a person belongs to, and their role there. */
+export interface Membership {
+  readonly workspace: Workspace;
+  readonly role: WorkspaceRole;
+}
+
+/** The projects an agent or a service was granted in one workspace. */
+export interface WorkspaceGrants {
+  readonly workspace: Workspace;
+  readonly projects: ReadonlyMap<string, ProjectAccess>;
+}
+
+/** A person, signed in in their own browser. Reaches every project of each
+ * workspace they belong to. */
 export interface PersonPrincipal {
   readonly kind: 'person';
   /** Stable and opaque: the retry principal for idempotency keys. */
   readonly id: string;
   readonly userId: string;
   readonly name: string;
+  /** Whether their GitHub id is in OWNER_GITHUB_IDS: a deployment admin, who may create workspaces. */
+  readonly admin: boolean;
+  readonly memberships: readonly Membership[];
 }
 
 /** An AI agent acting for the person who approved it, over OAuth. */
@@ -29,20 +46,23 @@ export interface AgentPrincipal {
   readonly clientId: string;
   /** The name the agent's client registered with, as the person saw it when approving. */
   readonly name: string;
-  /** The projects the person granted, each lowered to what the token's scopes allow. */
-  readonly projects: ReadonlyMap<string, ProjectAccess>;
+  /** The projects the person granted, by workspace, each lowered to what the
+   * token's scopes allow; only in workspaces the person still belongs to. */
+  readonly workspaces: readonly WorkspaceGrants[];
 }
 
-/** A service, such as a NoticeOS installation, with a named credential. */
+/** A service, such as a NoticeOS installation, with a named credential in one workspace. */
 export interface ServicePrincipal {
   readonly kind: 'service';
   readonly id: string;
   readonly credentialId: string;
   readonly name: string;
+  /** The workspace the credential belongs to, which every request it sends reaches. */
+  readonly workspace: Workspace;
   readonly projects: ReadonlyMap<string, ProjectAccess>;
-  /** Whether it may read the whole store for a backup, whatever its projects (GET /api/backup). */
+  /** Whether it may read the workspace's whole store for a backup, whatever its projects (GET /api/backup). */
   readonly backup: boolean;
-  /** Whether it may load rows into the store while it is empty (POST /api/restore). */
+  /** Whether it may load rows into the workspace's store while it is empty (POST /api/restore). */
   readonly restore: boolean;
   /**
    * The agent the service says a request is for (authenticator.ts). It names
@@ -54,10 +74,10 @@ export interface ServicePrincipal {
 export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal;
 
 /**
- * Whether an answer from this principal counts as the owner's own decision.
+ * Whether an answer from this principal counts as a person's own decision.
  * Only a person's browser session does. An agent or a service may still pass
- * on an answer the owner gave it, but the API layer records that as relayed,
- * never as the owner's direct decision.
+ * on an answer a person gave it, but the API layer records that as relayed,
+ * never as the person's direct decision.
  */
 export function mayDecide(principal: Principal): boolean {
   return principal.kind === 'person';

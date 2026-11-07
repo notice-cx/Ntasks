@@ -12,7 +12,7 @@ import { migrate, MIGRATIONS } from '../src/store/schema.ts';
 import { newMeter } from '../src/store/sqlite.ts';
 import { grantedOnly, ORIGIN, READER, worker, WRITER } from './api/helpers.ts';
 import { AGENT, clock } from './engine/helpers.ts';
-import { store, storeDatabase } from './store.ts';
+import { store, storeDatabase, TEST_WORKSPACE } from './store.ts';
 
 async function newProject(tasks: TaskEngine) {
   const id = crypto.randomUUID();
@@ -129,21 +129,9 @@ describe('reads from memory', () => {
       };
       // list_tasks reads its page's links apart from the board, and both are kept in memory.
       const listed = async () => {
-        const response = await instance.serve(
-          new Request(`${ORIGIN}/api/mcp`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'tools/call',
-              params: { name: 'list_tasks', arguments: { workspace: env.WORKSPACE_ID, project: project.id } },
-            }),
-          }),
-          READER,
-        );
-        const { result } = (await response.json()) as { result: { content: { text: string }[] } };
-        const { tasks } = JSON.parse(result.content[0]!.text) as { tasks: { externalLinks?: { url: string }[] }[] };
+        const answer = await instance.callTool('list_tasks', { project: project.id }, READER, TEST_WORKSPACE);
+        if (!answer.ok) throw new Error(answer.refused);
+        const { tasks } = answer.value as { tasks: { externalLinks?: { url: string }[] }[] };
         return (tasks[0]!.externalLinks ?? []).map((link) => link.url);
       };
       const links = async () => {

@@ -10,7 +10,7 @@ import type { ProjectAccess } from './principal.ts';
 
 /** The owner's sign-in page. It is also the OAuth login page. */
 export const SIGN_IN_PAGE = '/sign-in';
-/** The page where the owner approves or denies an agent and picks its projects. */
+/** The page where a person approves or denies an agent and picks its projects. */
 export const AGENT_ACCESS_PAGE = '/agent-access';
 
 /** AGPL-3.0 section 13: people who use Ntasks over a network can get its source. */
@@ -108,46 +108,61 @@ const ACCESS_WORDS: Readonly<Record<ProjectAccess, string>> = {
   read: 'Read tasks',
 };
 
+/** The form value that names one project of one workspace on the approval
+ * page: the workspace's id, which holds no slash, a slash, then the project's id. */
+export function projectChoice(workspaceId: string, projectId: string): string {
+  return `${workspaceId}/${projectId}`;
+}
+
+/** A workspace and its projects, as the approval page lists them. */
+export interface WorkspaceProjects {
+  readonly id: string;
+  readonly name: string;
+  readonly projects: readonly { readonly id: string; readonly key: string; readonly name: string }[];
+}
+
 /**
- * The page where the owner allows or denies an agent and chooses its
- * projects: who asks, for what access, for whom and where the answer goes.
- * Allow is left out when the agent asked for no access to tasks or there is
- * no project to choose.
+ * The page where a person allows or denies an agent and chooses its
+ * projects, in each workspace they belong to: who asks, for what access, for
+ * whom and where the answer goes. Allow is left out when the agent asked for
+ * no access to tasks or there is no project to choose.
  */
 export function agentAccessPage(input: {
   readonly personName: string;
   readonly client: { readonly name: string; readonly uri: string | null };
   /**
-   * Where the browser goes after the owner answers: the agent's registered
+   * Where the browser goes after the person answers: the agent's registered
    * redirect address. Any client can register with any name, but the code
    * only ever goes here, so the page shows it.
    */
   readonly returnsTo: string;
   /** The most the agent's scopes let it do; null when it asked for no access to tasks. */
   readonly access: ProjectAccess | null;
-  readonly projects: readonly { readonly id: string; readonly key: string; readonly name: string }[];
+  readonly workspaces: readonly WorkspaceProjects[];
   readonly oauthQuery: string;
   readonly error: string | null;
 }): Response {
   const from = input.client.uri ? ` <span class="quiet">${escape(input.client.uri)}</span>` : '';
   const access = input.access === null ? '<span class="quiet">None</span>' : ACCESS_WORDS[input.access];
-  const choosing = input.access !== null && input.projects.length > 0;
-  const projects =
-    input.access === null
-      ? ''
-      : choosing
-        ? `<fieldset>
-<legend>Projects</legend>
+  const listed = input.workspaces.filter((workspace) => workspace.projects.length > 0);
+  const choosing = input.access !== null && listed.length > 0;
+  const projects = choosing
+    ? listed
+        .map(
+          (workspace) => `<fieldset>
+<legend>${listed.length === 1 ? 'Projects' : `Projects in ${escape(workspace.name)}`}</legend>
 <div class="options">
-${input.projects
+${workspace.projects
   .map(
     (project) =>
-      `<label><input type="checkbox" name="project" value="${escape(project.id)}">${escape(project.name)}<span class="key">${escape(project.key)}</span></label>`,
+      `<label><input type="checkbox" name="project" value="${escape(projectChoice(workspace.id, project.id))}">${escape(project.name)}<span class="key">${escape(project.key)}</span></label>`,
   )
   .join('\n')}
 </div>
-</fieldset>`
-        : '';
+</fieldset>`,
+        )
+        .join('\n')
+    : '';
   return page(
     'Allow an agent',
     `<h1>Allow ${escape(input.client.name)} to use Ntasks?</h1>
@@ -155,7 +170,7 @@ ${alert(input.error)}
 <dl>
 <dt>Agent</dt><dd>${escape(input.client.name)}${from}</dd>
 <dt>Access</dt><dd>${access}</dd>
-${input.access !== null && input.projects.length === 0 ? '<dt>Projects</dt><dd><span class="quiet">None yet</span></dd>' : ''}
+${input.access !== null && listed.length === 0 ? '<dt>Projects</dt><dd><span class="quiet">None yet</span></dd>' : ''}
 <dt>Account</dt><dd>${escape(input.personName)}</dd>
 <dt>Returns to</dt><dd>${escape(input.returnsTo)}</dd>
 </dl>

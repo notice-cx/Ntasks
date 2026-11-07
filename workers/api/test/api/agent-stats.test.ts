@@ -5,7 +5,7 @@ import type { Project, TaskEngine, WorkItem } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { canonicalAgentModel, readAgentStats } from '../../src/agent-stats.ts';
 import { clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, callTool, get, granted, read, type TestApi } from './helpers.ts';
+import { api, callTool, get, granted, read, WORKSPACE, type TestApi } from './helpers.ts';
 
 const NOW = Date.parse('2026-10-15T12:00:00.000Z');
 const HOUR = 3_600_000;
@@ -264,9 +264,7 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
     const limited = api({ principal: granted({ [project.id]: 'read' }), now: time.now, engine });
     const reached = await read<{ projects: number; stats: { week: number } }>(limited, 'get_agent_stats');
     expect(reached).toMatchObject({ projects: 1, stats: { week: 1 } });
-    expect(
-      (await callTool(limited, 'get_agent_stats', { workspace: 'workspace-test', project: hidden.id })).refused,
-    ).toBe(
+    expect((await callTool(limited, 'get_agent_stats', { workspace: WORKSPACE.id, project: hidden.id })).refused).toBe(
       `refused: projectId ${hidden.id} names no project in this workspace; list_projects lists the current projectIds.`,
     );
   });

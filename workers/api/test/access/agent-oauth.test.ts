@@ -1,9 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { verifyRequest } from '../../src/access/verify.ts';
+import { TEST_WORKSPACE } from '../store.ts';
 import {
   Browser,
   call,
+  choiceOf,
   connectAgent,
   createProject,
   locationOf,
@@ -86,7 +88,7 @@ describe('an agent connecting over OAuth', () => {
     expect(page).toContain('Other');
 
     const approved = await browser.fetch('/agent-access', {
-      form: { oauth_query: afterSignIn.search.slice(1), decision: 'allow', project: chosen },
+      form: { oauth_query: afterSignIn.search.slice(1), decision: 'allow', project: choiceOf(chosen) },
     });
     const back = locationOf(approved);
     expect(`${back.origin}${back.pathname}`).toBe(REDIRECT_URI);
@@ -98,14 +100,18 @@ describe('an agent connecting over OAuth', () => {
     expect(await me.json()).toEqual({
       kind: 'agent',
       name: 'Example Agent',
-      projects: [{ projectId: chosen, access: 'write' }],
+      deploymentAdmin: false,
+      projects: [{ workspaceId: TEST_WORKSPACE.id, projectId: chosen, access: 'write' }],
     });
 
     const verified = await verifyRequest(
       new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${tokens.access_token}` } }),
       env,
     );
-    expect(verified.ok && verified.principal.kind === 'agent' && verified.principal.projects.has(other)).toBe(false);
+    if (!verified.ok || verified.principal.kind !== 'agent') throw new Error('the agent should verify');
+    expect(
+      verified.principal.workspaces.map(({ workspace, projects }) => [workspace.id, [...projects.keys()]]),
+    ).toEqual([[TEST_WORKSPACE.id, [chosen]]]);
 
     // Through the Worker, the API lists only the chosen project and answers the other as missing.
     const bearer = { headers: { authorization: `Bearer ${tokens.access_token}` } };
@@ -121,7 +127,7 @@ describe('an agent connecting over OAuth', () => {
 
     const { tokens } = await connectAgent(browser, [project], 'tasks:read offline_access');
     expect(await (await meWithToken(tokens.access_token)).json()).toMatchObject({
-      projects: [{ projectId: project, access: 'read' }],
+      projects: [{ workspaceId: TEST_WORKSPACE.id, projectId: project, access: 'read' }],
     });
   });
 
@@ -216,7 +222,7 @@ describe('revoking an agent', () => {
     const { agents } = await listed.json<{ agents: { clientId: string; name: string; grants: unknown[] }[] }>();
     expect(agents.find((agent) => agent.clientId === client.clientId)).toMatchObject({
       name: 'Example Agent',
-      grants: [{ projectId: project, access: 'write' }],
+      grants: [{ workspaceId: TEST_WORKSPACE.id, projectId: project, access: 'write' }],
     });
 
     const revoked = await browser.fetch(`/api/access/agents/${client.clientId}/revoke`, { method: 'POST' });
