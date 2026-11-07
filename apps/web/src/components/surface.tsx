@@ -177,7 +177,7 @@ export function ReadFailed({
         <span className="text-sm font-medium text-foreground">{title}</span>
         {said ? <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{said}</span> : null}
       </div>
-      <Button type="button" variant="outline" size="sm" disabled={retrying} onClick={onRetry}>
+      <Button type="button" variant="secondary" size="sm" disabled={retrying} onClick={onRetry}>
         <RotateCw aria-hidden className={cn(retrying && 'motion-safe:animate-spin')} />
         {retrying ? 'Retrying…' : 'Retry'}
       </Button>
@@ -190,7 +190,7 @@ export function SignIn() {
   return (
     <Card kind="neutral" className="flex flex-wrap items-center justify-between gap-3 p-4" data-sign-in="">
       <span className="text-sm font-medium text-foreground">Sign in to see your tasks</span>
-      <Button asChild>
+      <Button variant="primary" asChild>
         {/* A full page load: the Worker serves the sign-in page, not this app. */}
         <a href={SIGN_IN_PATH}>
           <LogIn aria-hidden />

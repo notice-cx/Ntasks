@@ -250,7 +250,7 @@ export function CloseNoteForm({
         />
       </span>
       <span className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={!ready} data-task-confirm="close-as">
+        <Button variant="primary" type="submit" size="sm" disabled={!ready} data-task-confirm="close-as">
           Close task
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>

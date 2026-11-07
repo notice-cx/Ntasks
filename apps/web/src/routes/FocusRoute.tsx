@@ -94,7 +94,7 @@ export function FocusRoute() {
           {board.complete ? "That's every decision for you." : 'No decisions in the projects that could be read.'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild>
+          <Button variant="primary" asChild>
             <Link to={leave}>Back to Tasks</Link>
           </Button>
           {skipped.size > 0 ? (
@@ -334,6 +334,7 @@ function FocusDecision({
       ) : ask === 'approve' ? (
         <div>
           <Button
+            variant="primary"
             type="button"
             className="min-h-11 px-6 text-base"
             disabled={reason !== null}
@@ -368,7 +369,7 @@ function FocusDecision({
               send();
             }}
           />
-          <Button type="submit" disabled={text.trim() === '' || reason !== null}>
+          <Button variant="primary" type="submit" disabled={text.trim() === '' || reason !== null}>
             <SendHorizontal aria-hidden />
             Send
           </Button>

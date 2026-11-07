@@ -1,16 +1,14 @@
 /**
- * Captures the README's screenshots of the web app. It serves the app with its
- * invented tasks (Vite's fixture mode, no API), draws each page in a headless
- * Chrome or Chromium in light and in dark, and writes them to docs/images/ as
- * WebP.
+ * Captures the screenshots of the web app in docs/images/: the README's
+ * pictures and the design gallery. It serves the app with its invented tasks
+ * (Vite's fixture mode, no API), draws each page in a headless Chrome or
+ * Chromium in light and in dark, and writes them as WebP.
  *
- * Run it from the repository root with `pnpm screenshots`. It needs Chrome or
- * Chromium on this machine; set CHROME_PATH to one that is not in a usual
- * place. It drives the browser over the Chrome DevTools Protocol with Node's
- * own WebSocket, so it adds no dependency, and CI never runs it.
- *
- * The pictures use the fonts this machine has: Inter when it is installed,
- * otherwise the system's sans-serif.
+ * Run it from the repository root with `pnpm screenshots`, or name the shots
+ * to take: `pnpm screenshots design`. It needs Chrome or Chromium on this
+ * machine; set CHROME_PATH to one that is not in a usual place. It drives the
+ * browser over the Chrome DevTools Protocol with Node's own WebSocket, so it
+ * adds no dependency, and CI never runs it.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -19,7 +17,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DevTools, until } from './devtools.ts';
+import { DevTools, navigate, until } from './devtools.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const WEB = path.join(ROOT, 'apps/web');
@@ -40,6 +38,8 @@ interface Shot {
   scale: number;
   /** An element that is on the page once it has drawn what the shot shows. */
   ready: string;
+  /** Capture the whole page, however tall, instead of `height` pixels of it. */
+  fullPage?: boolean;
 }
 
 const SHOTS: readonly Shot[] = [
@@ -54,6 +54,16 @@ const SHOTS: readonly Shot[] = [
     ready: '[data-markdown] pre .hljs-keyword',
   },
   { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-page-answer]' },
+  // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
+  {
+    name: 'design',
+    address: '/design',
+    width: 1440,
+    height: 900,
+    scale: 1.5,
+    ready: '[data-palette="dark"] [data-swatch]',
+    fullPage: true,
+  },
 ];
 const THEMES = ['light', 'dark'] as const;
 /** WebP quality: small files with no visible loss in flat interface colours. */
@@ -185,7 +195,8 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
       { name: 'prefers-reduced-motion', value: 'reduce' },
     ],
   });
-  await send('Page.navigate', { url: `${ORIGIN}${shot.address}` });
+  // The readiness check below must read the new document, not the one the previous shot left.
+  await navigate(send, `${ORIGIN}${shot.address}`, { waitMs: WAIT_MS });
   const drawn = `document.querySelector(${JSON.stringify(shot.ready)}) !== null && document.querySelector('.skeleton') === null && document.fonts.status === 'loaded'`;
   // A failed request, as when Chrome exits, ends the wait at once.
   await until(
@@ -200,13 +211,41 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
     },
     { waitMs: WAIT_MS },
   );
+  if (shot.fullPage) {
+    const tall = await send<{ result: { value: number } }>('Runtime.evaluate', {
+      expression: 'document.documentElement.scrollHeight',
+      returnByValue: true,
+    });
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: shot.width,
+      height: tall.result.value,
+      deviceScaleFactor: shot.scale,
+      mobile: false,
+    });
+    // One frame at the new size before the picture.
+    await send('Runtime.evaluate', {
+      expression: 'new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))',
+      awaitPromise: true,
+    });
+  }
   const { data } = await send<{ data: string }>('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
   const file = path.join(OUT, `${shot.name}-${theme}.webp`);
   await writeFile(file, Buffer.from(data, 'base64'));
   return file;
 }
 
+/** The shots named on the command line, or every shot when none is named. */
+function chosenShots(names: readonly string[]): readonly Shot[] {
+  if (names.length === 0) return SHOTS;
+  const unknown = names.filter((name) => !SHOTS.some((shot) => shot.name === name));
+  if (unknown.length > 0) {
+    throw new Error(`No shot named ${unknown.join(', ')}. The shots are ${SHOTS.map((shot) => shot.name).join(', ')}.`);
+  }
+  return SHOTS.filter((shot) => names.includes(shot.name));
+}
+
 async function main() {
+  const shots = chosenShots(process.argv.slice(2));
   await mkdir(OUT, { recursive: true });
   const profile = await mkdtemp(path.join(tmpdir(), 'ntasks-screenshots-'));
   const running: ChildProcess[] = [];
@@ -221,7 +260,7 @@ async function main() {
       flatten: true,
     });
     await devtools.send('Page.enable', {}, { sessionId });
-    for (const shot of SHOTS) {
+    for (const shot of shots) {
       for (const theme of THEMES) {
         const file = await capture(devtools, sessionId, shot, theme);
         console.log(path.relative(ROOT, file));

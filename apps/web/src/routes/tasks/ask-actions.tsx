@@ -73,7 +73,7 @@ export function useAskActions({
       <Button
         type="button"
         size="sm"
-        variant={choosing || answering ? 'outline' : 'default'}
+        variant={choosing || answering ? 'secondary' : 'primary'}
         aria-expanded={answering}
         disabled={disabled}
         onClick={() => {
@@ -92,6 +92,7 @@ export function useAskActions({
   const buttons =
     ask === 'approve' ? (
       <Button
+        variant="primary"
         type="button"
         size="sm"
         disabled={disabled}
@@ -157,7 +158,7 @@ export function useAskActions({
           send();
         }}
       />
-      <Button type="submit" size="sm" disabled={text.trim() === ''} data-task-confirm="answer">
+      <Button variant="primary" type="submit" size="sm" disabled={text.trim() === ''} data-task-confirm="answer">
         <SendHorizontal aria-hidden />
         Send
       </Button>

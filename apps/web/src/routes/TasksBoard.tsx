@@ -107,7 +107,7 @@ export function TasksBoard() {
   const readable = new Set(board.projects.filter((project) => project.ok).map((project) => project.key));
 
   const newTask = (
-    <Button type="button" disabled={!writable} onClick={openComposer} data-new-task="">
+    <Button variant="primary" type="button" disabled={!writable} onClick={openComposer} data-new-task="">
       <Plus aria-hidden />
       New task
     </Button>
@@ -189,7 +189,7 @@ export function TasksBoard() {
               </span>
               {board.broken.map((project) => project.name).join(', ')}. Its counts above are lower bounds.
             </span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void board.refetch()}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => void board.refetch()}>
               Retry
             </Button>
           </div>
@@ -241,7 +241,7 @@ export function TasksBoard() {
           }
         />
         <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
+          <Button asChild variant="secondary">
             <Link to="/tasks/focus" state={{ returnTo: `${location.pathname}${location.search}` }} data-focus-link="">
               Focus
             </Link>
@@ -725,6 +725,7 @@ function RowDetail({
           {done ? null : (
             <>
               <Button
+                variant="primary"
                 type="button"
                 size="sm"
                 disabled={!actionable || busy || !fieldAvailable(capabilities, 'claim') || task.assignee !== null}
@@ -736,7 +737,7 @@ function RowDetail({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 disabled={!actionable || busy || !operationAvailable(capabilities, 'close')}
                 onClick={() => setMode('close')}
                 data-task-action="close"
@@ -746,7 +747,7 @@ function RowDetail({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 disabled={!actionable || busy || !fieldAvailable(capabilities, 'defer')}
                 onClick={() => setMode('defer')}
                 data-task-action="defer"
@@ -780,7 +781,13 @@ function RowDetail({
             onChange={(event) => setReason(event.target.value)}
           />
           <div className="flex items-center gap-2">
-            <Button type="submit" size="sm" disabled={busy || reason.trim() === ''} data-task-confirm="close">
+            <Button
+              variant="primary"
+              type="submit"
+              size="sm"
+              disabled={busy || reason.trim() === ''}
+              data-task-confirm="close"
+            >
               Close task
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>
@@ -807,7 +814,7 @@ function RowDetail({
             onChange={(event) => setUntil(event.target.value)}
           />
           <div className="flex items-center gap-2">
-            <Button type="submit" size="sm" disabled={busy || until === ''} data-task-confirm="defer">
+            <Button variant="primary" type="submit" size="sm" disabled={busy || until === ''} data-task-confirm="defer">
               Park it
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setMode(null)}>

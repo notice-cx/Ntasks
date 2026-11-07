@@ -101,6 +101,8 @@ work gets the same list.
   rules the database enforces and the engine contract, for contributors.
 - [Sign-in](docs/sign-in.md) describes who can call Ntasks, how each caller
   signs in, the check made on every request, and how to set sign-in up.
+- [The design system](docs/design.md) lists the web app's colours, type,
+  symbols and components, and the rules for using them.
 
 ## Run it locally
 
@@ -137,8 +139,8 @@ pnpm build
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
 | [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, and that no `wrangler.jsonc` names a secret in `vars` |
 | [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
-| [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app |
-| [`docs/`](docs/) | Concepts and architecture |
+| [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app and the design gallery's |
+| [`docs/`](docs/) | Concepts, architecture and the design system |
 
 ## Where Ntasks comes from
 
