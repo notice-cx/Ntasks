@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DevTools, until, type ProtocolSocket } from '../src/devtools.ts';
+import { DevTools, navigate, until, type PageSend, type ProtocolSocket } from '../src/devtools.ts';
 
 /** A socket that records what is sent and delivers what a test hands it. */
 class StandInSocket implements ProtocolSocket {
@@ -141,6 +141,43 @@ describe('until', () => {
     await assert.rejects(
       until('the web app', async () => false, { waitMs: 150 }),
       /Timed out waiting for the web app/,
+    );
+  });
+});
+
+/** A page whose main frame shows the previous document for the first `stale` reads after a navigation. */
+function pageThatCommitsLate(stale: number, navigation: { loaderId?: string; errorText?: string }) {
+  const asked: string[] = [];
+  let reads = 0;
+  const send: PageSend = async <T>(method: string) => {
+    asked.push(method);
+    if (method === 'Page.navigate') return { frameId: 'main', ...navigation } as T;
+    reads += 1;
+    return { frameTree: { frame: { id: 'main', loaderId: reads > stale ? navigation.loaderId : 'previous' } } } as T;
+  };
+  return { send, asked };
+}
+
+describe('navigate', () => {
+  it('resolves only once the page holds the document this navigation loaded', async () => {
+    const page = pageThatCommitsLate(2, { loaderId: 'next' });
+    await navigate(page.send, 'http://127.0.0.1:5197/design', { waitMs: 5_000 });
+    assert.deepEqual(page.asked, ['Page.navigate', 'Page.getFrameTree', 'Page.getFrameTree', 'Page.getFrameTree']);
+  });
+
+  it('fails with Chrome’s reason when the navigation is refused', async () => {
+    const page = pageThatCommitsLate(0, { errorText: 'net::ERR_CONNECTION_REFUSED' });
+    await assert.rejects(
+      navigate(page.send, 'http://127.0.0.1:5197/design', { waitMs: 5_000 }),
+      /could not open http:\/\/127\.0\.0\.1:5197\/design: net::ERR_CONNECTION_REFUSED/,
+    );
+  });
+
+  it('gives up when the new document never arrives, naming the address', async () => {
+    const page = pageThatCommitsLate(Number.POSITIVE_INFINITY, { loaderId: 'next' });
+    await assert.rejects(
+      navigate(page.send, 'http://127.0.0.1:5197/design', { waitMs: 150 }),
+      /Timed out waiting for http:\/\/127\.0\.0\.1:5197\/design to replace the previous page/,
     );
   });
 });

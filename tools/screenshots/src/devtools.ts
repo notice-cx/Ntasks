@@ -1,8 +1,8 @@
 /**
- * The two pieces of the screenshot script that wait on something else: a
- * minimal Chrome DevTools Protocol client, and a check repeated until it
- * holds. Neither starts a process, so the tests can run them without a
- * browser.
+ * The pieces of the screenshot script that wait on something else: a
+ * minimal Chrome DevTools Protocol client, a check repeated until it holds,
+ * and a navigation that waits for its new document. None starts a process,
+ * so the tests can run them without a browser.
  */
 
 /** What the client needs of a WebSocket; a test passes a stand-in. */
@@ -142,4 +142,31 @@ export async function until(
     clearTimeout(timer);
     clearTimeout(pause);
   }
+}
+
+/** A DevTools request on one page, as the screenshot script sends it. */
+export type PageSend = <T>(method: string, params?: object, signal?: AbortSignal) => Promise<T>;
+
+/**
+ * Navigates the page to `url` and resolves once its main frame holds the
+ * document this navigation loaded, matched by the loader id Chrome returns.
+ * Until then the page can still show the previous document, which already
+ * passes a readiness check meant for the new one when the same address is
+ * drawn again in the other theme. A navigation Chrome refuses fails with
+ * Chrome's reason.
+ */
+export async function navigate(send: PageSend, url: string, { waitMs }: { waitMs: number }): Promise<void> {
+  const started = await send<{ loaderId?: string; errorText?: string }>('Page.navigate', { url });
+  if (started.errorText) throw new Error(`Chrome could not open ${url}: ${started.errorText}`);
+  const { loaderId } = started;
+  // A navigation to another #fragment of the same document loads nothing new.
+  if (loaderId === undefined) return;
+  await until(
+    `${url} to replace the previous page`,
+    async (signal) => {
+      const { frameTree } = await send<{ frameTree: { frame: { loaderId: string } } }>('Page.getFrameTree', {}, signal);
+      return frameTree.frame.loaderId === loaderId;
+    },
+    { waitMs },
+  );
 }

@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DevTools, until } from './devtools.ts';
+import { DevTools, navigate, until } from './devtools.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const WEB = path.join(ROOT, 'apps/web');
@@ -195,7 +195,8 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
       { name: 'prefers-reduced-motion', value: 'reduce' },
     ],
   });
-  await send('Page.navigate', { url: `${ORIGIN}${shot.address}` });
+  // The readiness check below must read the new document, not the one the previous shot left.
+  await navigate(send, `${ORIGIN}${shot.address}`, { waitMs: WAIT_MS });
   const drawn = `document.querySelector(${JSON.stringify(shot.ready)}) !== null && document.querySelector('.skeleton') === null && document.fonts.status === 'loaded'`;
   // A failed request, as when Chrome exits, ends the wait at once.
   await until(
