@@ -24,7 +24,7 @@
  * next request.
  */
 import { COOKIE_PREFIX } from './auth.ts';
-import { signInConfig, type SignInConfig, type SignInSecrets } from './config.ts';
+import { isSecure, originOf, signInSecrets, storedOrigin, type Secrets, type SignInSecrets } from './config.ts';
 import { base64url, fromHex, sameBytes, sha256, verifyCookieSignature } from './crypto.ts';
 import type {
   AgentPrincipal,
@@ -44,15 +44,18 @@ export interface VerifierEnv extends SignInSecrets {
 
 export type Verification =
   | { readonly ok: true; readonly principal: Principal }
+  /** The deployment has no sign-in settings, or no origin because its setup has not run, so nobody can sign in. */
+  | { readonly ok: false; readonly reason: 'not_configured' }
   | {
       readonly ok: false;
       /**
-       * `not_configured`: the deployment has no sign-in settings, so nobody can sign in.
        * `unauthenticated`: the request carries no credential.
        * `invalid_token`: its credential is malformed, unknown, expired or revoked.
        * `cross_site`: a cookie-signed change came from another site.
        */
-      readonly reason: 'not_configured' | 'unauthenticated' | 'invalid_token' | 'cross_site';
+      readonly reason: 'unauthenticated' | 'invalid_token' | 'cross_site';
+      /** The deployment's origin, which the refusal's bearer challenge names. */
+      readonly origin: string;
     };
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -63,72 +66,128 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * Authorization header is refused, never passed over for the cookie.
  */
 export async function verifyRequest(request: Request, env: VerifierEnv): Promise<Verification> {
-  const config = signInConfig(env);
-  if (!config) return { ok: false, reason: 'not_configured' };
+  const secrets = signInSecrets(env);
+  if (!secrets) return { ok: false, reason: 'not_configured' };
   const bearer = bearerToken(request.headers);
-  if (bearer === false) return { ok: false, reason: 'invalid_token' };
+  if (bearer === false) return refused(env.DB, secrets, 'invalid_token');
   if (bearer !== null) {
     const principal = bearer.startsWith(`${SERVICE_TOKEN_PREFIX}.`)
       ? await verifyServiceToken(env.DB, bearer)
-      : await verifyAgentToken(env.DB, config, bearer);
-    return principal ? { ok: true, principal } : { ok: false, reason: 'invalid_token' };
+      : await verifyAgentToken(env.DB, secrets, bearer);
+    return principal ? { ok: true, principal } : refused(env.DB, secrets, 'invalid_token');
   }
-  const cookie = sessionCookie(request.headers, config);
-  if (cookie === null) return { ok: false, reason: 'unauthenticated' };
-  const principal = await verifySession(env.DB, config, cookie);
-  if (!principal) return { ok: false, reason: 'invalid_token' };
+  const cookie = sessionCookie(request.headers);
+  if (cookie === null) return refused(env.DB, secrets, 'unauthenticated');
+  const session = await verifySession(env.DB, secrets, cookie);
+  if (!session) return refused(env.DB, secrets, 'invalid_token');
   // A browser sends the session cookie with any request to this origin,
   // including a form another site submits; a change must come from this origin.
-  if (!SAFE_METHODS.has(request.method) && request.headers.get('origin') !== config.origin) {
-    return { ok: false, reason: 'cross_site' };
+  if (!SAFE_METHODS.has(request.method) && request.headers.get('origin') !== session.origin) {
+    return { ok: false, reason: 'cross_site', origin: session.origin };
   }
-  return { ok: true, principal };
+  return { ok: true, principal: session.principal };
+}
+
+/**
+ * A refusal, with the deployment's origin for its challenge: the one the
+ * secrets name, else the stored app's, which costs a D1 query that only a
+ * refused request makes. With neither, nobody can sign in yet.
+ */
+async function refused(
+  db: D1Database,
+  secrets: Secrets,
+  reason: 'unauthenticated' | 'invalid_token',
+): Promise<Verification> {
+  const origin = secrets.app?.origin ?? (await storedOrigin(db));
+  return origin === null ? { ok: false, reason: 'not_configured' } : { ok: false, reason, origin };
+}
+
+/** The answer while sign-in is off, with a sentence saying what turns it on: the setup page, or the secrets. */
+export function notConfigured(env: SignInSecrets): Response {
+  const detail = signInSecrets(env)
+    ? 'Sign-in is not set up yet. Open /sign-in on this deployment to set it up.'
+    : 'Sign-in is off: AUTH_SECRET or another sign-in secret is missing or malformed.';
+  return Response.json(
+    { error: 'sign_in_not_configured', detail },
+    { status: 503, headers: { 'cache-control': 'no-store' } },
+  );
 }
 
 /** The answer to a refused request. A bearer challenge tells an MCP client where to sign in. */
 export function refusal(verification: Extract<Verification, { ok: false }>, env: SignInSecrets): Response {
-  const config = signInConfig(env);
-  if (verification.reason === 'not_configured' || !config) {
-    return Response.json(
-      { error: 'sign_in_not_configured' },
-      { status: 503, headers: { 'cache-control': 'no-store' } },
-    );
-  }
+  if (verification.reason === 'not_configured') return notConfigured(env);
   if (verification.reason === 'cross_site') {
     return Response.json({ error: 'cross_site_request' }, { status: 403, headers: { 'cache-control': 'no-store' } });
   }
   return bearerChallenge(
-    config.origin,
+    verification.origin,
     verification.reason === 'invalid_token' ? { error: 'invalid_token' } : undefined,
   );
 }
 
-/** The session cookie's name, as Better Auth sets it for this origin. */
-export function sessionCookieName(config: Pick<SignInConfig, 'secure'>): string {
-  return `${config.secure ? '__Secure-' : ''}${COOKIE_PREFIX}.session_token`;
+/** The session cookie's name, as Better Auth sets it: with `__Secure-` in front unless the origin is a local http one. */
+export function sessionCookieName(secure: boolean): string {
+  return `${secure ? '__Secure-' : ''}${COOKIE_PREFIX}.session_token`;
 }
 
-/** The session cookie's signed value, or null when the request has none. */
-function sessionCookie(headers: Headers, config: SignInConfig): string | null {
+interface SessionCookie {
+  /** The signed value. */
+  readonly value: string;
+  /** Whether it came under the `__Secure-` name, which a browser accepts only from an https origin. */
+  readonly secure: boolean;
+}
+
+/**
+ * The session cookie, or null when the request has none. The origin may be
+ * stored in D1, so its name is checked against the origin after the session
+ * query has read it.
+ */
+function sessionCookie(headers: Headers): SessionCookie | null {
   const header = headers.get('cookie');
   if (!header) return null;
-  const name = sessionCookieName(config);
-  for (const part of header.split(';')) {
-    const separator = part.indexOf('=');
-    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
-    try {
-      return decodeURIComponent(part.slice(separator + 1).trim());
-    } catch {
-      return '';
+  for (const secure of [true, false]) {
+    const name = sessionCookieName(secure);
+    for (const part of header.split(';')) {
+      const separator = part.indexOf('=');
+      if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+      try {
+        return { value: decodeURIComponent(part.slice(separator + 1).trim()), secure };
+      } catch {
+        return { value: '', secure };
+      }
     }
   }
   return null;
 }
 
-/** Whether any of the person's GitHub accounts, as a JSON array of ids, is a deployment admin's (OWNER_GITHUB_IDS). */
-function hasOwnerAccount(config: SignInConfig, githubIds: string | null): boolean {
+/**
+ * Whether the person is a deployment admin: the setup page recorded one of
+ * their GitHub accounts (`recorded`, as the query read it), or one of them,
+ * in a JSON array of ids, is in OWNER_GITHUB_IDS.
+ */
+function isAdmin(secrets: Secrets, recorded: number, githubIds: string | null): boolean {
+  if (recorded === 1) return true;
   const ids = parseJson(githubIds);
-  return Array.isArray(ids) && ids.some((id) => typeof id === 'string' && config.owners.has(id));
+  return Array.isArray(ids) && ids.some((id) => typeof id === 'string' && secrets.owners.has(id));
+}
+
+/**
+ * The columns the session and token queries read for the person whose user
+ * id is the column `user`: their GitHub ids, whether the setup page recorded
+ * one of them as an admin, and the stored app's origin. Each check stays one
+ * query.
+ */
+function personColumns(user: string): string {
+  return `(SELECT json_group_array(a.account_id) FROM auth_account a
+           WHERE a.user_id = ${user} AND a.provider_id = 'github') AS github_ids,
+         EXISTS (SELECT 1 FROM auth_account a JOIN access_deployment_admins d ON d.github_id = a.account_id
+           WHERE a.user_id = ${user} AND a.provider_id = 'github') AS recorded_admin,
+         (SELECT origin FROM access_github_app) AS stored_origin`;
+}
+
+/** The deployment's origin: the one the secrets name, else the stored app's as a query read it. */
+function originFrom(secrets: Secrets, stored: string | null): string | null {
+  return secrets.app?.origin ?? originOf(stored);
 }
 
 /** The parsed value, or null when the text is null or not JSON. */
@@ -184,20 +243,23 @@ function workspaceGrantsOf(text: string | null, most: ProjectAccess | null): Wor
   }));
 }
 
-/** The person a signed session cookie belongs to, with their workspaces; null
- * when its signature fails, it expired, or the person is neither a deployment
- * admin nor a member of any workspace any more. */
-async function verifySession(db: D1Database, config: SignInConfig, cookie: string): Promise<PersonPrincipal | null> {
-  const dot = cookie.lastIndexOf('.');
+/** The person a signed session cookie belongs to, with their workspaces, and
+ * the deployment's origin; null when its signature fails, it expired, its
+ * cookie's name does not match the origin, or the person is neither a
+ * deployment admin nor a member of any workspace any more. */
+async function verifySession(
+  db: D1Database,
+  secrets: Secrets,
+  cookie: SessionCookie,
+): Promise<{ readonly principal: PersonPrincipal; readonly origin: string } | null> {
+  const dot = cookie.value.lastIndexOf('.');
   if (dot < 1) return null;
-  const token = cookie.slice(0, dot);
-  const signature = cookie.slice(dot + 1);
-  if (signature.length !== 44 || !(await verifyCookieSignature(token, signature, config.secret))) return null;
+  const token = cookie.value.slice(0, dot);
+  const signature = cookie.value.slice(dot + 1);
+  if (signature.length !== 44 || !(await verifyCookieSignature(token, signature, secrets.secret))) return null;
   const row = await db
     .prepare(
-      `SELECT s.user_id, u.name,
-         (SELECT json_group_array(a.account_id) FROM auth_account a
-           WHERE a.user_id = s.user_id AND a.provider_id = 'github') AS github_ids,
+      `SELECT s.user_id, u.name, ${personColumns('s.user_id')},
          (SELECT json_group_array(json_array(m.workspace_id, w.name, m.role))
            FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
            WHERE m.user_id = s.user_id) AS memberships
@@ -205,12 +267,21 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
        WHERE s.token = ? AND s.expires_at > ?`,
     )
     .bind(token, new Date().toISOString())
-    .first<{ user_id: string; name: string; github_ids: string | null; memberships: string | null }>();
+    .first<{
+      user_id: string;
+      name: string;
+      github_ids: string | null;
+      recorded_admin: number;
+      stored_origin: string | null;
+      memberships: string | null;
+    }>();
   if (!row) return null;
-  const admin = hasOwnerAccount(config, row.github_ids);
+  const origin = originFrom(secrets, row.stored_origin);
+  if (origin === null || cookie.secure !== isSecure(origin)) return null;
+  const admin = isAdmin(secrets, row.recorded_admin, row.github_ids);
   const memberships = membershipsOf(row.memberships);
   if (!admin && memberships.length === 0) return null;
-  return Object.freeze({
+  const principal: PersonPrincipal = Object.freeze({
     kind: 'person',
     id: `person:${row.user_id}`,
     userId: row.user_id,
@@ -218,6 +289,7 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
     admin,
     memberships,
   });
+  return { principal, origin };
 }
 
 /**
@@ -226,7 +298,7 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
  * consent is gone, or its person is neither a deployment admin nor a member
  * of any workspace any more.
  */
-async function verifyAgentToken(db: D1Database, config: SignInConfig, token: string): Promise<AgentPrincipal | null> {
+async function verifyAgentToken(db: D1Database, secrets: Secrets, token: string): Promise<AgentPrincipal | null> {
   // Better Auth stores an opaque token as base64url(SHA-256(token)).
   const stored = base64url(await sha256(token));
   const row = await db
@@ -237,8 +309,7 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
            JOIN workspace_members m ON m.workspace_id = g.workspace_id AND m.user_id = g.user_id
            JOIN workspaces w ON w.id = g.workspace_id
            WHERE g.user_id = t.user_id AND g.client_id = t.client_id) AS grants,
-         (SELECT json_group_array(a.account_id) FROM auth_account a
-           WHERE a.user_id = t.user_id AND a.provider_id = 'github') AS github_ids,
+         ${personColumns('t.user_id')},
          EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = t.user_id) AS member
        FROM auth_oauth_access_token t
        JOIN auth_oauth_client c ON c.client_id = t.client_id AND coalesce(c.disabled, 0) = 0
@@ -256,12 +327,16 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
       person_name: string | null;
       grants: string | null;
       github_ids: string | null;
+      recorded_admin: number;
+      stored_origin: string | null;
       member: number;
     }>();
-  if (!row || (row.member !== 1 && !hasOwnerAccount(config, row.github_ids))) return null;
+  if (!row || (row.member !== 1 && !isAdmin(secrets, row.recorded_admin, row.github_ids))) return null;
+  const origin = originFrom(secrets, row.stored_origin);
+  if (origin === null) return null;
   // A token names the resources it was issued for; one for another resource is refused.
   const resources = parseJson(row.resources);
-  if (resources !== null && !(Array.isArray(resources) && resources.includes(mcpResource(config.origin)))) return null;
+  if (resources !== null && !(Array.isArray(resources) && resources.includes(mcpResource(origin)))) return null;
   const scopes = parseJson(row.scopes);
   const most = Array.isArray(scopes) ? scopeAccess(scopes.filter((scope) => typeof scope === 'string')) : null;
   return Object.freeze({

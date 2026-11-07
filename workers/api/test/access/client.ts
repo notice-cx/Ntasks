@@ -5,6 +5,7 @@ import { runInDurableObject } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
 import { expect } from 'vitest';
 import { projectChoice } from '../../src/access/pages.ts';
+import entry from '../../src/index.ts';
 import type { TaskStore } from '../../src/store/index.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
 import { codeFor, GITHUB_AUTHORIZE } from './github.ts';
@@ -22,11 +23,21 @@ export function freshAddress(): string {
   return `198.51.${bytes[0]}.${bytes[1]}`;
 }
 
-/** Calls the Worker as a client at `address`, without following redirects. */
-export function call(path: string, init: RequestInit = {}, address = freshAddress()): Promise<Response> {
+/**
+ * Calls the Worker as a client at `address`, without following redirects,
+ * with the test bindings or, given `bindings`, with those instead.
+ */
+export function call(
+  path: string,
+  init: RequestInit = {},
+  address = freshAddress(),
+  bindings?: Env,
+): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('cf-connecting-ip', address);
-  return worker.fetch(new Request(new URL(path, ORIGIN), { ...init, headers, redirect: 'manual' }));
+  const request = new Request(new URL(path, ORIGIN), { ...init, headers, redirect: 'manual' });
+  if (bindings === undefined) return worker.fetch(request);
+  return entry.fetch(request as Parameters<typeof entry.fetch>[0], bindings);
 }
 
 /** Where a redirect goes, as a URL. */
@@ -72,9 +83,12 @@ export class Browser {
   private readonly cookies = new Map<string, string>();
   /** Whether a person who signs in becomes an owner of the test workspace, where most tests work. */
   private readonly joinTestWorkspace: boolean;
+  /** The Worker's bindings for this browser's requests, when not the test bindings. */
+  private readonly bindings: Env | undefined;
 
-  constructor(options: { readonly joinTestWorkspace?: boolean } = {}) {
+  constructor(options: { readonly joinTestWorkspace?: boolean; readonly bindings?: Env } = {}) {
     this.joinTestWorkspace = options.joinTestWorkspace ?? true;
+    this.bindings = options.bindings;
   }
 
   cookie(name: string): string | undefined {
@@ -122,7 +136,7 @@ export class Browser {
       body = form.toString();
       headers.set('content-type', 'application/x-www-form-urlencoded');
     }
-    const response = await call(path, { method, headers, body }, this.address);
+    const response = await call(path, { method, headers, body }, this.address, this.bindings);
     for (const line of response.headers.getSetCookie()) {
       const [pair = '', ...attributes] = line.split(';');
       const separator = pair.indexOf('=');

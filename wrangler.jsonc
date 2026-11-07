@@ -33,18 +33,21 @@
       "/.well-known/oauth-protected-resource/*"
     ]
   },
-  // Sign-in settings; docs/sign-in.md lists them. The Deploy to Cloudflare
-  // button asks for the ones .dev.vars.example names, `wrangler secret put`
-  // sets them on any other deployment, and .dev.vars beside this file holds
-  // them locally. `wrangler deploy` refuses a Worker that lacks one, and a
-  // malformed one turns sign-in off.
+  // Sign-in's one required secret; docs/sign-in.md describes it and the
+  // optional ones. The Deploy to Cloudflare button asks for the ones
+  // .dev.vars.example names, `wrangler secret put` sets them on any other
+  // deployment, and .dev.vars beside this file holds them locally.
+  // `wrangler deploy` refuses a Worker that lacks a required one, and a
+  // malformed one turns sign-in off. The setup page at /sign-in registers the
+  // GitHub App people sign in through.
   "secrets": {
-    "required": ["NTASKS_ORIGIN", "AUTH_SECRET", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "OWNER_GITHUB_IDS"]
+    "required": ["AUTH_SECRET"]
   },
   // About 30 sign-in requests a minute from one address; about 3 agent
-  // registrations a minute from one address and 10 from all addresses
-  // together. Each registration writes to D1 without anyone signed in, and
-  // the free plan's daily write limit stops every query once reached.
+  // registrations, and separately 3 setup attempts, a minute from one
+  // address, and 10 registrations from all addresses together. Each
+  // registration writes to D1 without anyone signed in, and the free plan's
+  // daily write limit stops every query once reached.
   // Cloudflare counts each limit separately in each of its locations, so the
   // numbers are approximate. namespace_id names a limiter within the account;
   // it is not a secret.

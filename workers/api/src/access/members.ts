@@ -105,6 +105,15 @@ export async function acceptInvitations(db: D1Database, userId: string, login: s
   ]);
 }
 
+/** Whether the setup page recorded this GitHub account, by its numeric id, as a deployment admin. */
+export async function isRecordedAdmin(db: D1Database, githubId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 AS found FROM access_deployment_admins WHERE github_id = ?')
+    .bind(githubId)
+    .first();
+  return row !== null;
+}
+
 /** Whether the user is a member of any workspace. */
 export async function isMember(db: D1Database, userId: string): Promise<boolean> {
   const row = await db

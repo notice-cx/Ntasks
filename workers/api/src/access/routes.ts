@@ -1,17 +1,18 @@
 /**
  * Every sign-in path the Worker answers: OAuth discovery, the Better Auth
- * routes MCP clients and browsers use, the sign-in and agent approval pages,
- * a person's routes for listing and revoking their agents, an owner's routes
- * for a workspace's members, invitations and service credentials, and the
- * workspace routes, which read and write D1 beside sign-in. Every path here
- * is in wrangler.jsonc's run_worker_first.
+ * routes MCP clients and browsers use, the setup, sign-in and agent approval
+ * pages, a person's routes for listing and revoking their agents, an owner's
+ * routes for a workspace's members, invitations and service credentials, and
+ * the workspace routes, which read and write D1 beside sign-in. Every path
+ * here is in wrangler.jsonc's run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
 import { json } from '../http/respond.ts';
 import { chooseWorkspace, WORKSPACE_HEADER, type WorkspaceReach } from '../workspaces.ts';
 import { createAuth, type Auth } from './auth.ts';
 import { reachesOf } from './authenticator.ts';
-import { signInConfig, type SignInConfig } from './config.ts';
+import { loadSignIn, originOf, storeGitHubApp, type SignIn, type SignInConfig } from './config.ts';
+import { randomSecret, sameBytes, sha256 } from './crypto.ts';
 import {
   AccessRefused,
   createServiceCredential,
@@ -30,7 +31,17 @@ import {
   workspaceNameOf,
 } from './grants.ts';
 import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
-import { agentAccessPage, expiredPage, signInPage, type WorkspaceProjects } from './pages.ts';
+import {
+  agentAccessPage,
+  AUTH_SECRET_FIELD,
+  expiredPage,
+  manifestPage,
+  SETUP_ACTION,
+  setupEndPage,
+  setupPage,
+  signInPage,
+  type WorkspaceProjects,
+} from './pages.ts';
 import type { PersonPrincipal, Principal } from './principal.ts';
 import {
   AGENT_ACCESS_PAGE,
@@ -42,12 +53,20 @@ import {
   protectedResourceMetadata,
   scopeAccess,
 } from './protocol.ts';
-import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
+import {
+  convertManifest,
+  endSetupCookie,
+  GITHUB_NEW_APP,
+  manifestFor,
+  setupStateHolds,
+  startSetupState,
+} from './setup.ts';
+import { notConfigured, refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 
 export interface AccessEnv extends VerifierEnv, ProjectSource {
   /** Limits sign-in requests per client address (wrangler.jsonc `ratelimits`). */
   readonly SIGN_IN_LIMIT: RateLimit;
-  /** Limits agent registrations from one address. */
+  /** Limits agent registrations from one address, and, under its own keys, setup attempts from one address. */
   readonly REGISTER_ADDRESS_LIMIT: RateLimit;
   /** Limits agent registrations from all addresses together. */
   readonly REGISTER_LIMIT: RateLimit;
@@ -79,39 +98,45 @@ export function isAccessPath(pathname: string): boolean {
 export async function handleAccess(request: Request, env: AccessEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!isAccessPath(url.pathname)) return null;
-  const config = signInConfig(env);
-  if (!config) return json({ error: 'sign_in_not_configured' }, 503);
   if (url.pathname === PROTECTED_RESOURCE_METADATA_PATH) {
     if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
-    return Response.json(protectedResourceMetadata(config.origin), {
+    const signIn = await loadSignIn(env);
+    if (signIn.state !== 'on') return notConfigured(env);
+    return Response.json(protectedResourceMetadata(signIn.config.origin), {
       headers: { 'cache-control': 'public, max-age=300' },
     });
   }
   const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const { success } = await env.SIGN_IN_LIMIT.limit({ key: address });
   if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
-  // Anyone may register an agent, from any number of addresses, and each
-  // registration writes to D1, so one key for every caller caps them all.
-  // Each address is limited first, and a registration it is refused does not
-  // count toward the shared cap, so one address cannot use all of it.
-  // Those limits count separately in each Cloudflare location; the daily
-  // budget is counted in D1, which every location shares.
-  if (url.pathname === REGISTER_PATH && request.method === 'POST') {
-    const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: address });
-    if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
-    const fromAll = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
-    if (!fromAll.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
-    if (!(await takeRegistration(env.DB, registrationDay()))) {
-      return json({ error: 'registration_budget_spent' }, 429, { 'retry-after': String(secondsToNextUtcDay()) });
-    }
-  }
   try {
+    // The token verifier answers for these when sign-in is off.
+    if (url.pathname === WORKSPACES_API) return await workspacesApi(request, env);
+    if (url.pathname === ACCESS_API || url.pathname.startsWith(`${ACCESS_API}/`)) {
+      return await accessApi(request, env, url);
+    }
+    const signIn = await loadSignIn(env);
+    if (url.pathname === SIGN_IN_PAGE) return await signInPath(request, env, signIn, url);
+    if (signIn.state !== 'on') return notConfigured(env);
+    const config = signIn.config;
+    // Anyone may register an agent, from any number of addresses, and each
+    // registration writes to D1, so one key for every caller caps them all.
+    // Each address is limited first, and a registration it is refused does not
+    // count toward the shared cap, so one address cannot use all of it.
+    // Those limits count separately in each Cloudflare location; the daily
+    // budget is counted in D1, which every location shares.
+    if (url.pathname === REGISTER_PATH && request.method === 'POST') {
+      const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: address });
+      if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+      const fromAll = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
+      if (!fromAll.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+      if (!(await takeRegistration(env.DB, registrationDay()))) {
+        return json({ error: 'registration_budget_spent' }, 429, { 'retry-after': String(secondsToNextUtcDay()) });
+      }
+    }
     if (AUTHORIZATION_SERVER_METADATA_PATHS.includes(url.pathname)) return await serverMetadata(request, env, config);
     if (url.pathname.startsWith(`${AUTH_BASE_PATH}/`)) return await library(request, env, config, url);
-    if (url.pathname === SIGN_IN_PAGE) return await signIn(request, env, config, url);
-    if (url.pathname === AGENT_ACCESS_PAGE) return await agentAccess(request, env, config, url);
-    if (url.pathname === WORKSPACES_API) return await workspacesApi(request, env);
-    return await accessApi(request, env, url);
+    return await agentAccess(request, env, config, url);
   } catch (error) {
     if (error instanceof AccessRefused) {
       const status = error.code === 'not_found' ? 404 : error.code === 'name_taken' ? 409 : 400;
@@ -231,29 +256,137 @@ function fromThisOrigin(request: Request, config: SignInConfig): boolean {
 }
 
 /**
- * GET shows the sign-in page. POST, from this origin only, starts a GitHub
- * sign-in or signs out. A changed or expired OAuth query shows the expired page.
+ * /sign-in: the setup page until the deployment can sign in with GitHub
+ * (setupPath), then the sign-in page.
  */
-async function signIn(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
-  if (request.method === 'GET') {
-    const query = url.search.slice(1);
-    const oauthQuery = await signedQuery(query, config);
-    if (new URLSearchParams(query).has('sig') && oauthQuery === null) return expiredPage();
-    const person = personOf(await verifyRequest(request, env));
-    return signInPage({ signedInAs: person?.name ?? null, oauthQuery, error: url.searchParams.get('error') });
+async function signInPath(request: Request, env: AccessEnv, signIn: SignIn, url: URL): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
   }
-  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
-  if (!fromThisOrigin(request, config)) return json({ error: 'cross_site_request' }, 403);
-  const form = new URLSearchParams(await boundedText(request));
-  if (form.get('action') === 'sign-out') {
-    const signedOut = await callLibrary(createAuth(env.DB, config), config, request, `${AUTH_BASE_PATH}/sign-out`, {});
-    return redirectWithCookies(SIGN_IN_PAGE, signedOut);
+  const form = request.method === 'POST' ? new URLSearchParams(await boundedText(request)) : null;
+  const setup = await setupPath(request, env, signIn, url, form);
+  if (setup) return setup;
+  if (signIn.state !== 'on') return notConfigured(env);
+  return form ? signInPost(request, env, signIn.config, form) : signInGet(request, env, signIn.config, url);
+}
+
+/**
+ * The setup's steps, or null for a request that is not one. Until the
+ * deployment can sign in, GET shows the setup page. A POST with the setup
+ * action checks AUTH_SECRET and answers with the form that posts the app's
+ * manifest to GitHub. GitHub's return, a GET with `code` and `state`, stores
+ * the app and signs the deployer in through it. Once sign-in exists, each
+ * step is refused.
+ */
+async function setupPath(
+  request: Request,
+  env: AccessEnv,
+  signIn: SignIn,
+  url: URL,
+  form: URLSearchParams | null,
+): Promise<Response | null> {
+  const starting = form?.get('action') === SETUP_ACTION;
+  const returning = !form && url.searchParams.has('code') && url.searchParams.has('state');
+  if (!starting && !returning) return !form && signIn.state === 'setup' ? setupPage({ error: null }) : null;
+  // The setup binds sign-in to the origin it runs at, and its cookies and
+  // GitHub's callback must not travel in the clear.
+  const origin = originOf(url.origin);
+  if (origin === null) {
+    return setupPage({ error: 'Setup runs only at an https address, or a local one.', status: 400 });
   }
-  const rawQuery = form.get('oauth_query');
-  const oauthQuery = rawQuery === null ? null : await signedQuery(rawQuery, config);
-  if (rawQuery !== null && oauthQuery === null) return expiredPage();
-  // With an OAuth query, the library resumes the agent's authorization once
-  // GitHub sends the browser back, and callbackURL is not used.
+  if (returning) {
+    const answer = await finishSetup(request, env, signIn, url, origin);
+    answer.headers.append('set-cookie', endSetupCookie(origin));
+    return answer;
+  }
+  if (request.headers.get('origin') !== origin) return json({ error: 'cross_site_request' }, 403);
+  if (signIn.state === 'off') return notConfigured(env);
+  if (signIn.state === 'on') return alreadySetUp();
+  const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const { success } = await env.REGISTER_ADDRESS_LIMIT.limit({ key: `setup:${address}` });
+  if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+  // AUTH_SECRET proves the request comes from whoever made the deployment.
+  const given = await sha256(form?.get(AUTH_SECRET_FIELD) ?? '');
+  if (!sameBytes(given, await sha256(signIn.secrets.secret))) {
+    return setupPage({ error: 'That is not this deployment’s AUTH_SECRET.', status: 403 });
+  }
+  const { state, cookie } = await startSetupState(signIn.secrets.secret, origin);
+  const nonce = randomSecret(16);
+  const page = manifestPage(
+    { action: `${GITHUB_NEW_APP}?state=${encodeURIComponent(state)}`, manifest: manifestFor(origin) },
+    nonce,
+  );
+  page.headers.append('set-cookie', cookie);
+  return page;
+}
+
+/** The page every setup step answers once sign-in exists. */
+function alreadySetUp(): Response {
+  return setupEndPage({
+    status: 409,
+    heading: 'Sign-in is already set up',
+    words: 'This deployment signs in with GitHub. Setup runs only once.',
+    next: 'Sign in',
+  });
+}
+
+/**
+ * GitHub's return from the manifest flow: checks the state against this
+ * browser's setup cookie, exchanges the code for the app's credentials,
+ * stores them with the app's owner as a deployment admin, and starts the
+ * owner's sign-in through the new app. The caller ends the setup cookie.
+ */
+async function finishSetup(
+  request: Request,
+  env: AccessEnv,
+  signIn: SignIn,
+  url: URL,
+  origin: string,
+): Promise<Response> {
+  if (signIn.state === 'off') return notConfigured(env);
+  if (signIn.state === 'on') return alreadySetUp();
+  const state = url.searchParams.get('state') ?? '';
+  if (!(await setupStateHolds(signIn.secrets.secret, origin, state, request.headers))) {
+    return setupEndPage({
+      status: 400,
+      heading: 'Setup did not finish',
+      words: 'This setup link has expired, was used already, or was started in another browser.',
+      next: 'Start again',
+    });
+  }
+  const app = await convertManifest(url.searchParams.get('code') ?? '');
+  if (!app) {
+    return setupEndPage({
+      status: 502,
+      heading: 'Setup did not finish',
+      words: 'GitHub did not return the new app.',
+      next: 'Start again',
+    });
+  }
+  const stored = await storeGitHubApp(
+    env.DB,
+    signIn.secrets,
+    { origin, github: app.github, adminGithubId: app.ownerId },
+    signIn.stale,
+  );
+  if (!stored) return alreadySetUp();
+  const now = await loadSignIn(env);
+  if (now.state !== 'on') return notConfigured(env);
+  return startGitHubSignIn(request, env, now.config, null);
+}
+
+/**
+ * Starts a sign-in with GitHub for the browser that sent `request`, and
+ * sends it to GitHub. With an OAuth query, the library resumes the agent's
+ * authorization once GitHub sends the browser back, and callbackURL is not
+ * used.
+ */
+async function startGitHubSignIn(
+  request: Request,
+  env: AccessEnv,
+  config: SignInConfig,
+  oauthQuery: string | null,
+): Promise<Response> {
   const response = await callLibrary(createAuth(env.DB, config), config, request, `${AUTH_BASE_PATH}/sign-in/social`, {
     provider: 'github',
     callbackURL: '/',
@@ -263,6 +396,33 @@ async function signIn(request: Request, env: AccessEnv, config: SignInConfig, ur
   const location = await nextUrl(response);
   if (location === null) return json({ error: 'sign_in_failed' }, 502);
   return redirectWithCookies(location, response);
+}
+
+/** The sign-in page. A changed or expired OAuth query shows the expired page. */
+async function signInGet(request: Request, env: AccessEnv, config: SignInConfig, url: URL): Promise<Response> {
+  const query = url.search.slice(1);
+  const oauthQuery = await signedQuery(query, config);
+  if (new URLSearchParams(query).has('sig') && oauthQuery === null) return expiredPage();
+  const person = personOf(await verifyRequest(request, env));
+  return signInPage({ signedInAs: person?.name ?? null, oauthQuery, error: url.searchParams.get('error') });
+}
+
+/** The sign-in page's buttons, from this origin only: Sign in with GitHub, or Sign out. */
+async function signInPost(
+  request: Request,
+  env: AccessEnv,
+  config: SignInConfig,
+  form: URLSearchParams,
+): Promise<Response> {
+  if (!fromThisOrigin(request, config)) return json({ error: 'cross_site_request' }, 403);
+  if (form.get('action') === 'sign-out') {
+    const signedOut = await callLibrary(createAuth(env.DB, config), config, request, `${AUTH_BASE_PATH}/sign-out`, {});
+    return redirectWithCookies(SIGN_IN_PAGE, signedOut);
+  }
+  const rawQuery = form.get('oauth_query');
+  const oauthQuery = rawQuery === null ? null : await signedQuery(rawQuery, config);
+  if (rawQuery !== null && oauthQuery === null) return expiredPage();
+  return startGitHubSignIn(request, env, config, oauthQuery);
 }
 
 /**

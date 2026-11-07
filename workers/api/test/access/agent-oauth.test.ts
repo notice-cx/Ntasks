@@ -285,7 +285,7 @@ describe('revoking an agent', () => {
     const userId = (await userIdOf(OWNER_GITHUB_ID))!;
     await env.DB.prepare('DELETE FROM workspace_members WHERE user_id = ?').bind(userId).run();
     try {
-      expect(await verifyRequest(request, departed)).toEqual({ ok: false, reason: 'invalid_token' });
+      expect(await verifyRequest(request, departed)).toMatchObject({ ok: false, reason: 'invalid_token' });
       expect((await verifyRequest(request, env)).ok).toBe(true);
     } finally {
       await addMember(TEST_WORKSPACE, userId, 'owner');
