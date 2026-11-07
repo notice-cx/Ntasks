@@ -169,6 +169,27 @@ describe('reads from memory', () => {
     });
   });
 
+  it("serves a project's fields from memory, and reads them again after one is defined or retired", async () => {
+    await runInDurableObject(store(), async (instance: TaskStore) => {
+      const project = await newProject(instance.tasks);
+      const fields = async () => {
+        Object.assign(instance.meter, newMeter());
+        const read = await instance.tasks.listFields(project.id);
+        return {
+          fields: read.map((field) => [field.key, field.retiredAt !== null]),
+          statements: instance.meter.statements,
+        };
+      };
+      await fields();
+      expect(await fields()).toEqual({ fields: [], statements: 0 });
+      await instance.tasks.defineField(project.id, { key: 'size', name: 'Size', type: 'number' }, AGENT);
+      expect((await fields()).fields).toEqual([['size', false]]);
+      expect(await fields()).toEqual({ fields: [['size', false]], statements: 0 });
+      await instance.tasks.retireField(project.id, 'size', AGENT);
+      expect((await fields()).fields).toEqual([['size', true]]);
+    });
+  });
+
   it("reads again once a deferred task's time comes", async () => {
     const time = clock();
     const meter = newMeter();

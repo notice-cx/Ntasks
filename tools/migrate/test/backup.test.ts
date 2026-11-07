@@ -70,6 +70,7 @@ const TASKS: TaskRow[] = [
     notes: 'Notes so far.',
     design: 'How it is built.',
     estimate_minutes: 90,
+    field_values: JSON.stringify({ points: 3 }),
   },
   // A duplicate of a task whose id sorts after its own.
   {
@@ -117,6 +118,19 @@ const ROWS: BackupRows = {
   projects: [
     { id: ACME, key: 'acme.example.com', name: 'Acme', prefix: 'acme', created_at: AT },
     { id: BETA, key: 'beta.example.com', name: 'Beta', prefix: 'beta', created_at: AT },
+  ],
+  custom_fields: [
+    {
+      project_id: ACME,
+      key: 'points',
+      name: 'Points',
+      type: 'number',
+      options: null,
+      created_at: AT,
+      created_by: 'owner',
+      retired_at: null,
+      retired_by: null,
+    },
   ],
   tasks: TASKS,
   task_labels: [
@@ -285,7 +299,7 @@ describe('a backup through the command line', () => {
     expect(taken.err).toEqual([]);
     expect(taken.code).toBe(0);
     expect(taken.out[0]).toBe(
-      `Backed up 2 projects, 6 tasks, 3 task_labels, 5 task_edges, 2 task_external_links, 1 task_comments, 8 task_events, 1 write_receipts, as the store stood at ${AT}, in 20 pages.`,
+      `Backed up 2 projects, 1 custom_fields, 6 tasks, 3 task_labels, 5 task_edges, 2 task_external_links, 1 task_comments, 8 task_events, 1 write_receipts, as the store stood at ${AT}, in 21 pages.`,
     );
     expect((await stat(taken.file)).mode & 0o777).toBe(0o600);
 

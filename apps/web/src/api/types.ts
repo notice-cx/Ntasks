@@ -92,6 +92,8 @@ export interface LiveTask {
   dependencies: TaskDependency[];
   /** Ordered by URL, when the server sends them. */
   externalLinks?: TaskExternalLink[];
+  /** The values of its project's custom fields, by field key, when the server sends them. */
+  fields?: Record<string, string | number | boolean | string[]>;
   /** How many comments the task carries; the bodies come with the task's own read. */
   comments: number;
   /** Fields other systems attach, stored and returned as given. */

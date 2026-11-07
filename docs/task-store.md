@@ -31,6 +31,7 @@ contributors working on the engine, the API or the import from Beads. Read
 | `task_labels` | A task's labels, one row each |
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
+| `custom_fields` | The custom fields each project defines: key, name, type, options, and when it was retired |
 | `task_comments` | Comments, in the order they were added |
 | `task_events` | Every change to every task, in order |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
@@ -55,6 +56,17 @@ writes them, so one page has one URL and a task links to it once. The
 database allows URLs of at most 2,048 characters; a new write through the API
 also takes at most 32 links on a task and 512 characters in a title.
 
+A task's values of its project's custom fields are the `field_values` column
+of `tasks`: one JSON object by field key, holding text, a number, true or false,
+or a list of options. Being part of the task's row, they cost a read no row of
+its own, and a filter by them tests rows the read reaches through its index
+anyway. A field's type and options are in `custom_fields`, and the engine
+checks each value against them in the write that sets it. A retired field
+takes no new value: the batch that sets a value fails as `version_conflict`
+when its field was retired after the write checked it, and the write is
+checked again. The database does not refuse a value of a retired field
+itself, so an import can load a retired field with the values tasks had.
+
 A backup holds every row of the tables above, in their order, as stored
 ([API](api.md#backing-up-the-whole-store)). It loads into an empty store in
 one transaction, with the statements an import uses, and the store checks
@@ -66,8 +78,9 @@ and a parent's id can sort after its child's.
 These hold whatever code writes to the database. Each has a test in
 `schema.test.ts`.
 
-- The CHECK lists of statuses, types, link types, resolutions and history
-  event kinds match the lists in `packages/domain/src/task.ts`.
+- The CHECK lists of statuses, types, link types, resolutions, history
+  event kinds, external link kinds and custom field types match the lists in
+  `packages/domain/src/task.ts`.
 - A task is closed exactly when it records when and how it closed, and close
   details are empty while it is not closed.
 - Every update of a task raises its `version` by exactly one.
@@ -75,6 +88,9 @@ These hold whatever code writes to the database. Each has a test in
 - Tasks, their history and their comments are never deleted, and history and
   comments are never edited.
 - A project prefix has no hyphen, and a task never depends on itself.
+- A custom field keeps its project, key, type and options, stays retired once
+  retired, and is never deleted. A choice field has options and no other
+  field does. A task's `field_values` is a JSON object.
 
 ### The write guard
 
@@ -100,7 +116,9 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
 - **Reads:** `getTask`, `findTasks`, `listTasks`, `listBoard`, `listEpics`,
-  `listComments`, `listHistory`, `listChanges`, `lint` and `recordedWrite`.
+  `listLabelled`, `listExternalLinks`, `listFields`, `listComments`,
+  `listHistory`, `listChanges`, `lint` and `recordedWrite`. `listTasks` and
+  `listBoard` take filters by custom field values.
   `listTasks` reads one project a page at a time; `listBoard` reads a whole
   board, in one project or in every project, in one round trip.
   `recordedWrite` returns what an earlier write with an idempotency key
@@ -115,6 +133,12 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
 - **Projects:** `listProjects` and `createProject`.
+- **Custom fields:** `defineField` and `retireField`, each one batch, which
+  writes a retry record when the call carries a retry identity (an MCP
+  `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a
+  repeated definition is refused rather than replayed. A key the project has
+  used, retired or not, is refused as
+  `invalid`, and so is a field past the project's 64.
 
 The engine checks the task model's rules. It does not check who may act: the
 API layer signs the sender in and passes the engine an `Actor`.

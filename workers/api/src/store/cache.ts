@@ -104,11 +104,14 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
       cached(JSON.stringify(['labelled', projectId, query]), () => engine.listLabelled(projectId, query)),
     listExternalLinks: (taskIds) =>
       cached(JSON.stringify(['external-links', taskIds]), () => engine.listExternalLinks(taskIds)),
+    listFields: (projectId) => cached(JSON.stringify(['fields', projectId]), () => engine.listFields(projectId)),
     latestChange: () => cached('latest-change', () => engine.latestChange()),
     createProject: writes(engine.createProject),
     createTask: writes(engine.createTask),
     writeTask: writes(engine.writeTask),
     addComment: writes(engine.addComment),
+    defineField: writes(engine.defineField),
+    retireField: writes(engine.retireField),
     // recordUnchanged writes only a retry record, which no cached read shows.
   } satisfies TaskEngine);
 }

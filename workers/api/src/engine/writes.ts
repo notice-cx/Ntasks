@@ -10,8 +10,12 @@ import {
   type CommentResult,
   type CreateProjectInput,
   type CreateTaskInput,
+  type CustomField,
+  type DefineFieldInput,
   type DependencyType,
   type ExternalLink,
+  type FieldResult,
+  type FieldValue,
   type Json,
   type JsonObject,
   type Project,
@@ -24,7 +28,7 @@ import {
 } from '@ntasks/domain';
 import type { Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import { toTask, type StoredTaskRow } from './rows.ts';
+import { toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
@@ -88,6 +92,11 @@ function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
     .map(({ url, title, kind }) => ({ url, title, kind }));
 }
 
+/** Field values as history events record them: every value the task carries, by key in order. */
+function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
+  return Object.fromEntries([...values].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 export class Writes {
   readonly #db: Database;
   readonly #reads: Reads;
@@ -138,6 +147,19 @@ export class Writes {
          ON CONFLICT (task_id, url) DO UPDATE SET title = excluded.title, kind = excluded.kind`,
       )
       .bind(taskId, link.url, link.title, link.kind, at, actor.name);
+  }
+
+  /** Fails the batch with `version_conflict` when one of these fields was
+   * retired since the write checked it, so the caller checks again. */
+  #noneRetired(projectId: string, keys: readonly string[]): Statement {
+    return this.#db
+      .prepare(
+        `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
+           SELECT 1 FROM json_each(?2) k CROSS JOIN custom_fields f ON f.project_id = ?1 AND f.key = k.value
+           WHERE f.retired_at IS NOT NULL
+         ), 'version_conflict'`,
+      )
+      .bind(projectId, JSON.stringify(keys));
   }
 
   /** Fails the batch with `cycle` if `from` already waits, through blocks links, on `to`. */
@@ -231,6 +253,7 @@ export class Writes {
         labels: [],
         dependencies: [],
         externalLinks: [],
+        fields: {},
         close: null,
         filedBy: actor.name,
         filedModel: actor.model ?? null,
@@ -437,6 +460,12 @@ export class Writes {
       const at = this.#now();
       const dependencies = new Map<string, DependencyType>();
       if (gateId !== null) dependencies.set(gateId, 'blocks');
+      // Checked on every attempt: a field retired since the last one takes no value.
+      const values = new Map<string, FieldValue>();
+      if (fields.fields !== null) {
+        const checked = check.fieldValues(await this.#reads.listFields(projectId), fields.fields, false);
+        for (const [key, value] of Object.entries(checked)) if (value !== null) values.set(key, value);
+      }
       const statements: Statement[] = [
         this.#insert('tasks', {
           id,
@@ -451,6 +480,7 @@ export class Writes {
           notes: fields.notes,
           design: fields.design,
           estimate_minutes: fields.estimateMinutes,
+          field_values: JSON.stringify(fieldMap(values)),
           defer_until: fields.deferUntil,
           due_at: fields.dueAt,
           choices: fields.choices === null ? null : JSON.stringify(fields.choices),
@@ -463,6 +493,7 @@ export class Writes {
         }),
         ...fields.labels.map((label) => this.#insert('task_labels', { task_id: id, label })),
         ...fields.externalLinks.map((link) => this.#externalLink(id, link, actor, at)),
+        ...(values.size === 0 ? [] : [this.#noneRetired(projectId, [...values.keys()])]),
       ];
       if (gateId !== null && fields.requestApproval !== null) {
         statements.push(
@@ -522,6 +553,7 @@ export class Writes {
           labels: [...fields.labels].sort(),
           dependencies: linkList(dependencies),
           externalLinks: externalList(new Map(fields.externalLinks.map((link) => [link.url, link]))),
+          fields: fieldMap(values),
           close: null,
           filedBy: actor.name,
           filedModel: actor.model ?? null,
@@ -675,6 +707,26 @@ export class Writes {
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
 
+    const values = new Map(Object.entries(current.fields));
+    const setValues: [string, FieldValue][] = [];
+    const clearValues: string[] = [];
+    if (write.setFields !== null) {
+      const checked = check.fieldValues(await this.#reads.listFields(projectId), write.setFields, true);
+      for (const [key, value] of Object.entries(checked)) {
+        const standing = values.get(key);
+        if (value === null) {
+          if (standing === undefined) continue;
+          values.delete(key);
+          clearValues.push(key);
+        } else if (JSON.stringify(standing) !== JSON.stringify(value)) {
+          values.set(key, value);
+          setValues.push([key, value]);
+        }
+      }
+      if (setValues.length > 0 || clearValues.length > 0)
+        change('field_values', 'fields', JSON.stringify(fieldMap(values)), fieldMap(values));
+    }
+
     const external = new Map(current.externalLinks.map((link) => [link.url, link]));
     const removeExternal = write.removeExternalLinks.filter((url) => external.has(url));
     for (const url of removeExternal) external.delete(url);
@@ -741,6 +793,13 @@ export class Writes {
         );
       }
       for (const link of addExternal) statements.push(this.#externalLink(taskId, link, actor, at));
+      if (setValues.length > 0)
+        statements.push(
+          this.#noneRetired(
+            projectId,
+            setValues.map(([key]) => key),
+          ),
+        );
       if (write.comment !== null) {
         const commentId = crypto.randomUUID();
         statements.push(
@@ -774,6 +833,111 @@ export class Writes {
       }
     }
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
+  }
+
+  /** The project's field with this key, or null. */
+  async #field(projectId: string, key: string): Promise<CustomField | null> {
+    const row = await this.#db
+      .prepare('SELECT * FROM custom_fields WHERE project_id = ?1 AND key = ?2')
+      .bind(projectId, key)
+      .first<FieldRow>();
+    return row === null ? null : toField(row);
+  }
+
+  /** The answer of an earlier define or retire with this retry identity, or null. */
+  async #recordedField(retry: Retry | undefined, projectId: string): Promise<FieldResult | null> {
+    const recorded = await this.#recorded(retry, projectId);
+    if (recorded === null) return null;
+    // A task write's record names no field: its key was used for another kind of request.
+    if (typeof recorded.fieldKey !== 'string') refuse('retry_conflict');
+    const field = (await this.#field(projectId, recorded.fieldKey)) ?? refuse('not_found');
+    return { field, replayed: true };
+  }
+
+  async defineField(
+    projectId: string,
+    input: DefineFieldInput,
+    actorInput: Actor,
+    retryInput?: Retry,
+  ): Promise<FieldResult> {
+    const actor = check.actor(actorInput);
+    const retry = check.retry(retryInput);
+    const definition = check.fieldDefinition(input);
+    await this.#projectOf(projectId);
+    const replayed = await this.#recordedField(retry, projectId);
+    if (replayed !== null) return replayed;
+    const at = this.#now();
+    try {
+      await this.#db.batch([
+        // The limit is checked in the batch, so two defines at once cannot pass it together; the
+        // guard reports a field the limit kept out as not_found, which the catch below reads as the limit.
+        this.#db
+          .prepare(
+            `INSERT INTO custom_fields (project_id, key, name, type, options, created_at, created_by)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+             WHERE (SELECT count(*) FROM custom_fields WHERE project_id = ?1) < ?8`,
+          )
+          .bind(
+            projectId,
+            definition.key,
+            definition.name,
+            definition.type,
+            definition.options === null ? null : JSON.stringify(definition.options),
+            at,
+            actor.name,
+            TASK_LIMITS.fields,
+          ),
+        this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'not_found')"),
+        ...this.#receipt(retry, projectId, { fieldKey: definition.key }, at),
+      ]);
+    } catch (error) {
+      const message = messageOf(error);
+      const replay = await this.#recordedField(retry, projectId);
+      if (replay !== null) return replay;
+      if (message.includes('UNIQUE constraint failed: custom_fields'))
+        refuse('invalid', `the project already has a field ${definition.key}; a key names one field, retired or not`);
+      if (guardRefusalOf(message) === 'not_found')
+        refuse('invalid', `a project defines at most ${TASK_LIMITS.fields} fields, retired ones included`);
+      failureOf(error);
+      refuse('retry_conflict');
+    }
+    return { field: (await this.#field(projectId, definition.key)) ?? refuse('not_found'), replayed: false };
+  }
+
+  async retireField(projectId: string, key: string, actorInput: Actor, retryInput?: Retry): Promise<FieldResult> {
+    const actor = check.actor(actorInput);
+    const retry = check.retry(retryInput);
+    if (!check.isFieldKey(key)) check.invalid('key must be a field key, such as severity');
+    await this.#projectOf(projectId);
+    const replayed = await this.#recordedField(retry, projectId);
+    if (replayed !== null) return replayed;
+    const at = this.#now();
+    try {
+      await this.#db.batch([
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+               SELECT 1 FROM custom_fields WHERE project_id = ?1 AND key = ?2
+             ), 'not_found'`,
+          )
+          .bind(projectId, key),
+        // Retiring a retired field changes nothing; its key is still recorded for a retry.
+        this.#db
+          .prepare(
+            `UPDATE custom_fields SET retired_at = ?3, retired_by = ?4
+             WHERE project_id = ?1 AND key = ?2 AND retired_at IS NULL`,
+          )
+          .bind(projectId, key, at, actor.name),
+        ...this.#receipt(retry, projectId, { fieldKey: key }, at),
+      ]);
+    } catch (error) {
+      const replay = await this.#recordedField(retry, projectId);
+      if (replay !== null) return replay;
+      if (guardRefusalOf(messageOf(error)) === 'not_found') refuse('not_found', `The project has no field ${key}.`);
+      failureOf(error);
+      refuse('retry_conflict');
+    }
+    return { field: (await this.#field(projectId, key)) ?? refuse('not_found'), replayed: false };
   }
 
   async addComment(

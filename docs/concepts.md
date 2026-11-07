@@ -39,6 +39,17 @@ A **task** is one piece of work. It has:
 A task's **id** is its project's prefix, a hyphen and a short key of lowercase
 letters and digits, such as `web-a1b2`.
 
+## Custom fields
+
+A project can define **custom fields**: the facts its own work tracks, such
+as a severity or a number of points. Each field has a name and a type: text,
+a number, a date, one option from a list, several options from a list, a
+URL, or yes or no. Each task in the project can carry a value of each field,
+and lists of tasks can be narrowed to those holding a value.
+
+A field that is no longer wanted is **retired**: it takes no new values, and
+the values tasks carry stay, with their history.
+
 ## Dependencies
 
 Tasks connect to each other. When task B **depends on** task A, B waits until

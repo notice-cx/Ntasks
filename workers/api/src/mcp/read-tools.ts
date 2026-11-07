@@ -17,6 +17,7 @@ import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks, type Workspace } from '../service.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
+import { fieldFiltersOf } from '../task-writes.ts';
 import {
   booleanArg,
   instantArg,
@@ -123,6 +124,14 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         description: `At most this many (default ${PAGE}).`,
       },
       offset: { type: 'integer', minimum: 0, description: "Skip this many, from the previous answer's nextOffset." },
+      fields: {
+        type: 'object',
+        maxProperties: TASK_LIMITS.fields,
+        additionalProperties: { type: ['string', 'number', 'boolean'] },
+        description:
+          "Only tasks whose custom fields hold these values, by key, as list_fields lists the project's fields; " +
+          'for a multiple-choice field, an option the task has. Needs project.',
+      },
     }),
     annotations: READ,
     scope: 'tasks:read',
@@ -144,6 +153,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         'closed_days',
         'limit',
         'offset',
+        'fields',
       ]);
       const closedDays = integerArg(args, 'closed_days', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
       const limit = integerArg(args, 'limit', 1, TASK_LIMITS.page, PAGE);
@@ -182,7 +192,16 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const summary = (task: Task) => mcpSummary(links.task(task));
       if (args.project !== undefined) {
         const project = await projectOf(context, projectArg(args));
-        const found = await board(engine, project.id, statuses as TaskStatus[], closedDays, filters, now);
+        const fields =
+          args.fields === undefined ? undefined : await fieldFiltersOf(context, project, args.fields, 'fields.');
+        const found = await board(
+          engine,
+          project.id,
+          statuses as TaskStatus[],
+          closedDays,
+          fields === undefined ? filters : { ...filters, fields },
+          now,
+        );
         const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
         return {
           project: project.key,
@@ -193,6 +212,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           nextOffset: nextOf(page.length, found.tasks.length),
         };
       }
+      if (args.fields !== undefined)
+        refuse('invalid arguments: fields (name a project: each project defines its own fields)');
       // Every project in one read, each task then naming its project.
       const [projects, everything] = await Promise.all([
         engine.listProjects(),
