@@ -10,5 +10,5 @@
     "moduleResolution": "NodeNext",
     "erasableSyntaxOnly": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

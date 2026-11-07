@@ -19,6 +19,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DevTools, until } from './devtools.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const WEB = path.join(ROOT, 'apps/web');
@@ -74,13 +75,13 @@ function findChrome(): string {
   return found;
 }
 
-/** Resolves once `predicate` holds, checking every 100 ms; rejects after `WAIT_MS` with `what` in its message. */
-async function until(what: string, predicate: () => Promise<boolean>): Promise<void> {
-  const end = Date.now() + WAIT_MS;
-  while (!(await predicate().catch(() => false))) {
-    if (Date.now() > end) throw new Error(`Timed out waiting for ${what}.`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+/** Stops a child process and resolves once it has exited, so nothing still writes to its files. */
+function stop(child: ChildProcess): Promise<void> {
+  // A process that never started (no pid) or has ended has nothing to wait for.
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  child.kill();
+  return exited;
 }
 
 /** The web app with its invented tasks, served by Vite. */
@@ -102,7 +103,23 @@ async function startApp(): Promise<ChildProcess> {
     ],
     { cwd: WEB, stdio: ['ignore', 'ignore', 'inherit'] },
   );
-  await until('the web app', async () => (await fetch(ORIGIN)).ok);
+  // Vite exiting before it serves, as it does when the port is taken, ends the wait at once.
+  const exited = new Promise<never>((_, reject) => {
+    app.once('error', reject);
+    app.once('exit', (code) => reject(new Error(`Vite exited with ${code} before it served the app.`)));
+  });
+  // A later exit is the one stop() causes.
+  exited.catch(() => undefined);
+  try {
+    // Until Vite listens, a request is refused: that is "not yet", not a failure.
+    await Promise.race([
+      until('the web app', async () => (await fetch(ORIGIN)).ok, { waitMs: WAIT_MS, retryFailures: true }),
+      exited,
+    ]);
+  } catch (error) {
+    await stop(app);
+    throw error;
+  }
   return app;
 }
 
@@ -122,63 +139,30 @@ async function startChrome(profile: string): Promise<{ chrome: ChildProcess; end
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
-  const endpoint = await new Promise<string>((resolve, reject) => {
-    let said = '';
-    const timer = setTimeout(() => reject(new Error(`Chrome did not start:\n${said}`)), WAIT_MS);
-    chrome.stderr?.on('data', (chunk: Buffer) => {
-      said += chunk.toString();
-      const match = /DevTools listening on (ws:\/\/\S+)/.exec(said);
-      if (match?.[1]) {
-        clearTimeout(timer);
-        resolve(match[1]);
-      }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const endpoint = await new Promise<string>((resolve, reject) => {
+      let said = '';
+      timer = setTimeout(
+        () => reject(new Error(`Chrome gave no DevTools address within ${WAIT_MS} ms:\n${said}`)),
+        WAIT_MS,
+      );
+      // A CHROME_PATH that names no program, or one that cannot run, fails here with the system's own error.
+      chrome.once('error', reject);
+      chrome.stderr?.on('data', (chunk: Buffer) => {
+        said += chunk.toString();
+        const match = /DevTools listening on (ws:\/\/\S+)/.exec(said);
+        if (match?.[1]) resolve(match[1]);
+      });
+      chrome.once('exit', (code) => reject(new Error(`Chrome exited with ${code}:\n${said}`)));
     });
-    chrome.on('exit', (code) => reject(new Error(`Chrome exited with ${code}:\n${said}`)));
-  });
-  return { chrome, endpoint };
-}
-
-/** A minimal DevTools Protocol client: one request, one answer, matched by id. */
-class DevTools {
-  readonly #socket: WebSocket;
-  #next = 1;
-  readonly #waiting = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
-
-  private constructor(socket: WebSocket) {
-    this.#socket = socket;
-    socket.addEventListener('message', (event) => {
-      const message = JSON.parse(String(event.data)) as {
-        id?: number;
-        result?: unknown;
-        error?: { message: string };
-      };
-      if (message.id === undefined) return;
-      const waiting = this.#waiting.get(message.id);
-      this.#waiting.delete(message.id);
-      if (message.error) waiting?.reject(new Error(message.error.message));
-      else waiting?.resolve(message.result);
-    });
-  }
-
-  static async connect(endpoint: string): Promise<DevTools> {
-    const socket = new WebSocket(endpoint);
-    await new Promise((resolve, reject) => {
-      socket.addEventListener('open', resolve, { once: true });
-      socket.addEventListener('error', () => reject(new Error('Could not reach Chrome.')), { once: true });
-    });
-    return new DevTools(socket);
-  }
-
-  send<T>(method: string, params: object = {}, sessionId?: string): Promise<T> {
-    const id = this.#next++;
-    this.#socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-    return new Promise<T>((resolve, reject) => {
-      this.#waiting.set(id, { resolve: resolve as (value: unknown) => void, reject });
-    });
-  }
-
-  close(): void {
-    this.#socket.close();
+    return { chrome, endpoint };
+  } catch (error) {
+    // Chrome may still be running, as when a policy turns off remote debugging.
+    await stop(chrome);
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -199,25 +183,22 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   });
   await send('Page.navigate', { url: `${ORIGIN}${shot.address}` });
   const drawn = `document.querySelector(${JSON.stringify(shot.ready)}) !== null && document.querySelector('.skeleton') === null && document.fonts.status === 'loaded'`;
-  await until(`${shot.address} to draw`, async () => {
-    const answer = await send<{ result: { value: unknown } }>('Runtime.evaluate', {
-      expression: drawn,
-      returnByValue: true,
-    });
-    return answer.result.value === true;
-  });
+  // A failed request, as when Chrome exits, ends the wait at once.
+  await until(
+    `${shot.address} to draw`,
+    async () => {
+      const answer = await send<{ result: { value: unknown } }>('Runtime.evaluate', {
+        expression: drawn,
+        returnByValue: true,
+      });
+      return answer.result.value === true;
+    },
+    { waitMs: WAIT_MS },
+  );
   const { data } = await send<{ data: string }>('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
   const file = path.join(OUT, `${shot.name}-${theme}.webp`);
   await writeFile(file, Buffer.from(data, 'base64'));
   return file;
-}
-
-/** Stops a child process and resolves once it has exited, so nothing still writes to its files. */
-function stop(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  child.kill();
-  return exited;
 }
 
 async function main() {

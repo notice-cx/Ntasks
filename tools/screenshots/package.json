@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "capture": "node src/capture.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "node --test \"test/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "26.6.6",

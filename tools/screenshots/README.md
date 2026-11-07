@@ -30,7 +30,8 @@ README shows them.
 
 The script talks to the browser over the Chrome DevTools Protocol with Node's
 own WebSocket. It adds no dependency, and CI never runs it, so CI never
-downloads a browser.
+downloads a browser. CI does run `test/`, which checks the protocol client and
+the script's waits with a stand-in socket and no browser.
 
 The pictures use the fonts this machine has: Inter when it is installed,
 otherwise the system's sans-serif. Pictures made on another machine can differ
