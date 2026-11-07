@@ -355,8 +355,11 @@ This version reads only each workspace's own store, so the tasks in `tasks`
 are no longer reached after the update, and nothing moves them. To keep them:
 
 1. Stop every writer: signed-in people in the web app, agents and services.
-   Nothing may write from the backup until the load prints `0 differences.`,
-   or the change stays in the old store.
+   Let each finish or drop the writes it would retry: a retry record names
+   the credential or agent that made it, and those are made again after the
+   update, so a retry sent then is a new write. Nothing may write from the
+   backup until the load prints `0 differences.`, or the change stays in the
+   old store.
 2. Back the old store up with `backup` and a credential made with the backup
    choice, then check the file with `restore`
    ([Back up and restore](#back-up-and-restore)).
@@ -364,11 +367,13 @@ are no longer reached after the update, and nothing moves them. To keep them:
    `0004_workspaces.sql` drops the old service credentials and agent grants;
    make them again in the new workspace after the load.
 4. Create a workspace and a load credential in it, as in step 2 of
-   [the cutover from a Beads hub](#the-cutover-from-a-beads-hub), then load
-   the backup file:
+   [the cutover from a Beads hub](#the-cutover-from-a-beads-hub). Save the
+   new credential's token in its own file, here `load-token`: the backup's
+   credential is gone with migration `0004_workspaces.sql`. Then load the
+   backup file:
 
    ```sh
-   node tools/migrate/src/cli.ts load --api https://tasks.example.com --token-file token --from backup.json
+   node tools/migrate/src/cli.ts load --api https://tasks.example.com --token-file load-token --from backup.json
    ```
 
    The task store's own migrations are unchanged by this update, so the
