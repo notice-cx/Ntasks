@@ -392,6 +392,22 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(newTask({ field_values: 'size' })).rejects.toThrow(/CHECK constraint failed/u);
   });
 
+  it('keeps a helper and work details only on a task someone holds that is not closed', async () => {
+    const held = { assignee: 'agent-a', status: 'in_progress' };
+    await expect(newTask({ ...held, assignee_for: 'helper-1', work: '{"branch":"b"}' })).resolves.toBeDefined();
+    await expect(newTask({ assignee_for: 'helper-1' })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ work: '{"branch":"b"}' })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ ...CLOSED, assignee: 'agent-a', work: '{"next":"n"}' })).rejects.toThrow(
+      /CHECK constraint failed/u,
+    );
+    await expect(newTask({ ...held, work: '["b"]' })).rejects.toThrow(/CHECK constraint failed/u);
+    const { taskId } = await newTask({ ...held, assignee_for: 'helper-1', work: '{"branch":"b"}' });
+    // A release that leaves them behind is refused.
+    await expect(
+      db.prepare('UPDATE tasks SET assignee = NULL, version = version + 1 WHERE id = ?1').bind(taskId).run(),
+    ).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
   it('refuses a name longer than 255 characters', async () => {
     await expect(newTask({ assignee: 'n'.repeat(256) })).rejects.toThrow(/CHECK constraint failed/u);
   });

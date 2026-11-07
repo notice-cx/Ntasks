@@ -12,10 +12,14 @@ import {
   TASK_PRIORITY,
   TASK_RESOLUTIONS,
   TASK_TYPES,
+  WORK_DETAILS,
+  WORK_LIMITS,
   type ExternalLink,
   type FieldValue,
   type JsonObject,
+  type TaskFieldChanges,
   type TaskType,
+  type WorkDetail,
 } from '@ntasks/domain';
 import { httpUrl } from './engine/validate.ts';
 import {
@@ -409,3 +413,41 @@ export function setOrTakeOff(args: Args, names: readonly string[]): void {
     );
   }
 }
+
+/** The arguments that name a holder's helper and work details: `for` and WORK_DETAILS. */
+export const WORK_ARGS: readonly string[] = Object.freeze(['for', ...WORK_DETAILS]);
+
+/**
+ * The helper (`for`) and work details a claim or a comment names, each one
+ * line and `pr` an http or https URL; undefined when it names none. `at`
+ * starts the names a refusal gives the details, such as `work.`.
+ */
+export function workArgs(args: Args, at = '', helperArgs: Args = args): WorkArgs | undefined {
+  const line = (from: Args, name: string, shown: string, max: number): string | undefined => {
+    const value = from[name];
+    if (value === undefined) return undefined;
+    if (
+      typeof value !== 'string' ||
+      !value ||
+      value.length > max ||
+      value.trim() !== value ||
+      /[\r\n\t]/u.test(value) ||
+      CONTROL.test(value)
+    )
+      refuse(`invalid arguments: ${shown} (one line of 1 to ${max} characters)`);
+    return value;
+  };
+  const helper = line(helperArgs, 'for', 'for', TASK_LIMITS.helper);
+  const work: Partial<Record<WorkDetail, string>> = {};
+  for (const detail of WORK_DETAILS) {
+    const value = line(args, detail, `${at}${detail}`, WORK_LIMITS[detail]);
+    if (value === undefined) continue;
+    work[detail] =
+      detail === 'pr' ? (httpUrl(value) ?? refuse(`invalid arguments: ${at}pr (an http or https URL)`)) : value;
+  }
+  if (helper === undefined && Object.keys(work).length === 0) return undefined;
+  return { ...(helper === undefined ? {} : { assigneeFor: helper }), ...(Object.keys(work).length ? { work } : {}) };
+}
+
+/** A holder's helper and work details, as the engine takes them. */
+export type WorkArgs = Pick<TaskFieldChanges, 'assigneeFor' | 'work'>;

@@ -17,8 +17,8 @@ import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import type { Workspace } from '../workspaces.ts';
-import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
-import { fieldFiltersOf } from '../task-writes.ts';
+import { childView, commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
+import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
 import {
   booleanArg,
   instantArg,
@@ -254,10 +254,20 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         engine.listComments(project.id, taskId),
         linksSeenBy(context),
       ]);
+      // An epic's open children, with who works on each, so its holder sees the work under it in one read.
+      const children =
+        task.type === 'epic'
+          ? await engine.listBoard(project.id, {
+              statuses: OPEN_STATUSES,
+              parentId: task.id,
+              withoutExternalLinks: true,
+            })
+          : null;
       return {
         project: project.key,
         readAt: now(),
         task: mcpTask(links.task(task)),
+        ...(children === null ? {} : { openChildren: children.map(childView) }),
         comments: comments.map(commentView),
         proposal: proposalOf(task),
       };

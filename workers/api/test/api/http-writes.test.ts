@@ -389,6 +389,26 @@ describe('PATCH /api/tasks/:id', () => {
     });
   });
 
+  it('takes the helper and work details with a claim, which the task view shows', async () => {
+    const { id } = await task();
+    const work = { branch: 'agent/fix', pr: 'https://example.com/pulls/9', next: 'Wait for review' };
+    const claimed = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      claim: true,
+      for: 'fix-helper',
+      work,
+    });
+    const shown = { assignee: WRITER.name, for: 'fix-helper', work, lastActivityAt: time.now() };
+    expect(claimed.body.task).toMatchObject(shown);
+    expect((await get(target, `/api/tasks/${id}?project=${project.id}`)).body.task).toMatchObject(shown);
+    // They describe a claim, so a change without one is refused and changes nothing.
+    const { version } = await current(id);
+    expect(
+      (await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, work: { next: 'Other' } })).status,
+    ).toBe(400);
+    expect(await current(id)).toMatchObject({ version, work });
+  });
+
   it('refuses a claim with other changes, a close by status, an assignee with spaces around it, and a human label taken off', async () => {
     const { id } = await task({ title: 'Human', labels: ['human'] });
     const patch = (body: Record<string, unknown>) =>

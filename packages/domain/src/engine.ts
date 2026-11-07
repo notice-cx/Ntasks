@@ -31,6 +31,7 @@ import type {
   TaskResolution,
   TaskStatus,
   TaskType,
+  TaskWork,
 } from './task.ts';
 
 /** The sender of a write, as the API layer authenticated it. */
@@ -130,6 +131,13 @@ export interface TaskFieldChanges {
    * is refused as `held` (rule 1); giving it to them directly, or releasing it,
    * is not a claim. */
   readonly assignee?: string | null;
+  /** The helper agent the assignee works through. */
+  readonly assigneeFor?: string;
+  /** Work details, each replacing the one the task has. With the helper, they
+   * belong to the assignee: a write that releases the task, gives it to
+   * someone else or closes it clears them, and one that leaves it held by
+   * nobody, or closed, cannot set them. */
+  readonly work?: TaskWork;
   readonly parentId?: string | null;
   readonly deferUntil?: string | null;
   readonly dueAt?: string | null;
@@ -295,6 +303,8 @@ export interface WriteResult {
   readonly task: Task;
   /** Tasks the write made as well, such as the gate of a requested approval. */
   readonly created: readonly Task[];
+  /** The comment the write added to `task`, when it added one. */
+  readonly comment?: TaskComment;
   /** True when a retry returned the recorded answer and nothing was written. */
   readonly replayed: boolean;
 }
