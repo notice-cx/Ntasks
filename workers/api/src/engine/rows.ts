@@ -16,6 +16,7 @@ import type {
   TaskResolution,
   TaskStatus,
   TaskType,
+  TaskWork,
   WorkItem,
 } from '@ntasks/domain';
 
@@ -38,6 +39,9 @@ export interface StoredTaskRow {
   readonly field_values: string;
   readonly assignee: string | null;
   readonly assignee_model: string | null;
+  readonly assignee_for: string | null;
+  /** The holder's work details, as a JSON object by detail name. */
+  readonly work: string;
   readonly defer_until: string | null;
   readonly due_at: string | null;
   readonly choices: string | null;
@@ -61,6 +65,8 @@ export interface StoredTaskRow {
 export interface TaskRow extends StoredTaskRow {
   /** 1 when someone can start the task now (READY in reads.ts). */
   readonly ready: number;
+  /** When its assignee last wrote to it (LAST_ACTIVITY in reads.ts). */
+  readonly last_activity_at: string | null;
   readonly comment_count: number;
   /** The task's labels, as a JSON array of text. */
   readonly labels_json: string;
@@ -161,6 +167,9 @@ export function toTask(row: TaskRow): Task {
     estimateMinutes: row.estimate_minutes,
     assignee: row.assignee,
     assigneeModel: row.assignee_model,
+    assigneeFor: row.assignee_for,
+    work: JSON.parse(row.work) as TaskWork,
+    lastActivityAt: row.last_activity_at,
     labels: (JSON.parse(row.labels_json) as string[]).sort(),
     dependencies: links(row.dependencies_json),
     dependents: links(row.dependents_json),

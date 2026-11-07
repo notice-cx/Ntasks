@@ -51,6 +51,26 @@ export type TaskResolution = (typeof TASK_RESOLUTIONS)[number];
 export const TASK_EVENT_KINDS = ['created', 'updated', 'closed', 'reopened', 'commented'] as const;
 export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
 
+/**
+ * What a task's holder records about the work in hand: a link or id of the
+ * agent session doing it, its worktree, its branch, its pull request's URL,
+ * the commit last tested and the next step. A newer value of each replaces
+ * the older one. They are cleared when the task closes or its holder changes.
+ */
+export const WORK_DETAILS = ['session', 'worktree', 'branch', 'pr', 'commit', 'next'] as const;
+export type WorkDetail = (typeof WORK_DETAILS)[number];
+/** A task's work details: only those its holder recorded. */
+export type TaskWork = Readonly<Partial<Record<WorkDetail, string>>>;
+/** The most characters a new write takes in each work detail, each one line. `pr` is an http or https URL. */
+export const WORK_LIMITS: Readonly<Record<WorkDetail, number>> = Object.freeze({
+  session: 512,
+  worktree: 512,
+  branch: 255,
+  pr: 2048,
+  commit: 128,
+  next: 512,
+});
+
 /** The highest and lowest priority; 0 is the most urgent. */
 export const TASK_PRIORITY = Object.freeze({ highest: 0, lowest: 4, default: 2 });
 
@@ -85,6 +105,8 @@ export const TASK_LIMITS = Object.freeze({
   /** A text field's value. */
   fieldText: 1024,
   actor: 128,
+  /** The name of the helper agent a holder works through: claude for page-rebuild-2. */
+  helper: 64,
   /** A retry principal: the sender's stable identity that idempotency keys are kept under. */
   retryPrincipal: 128,
   /** The most tasks one list request returns. */
@@ -177,6 +199,13 @@ export interface Task {
   readonly estimateMinutes: number | null;
   readonly assignee: string | null;
   readonly assigneeModel: string | null;
+  /** The helper agent the assignee works through, which the assignee named; null when it named none. */
+  readonly assigneeFor: string | null;
+  /** What the assignee recorded about the work in hand. Empty while nobody holds the task, and once it closes. */
+  readonly work: TaskWork;
+  /** When the assignee last changed or commented on the task: its latest event in the task's history. Null
+   * while nobody holds it, or before the assignee has written to it. It is shown, and never releases a claim. */
+  readonly lastActivityAt: string | null;
   readonly labels: readonly string[];
   /** The tasks this one depends on. */
   readonly dependencies: readonly TaskLink[];

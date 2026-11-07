@@ -62,6 +62,9 @@ export interface TaskRow {
   readonly estimate_minutes?: number | null;
   /** JSON text: the task's custom field values by key. Left out, '{}'. */
   readonly field_values?: string;
+  /** The helper its holder works through, and JSON text of its work details. Left out, null and '{}'. */
+  readonly assignee_for?: string | null;
+  readonly work?: string;
 }
 
 export interface LabelRow {
@@ -174,6 +177,8 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'design',
     'estimate_minutes',
     'field_values',
+    'assignee_for',
+    'work',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],

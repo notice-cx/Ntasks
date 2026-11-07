@@ -200,7 +200,15 @@ describe('an import into the task store', () => {
     expect(result.rowsWritten).toBeGreaterThanOrEqual(12);
     const stored: StoreRows = {
       ...ROWS,
-      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, field_values: '{}', ...row })),
+      tasks: ROWS.tasks.map((row) => ({
+        notes: '',
+        design: '',
+        estimate_minutes: null,
+        field_values: '{}',
+        assignee_for: null,
+        work: '{}',
+        ...row,
+      })),
     };
     for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });

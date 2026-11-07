@@ -9,6 +9,7 @@ import {
   IDEMPOTENCY_KEY,
   TASK_LIMITS,
   TaskRefused,
+  WORK_DETAILS,
   type DefineFieldInput,
   type JsonObject,
   type Project,
@@ -37,6 +38,7 @@ import {
   textArg,
   typeArg,
   urlsArg,
+  workArgs,
   type Args,
 } from '../args.ts';
 import { strictJson } from '../mcp/protocol.ts';
@@ -189,14 +191,23 @@ export async function updateRoute(
   taskId: string,
 ): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'update_task', { task: taskId });
-  only(body, ['projectId', ...EDITABLE_FIELDS]);
+  // A claim also takes the helper the sender works through and its work details.
+  only(body, ['projectId', ...EDITABLE_FIELDS, 'for', 'work']);
   const projectId = projectArg(body, 'projectId', 'http');
   if (body.claim !== undefined) {
     if (body.claim !== true) refuse('invalid arguments: claim (true)');
     const others = ['assignee', 'status', 'card', 'changeClass'].filter((name) => body[name] !== undefined);
     if (others.length > 0) refuse(`invalid arguments: claim (on its own, without ${others.join(', ')})`);
+  } else if (body.for !== undefined || body.work !== undefined) {
+    refuse('invalid arguments: for and work (with claim: true; they describe the claim)');
   }
+  // Only a left-out work is none: null is not an object of work details, and is refused.
+  const details = body.work === undefined ? {} : body.work;
+  if (details === null || typeof details !== 'object' || Array.isArray(details))
+    refuse('invalid arguments: work (an object of work details)');
+  only(details as Args, WORK_DETAILS);
   const fields: TaskChange = {
+    ...workArgs(details as Args, 'work.', body),
     claim: body.claim === true ? true : undefined,
     status: choiceArg(body, 'status', STATUSES),
     priority: priorityArg(body),
