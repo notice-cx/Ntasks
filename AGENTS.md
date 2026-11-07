@@ -29,8 +29,9 @@ Every feature and every change to an existing one meets all five:
 - **It is easy to start with.** A new deployment, a new person and a new
   agent each reach their first task in a few steps, and each step is shown
   where it is needed.
-- **It is elegant.** There is one way to do each thing. A change that adds a
-  second way removes the first, or states why both stay.
+- **It is elegant.** Its design and architecture are as clear and simple as
+  the problems it solves require: every part, layer and option exists because
+  one of those problems needs it, and there is one way to do each thing.
 - **It is fast.** A call is answered from the workspace's task store in one
   hop, a reply carries only what the caller needs, and the free plan's
   limits hold.
