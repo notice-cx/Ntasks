@@ -203,7 +203,11 @@ function choiceComment(choice: RecordedPick): string {
   return `Chose (${choice.option}) ${choice.label}.${choice.note === undefined ? '' : ` ${choice.note}`}`;
 }
 
-const ANSWERED = 'Answered: ';
+/** What a person's free answer or dismissal is written after, in the comment
+ * or the close reason it leaves: their words must fit after it. */
+export const ANSWERED = 'Answered: ';
+export const RESPONDED = 'Response: ';
+export const DISMISSED = 'Dismissed: ';
 
 /** The record of the task's last maintenance, or undefined. */
 function maintenanceOf(task: Task): JsonObject | undefined {
@@ -460,6 +464,10 @@ class Draft {
         ? []
         : [{ taskId: draft.task.id, expectedVersion: draft.task.version, ...other }];
     });
+    if (others.length > TASK_LIMITS.others)
+      refuse(
+        `${this.task.id} has ${others.length} open tasks waiting on it, more than the ${TASK_LIMITS.others} one decision tells. Remove some of those dependencies, then decide again.`,
+      );
     return {
       expectedVersion: this.task.version,
       ...changes,
@@ -467,10 +475,6 @@ class Draft {
     };
   }
 }
-    if (others.length > TASK_LIMITS.others)
-      refuse(
-        `${this.task.id} has ${others.length} open tasks waiting on it, more than the ${TASK_LIMITS.others} one decision tells. Remove some of those dependencies, then decide again.`,
-      );
 
 /** The open tasks this one waits on through blocks links and the open
  * children under it refuse a decision's close; another holder or an open
@@ -590,7 +594,7 @@ export function responseWrite(
     pickInto(draft, option, undefined, around, actor, at, task.type === 'decision', true);
   } else if (task.type === 'decision') {
     decisionClose(task, around);
-    draft.comment = `Response: ${response}`;
+    draft.comment = `${RESPONDED}${response}`;
     draft.close = { reason: 'Responded', resolution: 'done' };
   } else {
     draft.comment = `${ANSWERED}${response}`;
@@ -633,7 +637,7 @@ export function dismissalWrite(
   const draft = new Draft(task);
   const { reason, resolution = 'wont-do', duplicateOf } = dismissal;
   draft.close = {
-    reason: reason === undefined ? 'Dismissed' : `Dismissed: ${reason}`,
+    reason: reason === undefined ? 'Dismissed' : `${DISMISSED}${reason}`,
     resolution,
     ...(duplicateOf === undefined ? {} : { duplicateOf }),
   };
@@ -1074,6 +1078,7 @@ async function surroundings(context: WriteContext, project: Project, task: Task)
     Promise.all(pages.map((page) => engine.getTasks(project.id, page))),
     engine.listBoard(project.id, { statuses: OPEN_STATUSES, parentId: task.id }),
   ]);
+  const tasks = read.flat();
   const byId = new Map(tasks.map((entry) => [entry.id, entry]));
   const found = (ids: readonly string[]) => ids.flatMap((id) => byId.get(id) ?? []);
   return {
@@ -1083,7 +1088,6 @@ async function surroundings(context: WriteContext, project: Project, task: Task)
     children: children.map((child) => child.id),
   };
 }
-  const tasks = read.flat();
 
 /** A person's decision, run as one write: refused unless the sender is a person
  * signed in to the web app who may change the project. */

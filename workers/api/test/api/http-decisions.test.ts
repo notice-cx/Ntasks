@@ -286,6 +286,17 @@ describe('POST /api/tasks/:id/dismiss', () => {
     expect((await post(`/api/tasks/${plain.id}/dismiss`, {})).body.task).toMatchObject({ closeReason: 'Dismissed' });
   });
 
+  it('takes a reason only as long as the close reason holds after "Dismissed: "', async () => {
+    const most = 2048 - 'Dismissed: '.length;
+    const { task: asked } = await task();
+    expect(await post(`/api/tasks/${asked.id}/dismiss`, { reason: 'x'.repeat(most + 1) })).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: `reason (at most ${most} characters; this one has ${most + 1})` },
+    });
+    const dismissed = await post(`/api/tasks/${asked.id}/dismiss`, { reason: 'x'.repeat(most) });
+    expect((dismissed.body.task as { closeReason: string }).closeReason).toHaveLength(2048);
+  });
+
   it('closes a duplicate ask linked to the task it duplicates, and never as done', async () => {
     const { task: first } = await engine.createTask(project.id, { title: 'First ask' }, OWNER);
     const { task: again } = await task();

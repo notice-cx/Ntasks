@@ -11,7 +11,7 @@ import { TASK_LIMITS, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/doma
 import { choiceArg, only, projectArg, refuse, taskArg, textArg } from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { TASK_CHOICE_KEYS, TASK_CHOICE_LIMITS } from '../noticeos-fields.ts';
-import { approve, choose, dismiss, dispute, respond, seen } from '../owner-answers.ts';
+import { ANSWERED, approve, choose, DISMISSED, dismiss, dispute, RESPONDED, respond, seen } from '../owner-answers.ts';
 import type { WriteContext, Written } from '../task-writes.ts';
 import { webTask } from '../views.ts';
 import { json, queryOf } from './respond.ts';
@@ -32,8 +32,9 @@ export async function respondRoute(
   const { body, retry } = await writeOf(request, url, 'respond', { task: taskId });
   only(body, ['projectId', 'response']);
   const projectId = projectArg(body, 'projectId', 'http');
-  // Short enough to fit one comment as "Answered: <response>".
-  const response = textArg(body, 'response', TASK_LIMITS.comment - 'Answered: '.length, true)!;
+  // Short enough to fit one comment as "Answered: <response>" or "Response: <response>".
+  const most = TASK_LIMITS.comment - Math.max(ANSWERED.length, RESPONDED.length);
+  const response = textArg(body, 'response', most, true)!;
   return decided(context, await respond(context, projectId, taskId, response, retry(body)));
 }
 
@@ -65,7 +66,8 @@ export async function dismissRoute(
   const { body, retry } = await writeOf(request, url, 'dismiss', { task: taskId });
   only(body, ['projectId', 'reason', 'resolution', 'duplicateOf']);
   const projectId = projectArg(body, 'projectId', 'http');
-  const reason = textArg(body, 'reason', TASK_LIMITS.reason, false);
+  // Short enough to fit the close reason as "Dismissed: <reason>".
+  const reason = textArg(body, 'reason', TASK_LIMITS.reason - DISMISSED.length, false);
   const resolution = choiceArg(body, 'resolution', DISMISSALS);
   const duplicateOf = body.duplicateOf === undefined ? undefined : taskArg(body, 'duplicateOf');
   if ((resolution === 'duplicate') !== (duplicateOf !== undefined))
