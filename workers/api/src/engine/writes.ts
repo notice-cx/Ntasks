@@ -815,7 +815,19 @@ export class Writes {
           this.#event(current, version, 'commented', actor, at, { commentId, text: write.comment }),
         ];
       };
-      if (commentOnly) return comment(current.version);
+      if (commentOnly) {
+        // The write was planned from this version of the task; the batch fails whole if it moved since.
+        return [
+          this.#db
+            .prepare(
+              `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+                 SELECT 1 FROM tasks WHERE id = ?1 AND project_id = ?2 AND version = ?3
+               ), 'version_conflict'`,
+            )
+            .bind(taskId, projectId, current.version),
+          ...comment(current.version),
+        ];
+      }
       const taskLinks = new Map(links);
       if (gateId !== null) taskLinks.set(gateId, 'blocks');
       if (gateId !== null || addLinks.length > 0 || removeLinks.length > 0) changes.dependencies = linkList(taskLinks);

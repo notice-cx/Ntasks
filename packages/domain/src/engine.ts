@@ -182,8 +182,9 @@ export interface TaskWrite {
 
 /**
  * A change to another task, riding with a write. Each names the version it
- * read, as the write does. One that only adds a comment leaves the task's
- * version as it is, as `addComment` does.
+ * read, as the write does, and the whole write is refused as
+ * `version_conflict` when the task moved since. One that only adds a comment
+ * leaves the task's version as it is, as `addComment` does.
  */
 export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'others'> {
   readonly taskId: string;

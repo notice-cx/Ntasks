@@ -142,8 +142,9 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   comment, and in `others` changes to at most 500 other tasks of the project
   (`TASK_LIMITS.others`), such as the comment and hand-back a decision on an
   approval gives the tasks waiting on it. Each of those names the version it
-  read, as the write does; one
-  that only comments leaves its task's version as `addComment` does.
+  read, as the write does, and the whole batch fails as `version_conflict`
+  when one of them moved since; one that only comments leaves its task's
+  version as `addComment` does.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.

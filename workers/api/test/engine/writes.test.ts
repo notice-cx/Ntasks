@@ -5,6 +5,9 @@
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
 import { TaskRefused, type Json, type Task, type TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
+import type { Database } from '../../src/engine/database.ts';
+import { createEngine } from '../../src/engine/index.ts';
+import { storeDatabase } from '../store.ts';
 import { AGENT, clock, engine, expectRefusal, newProject, OTHER, OWNER, retryFor } from './helpers.ts';
 
 async function historyOf(tasks: TaskEngine, projectId: string, taskId: string) {
@@ -740,6 +743,41 @@ describe('changes to other tasks in the same write', () => {
     expect(after).toMatchObject({ version: waiting.version, commentCount: 1 });
     const events = await historyOf(tasks, project.id, waiting.id);
     expect(events.at(-1)).toMatchObject({ kind: 'commented', version: waiting.version });
+  });
+
+  it('writes nothing when a task it only comments on changes between its read and its batch', async () => {
+    const inner = storeDatabase();
+    let beforeBatch: (() => Promise<void>) | null = null;
+    const db: Database = {
+      prepare: (sql) => inner.prepare(sql),
+      async batch(statements) {
+        const hook = beforeBatch;
+        beforeBatch = null;
+        if (hook) await hook();
+        return inner.batch(statements);
+      },
+    };
+    const tasks = createEngine(db);
+    const { project, gate, waiting } = await waitingOnApproval(tasks);
+    // Another write lands after this one read the task and before its batch.
+    beforeBatch = () =>
+      inner.prepare('UPDATE tasks SET priority = 0, version = version + 1 WHERE id = ?1').bind(waiting.id).run();
+
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        gate.id,
+        {
+          expectedVersion: gate.version,
+          close: { reason: 'Retired', resolution: 'no-longer-needed' },
+          others: [{ taskId: waiting.id, expectedVersion: waiting.version, comment: 'Approval retired.' }],
+        },
+        OWNER,
+      ),
+      'version_conflict',
+    );
+    expect((await tasks.getTask(project.id, gate.id))!.status).toBe('open');
+    expect(await tasks.listComments(project.id, waiting.id)).toEqual([]);
   });
 
   it('writes nothing when another task changed since it was read', async () => {
