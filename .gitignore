@@ -11,9 +11,10 @@ coverage/
 # wrangler's local state: the local D1 database, caches and logs
 .wrangler/
 
-# secrets and local settings
+# secrets and local settings; .dev.vars.example names the secrets and holds none
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
 .env
 .env.*
 

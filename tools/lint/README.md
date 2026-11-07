@@ -21,7 +21,7 @@ repository root, run by `pnpm lint`. It reports:
 | [`test/promises.test.ts`](test/promises.test.ts) | Lints that fixture with the repository's configuration and compares what it reports with the marked lines |
 | [`fixtures/worker-rules.ts`](fixtures/worker-rules.ts) | Code that breaks the other rules on purpose, marked the same way, with the code those rules must leave alone |
 | [`test/worker-rules.test.ts`](test/worker-rules.test.ts) | Lints that fixture as if it sat in `workers/api/src`, `packages/domain/src`, `workers/api/test` and `apps/web/src`, and compares what it reports in each place with the marked lines that apply there |
-| [`test/wrangler-vars.test.ts`](test/wrangler-vars.test.ts) | Fails when a variable under `vars` in a `workers/*/wrangler.jsonc` has a name that sounds like a secret. Lint does not run this check, because the file is not TypeScript |
+| [`test/wrangler-vars.test.ts`](test/wrangler-vars.test.ts) | Fails when a variable under `vars` in the root `wrangler.jsonc` or a `workers/*/wrangler.jsonc` has a name that sounds like a secret, and when the secrets the Deploy to Cloudflare button asks for (`.dev.vars.example`, with descriptions under `cloudflare.bindings` in the root `package.json`) differ from `secrets.required` in `wrangler.jsonc`. Lint does not run these checks, because the files are not TypeScript |
 
 `pnpm lint` skips the fixture directory. If a change to the configuration
 stops it reporting a marked line, or makes it report an unmarked one, a test

@@ -14,8 +14,11 @@ files it lacks.
 From the repository root:
 
 ```sh
-pnpm --filter @ntasks/api exec wrangler d1 migrations create ntasks describe_the_change
+pnpm --filter @ntasks/api exec wrangler d1 migrations create DB describe_the_change
 ```
+
+Commands name the database by its binding, `DB`, because a deployment made
+with the Deploy to Cloudflare button may give the database another name.
 
 Wrangler writes the next numbered file here. Put the schema change in it and
 add the tests that rely on it.
@@ -31,8 +34,11 @@ add the tests that rely on it.
   with:
 
   ```sh
-  pnpm --filter @ntasks/api exec wrangler d1 migrations apply ntasks --local
+  pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --local
   ```
 
-- **The deployed database changes only by a maintainer's release step.**
-  Tests and CI never apply migrations to it.
+- **A deployed database changes only when its deployment runs
+  `pnpm run deploy`.** That applies the migrations the database lacks before
+  it deploys the Worker, so the new code finds its tables. The Deploy to
+  Cloudflare button's builds run it. Tests and CI never apply migrations to a
+  deployed database.

@@ -41,7 +41,7 @@ as listing ready work or claiming a task, as MCP tools.
 
 ## How a request is routed
 
-The Worker's configuration, [`wrangler.jsonc`](../workers/api/wrangler.jsonc),
+The Worker's configuration, [`wrangler.jsonc`](../wrangler.jsonc),
 lists the paths the Worker answers in `assets.run_worker_first`: `/healthz`,
 every path under `/api/`, the sign-in pages and the OAuth discovery documents
 ([Sign-in](sign-in.md#routes)). Any other path is a file from the web app's

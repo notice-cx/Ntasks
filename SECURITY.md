@@ -24,8 +24,9 @@ A deployment with no sign-in settings refuses every call that needs a
 signed-in sender; it never falls back to no checks.
 
 Keep secrets out of `wrangler.jsonc` and out of the repository. Set a deployed
-secret with `wrangler secret put`; put local values in `.dev.vars`, which git
-ignores.
+secret on the Deploy to Cloudflare button's setup page or with
+`wrangler secret put`; put local values in `.dev.vars` at the repository root,
+which git ignores.
 
 ## Supported versions
 
