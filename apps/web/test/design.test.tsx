@@ -5,6 +5,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { COLOUR_TOKENS, MARK_TOKENS } from '@/lib/design-tokens';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, TYPE_MARK_LABELS } from '@/lib/symbols';
+import { cn, THEME_SHADOWS, THEME_TEXT_SIZES } from '@/lib/utils';
 import { renderApp } from './render';
 
 const CSS = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/index.css'), 'utf8');
@@ -30,6 +31,20 @@ describe('the tokens', () => {
     for (const { variable } of [...COLOUR_TOKENS, ...MARK_TOKENS]) {
       expect(CSS).toContain(`--color-${variable.slice(2)}: var(${variable});`);
     }
+  });
+
+  // tailwind-merge does not read index.css: a size or shadow it is not told
+  // about is taken for a colour, and `cn` then drops the real colour beside it.
+  it('tells the class merge every type size and shadow the theme defines', () => {
+    const theme = [...CSS.matchAll(/@theme inline \{([^}]*)\}/g)].map((block) => block[1] ?? '').join('\n');
+    const names = (family: string) =>
+      [...theme.matchAll(new RegExp(`^\\s*--${family}-([a-z0-9]+(?:-[a-z0-9]+)*):`, 'gm'))]
+        .map((match) => match[1])
+        .sort();
+    expect(names('text')).toEqual([...THEME_TEXT_SIZES].sort());
+    expect(names('shadow')).toEqual([...THEME_SHADOWS].sort());
+    expect(cn('text-ink-3 text-meta')).toBe('text-ink-3 text-meta');
+    expect(cn('shadow-raise shadow-pop')).toBe('shadow-pop');
   });
 });
 
