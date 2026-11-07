@@ -16,26 +16,34 @@ export interface ProtocolSocket {
 interface Waiting {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  /** Fails the request when no answer has come by its deadline. */
+  timer: ReturnType<typeof setTimeout>;
 }
 
+/** How long a request waits for its answer unless the client is told otherwise. */
+export const ANSWER_MS = 30_000;
+
 /**
- * One request, one answer, matched by id. When the connection closes, as it
- * does when Chrome exits, every request still waiting fails at once, and so
- * does every later one: none waits for an answer that cannot come.
+ * One request, one answer, matched by id. Every request ends: with its
+ * answer, when its caller's signal aborts, after `answerMs` with no answer,
+ * or when the connection closes, as it does when Chrome exits. After the
+ * connection closes, every later request fails at once. An answer that
+ * arrives after its request ended is dropped.
  */
 export class DevTools {
   readonly #socket: ProtocolSocket;
+  readonly #answerMs: number;
   #next = 1;
   readonly #waiting = new Map<number, Waiting>();
   #closed: Error | null = null;
 
-  constructor(socket: ProtocolSocket) {
+  constructor(socket: ProtocolSocket, { answerMs = ANSWER_MS }: { answerMs?: number } = {}) {
     this.#socket = socket;
+    this.#answerMs = answerMs;
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string } };
       if (message.id === undefined) return;
-      const waiting = this.#waiting.get(message.id);
-      this.#waiting.delete(message.id);
+      const waiting = this.#end(message.id);
       if (message.error) waiting?.reject(new Error(message.error.message));
       else waiting?.resolve(message.result);
     });
@@ -44,19 +52,19 @@ export class DevTools {
     socket.addEventListener('error', lost);
   }
 
-  static async connect(endpoint: string): Promise<DevTools> {
+  static async connect(endpoint: string, options: { answerMs?: number } = {}): Promise<DevTools> {
     const socket = new WebSocket(endpoint);
     await new Promise((resolve, reject) => {
       socket.addEventListener('open', resolve, { once: true });
       socket.addEventListener('error', () => reject(new Error('Could not reach Chrome.')), { once: true });
     });
-    return new DevTools(socket);
+    return new DevTools(socket, options);
   }
 
   /**
-   * Sends one request and resolves with its answer. With `signal`, aborting
-   * stops the wait: the request fails with the signal's reason, and a late
-   * answer to it is dropped.
+   * Sends one request and resolves with its answer. It fails if no answer
+   * comes within the client's `answerMs`, or, with `signal`, as soon as the
+   * signal aborts, with the signal's reason.
    */
   send<T>(
     method: string,
@@ -67,16 +75,13 @@ export class DevTools {
     if (signal?.aborted) return Promise.reject(signal.reason);
     const id = this.#next++;
     const answer = new Promise<T>((resolve, reject) => {
-      this.#waiting.set(id, { resolve: resolve as (value: unknown) => void, reject });
+      const timer = setTimeout(
+        () => this.#end(id)?.reject(new Error(`Chrome did not answer ${method} within ${this.#answerMs} ms.`)),
+        this.#answerMs,
+      );
+      this.#waiting.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
     });
-    signal?.addEventListener(
-      'abort',
-      () => {
-        this.#waiting.get(id)?.reject(signal.reason as Error);
-        this.#waiting.delete(id);
-      },
-      { once: true },
-    );
+    signal?.addEventListener('abort', () => this.#end(id)?.reject(signal.reason as Error), { once: true });
     this.#socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     return answer;
   }
@@ -85,10 +90,17 @@ export class DevTools {
     this.#socket.close();
   }
 
+  /** Takes a request out of waiting and stops its deadline; undefined when it has already ended. */
+  #end(id: number): Waiting | undefined {
+    const waiting = this.#waiting.get(id);
+    this.#waiting.delete(id);
+    if (waiting) clearTimeout(waiting.timer);
+    return waiting;
+  }
+
   #fail(error: Error): void {
     this.#closed ??= error;
-    for (const waiting of this.#waiting.values()) waiting.reject(error);
-    this.#waiting.clear();
+    for (const id of [...this.#waiting.keys()]) this.#end(id)?.reject(error);
   }
 }
 

@@ -68,6 +68,22 @@ describe('the DevTools client', () => {
     assert.deepEqual(await next, { ok: true });
   });
 
+  it('fails a request that never gets an answer once its deadline passes, and drops a late answer', async () => {
+    const socket = new StandInSocket();
+    const devtools = new DevTools(socket, { answerMs: 50 });
+    const started = Date.now();
+    await assert.rejects(
+      devtools.send('Page.captureScreenshot'),
+      /did not answer Page\.captureScreenshot within 50 ms/,
+    );
+    assert.ok(Date.now() - started < 1_000);
+    // The answer that arrives after the deadline is dropped, and the client keeps working.
+    socket.deliver('message', JSON.stringify({ id: 1, result: { data: '' } }));
+    const next = devtools.send('Page.enable');
+    socket.deliver('message', JSON.stringify({ id: 2, result: { ok: true } }));
+    assert.deepEqual(await next, { ok: true });
+  });
+
   it('fails waiting requests when the connection errors', async () => {
     const socket = new StandInSocket();
     const devtools = new DevTools(socket);

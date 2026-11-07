@@ -214,7 +214,7 @@ async function main() {
     running.push(await startApp());
     const { chrome, endpoint } = await startChrome(profile);
     running.push(chrome);
-    const devtools = await DevTools.connect(endpoint);
+    const devtools = await DevTools.connect(endpoint, { answerMs: WAIT_MS });
     const { targetId } = await devtools.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await devtools.send<{ sessionId: string }>('Target.attachToTarget', {
       targetId,
