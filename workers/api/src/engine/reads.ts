@@ -117,6 +117,12 @@ const READY = `(t.status = 'open' AND t.type <> 'gate'
   AND (p.defer_until IS NULL OR p.defer_until <= ?2)
   AND t.id NOT IN (SELECT id FROM blocked))`;
 
+/** When task t's assignee last wrote to it: their latest event in its
+ * history, which task_events_by_actor answers from one entry. */
+const LAST_ACTIVITY = `CASE WHEN t.assignee IS NOT NULL THEN
+  (SELECT max(e.at) FROM task_events e INDEXED BY task_events_by_actor WHERE e.task_id = t.id AND e.actor = t.assignee)
+  END`;
+
 /** The JSON array of task t's external links. */
 const EXTERNAL_LINKS = `(SELECT json_group_array(json_object('url', x.url, 'title', x.title, 'kind', x.kind))
      FROM task_external_links x WHERE x.task_id = t.id)`;
@@ -124,7 +130,7 @@ const EXTERNAL_LINKS = `(SELECT json_group_array(json_object('url', x.url, 'titl
 /** A task's columns with what the engine computes for it (TaskRow), its
  * external links left out. Each subquery reaches its rows through the task's
  * own index entries. */
-const COLUMNS_WITHOUT_LINKS = `t.*, ${READY} AS ready,
+const COLUMNS_WITHOUT_LINKS = `t.*, ${READY} AS ready, ${LAST_ACTIVITY} AS last_activity_at,
   (SELECT count(*) FROM task_comments m WHERE m.task_id = t.id) AS comment_count,
   (SELECT json_group_array(l.label) FROM task_labels l WHERE l.task_id = t.id) AS labels_json,
   (SELECT json_group_array(json_object('id', e.depends_on_id, 'type', e.type, 'title', o.title, 'status', o.status))

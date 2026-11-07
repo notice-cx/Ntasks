@@ -213,6 +213,8 @@ describe('an import into the task store', () => {
         merged_at: null,
         live_at: null,
         delivery_stage: null,
+        assignee_for: null,
+        work: '{}',
         ...row,
       })),
     };

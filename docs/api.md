@@ -145,13 +145,13 @@ start of the task guide and its rules for writing a task.
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
-| `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
+| `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against; for an epic, also `openChildren` | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
 | `create_tasks` | Each task filed, in order, with its `lint`; the first task refused, if any, and how many were not tried | `workspace`, `project`, `tasks` (1 to 25, each with `create_task`'s task fields), `idempotency_key`, and optionally `model` |
-| `claim_task` | The task, now held by the sender and in progress | `workspace`, `project`, `task`, `idempotency_key`, and optionally `model` |
+| `claim_task` | The task, now held by the sender and in progress | `workspace`, `project`, `task`, `idempotency_key`, and optionally `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` |
 | `update_task` | The task as changed, and `lint` | `workspace`, `project`, `task`, `idempotency_key`, and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class` |
-| `comment_on_task` | The comment | `workspace`, `project`, `task`, `text`, `idempotency_key` |
+| `comment_on_task` | The comment | `workspace`, `project`, `task`, `text`, `idempotency_key`, and optionally `for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` |
 | `add_dependency` | The link | `workspace`, `project`, `task`, `depends_on`, and optionally `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
 | `remove_dependency` | The link, removed | `workspace`, `project`, `task`, `depends_on` |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `project`, `task`, `reason` (at most 400 characters) |
@@ -169,6 +169,21 @@ sender reaches, and each task then names its project.
 `get_task` returns them as `notes`, `design` and `estimateMinutes`, and
 `list_tasks` returns `estimateMinutes`; like `description`, `notes` and
 `design` are left out of `list_tasks`.
+
+`for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` record the
+holder's work in hand ([concepts](concepts.md#claiming-a-task)). `for` is one
+line of at most 64 characters; `pr` is an http or https URL; the others are
+one line each, `branch` at most 255 characters, `commit` 128 and the rest
+512. Each replaces the value the task has. On `comment_on_task` only the
+task's holder may send them, and only while the task is open; details that
+change nothing leave the task's version as a plain comment does. Closing or
+releasing the task clears them. `get_task` returns `for`, `work` (the
+details recorded, by name) and `lastActivityAt`, when the holder last
+changed or commented on the task, which is null while nobody holds it.
+`list_tasks` returns `for` and `lastActivityAt`, and `get_task` of an epic
+returns `openChildren`: each child that is not closed, with its `id`,
+`title`, `status`, `assignee`, `for` and `lastActivityAt`.
+`get_task_history` records each change of them as `assigneeFor` and `work`.
 
 `duplicates` names earlier tasks for the same work, and `supersedes` the
 tasks this one replaces. `get_task` lists them among `dependencies`, with
@@ -369,9 +384,11 @@ whether its work still waits for a merge or a deploy. It has three stages:
 
 A close as `done` with `commit` (7 to 64 hexadecimal characters) or `pr` (the
 pull request's URL) over MCP, or `commit` or `pullRequest` over HTTP, starts
-the task at `built`; either is refused with any other resolution. A close
-without them leaves the task with no delivery, and a reopen clears it; the
-task's history keeps each delivery and each move.
+the task at `built`; either is refused with any other resolution. One the
+close leaves out comes from the work details its holder recorded (`commit`,
+when it is a commit's hexadecimal name, and `pr`), which the close clears. A
+close as done with neither leaves the task with no delivery, and a reopen
+clears it; the task's history keeps each delivery and each move.
 
 A **signal** moves tasks on: `report_delivery` over MCP, or
 `POST /api/delivery` over HTTP, which takes the same fields. It names a
@@ -509,7 +526,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | Route | Body | Answer |
 |---|---|---|
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit` and `pullRequest` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
@@ -553,6 +570,9 @@ and in a change `null` takes a value off. The task answers its values as
 
 A task answers its [delivery](#delivery) as `delivery`, null when it has
 none.
+
+A task answers its holder's work in hand as `for`, `work` and
+`lastActivityAt`, as `get_task` does.
 
 NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the

@@ -115,6 +115,26 @@ describe('a closed task’s delivery', () => {
     expect(await deliveryOf(project, id)).toMatchObject({ stage: 'live', mergedAt: null, mergeCommit: null });
   });
 
+  it('starts from the commit and pull request its holder recorded when the close names none', async () => {
+    const project = await newProject(engine);
+    const { task } = await engine.createTask(project.id, { title: 'Ship it' }, OWNER);
+    const pr = 'https://github.com/example/app/pull/9';
+    await write(target, 'claim_task', {
+      project: project.id,
+      task: task.id,
+      pr,
+      commit: 'ABCDEF1',
+      idempotency_key: key(),
+    });
+    await write(target, 'close_task', {
+      project: project.id,
+      task: task.id,
+      reason: 'Shipped.',
+      idempotency_key: key(),
+    });
+    expect(await deliveryOf(project, task.id)).toMatchObject({ stage: 'built', commit: 'abcdef1', pullRequest: pr });
+  });
+
   it('stops a task of a project that does not deploy at merged', async () => {
     const project = await newProject(engine);
     const id = await closedWith(project, { pr: 'https://git.example.com/app/merge_requests/3' });

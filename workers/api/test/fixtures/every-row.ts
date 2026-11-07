@@ -1,7 +1,7 @@
 // A task store holding a row of every kind: two projects, tasks of every type
 // and state with a child whose parent's id sorts after its own, every link
-// type, an external link, labels, comments, history, custom fields and a
-// retry record. The backup and load tests share it.
+// type, an external link, labels, comments, history, custom fields, a held
+// task's work details and a retry record. The backup and load tests share it.
 import type { BackupRows, TaskRow } from '@ntasks/domain';
 
 export const ACME = 'a1111111-0000-4000-8000-00000000000a';
@@ -88,6 +88,8 @@ export const TASKS: TaskRow[] = [
     title: 'Later',
     assignee: 'agent-b',
     assignee_model: 'model-b',
+    assignee_for: 'helper-b',
+    work: JSON.stringify({ branch: 'agent-b/later', next: 'Pick it up in December' }),
     defer_until: '2026-12-01T00:00:00.000Z',
     due_at: '2026-12-31T00:00:00.000Z',
     started_at: LATER,

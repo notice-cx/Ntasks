@@ -397,8 +397,9 @@ parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
 ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
-`Until 11 Nov`, and on a closed task how a close where nothing shipped ended,
-or where its change is: Built, Merged or Live) and badges, `RowSpacer`, then `RowActions`, the assignee's
+`Until 11 Nov`, on a held task `For page-rebuild-2` and `Active 12m ago`,
+and on a closed task how a close where nothing shipped ended, or where its
+change is: Built, Merged or Live) and badges, `RowSpacer`, then `RowActions`, the assignee's
 `Avatar` and `RowAge` (34 px, right-aligned).
 
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
@@ -501,6 +502,12 @@ presets where there are some (Estimate takes `90`, `45m`, `1h 30m`, `1.5h`
 or `1:30` and shows hours and minutes). A typed value that does not fit
 shows what is wrong under its field, as `FieldError` draws it, and is not
 saved. None takes a value off.
+
+Under Assignee, which names the helper its holder works through (`claude for
+page-rebuild-2`), a held task that is not closed shows its holder's work in
+hand as facts it may not change: Last activity (`12m ago`), Next step,
+Branch, Pull request (a link), Commit, Worktree and Session (a link when it
+is a URL), each only when recorded.
 
 After the task's own facts come the custom fields its project defines,
 under the names the project gave them, in the order it defined them. Each

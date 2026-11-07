@@ -58,6 +58,17 @@ at most 8,192 characters in each (`TASK_LIMITS` in
 [`task.ts`](../packages/domain/src/task.ts)). `estimate_minutes` holds the
 task's estimate in whole minutes, or null when nobody estimated it.
 
+A task's work in hand is two columns of `tasks`: `assignee_for`, the helper
+agent its holder works through, and `work`, the details its holder recorded
+(`session`, `worktree`, `branch`, `pr`, `commit` and `next`) as one JSON
+object, so a new detail needs no new column (`WORK_DETAILS` and
+`WORK_LIMITS` in [`task.ts`](../packages/domain/src/task.ts)). The engine
+clears both in the write that releases the task, gives it to someone else or
+closes it. A task's last activity is not stored: a read takes the latest
+`task_events` row its assignee made, which the `task_events_by_actor` index
+`(task_id, actor, at)` answers from one entry, so every write and comment
+the holder makes moves it without a write of its own.
+
 A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
 `duplicates` `web-1` means web-2 is the same work as web-1, filed again, and
 `web-3` `supersedes` `web-1` means web-3 replaces it. Only `blocks` holds a
@@ -113,6 +124,8 @@ These hold whatever code writes to the database. Each has a test in
   and a task without a stage records no delivery at all. A commit is 7 to 64
   lowercase hexadecimal characters; a merged task records when it merged,
   and only a live one when it went live.
+- A task's helper and work details are empty while nobody holds it, and once
+  it is closed.
 - Every update of a task raises its `version` by exactly one.
 - A task keeps its id, its project and its creation time.
 - Tasks, their history and their comments are never deleted, and history and
@@ -161,14 +174,16 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   open.
 - **Writes:** `createTask`, `writeTask`, `addComment` and `recordUnchanged`.
   Each is one batch. `createTask` can open an approval the new task waits on.
-  `writeTask` takes everything one change does at once: field changes,
-  labels, links, metadata, a close or a reopen, an approval request and a
-  comment, and in `others` changes to at most 500 other tasks of the project
+  `writeTask` takes everything one change does at once: field changes
+  (the holder's helper and work details among them), labels, links,
+  metadata, a close or a reopen, an approval request and a comment, which
+  its result returns, and in `others` changes to at most 500 other tasks of the project
   (`TASK_LIMITS.others`), such as the comment and hand-back a decision on an
   approval gives the tasks waiting on it. Each of those names the version it
   read, as the write does, and the whole batch fails as `version_conflict`
   when one of them moved since; one that only comments leaves its task's
-  version as `addComment` does.
+  version as `addComment` does, and so does a write whose comment comes with
+  a helper and work details that change nothing.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.

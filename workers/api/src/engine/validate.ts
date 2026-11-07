@@ -15,6 +15,8 @@ import {
   TASK_LIMITS,
   TASK_PRIORITY,
   TaskRefused,
+  WORK_DETAILS,
+  WORK_LIMITS,
   type Actor,
   type CreateTaskInput,
   type CustomField,
@@ -32,6 +34,7 @@ import {
   type TaskFieldChanges,
   type TaskResolution,
   type TaskWrite,
+  type WorkDetail,
 } from '@ntasks/domain';
 
 export function invalid(message: string): never {
@@ -411,6 +414,28 @@ export function createInput(input: CreateTaskInput): CreateFields {
   };
 }
 
+/** One line of text: no line break, tab or control character, nor spaces around it. */
+function line(value: unknown, field: string, max: number): string {
+  if (!oneLine(value, max)) invalid(`${field} must be one line of 1 to ${max} characters, with no spaces around it`);
+  return value;
+}
+
+/** Work details: each one line, a pull request an http or https URL. */
+function workDetails(value: unknown): Partial<Record<WorkDetail, string>> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid('work must be an object');
+  const checked: Partial<Record<WorkDetail, string>> = {};
+  for (const [key, detail] of Object.entries(value)) {
+    if (!(WORK_DETAILS as readonly string[]).includes(key))
+      invalid(`work.${key} is not a work detail; they are ${either([...WORK_DETAILS])}`);
+    const name = key as WorkDetail;
+    if (name === 'pr')
+      checked[name] =
+        httpUrl(detail) ?? invalid(`work.pr must be an http or https URL of at most ${WORK_LIMITS.pr} characters`);
+    else checked[name] = line(detail, `work.${name}`, WORK_LIMITS[name]);
+  }
+  return checked;
+}
+
 function approval(value: { reason: string } | undefined): { reason: string } {
   return { reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) };
 }
@@ -490,6 +515,10 @@ export function write(input: TaskWrite): CheckedWrite {
     ...(given.assignee === undefined
       ? {}
       : { assignee: nullable(given.assignee, (name) => text(name, 'assignee', TASK_LIMITS.actor, true)) }),
+    ...(given.assigneeFor === undefined
+      ? {}
+      : { assigneeFor: line(given.assigneeFor, 'assigneeFor', TASK_LIMITS.helper) }),
+    ...(given.work === undefined ? {} : { work: workDetails(given.work) }),
     ...(given.parentId === undefined ? {} : { parentId: nullable(given.parentId, (id) => taskId(id, 'parentId')) }),
     ...(given.deferUntil === undefined
       ? {}

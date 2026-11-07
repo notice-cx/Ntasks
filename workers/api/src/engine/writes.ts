@@ -6,6 +6,7 @@ import {
   guardRefusalOf,
   TASK_LIMITS,
   TaskRefused,
+  WORK_DETAILS,
   type Actor,
   type CommentResult,
   type CreateProjectInput,
@@ -25,8 +26,10 @@ import {
   type Retry,
   type Task,
   type TaskDelivery,
+  type TaskComment,
   type TaskEventKind,
   type TaskRefusal,
+  type TaskWork,
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
@@ -144,6 +147,13 @@ ORDER BY t.id`;
 /** Field values as history events record them: every value the task carries, by key in order. */
 function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
   return Object.fromEntries([...values].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** Work details in WORK_DETAILS' order, so one set of details is stored and recorded one way. */
+function workIn(details: TaskWork): TaskWork {
+  return Object.fromEntries(
+    WORK_DETAILS.flatMap((detail) => (details[detail] === undefined ? [] : [[detail, details[detail]]])),
+  );
 }
 
 export class Writes {
@@ -293,6 +303,8 @@ export class Writes {
         estimateMinutes: null,
         assignee: null,
         assigneeModel: null,
+        assigneeFor: null,
+        work: {},
         startedAt: null,
         deferUntil: null,
         dueAt: null,
@@ -370,10 +382,20 @@ export class Writes {
     };
   }
 
+  /** A recorded write's answer as it stands now, with the comment it added, if any. */
+  async #recordedResult(projectId: string, recorded: Record<string, Json>, taskId: string): Promise<WriteResult> {
+    const result = await this.#result(projectId, taskId, recorded.created as string[], true);
+    if (typeof recorded.commentId !== 'string') return result;
+    const comment = (await this.#reads.listComments(projectId, taskId)).find(
+      (candidate) => candidate.id === recorded.commentId,
+    );
+    return comment === undefined ? result : { ...result, comment };
+  }
+
   async #replay(retry: Retry | undefined, projectId: string): Promise<WriteResult | null> {
     const recorded = await this.#recorded(retry, projectId);
     if (recorded === null) return null;
-    return this.#result(projectId, recorded.taskId as string, recorded.created as string[], true);
+    return this.#recordedResult(projectId, recorded, recorded.taskId as string);
   }
 
   async recordedWrite(projectId: string, retryInput: Retry): Promise<WriteResult | null> {
@@ -382,7 +404,7 @@ export class Writes {
     if (recorded === null) return null;
     // A comment's record names no task: its key was used for another kind of request.
     if (typeof recorded.taskId !== 'string') refuse('retry_conflict');
-    return this.#result(projectId, recorded.taskId, recorded.created as string[], true);
+    return this.#recordedResult(projectId, recorded, recorded.taskId);
   }
 
   async recordUnchanged(
@@ -668,6 +690,8 @@ export class Writes {
           estimateMinutes: fields.estimateMinutes,
           assignee: null,
           assigneeModel: null,
+          assigneeFor: null,
+          work: {},
           startedAt: null,
           deferUntil: fields.deferUntil,
           dueAt: fields.dueAt,
@@ -725,26 +749,36 @@ export class Writes {
     if (replayed !== null) return replayed;
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
-    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false);
+    const commentId = write.comment === null ? null : crypto.randomUUID();
+    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId);
     const others = await Promise.all(
       write.others.map(async (other) => {
         const found = rows.find((candidate) => candidate.id === other.taskId);
         if (found === undefined) refuse('not_found', `There is no task ${other.taskId}.`);
         if (found.version !== other.write.expectedVersion) refuse('version_conflict');
-        return this.#prepare(projectId, toTask(found), other.write, actor, at, true);
+        const otherComment = other.write.comment === null ? null : crypto.randomUUID();
+        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
       }),
     );
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+      const recorded = {
+        taskId,
+        created: gateId === null ? [] : [gateId],
+        ...(commentId === null ? {} : { commentId }),
+      };
       const statements: Statement[] = [
         ...change(gateId),
         ...others.flatMap((other) => other(null)),
-        ...this.#receipt(retry, projectId, { taskId, created: gateId === null ? [] : [gateId] }, at),
+        ...this.#receipt(retry, projectId, recorded, at),
       ];
       try {
         await this.#db.batch(statements);
-        return await this.#result(projectId, taskId, gateId === null ? [] : [gateId], false);
+        const result = await this.#result(projectId, taskId, recorded.created, false);
+        if (commentId === null || write.comment === null) return result;
+        const comment: TaskComment = { id: commentId, taskId, author: actor.name, text: write.comment, createdAt: at };
+        return { ...result, comment };
       } catch (error) {
         // The same retried request may have committed while this attempt ran;
         // its version then moved on, and the recorded result is the answer.
@@ -762,8 +796,10 @@ export class Writes {
 
   /**
    * The statements that make `write` to `current`, as of `at`, given the id a
-   * requested approval's gate takes. A write that only adds a comment to a
-   * task it rides beside (`others`) leaves that task's version as it is.
+   * requested approval's gate takes, and the id its comment takes. A write
+   * that only adds a comment to a task it rides beside (`others`), or a
+   * comment with a helper and work details that change nothing, leaves the
+   * task's version as it is.
    */
   async #prepare(
     projectId: string,
@@ -772,6 +808,7 @@ export class Writes {
     actor: Actor,
     at: string,
     beside: boolean,
+    commentId: string | null,
   ): Promise<(gateId: string | null) => Statement[]> {
     const taskId = current.id;
     const set = write.set;
@@ -818,6 +855,19 @@ export class Writes {
       change('assignee', 'assignee', set.assignee);
       change('assignee_model', 'assigneeModel', claim ? (actor.model ?? null) : null);
     }
+
+    // The helper and the work details are the holder's: a write that ends its
+    // hold, by a release, a hand-on or a close, starts them over from none.
+    const holder = set.assignee !== undefined ? set.assignee : current.assignee;
+    const closedAfter = write.close !== null || (closed && !write.reopen);
+    const ended = write.close !== null || (set.assignee !== undefined && set.assignee !== current.assignee);
+    const helper = set.assigneeFor !== undefined ? set.assigneeFor : ended ? null : current.assigneeFor;
+    const work = workIn({ ...(ended ? {} : current.work), ...set.work });
+    if ((helper !== null || Object.keys(work).length > 0) && (holder === null || closedAfter))
+      refuse('invalid', "A helper and work details belong to the task's holder: the task needs one, and to be open.");
+    if (helper !== current.assigneeFor) change('assignee_for', 'assigneeFor', helper);
+    if (JSON.stringify(work) !== JSON.stringify(workIn(current.work)))
+      change('work', 'work', JSON.stringify(work), work);
 
     let kind: TaskEventKind = 'updated';
     if (write.close !== null) {
@@ -939,9 +989,14 @@ export class Writes {
       refuse('invalid', `a task links to at most ${TASK_LIMITS.externalLinks} pages outside Ntasks`);
     if (addExternal.length > 0 || removeExternal.length > 0) changes.externalLinks = externalList(external);
 
+    // A comment riding beside another task's write, or one whose helper and
+    // work details change nothing, is a plain comment: the version stays.
+    const keys = Object.keys(set);
+    const detailsOnly = keys.length > 0 && keys.every((key) => key === 'assigneeFor' || key === 'work');
     const commentOnly =
-      beside &&
+      (beside || detailsOnly) &&
       write.comment !== null &&
+      write.requestApproval === null &&
       Object.keys(columns).length === 0 &&
       addLabels.length === 0 &&
       removeLabels.length === 0 &&
@@ -951,8 +1006,7 @@ export class Writes {
       removeExternal.length === 0;
     return (gateId) => {
       const comment = (version: number): Statement[] => {
-        if (write.comment === null) return [];
-        const commentId = crypto.randomUUID();
+        if (write.comment === null || commentId === null) return [];
         return [
           this.#insert('task_comments', {
             id: commentId,

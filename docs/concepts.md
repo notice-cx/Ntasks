@@ -105,9 +105,26 @@ To start a task, an agent or a person **claims** it: the task becomes
 agents claim the same task at the same moment, one gets it and the other is
 told it is taken.
 
+The holder can record the **work in hand** on the task, when it claims the
+task or comments on it:
+
+- **for**: the helper agent working under the holder, when the holder hands
+  the work to one that cannot reach Ntasks itself. The holder stays the one
+  who holds the task, and the task shows both, as `claude for page-rebuild-2`;
+- a link to or id of the agent **session** doing the work, its **worktree**,
+  its **branch**, its pull request (**pr**), the **commit** last tested, and
+  the **next** step.
+
+Each new value replaces the one before it. Releasing or closing the task
+clears them, and its history keeps every value they had.
+
+A task also shows its **last activity**: when its holder last changed or
+commented on it.
+
 A claim is a reservation, not a timer. Ntasks never gives a task to someone
-else because time passed. To release a task that someone holds, first check
-that they stopped working on it, and keep the progress they recorded.
+else because time passed, however old its last activity. To release a task
+that someone holds, first check that they stopped working on it, and keep the
+progress they recorded.
 
 ## Closing a task
 

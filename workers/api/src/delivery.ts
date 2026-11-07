@@ -3,12 +3,19 @@
  * and in a signal, and the signal itself, which the MCP tool report_delivery
  * and POST /api/delivery share. docs/concepts.md describes the stages.
  */
-import { COMMIT_SHA, TaskRefused, type DeliveryMove, type DeliverySignal, type TaskResolution } from '@ntasks/domain';
+import {
+  COMMIT_SHA,
+  TaskRefused,
+  type DeliveryMove,
+  type DeliverySignal,
+  type TaskResolution,
+  type TaskWork,
+} from '@ntasks/domain';
 import { refuse, type Args } from './args.ts';
 import { mayReach } from './auth.ts';
 import { httpUrl, SIGNAL_ITEMS } from './engine/validate.ts';
 import { Refused } from './refused.ts';
-import { actorOf, type WriteContext } from './task-writes.ts';
+import type { WriteContext } from './task-writes.ts';
 
 /** A GitHub repository: owner/name. */
 const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
@@ -96,6 +103,25 @@ export function signalArgs(args: Args, names: { readonly pullRequests: string; r
   return { stage, pullRequests: [...new Set(pullRequests)], commits: [...new Set(commits)] } satisfies DeliverySignal;
 }
 
+/**
+ * What a close as done records of what shipped: the commit and pull request
+ * it names, and for one it leaves out, the one its holder recorded in the
+ * task's work details, which the close clears. A recorded commit counts only
+ * when it is a commit's hexadecimal name.
+ */
+export function shippedWith(
+  given: { readonly commit?: string; readonly pullRequest?: string },
+  work: TaskWork,
+): { readonly commit?: string; readonly pullRequest?: string } {
+  const recorded = work.commit?.toLowerCase();
+  const commit = given.commit ?? (recorded !== undefined && COMMIT_SHA.test(recorded) ? recorded : undefined);
+  const pullRequest = given.pullRequest ?? (work.pr === undefined ? undefined : (pullRequestUrl(work.pr) ?? undefined));
+  return {
+    ...(commit === undefined ? {} : { commit }),
+    ...(pullRequest === undefined ? {} : { pullRequest }),
+  };
+}
+
 /** Moves the closed tasks a signal names, in the projects the sender may change. */
 export async function reportDelivery(context: WriteContext, signal: DeliverySignal): Promise<readonly DeliveryMove[]> {
   const { engine, principal } = context;
@@ -105,7 +131,7 @@ export async function reportDelivery(context: WriteContext, signal: DeliverySign
     return await engine.reportDelivery(
       writable.map((project) => project.id),
       signal,
-      actorOf(principal, undefined),
+      { name: principal.name },
     );
   } catch (error) {
     if (!(error instanceof TaskRefused)) throw error;

@@ -5,7 +5,7 @@
  * Statuses, types and link types stay strings here: a value this build has
  * never seen is drawn as itself instead of breaking the page.
  */
-import type { TaskResolution } from '@ntasks/domain';
+import type { TaskResolution, TaskWork } from '@ntasks/domain';
 
 /** Option keys, in the order options are shown. */
 export const TASK_CHOICE_KEYS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
@@ -151,6 +151,12 @@ export interface LiveTask {
   assigneeModel?: string | null;
   /** Where a closed task's change is; null when it has none. */
   delivery?: TaskDelivery | null;
+  /** The helper agent the assignee works through, shown as `claude for page-rebuild-2`, when the server sends it. */
+  for?: string | null;
+  /** What the assignee recorded about the work in hand, such as its branch and next step, when the server sends it. */
+  work?: TaskWork;
+  /** When the assignee last changed or commented on the task, when the server sends it. */
+  lastActivityAt?: string | null;
 }
 
 /** An epic with its all-time child progress. */
