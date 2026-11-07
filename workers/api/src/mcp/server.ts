@@ -10,6 +10,7 @@ import { McpToolError } from './protocol.ts';
 import { READ, READ_TOOLS, schema, type TaskTool, type ToolContext } from './read-tools.ts';
 import { TASK_GUIDE_TOOL, taskGuide, taskInstructions } from './guide.ts';
 import { objectsFromText, staleClientLine, WRITE_TOOLS } from './write-tools.ts';
+import { FIELD_TOOLS } from './field-tools.ts';
 
 export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
 
@@ -46,8 +47,8 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
   annotations: READ,
 });
 
-/** The tools in the order tools/list returns them, which is NoticeOS's order. */
-const TASK_TOOLS: readonly TaskTool[] = [...READ_TOOLS, ...WRITE_TOOLS];
+/** The tools in the order tools/list returns them: NoticeOS's, in its order, then Ntasks' own. */
+const TASK_TOOLS: readonly TaskTool[] = [...READ_TOOLS, ...WRITE_TOOLS, ...FIELD_TOOLS];
 export const MCP_TOOLS: readonly McpTool[] = Object.freeze([
   LIST_WORKSPACES,
   GET_TASK_GUIDE,

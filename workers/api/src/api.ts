@@ -10,13 +10,21 @@ import {
   boardRoute,
   capabilities,
   changesRoute,
+  fieldsRoute,
   historyRoute,
   projects,
   taskPath,
   taskRoute,
   type ReadContext,
 } from './http/tasks.ts';
-import { closeRoute, commentRoute, createRoute, updateRoute } from './http/writes.ts';
+import {
+  closeRoute,
+  commentRoute,
+  createRoute,
+  defineFieldRoute,
+  retireFieldRoute,
+  updateRoute,
+} from './http/writes.ts';
 import { serveMcp } from './mcp/protocol.ts';
 import { taskServer } from './mcp/server.ts';
 import { Refused, type RefusalKind } from './refused.ts';
@@ -43,11 +51,17 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks/projects': { GET: projects },
   '/api/tasks/capabilities': { GET: capabilities },
   '/api/changes': { GET: changesRoute },
+  '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
 });
+
+/** POST /api/fields/:key/retire. */
+const RETIRE_PATH = /^\/api\/fields\/([a-z][a-z0-9_-]{0,63})\/retire$/u;
 
 function routesOf(pathname: string): Routes | null {
   const routes = PATHS[pathname];
   if (routes) return routes;
+  const retire = RETIRE_PATH.exec(pathname);
+  if (retire) return { POST: (context, url, request) => retireFieldRoute(context, url, request, retire[1]!) };
   const task = taskPath(pathname);
   if (!task) return null;
   const { taskId } = task;

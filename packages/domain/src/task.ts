@@ -26,6 +26,16 @@ export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 export const EXTERNAL_LINK_KINDS = ['pull-request', 'document', 'other'] as const;
 export type ExternalLinkKind = (typeof EXTERNAL_LINK_KINDS)[number];
 
+/**
+ * What a project's custom field holds. Its values are, by type: text; a
+ * finite number; a date as YYYY-MM-DD; one of the field's options; a list of
+ * its options, in the field's order; an http or https URL; true or false.
+ */
+export const FIELD_TYPES = ['text', 'number', 'date', 'single-choice', 'multiple-choice', 'url', 'yes-no'] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
+/** The field types that take options. */
+export const CHOICE_FIELD_TYPES = ['single-choice', 'multiple-choice'] as const satisfies readonly FieldType[];
+
 /** How a close ended. */
 export const TASK_RESOLUTIONS = [
   'done',
@@ -65,6 +75,15 @@ export const TASK_LIMITS = Object.freeze({
   externalLinks: 32,
   externalLinkUrl: 2048,
   externalLinkTitle: 512,
+  /** Custom fields a project defines, retired ones included. */
+  fields: 64,
+  fieldKey: 64,
+  fieldName: 128,
+  /** Options of one choice field, and the characters of each. */
+  fieldOptions: 64,
+  fieldOption: 128,
+  /** A text field's value. */
+  fieldText: 1024,
   actor: 128,
   /** A retry principal: the sender's stable identity that idempotency keys are kept under. */
   retryPrincipal: 128,
@@ -100,6 +119,27 @@ export interface ExternalLink {
   readonly url: string;
   readonly title: string;
   readonly kind: ExternalLinkKind | null;
+}
+
+/** A custom field's value, as its type takes it (FIELD_TYPES). */
+export type FieldValue = string | number | boolean | readonly string[];
+
+/** A field a project defines, which its tasks carry values of. */
+export interface CustomField {
+  readonly projectId: string;
+  /** Names the field in a task's `fields` and in filters: a lowercase letter,
+   * then lowercase letters, digits, underscores or hyphens. */
+  readonly key: string;
+  readonly name: string;
+  readonly type: FieldType;
+  /** A choice field's options, in order; null for any other type. */
+  readonly options: readonly string[] | null;
+  readonly createdAt: string;
+  readonly createdBy: string | null;
+  /** When it was retired. A retired field takes no new values; the values
+   * tasks carry stay, and so does their history. */
+  readonly retiredAt: string | null;
+  readonly retiredBy: string | null;
 }
 
 /** How the task's current close ended. Earlier closes are in its history. */
@@ -141,6 +181,8 @@ export interface Task {
   readonly dependents: readonly TaskLink[];
   /** Pages outside Ntasks, ordered by URL. */
   readonly externalLinks: readonly ExternalLink[];
+  /** The values of its project's custom fields that it carries, by field key. */
+  readonly fields: Readonly<Record<string, FieldValue>>;
   /** Whether someone can start the task now, as the engine worked it out. */
   readonly ready: boolean;
   readonly deferUntil: string | null;
@@ -206,4 +248,5 @@ export const isTaskStatus = isOneOf(TASK_STATUSES);
 export const isTaskType = isOneOf(TASK_TYPES);
 export const isDependencyType = isOneOf(DEPENDENCY_TYPES);
 export const isExternalLinkKind = isOneOf(EXTERNAL_LINK_KINDS);
+export const isFieldType = isOneOf(FIELD_TYPES);
 export const isTaskResolution = isOneOf(TASK_RESOLUTIONS);

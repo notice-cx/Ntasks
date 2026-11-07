@@ -1,9 +1,12 @@
 // Checks of the engine's inputs against the task model and TASK_LIMITS. Each
 // failure is a TaskRefused('invalid') that names the field and the rule.
 import {
+  CHOICE_FIELD_TYPES,
+  FIELD_TYPES,
   IDEMPOTENCY_KEY,
   isDependencyType,
   isExternalLinkKind,
+  isFieldType,
   isTaskId,
   isTaskResolution,
   isTaskStatus,
@@ -13,8 +16,12 @@ import {
   TaskRefused,
   type Actor,
   type CreateTaskInput,
+  type CustomField,
+  type DefineFieldInput,
   type DependencyType,
   type ExternalLink,
+  type FieldType,
+  type FieldValue,
   type Json,
   type JsonObject,
   type NewExternalLink,
@@ -148,6 +155,188 @@ function externalLinks(value: unknown, field: string): ExternalLink[] {
   return checked;
 }
 
+// ─── Custom fields ─────────────────────────────────────────────────────────────
+
+const FIELD_KEY = /^[a-z][a-z0-9_-]{0,63}$/u;
+const LINE_BREAK = /[\r\n]/u;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
+const CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+/** "a", "a or b", "a, b or c". */
+function either(values: readonly string[]): string {
+  return values.length < 2 ? values.join('') : `${values.slice(0, -1).join(', ')} or ${values.at(-1)}`;
+}
+
+function oneLine(value: unknown, max: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim() === value &&
+    value.length >= 1 &&
+    value.length <= max &&
+    !LINE_BREAK.test(value) &&
+    !CONTROL.test(value) &&
+    !value.includes('\t')
+  );
+}
+
+export function isFieldKey(value: unknown): value is string {
+  return typeof value === 'string' && FIELD_KEY.test(value);
+}
+
+/** A new field as the store keeps it. */
+export function fieldDefinition(input: DefineFieldInput): {
+  key: string;
+  name: string;
+  type: FieldType;
+  options: string[] | null;
+} {
+  if (input === null || typeof input !== 'object') invalid('the field must be an object');
+  if (!isFieldKey(input.key))
+    invalid('key must be a lowercase letter, then up to 63 lowercase letters, digits, underscores or hyphens');
+  if (!oneLine(input.name, TASK_LIMITS.fieldName))
+    invalid(`name must be one line of 1 to ${TASK_LIMITS.fieldName} characters, with no spaces around it`);
+  if (!isFieldType(input.type)) invalid(`type must be ${either(FIELD_TYPES)}`);
+  const choice = (CHOICE_FIELD_TYPES as readonly string[]).includes(input.type);
+  if (!choice) {
+    if (input.options !== undefined) invalid(`options are for a ${either(CHOICE_FIELD_TYPES)} field`);
+    return { key: input.key, name: input.name, type: input.type, options: null };
+  }
+  const options: unknown = input.options;
+  if (
+    !Array.isArray(options) ||
+    options.length < 1 ||
+    options.length > TASK_LIMITS.fieldOptions ||
+    !options.every((option) => oneLine(option, TASK_LIMITS.fieldOption)) ||
+    new Set(options).size !== options.length
+  ) {
+    invalid(
+      `options must be 1 to ${TASK_LIMITS.fieldOptions} options, each one line of 1 to ${TASK_LIMITS.fieldOption} characters, none twice`,
+    );
+  }
+  return { key: input.key, name: input.name, type: input.type, options: [...(options as string[])] };
+}
+
+/** What a field's values must be, in the words of a refusal. */
+function valueRule(field: CustomField, filter: boolean): string {
+  const options = either(field.options ?? []);
+  switch (field.type) {
+    case 'text':
+      return `text of 1 to ${TASK_LIMITS.fieldText} characters`;
+    case 'number':
+      return 'a number';
+    case 'date':
+      return 'a date as YYYY-MM-DD';
+    case 'single-choice':
+      return `one of ${options}`;
+    case 'multiple-choice':
+      return filter ? `one of ${options}` : `a list of its options, each one of ${options}, none twice`;
+    case 'url':
+      return `an http or https URL of at most ${TASK_LIMITS.externalLinkUrl} characters`;
+    case 'yes-no':
+      return 'true or false';
+  }
+}
+
+/** The value as the store keeps it, or null when it breaks the field's rule. */
+function checkedValue(field: CustomField, value: unknown, filter: boolean): FieldValue | null {
+  const options = field.options ?? [];
+  switch (field.type) {
+    case 'text':
+      return typeof value === 'string' &&
+        value.trim() !== '' &&
+        value.length <= TASK_LIMITS.fieldText &&
+        !CONTROL.test(value)
+        ? value
+        : null;
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    case 'date': {
+      const parts = typeof value === 'string' ? CALENDAR_DATE.exec(value) : null;
+      if (parts === null) return null;
+      const [year, month, day] = parts.slice(1).map(Number) as [number, number, number];
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+        ? (value as string)
+        : null;
+    }
+    case 'single-choice':
+      return typeof value === 'string' && options.includes(value) ? value : null;
+    case 'multiple-choice':
+      if (filter) return typeof value === 'string' && options.includes(value) ? value : null;
+      if (
+        !Array.isArray(value) ||
+        value.length < 1 ||
+        new Set(value).size !== value.length ||
+        !value.every((option) => typeof option === 'string' && options.includes(option))
+      )
+        return null;
+      // In the field's order, so one set of options is one value, for history and filters alike.
+      return options.filter((option) => (value as string[]).includes(option));
+    case 'url':
+      return httpUrl(value);
+    case 'yes-no':
+      return typeof value === 'boolean' ? value : null;
+  }
+}
+
+function fieldOf(fields: readonly CustomField[], key: string, at: string): CustomField {
+  return fields.find((field) => field.key === key) ?? invalid(`${at}${key}: the project has no field ${key}`);
+}
+
+function valuesObject(values: unknown, at: string): Record<string, unknown> {
+  if (values === null || typeof values !== 'object' || Array.isArray(values))
+    invalid(`${at.replace(/\.$/u, '')} must be an object of values by field key`);
+  if (Object.keys(values).length > TASK_LIMITS.fields)
+    invalid(`${at.replace(/\.$/u, '')} names at most ${TASK_LIMITS.fields} fields`);
+  return values as Record<string, unknown>;
+}
+
+/**
+ * Values for a task's fields, checked against the project's fields and kept
+ * as the store keeps them. With `clearable`, null takes a value off, a
+ * retired field's too; a retired field takes no other value. `at` names the
+ * argument in a refusal, such as `fields.`.
+ */
+export function fieldValues(
+  fields: readonly CustomField[],
+  values: unknown,
+  clearable: boolean,
+  at = 'fields.',
+): Record<string, FieldValue | null> {
+  const given = valuesObject(values, at);
+  const checked: Record<string, FieldValue | null> = {};
+  for (const [key, value] of Object.entries(given)) {
+    const field = fieldOf(fields, key, at);
+    if (value === null && clearable) {
+      checked[key] = null;
+      continue;
+    }
+    if (field.retiredAt !== null) invalid(`${at}${key}: ${field.name} is retired and takes no new values`);
+    checked[key] =
+      checkedValue(field, value, false) ??
+      invalid(`${at}${key} must be ${valueRule(field, false)}: ${field.name} is a ${field.type} field`);
+  }
+  return checked;
+}
+
+/** Filter values for the project's fields, retired ones included: for a
+ * multiple-choice field, one of its options, which a task's options include. */
+export function fieldFilters(
+  fields: readonly CustomField[],
+  values: unknown,
+  at = 'fields.',
+): Record<string, string | number | boolean> {
+  const given = valuesObject(values, at);
+  const checked: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(given)) {
+    const field = fieldOf(fields, key, at);
+    checked[key] =
+      (checkedValue(field, value, true) as string | number | boolean | null) ??
+      invalid(`${at}${key} must be ${valueRule(field, true)}: ${field.name} is a ${field.type} field`);
+  }
+  return checked;
+}
+
 function nullable<T>(value: T | null | undefined, check: (present: T) => T): T | null | undefined {
   return value === undefined || value === null ? value : check(value);
 }
@@ -175,6 +364,8 @@ export interface CreateFields {
   readonly labels: string[];
   readonly links: NewTaskLink[];
   readonly externalLinks: ExternalLink[];
+  /** Checked against the project's fields when the write is made. */
+  readonly fields: Record<string, unknown> | null;
   readonly deferUntil: string | null;
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
@@ -207,6 +398,7 @@ export function createInput(input: CreateTaskInput): CreateFields {
     labels: labels(input.labels ?? [], 'labels'),
     links: newLinks,
     externalLinks: externalLinks(input.externalLinks ?? [], 'externalLinks'),
+    fields: input.fields === undefined ? null : valuesObject(input.fields, 'fields.'),
     deferUntil: input.deferUntil === undefined ? null : instant(input.deferUntil, 'deferUntil'),
     dueAt: input.dueAt === undefined ? null : instant(input.dueAt, 'dueAt'),
     choices: input.choices === undefined ? null : jsonObject(input.choices, 'choices'),
@@ -229,6 +421,8 @@ export interface CheckedWrite {
   readonly removeLinks: string[];
   readonly addExternalLinks: ExternalLink[];
   readonly removeExternalLinks: string[];
+  /** Checked against the project's fields when the write is made. */
+  readonly setFields: Record<string, unknown> | null;
   readonly requestApproval: { reason: string } | null;
   readonly close: { reason: string; resolution: TaskResolution; duplicateOf: string | null } | null;
   readonly reopen: boolean;
@@ -304,6 +498,7 @@ export function write(input: TaskWrite): CheckedWrite {
     removeLinks: [...new Set(removeLinks.map((id, index) => taskId(id, `removeLinks[${index}]`)))],
     addExternalLinks,
     removeExternalLinks,
+    setFields: input.setFields === undefined ? null : valuesObject(input.setFields, 'setFields.'),
     requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
     close,
     reopen: input.reopen === true,
@@ -318,6 +513,7 @@ export function write(input: TaskWrite): CheckedWrite {
     checked.removeLinks.length === 0 &&
     addExternalLinks.length === 0 &&
     removeExternalLinks.length === 0 &&
+    (checked.setFields === null || Object.keys(checked.setFields).length === 0) &&
     checked.requestApproval === null &&
     close === null &&
     !checked.reopen &&

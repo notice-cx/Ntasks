@@ -8,6 +8,7 @@
 /** The tables that hold tasks, in an order their foreign keys accept. */
 export const STORE_TABLES = [
   'projects',
+  'custom_fields',
   'tasks',
   'task_labels',
   'task_edges',
@@ -59,6 +60,8 @@ export interface TaskRow {
   readonly notes?: string;
   readonly design?: string;
   readonly estimate_minutes?: number | null;
+  /** JSON text: the task's custom field values by key. Left out, '{}'. */
+  readonly field_values?: string;
 }
 
 export interface LabelRow {
@@ -72,6 +75,19 @@ export interface EdgeRow {
   readonly type: string;
   readonly created_at: string;
   readonly created_by: string | null;
+}
+
+export interface CustomFieldRow {
+  readonly project_id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly type: string;
+  /** JSON text: a choice field's options; null for any other type. */
+  readonly options: string | null;
+  readonly created_at: string;
+  readonly created_by: string | null;
+  readonly retired_at: string | null;
+  readonly retired_by: string | null;
 }
 
 export interface ExternalLinkRow {
@@ -113,6 +129,8 @@ export interface StoreRows {
   readonly task_edges: readonly EdgeRow[];
   /** Left out, an import writes none. */
   readonly task_external_links?: readonly ExternalLinkRow[];
+  /** Left out, an import writes none. */
+  readonly custom_fields?: readonly CustomFieldRow[];
   readonly task_comments: readonly CommentRow[];
   readonly task_events: readonly EventRow[];
 }
@@ -155,10 +173,22 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'notes',
     'design',
     'estimate_minutes',
+    'field_values',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],
   task_external_links: ['task_id', 'url', 'title', 'kind', 'created_at', 'created_by'],
+  custom_fields: [
+    'project_id',
+    'key',
+    'name',
+    'type',
+    'options',
+    'created_at',
+    'created_by',
+    'retired_at',
+    'retired_by',
+  ],
   task_comments: ['id', 'task_id', 'author', 'text', 'created_at'],
   task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
 });
@@ -170,6 +200,7 @@ const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
   task_labels: 'task_id, label',
   task_edges: 'task_id, depends_on_id',
   task_external_links: 'task_id, url',
+  custom_fields: 'project_id, key',
   task_comments: 'id',
   task_events: 'seq',
 });

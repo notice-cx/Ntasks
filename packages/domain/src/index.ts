@@ -1,10 +1,13 @@
 export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export {
+  CHOICE_FIELD_TYPES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
+  FIELD_TYPES,
   isDependencyType,
   isExternalLinkKind,
+  isFieldType,
   isTaskResolution,
   isTaskStatus,
   isTaskType,
@@ -16,10 +19,13 @@ export {
   TASK_TYPES,
 } from './task.ts';
 export type {
+  CustomField,
   DependencyType,
   EpicProgress,
   ExternalLink,
   ExternalLinkKind,
+  FieldType,
+  FieldValue,
   Json,
   JsonObject,
   Project,
@@ -41,6 +47,8 @@ export type {
   CommentResult,
   CreateProjectInput,
   CreateTaskInput,
+  DefineFieldInput,
+  FieldResult,
   LabelPage,
   LabelQuery,
   NewExternalLink,
@@ -59,6 +67,7 @@ export type {
 export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES } from './store-rows.ts';
 export type {
   CommentRow,
+  CustomFieldRow,
   EdgeRow,
   EventRow,
   ExternalLinkRow,

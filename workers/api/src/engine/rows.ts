@@ -1,8 +1,11 @@
 // The database's rows, and how each becomes a record of the engine contract.
 import type {
+  CustomField,
   DependencyType,
   EpicProgress,
   ExternalLink,
+  FieldType,
+  FieldValue,
   JsonObject,
   Project,
   Task,
@@ -30,6 +33,8 @@ export interface StoredTaskRow {
   readonly notes: string;
   readonly design: string;
   readonly estimate_minutes: number | null;
+  /** The task's custom field values, as a JSON object by field key. */
+  readonly field_values: string;
   readonly assignee: string | null;
   readonly assignee_model: string | null;
   readonly defer_until: string | null;
@@ -63,6 +68,18 @@ export interface TaskRow extends StoredTaskRow {
   readonly dependents_json: string;
   /** Its links to pages outside Ntasks, as a JSON array of ExternalLink. */
   readonly external_links_json: string;
+}
+
+export interface FieldRow {
+  readonly project_id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly type: FieldType;
+  readonly options: string | null;
+  readonly created_at: string;
+  readonly created_by: string | null;
+  readonly retired_at: string | null;
+  readonly retired_by: string | null;
 }
 
 /** One link in a TaskRow's JSON: the other task, the link's type, and the other task's title and status. */
@@ -147,6 +164,7 @@ export function toTask(row: TaskRow): Task {
     dependencies: links(row.dependencies_json),
     dependents: links(row.dependents_json),
     externalLinks: externalLinks(row.external_links_json),
+    fields: JSON.parse(row.field_values) as Record<string, FieldValue>,
     ready: row.ready === 1,
     deferUntil: row.defer_until,
     dueAt: row.due_at,
@@ -171,6 +189,20 @@ export function toTask(row: TaskRow): Task {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
+  };
+}
+
+export function toField(row: FieldRow): CustomField {
+  return {
+    projectId: row.project_id,
+    key: row.key,
+    name: row.name,
+    type: row.type,
+    options: row.options === null ? null : (JSON.parse(row.options) as string[]),
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    retiredAt: row.retired_at,
+    retiredBy: row.retired_by,
   };
 }
 

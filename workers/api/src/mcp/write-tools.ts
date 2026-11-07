@@ -30,6 +30,7 @@ import {
   emptyIsNone,
   estimateArg,
   externalLinksArg,
+  fieldsArg,
   handoffMetadataArg,
   keyArg,
   labelsArg,
@@ -120,7 +121,7 @@ const MODEL = Object.freeze({
   description:
     'The name of the model you run as, as you would say it. Pass it on every new task, claim and close: the Tower shows it beside your name, and the Agents page ranks your work by it.',
 });
-const IDEMPOTENCY = Object.freeze({
+export const IDEMPOTENCY = Object.freeze({
   type: 'string',
   pattern: IDEMPOTENCY_KEY.source,
   description: 'A key you choose for this call. Retrying with the same key and arguments never repeats the change.',
@@ -284,6 +285,15 @@ const EXTERNAL_LINKS = Object.freeze({
     ['url', 'title'],
   ),
 });
+/** Values of a project's custom fields, by key (list_fields lists them). */
+const FIELDS = Object.freeze({
+  type: 'object',
+  maxProperties: TASK_LIMITS.fields,
+  additionalProperties: { type: ['string', 'number', 'boolean', 'array'], items: { type: 'string' } },
+  description:
+    "Values of the project's custom fields, by key, as list_fields lists them: text, a number, a date as " +
+    'YYYY-MM-DD, an option, a list of options, an http or https URL, or true or false, as the field takes.',
+});
 const CHANGE_CLASS = Object.freeze({
   type: 'string',
   enum: TASK_CHANGE_CLASSES,
@@ -314,6 +324,7 @@ const NEW_TASK = Object.freeze({
   ),
   supersedes: TASK_IDS('Tasks this one replaces. May name another project in this workspace.'),
   external_links: EXTERNAL_LINKS,
+  fields: FIELDS,
   approval: {
     type: 'string',
     maxLength: GATE_REASON_MAX,
@@ -341,7 +352,7 @@ const NEW_TASK = Object.freeze({
 const CREATE_FIELDS: readonly string[] = Object.freeze(Object.keys(NEW_TASK));
 
 /** The call's arguments as its retry record keeps them: everything but the key. */
-function retryRequest(operation: string, args: Args): RetryRequest {
+export function retryRequest(operation: string, args: Args): RetryRequest {
   const { idempotency_key: key, ...request } = args;
   return { operation, key: key as string, request };
 }
@@ -377,6 +388,7 @@ function creation(args: Args, target: (name: string, value: unknown) => string):
     estimateMinutes: estimateArg(args, 'estimate_minutes'),
     links: links.length ? links : undefined,
     externalLinks: externalLinksArg(args, 'external_links'),
+    fields: fieldsArg(args, 'fields'),
     choices: choicesArg(args),
     card: cardArg(args),
     changeClass: choiceArg(args, 'change_class', TASK_CHANGE_CLASSES),
@@ -603,6 +615,11 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           minItems: 1,
           description: `${EXTERNAL_LINKS.description} A link to a URL the task has already takes the new title and kind.`,
         },
+        fields: {
+          ...FIELDS,
+          additionalProperties: { type: ['string', 'number', 'boolean', 'array', 'null'], items: { type: 'string' } },
+          description: `${FIELDS.description} null takes a value off.`,
+        },
         remove_external_links: {
           type: 'array',
           minItems: 1,
@@ -657,6 +674,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         'supersedes',
         'add_external_links',
         'remove_external_links',
+        'fields',
         'idempotency_key',
       ]);
       const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
@@ -691,6 +709,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         ...linked,
         addExternalLinks,
         removeExternalLinks,
+        fields: fieldsArg(args, 'fields', true),
         choices: args.choices === null ? null : choicesArg(args),
         card: args.card === null ? null : cardArg(args),
         changeClass: args.change_class === null ? null : choiceArg(args, 'change_class', TASK_CHANGE_CLASSES),
