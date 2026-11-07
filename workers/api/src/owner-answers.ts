@@ -470,15 +470,15 @@ class Draft {
 /** The open tasks this one waits on through blocks links and the open
  * children under it refuse a decision's close; another holder or an open
  * blocker that is not an approval does not. */
-function decisionClose(task: Task, around: Surroundings, refuseWith = refuseState): void {
+function decisionClose(task: Task, around: Surroundings): void {
   const gates = around.blockers.filter((blocker) => blocker.type === 'gate');
   if (gates.length > 0)
-    refuseWith(task.id, {
+    refuseState(task.id, {
       kind: 'gate',
       gates: gates.map((gate) => gate.id),
       human: gates.every((gate) => gate.awaitType === 'human'),
     });
-  if (around.children.length > 0) refuseWith(task.id, { kind: 'children', children: around.children });
+  if (around.children.length > 0) refuseState(task.id, { kind: 'children', children: around.children });
 }
 
 /** The dependents a decision tells: open tasks waiting on it through blocks links. */
@@ -499,9 +499,9 @@ function handedBackWith(dependent: Task): boolean {
 
 /**
  * A person's pick (choiceSteps): the pick, its comment, then a decision's
- * close or any other task's hand-back. The pick is written first in the
- * batch, so a second one is refused; the same person sending the same option
- * again finishes what an earlier pick left undone.
+ * close or any other task's hand-back. A second pick is refused; the same
+ * person sending the same option again finishes a pick recorded without its
+ * comment or its close, such as one imported from Beads.
  */
 function pickInto(
   draft: Draft,
