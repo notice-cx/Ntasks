@@ -12,6 +12,8 @@ export const SCOPES = Object.freeze({
   write: 'tasks:write',
   /** Read every row of the store for a backup, whatever projects the sender reaches (GET /api/backup). */
   backup: 'tasks:backup',
+  /** Load rows into the store while it is empty, such as an import or a backup (POST /api/restore). */
+  restore: 'tasks:restore',
 });
 
 /** How far a sender may go in one project. Write includes read. */

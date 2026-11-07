@@ -353,9 +353,14 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
       throw new AccessRefused('invalid_request', 'send the credential as application/json');
     }
-    let body: { name?: unknown; grants?: unknown; backup?: unknown };
+    let body: { name?: unknown; grants?: unknown; backup?: unknown; restore?: unknown };
     try {
-      body = JSON.parse(await boundedText(request)) as { name?: unknown; grants?: unknown; backup?: unknown };
+      body = JSON.parse(await boundedText(request)) as {
+        name?: unknown;
+        grants?: unknown;
+        backup?: unknown;
+        restore?: unknown;
+      };
     } catch (error) {
       if (error instanceof BodyTooLarge) throw error;
       throw new AccessRefused('invalid_request', 'the body is not JSON');
@@ -365,6 +370,7 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
       name: body?.name,
       grants: body?.grants,
       backup: body?.backup,
+      restore: body?.restore,
       createdBy: principal.userId,
     });
     return json({ service: created }, 201);

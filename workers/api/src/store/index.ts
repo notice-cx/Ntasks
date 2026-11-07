@@ -11,6 +11,7 @@ import type { Principal } from '../auth.ts';
 import { createEngine } from '../engine/index.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
+import { abortLoad, beginLoad, commitLoad, stageRows, type LoadAnswer } from './load.ts';
 import { loadRows, readRows, type ImportResult } from './import.ts';
 import { migrate } from './schema.ts';
 import { newMeter, objectDatabase, type Meter } from './sqlite.ts';
@@ -66,6 +67,32 @@ export class TaskStore extends DurableObject<Env> {
     return readBackupPage(this.ctx.storage, this.#run, token, () => new Date().toISOString());
   }
 
+  /** Begins a load into this store, which must be empty (load.ts). Only the
+   * owner and a service with the restore scope may load. */
+  async loadBegin(migrations: unknown, by: string): Promise<LoadAnswer<{ readonly load: string }>> {
+    return beginLoad(this.ctx.storage, migrations, by, () => new Date().toISOString());
+  }
+
+  /** Adds a page of rows to the waiting load. */
+  async loadRows(load: unknown, table: unknown, rows: unknown): Promise<ReturnType<typeof stageRows>> {
+    return stageRows(this.ctx.storage, load, table, rows);
+  }
+
+  /** Writes the waiting load's rows in one transaction. */
+  async loadCommit(load: unknown, counts: unknown): Promise<ReturnType<typeof commitLoad>> {
+    try {
+      return commitLoad(this.ctx.storage, load, counts, this.meter);
+    } finally {
+      // Whether it landed or was refused, no answer cached before it may be served.
+      this.#tasks = this.#newEngine();
+    }
+  }
+
+  /** Drops the waiting load. */
+  async loadAbort(load: unknown): Promise<ReturnType<typeof abortLoad>> {
+    return abortLoad(this.ctx.storage, load);
+  }
+
   /** Every project, for parts of the Worker outside the API that name
    * projects, such as sign-in's page where the owner grants an agent some. */
   async projects(): Promise<readonly Project[]> {
@@ -79,6 +106,12 @@ export class TaskStore extends DurableObject<Env> {
       workspace: { id: this.env.WORKSPACE_ID, name: this.env.WORKSPACE_NAME },
       now: () => new Date().toISOString(),
       backup: (token) => this.backupPage(token),
+      load: {
+        begin: (migrations, by) => this.loadBegin(migrations, by),
+        rows: (load, table, rows) => this.loadRows(load, table, rows),
+        commit: (load, counts) => this.loadCommit(load, counts),
+        abort: (load) => this.loadAbort(load),
+      },
     });
   }
 }

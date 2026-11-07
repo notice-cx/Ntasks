@@ -92,3 +92,5 @@ export {
   loadStatements,
 } from './backup.ts';
 export type { BackupFile, BackupPage, BackupRow, BackupRows, BackupStart, BackupTable, ReceiptRow } from './backup.ts';
+export { LOAD_PAGE, LoadRefused, sendLoad } from './load.ts';
+export type { LoadPost, LoadResult } from './load.ts';

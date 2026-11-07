@@ -1,8 +1,9 @@
 # @ntasks/migrate
 
 Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
-Dolt into the Ntasks task store, with its full history, and backs a task
-store up and restores it ([below](#back-up-and-restore)). **Dolt** is the
+Dolt into the Ntasks task store, with its full history, backs a task store
+up and restores it ([below](#back-up-and-restore)), and loads an import or a
+backup into an empty deployed store ([below](#load-into-the-deployed-store)). **Dolt** is the
 versioned SQL database Beads stores tasks in. The **task store** is the
 Durable Object that holds Ntasks' tasks in its own SQLite database
 ([The task store](../../docs/task-store.md)). Three commands move a hub:
@@ -19,11 +20,9 @@ and loaded with the same statements the store runs
 ([`packages/domain/src/store-rows.ts`](../../packages/domain/src/store-rows.ts)),
 so a dry run needs no Worker and reaches nothing outside the machine.
 
-The task store loads an import or a backup itself with `importRows`, in one
-transaction, and returns each table's rows with `tableRows`
-([`workers/api/src/store/import.ts`](../../workers/api/src/store/import.ts)).
-No route reaches them yet: they are for an owner-only Worker route. Until
-then, the store's tests call them.
+A deployed store takes an import or a backup through its restore routes, page
+by page, and writes it in one transaction
+([`load`](#load-into-the-deployed-store)).
 
 ## Run a migration
 
@@ -298,6 +297,48 @@ Two commands back up a deployed task store and check the backup:
 `verify --from backup.json --store restored.sqlite` compares a store copy
 with a backup again. The backup file holds every task: keep it private.
 
+## Load into the deployed store
+
+`load` puts an import from Beads, or a backup, into a deployed store that
+holds nothing yet, through its restore routes
+([API](../../docs/api.md#loading-an-empty-store)):
+
+1. It loads the file into a local copy of the store in memory and verifies
+   it there, as `import` and `restore` do. If the file does not import or
+   verify, it stops before sending anything.
+2. It sends the copy's rows, each with every column as the store holds it,
+   table by table in pages of at most 500 rows, and commits them. The store
+   writes every row in one transaction, or none.
+3. It reads the store back through its backup route and compares it with the
+   file: an export through the import's verifier, a backup row by row. It
+   prints `0 differences.` when they match.
+
+The store must run the same version of Ntasks as this checkout: the load is
+refused when its migrations differ. The credential needs the restore choice,
+to load, and the backup choice, to read the store back.
+
+### The cutover from a Beads hub
+
+The last step of moving a hub to Ntasks, once nothing writes to the hub:
+
+1. Export the hub, check that the export imports, and keep the file private
+   ([Run a migration](#run-a-migration), steps 1 to 3).
+2. As the owner, make a credential for the load: `POST /api/access/services`
+   with `{"name": "cutover-load", "backup": true, "restore": true}`. Save its
+   token in a file only you can read.
+3. Load it:
+
+   ```sh
+   node tools/migrate/src/cli.ts load --api https://tasks.example.com --token-file token --from export.json
+   ```
+
+4. When it prints `0 differences.`, revoke the credential
+   (`POST /api/access/services/<credential id>/revoke`) and delete the export
+   and the token file.
+
+A load refused at its commit writes nothing; `load` aborts it, and the store
+stays empty, ready for another try.
+
 ## Tests
 
 ```sh
@@ -317,3 +358,7 @@ The task store's own loading is tested in workerd, in
 every kind of row through a stand-in for the backup route, and restores it;
 the route itself is tested in workerd, in
 [`workers/api/test/backup.test.ts`](../../workers/api/test/backup.test.ts).
+[`test/load.test.ts`](test/load.test.ts) loads an export and a backup through
+a stand-in for the restore routes; the routes themselves are tested in
+workerd, in [`workers/api/test/load.test.ts`](../../workers/api/test/load.test.ts),
+against a local store only.
