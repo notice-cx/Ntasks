@@ -15,7 +15,7 @@ describe('a task page', () => {
       await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' }),
     ).toBeTruthy();
     expect(screen.getByText('Bug')).toBeTruthy();
-    expect(screen.getByText('top priority')).toBeTruthy();
+    expect(screen.getByText('Top priority')).toBeTruthy();
     expect(screen.getByText('0 of 2')).toBeTruthy();
     const facts = screen.getByRole('complementary', { name: 'Facts' });
     expect(within(facts).getByText('Example web app')).toBeTruthy();
@@ -26,6 +26,9 @@ describe('a task page', () => {
     expect(within(where).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
       '/tasks?project=web',
     );
+    // The top bar's path keeps the project's name when a phone hides its words.
+    const path = screen.getByRole('navigation', { name: 'Path' });
+    expect(within(path).getByRole('link').getAttribute('aria-label')).toBe('Example web app');
   });
 
   it('claims, comments, ticks Done when and closes with its evidence', async () => {
@@ -102,6 +105,11 @@ describe('a task page', () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    // Nothing shipped, so the header's state is the grey tick and the way it ended, never Done.
+    const chips = document.querySelector('[data-task-chips]') as HTMLElement;
+    expect(within(chips).getByText('No longer needed')).toBeTruthy();
+    expect(within(chips).queryByText('Done')).toBeNull();
+    expect(chips.querySelector('[data-status-mark="done"] circle')?.getAttribute('class')).toContain('fill-ink-3');
   });
 
   it('says when no task has the id', async () => {

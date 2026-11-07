@@ -49,13 +49,22 @@ describe('focus', () => {
     expect(task(api, 'web-d4x1')?.status).toBe('open');
   });
 
-  it('ends on a line that says every decision is done', async () => {
+  it('ends by counting the decisions passed with Not now, and starts over on them', async () => {
     renderApp('/tasks/focus?project=docs');
     expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-    expect(await screen.findByText("That's every decision for you.")).toBeTruthy();
+    expect(await screen.findByText('1 decision skipped')).toBeTruthy();
+    expect(screen.queryByText('Nothing is waiting for you')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
     expect(current()).toBe('docs-r4s9');
+  });
+
+  it('ends on nothing waiting once every decision is answered', async () => {
+    renderApp('/tasks/focus?project=docs');
+    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
+    fireEvent.click(await enabledButton(/In a separate docs project/));
+    expect(await screen.findByText('Nothing is waiting for you')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start over' })).toBeNull();
   });
 
   it('starts at the decision the address names', async () => {

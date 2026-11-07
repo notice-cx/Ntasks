@@ -1,76 +1,162 @@
 import { focusManager } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { FIXTURE_ACTOR } from '@/api/fixture-data';
 import { newQueryClient, SOURCE_URL } from '@/App';
 import { NO_FILTERS, readBoard } from '@/lib/board-read';
+import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
 import { enabledButton, renderApp } from './render';
 
+/** The ids of the rows in a group, in order. */
+function rowIds(group: HTMLElement): string[] {
+  return [...group.querySelectorAll('[data-task-row]')].map((row) => row.getAttribute('data-task-row') ?? '');
+}
+
+const group = (name: string) => screen.findByRole('region', { name });
+
 describe('the board', () => {
-  it('opens on the decisions waiting on you, with the counts beside them', async () => {
+  it('opens on what waits for you, most urgent first, then each status in its own group', async () => {
     renderApp('/tasks');
-    expect(await screen.findByRole('heading', { level: 1, name: '4 decisions for you' })).toBeTruthy();
-    expect(screen.getByText('1 needs your approval · 11 open tasks')).toBeTruthy();
-    const answer = document.querySelector('[data-page-answer]') as HTMLElement;
-    expect(within(answer).getByText('Urgent').nextElementSibling?.textContent).toBe('4');
-    expect(within(answer).getByText('Blocked').nextElementSibling?.textContent).toBe('3');
-    const queue = screen.getByRole('region', { name: 'Your decisions' });
-    const rows = within(queue)
-      .getAllByRole('listitem')
-      .filter((row) => row.hasAttribute('data-inbox-row'));
+    const waiting = await group('Waiting for you');
     // Approvals first among equal urgency, then the oldest question.
-    expect(rows.map((row) => row.getAttribute('data-inbox-row'))).toEqual([
-      'web-g7p2',
-      'web-d4x1',
-      'docs-r4s9',
-      'web-q8n5',
-    ]);
-    expect(screen.getByText("That's every decision for you.")).toBeTruthy();
+    expect(rowIds(waiting)).toEqual(['web-g7p2', 'web-d4x1', 'docs-r4s9', 'web-q8n5']);
+    expect(within(waiting).getByText('4')).toBeTruthy();
+    const order = [...document.querySelectorAll('[data-group]')].map((section) => section.getAttribute('data-group'));
+    expect(order).toEqual(['waiting', 'in-progress', 'open', 'blocked', 'parked', 'done']);
   });
 
-  it('lists every other task once, and a decision only in the decisions list', async () => {
+  it('lists every other task once, in the group its status mark names', async () => {
     renderApp('/tasks');
-    const table = await screen.findByRole('region', { name: 'All tasks' });
-    const ids = within(table)
-      .getAllByRole('row')
-      .flatMap((row) => row.getAttribute('data-task-row') ?? []);
-    expect(ids).toContain('web-b2r6');
-    expect(ids).not.toContain('web-d4x1');
-    expect(ids).not.toContain('web-g7p2');
-    // Live work first, by priority: the top-priority bug leads.
-    expect(ids[0]).toBe('web-b2r6');
-    // An epic is grouping, not a row.
-    expect(ids).not.toContain('web-k3m9');
+    const open = await group('Open');
+    // Live work by priority: the top-priority bug leads. An epic is a row too, with its progress.
+    expect(rowIds(open)[0]).toBe('web-b2r6');
+    expect(rowIds(open)).toContain('web-k3m9');
+    expect(within(open).getByRole('img', { name: '1 of 4 done' })).toBeTruthy();
+    expect(rowIds(await group('In progress')).sort()).toEqual(['docs-n6j1', 'web-k3m9.2']);
+    // Blocked by status, and open but waiting on a task that is not closed.
+    expect(rowIds(await group('Blocked')).sort()).toEqual(['docs-w8e3', 'web-k3m9.3', 'web-k3m9.4']);
+    const all = [...document.querySelectorAll('[data-group]:not([data-group="waiting"]) [data-task-row]')].map((row) =>
+      row.getAttribute('data-task-row'),
+    );
+    expect(all).not.toContain('web-d4x1');
+    expect(all).not.toContain('web-g7p2');
+    expect(new Set(all).size).toBe(all.length);
   });
 
-  it('narrows the table by the filters, which are the address', async () => {
+  it('folds Done, and opens it on a press', async () => {
+    renderApp('/tasks');
+    const done = await group('Done');
+    expect(rowIds(done)).toEqual([]);
+    fireEvent.click(within(done).getByRole('button', { name: /Done/ }));
+    expect(rowIds(done)).toContain('web-h1z8');
+  });
+
+  it('shows the view the tabs pick, which is part of the address', async () => {
+    renderApp('/tasks');
+    await group('Waiting for you');
+    const views = screen.getByRole('group', { name: 'View' });
+    fireEvent.click(within(views).getByRole('button', { name: 'Active' }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Parked' })).toBeNull());
+    expect(screen.queryByRole('region', { name: 'Done' })).toBeNull();
+    fireEvent.click(within(views).getByRole('button', { name: 'Done' }));
+    const done = await group('Done');
+    expect(screen.queryByRole('region', { name: 'Waiting for you' })).toBeNull();
+    // In the Done view the group is open.
+    expect(rowIds(done)).toContain('web-h1z8');
+  });
+
+  it('narrows the groups by the filters, which are the address, and shows each one set', async () => {
     renderApp('/tasks?status=blocked');
-    const table = await screen.findByRole('region', { name: 'All tasks' });
-    await waitFor(() => {
-      const ids = within(table)
-        .getAllByRole('row')
-        .flatMap((row) => row.getAttribute('data-task-row') ?? []);
-      // Blocked by status, and open but waiting on an unfinished task.
-      expect(ids.sort()).toEqual(['docs-w8e3', 'web-k3m9.3', 'web-k3m9.4']);
+    const blocked = await group('Blocked');
+    await waitFor(() => expect(rowIds(blocked).sort()).toEqual(['docs-w8e3', 'web-k3m9.3', 'web-k3m9.4']));
+    expect(screen.queryByRole('region', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Clear Status: Blocked' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(await group('Open')).toBeTruthy();
+  });
+
+  it('sets a filter from the Filter menu', async () => {
+    renderApp('/tasks');
+    await group('Open');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Priority' }), { target: { value: 'top' } });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'In progress' })).toBeNull());
+    expect(rowIds(await group('Open'))).toEqual(['web-b2r6']);
+    expect(screen.getByRole('button', { name: 'Filter, 1 set' })).toBeTruthy();
+  });
+
+  it('searches by title or id', async () => {
+    renderApp('/tasks');
+    await group('Open');
+    fireEvent.change(screen.getAllByRole('searchbox', { name: 'Search tasks' })[0] as HTMLElement, {
+      target: { value: 'reset link' },
     });
-    expect(screen.getByRole('link', { name: 'Clear filters' })).toBeTruthy();
+    await waitFor(() => expect(rowIds(document.body)).toEqual(['web-b2r6']));
   });
 
   it('claims a task from its row', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    const row = await screen.findByText('Rename the Settings tab to Account');
-    fireEvent.click(row);
-    fireEvent.click(await enabledButton('Claim'));
+    await group('Open');
+    const row = document.querySelector('[data-task-row="web-t5w3"]') as HTMLElement;
+    fireEvent.click(await enabledButton('Claim', row));
     expect(await screen.findByText('Claimed web-t5w3')).toBeTruthy();
     const task = api.state.tasks.find((entry) => entry.id === 'web-t5w3');
     expect(task?.assignee).toBe(FIXTURE_ACTOR);
     expect(task?.status).toBe('in_progress');
   });
 
-  it('says which project could not be read, and keeps the counts as lower bounds', async () => {
+  it('parks a task from its menu, until the date given', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    await group('Open');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for web-t5w3' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Park/ }));
+    fireEvent.change(await screen.findByLabelText(/Park until/), { target: { value: '2030-01-15' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Park' }));
+    expect(await screen.findByText('Parked web-t5w3 until 2030-01-15')).toBeTruthy();
+    expect(api.state.tasks.find((entry) => entry.id === 'web-t5w3')?.deferUntil).toContain('2030-01-15');
+  });
+
+  it('closes a task as done from its menu, with its evidence', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    await group('Open');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for web-t5w3' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Close as/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Done' }));
+    fireEvent.change(await screen.findByLabelText(/Evidence/), { target: { value: 'Renamed in 4d5e6f7.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close task' }));
+    expect(await screen.findByText('Closed web-t5w3')).toBeTruthy();
+    expect(api.state.tasks.find((entry) => entry.id === 'web-t5w3')?.status).toBe('closed');
+  });
+
+  it("copies a task's id from its menu, and says when it could not", async () => {
+    renderApp('/tasks');
+    await group('Open');
+    const copy = async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Actions for web-t5w3' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /Copy id/ }));
+    };
+    // jsdom has no clipboard, as a page served without HTTPS has none.
+    await copy();
+    expect(await screen.findByText('Could not copy web-t5w3')).toBeTruthy();
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      await copy();
+      await waitFor(() => expect(screen.getAllByText('Could not copy web-t5w3')).toHaveLength(2));
+      await copy();
+      expect(await screen.findByText('Copied web-t5w3')).toBeTruthy();
+      expect(writeText).toHaveBeenLastCalledWith('web-t5w3');
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it('says which project could not be read, and counts only what it could', async () => {
     const api = createFixtureTasksApi();
     const failing = {
       ...api,
@@ -81,7 +167,7 @@ describe('the board', () => {
     };
     renderApp('/tasks', failing);
     expect(await screen.findByText(/1 project could not be read/)).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'at least 3 decisions for you' })).toBeTruthy();
+    expect(rowIds(await group('Waiting for you'))).toEqual(['web-g7p2', 'web-d4x1', 'web-q8n5']);
   });
 
   it('reads the board again after a write, not when the window regains focus', async () => {
@@ -98,8 +184,9 @@ describe('the board', () => {
     const queryClient = newQueryClient();
     queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: false } });
     renderApp('/tasks', counted, queryClient);
-    await screen.findByRole('heading', { level: 1, name: '4 decisions for you' });
+    await group('Waiting for you');
     const first = reads;
+    // The sidebar and the board share one read of each project.
     expect(first).toBe(2);
     // Older than the board's stale time, then the window loses and regains focus.
     queryClient
@@ -112,8 +199,8 @@ describe('the board', () => {
     expect(reads).toBe(first);
     focusManager.setFocused(undefined);
     // A write reads the boards again.
-    fireEvent.click(await screen.findByText('Rename the Settings tab to Account'));
-    fireEvent.click(await enabledButton('Claim'));
+    const row = document.querySelector('[data-task-row="web-t5w3"]') as HTMLElement;
+    fireEvent.click(await enabledButton('Claim', row));
     await waitFor(() => expect(reads).toBeGreaterThan(first));
   });
 
@@ -124,7 +211,7 @@ describe('the board', () => {
       ['web', { data: await api.board('web'), error: null }],
       ['docs', { data: await api.board('docs'), error: new Error('The task list: the server answered 503.') }],
     ]);
-    const read = readBoard(projects, reads, NO_FILTERS, Date.now());
+    const read = readBoard(projects, reads, NO_FILTERS);
     expect(read.complete).toBe(false);
     expect(read.broken.map((project) => project.key)).toEqual(['docs']);
     expect(read.allTasks.some((task) => task.project === 'docs')).toBe(false);
@@ -169,5 +256,220 @@ describe('the board', () => {
       expect(screen.getByRole('link', { name: 'Source code' }).getAttribute('href')).toBe(SOURCE_URL);
       unmount();
     }
+  });
+});
+
+describe('the sidebar', () => {
+  it('counts what waits for you and each project, and names who holds open work', async () => {
+    renderApp('/tasks');
+    await group('Waiting for you');
+    const sidebar = screen.getByRole('navigation', { name: 'Ntasks' });
+    const waiting = within(sidebar).getByRole('link', { name: /Waiting for you/ });
+    expect(waiting.getAttribute('href')).toBe('/tasks?view=waiting');
+    expect(within(waiting).getByText('4')).toBeTruthy();
+    expect(
+      within(sidebar)
+        .getByRole('link', { name: /Example web app/ })
+        .getAttribute('href'),
+    ).toBe('/tasks?project=web');
+    // The agents by the names the read gives them, and the person by theirs.
+    expect(within(sidebar).getByRole('link', { name: 'Codex' }).getAttribute('href')).toBe(
+      '/tasks?assignee=agent%3Acodex',
+    );
+    expect(within(sidebar).getByRole('link', { name: FIXTURE_ACTOR })).toBeTruthy();
+    expect(sidebar.querySelector('[data-brand-mark="codex"]')).not.toBeNull();
+  });
+
+  it('opens the waiting view, which shows only what waits for you', async () => {
+    renderApp('/tasks');
+    await group('Waiting for you');
+    const sidebar = screen.getByRole('navigation', { name: 'Ntasks' });
+    fireEvent.click(within(sidebar).getByRole('link', { name: /Waiting for you/ }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Open' })).toBeNull());
+    expect(rowIds(await group('Waiting for you'))).toHaveLength(4);
+    expect(
+      within(sidebar)
+        .getByRole('link', { name: /Waiting for you/ })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+  });
+});
+
+describe('the keys', () => {
+  function press(key: string) {
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+    });
+  }
+
+  it('opens the composer on C', async () => {
+    renderApp('/tasks');
+    await group('Waiting for you');
+    press('c');
+    expect(await screen.findByRole('dialog', { name: 'File a task' })).toBeTruthy();
+  });
+
+  it('puts the cursor in the search field on /, from any page', async () => {
+    renderApp('/tasks/web-b2r6');
+    await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });
+    press('/');
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Search tasks'));
+  });
+
+  it('opens the search field on a phone and puts the cursor in it', async () => {
+    const media = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...media(query),
+      matches: query === '(width < 40rem)',
+    })) as typeof media;
+    try {
+      renderApp('/tasks');
+      await group('Waiting for you');
+      press('/');
+      await waitFor(() => expect(document.activeElement?.closest('[data-phone-search]')).not.toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: 'Search', expanded: true }));
+      fireEvent.click(screen.getByRole('button', { name: 'Search', expanded: false }));
+      await waitFor(() => expect(document.activeElement?.closest('[data-phone-search]')).not.toBeNull());
+    } finally {
+      window.matchMedia = media;
+    }
+  });
+
+  it('opens Focus on F', async () => {
+    renderApp('/tasks');
+    await group('Waiting for you');
+    press('f');
+    expect(await screen.findByText(/Focus · 1 of 4 for you/)).toBeTruthy();
+  });
+
+  it('leaves F alone on Focus, which keeps its own address', async () => {
+    renderApp('/tasks/focus?project=docs');
+    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
+    press('f');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText('Focus · 1 of 1 for you')).toBeTruthy();
+  });
+});
+
+describe('a row waiting for you that this sign-in cannot answer', () => {
+  it('says why on each control it disables', async () => {
+    const api = createFixtureTasksApi();
+    const limited = {
+      ...api,
+      capabilities: async () => ({ live: true, writable: true, operations: ['close', 'update'], reason: null }),
+    };
+    renderApp('/tasks', limited);
+    const waiting = await group('Waiting for you');
+    const reasonOf = (control: HTMLElement) =>
+      (control.getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .join(' ')
+        .trim();
+    const row = (id: string) => waiting.querySelector(`[data-task-row="${id}"]`) as HTMLElement;
+    await waitFor(() =>
+      expect((within(row('web-g7p2')).getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    );
+    const controls = [
+      within(row('web-g7p2')).getByRole('button', { name: 'Approve' }),
+      ...within(row('web-d4x1')).getAllByRole('button', { name: /^\([abc]\)/ }),
+      within(row('web-q8n5')).getByRole('button', { name: 'Answer' }),
+    ];
+    for (const control of controls) {
+      expect((control as HTMLButtonElement).disabled).toBe(true);
+      expect(reasonOf(control)).toBe('This sign-in cannot answer it.');
+    }
+  });
+});
+
+describe('a row waiting for you', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sends each row's answer through a person's decision route", async () => {
+    const api = createFixtureTasksApi();
+    const calls: unknown[][] = [];
+    const spied = {
+      ...api,
+      resolveGate: (...args: Parameters<typeof api.resolveGate>) => {
+        calls.push(['resolveGate', args[0], args[1], args[2]]);
+        return api.resolveGate(...args);
+      },
+      choose: (...args: Parameters<typeof api.choose>) => {
+        calls.push(['choose', args[0], args[1], args[2], args[3]]);
+        return api.choose(...args);
+      },
+      respond: (...args: Parameters<typeof api.respond>) => {
+        calls.push(['respond', args[0], args[1], args[2]]);
+        return api.respond(...args);
+      },
+      dismiss: (...args: Parameters<typeof api.dismiss>) => {
+        calls.push(['dismiss', args[0], args[1], args[2], args[3]?.resolution]);
+        return api.dismiss(...args);
+      },
+    };
+    renderApp('/tasks', spied);
+    const waiting = await group('Waiting for you');
+    const row = (id: string) => waiting.querySelector(`[data-task-row="${id}"]`) as HTMLElement;
+    fireEvent.click(await enabledButton('Approve', row('web-g7p2')));
+    fireEvent.click(await enabledButton('(b) Email link and password', row('web-d4x1')));
+    fireEvent.click(await enabledButton('Answer', row('web-q8n5')));
+    const box = screen.getByRole('textbox', { name: 'Your answer to web-q8n5' });
+    fireEvent.change(box, { target: { value: 'support@example.com' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for docs-r4s9' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Close as/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: "Won't do" }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Note' }), { target: { value: 'The docs stay put.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close task' }));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() => expect(calls).toHaveLength(4));
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        ['resolveGate', 'web-g7p2', 'web', undefined],
+        ['choose', 'web-d4x1', 'web', 'b', undefined],
+        ['respond', 'web-q8n5', 'web', 'support@example.com'],
+        ['dismiss', 'docs-r4s9', 'docs', 'The docs stay put.', 'wont-do'],
+      ]),
+    );
+  });
+
+  it("shows a refusal of a sign-in that is not a person in the server's words", async () => {
+    const api = createFixtureTasksApi();
+    const agent = {
+      ...api,
+      resolveGate: () =>
+        Promise.reject(
+          new ApiError('Only a person signed in to the web app can approve web-g7p2.', 403, 'insufficient_scope'),
+        ),
+    };
+    renderApp('/tasks', agent);
+    const waiting = await group('Waiting for you');
+    fireEvent.click(await enabledButton('Approve', waiting.querySelector('[data-task-row="web-g7p2"]') as HTMLElement));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    expect(await screen.findByText('Only a person signed in to the web app can approve web-g7p2.')).toBeTruthy();
+  });
+
+  it('answers a decision with one press of an option, sent after the Undo window', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    const row = (await group('Waiting for you')).querySelector('[data-task-row="docs-r4s9"]') as HTMLElement;
+    fireEvent.click(await enabledButton("(a) In the repository's docs folder, recommended", row));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() =>
+      expect(api.state.tasks.find((entry) => entry.id === 'docs-r4s9')?.choice).toMatchObject({ option: 'a' }),
+    );
   });
 });

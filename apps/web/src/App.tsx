@@ -1,14 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { retryRead, type TasksApi } from '@/api/client';
 import { TasksApiProvider } from '@/api/context';
-import { EmptyState, PageSkeleton } from '@/components/surface';
+import { AppSidebar } from '@/components/AppSidebar';
+import { PageSkeleton } from '@/components/surface';
 import { Button } from '@/components/ui/button';
-import { pillControlClass } from '@/components/ui/chrome';
-import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/ui/empty-state';
+import { AppShell, TopBar } from '@/components/ui/shell';
+import { BoardsProvider } from '@/hooks/useBoard';
+import { useShortcut } from '@/hooks/useShortcut';
+import { useCapabilities, writesAvailable } from '@/hooks/useTasks';
+import { COMPOSE_STATE, SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
 const TasksBoard = lazy(() => import('@/routes/TasksBoard'));
@@ -16,11 +21,7 @@ const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
 const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
 const DesignRoute = lazy(() => import('@/routes/DesignRoute'));
 
-/**
- * AGPL-3.0 section 13 requires a modified copy that people use over a network
- * to offer them its source, so every version of the app links to it.
- */
-export const SOURCE_URL = 'https://github.com/notice-cx/Ntasks';
+export { SOURCE_URL };
 
 export function newQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true, retry: retryRead } } });
@@ -70,78 +71,66 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
   );
 }
 
+/**
+ * The frame every task page shares: the sidebar, the page, and the keys that
+ * work on any of them: `C` for a new task, `/` to search the board and `F`
+ * for Focus.
+ */
 function Shell() {
-  const { pathname } = useLocation();
-  const nav = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      'rounded-md px-2.5 py-1.5 text-sm font-medium',
-      pillControlClass,
-      isActive ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
-    );
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const writable = writesAvailable(useCapabilities());
+  // The board keeps its filters when a key opens something on it.
+  const board = `/tasks${pathname === '/tasks' ? search : ''}`;
+  useShortcut('c', () => void navigate(board, { state: { [COMPOSE_STATE]: true } }), writable);
+  useShortcut('/', () => void navigate(board, { state: { [SEARCH_STATE]: Date.now() } }));
+  // On Focus itself, F would start it again and drop the decision and project its address names.
+  useShortcut(
+    'f',
+    () => void navigate('/tasks/focus', { state: { returnTo: `${pathname}${search}` } }),
+    pathname !== '/tasks/focus',
+  );
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-card/60">
-        <div className="mx-auto flex w-full max-w-[1400px] items-center gap-4 px-4 py-2.5 md:px-6">
-          <Link
-            to="/tasks"
-            className={cn('text-base font-semibold tracking-[-0.02em] text-foreground', pillControlClass)}
-          >
-            Ntasks
-          </Link>
-          <nav aria-label="Pages" className="flex items-center gap-1">
-            <NavLink to="/tasks" end className={nav}>
-              Tasks
-            </NavLink>
-            <NavLink to="/tasks/focus" className={nav}>
-              Focus
-            </NavLink>
-          </nav>
+    <BoardsProvider>
+      <AppShell sidebar={<AppSidebar />}>
+        <div className="page-arrive">
+          {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
+          <PageBoundary resetKey={pathname}>
+            <Suspense
+              fallback={
+                <div className="p-6 max-sm:p-4">
+                  <PageSkeleton shape="list" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </PageBoundary>
         </div>
-      </header>
-      <main className="page-arrive flex-1">
-        {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
-        <PageBoundary resetKey={pathname}>
-          <Suspense
-            fallback={
-              <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
-                <PageSkeleton shape="list" />
-              </div>
-            }
-          >
-            <Outlet />
-          </Suspense>
-        </PageBoundary>
-      </main>
-      <footer className="border-t border-border">
-        <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-muted-foreground md:px-6">
-          <span>Ntasks · AGPL-3.0</span>
-          <a href={SOURCE_URL} className="underline-offset-4 hover:text-foreground hover:underline" data-source-link="">
-            Source code
-          </a>
-        </div>
-      </footer>
-    </div>
+      </AppShell>
+    </BoardsProvider>
   );
 }
 
 function NoPage() {
   return (
-    <div className="mx-auto w-full max-w-[1400px] p-4 md:p-6">
+    <>
+      <TopBar title="No page" />
       <EmptyState
         title="No page at this address"
-        hint={
-          <Link to="/tasks" className="text-foreground underline underline-offset-4">
-            Go to Tasks
-          </Link>
+        action={
+          <Button asChild size="sm">
+            <Link to="/tasks">Go to Tasks</Link>
+          </Button>
         }
       />
-    </div>
+    </>
   );
 }
 
 /**
  * A page that fails while it loads or draws, such as one whose code changed
- * under a new deployment, takes only itself down: the header and the
+ * under a new deployment, takes only itself down: the sidebar and its
  * source-code link stay, with a way to load the page again.
  */
 export class PageBoundary extends Component<
@@ -165,15 +154,16 @@ export class PageBoundary extends Component<
   override render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div
-        className="mx-auto flex w-full max-w-[1400px] flex-col items-start gap-3 p-4 md:p-6"
-        role="alert"
-        data-page-failed=""
-      >
-        <EmptyState title="This page could not load" hint="Reloading fetches the current version of the app." />
-        <Button variant="primary" type="button" onClick={() => window.location.reload()}>
-          Reload
-        </Button>
+      <div role="alert" data-page-failed="">
+        <TopBar title="Ntasks" />
+        <EmptyState
+          title="This page could not load"
+          action={
+            <Button variant="primary" size="sm" type="button" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          }
+        />
       </div>
     );
   }

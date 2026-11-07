@@ -40,14 +40,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { SOURCE_URL } from '@/App';
+import { SOURCE_URL } from '@/lib/page-state';
 import type { TaskChoiceKey } from '@/api/types';
 import { Avatar, AvatarGroup, type AvatarSize } from '@/components/ui/avatar';
 import { Badge, Count, Progress } from '@/components/ui/badge';
 import { Button, IconButton } from '@/components/ui/button';
 import { OptionList, Segmented, Tabs, type ChoiceOption } from '@/components/ui/choice';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Field, Input } from '@/components/ui/field';
+import { Field, Input, Select } from '@/components/ui/field';
 import { Kbd } from '@/components/ui/kbd';
 import { Menu, MenuContent, MenuItem, MenuPanel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { ThemeScope } from '@/components/ui/popover';
@@ -628,6 +628,15 @@ function FieldsPanel() {
         </div>
         <Field label="Title" required>
           <Input defaultValue="Fix the broken reset link" />
+        </Field>
+        <Field label="Priority">
+          <Select defaultValue="1">
+            {PRIORITY_LABELS.map((word, priority) => (
+              <option key={word} value={priority}>
+                {word}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Email" error="This address has no @.">
           <Input defaultValue="support.example.com" />

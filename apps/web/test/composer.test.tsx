@@ -9,7 +9,7 @@ describe('the composer', () => {
   it('opens from New task and files a task from its title, project and Enter', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    fireEvent.click(await enabledButton('New task'));
+    fireEvent.click(await enabledButton('New task', screen.getByRole('main')));
     const dialog = await screen.findByRole('dialog', { name: 'File a task' });
     const title = within(dialog).getByLabelText(/Title/);
     expect(title.getAttribute('aria-required')).toBe('true');
@@ -128,7 +128,7 @@ describe('the composer', () => {
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
 
-    fireEvent.click(await enabledButton('New task'));
+    fireEvent.click(await enabledButton('New task', screen.getByRole('main')));
     fireEvent.change(await screen.findByLabelText(/Title/), { target: { value: 'Another' } });
     fireEvent.change(screen.getByLabelText(/^Project/, { selector: 'select[data-composer-project]' }), {
       target: { value: 'docs' },
@@ -156,8 +156,8 @@ describe('the composer', () => {
     seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
     // The board is narrowed to a project the list does not hold yet, and the composer opens after the list arrived.
     const { queryClient } = renderApp('/tasks?project=web', createFixtureTasksApi({ seed }));
-    await screen.findByText('Every project');
-    fireEvent.click(await enabledButton('New task'));
+    await screen.findByText('No tasks match these filters');
+    fireEvent.click(await enabledButton('New task', screen.getByRole('main')));
     const select = (await screen.findByLabelText(/^Project/, {
       selector: 'select[data-composer-project]',
     })) as HTMLSelectElement;

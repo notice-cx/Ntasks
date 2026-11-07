@@ -136,7 +136,11 @@ export function closeNote(
 /** A person's name for an id the API sent with the read; any other name as it is. */
 export function actorLabel(actor: string, actors?: readonly TaskActor[]): string {
   const found = actors?.find((person) => person.principalId === actor);
-  return found?.displayName.trim() ? found.displayName : actor;
+  if (found?.displayName.trim()) return found.displayName;
+  // The API's own prefixes (docs/sign-in.md): `agent:<name>`, `person:<name>`,
+  // and `service:<credential>/<agent>` for the agent a service acts for.
+  const named = /^(?:agent|person):(.+)$/.exec(actor) ?? /^service:[^/]+\/(.+)$/.exec(actor);
+  return named?.[1] ?? actor;
 }
 
 /**
@@ -257,4 +261,21 @@ export function waitsOnTask(
       return status == null ? !task.ready : status !== 'closed';
     })
   );
+}
+
+/** The tasks a task waits on that are not closed yet, by their latest known status. */
+export function waitingOn(
+  task: Pick<LiveTask, 'dependencies'>,
+  statuses: ReadonlyMap<string, string>,
+): readonly string[] {
+  return task.dependencies
+    .filter((edge) => isBlockingLink(edge.type) && (statuses.get(edge.id) ?? edge.status) !== 'closed')
+    .map((edge) => edge.id);
+}
+
+/** A Markdown checklist's ticked boxes and all its boxes, as Done when writes them; null when it has none. */
+export function checklistCount(markdown: string): { done: number; total: number } | null {
+  const boxes = [...markdown.matchAll(/^\s*[-*+] \[([ xX])\]/gm)];
+  if (boxes.length === 0) return null;
+  return { done: boxes.filter((box) => box[1] !== ' ').length, total: boxes.length };
 }

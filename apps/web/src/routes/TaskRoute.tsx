@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
-import { Layers, Lock, Pencil, Plus, Snowflake, X } from 'lucide-react';
+import { ChevronRight, Layers, Lock, Pencil, Plus, Snowflake, X } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { TaskResolution } from '@ntasks/domain';
@@ -9,9 +9,11 @@ import { ChoiceButtons } from '@/components/ChoiceButtons';
 import { CloseNoteForm, RESOLUTION_GLYPH, ResolutionChips } from '@/components/CloseResolution';
 import { FactChip, factChipClass, type FactChoice } from '@/components/FactChip';
 import { TaskTimeline, type TimelineEntry } from '@/components/TaskTimeline';
-import { EmptyState, PageSkeleton, ReadFailed, SectionLabel, STATE_TONE } from '@/components/surface';
+import { EmptyState, PageSkeleton, ReadFailed, SectionLabel } from '@/components/surface';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { ProjectBadge, TopBar } from '@/components/ui/shell';
+import { PriorityMark, StatusMark } from '@/components/ui/symbols';
+import { statusMarkOfStored } from '@/lib/symbols';
 import { eyebrowClass, fieldClass, inlineLinkClass } from '@/components/ui/chrome';
 import { useNow } from '@/hooks/useNow';
 import {
@@ -46,7 +48,6 @@ import {
 import { taskPath, taskPrefix } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
 import { useAskActions } from './tasks/ask-actions';
-import { PriorityMark, statusFace, TaskStatusGlyph } from './tasks/task-face';
 import {
   ChoiceSummary,
   ClosedSummary,
@@ -89,7 +90,7 @@ export function TaskRoute() {
     );
   } else if (notFound) {
     body = (
-      <Card className="p-4" data-task-not-found="">
+      <div className="rounded-xl bg-background inset-ring inset-ring-border p-4" data-task-not-found="">
         <EmptyState
           title="No task with this id"
           hint={
@@ -101,7 +102,7 @@ export function TaskRoute() {
             </>
           }
         />
-      </Card>
+      </div>
     );
   } else if (detail.isError) {
     body = (
@@ -145,12 +146,33 @@ export function TaskRoute() {
   }
 
   return (
-    <div
-      className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 p-4 md:p-6 motion-safe:[&_button:not(:disabled):active]:translate-y-px"
-      data-task-page=""
-    >
-      {body}
-    </div>
+    <>
+      <TopBar
+        title={
+          <nav aria-label="Path" className="flex min-w-0 items-center gap-1.5 text-label font-medium text-ink-3">
+            {project ? (
+              <Link
+                to={`/tasks?${new URLSearchParams({ project: project.logicalKey })}`}
+                // A phone hides the name beside the badge, so the link carries it.
+                aria-label={project.displayName}
+                className="flex min-w-0 items-center gap-1.5 text-ink-3 no-underline hover:text-ink"
+              >
+                <ProjectBadge prefix={project.prefix} />
+                <span className="truncate max-sm:hidden">{project.displayName}</span>
+              </Link>
+            ) : null}
+            {project ? <ChevronRight aria-hidden size={14} className="shrink-0" /> : null}
+            <span className="nums text-ink-2">{id}</span>
+          </nav>
+        }
+      />
+      <div
+        className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 p-4 md:p-6 motion-safe:[&_button:not(:disabled):active]:translate-y-px"
+        data-task-page=""
+      >
+        {body}
+      </div>
+    </>
   );
 }
 
@@ -189,6 +211,7 @@ function TaskPage({
     issueType: task.issueType,
     awaitType: task.awaitType,
     status: task.status,
+    resolution: task.status === 'closed' ? (task.resolution ?? 'done') : null,
     priority: task.priority,
     holder:
       task.status !== 'closed' && task.assignee
@@ -253,8 +276,8 @@ function TaskPage({
           actors={actors}
           nowMs={nowMs}
         />
-        <Card
-          className="viz-arrive min-w-0 divide-y divide-border/70 shadow-raised lg:col-start-1 lg:row-start-1"
+        <div
+          className="viz-arrive min-w-0 divide-y divide-border/70 rounded-xl bg-background inset-ring inset-ring-border lg:col-start-1 lg:row-start-1"
           data-task-content=""
         >
           <Body task={task} project={key} />
@@ -296,7 +319,7 @@ function TaskPage({
             </section>
           ) : null}
           <Activity task={task} project={key} comments={comments} actors={actors} nowMs={nowMs} />
-        </Card>
+        </div>
       </div>
     </>
   );
@@ -796,7 +819,7 @@ function LinkList({
                   className="mt-1 size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground"
                 />
               ) : (
-                <TaskStatusGlyph status={row.status} className="mt-0.5" />
+                <StatusMark status={statusMarkOfStored(row.status)} className="mt-0.5" />
               )}
               <Link to={taskPath(row.id)} className={cn(inlineLinkClass, 'min-w-0 [overflow-wrap:anywhere]')}>
                 <span className="me-1.5 font-mono text-xs text-muted-foreground">{row.id}</span>
@@ -946,20 +969,16 @@ function CommentBox({ id, project }: { id: string; project: string }) {
 
 // --- The facts rail: each fact drawn as its value and edited in place --------
 
-const STATUS_CHOICES: FactChoice[] = TASK_STATUSES.filter((status) => status.stored !== 'closed').map((status) => {
-  const face = statusFace(status.stored);
-  const Icon = face.icon;
-  return {
-    value: status.stored,
-    label: status.label,
-    mark: <Icon className={cn('size-3.5', STATE_TONE[face.tone].text)} />,
-  };
-});
+const STATUS_CHOICES: FactChoice[] = TASK_STATUSES.filter((status) => status.stored !== 'closed').map((status) => ({
+  value: status.stored,
+  label: status.label,
+  mark: <StatusMark status={statusMarkOfStored(status.stored)} label={null} />,
+}));
 
 const PRIORITY_CHOICES: FactChoice[] = PRIORITY_BANDS.map((band, index) => ({
   value: String(index),
   label: band,
-  mark: <PriorityMark priority={index} size="chip" />,
+  mark: <PriorityMark priority={index} label={null} />,
 }));
 
 /** Who holds work in the project, offered as assignees. */
@@ -999,8 +1018,10 @@ function Facts({
   const capabilities = useCapabilities();
   const save = useFieldSave(task.id, project.logicalKey);
   const can = (field: string) => fieldAvailable(capabilities, field);
-  const status = statusFace(task.status);
-  const StatusIcon = status.icon;
+  const status = {
+    mark: statusMarkOfStored(task.status),
+    label: TASK_STATUSES.find((entry) => entry.stored === task.status)?.label ?? task.status,
+  };
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
   const parked = (task.deferUntil ?? '').slice(0, 10);
@@ -1075,8 +1096,8 @@ function Facts({
             editor={{ kind: 'choice', value: task.status, choices: STATUS_CHOICES }}
             onSave={(next) => save({ label: 'the status', edit: { status: next }, undo: { status: task.status } })}
           >
-            <StatusIcon aria-hidden className={cn('size-3.5 shrink-0', STATE_TONE[status.tone].text)} />
-            <span className={STATE_TONE[status.tone].text}>{status.label}</span>
+            <StatusMark status={status.mark} label={null} />
+            <span>{status.label}</span>
           </FactChip>
         </Fact>
         <Fact label="Priority">
@@ -1089,7 +1110,7 @@ function Facts({
               save({ label: 'the priority', edit: { priority: Number(next) }, undo: { priority: task.priority } })
             }
           >
-            <PriorityMark priority={task.priority} size="chip" />
+            <PriorityMark priority={task.priority} label={null} />
             {PRIORITY_BANDS[Math.min(Math.max(task.priority, 0), 4)] ?? 'normal'}
           </FactChip>
         </Fact>

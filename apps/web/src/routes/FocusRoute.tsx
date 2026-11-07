@@ -14,7 +14,8 @@ import { askVerb, choiceOrder, isGate, type BoardTask, type InboxAsk } from '@/l
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
 import { ageLabel } from './tasks/ask-queue';
-import { askGlyph } from './tasks/task-face';
+import { StatusMark } from '@/components/ui/symbols';
+import { TopBar } from '@/components/ui/shell';
 
 const TASKS_HOME = '/tasks';
 const NOTE_MAX = 2000;
@@ -56,7 +57,7 @@ export function FocusRoute() {
   const leave = returnPath(location.state);
   const project = params.get('project');
   const start = params.get('task');
-  const board = useBoard({ ...NO_FILTERS, project: project ?? 'all' }, now);
+  const board = useBoard({ ...NO_FILTERS, project: project ?? 'all' });
   const hides = useAnswerHides();
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(() => new Set());
   const [handled, setHandled] = useState<ReadonlySet<string>>(() => new Set());
@@ -66,6 +67,8 @@ export function FocusRoute() {
   const at = start === null ? -1 : queue.findIndex((task) => task.id === start);
   const ordered = at <= 0 ? queue : [...queue.slice(at), ...queue.slice(0, at)];
   const pending = ordered.filter((task) => !skipped.has(task.id));
+  // Passed with Not now and still waiting: the sitting is not over, only paused.
+  const passed = ordered.length - pending.length;
   const current = pending[0] ?? null;
   const after = pending[1] ?? null;
   const shownIds = new Set(queue.map((task) => task.id));
@@ -91,13 +94,17 @@ export function FocusRoute() {
     body = (
       <div className="flex flex-col items-start gap-3 py-10" data-focus-done="">
         <p className="m-0 text-figure-sm text-foreground">
-          {board.complete ? "That's every decision for you." : 'No decisions in the projects that could be read.'}
+          {passed > 0
+            ? `${formatInt(passed)} ${passed === 1 ? 'decision' : 'decisions'} skipped`
+            : board.complete
+              ? 'Nothing is waiting for you'
+              : 'Nothing waiting in the projects that could be read'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" asChild>
             <Link to={leave}>Back to Tasks</Link>
           </Button>
-          {skipped.size > 0 ? (
+          {passed > 0 ? (
             <Button type="button" variant="ghost" onClick={() => setSkipped(new Set())} data-focus-again="">
               Start over
             </Button>
@@ -122,37 +129,40 @@ export function FocusRoute() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6" data-tasks-focus="">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className={eyebrowClass} data-focus-position={`${position}/${total}`}>
-          {total > 0 ? `Focus · ${formatInt(position)} of ${formatInt(total)} for you` : 'Focus'}
-        </span>
-        {/* Past two dozen the dots are no longer countable; the words carry the place. */}
-        {total > 0 && total <= 24 ? (
-          <span aria-hidden className="flex flex-wrap gap-1">
-            {Array.from({ length: total }, (_, index) => (
-              <span
-                key={index}
-                className={cn(
-                  'size-1.5 rounded-full',
-                  current === null || index < position ? 'bg-foreground/80' : 'bg-border',
-                )}
-              />
-            ))}
+    <>
+      <TopBar title={<span className="text-page-title text-ink max-sm:text-lg">Focus</span>} />
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6" data-tasks-focus="">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className={eyebrowClass} data-focus-position={`${position}/${total}`}>
+            {total > 0 ? `Focus · ${formatInt(position)} of ${formatInt(total)} for you` : 'Focus'}
           </span>
-        ) : null}
-        <Link
-          to={leave}
-          className={cn(
-            'ms-auto text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline',
-            pillControlClass,
-          )}
-        >
-          Leave focus
-        </Link>
+          {/* Past two dozen the dots are no longer countable; the words carry the place. */}
+          {total > 0 && total <= 24 ? (
+            <span aria-hidden className="flex flex-wrap gap-1">
+              {Array.from({ length: total }, (_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    current === null || index < position ? 'bg-foreground/80' : 'bg-border',
+                  )}
+                />
+              ))}
+            </span>
+          ) : null}
+          <Link
+            to={leave}
+            className={cn(
+              'ms-auto text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline',
+              pillControlClass,
+            )}
+          >
+            Leave focus
+          </Link>
+        </div>
+        {body}
       </div>
-      {body}
-    </div>
+    </>
   );
 }
 
@@ -252,10 +262,8 @@ function FocusDecision({
     <section className="flex flex-col gap-5" data-focus-decision={task.id}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
         <span className="font-medium text-foreground">{projectName}</span>
-        <span className="inline-flex items-center gap-1.5 font-medium text-warn">
-          <span aria-hidden className="font-bold">
-            {askGlyph(task)}
-          </span>
+        <span className="inline-flex items-center gap-1.5 font-medium text-wait-text">
+          <StatusMark status="waiting" size={12} label={null} />
           {ASK_LINE[ask]}
           {waited !== null ? ` · waiting ${ageLabel(waited / DAY)}` : ''}
         </span>

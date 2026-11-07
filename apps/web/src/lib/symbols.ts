@@ -26,17 +26,34 @@ type StatusFacts = Pick<LiveTask, 'status' | 'issueType' | 'labels' | 'ready' | 
 
 /**
  * The mark a task shows. Closed and parked come from the stored status. Of
- * the live tasks, one a person must answer is Waiting for you; one that is
- * blocked, or open and waiting on a task that is not closed, is Blocked.
- * `statuses` holds the other tasks' current statuses by id, for links whose
- * own read did not carry one. A status this build does not know shows as Open.
+ * the live tasks, one a person must answer is Waiting for you, unless an
+ * approval holds it: then the approval is the one question, and the task,
+ * like one that is blocked or open and waiting on a task that is not closed,
+ * is Blocked. `statuses` holds the other tasks' current statuses by id, for
+ * links whose own read did not carry one; `held` the ids of the tasks a
+ * pending approval holds (`readBoard`). A status this build does not know
+ * shows as Open.
  */
-export function statusMarkFor(task: StatusFacts, statuses: ReadonlyMap<string, string> = new Map()): StatusMark {
+export function statusMarkFor(
+  task: StatusFacts & { id: string },
+  statuses: ReadonlyMap<string, string> = new Map(),
+  held: ReadonlySet<string> = new Set(),
+): StatusMark {
   if (task.status === 'closed') return 'done';
   if (task.status === PARKED) return 'parked';
+  if (held.has(task.id)) return 'blocked';
   if (waitsOnPerson(task)) return 'waiting';
   if (task.status === 'blocked' || waitsOnTask(task, statuses)) return 'blocked';
   if (task.status === IN_PROGRESS) return 'in-progress';
+  return 'open';
+}
+
+/** The mark for a stored status alone, for a linked task whose other facts the read did not carry. */
+export function statusMarkOfStored(stored: string): StatusMark {
+  if (stored === 'closed') return 'done';
+  if (stored === PARKED) return 'parked';
+  if (stored === 'blocked') return 'blocked';
+  if (stored === IN_PROGRESS) return 'in-progress';
   return 'open';
 }
 
@@ -106,6 +123,11 @@ const CODEX = /codex|openai|\bgpt\b/i;
 const AGENT_ACTOR = /^(?:agent|service):/;
 const PERSON_ACTOR = /^person:/;
 
+/** Whether the API records this actor as an agent or a service rather than a person. */
+export function isAgentActor(actor: string): boolean {
+  return AGENT_ACTOR.test(actor);
+}
+
 /**
  * Who an avatar shows. Only an agent gets a brand mark: an actor the API
  * records as an agent or a service, one that named a model, or one the
@@ -152,10 +174,12 @@ export function avatarMarkSize(avatarSize: number): number {
 
 // --- Keys -----------------------------------------------------------------------
 
-/** Whether a key press belongs to a text field the person is typing in, so a page's single-key shortcuts leave it alone. */
+/** Whether a key press belongs to a text field the person is typing in, or to a dialog, menu or list that takes its own keys, so a page's single-key shortcuts leave it alone. */
 export function typingIn(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
+  // A dialog, a menu and a list of options take their own keys.
+  if (target.closest('[role="dialog"], [role="menu"], [role="listbox"]')) return true;
   if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
   if (target instanceof HTMLInputElement) {
     return !['button', 'checkbox', 'radio', 'submit', 'reset', 'range', 'color', 'file'].includes(target.type);
