@@ -72,8 +72,10 @@ pnpm --filter @ntasks/domain test
 - **Comments say what the code cannot:** a reason, a rule, a trap, or the one
   place a fact lives. They do not narrate the code or record its history;
   that belongs in commit messages.
-- **Documentation states what a thing does, in plain words.** Name the page,
-  the command or the rule, and explain a term the first time it appears.
+- **Documentation states what a thing does, in plain words, for developers.**
+  Name the page, the command or the rule. Explain an Ntasks term the first
+  time it appears; name widely used technology (Cloudflare Workers, Durable
+  Objects, D1, MCP, OAuth, SQLite) without explaining it.
 
 ### Rules for Worker code
 
