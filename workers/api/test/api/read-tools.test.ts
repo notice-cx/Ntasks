@@ -160,8 +160,12 @@ describe('list_workspaces and get_task_guide', () => {
     expect(result.instructions.startsWith(TASK_START)).toBe(true);
     const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!;
     expect(guide.guide).not.toContain('## This endpoint');
-    // The note an endpoint gives when it lacks some of them.
-    expect(unofferedTools(['list_tasks'])).toMatch(/^This endpoint does not offer list_workspaces, list_projects, /u);
+    // The note an endpoint gives when it lacks some of them, naming each in any order.
+    const note = unofferedTools(['list_tasks']);
+    expect(note).toMatch(/^This endpoint does not offer /u);
+    expect(note).toContain('list_workspaces');
+    expect(note).toContain('list_projects');
+    expect(note).not.toContain('list_tasks');
   });
 
   it('come from a guide that names every tool it lists', () => {
