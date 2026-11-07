@@ -67,6 +67,8 @@ export function FocusRoute() {
   const at = start === null ? -1 : queue.findIndex((task) => task.id === start);
   const ordered = at <= 0 ? queue : [...queue.slice(at), ...queue.slice(0, at)];
   const pending = ordered.filter((task) => !skipped.has(task.id));
+  // Passed with Not now and still waiting: the sitting is not over, only paused.
+  const passed = ordered.length - pending.length;
   const current = pending[0] ?? null;
   const after = pending[1] ?? null;
   const shownIds = new Set(queue.map((task) => task.id));
@@ -92,13 +94,17 @@ export function FocusRoute() {
     body = (
       <div className="flex flex-col items-start gap-3 py-10" data-focus-done="">
         <p className="m-0 text-figure-sm text-foreground">
-          {board.complete ? 'Nothing is waiting for you' : 'Nothing waiting in the projects that could be read'}
+          {passed > 0
+            ? `${formatInt(passed)} ${passed === 1 ? 'decision' : 'decisions'} skipped`
+            : board.complete
+              ? 'Nothing is waiting for you'
+              : 'Nothing waiting in the projects that could be read'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" asChild>
             <Link to={leave}>Back to Tasks</Link>
           </Button>
-          {skipped.size > 0 ? (
+          {passed > 0 ? (
             <Button type="button" variant="ghost" onClick={() => setSkipped(new Set())} data-focus-again="">
               Start over
             </Button>
