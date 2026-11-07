@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { timelineOrder, type TimelineEntry } from '@/components/TaskTimeline';
-import { fieldKeyName, fieldValueText, formatMinutes } from '@/lib/format';
+import { fieldKeyName, fieldValueText, formatMinutes, parseMinutes } from '@/lib/format';
 
 describe("a task's facts in words", () => {
   it('writes an estimate as hours and minutes', () => {
@@ -9,6 +9,21 @@ describe("a task's facts in words", () => {
     expect(formatMinutes(90)).toBe('1h 30m');
     expect(formatMinutes(0)).toBe('0m');
     expect(formatMinutes(-5)).toBe('0m');
+  });
+
+  it('reads an estimate as a person types it, in whole minutes', () => {
+    expect(parseMinutes('90', 600)).toBe(90);
+    expect(parseMinutes('45m', 600)).toBe(45);
+    expect(parseMinutes('2h', 600)).toBe(120);
+    expect(parseMinutes('1.5h', 600)).toBe(90);
+    expect(parseMinutes('1h 30m', 600)).toBe(90);
+    expect(parseMinutes('1h30m', 600)).toBe(90);
+    expect(parseMinutes('1:30', 600)).toBe(90);
+    expect(parseMinutes('2 hours 5 minutes', 600)).toBe(125);
+    // What the fact shows reads back as the same estimate.
+    expect(parseMinutes(formatMinutes(525_600), 525_600)).toBe(525_600);
+    for (const wrong of ['', 'soon', '1h 30', 'h', '-5', '1:75']) expect(parseMinutes(wrong, 600)).toBeNull();
+    expect(parseMinutes('11h', 600)).toBeNull();
   });
 
   it("names a custom field by its key until the field's own name is read", () => {

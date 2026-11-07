@@ -4,7 +4,7 @@
  * filters keep. A project whose read failed is named as such and counted as
  * missing, never as empty.
  */
-import type { LiveTasksPayload, TaskProject } from '@/api/types';
+import type { FieldFilters, LiveTasksPayload, TaskProject } from '@/api/types';
 import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
   boardOrder,
@@ -26,6 +26,8 @@ export interface BoardFilters {
   priority: string;
   label: string;
   assignee: string;
+  /** Values of the custom fields of the one project in view, by field key; the server keeps only the tasks holding them. */
+  fields: FieldFilters;
 }
 
 export const NO_FILTERS: BoardFilters = {
@@ -35,7 +37,33 @@ export const NO_FILTERS: BoardFilters = {
   priority: 'all',
   label: '',
   assignee: 'all',
+  fields: {},
 };
+
+/** The address's prefix for a filter by custom field, as the API names it: `field.area=Email`. */
+export const FIELD_FILTER_PREFIX = 'field.';
+
+/** The filters by custom field an address names, by field key. */
+export function fieldFiltersOf(params: URLSearchParams): FieldFilters {
+  return Object.fromEntries(
+    [...params.entries()]
+      .filter(
+        ([name, value]) =>
+          name.startsWith(FIELD_FILTER_PREFIX) && name.length > FIELD_FILTER_PREFIX.length && value !== '',
+      )
+      .map(([name, value]) => [name.slice(FIELD_FILTER_PREFIX.length), value]),
+  );
+}
+
+/**
+ * The project whose custom fields the board filters by: the one the Project
+ * filter names, or the only project there is. Each project defines its own
+ * fields, so with several projects in view there is none.
+ */
+export function fieldsProject(filters: Pick<BoardFilters, 'project'>, catalog: readonly TaskProject[]): string | null {
+  if (filters.project !== 'all') return filters.project;
+  return catalog.length === 1 ? (catalog[0]?.logicalKey ?? null) : null;
+}
 
 export interface ProjectRead {
   data?: LiveTasksPayload;

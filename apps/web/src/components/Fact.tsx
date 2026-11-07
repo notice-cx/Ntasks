@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { ChevronDown, CornerDownLeft, LoaderCircle } from 'lucide-react';
 import { IconButton } from '@/components/ui/button';
-import { Input } from '@/components/ui/field';
+import { FieldError, Input } from '@/components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { PopoverAnchor } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -15,12 +15,34 @@ export interface FactChoice {
 
 /**
  * How a fact is changed: pick one value (or type one the list does not
- * hold), turn values on and off (labels), or pick a date.
+ * hold), turn values on and off (labels), pick a date, or type a value
+ * (an estimate, a number, a URL), with presets to pick from.
+ *
+ * `clear` is the item that takes the value off, offered while there is one;
+ * it saves the empty string. `check` names what is wrong with a typed
+ * value, which is then not saved.
  */
 export type FactEditor =
   | { kind: 'choice'; value: string; choices: readonly FactChoice[]; other?: string }
   | { kind: 'toggle'; values: readonly string[]; choices: readonly FactChoice[]; other?: string }
-  | { kind: 'date'; value: string; presets: readonly FactChoice[]; clear?: string };
+  | {
+      kind: 'date';
+      value: string;
+      presets: readonly FactChoice[];
+      clear?: string;
+      /** The date field's name; the fact's name and "date" when left out. */
+      field?: string;
+    }
+  | {
+      kind: 'text';
+      value: string;
+      /** The typed field's name, and its placeholder. */
+      field: string;
+      inputType?: 'text' | 'number' | 'url';
+      presets?: readonly FactChoice[];
+      clear?: string;
+      check?: (text: string) => string | null;
+    };
 
 /**
  * One fact in a task's side panel: its name in Text 3, then its value as
@@ -216,9 +238,19 @@ function FactMenu({
   align?: 'start' | 'end';
   onSave: (next: string, on?: boolean) => void;
 }) {
+  const presets = editor.kind === 'date' || editor.kind === 'text' ? (editor.presets ?? []) : [];
   const typed =
     editor.kind === 'date' ? (
-      <TypedValue label={`${label} date`} type="date" initial={editor.value} onSave={onSave} />
+      <TypedValue label={editor.field ?? `${label} date`} type="date" initial={editor.value} onSave={onSave} />
+    ) : editor.kind === 'text' ? (
+      <TypedValue
+        label={editor.field}
+        type={editor.inputType ?? 'text'}
+        initial={editor.value}
+        {...(editor.check ? { check: editor.check } : {})}
+        autoFocus={presets.length === 0 && editor.value === ''}
+        onSave={onSave}
+      />
     ) : editor.other ? (
       <TypedValue
         label={editor.other}
@@ -254,7 +286,7 @@ function FactMenu({
               );
             })
           : [
-              ...editor.presets.map((preset) => (
+              ...presets.map((preset) => (
                 <MenuItem
                   key={preset.value}
                   icon={preset.mark}
@@ -266,7 +298,7 @@ function FactMenu({
               )),
               ...(editor.value !== '' && editor.clear
                 ? [
-                    <MenuSeparator key="separator" />,
+                    ...(presets.length > 0 ? [<MenuSeparator key="separator" />] : []),
                     <MenuItem key="clear" onSelect={() => onSave('')}>
                       {editor.clear}
                     </MenuItem>,
@@ -277,36 +309,67 @@ function FactMenu({
   );
 }
 
-/** A value typed instead of picked: Enter saves it. */
+/** A value typed instead of picked: Enter saves it, unless `check` names what is wrong with it, which shows under it. */
 function TypedValue({
   label,
   type = 'text',
   initial = '',
+  check,
+  autoFocus = false,
   onSave,
 }: {
   label: string;
-  type?: 'text' | 'date';
+  type?: 'text' | 'number' | 'url' | 'date';
   initial?: string;
+  check?: (text: string) => string | null;
+  autoFocus?: boolean;
   onSave: (next: string) => void;
 }) {
   const [value, setValue] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
   return (
     <form
-      className="flex items-center gap-1"
+      className="flex flex-col gap-1"
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        if (value.trim() !== '') onSave(value.trim());
+        const words = value.trim();
+        if (words === '') return;
+        const wrong = check?.(words) ?? null;
+        setError(wrong);
+        if (wrong === null) onSave(words);
       }}
     >
-      <Input
-        type={type}
-        aria-label={label}
-        placeholder={type === 'text' ? label : undefined}
-        spellCheck={false}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-      />
-      <IconButton type="submit" size="sm" label={`Save ${label.toLowerCase()}`} icon={<CornerDownLeft aria-hidden />} />
+      <div className="flex items-center gap-1">
+        <Input
+          // A number field would hand back nothing for words it cannot read, so `check` could not name the problem.
+          type={type === 'number' ? 'text' : type}
+          inputMode={type === 'number' ? 'decimal' : undefined}
+          aria-label={label}
+          placeholder={type === 'date' ? undefined : label}
+          spellCheck={false}
+          autoFocus={autoFocus}
+          value={value}
+          aria-invalid={error === null ? undefined : true}
+          aria-describedby={error === null ? undefined : errorId}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError(null);
+          }}
+        />
+        <IconButton
+          type="submit"
+          size="sm"
+          label={`Save ${label.toLowerCase()}`}
+          icon={<CornerDownLeft aria-hidden />}
+        />
+      </div>
+      {error === null ? null : (
+        <FieldError id={errorId} className="px-1 pb-0.5">
+          {error}
+        </FieldError>
+      )}
     </form>
   );
 }

@@ -56,6 +56,33 @@ export interface TaskExternalLink {
   kind: string | null;
 }
 
+/** A custom field's value: text, a number, a date or URL as text, an option, a list of options, or yes or no. */
+export type TaskFieldValue = string | number | boolean | string[];
+
+/** A custom field a project defines, as `GET /api/fields` lists it. */
+export interface TaskField {
+  /** Names the field in a task's `fields` and in a board's filter. */
+  key: string;
+  name: string;
+  /** `text`, `number`, `date`, `single-choice`, `multiple-choice`, `url`, `yes-no`, or a type this build does not know. */
+  type: string;
+  /** A choice field's options, in order; null for any other type. */
+  options: string[] | null;
+  createdAt: string;
+  /** When it was retired: it keeps the values tasks carry and takes no new ones. Null while it is in use. */
+  retiredAt: string | null;
+}
+
+/** One project's custom fields, retired ones included, in the order they were defined. */
+export interface ProjectFields {
+  /** The project's key. */
+  project: string;
+  fields: TaskField[];
+}
+
+/** A board's filter by custom field: each field's key and the one value a task must hold, as the address writes it. */
+export type FieldFilters = Readonly<Record<string, string>>;
+
 /** One task, as a board row and a task page read it. */
 export interface LiveTask {
   id: string;
@@ -93,7 +120,7 @@ export interface LiveTask {
   /** Ordered by URL, when the server sends them. */
   externalLinks?: TaskExternalLink[];
   /** The values of its project's custom fields, by field key, when the server sends them. */
-  fields?: Record<string, string | number | boolean | string[]>;
+  fields?: Record<string, TaskFieldValue>;
   /** How many comments the task carries; the bodies come with the task's own read. */
   comments: number;
   /** Fields other systems attach, stored and returned as given. */
@@ -235,8 +262,29 @@ export interface TaskEdit {
   title?: string;
   description?: string;
   acceptance?: string;
+  /** Markdown; the empty string clears it. */
+  notes?: string;
+  design?: string;
+  /** Whole minutes; null takes the estimate off. */
+  estimateMinutes?: number | null;
+  /** A date, `YYYY-MM-DD`; null takes the due date off. */
+  dueAt?: string | null;
   addLabels?: string[];
   removeLabels?: string[];
+  /** Pages to link to; a URL the task already links to takes the new title and kind. */
+  addExternalLinks?: NewExternalLink[];
+  /** The URLs of links to take off. */
+  removeExternalLinks?: string[];
+  /** Custom field values by key; null takes a value off. */
+  fields?: Record<string, TaskFieldValue | null>;
+}
+
+/** A page a task links to, as a write sends it. */
+export interface NewExternalLink {
+  url: string;
+  title: string;
+  /** `pull-request`, `document` or `other`; left out when none is given. */
+  kind?: string;
 }
 
 /** How a close ended when it is not done, and for a duplicate the other task. */

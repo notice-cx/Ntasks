@@ -3,17 +3,28 @@
  * words, the ones this sign-in may change opening a menu of values, then
  * when the task was created and last changed.
  */
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Layers, Moon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskProject } from '@/api/types';
-import { Fact, LinkedFact, type FactChoice } from '@/components/Fact';
+import { TASK_LIMITS } from '@ntasks/domain';
+import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '@/api/types';
+import { Fact, LinkedFact, type FactChoice, type FactEditor } from '@/components/Fact';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
-import { fieldAvailable, useCapabilities, useUpdateTask } from '@/hooks/useTasks';
-import { ageMs, calendarDay, fieldKeyName, fieldValueText, formatAge, formatMinutes, localDay } from '@/lib/format';
+import { fieldAvailable, useCapabilities, useProjectFields, useUpdateTask } from '@/hooks/useTasks';
+import { fieldEditable, parseFieldInput, toggledOptions } from '@/lib/custom-fields';
+import {
+  ageMs,
+  calendarDay,
+  fieldKeyName,
+  fieldValueText,
+  formatAge,
+  formatMinutes,
+  localDay,
+  parseMinutes,
+} from '@/lib/format';
 import {
   isAgentActor,
   priorityLabel,
@@ -26,22 +37,31 @@ import {
 } from '@/lib/symbols';
 import { actorLabel, claimedModel, RESOLUTION_LABELS, TASK_STATUSES } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
+import { cn } from '@/lib/utils';
 
-export type FieldSave = (input: { label: string; edit: TaskEdit; undo?: TaskEdit }) => Promise<boolean>;
+export type FieldSave = (input: {
+  label: string;
+  edit: TaskEdit;
+  undo?: TaskEdit;
+  /** The toast's words, when not "Saved" and the label. */
+  said?: string;
+  /** The retry key of this submission, when a second attempt may follow a failed one. */
+  idempotencyKey?: string;
+}) => Promise<boolean>;
 
 /** Save one field with a toast that offers Undo, the contract every editable fact keeps. */
 export function useFieldSave(id: string, project: string): FieldSave {
   const update = useUpdateTask();
   return useCallback(
-    async ({ label, edit, undo }) => {
+    async ({ label, edit, undo, said, idempotencyKey }) => {
       try {
-        await update.mutateAsync({ id, project, edit });
+        await update.mutateAsync({ id, project, edit, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : `Could not save ${label}`);
         return false;
       }
       toast.success(
-        `Saved ${label}`,
+        said ?? `Saved ${label}`,
         undo === undefined
           ? {}
           : {
@@ -77,13 +97,23 @@ const PRIORITY_CHOICES: FactChoice[] = PRIORITY_LABELS.map((word, priority) => (
   mark: <PriorityMark priority={priority} label={null} />,
 }));
 
-function parkPresets(nowMs: number): FactChoice[] {
+function dayPresets(nowMs: number, today = false): FactChoice[] {
   return [
+    ...(today ? [{ label: 'Today', value: localDay(nowMs) }] : []),
     { label: 'Tomorrow', value: localDay(nowMs, 1) },
     { label: 'In a week', value: localDay(nowMs, 7) },
-    { label: 'In a month', value: localDay(nowMs, 30) },
+    ...(today ? [] : [{ label: 'In a month', value: localDay(nowMs, 30) }]),
   ];
 }
+
+/** An estimate's presets, written as the fact shows them. */
+const ESTIMATE_PRESETS: FactChoice[] = [30, 60, 120, 240, 480].map((minutes) => ({
+  value: formatMinutes(minutes),
+  label: formatMinutes(minutes),
+}));
+
+/** The word a cleared value takes, as an absent fact reads. */
+const NONE = 'None';
 
 /** An actor as a menu draws them: their avatar, and their name. */
 function actorChoice(actor: string, actors: readonly TaskActor[] | undefined): FactChoice {
@@ -134,8 +164,20 @@ export function TaskFacts({
   const labels = [...new Set([...siblings.flatMap((row) => row.labels), ...task.labels])].sort();
   const parked = (task.deferUntil ?? '').slice(0, 10);
   const due = (task.dueAt ?? '').slice(0, 10);
+  const estimate = task.estimateMinutes == null ? null : formatMinutes(task.estimateMinutes);
   const parentName = parent?.title ?? parentTitle ?? task.parent;
-  const fields = Object.entries(task.fields ?? {});
+  const definitions = useProjectFields(project.logicalKey).data?.fields ?? [];
+  const values = task.fields ?? {};
+  // The project's fields in the order it defined them, each with its value; a
+  // value whose field this page has not read is named from its key.
+  const customFields: { key: string; field: TaskField | null; value: TaskFieldValue | undefined }[] = [
+    ...definitions
+      .filter((field) => values[field.key] !== undefined || (fieldEditable(field) && can('fields')))
+      .map((field) => ({ key: field.key, field, value: values[field.key] })),
+    ...Object.entries(values)
+      .filter(([key]) => !definitions.some((field) => field.key === key))
+      .map(([key, value]) => ({ key, field: null, value })),
+  ];
 
   return (
     <aside aria-label="Facts" className="flex flex-col gap-3" data-task-facts="">
@@ -262,7 +304,7 @@ export function TaskFacts({
             label="Parked until"
             valueText={parked === '' ? 'None' : calendarDay(parked, nowMs)}
             muted={parked === ''}
-            editor={can('defer') ? { kind: 'date', value: parked, presets: parkPresets(nowMs), clear: 'Unpark' } : null}
+            editor={can('defer') ? { kind: 'date', value: parked, presets: dayPresets(nowMs), clear: 'Unpark' } : null}
             onSave={(next) => save({ label: 'the parked date', edit: { defer: next }, undo: { defer: parked } })}
           >
             {parked === '' ? (
@@ -275,22 +317,72 @@ export function TaskFacts({
             )}
           </Fact>
         ) : null}
-        {due !== '' ? (
-          <Fact label="Due" valueText={calendarDay(due, nowMs)}>
-            <span className="nums">{calendarDay(due, nowMs)}</span>
+        {due !== '' || can('dueAt') ? (
+          <Fact
+            label="Due"
+            valueText={due === '' ? NONE : calendarDay(due, nowMs)}
+            muted={due === ''}
+            editor={
+              can('dueAt')
+                ? { kind: 'date', value: due, presets: dayPresets(nowMs), clear: NONE, field: 'Due date' }
+                : null
+            }
+            onSave={(next) =>
+              save({
+                label: 'the due date',
+                edit: { dueAt: next === '' ? null : next },
+                undo: { dueAt: due === '' ? null : due },
+              })
+            }
+          >
+            {due === '' ? NONE : <span className="nums">{calendarDay(due, nowMs)}</span>}
           </Fact>
         ) : null}
-        {task.estimateMinutes != null ? (
-          <Fact label="Estimate" valueText={formatMinutes(task.estimateMinutes)}>
-            <span className="nums">{formatMinutes(task.estimateMinutes)}</span>
+        {estimate !== null || can('estimateMinutes') ? (
+          <Fact
+            label="Estimate"
+            valueText={estimate ?? NONE}
+            muted={estimate === null}
+            editor={
+              can('estimateMinutes')
+                ? {
+                    kind: 'text',
+                    value: estimate ?? '',
+                    field: 'Estimate',
+                    presets: ESTIMATE_PRESETS,
+                    clear: NONE,
+                    check: (text) =>
+                      parseMinutes(text, TASK_LIMITS.estimateMinutes) === null ? 'Not a duration' : null,
+                  }
+                : null
+            }
+            onSave={(next) =>
+              save({
+                label: 'the estimate',
+                edit: { estimateMinutes: next === '' ? null : parseMinutes(next, TASK_LIMITS.estimateMinutes) },
+                undo: { estimateMinutes: task.estimateMinutes ?? null },
+              })
+            }
+          >
+            {estimate === null ? NONE : <span className="nums">{estimate}</span>}
           </Fact>
         ) : null}
-        {fields.map(([key, value]) => (
-          <Fact key={key} label={fieldKeyName(key)} valueText={fieldValueText(value)}>
-            <span className="[overflow-wrap:anywhere]" data-task-field-value={key}>
-              {fieldValueText(value)}
-            </span>
-          </Fact>
+        {customFields.map(({ key, field, value }) => (
+          <CustomFieldFact
+            key={key}
+            fieldKey={key}
+            field={field}
+            value={value}
+            editable={field !== null && fieldEditable(field) && can('fields')}
+            nowMs={nowMs}
+            onSave={(next, before) =>
+              save({
+                label: field?.name ?? fieldKeyName(key),
+                edit: { fields: { [key]: next } },
+                undo: { fields: { [key]: before ?? null } },
+              })
+            }
+          />
         ))}
       </dl>
       <div className="mx-2 border-t border-border pt-3 text-meta leading-5.5 text-ink-3" data-task-stamps="">
@@ -298,6 +390,160 @@ export function TaskFacts({
         {task.updatedAt ? <div>Updated {formatAge(ageMs(nowMs, task.updatedAt))} ago</div> : null}
       </div>
     </aside>
+  );
+}
+
+const YES_NO: FactChoice[] = [
+  { value: 'true', label: 'Yes' },
+  { value: 'false', label: 'No' },
+];
+
+/** A typed value's problem in words, or null when the field takes it. */
+function typedCheck(type: string): (text: string) => string | null {
+  return (text) => {
+    const parsed = parseFieldInput(type, text);
+    return parsed.ok ? null : parsed.error;
+  };
+}
+
+/** The editor a custom field's type takes. A typed value is saved as its words; `CustomFieldFact` reads them back. */
+function customFieldEditor(field: TaskField, value: TaskFieldValue | undefined, nowMs: number): FactEditor | null {
+  const clear = value === undefined ? [] : [{ value: '', label: NONE }];
+  switch (field.type) {
+    case 'single-choice':
+      return {
+        kind: 'choice',
+        value: typeof value === 'string' ? value : '',
+        choices: [...(field.options ?? []).map((option) => ({ value: option, label: option })), ...clear],
+      };
+    case 'multiple-choice':
+      return {
+        kind: 'toggle',
+        values: Array.isArray(value) ? value : [],
+        choices: (field.options ?? []).map((option) => ({ value: option, label: option })),
+      };
+    case 'yes-no':
+      return { kind: 'choice', value: typeof value === 'boolean' ? String(value) : '', choices: [...YES_NO, ...clear] };
+    case 'date':
+      return {
+        kind: 'date',
+        value: typeof value === 'string' ? value : '',
+        presets: dayPresets(nowMs, true),
+        clear: NONE,
+        field: field.name,
+      };
+    case 'text':
+    case 'number':
+    case 'url':
+      return {
+        kind: 'text',
+        value: value === undefined ? '' : String(value),
+        field: field.name,
+        inputType: field.type === 'text' ? 'text' : field.type,
+        clear: NONE,
+        check: typedCheck(field.type),
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * One custom field: its name (the field's own, or from its key until the
+ * project's fields are read) and its value in words. A field in use opens
+ * the editor its type takes; a retired field, or one of a type this build
+ * does not know, is only its words.
+ */
+function CustomFieldFact({
+  fieldKey,
+  field,
+  value,
+  editable,
+  nowMs,
+  onSave,
+}: {
+  fieldKey: string;
+  field: TaskField | null;
+  value: TaskFieldValue | undefined;
+  editable: boolean;
+  nowMs: number;
+  /** Saves `next`; `before` is the value it replaces, which Undo puts back. */
+  onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>;
+}) {
+  const label = field?.name ?? fieldKeyName(fieldKey);
+  const type = field?.type ?? null;
+  const text =
+    value === undefined
+      ? NONE
+      : type === 'date' && typeof value === 'string'
+        ? calendarDay(value, nowMs)
+        : fieldValueText(value);
+  const editor = editable && field ? customFieldEditor(field, value, nowMs) : null;
+  // A multiple choice is saved whole, and its menu takes a second press before
+  // the first save is read back, so each press builds on the value the last one sent.
+  const sent = useRef(value);
+  useEffect(() => {
+    sent.current = value;
+  }, [value]);
+
+  function save(next: string, on?: boolean): Promise<boolean> {
+    if (!field) return Promise.resolve(false);
+    const before = sent.current;
+    const send = async (value: TaskFieldValue | null) => {
+      const intended = value ?? undefined;
+      sent.current = intended;
+      const saved = await onSave(value, before);
+      // A refused save leaves the task as it was, and no new read will say so.
+      if (!saved && sent.current === intended) sent.current = before;
+      return saved;
+    };
+    if (next === '' && field.type !== 'multiple-choice') return send(null);
+    switch (field.type) {
+      case 'multiple-choice':
+        return send(toggledOptions(field, before, next, on ?? true));
+      case 'yes-no':
+        return send(next === 'true');
+      case 'text':
+      case 'number':
+      case 'url': {
+        const parsed = parseFieldInput(field.type, next);
+        return parsed.ok ? send(parsed.value) : Promise.resolve(false);
+      }
+      default:
+        return send(next);
+    }
+  }
+
+  return (
+    <Fact
+      label={label}
+      valueText={text}
+      muted={value === undefined}
+      wrap={type === 'multiple-choice'}
+      editor={editor}
+      onSave={save}
+    >
+      {value === undefined ? (
+        NONE
+      ) : type === 'url' && typeof value === 'string' ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative z-10 min-w-0 truncate text-ink no-underline underline-offset-3 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-accent"
+          data-task-field-value={fieldKey}
+        >
+          {value.replace(/^https?:\/\//, '')}
+        </a>
+      ) : (
+        <span
+          className={cn('[overflow-wrap:anywhere]', (type === 'number' || type === 'date') && 'nums')}
+          data-task-field-value={fieldKey}
+        >
+          {text}
+        </span>
+      )}
+    </Fact>
   );
 }
 

@@ -11,9 +11,11 @@ import { useAnswerQueue, useTasksApi } from '@/api/context';
 import type { TasksApi } from '@/api/client';
 import type {
   CloseOptions,
+  FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
   NewTask,
+  ProjectFields,
   TaskChoiceKey,
   TaskEdit,
   TaskProject,
@@ -99,6 +101,33 @@ export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasks
   });
 }
 
+/**
+ * One project's board with only the tasks holding each value of `fields`,
+ * which the server filters. It shares the board's key as its prefix, so
+ * whatever reads a project's board again reads this again too.
+ */
+export function useFilteredBoard(project: string | null, fields: FieldFilters) {
+  const api = useTasksApi();
+  return useQuery<LiveTasksPayload>({
+    queryKey: ['tasks', project, { fields }],
+    queryFn: ({ signal }) => api.board(project as string, signal, fields),
+    enabled: project !== null && Object.keys(fields).length > 0,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** A project's custom fields, retired ones included. Fields are defined rarely, so a read lasts a minute. */
+export function useProjectFields(project: string | null) {
+  const api = useTasksApi();
+  return useQuery<ProjectFields>({
+    queryKey: ['fields', project],
+    queryFn: ({ signal }) => api.fields(project as string, signal),
+    enabled: project !== null,
+    staleTime: 60_000,
+  });
+}
+
 export function useTask(id: string, project: string | null) {
   const api = useTasksApi();
   return useQuery<LiveTaskDetail>({
@@ -159,8 +188,17 @@ export function useUpdateTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
   return useMutation({
-    mutationFn: ({ id, project, edit }: { id: string; project: string; edit: TaskEdit }) =>
-      api.updateTask(id, project, edit),
+    mutationFn: ({
+      id,
+      project,
+      edit,
+      idempotencyKey,
+    }: {
+      id: string;
+      project: string;
+      edit: TaskEdit;
+      idempotencyKey?: string;
+    }) => api.updateTask(id, project, edit, idempotencyKey === undefined ? undefined : { idempotencyKey }),
     onSuccess: () => refresh(),
   });
 }
