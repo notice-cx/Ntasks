@@ -53,6 +53,7 @@ export type {
   LabelQuery,
   NewExternalLink,
   NewTaskLink,
+  OtherTaskWrite,
   Retry,
   TaskEngine,
   TaskExternalLinks,
@@ -62,6 +63,7 @@ export type {
   TaskQuery,
   TaskRefusal,
   TaskWrite,
+  WorkItem,
   WriteResult,
 } from './engine.ts';
 export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES, storeKey } from './store-rows.ts';

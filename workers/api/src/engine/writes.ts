@@ -591,14 +591,65 @@ export class Writes {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const write = check.write(writeInput);
+    if (write.others.some((other) => other.taskId === taskId))
+      refuse('invalid', 'others names other tasks than the one written');
     const project = await this.#projectOf(projectId);
-    const [row] = await this.#reads.taskRows(projectId, [taskId]);
+    const rows = await this.#reads.taskRows(projectId, [taskId, ...write.others.map((other) => other.taskId)]);
+    const row = rows.find((candidate) => candidate.id === taskId);
     if (row === undefined) refuse('not_found');
     const replayed = await this.#replay(retry, projectId);
     if (replayed !== null) return replayed;
     if (row.version !== write.expectedVersion) refuse('version_conflict');
-    const current = toTask(row);
+    const at = this.#now();
+    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false);
+    const others = await Promise.all(
+      write.others.map(async (other) => {
+        const found = rows.find((candidate) => candidate.id === other.taskId);
+        if (found === undefined) refuse('not_found', `There is no task ${other.taskId}.`);
+        if (found.version !== other.write.expectedVersion) refuse('version_conflict');
+        return this.#prepare(projectId, toTask(found), other.write, actor, at, true);
+      }),
+    );
 
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+      const statements: Statement[] = [
+        ...change(gateId),
+        ...others.flatMap((other) => other(null)),
+        ...this.#receipt(retry, projectId, { taskId, created: gateId === null ? [] : [gateId] }, at),
+      ];
+      try {
+        await this.#db.batch(statements);
+        return await this.#result(projectId, taskId, gateId === null ? [] : [gateId], false);
+      } catch (error) {
+        // The same retried request may have committed while this attempt ran;
+        // its version then moved on, and the recorded result is the answer.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
+          const replay = await this.#replay(retry, projectId);
+          if (replay !== null) return replay;
+        }
+        const failure = failureOf(error);
+        if (failure === 'id_taken') continue;
+        return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
+      }
+    }
+    throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
+  }
+
+  /**
+   * The statements that make `write` to `current`, as of `at`, given the id a
+   * requested approval's gate takes. A write that only adds a comment to a
+   * task it rides beside (`others`) leaves that task's version as it is.
+   */
+  async #prepare(
+    projectId: string,
+    current: Task,
+    write: check.CheckedWrite,
+    actor: Actor,
+    at: string,
+    beside: boolean,
+  ): Promise<(gateId: string | null) => Statement[]> {
+    const taskId = current.id;
     const set = write.set;
     const columns: Row = {};
     const changes: Record<string, Json> = {};
@@ -644,7 +695,6 @@ export class Writes {
       change('assignee_model', 'assigneeModel', claim ? (actor.model ?? null) : null);
     }
 
-    const at = this.#now();
     let kind: TaskEventKind = 'updated';
     if (write.close !== null) {
       kind = 'closed';
@@ -740,8 +790,32 @@ export class Writes {
       refuse('invalid', `a task links to at most ${TASK_LIMITS.externalLinks} pages outside Ntasks`);
     if (addExternal.length > 0 || removeExternal.length > 0) changes.externalLinks = externalList(external);
 
-    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+    const commentOnly =
+      beside &&
+      write.comment !== null &&
+      Object.keys(columns).length === 0 &&
+      addLabels.length === 0 &&
+      removeLabels.length === 0 &&
+      addLinks.length === 0 &&
+      removeLinks.length === 0 &&
+      addExternal.length === 0 &&
+      removeExternal.length === 0;
+    return (gateId) => {
+      const comment = (version: number): Statement[] => {
+        if (write.comment === null) return [];
+        const commentId = crypto.randomUUID();
+        return [
+          this.#insert('task_comments', {
+            id: commentId,
+            task_id: taskId,
+            author: actor.name,
+            text: write.comment,
+            created_at: at,
+          }),
+          this.#event(current, version, 'commented', actor, at, { commentId, text: write.comment }),
+        ];
+      };
+      if (commentOnly) return comment(current.version);
       const taskLinks = new Map(links);
       if (gateId !== null) taskLinks.set(gateId, 'blocks');
       if (gateId !== null || addLinks.length > 0 || removeLinks.length > 0) changes.dependencies = linkList(taskLinks);
@@ -800,39 +874,9 @@ export class Writes {
             setValues.map(([key]) => key),
           ),
         );
-      if (write.comment !== null) {
-        const commentId = crypto.randomUUID();
-        statements.push(
-          this.#insert('task_comments', {
-            id: commentId,
-            task_id: taskId,
-            author: actor.name,
-            text: write.comment,
-            created_at: at,
-          }),
-          this.#event(current, version, 'commented', actor, at, { commentId, text: write.comment }),
-        );
-      }
-      statements.push(
-        this.#event(current, version, kind, actor, at, changes),
-        ...this.#receipt(retry, projectId, { taskId, created: gateId === null ? [] : [gateId] }, at),
-      );
-      try {
-        await this.#db.batch(statements);
-        return await this.#result(projectId, taskId, gateId === null ? [] : [gateId], false);
-      } catch (error) {
-        // The same retried request may have committed while this attempt ran;
-        // its version then moved on, and the recorded result is the answer.
-        if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
-          const replay = await this.#replay(retry, projectId);
-          if (replay !== null) return replay;
-        }
-        const failure = failureOf(error);
-        if (failure === 'id_taken') continue;
-        return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
-      }
-    }
-    throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
+      statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes));
+      return statements;
+    };
   }
 
   /** The project's field with this key, or null. */
