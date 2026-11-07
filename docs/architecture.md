@@ -132,6 +132,7 @@ limits that shape the design, from Cloudflare's documentation in November
 | Durable Object requests | 100,000 a day |
 | Rows read, by the task store | 5,000,000 a day |
 | Rows written, by the task store | 100,000 a day |
+| Rows read, by D1 (sign-in) | 5,000,000 a day |
 | Data stored, by Durable Objects | 5 GB in all |
 
 Each API request is one Worker request and one request to a task store. The
@@ -140,7 +141,8 @@ store. When a daily limit is reached, operations of that kind fail until
 00:00 UTC. To stay inside these limits, Ntasks:
 
 - reads the sender's workspaces in the same D1 query that signs the sender
-  in, so picking a workspace costs no further read;
+  in, so picking a workspace takes no further query; that query reads about
+  two more rows for each of the sender's memberships or grants;
 - answers a read it has answered since the last write from the store's
   memory, which reads no rows;
 - reaches every row it reads through an index, and returns a task's labels

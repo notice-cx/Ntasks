@@ -46,12 +46,15 @@ async function as(
   browser: Browser,
   method: string,
   path: string,
-  options: { readonly workspace?: string; readonly json?: unknown } = {},
+  options: { readonly workspace?: string; readonly json?: unknown; readonly key?: string } = {},
 ): Promise<Answer> {
   const response = await browser.fetch(path, {
     method,
     ...(options.json === undefined ? {} : { json: options.json }),
-    headers: options.workspace === undefined ? {} : { [WORKSPACE_HEADER]: options.workspace },
+    headers: {
+      ...(options.workspace === undefined ? {} : { [WORKSPACE_HEADER]: options.workspace }),
+      ...(options.key === undefined ? {} : { 'idempotency-key': options.key }),
+    },
   });
   return { status: response.status, body: await response.json<Record<string, unknown>>() };
 }
@@ -261,6 +264,22 @@ describe('creating a project', () => {
     expect(await post({ name: ' ', prefix: 'blank' })).toMatchObject({
       status: 400,
       body: { error: 'invalid_request', field: 'name' },
+    });
+  });
+
+  it('answers a retry sent with its idempotency key with the project it made', async () => {
+    const { cai, three } = await world();
+    const post = (json: unknown, key?: string) =>
+      as(cai, 'POST', '/api/tasks/projects', { workspace: three.id, json, ...(key === undefined ? {} : { key }) });
+    const json = { name: 'Retried', prefix: 'retried' };
+    const first = await post(json, 'project-key-1');
+    expect(first.status).toBe(201);
+    expect(await post(json, 'project-key-1')).toEqual({ status: 201, body: { ...first.body, replayed: true } });
+    // Without a key, or with another name, the prefix is taken.
+    expect((await post(json)).status).toBe(409);
+    expect(await post({ ...json, name: 'Other' }, 'project-key-2')).toMatchObject({
+      status: 409,
+      body: { field: 'prefix' },
     });
   });
 });

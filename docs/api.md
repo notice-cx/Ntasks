@@ -83,7 +83,7 @@ Which workspace a request reaches:
 | The sender | Reaches |
 |---|---|
 | A service | Its credential's one workspace. It may leave the header out; a header naming another workspace gets `404`. |
-| A person or an agent, over HTTP | The workspace the `x-ntasks-workspace` header names, or the only one it reaches when the header is left out. |
+| A person or an agent, over HTTP | The workspace the `x-ntasks-workspace` header names, or the only one it reaches when the header is left out. Which one that is changes when its memberships or grants change, so a client that writes names the workspace. |
 | Anyone, over MCP | The workspace a tool call's `workspace` argument names. Every MCP tool but `list_workspaces` and `get_task_guide` takes it, as NoticeOS's tools did, and the header is not read. |
 
 A person reaches the workspaces they belong to, an agent the workspaces where
@@ -420,6 +420,9 @@ A refused project names the body field at fault in `field`: `400` with
 `invalid_request` for a `name`, `prefix` or `key` that breaks its rule, and
 `409` with `project_exists` for a prefix or key another project of the
 workspace has. Two workspaces may each have a project with the same prefix.
+The route keeps no retry record: sent again with an `Idempotency-Key`, it
+answers `201` with the project that already has exactly this name, prefix and
+key, and `replayed: true`.
 
 A new task's `metadata` holds where it came from, under the keys NoticeOS
 used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,
