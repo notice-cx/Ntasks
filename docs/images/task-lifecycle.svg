@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 404" width="800" height="404" role="img" aria-labelledby="title desc">
+  <title id="title">The life of a task, and ready work</title>
+  <desc id="desc">Five steps. 1: tasks A and B are filed, and B waits on A because A blocks B, so only A is ready. 2: Agent 1 claims A; only one claim succeeds, so A is held by Agent 1 and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with proof, a commit. 5: B is now ready, and the list of ready work that Agent 2 reads shows it.</desc>
+  <style>
+    svg {
+      --bg: #ffffff; --card: #f6f8fa; --line: #d0d7de; --edge: #818b98; --neutral: #e6eaef;
+      --text: #1f2328; --muted: #59636e;
+      --blue: #0969da; --blue-soft: #ddf4ff; --green: #1a7f37; --green-soft: #dafbe1;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0d1117; --card: #161b22; --line: #3d444d; --edge: #768390; --neutral: #262c36;
+        --text: #e6edf3; --muted: #9198a1;
+        --blue: #4493f8; --blue-soft: #121d2f; --green: #3fb950; --green-soft: #12261e;
+      }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: var(--text); }
+    .panel { fill: var(--bg); stroke: var(--line); }
+    .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+    .step { font-size: 16px; font-weight: 600; }
+    .step-2 { font-size: 15px; fill: var(--muted); }
+    .num { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; }
+    .num-text { font-size: 15px; font-weight: 700; fill: var(--muted); text-anchor: middle; }
+    .hl { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 1.5; }
+    .hl-num { fill: var(--blue); }
+    .hl-num-text { font-size: 15px; font-weight: 700; fill: var(--bg); text-anchor: middle; }
+    .badge { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; }
+    .letter { font-size: 17px; font-weight: 700; text-anchor: middle; }
+    .id { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 14px; fill: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+    .title { font-size: 16px; font-weight: 600; }
+    .small { font-size: 15px; }
+    .muted { fill: var(--muted); }
+    .c { text-anchor: middle; }
+    .edge { stroke: var(--edge); stroke-width: 2; }
+    .edge-head { fill: var(--edge); }
+    .pill-open { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; }
+    .pill-ready { fill: var(--green-soft); stroke: var(--green); stroke-width: 1.5; }
+    .pill-work { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 1.5; }
+    .pill-closed { fill: var(--neutral); }
+    .pill-text { font-size: 14px; text-anchor: middle; }
+    .green { fill: var(--green); }
+    .blue { fill: var(--blue); }
+    .strong { font-weight: 600; }
+    .bubble { fill: var(--bg); stroke: var(--blue); stroke-width: 1.5; }
+    .agent { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+    .agent-on { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 2; }
+    .link-on { stroke: var(--blue); stroke-width: 3; }
+    .heading { font-size: 17px; font-weight: 600; }
+
+    /* Each class shows its element during a run of steps: s23 during steps 2 and 3.
+       Without animation each element shows as it stands after step 5. */
+    .s11, .s22, .s33, .s44, .s23, .s14, .s24 { opacity: 0; }
+    .s55, .s35, .s45 { opacity: 1; }
+    .hl-step { opacity: 0; }
+    .s11, .s22, .s33, .s44, .s55, .s23, .s14, .s24, .s35, .s45 {
+      animation-duration: 20s; animation-timing-function: linear; animation-iteration-count: infinite;
+    }
+    .s11 { animation-name: s11; }
+    .s22 { animation-name: s22; }
+    .s33 { animation-name: s33; }
+    .s44 { animation-name: s44; }
+    .s55 { animation-name: s55; }
+    .s23 { animation-name: s23; }
+    .s14 { animation-name: s14; }
+    .s24 { animation-name: s24; }
+    .s35 { animation-name: s35; }
+    .s45 { animation-name: s45; }
+    @keyframes s11 { 0% { opacity: 0; } 1%, 19% { opacity: 1; } 20%, 100% { opacity: 0; } }
+    @keyframes s22 { 0%, 20% { opacity: 0; } 21%, 39% { opacity: 1; } 40%, 100% { opacity: 0; } }
+    @keyframes s33 { 0%, 40% { opacity: 0; } 41%, 59% { opacity: 1; } 60%, 100% { opacity: 0; } }
+    @keyframes s44 { 0%, 60% { opacity: 0; } 61%, 79% { opacity: 1; } 80%, 100% { opacity: 0; } }
+    @keyframes s55 { 0%, 80% { opacity: 0; } 81%, 99% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes s23 { 0%, 20% { opacity: 0; } 21%, 59% { opacity: 1; } 60%, 100% { opacity: 0; } }
+    @keyframes s14 { 0% { opacity: 0; } 1%, 79% { opacity: 1; } 80%, 100% { opacity: 0; } }
+    @keyframes s24 { 0%, 20% { opacity: 0; } 21%, 79% { opacity: 1; } 80%, 100% { opacity: 0; } }
+    @keyframes s35 { 0%, 40% { opacity: 0; } 41%, 99% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes s45 { 0%, 60% { opacity: 0; } 61%, 99% { opacity: 1; } 100% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .s11, .s22, .s33, .s44, .s55, .s23, .s14, .s24, .s35, .s45 { animation: none; }
+    }
+  </style>
+
+  <rect class="panel" x="0.5" y="0.5" width="799" height="403" rx="14"/>
+
+  <!-- The steps; the current one is highlighted -->
+  <g class="hl-step s11"><rect class="hl" x="16" y="20" width="276" height="66" rx="10"/></g>
+  <g class="hl-step s22"><rect class="hl" x="16" y="94" width="276" height="66" rx="10"/></g>
+  <g class="hl-step s33"><rect class="hl" x="16" y="168" width="276" height="66" rx="10"/></g>
+  <g class="hl-step s44"><rect class="hl" x="16" y="242" width="276" height="66" rx="10"/></g>
+  <g class="hl-step s55"><rect class="hl" x="16" y="316" width="276" height="66" rx="10"/></g>
+
+  <circle class="num" cx="44" cy="53" r="14"/><text class="num-text" x="44" y="58">1</text>
+  <circle class="num" cx="44" cy="127" r="14"/><text class="num-text" x="44" y="132">2</text>
+  <circle class="num" cx="44" cy="201" r="14"/><text class="num-text" x="44" y="206">3</text>
+  <circle class="num" cx="44" cy="275" r="14"/><text class="num-text" x="44" y="280">4</text>
+  <circle class="num" cx="44" cy="349" r="14"/><text class="num-text" x="44" y="354">5</text>
+  <g class="hl-step s11"><circle class="hl-num" cx="44" cy="53" r="14"/><text class="hl-num-text" x="44" y="58">1</text></g>
+  <g class="hl-step s22"><circle class="hl-num" cx="44" cy="127" r="14"/><text class="hl-num-text" x="44" y="132">2</text></g>
+  <g class="hl-step s33"><circle class="hl-num" cx="44" cy="201" r="14"/><text class="hl-num-text" x="44" y="206">3</text></g>
+  <g class="hl-step s44"><circle class="hl-num" cx="44" cy="275" r="14"/><text class="hl-num-text" x="44" y="280">4</text></g>
+  <g class="hl-step s55"><circle class="hl-num" cx="44" cy="349" r="14"/><text class="hl-num-text" x="44" y="354">5</text></g>
+
+  <text class="step" x="70" y="48">File tasks A and B</text>
+  <text class="step-2" x="70" y="70">B waits on A</text>
+  <text class="step" x="70" y="122">Agent 1 claims A</text>
+  <text class="step-2" x="70" y="144">only one claim succeeds</text>
+  <text class="step" x="70" y="196">Agent 1 works on A</text>
+  <text class="step-2" x="70" y="218">and comments on it</text>
+  <text class="step" x="70" y="270">Agent 1 closes A</text>
+  <text class="step-2" x="70" y="292">with proof: a commit</text>
+  <text class="step" x="70" y="344">B is now ready</text>
+  <text class="step-2" x="70" y="366">Agent 2's list shows it</text>
+
+  <!-- Task A -->
+  <rect class="box" x="316" y="20" width="200" height="150" rx="12"/>
+  <circle class="badge" cx="342" cy="48" r="15"/>
+  <text class="letter" x="342" y="54">A</text>
+  <text class="id" x="366" y="53">web-a1b2</text>
+  <text class="title" x="332" y="92">Design the schema</text>
+  <g class="s11">
+    <rect class="pill-open" x="332" y="106" width="56" height="26" rx="13"/><text class="pill-text" x="360" y="124">Open</text>
+    <rect class="pill-ready" x="396" y="106" width="62" height="26" rx="13"/><text class="pill-text green strong" x="427" y="124">Ready</text>
+  </g>
+  <g class="s23">
+    <rect class="pill-work" x="332" y="106" width="100" height="26" rx="13"/><text class="pill-text blue strong" x="382" y="124">In progress</text>
+    <text class="small blue" x="332" y="156">held by Agent 1</text>
+  </g>
+  <g class="s45">
+    <rect class="pill-closed" x="332" y="106" width="66" height="26" rx="13"/><text class="pill-text" x="365" y="124">Closed</text>
+    <text class="small" x="332" y="156"><tspan class="muted">proof: commit </tspan><tspan class="mono">3f2a9c1</tspan></text>
+  </g>
+  <g class="s35">
+    <path class="bubble" d="M473 37 H495 A4 4 0 0 1 499 41 V54 A4 4 0 0 1 495 58 H481 L475 64 V58 H473 A4 4 0 0 1 469 54 V41 A4 4 0 0 1 473 37 Z"/>
+    <text class="pill-text blue strong" x="484" y="53">1</text>
+  </g>
+
+  <!-- A blocks B -->
+  <line class="edge" x1="516" y1="95" x2="574" y2="95"/>
+  <polygon class="edge-head" points="574,89 574,101 584,95"/>
+  <text class="small muted c" x="550" y="85">blocks</text>
+
+  <!-- Task B -->
+  <rect class="box" x="584" y="20" width="200" height="150" rx="12"/>
+  <circle class="badge" cx="610" cy="48" r="15"/>
+  <text class="letter" x="610" y="54">B</text>
+  <text class="id" x="634" y="53">web-c3d4</text>
+  <text class="title" x="600" y="92">Build the engine</text>
+  <rect class="pill-open" x="600" y="106" width="56" height="26" rx="13"/><text class="pill-text" x="628" y="124">Open</text>
+  <text class="small muted s14" x="666" y="124">waits on A</text>
+  <g class="s55">
+    <rect class="pill-ready" x="664" y="106" width="62" height="26" rx="13"/><text class="pill-text green strong" x="695" y="124">Ready</text>
+  </g>
+
+  <!-- Ready work -->
+  <rect class="box" x="316" y="194" width="468" height="100" rx="12"/>
+  <text class="heading" x="332" y="222">Ready work</text>
+  <text class="small muted" x="436" y="222">the same list for every agent</text>
+  <g class="s11">
+    <rect class="pill-ready" x="332" y="238" width="196" height="36" rx="18"/>
+    <text class="small" x="350" y="261"><tspan class="strong green">A</tspan><tspan dx="10">Design the schema</tspan></text>
+  </g>
+  <text class="small muted s24" x="334" y="261">nothing is ready now</text>
+  <g class="s55">
+    <rect class="pill-ready" x="332" y="238" width="196" height="36" rx="18"/>
+    <text class="small" x="350" y="261"><tspan class="strong green">B</tspan><tspan dx="10">Build the engine</tspan></text>
+  </g>
+
+  <!-- Agents -->
+  <line class="edge" x1="416" y1="294" x2="416" y2="318"/>
+  <line class="edge" x1="684" y1="294" x2="684" y2="318"/>
+  <line class="link-on s11" x1="416" y1="294" x2="416" y2="318"/>
+  <line class="link-on s11" x1="684" y1="294" x2="684" y2="318"/>
+  <line class="link-on s55" x1="684" y1="294" x2="684" y2="318"/>
+  <rect class="agent" x="336" y="318" width="160" height="44" rx="22"/>
+  <rect class="agent" x="604" y="318" width="160" height="44" rx="22"/>
+  <rect class="agent-on s24" x="336" y="318" width="160" height="44" rx="22"/>
+  <rect class="agent-on s55" x="604" y="318" width="160" height="44" rx="22"/>
+  <text class="title c" x="416" y="345">Agent 1</text>
+  <text class="title c" x="684" y="345">Agent 2</text>
+</svg>

@@ -13,9 +13,18 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_TYPES = ['task', 'bug', 'feature', 'epic', 'chore', 'decision', 'gate'] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
-/** `blocks` keeps the dependent task out of ready work; the others only record a link. */
-export const DEPENDENCY_TYPES = ['blocks', 'related', 'discovered-from'] as const;
+/**
+ * `blocks` keeps the dependent task out of ready work; the others only record
+ * a link. A link reads from the task that has it to the other one: web-2
+ * `duplicates` web-1, the same work filed again; web-3 `supersedes` web-1,
+ * the work that replaces it.
+ */
+export const DEPENDENCY_TYPES = ['blocks', 'related', 'discovered-from', 'duplicates', 'supersedes'] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
+
+/** What a page outside Ntasks that a task links to is. */
+export const EXTERNAL_LINK_KINDS = ['pull-request', 'document', 'other'] as const;
+export type ExternalLinkKind = (typeof EXTERNAL_LINK_KINDS)[number];
 
 /** How a close ended. */
 export const TASK_RESOLUTIONS = [
@@ -44,11 +53,18 @@ export const TASK_LIMITS = Object.freeze({
   title: 512,
   description: 8192,
   acceptance: 8192,
+  notes: 8192,
+  design: 8192,
+  /** A year of minutes. */
+  estimateMinutes: 525_600,
   comment: 4096,
   reason: 2048,
   labels: 32,
   label: 128,
   links: 32,
+  externalLinks: 32,
+  externalLinkUrl: 2048,
+  externalLinkTitle: 512,
   actor: 128,
   /** A retry principal: the sender's stable identity that idempotency keys are kept under. */
   retryPrincipal: 128,
@@ -78,6 +94,14 @@ export interface TaskLink {
   readonly status: TaskStatus;
 }
 
+/** A page outside Ntasks that a task links to, such as a pull request. */
+export interface ExternalLink {
+  /** An http or https URL, as the URL standard writes it; a task links to a URL once. */
+  readonly url: string;
+  readonly title: string;
+  readonly kind: ExternalLinkKind | null;
+}
+
 /** How the task's current close ended. Earlier closes are in its history. */
 export interface TaskClose {
   readonly at: string;
@@ -102,6 +126,12 @@ export interface Task {
   readonly title: string;
   readonly description: string;
   readonly acceptance: string;
+  /** Markdown, as description is: what those working on it record as it moves, such as progress and findings. */
+  readonly notes: string;
+  /** Markdown, as description is: how the work is to be built. */
+  readonly design: string;
+  /** How long the work should take, in whole minutes; null when nobody estimated it. */
+  readonly estimateMinutes: number | null;
   readonly assignee: string | null;
   readonly assigneeModel: string | null;
   readonly labels: readonly string[];
@@ -109,6 +139,8 @@ export interface Task {
   readonly dependencies: readonly TaskLink[];
   /** The tasks that depend on this one. */
   readonly dependents: readonly TaskLink[];
+  /** Pages outside Ntasks, ordered by URL. */
+  readonly externalLinks: readonly ExternalLink[];
   /** Whether someone can start the task now, as the engine worked it out. */
   readonly ready: boolean;
   readonly deferUntil: string | null;
@@ -173,4 +205,5 @@ function isOneOf<T extends string>(values: readonly T[]) {
 export const isTaskStatus = isOneOf(TASK_STATUSES);
 export const isTaskType = isOneOf(TASK_TYPES);
 export const isDependencyType = isOneOf(DEPENDENCY_TYPES);
+export const isExternalLinkKind = isOneOf(EXTERNAL_LINK_KINDS);
 export const isTaskResolution = isOneOf(TASK_RESOLUTIONS);

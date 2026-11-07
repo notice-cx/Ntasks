@@ -266,6 +266,30 @@ describe('ready work', () => {
     expect(await readyIds(tasks, project.id)).toEqual([a.id, b.id].sort());
   });
 
+  it('does not hold a task for a duplicates or supersedes link, either way it points', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const a = await make(tasks, project.id, 'A');
+    const b = await make(tasks, project.id, 'B', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: a.id, type: 'duplicates' }],
+    });
+    const c = await make(tasks, project.id, 'C', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: a.id, type: 'supersedes' }],
+    });
+
+    expect(await readyIds(tasks, project.id)).toEqual([a.id, b.id, c.id].sort());
+    const read = await tasks.getTask(project.id, a.id);
+    expect(read?.ready).toBe(true);
+    expect(read?.dependents.map((link) => [link.taskId, link.type])).toEqual(
+      [
+        [b.id, 'duplicates'],
+        [c.id, 'supersedes'],
+      ].sort(),
+    );
+  });
+
   it('holds every descendant of a blocked parent, at any depth, and only while the parent is open', async () => {
     const tasks = engine();
     const project = await newProject(tasks);

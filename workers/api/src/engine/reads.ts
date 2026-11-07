@@ -13,15 +13,19 @@ import {
   type BoardQuery,
   type ChangePage,
   type EpicProgress,
+  type LabelPage,
+  type LabelQuery,
   type Project,
   type Task,
   type TaskComment,
+  type TaskExternalLinks,
   type TaskEvent,
   type TaskFilters,
   type TaskPage,
   type TaskQuery,
 } from '@ntasks/domain';
 import {
+  externalLinks,
   toComment,
   toEpic,
   toEvent,
@@ -106,9 +110,14 @@ const READY = `(t.status = 'open' AND t.type <> 'gate'
   AND (p.defer_until IS NULL OR p.defer_until <= ?2)
   AND t.id NOT IN (SELECT id FROM blocked))`;
 
-/** A task's columns with what the engine computes for it (TaskRow). Each
- * subquery reaches its rows through the task's own index entries. */
-const TASK_COLUMNS = `t.*, ${READY} AS ready,
+/** The JSON array of task t's external links. */
+const EXTERNAL_LINKS = `(SELECT json_group_array(json_object('url', x.url, 'title', x.title, 'kind', x.kind))
+     FROM task_external_links x WHERE x.task_id = t.id)`;
+
+/** A task's columns with what the engine computes for it (TaskRow), its
+ * external links left out. Each subquery reaches its rows through the task's
+ * own index entries. */
+const COLUMNS_WITHOUT_LINKS = `t.*, ${READY} AS ready,
   (SELECT count(*) FROM task_comments m WHERE m.task_id = t.id) AS comment_count,
   (SELECT json_group_array(l.label) FROM task_labels l WHERE l.task_id = t.id) AS labels_json,
   (SELECT json_group_array(json_object('id', e.depends_on_id, 'type', e.type, 'title', o.title, 'status', o.status))
@@ -116,11 +125,15 @@ const TASK_COLUMNS = `t.*, ${READY} AS ready,
   (SELECT json_group_array(json_object('id', e.task_id, 'type', e.type, 'title', o.title, 'status', o.status))
      FROM task_edges e JOIN tasks o ON o.id = e.task_id WHERE e.depends_on_id = t.id) AS dependents_json`;
 
+const TASK_COLUMNS = `${COLUMNS_WITHOUT_LINKS},
+  ${EXTERNAL_LINKS} AS external_links_json`;
+
 /** Tasks in scope, for lists. A read of closed tasks from a date reaches
- * them through the closed_at index, not through every closed task. */
-function tasksIn(scope: Scope, byCloseDate: boolean): string {
+ * them through the closed_at index, not through every closed task. Without
+ * links, each task's external links are an empty list, unread. */
+function tasksIn(scope: Scope, byCloseDate: boolean, links = true): string {
   return `WITH RECURSIVE ${blockedIn(scope)}
-SELECT ${TASK_COLUMNS}
+SELECT ${links ? TASK_COLUMNS : `${COLUMNS_WITHOUT_LINKS}, '[]' AS external_links_json`}
 FROM tasks t${byCloseDate ? ' INDEXED BY tasks_by_project_closed' : ''} LEFT JOIN tasks p ON p.id = t.parent_id
 WHERE ${inScope('t.project_id', scope)}`;
 }
@@ -132,6 +145,41 @@ FROM ${among('?3')} CROSS JOIN tasks t ON t.id = wanted.id LEFT JOIN tasks p ON 
 WHERE t.project_id = ?1`;
 
 const ORDER = 'ORDER BY t.priority, t.created_at, t.id';
+
+/**
+ * The tasks of project ?1 carrying label ?3, after id ?4, at most ?5 of them,
+ * with BLOCKED_AMONG's upward test for those tasks only. Every task id starts
+ * with its project's prefix and a hyphen, and a prefix has no hyphen, so the
+ * project's ids lie strictly between `prefix-` and `prefix.` ('.' follows '-'):
+ * the label index (label, task_id) is read over that range and nothing else.
+ */
+const LABELLED = `WITH RECURSIVE bounds(low, high) AS (
+  SELECT max(?4, p.prefix || '-'), p.prefix || '.' FROM projects p WHERE p.id = ?1
+),
+wanted(id) AS (
+  SELECT l.task_id FROM bounds CROSS JOIN task_labels l INDEXED BY task_labels_by_label
+  WHERE l.label = ?3 AND l.task_id > bounds.low AND l.task_id < bounds.high
+  ORDER BY l.task_id LIMIT ?5
+),
+chain(task_id, ancestor_id) AS (
+  SELECT t.id, t.id FROM wanted CROSS JOIN tasks t ON t.id = wanted.id WHERE t.project_id = ?1 AND t.status <> 'closed'
+  UNION
+  SELECT chain.task_id, parent.id FROM chain
+    JOIN tasks child ON child.id = chain.ancestor_id
+    JOIN tasks parent ON parent.id = child.parent_id
+  WHERE parent.status <> 'closed'
+),
+blocked(id) AS (
+  SELECT DISTINCT chain.task_id FROM chain
+  WHERE EXISTS (
+    SELECT 1 FROM task_edges e JOIN tasks blocker ON blocker.id = e.depends_on_id
+    WHERE e.task_id = chain.ancestor_id AND e.type = 'blocks' AND blocker.status <> 'closed'
+  )
+)
+SELECT ${TASK_COLUMNS}
+FROM wanted CROSS JOIN tasks t ON t.id = wanted.id LEFT JOIN tasks p ON p.id = t.parent_id
+WHERE t.project_id = ?1
+ORDER BY t.id`;
 
 /** Most urgent first, then oldest, then by id: ORDER, for tasks already read. */
 export function byUrgency(a: Task, b: Task): number {
@@ -307,7 +355,7 @@ export class Reads {
       // Only a closed task has a closed_at (the schema checks it), so a close date reads closed tasks alone.
       else statement.where.push(`t.closed_at >= ${statement.param(instant(closedSince, 'closedSince'))}`);
       filter(statement, query);
-      const sql = `${tasksIn(scope, closedSince !== undefined)}${statement.where.map((clause) => ` AND ${clause}`).join('')}`;
+      const sql = `${tasksIn(scope, closedSince !== undefined, query.withoutExternalLinks !== true)}${statement.where.map((clause) => ` AND ${clause}`).join('')}`;
       // An every-project statement never reads ?1, which is null; READY always reads ?2.
       statements.push(this.#db.prepare(sql).bind(...statement.args));
     };
@@ -318,6 +366,38 @@ export class Reads {
     if (statements.length === 0) return [];
     const results = await this.#db.batch<TaskRow>(statements);
     return results.flatMap((result) => result.results.map(toTask)).sort(byUrgency);
+  }
+
+  async listLabelled(projectId: string, query: LabelQuery): Promise<LabelPage> {
+    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > TASK_LIMITS.page) {
+      invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
+    }
+    if (typeof query.label !== 'string' || query.label.length < 1 || query.label.length > TASK_LIMITS.label) {
+      invalid(`label must be text of 1 to ${TASK_LIMITS.label} characters`);
+    }
+    if (query.after !== undefined && typeof query.after !== 'string') invalid('after must be a task id');
+    const { results } = await this.#db
+      .prepare(LABELLED)
+      .bind(projectId, this.#now(), query.label, query.after ?? '', query.limit + 1)
+      .all<TaskRow>();
+    const page = results.slice(0, query.limit);
+    return {
+      tasks: page.map(toTask),
+      next: results.length > query.limit ? (page.at(-1)?.id ?? null) : null,
+    };
+  }
+
+  async listExternalLinks(taskIds: readonly string[]): Promise<TaskExternalLinks[]> {
+    if (taskIds.length === 0) return [];
+    const { results } = await this.#db
+      .prepare(
+        `SELECT x.task_id, json_group_array(json_object('url', x.url, 'title', x.title, 'kind', x.kind)) AS links
+         FROM ${among('?1')} CROSS JOIN task_external_links x ON x.task_id = wanted.id
+         GROUP BY x.task_id ORDER BY x.task_id`,
+      )
+      .bind(JSON.stringify(taskIds))
+      .all<{ task_id: string; links: string }>();
+    return results.map((row) => ({ taskId: row.task_id, externalLinks: externalLinks(row.links) }));
   }
 
   async listEpics(projectId: string): Promise<EpicProgress[]> {

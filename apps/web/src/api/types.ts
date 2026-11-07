@@ -40,12 +40,20 @@ export interface TaskChoice {
 export interface TaskDependency {
   /** The task on the other end. */
   id: string;
-  /** `blocks`, `parent-child`, `related`, `discovered-from`, or a type this build does not know. */
+  /** `blocks`, `parent-child`, `related`, `discovered-from`, `duplicates`, `supersedes`, or a type this build does not know. */
   type: string;
   /** Present when the read carried it (a task's own read); null on a list row. */
   title: string | null;
   /** The other task's status, when the read carried it. */
   status: string | null;
+}
+
+/** A page outside Ntasks a task links to, such as a pull request. */
+export interface TaskExternalLink {
+  url: string;
+  title: string;
+  /** `pull-request`, `document`, `other`, a kind this build does not know, or null. */
+  kind: string | null;
 }
 
 /** One task, as a board row and a task page read it. */
@@ -63,6 +71,8 @@ export interface LiveTask {
   /** The epic this task belongs to, or null. */
   parent: string | null;
   deferUntil: string | null;
+  /** When the work is due, when the server sends it; null when it has no due date. */
+  dueAt?: string | null;
   choices?: TaskChoices | null;
   choice?: TaskChoice | null;
   /** How a closed task's close ended; null on a task that is not closed. */
@@ -71,10 +81,17 @@ export interface LiveTask {
   /** Empty when the task carries none. */
   description: string;
   acceptance: string;
+  /** Markdown, empty when the task carries none, when the server sends them. */
+  notes?: string;
+  design?: string;
+  /** Whole minutes; null when nobody estimated it. */
+  estimateMinutes?: number | null;
   labels: string[];
   /** Someone can start it now, as the server worked it out. */
   ready: boolean;
   dependencies: TaskDependency[];
+  /** Ordered by URL, when the server sends them. */
+  externalLinks?: TaskExternalLink[];
   /** How many comments the task carries; the bodies come with the task's own read. */
   comments: number;
   /** Fields other systems attach, stored and returned as given. */

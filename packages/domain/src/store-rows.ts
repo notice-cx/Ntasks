@@ -6,7 +6,15 @@
  */
 
 /** The tables that hold tasks, in an order their foreign keys accept. */
-export const STORE_TABLES = ['projects', 'tasks', 'task_labels', 'task_edges', 'task_comments', 'task_events'] as const;
+export const STORE_TABLES = [
+  'projects',
+  'tasks',
+  'task_labels',
+  'task_edges',
+  'task_external_links',
+  'task_comments',
+  'task_events',
+] as const;
 export type StoreTable = (typeof STORE_TABLES)[number];
 
 export interface ProjectRow {
@@ -47,6 +55,10 @@ export interface TaskRow {
   readonly updated_at: string;
   readonly started_at: string | null;
   readonly closed_at: string | null;
+  /** Left out, these take the column's default: '' for text, null for the estimate. */
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimate_minutes?: number | null;
 }
 
 export interface LabelRow {
@@ -58,6 +70,15 @@ export interface EdgeRow {
   readonly task_id: string;
   readonly depends_on_id: string;
   readonly type: string;
+  readonly created_at: string;
+  readonly created_by: string | null;
+}
+
+export interface ExternalLinkRow {
+  readonly task_id: string;
+  readonly url: string;
+  readonly title: string;
+  readonly kind: string | null;
   readonly created_at: string;
   readonly created_by: string | null;
 }
@@ -90,11 +111,13 @@ export interface StoreRows {
   readonly tasks: readonly TaskRow[];
   readonly task_labels: readonly LabelRow[];
   readonly task_edges: readonly EdgeRow[];
+  /** Left out, an import writes none. */
+  readonly task_external_links?: readonly ExternalLinkRow[];
   readonly task_comments: readonly CommentRow[];
   readonly task_events: readonly EventRow[];
 }
 
-type RowOf<T extends StoreTable> = StoreRows[T][number];
+type RowOf<T extends StoreTable> = NonNullable<StoreRows[T]>[number];
 
 /** Each table's columns, in the order the statements below name them. */
 export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<T> & string)[] } = Object.freeze({
@@ -129,9 +152,13 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'updated_at',
     'started_at',
     'closed_at',
+    'notes',
+    'design',
+    'estimate_minutes',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],
+  task_external_links: ['task_id', 'url', 'title', 'kind', 'created_at', 'created_by'],
   task_comments: ['id', 'task_id', 'author', 'text', 'created_at'],
   task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
 });
@@ -142,6 +169,7 @@ const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
   tasks: 'id',
   task_labels: 'task_id, label',
   task_edges: 'task_id, depends_on_id',
+  task_external_links: 'task_id, url',
   task_comments: 'id',
   task_events: 'seq',
 });
@@ -158,14 +186,19 @@ export function isStoreTable(value: unknown): value is StoreTable {
   return typeof value === 'string' && (STORE_TABLES as readonly string[]).includes(value);
 }
 
-/** One INSERT per row, table by table in STORE_TABLES' order. */
+/** One INSERT per row, table by table in STORE_TABLES' order. A column the
+ * row leaves out is left out of its INSERT, so it takes the column's default. */
 export function insertStatements(rows: StoreRows): StoreStatement[] {
   const statements: StoreStatement[] = [];
   for (const table of STORE_TABLES) {
-    const columns = STORE_COLUMNS[table] as readonly string[];
-    const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`;
-    for (const row of rows[table] as readonly object[] as readonly Readonly<Record<string, StoreValue>>[]) {
-      statements.push({ sql, values: columns.map((column) => row[column] ?? null) });
+    for (const row of (rows[table] ?? []) as readonly object[] as readonly Readonly<
+      Record<string, StoreValue | undefined>
+    >[]) {
+      const columns = (STORE_COLUMNS[table] as readonly string[]).filter((column) => row[column] !== undefined);
+      statements.push({
+        sql: `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+        values: columns.map((column) => row[column] ?? null),
+      });
     }
   }
   return statements;
