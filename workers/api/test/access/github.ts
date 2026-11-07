@@ -1,13 +1,15 @@
 // A stand-in for GitHub's OAuth endpoints, so sign-in runs end to end with
 // no network. Better Auth calls GitHub through globalThis.fetch, which tests
 // share with the Worker. An authorization code `github-user-<id>` signs in
-// as the GitHub user with that numeric id.
+// as the GitHub user with that numeric id and the login `person-<id>`, and
+// `github-user-<id>.<login>` as that user under another login, as after a
+// rename.
 import { afterEach, beforeEach, vi } from 'vitest';
 
 export const GITHUB_AUTHORIZE = 'https://github.com/login/oauth/authorize';
 
-export function codeFor(githubId: number): string {
-  return `github-user-${githubId}`;
+export function codeFor(githubId: number, login?: string): string {
+  return login === undefined ? `github-user-${githubId}` : `github-user-${githubId}.${login}`;
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -27,20 +29,23 @@ export function standInForGitHub(): void {
       const url = new URL(request.url);
       if (url.href === 'https://github.com/login/oauth/access_token') {
         const code = new URLSearchParams(await bodyText(init?.body)).get('code') ?? '';
-        const id = /^github-user-(\d+)$/u.exec(code)?.[1];
-        if (!id) return Response.json({ error: 'bad_verification_code' });
+        const user = /^github-user-(\d+(?:\.[A-Za-z0-9-]+)?)$/u.exec(code)?.[1];
+        if (!user) return Response.json({ error: 'bad_verification_code' });
         return Response.json({
-          access_token: `stand-in-token-${id}`,
+          access_token: `stand-in-token-${user}`,
           token_type: 'bearer',
           scope: 'read:user,user:email',
         });
       }
-      const id = /^Bearer stand-in-token-(\d+)$/iu.exec(request.headers.get('authorization') ?? '')?.[1];
+      const user = /^Bearer stand-in-token-(\d+)(?:\.([A-Za-z0-9-]+))?$/iu.exec(
+        request.headers.get('authorization') ?? '',
+      );
+      const id = user?.[1];
       if (url.href === 'https://api.github.com/user') {
         if (!id) return Response.json({ message: 'Bad credentials' }, { status: 401 });
         return Response.json({
           id: Number(id),
-          login: `person-${id}`,
+          login: user?.[2] ?? `person-${id}`,
           name: `Person ${id}`,
           email: null,
           avatar_url: null,

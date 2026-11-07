@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyRequest } from '../../src/access/verify.ts';
 import { TEST_WORKSPACE } from '../store.ts';
 import {
+  addMember,
   Browser,
   call,
   choiceOf,
@@ -15,6 +16,7 @@ import {
   ORIGIN,
   OWNER_GITHUB_ID,
   REDIRECT_URI,
+  userIdOf,
 } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
@@ -206,7 +208,10 @@ describe('an agent connecting over OAuth', () => {
       headers: { authorization: `Bearer ${tokens.access_token}` },
     });
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: 'owner_only' });
+    expect(await response.json()).toEqual({
+      error: 'owner_only',
+      detail: 'only a person signed in in their browser may manage access, not an agent or a service',
+    });
   });
 });
 
@@ -266,17 +271,24 @@ describe('revoking an agent', () => {
     expect((await meWithToken(tokens.access_token)).status).toBe(401);
   });
 
-  it('refuses the agent of an owner who left the allowlist', async () => {
+  it('refuses the agent of a person who is no longer an admin or a member of any workspace', async () => {
     const project = await createProject('Departed');
     const browser = new Browser();
     await browser.signInAsOwner();
     const { tokens } = await connectAgent(browser, [project]);
     const request = new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
+    const departed = { ...env, OWNER_GITHUB_IDS: '3003' };
 
     expect((await verifyRequest(request, env)).ok).toBe(true);
-    expect(await verifyRequest(request, { ...env, OWNER_GITHUB_IDS: '3003' })).toEqual({
-      ok: false,
-      reason: 'invalid_token',
-    });
+    // Still a member of the test workspace, so the agent keeps its projects there.
+    expect((await verifyRequest(request, departed)).ok).toBe(true);
+    const userId = (await userIdOf(OWNER_GITHUB_ID))!;
+    await env.DB.prepare('DELETE FROM workspace_members WHERE user_id = ?').bind(userId).run();
+    try {
+      expect(await verifyRequest(request, departed)).toEqual({ ok: false, reason: 'invalid_token' });
+      expect((await verifyRequest(request, env)).ok).toBe(true);
+    } finally {
+      await addMember(TEST_WORKSPACE, userId, 'owner');
+    }
   });
 });
