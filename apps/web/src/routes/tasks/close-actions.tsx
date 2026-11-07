@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { CloseAsMenu, CloseNoteForm } from '@/components/CloseResolution';
+import { CloseNoteForm } from '@/components/CloseResolution';
 import { useInboxAnswer } from '@/hooks/useTasks';
 import type { NotDone } from '@/lib/task-model';
 
@@ -14,36 +14,24 @@ export function closeOperation(task: { readonly labels: readonly string[] }): 'd
 }
 
 /**
- * A close where nothing shipped: the Close as menu and, once one is picked
- * there or through `pick`, its one-line note, sent through the Undo window.
+ * A close where nothing shipped: once one is picked through `pick`, its
+ * one-line note in `box`, sent through the Undo window.
  */
 export function useCloseAs({
   id,
   title,
   project,
   via,
-  disabledReason = null,
   onOpen,
 }: {
   id: string;
   title: string;
   project: string;
   via?: 'dismiss';
-  disabledReason?: string | null;
   onOpen?: () => void;
-}): { menu: ReactNode; box: ReactNode; cancel: () => void; pick: (resolution: NotDone) => void } {
+}): { box: ReactNode; picked: NotDone | null; cancel: () => void; pick: (resolution: NotDone) => void } {
   const [picked, setPicked] = useState<NotDone | null>(null);
   const answer = useInboxAnswer();
-  const menu = (
-    <CloseAsMenu
-      subject={title}
-      disabledReason={disabledReason}
-      onPick={(resolution) => {
-        setPicked(resolution);
-        onOpen?.();
-      }}
-    />
-  );
   const box =
     picked === null ? null : (
       <CloseNoteForm
@@ -66,8 +54,8 @@ export function useCloseAs({
       />
     );
   return {
-    menu,
     box,
+    picked,
     cancel: () => setPicked(null),
     pick: (resolution) => {
       setPicked(resolution);

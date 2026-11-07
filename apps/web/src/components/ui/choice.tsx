@@ -1,4 +1,4 @@
-import { Star } from 'lucide-react';
+import { Check, Star } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { TASK_CHOICE_KEYS, type TaskChoiceKey } from '@/api/types';
 import { choiceName } from '@/lib/task-model';
@@ -96,7 +96,9 @@ export function Segmented({
  * The decision card's options, one per line: key, label in 14 px semibold,
  * the detail under it in Text 3, and Recommended at the end of its line.
  * The selected option is ringed in Accent on Accent soft. Inside the list, a
- * letter selects its option and ↑ ↓ move between them.
+ * letter selects its option and ↑ ↓ move between them. `readOnly` draws the
+ * options as the record of a choice already made: nothing to press, the
+ * chosen one ringed and ticked.
  */
 export function OptionList({
   question,
@@ -104,22 +106,48 @@ export function OptionList({
   value,
   onChange,
   disabled = false,
+  readOnly = false,
+  describedBy,
   className,
 }: {
   question: string;
   options: readonly ChoiceOption[];
   value: TaskChoiceKey | null;
-  onChange: (key: TaskChoiceKey) => void;
+  onChange?: (key: TaskChoiceKey) => void;
   disabled?: boolean;
+  readOnly?: boolean;
+  /** The id of what says more about the options, such as why they are disabled. */
+  describedBy?: string | undefined;
   className?: string;
 }) {
+  if (readOnly) {
+    return (
+      <ul aria-label={question} className={cn('m-0 flex list-none flex-col gap-2 p-0', className)}>
+        {options.map((option) => {
+          const chosen = option.key === value;
+          return (
+            <li
+              key={option.key}
+              className={cn(OPTION_BOX, optionRing(chosen))}
+              data-choice-option={option.key}
+              data-choice-chosen={chosen ? '' : undefined}
+              aria-current={chosen ? 'true' : undefined}
+            >
+              <OptionFace option={option} chosen={chosen} />
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (roveFocus(event, '[role="radio"]:not([disabled])')) return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const key = choiceForKey(event.key, options);
     if (key === null || disabled) return;
     event.preventDefault();
-    onChange(key);
+    onChange?.(key);
   }
   return (
     <div role="radiogroup" aria-label={question} className={cn('flex flex-col gap-2', className)} onKeyDown={onKeyDown}>
@@ -132,35 +160,53 @@ export function OptionList({
             role="radio"
             aria-checked={selected}
             aria-label={optionName(option)}
+            aria-describedby={describedBy}
             tabIndex={selected || (value === null && index === 0) ? 0 : -1}
             disabled={disabled}
             data-choice-option={option.key}
             className={cn(
-              'grid grid-cols-[22px_1fr_auto] gap-x-2.5 gap-y-0.5 rounded-lg px-3 py-2.75 text-start',
+              OPTION_BOX,
               'transition-[background-color,box-shadow] duration-120',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
               'disabled:pointer-events-none disabled:opacity-45',
-              selected
-                ? 'bg-accent-soft inset-ring-[1.5px] inset-ring-accent'
-                : 'inset-ring inset-ring-border hover:bg-hover',
+              optionRing(selected),
+              !selected && 'hover:bg-hover',
             )}
-            onClick={() => onChange(option.key)}
+            onClick={() => onChange?.(option.key)}
           >
-            <Kbd className="row-span-2 mt-px">{option.key.toUpperCase()}</Kbd>
-            <span className="text-sm font-semibold text-ink">{option.label}</span>
-            {option.recommended ? (
-              <span className="col-start-3 row-start-1 inline-flex items-center gap-1 text-chip font-medium text-ink-2">
-                <RecommendedStar />
-                Recommended
-              </span>
-            ) : null}
-            {option.detail ? (
-              <span className="col-start-2 text-label font-normal text-ink-3">{option.detail}</span>
-            ) : null}
+            <OptionFace option={option} />
           </button>
         );
       })}
     </div>
+  );
+}
+
+const OPTION_BOX = 'grid grid-cols-[22px_1fr_auto] gap-x-2.5 gap-y-0.5 rounded-lg px-3 py-2.75 text-start';
+
+function optionRing(selected: boolean): string {
+  return selected ? 'bg-accent-soft inset-ring-[1.5px] inset-ring-accent' : 'inset-ring inset-ring-border';
+}
+
+/** An option's key, label, detail, and Recommended, or the tick of the option chosen. */
+function OptionFace({ option, chosen = false }: { option: ChoiceOption; chosen?: boolean }) {
+  return (
+    <>
+      <Kbd className="row-span-2 mt-px">{option.key.toUpperCase()}</Kbd>
+      <span className="text-sm font-semibold text-ink">{option.label}</span>
+      {chosen ? (
+        <span className="col-start-3 row-start-1 inline-flex items-center gap-1 text-chip font-medium text-accent-text">
+          <Check aria-hidden size={14} strokeWidth={2} />
+          Chosen
+        </span>
+      ) : option.recommended ? (
+        <span className="col-start-3 row-start-1 inline-flex items-center gap-1 text-chip font-medium text-ink-2">
+          <RecommendedStar />
+          Recommended
+        </span>
+      ) : null}
+      {option.detail ? <span className="col-start-2 text-label font-normal text-ink-3">{option.detail}</span> : null}
+    </>
   );
 }
 

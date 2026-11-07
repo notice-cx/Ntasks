@@ -23,22 +23,24 @@ describe('focus', () => {
   it('takes the decisions one at a time, with keys for each answer', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/focus', api);
-    expect(await screen.findByText('Focus · 1 of 4 for you')).toBeTruthy();
+    expect(await screen.findByText('1 of 4')).toBeTruthy();
     expect(current()).toBe('web-g7p2');
-    expect(screen.getByText('Enter approve · → skip')).toBeTruthy();
-    await enabledButton('Approve');
+    await enabledButton(/Approve/);
 
     // Enter approves the approval.
     fireEvent.keyDown(window, { key: 'Enter' });
     await waitFor(() => expect(current()).toBe('web-d4x1'));
-    expect(screen.getByText('Focus · 2 of 4 for you')).toBeTruthy();
+    expect(screen.getByText('2 of 4')).toBeTruthy();
 
     // → passes over a decision without answering it.
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     await waitFor(() => expect(current()).toBe('docs-r4s9'));
 
-    // An option's letter picks it.
+    // An option's letter selects it, and Enter answers with it.
     fireEvent.keyDown(window, { key: 'b' });
+    expect(screen.getByRole('radio', { name: /In a separate docs project/ }).getAttribute('aria-checked')).toBe('true');
+    expect(current()).toBe('docs-r4s9');
+    fireEvent.keyDown(window, { key: 'Enter' });
     await waitFor(() => expect(current()).toBe('web-q8n5'));
 
     await act(async () => {
@@ -51,7 +53,7 @@ describe('focus', () => {
 
   it('ends by counting the decisions passed with Not now, and starts over on them', async () => {
     renderApp('/tasks/focus?project=docs');
-    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
+    expect(await screen.findByText('1 of 1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(await screen.findByText('1 decision skipped')).toBeTruthy();
     expect(screen.queryByText('Nothing is waiting for you')).toBeNull();
@@ -61,8 +63,14 @@ describe('focus', () => {
 
   it('ends on nothing waiting once every decision is answered', async () => {
     renderApp('/tasks/focus?project=docs');
-    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
-    fireEvent.click(await enabledButton(/In a separate docs project/));
+    expect(await screen.findByText('1 of 1')).toBeTruthy();
+    await waitFor(() =>
+      expect((screen.getByRole('radio', { name: /In a separate docs project/ }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /In a separate docs project/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
     expect(await screen.findByText('Nothing is waiting for you')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start over' })).toBeNull();
   });

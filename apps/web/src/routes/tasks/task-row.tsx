@@ -18,6 +18,7 @@ import {
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { CloseDoneForm } from '@/components/CloseResolution';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge, Progress } from '@/components/ui/badge';
 import { Button, IconButton } from '@/components/ui/button';
@@ -34,6 +35,7 @@ import {
   useUpdateTask,
   verbReason,
 } from '@/hooks/useTasks';
+import { copyText } from '@/lib/clipboard';
 import { calendarDay } from '@/lib/format';
 import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '@/lib/symbols';
 import {
@@ -214,7 +216,11 @@ export function TaskRow({ task, context }: { task: BoardTask; context: RowContex
         <RowAge>{context.age}</RowAge>
       </Row>
       {form === 'park' ? <ParkForm task={task} onDone={() => setForm(null)} /> : null}
-      {form === 'close' ? <CloseDoneForm task={task} onDone={() => setForm(null)} /> : null}
+      {form === 'close' ? (
+        <RowPanel>
+          <CloseDoneForm id={task.id} project={task.project} onDone={() => setForm(null)} />
+        </RowPanel>
+      ) : null}
       {closeAs.box ? <RowPanel>{closeAs.box}</RowPanel> : null}
     </>
   );
@@ -238,7 +244,6 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
     id: task.id,
     title: task.title,
     project: task.project,
-    placement: 'row',
     choices: task.choices ?? null,
     disabledReason: verbReason(
       capabilities,
@@ -355,16 +360,8 @@ function TaskMenu({
   );
 }
 
-/** Copies an id and says so. A page served without HTTPS has no clipboard, and a browser can refuse the write. */
-async function copyId(id: string): Promise<void> {
-  try {
-    if (!navigator.clipboard) throw new Error('No clipboard');
-    await navigator.clipboard.writeText(id);
-  } catch {
-    toast.error(`Could not copy ${id}`);
-    return;
-  }
-  toast.success(`Copied ${id}`);
+function copyId(id: string): Promise<void> {
+  return copyText(id, id);
 }
 
 /** Park a task until a date. */
@@ -391,44 +388,6 @@ function ParkForm({ task, onDone }: { task: BoardTask; onDone: () => void }) {
         <Button variant="primary" type="submit" disabled={update.isPending || until === ''} data-task-confirm="defer">
           <Moon aria-hidden />
           Park
-        </Button>
-        <Button type="button" variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </form>
-    </RowPanel>
-  );
-}
-
-/** Close a task as done, with the evidence: a commit, a link, what proves it. */
-function CloseDoneForm({ task, onDone }: { task: BoardTask; onDone: () => void }) {
-  const close = useCloseTask();
-  const [reason, setReason] = useState('');
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    try {
-      await close.mutateAsync({ id: task.id, project: task.project, reason: reason.trim() });
-    } catch (error) {
-      toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not close ${task.id}`);
-      return;
-    }
-    toast.success(`Closed ${task.id}`);
-    onDone();
-  }
-  return (
-    <RowPanel>
-      <form className="flex flex-wrap items-end gap-2" data-task-form="close" onSubmit={(event) => void submit(event)}>
-        <Field label="Evidence" required className="min-w-0 flex-1 basis-64">
-          <Input autoFocus value={reason} onChange={(event) => setReason(event.target.value)} />
-        </Field>
-        <Button
-          variant="primary"
-          type="submit"
-          disabled={close.isPending || reason.trim() === ''}
-          data-task-confirm="close"
-        >
-          <Check aria-hidden strokeWidth={2} />
-          Close task
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

@@ -13,8 +13,8 @@ people use over a network. Keep that link in every version of the app.
 | Address | Shows |
 |---|---|
 | `/tasks` | The board: what waits for you first, answered on its row, then every task grouped by status (In progress, Open, Blocked, Parked, Done). The view (`?view=active`, `done` or `waiting`), the search and the filters are part of the address. `?new=1` opens the composer. |
-| `/tasks/:id` | One task: its state, description, Done when, links, epic tasks and history, with its facts editable in place. |
-| `/tasks/focus` | Your decisions one at a time, answered with a press or a key: an option's letter, Enter to approve, → to skip. |
+| `/tasks/:id` | One task: its title, description, a decision's options, Done when, design, notes, links, epic tasks and activity, with a side panel of its facts. A fact this sign-in may change opens a menu of values; the others are plain words. |
+| `/tasks/focus` | Your decisions one at a time, each on a card: an option's letter selects it, Enter answers or approves, → skips. |
 | `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
 
 Every page sits in one frame (`src/App.tsx`): the sidebar

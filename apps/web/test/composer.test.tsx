@@ -51,8 +51,8 @@ describe('the composer', () => {
     const before = api.state.tasks.length;
     renderApp('/tasks?new=1', api);
     fireEvent.click(await enabledButton('File task'));
-    expect(await screen.findByText('Write a title someone can read without context.')).toBeTruthy();
-    expect(screen.getByText('Choose the project this task belongs to.')).toBeTruthy();
+    expect(await screen.findByText('No title.')).toBeTruthy();
+    expect(screen.getByText('No project chosen.')).toBeTruthy();
     expect(api.state.tasks.length).toBe(before);
   });
 
@@ -70,7 +70,7 @@ describe('the composer', () => {
     fireEvent.change(screen.getByLabelText('Labels'), { target: { value: 'copy' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Errors are grey today.' } });
-    const first = screen.getByPlaceholderText('The proof that it is done');
+    const first = screen.getByLabelText('Done when');
     fireEvent.change(first, { target: { value: 'Every error is red' } });
     fireEvent.keyDown(first, { key: 'Enter' });
     fireEvent.change(screen.getByLabelText('Done when, line 2'), { target: { value: 'A test covers it' } });

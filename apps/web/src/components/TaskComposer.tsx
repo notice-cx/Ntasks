@@ -1,13 +1,15 @@
-import { ChevronDown, Plus, Square, X } from 'lucide-react';
+import { ChevronDown, CircleAlert, Plus, X } from 'lucide-react';
 import { Component, lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { NewTask, TaskProject } from '@/api/types';
+import { Badge } from '@/components/ui/badge';
 import { Button, IconButton } from '@/components/ui/button';
-import { fieldClass, pillControlClass, pillPickerStateClass } from '@/components/ui/chrome';
+import { Tabs } from '@/components/ui/choice';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
-import { PRIORITY_BANDS } from '@/lib/task-model';
+import { PRIORITY_LABELS, typeLabel } from '@/lib/symbols';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
 import { TaskPrefixesProvider } from '@/routes/tasks/task-prefixes';
@@ -49,8 +51,11 @@ function DescriptionPreview({ source, prefixes }: { source: string; prefixes: Re
   const [Renderer, setRenderer] = useState(lazyRenderer);
   const failed = (
     <div className="flex flex-col items-start gap-2" data-preview-failed="">
-      <span className="text-muted-foreground">The preview could not load. Your text, as written:</span>
-      <p className="m-0 whitespace-pre-wrap">{source}</p>
+      <span className="flex items-center gap-1.5 text-meta text-ink">
+        <CircleAlert aria-hidden size={14} className="shrink-0 text-ink-2" />
+        The preview could not load
+      </span>
+      <p className="m-0 whitespace-pre-wrap text-ink-2">{source}</p>
       <Button
         type="button"
         variant="secondary"
@@ -66,7 +71,7 @@ function DescriptionPreview({ source, prefixes }: { source: string; prefixes: Re
   );
   return (
     <PreviewBoundary key={attempt} fallback={failed}>
-      <Suspense fallback={<span className="text-muted-foreground">Loading the preview…</span>}>
+      <Suspense fallback={<span className="text-ink-3">Loading…</span>}>
         <TaskPrefixesProvider value={prefixes}>
           <Renderer source={source} />
         </TaskPrefixesProvider>
@@ -74,8 +79,6 @@ function DescriptionPreview({ source, prefixes }: { source: string; prefixes: Re
     </PreviewBoundary>
   );
 }
-
-const FIELD = cn(fieldClass, 'w-full py-1.5');
 
 /** The types a new task can take; decisions and approvals are opened by agents with their options. */
 const TASK_TYPES = ['task', 'bug', 'feature', 'chore', 'epic'] as const;
@@ -216,8 +219,8 @@ export function TaskComposer({
     const next: Record<string, string> = {};
     const cleanTitle = title.trim();
     const cleanParent = parent.trim();
-    if (!chosen) next.project = 'Choose the project this task belongs to.';
-    if (!cleanTitle) next.title = 'Write a title someone can read without context.';
+    if (!chosen) next.project = 'No project chosen.';
+    if (!cleanTitle) next.title = 'No title.';
     // A parent from another project cannot hold this task.
     if (cleanParent && chosen && !cleanParent.startsWith(`${chosen.prefix}-`))
       next.parent = `A parent in ${chosen.displayName} starts with ${chosen.prefix}-.`;
@@ -262,23 +265,23 @@ export function TaskComposer({
         type="button"
         aria-label="Close the composer"
         onClick={onClose}
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-ink/20 dark:bg-black/50"
       />
       <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex h-full w-full max-w-lg flex-col border-l border-border bg-card shadow-xl"
+        className="relative flex h-full w-full max-w-lg flex-col bg-background shadow-pop"
       >
-        <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <h2 id={titleId} className="m-0 text-base font-semibold">
+        <header className="flex h-14 items-center justify-between gap-3 border-b border-border ps-5 pe-3">
+          <h2 id={titleId} className="m-0 text-heading text-ink">
             File a task
           </h2>
           <IconButton label="Close" shortcut="Esc" icon={<X aria-hidden />} onClick={onClose} />
         </header>
 
         <div
-          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
           onKeyDown={(event) => {
             // Cmd or Ctrl with Enter files from any field, the multi-line ones included.
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -287,14 +290,10 @@ export function TaskComposer({
             }
           }}
         >
-          <Field id={`${fieldId}-title`} label="Title" required error={errors.title}>
-            <input
-              id={`${fieldId}-title`}
-              className={cn(FIELD, 'text-base')}
+          <Field label="Title" required error={errors.title}>
+            <Input
               value={title}
               autoFocus
-              required
-              aria-required="true"
               onChange={(event) => setTitle(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
@@ -303,64 +302,50 @@ export function TaskComposer({
                 event.stopPropagation();
                 void file();
               }}
-              placeholder="What should be true when this is done"
               data-composer-title=""
             />
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
-            <Field id={`${fieldId}-project`} label="Project" required error={errors.project}>
-              <select
-                id={`${fieldId}-project`}
-                className={FIELD}
-                value={project}
-                required
-                aria-required="true"
-                onChange={(event) => setProject(event.target.value)}
-                data-composer-project=""
-              >
-                <option value="">Choose a project…</option>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+            <Field label="Project" required error={errors.project}>
+              <Select value={project} onChange={(event) => setProject(event.target.value)} data-composer-project="">
+                <option value="" disabled hidden />
                 {projects.map((entry) => (
                   <option key={entry.logicalKey} value={entry.logicalKey}>
-                    {entry.displayName} ({entry.prefix}-)
+                    {entry.displayName}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
-            <Field id={`${fieldId}-priority`} label="Priority">
-              <select
-                id={`${fieldId}-priority`}
-                className={FIELD}
+            <Field label="Priority">
+              <Select
                 value={String(priority)}
                 onChange={(event) => setPriority(Number(event.target.value))}
                 data-composer-priority=""
               >
-                {PRIORITY_BANDS.map((band, index) => (
-                  <option key={band} value={String(index)}>
-                    {band}
+                {PRIORITY_LABELS.map((word, index) => (
+                  <option key={word} value={String(index)}>
+                    {word}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           </div>
 
           {labels.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5" data-composer-labels="">
               {labels.map((label) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-1 rounded-md border border-border py-0.5 pe-1 ps-2 font-mono text-[11px]"
-                >
+                <Badge key={label} dot className="pe-0.5">
                   {label}
                   <button
                     type="button"
                     aria-label={`Remove label ${label}`}
                     onClick={() => setLabels((current) => current.filter((entry) => entry !== label))}
-                    className="rounded-sm px-0.5 text-muted-foreground hover:text-foreground"
+                    className="grid size-4 place-items-center rounded-full text-ink-3 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
                   >
-                    <X className="size-3" aria-hidden />
+                    <X aria-hidden size={12} />
                   </button>
-                </span>
+                </Badge>
               ))}
             </div>
           ) : null}
@@ -368,8 +353,7 @@ export function TaskComposer({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="w-fit px-1.5 text-muted-foreground"
+            className="-ms-2.5 w-fit"
             aria-expanded={more}
             onClick={() => setMore((current) => !current)}
             data-composer-more=""
@@ -379,124 +363,107 @@ export function TaskComposer({
           </Button>
 
           {more ? (
-            <div className="flex flex-col gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field id={`${fieldId}-type`} label="Type">
-                  <select
-                    id={`${fieldId}-type`}
-                    className={FIELD}
-                    value={type}
-                    onChange={(event) => setType(event.target.value)}
-                    data-composer-type=""
-                  >
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Type">
+                  <Select value={type} onChange={(event) => setType(event.target.value)} data-composer-type="">
                     {TASK_TYPES.map((value) => (
                       <option key={value} value={value}>
-                        {value}
+                        {typeLabel(value)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </Field>
-                <Field id={`${fieldId}-parent`} label="Parent epic" error={errors.parent}>
-                  <input
-                    id={`${fieldId}-parent`}
-                    className={cn(FIELD, 'font-mono')}
+                <Field label="Parent epic" error={errors.parent}>
+                  <Input
+                    className="nums"
                     value={parent}
                     onChange={(event) => setParent(event.target.value)}
-                    placeholder={chosen ? `${chosen.prefix}-…` : 'An epic id'}
                     spellCheck={false}
                     data-composer-parent=""
                   />
                 </Field>
               </div>
 
-              <Field id={`${fieldId}-labels`} label="Labels">
-                <div className="flex items-center gap-2">
-                  <input
-                    id={`${fieldId}-labels`}
-                    className={FIELD}
-                    value={labelDraft}
-                    onChange={(event) => setLabelDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter') return;
-                      event.preventDefault();
-                      addLabel();
-                    }}
-                    placeholder="Add a label"
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={addLabel}
-                    disabled={labelDraft.trim() === ''}
-                  >
-                    <Plus aria-hidden /> Add
-                  </Button>
-                </div>
+              <Field label="Labels">
+                <Input
+                  value={labelDraft}
+                  onChange={(event) => setLabelDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    addLabel();
+                  }}
+                  end={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="-me-1"
+                      onClick={addLabel}
+                      disabled={labelDraft.trim() === ''}
+                    >
+                      <Plus aria-hidden /> Add
+                    </Button>
+                  }
+                />
               </Field>
 
-              <Field
-                id={`${fieldId}-description`}
-                label="Description"
-                hint="Markdown: lists, checklists, code and links work; task ids become links."
-                aside={
-                  <div
-                    role="group"
-                    aria-label="Write or preview"
-                    className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5"
-                  >
-                    {[false, true].map((preview) => (
-                      <button
-                        key={String(preview)}
-                        type="button"
-                        aria-pressed={previewing === preview}
-                        onClick={() => setPreviewing(preview)}
-                        className={cn(
-                          'inline-flex items-center rounded-sm border px-2 py-0.5 text-xs',
-                          pillControlClass,
-                          pillPickerStateClass(previewing === preview),
-                        )}
-                      >
-                        {preview ? 'Preview' : 'Write'}
-                      </button>
-                    ))}
-                  </div>
-                }
-              >
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor={`${fieldId}-description`} className="text-label font-medium text-ink-2">
+                    Description
+                  </label>
+                  <Tabs
+                    label="Description view"
+                    items={[
+                      { value: 'write', label: 'Write' },
+                      { value: 'preview', label: 'Preview' },
+                    ]}
+                    value={previewing ? 'preview' : 'write'}
+                    onChange={(view) => setPreviewing(view === 'preview')}
+                  />
+                </div>
                 {previewing ? (
-                  <div className={cn(FIELD, 'min-h-24 overflow-x-auto')}>
+                  <div className="min-h-24 overflow-x-auto rounded-md bg-surface px-3 py-2 inset-ring inset-ring-border">
                     {description.trim() ? (
                       <DescriptionPreview
                         source={description}
                         prefixes={new Set(projects.map((entry) => entry.prefix))}
                       />
                     ) : (
-                      <span className="text-muted-foreground">Nothing to preview</span>
+                      <span className="text-sm text-ink-3">Nothing to preview</span>
                     )}
                   </div>
                 ) : (
-                  <textarea
+                  <Textarea
                     id={`${fieldId}-description`}
-                    className={cn(FIELD, 'min-h-24 resize-y')}
+                    rows={5}
+                    className="resize-y"
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    placeholder="What, why with the numbers, where"
                     data-composer-description=""
                   />
                 )}
-              </Field>
+              </div>
 
-              <Field id={`${fieldId}-acceptance-0`} label="Done when">
+              {/* One label for several fields, so the lines stand outside a Field, which owns one control's id. */}
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <label htmlFor={`${fieldId}-acceptance-0`} className="text-label font-medium text-ink-2">
+                  Done when
+                </label>
                 <div className="flex flex-col gap-1.5" data-composer-acceptance="">
                   {lines.map((line, index) => (
                     <div key={index} className="flex items-center gap-2">
-                      <Square className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <input
+                      <span
+                        aria-hidden
+                        className="size-[15px] shrink-0 rounded-sm inset-ring-[1.5px] inset-ring-border-strong"
+                      />
+                      <Input
                         id={`${fieldId}-acceptance-${index}`}
                         ref={(node) => {
                           lineRefs.current[index] = node;
                         }}
-                        className={FIELD}
                         value={line}
                         aria-label={index === 0 ? undefined : `Done when, line ${index + 1}`}
                         onChange={(event) => {
@@ -514,7 +481,6 @@ export function TaskComposer({
                             removeLine(index);
                           }
                         }}
-                        placeholder={index === 0 ? 'The proof that it is done' : undefined}
                         data-composer-acceptance-line={index}
                       />
                     </div>
@@ -523,20 +489,21 @@ export function TaskComposer({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="w-fit px-1.5 text-muted-foreground"
+                    className="-ms-2 w-fit"
                     onClick={() => insertLine(lines.length)}
                   >
-                    <Plus aria-hidden /> Another line
+                    <Plus aria-hidden /> Add line
                   </Button>
                 </div>
-              </Field>
+              </div>
             </div>
           ) : null}
         </div>
 
-        <footer className="flex flex-col gap-2 border-t border-border px-4 py-3">
+        <footer className="flex flex-col gap-2 border-t border-border px-5 py-3">
           {errors.form ? (
-            <p className="m-0 text-xs text-error" role="alert" data-composer-error="">
+            <p className="m-0 flex items-center gap-1.5 text-meta text-ink" role="alert" data-composer-error="">
+              <CircleAlert aria-hidden size={14} className="shrink-0 text-ink-2" />
               {errors.form}
             </p>
           ) : null}
@@ -558,48 +525,5 @@ export function TaskComposer({
       </aside>
     </div>,
     document.body,
-  );
-}
-
-/** A label, its control, and the reason a file was refused, on the field that caused it. Required fields carry an asterisk. */
-function Field({
-  id,
-  label,
-  required = false,
-  error,
-  aside,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string | undefined;
-  aside?: ReactNode;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <label htmlFor={id} className="text-xs font-medium text-foreground">
-          {label}
-          {required ? (
-            <span aria-hidden className="text-muted-foreground">
-              {' '}
-              *
-            </span>
-          ) : null}
-        </label>
-        {aside}
-      </div>
-      {children}
-      {hint ? <span className="text-micro text-muted-foreground">{hint}</span> : null}
-      {error ? (
-        <span className="text-[11px] leading-snug text-error" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </div>
   );
 }

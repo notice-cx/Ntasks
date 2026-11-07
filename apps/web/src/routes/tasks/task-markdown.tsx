@@ -39,9 +39,8 @@ import sql from 'highlight.js/lib/languages/sql';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
-import { CheckSquare, Image as ImageIcon, Square } from 'lucide-react';
+import { Check, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { eyebrowClass, inlineLinkClass } from '@/components/ui/chrome';
 import { isAppPage, taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
 import { TaskPrefixes } from './task-prefixes';
@@ -54,6 +53,10 @@ const LANGUAGES = { bash, css, diff, javascript, json, markdown, python, sql, ty
 
 const TASK_ID = /\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b/g;
 const LABELLED = /^(\s*)(WHAT|WHY|WHERE|FIX|HOW):\s*/;
+
+/** A link in task text, in Accent text, underlined while pointed at. */
+const LINK =
+  'text-accent-text no-underline underline-offset-3 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-accent';
 
 // ---------------------------------------------------------------------------
 // Checklists: counted and ticked from the same reading of the Markdown that
@@ -127,6 +130,11 @@ function linkTaskIds(value: string, prefixes: ReadonlySet<string>): ElementConte
   return out;
 }
 
+/** `WHAT` as `What`: the page sets nothing in capitals. */
+function sentenceCase(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
 /** A paragraph line that opens with a section label leads with it. */
 function labelLines(paragraph: Element): void {
   let lineStart = true;
@@ -147,8 +155,8 @@ function labelLines(paragraph: Element): void {
       {
         type: 'element',
         tagName: 'span',
-        properties: { className: [eyebrowClass, 'me-2'], dataLabel: '' },
-        children: [text(label[2]?.toLowerCase() ?? '')],
+        properties: { className: ['me-2', 'text-label', 'font-semibold', 'text-ink-3'], dataLabel: '' },
+        children: [text(sentenceCase(label[2] ?? ''))],
       },
       text(child.value.slice(label[0].length)),
     ];
@@ -218,11 +226,7 @@ function sameSite(url: URL | null): boolean {
 }
 
 function MarkdownLink({ href = '', children, node }: ComponentProps<'a'> & ExtraProps) {
-  const className = cn(
-    inlineLinkClass,
-    'underline',
-    node?.properties.dataTaskId !== undefined && 'font-mono text-[0.9em]',
-  );
+  const className = cn(LINK, node?.properties.dataTaskId !== undefined && 'nums font-medium');
   // An address the sanitizer removed, such as a javascript: link, leaves the words alone.
   if (href === '') return <span>{children}</span>;
   const url = resolved(href);
@@ -262,7 +266,7 @@ function MarkdownImage({ src, alt }: ComponentProps<'img'> & ExtraProps) {
       href={url.href}
       target="_blank"
       rel="noopener noreferrer"
-      className={cn(inlineLinkClass, 'inline-flex items-center gap-1 underline')}
+      className={cn(LINK, 'inline-flex items-center gap-1')}
       data-image-link=""
     >
       <ImageIcon aria-hidden className="size-3.5 shrink-0" />
@@ -294,7 +298,7 @@ function ListItem({ node, className, children }: ComponentProps<'li'> & ExtraPro
   const item = { line: start === undefined ? null : start - 1, label: wordsOf(node).trim() };
   return (
     <ChecklistItem.Provider value={item}>
-      <li className="relative list-none ps-6" data-checklist-item="">
+      <li className="relative list-none ps-7" data-checklist-item="">
         {children}
       </li>
     </ChecklistItem.Provider>
@@ -306,8 +310,20 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
   const { onToggleTask, disabled } = useContext(ChecklistToggle);
   if (type !== 'checkbox') return null;
   const done = checked === true;
-  const Box = done ? CheckSquare : Square;
-  const box = <Box aria-hidden className={cn('size-4 shrink-0', done ? 'text-foreground' : 'text-muted-foreground')} />;
+  // A ticked box is filled in Accent, the colour of a selected control.
+  const box = (
+    <span
+      aria-hidden
+      className={cn(
+        'grid size-[15px] place-items-center rounded-sm',
+        done ? 'bg-accent text-on-accent' : 'bg-background inset-ring-[1.5px] inset-ring-border-strong',
+      )}
+    >
+      {done ? <Check size={11} strokeWidth={3} /> : null}
+    </span>
+  );
+  // The box sits on the first line of its words: centred in a 25 px line.
+  const place = 'absolute start-0 top-[5px]';
   if (!onToggleTask || line === null) {
     return (
       <span
@@ -315,7 +331,7 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
         aria-checked={done}
         aria-disabled
         aria-label={label}
-        className="absolute start-0 top-0.5 inline-flex"
+        className={cn(place, 'inline-flex')}
         data-checkbox={done ? 'done' : 'open'}
       >
         {box}
@@ -330,7 +346,11 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
       aria-label={label}
       disabled={disabled}
       onClick={() => onToggleTask(line)}
-      className="absolute start-0 top-0.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 max-sm:top-0 max-sm:min-h-11"
+      className={cn(
+        place,
+        // A larger press area than the box, around it.
+        '-m-1 rounded-sm p-1 outline-none focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-45',
+      )}
       data-checkbox={done ? 'done' : 'open'}
     >
       {box}
@@ -338,11 +358,15 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
   );
 }
 
-/** A Markdown heading sits under the page's own headings: # is drawn at level 3. */
+/**
+ * A Markdown heading sits under the page's own headings in the document's
+ * outline (# is drawn at level 3), but at a size of its own above the text:
+ * # 18 px, ## 16 px, the rest 15 px in semibold.
+ */
 function heading(level: 3 | 4 | 5 | 6, size: string) {
   const Tag = `h${level}` as const;
   return function Heading({ children }: { children?: ReactNode }) {
-    return <Tag className={cn('m-0 font-semibold text-foreground', size)}>{children}</Tag>;
+    return <Tag className={cn('m-0 font-semibold text-ink', size)}>{children}</Tag>;
   };
 }
 
@@ -351,33 +375,35 @@ const COMPONENTS: Components = {
   img: MarkdownImage,
   li: ListItem,
   input: Checkbox,
-  h1: heading(3, 'text-base'),
-  h2: heading(4, 'text-sm'),
-  h3: heading(5, 'text-sm'),
-  h4: heading(6, 'text-sm'),
-  h5: heading(6, 'text-sm'),
-  h6: heading(6, 'text-sm'),
+  h1: heading(3, 'text-heading'),
+  h2: heading(4, 'text-[16px] leading-6'),
+  h3: heading(5, 'text-body'),
+  h4: heading(6, 'text-body'),
+  h5: heading(6, 'text-body'),
+  h6: heading(6, 'text-body'),
   p: ({ children }) => <p className="m-0">{children}</p>,
   ul: ({ className, children }) =>
     typeof className === 'string' && className.includes('contains-task-list') ? (
-      <ul className="m-0 flex list-none flex-col gap-1 p-0" data-checklist="">
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-checklist="">
         {children}
       </ul>
     ) : (
-      <ul className="m-0 flex list-disc flex-col gap-1 ps-5">{children}</ul>
+      <ul className="m-0 flex list-disc flex-col gap-0.5 ps-5.5 marker:text-ink-3">{children}</ul>
     ),
   ol: ({ start, children }) => (
-    <ol start={start} className="m-0 flex list-decimal flex-col gap-1 ps-5">
+    <ol start={start} className="m-0 flex list-decimal flex-col gap-0.5 ps-5.5 marker:text-ink-3">
       {children}
     </ol>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="m-0 flex flex-col gap-2 border-s-2 border-border ps-3 text-muted-foreground">
+    <blockquote className="m-0 flex flex-col gap-2 border-s-2 border-border-strong ps-3 text-ink-2">
       {children}
     </blockquote>
   ),
   pre: ({ children }) => (
-    <pre className="m-0 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs leading-relaxed">{children}</pre>
+    <pre className="m-0 overflow-x-auto rounded-lg bg-surface px-4 py-3.5 font-mono text-code text-ink inset-ring inset-ring-border">
+      {children}
+    </pre>
   ),
   table: ({ children }) => (
     <div className="max-w-full overflow-x-auto">
@@ -386,7 +412,7 @@ const COMPONENTS: Components = {
     </div>
   ),
   th: ({ children, style }) => (
-    <th className="border border-border bg-muted px-2 py-1 font-medium" style={alignOnly(style)}>
+    <th className="border border-border bg-surface px-2 py-1 font-semibold" style={alignOnly(style)}>
       {children}
     </th>
   ),
@@ -396,7 +422,7 @@ const COMPONENTS: Components = {
     </td>
   ),
   hr: () => <hr className="m-0 border-border" />,
-  del: ({ children }) => <del className="text-muted-foreground">{children}</del>,
+  del: ({ children }) => <del className="text-ink-3">{children}</del>,
 };
 
 /** A table column's alignment, which the Markdown sets as a style: the only style the page keeps from it. */
@@ -406,8 +432,9 @@ function alignOnly(style: ComponentProps<'td'>['style']): ComponentProps<'td'>['
 }
 
 /**
- * Markdown as React elements. With `onToggleTask`, a checklist's boxes are
- * buttons that hand back the line they sit on.
+ * Markdown as React elements, at the body size (15/25) unless `className`
+ * sets another. With `onToggleTask`, a checklist's boxes are buttons that
+ * hand back the line they sit on.
  */
 export function MarkdownText({
   source,
@@ -424,8 +451,10 @@ export function MarkdownText({
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col gap-2 text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]',
-        '[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-muted [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.85em]',
+        'flex min-w-0 flex-col gap-3.5 text-body text-ink [overflow-wrap:anywhere]',
+        // A heading takes more room above it than below, so it reads with the text it heads.
+        '[&>*+:is(h3,h4,h5,h6)]:mt-2 [&>:is(h3,h4,h5,h6)+*]:-mt-2',
+        '[&_:not(pre)>code]:rounded-sm [&_:not(pre)>code]:bg-surface [&_:not(pre)>code]:px-1.25 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.87em] [&_:not(pre)>code]:inset-ring [&_:not(pre)>code]:inset-ring-border',
         className,
       )}
       data-markdown=""

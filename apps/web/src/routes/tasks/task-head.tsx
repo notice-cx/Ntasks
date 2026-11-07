@@ -1,199 +1,91 @@
-import { Children, Fragment, type ReactNode } from 'react';
-import { Check, ChevronRight, CircleCheck } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
 import type { TaskChoice, TaskChoices } from '@/api/types';
-import { ChoiceButtons } from '@/components/ChoiceButtons';
-import { RESOLUTION_GLYPH } from '@/components/CloseResolution';
-import { Badge } from '@/components/ui/badge';
-import { eyebrowClass, pillControlClass } from '@/components/ui/chrome';
-import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
+import { Avatar } from '@/components/ui/avatar';
+import { OptionList } from '@/components/ui/choice';
+import { ProjectBadge } from '@/components/ui/shell';
+import { StatusMark } from '@/components/ui/symbols';
 import { ageMs, formatAge } from '@/lib/format';
-import { priorityLabel, statusMarkOfStored, STATUS_MARK_LABELS, typeLabel, typeMarkFor } from '@/lib/symbols';
-import { choiceName, RESOLUTION_LABELS, type InboxAsk } from '@/lib/task-model';
-import { cn } from '@/lib/utils';
+import { choiceName, RESOLUTION_LABELS } from '@/lib/task-model';
+import { taskPath } from '@/lib/task-path';
+import { cardOptions } from './decision-card';
 
-/** What a task page's header states. */
-export interface TaskHeadFacts {
-  title: string;
-  issueType: string;
-  awaitType: string | null;
-  status: string;
-  /** How a closed task's close ended; null while it is not closed. */
-  resolution: TaskResolution | null;
-  priority: number;
-  /** Who holds it, the model they named when they claimed it, and when. */
-  holder: { name: string; model: string | null; since: string | null } | null;
-  ask: InboxAsk | null;
-  /** An epic's closed children of all its children. */
-  progress: { closed: number; total: number } | null;
+/** Who did something on a task, as an avatar draws them. */
+export interface Actor {
+  name: string;
+  agent: boolean;
+  model: string | null;
 }
-
-export interface Crumb {
-  label: string;
-  to: string;
-}
-
-const ASK_LINE: Readonly<Record<InboxAsk, string>> = {
-  approve: 'Needs your approval',
-  answer: 'Needs your answer',
-  choose: 'Needs your choice',
-};
 
 /**
- * The top of a task's page, read in one look: where the task sits, what kind
- * of task it is and its id, the title, then its state, priority, holder and
- * what it asks of you, with the actions beside it, the primary one first.
- * `children` sits under it: a closed task's reason, or the form an action opened.
+ * The task's place, as the top bar's title: its project, its epic when it
+ * has one, then its id. A phone hides the project's name beside its badge,
+ * so the link carries the name.
  */
-export function TaskHead({
+export function TaskPath({
   id,
-  facts,
-  crumbs,
-  actions,
-  nowMs,
-  children,
+  project,
+  parent,
 }: {
   id: string;
-  facts: TaskHeadFacts | null;
-  crumbs: readonly Crumb[];
-  actions?: ReactNode;
-  nowMs: number;
-  children?: ReactNode;
+  project: { name: string; prefix: string; to: string } | null;
+  parent: { id: string; title: string | null } | null;
 }) {
-  const holderAge = facts?.holder ? ageMs(nowMs, facts.holder.since) : null;
-  const status = facts ? statusMarkOfStored(facts.status) : null;
-  // A close where nothing shipped wears the grey tick and says how it ended, as a row does.
-  const notShipped =
-    status === 'done' && facts?.resolution != null && facts.resolution !== 'done' ? facts.resolution : null;
+  const crumb = 'flex min-w-0 items-center gap-1.5 text-ink-3 no-underline hover:text-ink';
   return (
-    <div
-      data-task-band={facts?.issueType ?? ''}
-      className="viz-arrive rounded-xl bg-background inset-ring inset-ring-border px-4 py-4 md:px-5"
-    >
-      <nav
-        aria-label="Where this task sits"
-        className="mb-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
-      >
-        {crumbs.map((crumb, index) => (
-          <Fragment key={crumb.to}>
-            {index > 0 ? <ChevronRight aria-hidden className="size-3.5" /> : null}
-            <Link
-              to={crumb.to}
-              className={cn(
-                'underline-offset-4 hover:text-foreground hover:underline',
-                pillControlClass,
-                'max-sm:inline-flex max-sm:items-center',
-              )}
-            >
-              {crumb.label}
-            </Link>
-          </Fragment>
-        ))}
-      </nav>
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-            <span className={eyebrowClass} data-task-type={facts?.issueType ?? ''}>
-              {facts ? typeLabel(facts.issueType, facts.awaitType) : 'Task'}
-            </span>
-            {/* The id is what people quote in a commit and type into a command, so it stays whole and in its own case. */}
-            <span className="font-mono text-xs text-muted-foreground">{id}</span>
-          </div>
-          <h1 className="m-0 flex min-w-0 items-center gap-3 font-semibold text-foreground">
-            {facts ? (
-              <span
-                aria-hidden
-                className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface inset-ring inset-ring-border"
-              >
-                <TypeMark type={typeMarkFor(facts.issueType, facts.awaitType)} size={18} label={null} />
-              </span>
-            ) : null}
-            <span className="min-w-0 text-2xl leading-tight [overflow-wrap:anywhere] max-sm:text-xl">
-              {facts?.title ?? 'Task'}
-            </span>
-          </h1>
-          {facts ? (
-            <div className="flex flex-wrap items-center gap-2" data-task-chips="">
-              {status ? (
-                <Badge icon={<StatusMark status={status} muted={notShipped !== null} size={12} label={null} />}>
-                  <span data-task-status={status}>
-                    {notShipped ? RESOLUTION_LABELS[notShipped] : STATUS_MARK_LABELS[status]}
-                  </span>
-                </Badge>
-              ) : null}
-              <Badge icon={<PriorityMark priority={facts.priority} size={12} label={null} />}>
-                {priorityLabel(facts.priority)} priority
-              </Badge>
-              {facts.ask ? (
-                <Badge icon={<StatusMark status="waiting" size={12} label={null} />} className="text-wait-text">
-                  <span data-task-ask={facts.ask}>{ASK_LINE[facts.ask]}</span>
-                </Badge>
-              ) : null}
-              {facts.holder ? (
-                // Its parts wrap as wholes, so a name or a model is never broken inside itself.
-                <span
-                  className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 rounded-xl border border-border bg-card/70 px-2.5 py-0.5 text-xs text-muted-foreground"
-                  data-task-holder=""
-                >
-                  {/* A claim still being worked carries the slow ring of something still under way. */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'size-1.5 rounded-full bg-foreground',
-                      facts.status === 'in_progress' && 'viz-breathe',
-                    )}
-                  />
-                  <span className="whitespace-nowrap font-medium text-foreground">{facts.holder.name}</span>
-                  {facts.holder.model ? <span className="whitespace-nowrap">· {facts.holder.model}</span> : null}
-                  {holderAge !== null ? (
-                    <time className="whitespace-nowrap tabular-nums" dateTime={facts.holder.since ?? undefined}>
-                      · claimed {formatAge(holderAge)} ago
-                    </time>
-                  ) : null}
-                </span>
-              ) : null}
-              {facts.progress ? <EpicProgress closed={facts.progress.closed} total={facts.progress.total} /> : null}
-            </div>
-          ) : null}
-        </div>
-        {actions}
-      </div>
-      {Children.toArray(children).length > 0 ? (
-        <div className="mt-3 flex flex-col gap-3 border-t border-border/70 pt-3">{children}</div>
+    <nav aria-label="Path" className="flex min-w-0 items-center gap-1.5 text-label font-medium text-ink-3">
+      {project ? (
+        <>
+          <Link to={project.to} aria-label={project.name} className={crumb}>
+            <ProjectBadge prefix={project.prefix} />
+            <span className="truncate max-sm:hidden">{project.name}</span>
+          </Link>
+          <ChevronRight aria-hidden size={14} className="shrink-0" />
+        </>
       ) : null}
-    </div>
+      {parent ? (
+        <>
+          <Link to={taskPath(parent.id)} title={parent.title ?? undefined} className={crumb}>
+            <span className="nums whitespace-nowrap">{parent.id}</span>
+          </Link>
+          <ChevronRight aria-hidden size={14} className="shrink-0" />
+        </>
+      ) : null}
+      <span className="nums whitespace-nowrap text-ink-2" aria-current="page">
+        {id}
+      </span>
+    </nav>
   );
 }
 
-/** An epic's tasks as one segment each, filled as they close, with the count beside them. */
-export function EpicProgress({ closed, total }: { closed: number; total: number }) {
-  const shown = Math.min(total, 24);
-  const filled = total === 0 ? 0 : Math.round((closed / total) * shown);
+/** Who did it and how long ago, after what they did: an avatar, the name, the model they named, the age. */
+function Byline({ by, at, nowMs }: { by: Actor | null; at: string | null; nowMs: number }) {
+  const age = ageMs(nowMs, at);
   return (
-    <span
-      className="inline-flex items-center gap-2 text-xs text-muted-foreground"
-      data-epic-progress={`${closed}/${total}`}
-    >
-      <span aria-hidden className="flex gap-0.5">
-        {Array.from({ length: shown }, (_, index) => (
-          <span
-            key={index}
-            className={cn('h-2 w-2.5 rounded-[2px]', index < filled ? 'bg-foreground/80' : 'bg-viz-track')}
-          />
-        ))}
-      </span>
-      <span className="tabular-nums">
-        {closed} of {total} closed
-      </span>
-    </span>
+    <>
+      {by ? (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Avatar name={by.name} agent={by.agent} model={by.model} decorative />
+          <span className="font-medium text-ink">{by.name}</span>
+          {by.model ? <span className="text-ink-3">{by.model}</span> : null}
+        </span>
+      ) : null}
+      {age !== null ? (
+        <time className="nums ms-auto text-meta text-ink-3" dateTime={at ?? undefined}>
+          {formatAge(age)}
+        </time>
+      ) : null}
+    </>
   );
 }
 
 /**
- * A closed task's evidence, under its header: who closed it, when, and the
- * reason. Neutral ink: closing records what shipped, not a measured outcome.
- * A close where nothing shipped leads with its resolution.
+ * How a closed task ended, under its title: Done, or the way a close where
+ * nothing shipped ended, who closed it and when, then the evidence or note.
+ * Closing records what shipped, not a measured outcome, so it is drawn in
+ * greys like any other fact.
  */
 export function ClosedSummary({
   by,
@@ -203,46 +95,35 @@ export function ClosedSummary({
   duplicate,
   children,
 }: {
-  by: string | null;
+  by: Actor | null;
   at: string | null;
   nowMs: number;
   resolution: TaskResolution;
   duplicate?: ReactNode;
   children?: ReactNode;
 }) {
-  const age = ageMs(nowMs, at);
-  const Glyph = resolution === 'done' ? Check : RESOLUTION_GLYPH[resolution];
-  const heading = resolution === 'done' ? 'Close reason' : `Closed as ${RESOLUTION_LABELS[resolution]}`;
+  const label = RESOLUTION_LABELS[resolution];
   return (
     <section
-      aria-label={heading}
+      aria-label={`Closed as ${label}`}
       data-task-closed=""
       data-task-resolution={resolution}
-      className="flex flex-col gap-1.5"
+      className="flex flex-col gap-2 rounded-xl bg-surface px-4 py-3 inset-ring inset-ring-border"
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <Glyph className="size-3.5 shrink-0" aria-hidden />
-        {resolution === 'done' ? (
-          <h2 className={cn('m-0', eyebrowClass)}>Close reason</h2>
-        ) : (
-          <h2 className="m-0 text-sm font-medium text-foreground">
-            {heading}
-            {duplicate ? <> of {duplicate}</> : null}
-          </h2>
-        )}
-        {by ? <span className="font-medium text-foreground">{by}</span> : null}
-        {age !== null ? (
-          <time className="tabular-nums" dateTime={at ?? undefined}>
-            {formatAge(age)} ago
-          </time>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2">
+        <StatusMark status="done" muted={resolution !== 'done'} label={null} />
+        <h2 className="m-0 text-sm font-semibold text-ink">
+          {label}
+          {duplicate ? <> of {duplicate}</> : null}
+        </h2>
+        <Byline by={by} at={at} nowMs={nowMs} />
       </div>
       {children}
     </section>
   );
 }
 
-/** A person's pick, under the header once it is recorded: what was chosen, by whom and when, their note, then the options as a record. */
+/** A decision's recorded pick: what was chosen, by whom and when, their note, then the options as a record. */
 export function ChoiceSummary({
   choice,
   choices,
@@ -251,24 +132,19 @@ export function ChoiceSummary({
 }: {
   choice: TaskChoice;
   choices: TaskChoices | null;
-  by: string;
+  by: Actor;
   nowMs: number;
 }) {
-  const age = ageMs(nowMs, choice.at);
   return (
-    <section aria-label="Choice" data-task-choice={choice.option} className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <CircleCheck className="size-3.5 shrink-0" aria-hidden />
-        <h2 className="m-0 text-sm font-medium text-foreground">Chose {choiceName(choice.option, choice.label)}</h2>
-        <span className="font-medium text-foreground">{by}</span>
-        {age !== null ? (
-          <time className="tabular-nums" dateTime={choice.at}>
-            {formatAge(age)} ago
-          </time>
-        ) : null}
+    <section aria-label="Choice" data-task-choice={choice.option} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2">
+        <h2 className="m-0 text-sm font-semibold text-ink">Chose {choiceName(choice.option, choice.label)}</h2>
+        <Byline by={by} at={choice.at} nowMs={nowMs} />
       </div>
-      {choice.note ? <p className="m-0 whitespace-pre-line text-sm">{choice.note}</p> : null}
-      {choices ? <ChoiceButtons choices={choices} chosen={choice.option} /> : null}
+      {choice.note ? <p className="m-0 text-body whitespace-pre-line text-ink">{choice.note}</p> : null}
+      {choices ? (
+        <OptionList question={choices.question} options={cardOptions(choices)} value={choice.option} readOnly />
+      ) : null}
     </section>
   );
 }

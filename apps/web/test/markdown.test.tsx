@@ -121,7 +121,7 @@ describe('task text as Markdown', () => {
 
   it("leads each of the task guide's labelled lines with its label", () => {
     const root = draw('WHAT: Fix the link\nWHY: It sends people nowhere');
-    expect([...root.querySelectorAll('[data-label]')].map((label) => label.textContent)).toEqual(['what', 'why']);
+    expect([...root.querySelectorAll('[data-label]')].map((label) => label.textContent)).toEqual(['What', 'Why']);
     expect(root.textContent).toContain('Fix the link');
   });
 });

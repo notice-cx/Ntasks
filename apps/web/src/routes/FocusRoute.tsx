@@ -1,31 +1,34 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { Check, SendHorizontal, Star } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Inbox, SendHorizontal } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { TASK_CHOICE_KEYS, type TaskChoiceKey } from '@/api/types';
+import type { TaskChoiceKey } from '@/api/types';
 import { PageSkeleton, ReadFailed } from '@/components/surface';
 import { Button } from '@/components/ui/button';
-import { eyebrowClass, fieldClass, inlineLinkClass, pillControlClass } from '@/components/ui/chrome';
+import { choiceForKey } from '@/components/ui/choice';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Textarea } from '@/components/ui/field';
+import { Kbd } from '@/components/ui/kbd';
+import { BarSpacer, TopBar } from '@/components/ui/shell';
+import { StatusMark } from '@/components/ui/symbols';
 import { useBoard } from '@/hooks/useBoard';
 import { useNow } from '@/hooks/useNow';
 import { operationAvailable, useAnswerHides, useCapabilities, useInboxAnswer, verbReason } from '@/hooks/useTasks';
 import { NO_FILTERS } from '@/lib/board-read';
-import { ageMs, formatInt } from '@/lib/format';
-import { askVerb, choiceOrder, isGate, type BoardTask, type InboxAsk } from '@/lib/task-model';
+import { ageMs, formatAge, formatInt } from '@/lib/format';
+import { askVerb, isGate, type BoardTask, type InboxAsk } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cn } from '@/lib/utils';
-import { ageLabel } from './tasks/ask-queue';
-import { StatusMark } from '@/components/ui/symbols';
-import { TopBar } from '@/components/ui/shell';
+import { cardOptions, DecisionAnswer } from './tasks/decision-card';
+import { MarkdownText } from './tasks/task-markdown';
 
 const TASKS_HOME = '/tasks';
-const NOTE_MAX = 2000;
-const DAY = 86_400_000;
 const UNAVAILABLE = 'This sign-in cannot answer it.';
 
-const ASK_LINE: Readonly<Record<InboxAsk, string>> = {
-  approve: 'Needs your approval',
-  answer: 'Needs your answer',
-  choose: 'Needs your choice',
+/** What a card asks of you, in the words its head shows. */
+const ASK_WORDS: Readonly<Record<InboxAsk, string>> = {
+  approve: 'Your approval',
+  answer: 'Your answer',
+  choose: 'Your choice',
 };
 
 function returnPath(state: unknown): string {
@@ -92,24 +95,29 @@ export function FocusRoute() {
     body = <PageSkeleton shape="page" />;
   } else if (current === null) {
     body = (
-      <div className="flex flex-col items-start gap-3 py-10" data-focus-done="">
-        <p className="m-0 text-figure-sm text-foreground">
-          {passed > 0
-            ? `${formatInt(passed)} ${passed === 1 ? 'decision' : 'decisions'} skipped`
-            : board.complete
-              ? 'Nothing is waiting for you'
-              : 'Nothing waiting in the projects that could be read'}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" asChild>
-            <Link to={leave}>Back to Tasks</Link>
-          </Button>
-          {passed > 0 ? (
-            <Button type="button" variant="ghost" onClick={() => setSkipped(new Set())} data-focus-again="">
-              Start over
-            </Button>
-          ) : null}
-        </div>
+      <div data-focus-done="">
+        <EmptyState
+          icon={<Inbox />}
+          title={
+            passed > 0
+              ? `${formatInt(passed)} ${passed === 1 ? 'decision' : 'decisions'} skipped`
+              : board.complete
+                ? 'Nothing is waiting for you'
+                : 'Nothing waiting in the projects that could be read'
+          }
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {passed > 0 ? (
+                <Button type="button" onClick={() => setSkipped(new Set())} data-focus-again="">
+                  Start over
+                </Button>
+              ) : null}
+              <Button variant="primary" asChild>
+                <Link to={leave}>Back to Tasks</Link>
+              </Button>
+            </div>
+          }
+        />
       </div>
     );
   } else {
@@ -119,7 +127,6 @@ export function FocusRoute() {
         task={current}
         projectName={names.get(current.project) ?? current.project}
         after={after}
-        afterProject={after ? (names.get(after.project) ?? after.project) : null}
         writable={board.projects.some((row) => row.key === current.project && row.ok)}
         nowMs={now}
         onSkip={() => setSkipped((ids) => new Set([...ids, current.id]))}
@@ -130,48 +137,34 @@ export function FocusRoute() {
 
   return (
     <>
-      <TopBar title={<span className="text-page-title text-ink max-sm:text-lg">Focus</span>} />
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6" data-tasks-focus="">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className={eyebrowClass} data-focus-position={`${position}/${total}`}>
-            {total > 0 ? `Focus · ${formatInt(position)} of ${formatInt(total)} for you` : 'Focus'}
+      <TopBar title="Focus">
+        {total > 0 ? (
+          <span className="nums text-label font-medium text-ink-3" data-focus-position={`${position}/${total}`}>
+            {formatInt(position)} of {formatInt(total)}
           </span>
-          {/* Past two dozen the dots are no longer countable; the words carry the place. */}
-          {total > 0 && total <= 24 ? (
-            <span aria-hidden className="flex flex-wrap gap-1">
-              {Array.from({ length: total }, (_, index) => (
-                <span
-                  key={index}
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    current === null || index < position ? 'bg-foreground/80' : 'bg-border',
-                  )}
-                />
-              ))}
-            </span>
-          ) : null}
-          <Link
-            to={leave}
-            className={cn(
-              'ms-auto text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline',
-              pillControlClass,
-            )}
-          >
-            Leave focus
-          </Link>
-        </div>
+        ) : null}
+        <BarSpacer />
+        <Button variant="ghost" asChild>
+          <Link to={leave}>Leave focus</Link>
+        </Button>
+      </TopBar>
+      <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-4 py-10 max-sm:py-5" data-tasks-focus="">
         {body}
       </div>
     </>
   );
 }
 
-/** One decision, with every way of answering it as a large press and the keys that do the same. */
+/**
+ * One decision on a card: whose turn it is and how long it has waited, the
+ * title, the text, then its answer: options with their keys, an Approve, or
+ * a box for words, beside Not now. Letters pick an option, Enter answers or
+ * approves, and → passes it over.
+ */
 function FocusDecision({
   task,
   projectName,
   after,
-  afterProject,
   writable,
   nowMs,
   onSkip,
@@ -180,7 +173,6 @@ function FocusDecision({
   task: BoardTask;
   projectName: string;
   after: BoardTask | null;
-  afterProject: string | null;
   writable: boolean;
   nowMs: number;
   onSkip: () => void;
@@ -188,13 +180,11 @@ function FocusDecision({
 }) {
   const capabilities = useCapabilities();
   const answer = useInboxAnswer();
-  const noteId = useId();
-  const reasonId = useId();
+  const [option, setOption] = useState<TaskChoiceKey | null>(null);
   const [note, setNote] = useState('');
   const [text, setText] = useState('');
   const ask = askVerb(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
-  const options = choices ? choiceOrder(choices) : [];
   const allowed =
     writable && operationAvailable(capabilities, choices ? 'choose' : isGate(task) ? 'resolve' : 'respond');
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
@@ -203,10 +193,10 @@ function FocusDecision({
 
   function choose(key: TaskChoiceKey) {
     if (choices === null || reason !== null) return;
-    const option = choices.options.find((entry) => entry.key === key);
-    if (!option) return;
+    const picked = choices.options.find((entry) => entry.key === key);
+    if (!picked) return;
     const said = note.trim();
-    answer({ kind: 'choose', ...scope, option: key, label: option.label, ...(said === '' ? {} : { note: said }) });
+    answer({ kind: 'choose', ...scope, option: key, label: picked.label, ...(said === '' ? {} : { note: said }) });
     onSent();
   }
   function approve() {
@@ -222,8 +212,8 @@ function FocusDecision({
   }
 
   // The latest handlers, for the one listener the page keeps.
-  const keys = useRef({ choose, approve, onSkip, ask, keys: options.map((option) => option.key) });
-  keys.current = { choose, approve, onSkip, ask, keys: options.map((option) => option.key) };
+  const keys = useRef({ choose, approve, onSkip, ask, option, options: choices ? cardOptions(choices) : [] });
+  keys.current = { choose, approve, onSkip, ask, option, options: choices ? cardOptions(choices) : [] };
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || typing(event.target)) return;
@@ -233,180 +223,134 @@ function FocusDecision({
         live.onSkip();
         return;
       }
+      // Enter on a button or a link presses it; anywhere else it answers.
       if (
         event.key === 'Enter' &&
-        live.ask === 'approve' &&
         !(event.target instanceof HTMLButtonElement || event.target instanceof HTMLAnchorElement)
       ) {
-        event.preventDefault();
-        live.approve();
+        if (live.ask === 'approve') {
+          event.preventDefault();
+          live.approve();
+        } else if (live.ask === 'choose' && live.option !== null) {
+          event.preventDefault();
+          live.choose(live.option);
+        }
         return;
       }
-      const key = TASK_CHOICE_KEYS.find((candidate) => candidate === event.key.toLowerCase());
-      if (key !== undefined && live.keys.includes(key)) {
+      const key = choiceForKey(event.key, live.options);
+      if (key !== null) {
         event.preventDefault();
-        live.choose(key);
+        setOption(key);
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const hint = choices
-    ? `${options.map((option) => option.key.toUpperCase()).join(' ')} choose · → skip`
-    : ask === 'approve'
-      ? 'Enter approve · → skip'
-      : '→ skip';
+  const notNow = (
+    <Button type="button" variant="ghost" onClick={onSkip} aria-keyshortcuts="ArrowRight" data-focus-skip="">
+      Not now <Kbd>→</Kbd>
+    </Button>
+  );
 
   return (
-    <section className="flex flex-col gap-5" data-focus-decision={task.id}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-        <span className="font-medium text-foreground">{projectName}</span>
-        <span className="inline-flex items-center gap-1.5 font-medium text-wait-text">
-          <StatusMark status="waiting" size={12} label={null} />
-          {ASK_LINE[ask]}
-          {waited !== null ? ` · waiting ${ageLabel(waited / DAY)}` : ''}
-        </span>
-      </div>
-
-      <h1 className="m-0 text-[28px] font-bold leading-[1.1] tracking-[-0.03em] text-foreground md:text-display">
-        <Link to={taskPath(task.id)} className="underline-offset-4 hover:underline">
-          {task.title}
-        </Link>
-      </h1>
-      {task.description.trim() ? (
-        <p className="m-0 whitespace-pre-line text-base text-muted-foreground">{task.description.trim()}</p>
-      ) : null}
-
-      {choices ? (
-        <div role="group" aria-labelledby={`${noteId}-question`} className="flex flex-col gap-3" data-focus-options="">
-          <p id={`${noteId}-question`} className="m-0 text-base font-medium text-foreground [overflow-wrap:anywhere]">
-            {choices.question}
-          </p>
-          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3 p-0">
-            {options.map((option) => (
-              <li key={option.key} className="min-w-0">
-                <button
-                  type="button"
-                  disabled={reason !== null}
-                  aria-describedby={reason ? reasonId : undefined}
-                  onClick={() => choose(option.key)}
-                  className={cn(
-                    'flex h-full min-h-16 w-full items-start gap-3 rounded-xl border bg-card px-4 py-3 text-start hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60',
-                    pillControlClass,
-                    option.recommended ? 'border-foreground/40' : 'border-border',
-                  )}
-                  data-focus-option={option.key}
+    <>
+      <section
+        className="flex flex-col rounded-xl bg-background px-5.5 pt-5.5 pb-4.5 shadow-pop max-sm:px-4"
+        data-focus-decision={task.id}
+      >
+        <div className="nums flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-3">
+          <StatusMark status="waiting" label={null} />
+          <b className="font-semibold text-wait-text">{ASK_WORDS[ask]}</b>
+          <span>{task.id}</span>
+          <span>{projectName}</span>
+          {waited !== null ? <span className="ms-auto">{formatAge(waited)}</span> : null}
+        </div>
+        <h1 className="m-0 mt-2.5 text-heading text-ink [overflow-wrap:anywhere]">
+          <Link to={taskPath(task.id)} className="text-ink no-underline underline-offset-3 hover:underline">
+            {task.title}
+          </Link>
+        </h1>
+        {task.description.trim() ? (
+          <MarkdownText source={task.description} className="mt-1.5 text-sm text-ink-2" />
+        ) : null}
+        <div className="mt-4">
+          {choices ? (
+            <div className="flex flex-col gap-3" data-focus-options="">
+              <p className="m-0 text-sm font-medium text-ink [overflow-wrap:anywhere]">{choices.question}</p>
+              <DecisionAnswer
+                choices={choices}
+                value={option}
+                onChange={setOption}
+                note={note}
+                onNote={setNote}
+                onAnswer={choose}
+                disabledReason={reason}
+                footer={notNow}
+              />
+            </div>
+          ) : ask === 'approve' ? (
+            <div className="flex items-center justify-end gap-2">
+              {notNow}
+              <Button
+                variant="primary"
+                type="button"
+                disabled={reason !== null}
+                title={reason ?? undefined}
+                aria-keyshortcuts="Enter"
+                onClick={approve}
+                data-focus-approve=""
+              >
+                <Check aria-hidden strokeWidth={2} />
+                Approve <Kbd>↵</Kbd>
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="flex flex-col gap-3"
+              data-focus-answer=""
+              onSubmit={(event) => {
+                event.preventDefault();
+                send();
+              }}
+            >
+              <Textarea
+                rows={3}
+                aria-label={`Your answer to ${task.id}`}
+                value={text}
+                disabled={reason !== null}
+                onChange={(event) => setText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  send();
+                }}
+              />
+              <div className="flex items-center justify-end gap-2">
+                {notNow}
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={text.trim() === '' || reason !== null}
+                  title={reason ?? undefined}
                 >
-                  <span
-                    aria-hidden
-                    className="grid size-7 shrink-0 place-items-center rounded-full border-[1.5px] border-current text-sm font-semibold text-foreground"
-                  >
-                    {option.key.toUpperCase()}
-                  </span>
-                  <span className="grid min-w-0 gap-1">
-                    <span className="text-base font-medium text-foreground [overflow-wrap:anywhere]">
-                      {option.label}
-                    </span>
-                    {option.recommended ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Star aria-hidden className="size-3 fill-current" />
-                        Recommended
-                      </span>
-                    ) : null}
-                    {option.detail ? (
-                      <span className="whitespace-pre-line text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                        {option.detail}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <span className="flex items-center gap-2">
-            <label htmlFor={noteId} className="shrink-0 text-xs font-medium text-muted-foreground">
-              Note
-            </label>
-            <input
-              id={noteId}
-              type="text"
-              className={cn(fieldClass, 'h-9 min-w-0 flex-1')}
-              maxLength={NOTE_MAX}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              data-focus-note=""
-            />
-          </span>
+                  <SendHorizontal aria-hidden />
+                  Send <Kbd>↵</Kbd>
+                </Button>
+              </div>
+            </form>
+          )}
         </div>
-      ) : ask === 'approve' ? (
-        <div>
-          <Button
-            variant="primary"
-            type="button"
-            className="min-h-11 px-6 text-base"
-            disabled={reason !== null}
-            aria-describedby={reason ? reasonId : undefined}
-            onClick={approve}
-            data-focus-approve=""
-          >
-            <Check aria-hidden />
-            Approve
-          </Button>
-        </div>
-      ) : (
-        <form
-          className="flex items-start gap-2 max-sm:flex-wrap"
-          data-focus-answer=""
-          onSubmit={(event) => {
-            event.preventDefault();
-            send();
-          }}
-        >
-          <textarea
-            rows={2}
-            className={cn(fieldClass, 'min-h-16 w-full flex-1 resize-y max-sm:basis-full')}
-            aria-label={`Your answer to ${task.id}`}
-            placeholder="Your answer"
-            value={text}
-            disabled={reason !== null}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              send();
-            }}
-          />
-          <Button variant="primary" type="submit" disabled={text.trim() === '' || reason !== null}>
-            <SendHorizontal aria-hidden />
-            Send
-          </Button>
-        </form>
-      )}
-      {reason ? (
-        <p id={reasonId} className="m-0 text-xs text-muted-foreground">
-          {reason}
+      </section>
+      {after ? (
+        <p className={cn('m-0 flex min-w-0 items-center gap-2 px-1 text-label text-ink-3')} data-focus-after="">
+          <span className="shrink-0 font-medium">Next</span>
+          <Link to={taskPath(after.id)} className="min-w-0 truncate text-ink-2 no-underline hover:text-ink">
+            {after.title}
+          </Link>
         </p>
       ) : null}
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3">
-        <Button type="button" variant="ghost" onClick={onSkip} data-focus-skip="">
-          Not now
-        </Button>
-        {after ? (
-          <span className="min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-focus-after="">
-            After this:{' '}
-            <Link to={taskPath(after.id)} className={inlineLinkClass}>
-              {after.title}
-            </Link>
-            {afterProject ? ` · ${afterProject}` : ''}
-          </span>
-        ) : null}
-        <span className="ms-auto text-xs text-muted-foreground max-sm:hidden" data-focus-keys="">
-          {hint}
-        </span>
-      </div>
-    </section>
+    </>
   );
 }
 

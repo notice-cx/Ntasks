@@ -19,7 +19,7 @@ describe("the composer's preview", () => {
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Errors are **grey** today.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(await screen.findByText('The preview could not load. Your text, as written:')).toBeTruthy();
+    expect(await screen.findByText('The preview could not load')).toBeTruthy();
     expect(screen.getByText('Errors are **grey** today.')).toBeTruthy();
     expect((screen.getByLabelText(/Title/) as HTMLInputElement).value).toBe('Show the sign-in errors in red');
 

@@ -339,15 +339,15 @@ describe('the keys', () => {
     renderApp('/tasks');
     await group('Waiting for you');
     press('f');
-    expect(await screen.findByText(/Focus · 1 of 4 for you/)).toBeTruthy();
+    expect(await screen.findByText('1 of 4')).toBeTruthy();
   });
 
   it('leaves F alone on Focus, which keeps its own address', async () => {
     renderApp('/tasks/focus?project=docs');
-    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
+    expect(await screen.findByText('1 of 1')).toBeTruthy();
     press('f');
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getByText('Focus · 1 of 1 for you')).toBeTruthy();
+    expect(screen.getByText('1 of 1')).toBeTruthy();
   });
 });
 
