@@ -8,12 +8,13 @@ import type {
   DependencyType,
   EdgeRow,
   EventRow,
+  ExternalLinkRow,
   LabelRow,
   ProjectRow,
   StoreRows,
   TaskRow,
 } from '@ntasks/domain';
-import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './beads.ts';
+import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject, type BeadsRow } from './beads.ts';
 import {
   projectComments,
   projectHistory,
@@ -25,7 +26,7 @@ import {
   type Version,
 } from './history.ts';
 import { sameJson, stableJson } from './json.ts';
-import type { TaskState } from './task-state.ts';
+import { linkTarget, linkTypeOf, webAddress, type TaskState } from './task-state.ts';
 
 /** Data the import leaves out by the owner's choice, reported so nothing goes unseen. */
 export interface LeftOut {
@@ -190,6 +191,10 @@ function taskRow(state: TaskState, version: number, createdAt: string, updatedAt
     title: state.title,
     description: state.description,
     acceptance: state.acceptance,
+    notes: state.notes,
+    design: state.design,
+    estimate_minutes: state.estimateMinutes,
+    field_values: JSON.stringify(state.fields),
     assignee: state.assignee,
     assignee_model: state.assigneeModel,
     defer_until: state.deferUntil,
@@ -212,15 +217,23 @@ function taskRow(state: TaskState, version: number, createdAt: string, updatedAt
   };
 }
 
-/** When a link the task has now first appeared in the run of versions that still holds it. */
-function linkSince(history: TaskHistory, taskId: string, type: DependencyType, createdAt: string): string {
+/** When something the task has now first appeared in the run of versions that still holds it. */
+function heldSince(history: TaskHistory, holds: (state: TaskState) => boolean, createdAt: string): string {
   let since = createdAt;
   for (let index = history.versions.length - 1; index >= 0; index -= 1) {
     const version = history.versions[index]!;
-    if (!version.state.dependencies.some((link) => link.taskId === taskId && link.type === type)) break;
+    if (!holds(version.state)) break;
     since = index === 0 ? createdAt : version.at;
   }
   return since;
+}
+
+function linkSince(history: TaskHistory, taskId: string, type: DependencyType, createdAt: string): string {
+  return heldSince(
+    history,
+    (state) => state.dependencies.some((link) => link.taskId === taskId && link.type === type),
+    createdAt,
+  );
 }
 
 /**
@@ -363,6 +376,7 @@ export function planImport(data: BeadsExport): {
   const tasks: TaskRow[] = [];
   const labels: LabelRow[] = [];
   const edges: EdgeRow[] = [];
+  const externalLinks: ExternalLinkRow[] = [];
   const comments: CommentRow[] = [];
   const perTask: EventRecord[][] = [];
   for (const taskId of order) {
@@ -375,13 +389,22 @@ export function planImport(data: BeadsExport): {
     for (const label of state.labels) labels.push({ task_id: taskId, label });
     // Keyed by target and type, so a parent link never dates a link of another type to the same task.
     const linkRows = new Map<string, { at: string | null; by: string | null }>();
+    const externalRows = new Map<string, { at: string | null; by: string | null }>();
+    // Two Beads rows can be one Ntasks link, such as related and relates-to rows to
+    // one task, or two spellings of one address: the link dates from the earlier.
+    const keepEarlier = (rows: Map<string, { at: string | null; by: string | null }>, key: string, row: BeadsRow) => {
+      const made = { at: timeOf(row.created_at) ?? null, by: isEmpty(row.created_by) ? null : textOf(row.created_by) };
+      const held = rows.get(key);
+      if (held === undefined || (made.at !== null && (held.at === null || made.at < held.at))) rows.set(key, made);
+    };
     for (const row of history.links) {
-      const target = textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
-      if (target !== null)
-        linkRows.set(`${target} ${textOf(row.type) ?? 'blocks'}`, {
-          at: timeOf(row.created_at) ?? null,
-          by: isEmpty(row.created_by) ? null : textOf(row.created_by),
-        });
+      const target = linkTarget(row);
+      const external = textOf(row.depends_on_external);
+      if (target !== null) keepEarlier(linkRows, `${target} ${linkTypeOf(row)}`, row);
+      else if (external !== null) {
+        const url = webAddress(external);
+        if (url !== null) keepEarlier(externalRows, url, row);
+      }
     }
     for (const link of state.dependencies) {
       const row = linkRows.get(`${link.taskId} ${link.type}`);
@@ -390,6 +413,19 @@ export function planImport(data: BeadsExport): {
         depends_on_id: link.taskId,
         type: link.type,
         created_at: row?.at ?? linkSince(history, link.taskId, link.type, createdAt),
+        created_by: row?.by ?? null,
+      });
+    }
+    for (const link of state.externalLinks) {
+      const row = externalRows.get(link.url);
+      externalLinks.push({
+        task_id: taskId,
+        url: link.url,
+        title: link.title,
+        kind: link.kind,
+        created_at:
+          row?.at ??
+          heldSince(history, (held) => held.externalLinks.some((other) => other.url === link.url), createdAt),
         created_by: row?.by ?? null,
       });
     }
@@ -415,7 +451,15 @@ export function planImport(data: BeadsExport): {
     changes: JSON.stringify(event.changes),
   }));
   return {
-    plan: { projects, tasks, task_labels: labels, task_edges: edges, task_comments: comments, task_events: events },
+    plan: {
+      projects,
+      tasks,
+      task_labels: labels,
+      task_edges: edges,
+      task_external_links: externalLinks,
+      task_comments: comments,
+      task_events: events,
+    },
     refusals: [],
     leftOut,
   };

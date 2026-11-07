@@ -1,8 +1,9 @@
 # @ntasks/migrate
 
 Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
-Dolt into the Ntasks task store, with its full history, and backs a task
-store up and restores it ([below](#back-up-and-restore)). **Dolt** is the
+Dolt into the Ntasks task store, with its full history, backs a task store
+up and restores it ([below](#back-up-and-restore)), and loads an import or a
+backup into an empty deployed store ([below](#load-into-the-deployed-store)). **Dolt** is the
 versioned SQL database Beads stores tasks in. The **task store** is the
 Durable Object that holds Ntasks' tasks in its own SQLite database
 ([The task store](../../docs/task-store.md)). Three commands move a hub:
@@ -19,11 +20,9 @@ and loaded with the same statements the store runs
 ([`packages/domain/src/store-rows.ts`](../../packages/domain/src/store-rows.ts)),
 so a dry run needs no Worker and reaches nothing outside the machine.
 
-The task store loads an import or a backup itself with `importRows`, in one
-transaction, and returns each table's rows with `tableRows`
-([`workers/api/src/store/import.ts`](../../workers/api/src/store/import.ts)).
-No route reaches them yet: they are for an owner-only Worker route. Until
-then, the store's tests call them.
+A deployed store takes an import or a backup through its restore routes, page
+by page, and writes it in one transaction
+([`load`](#load-into-the-deployed-store)).
 
 ## Run a migration
 
@@ -135,6 +134,8 @@ defines where each NoticeOS metadata key goes; the import follows it.
 |---|---|
 | Project | `projects.id` is the hub file's id, else the database's `_project_id`; `projects.prefix` is the database's `issue_prefix`; the key and name come from the hub file, and the creation time is the earliest commit or task |
 | Issue id, title, description, status, priority, type, assignee, start, defer and due times | The same `tasks` columns; `acceptance_criteria` is `acceptance` |
+| `notes`, `design` | `tasks.notes`, `tasks.design` |
+| `estimated_minutes` | `tasks.estimate_minutes`, in whole minutes; none when Beads recorded none |
 | Type `spike`, which Ntasks lacks | Type `task`, with the label `spike` |
 | `created_at`, `updated_at` | `tasks.created_at`, `tasks.updated_at`, kept as they are |
 | `created_by` | `tasks.filed_by`, unless NoticeOS recorded `noticeos_filed_by` |
@@ -145,7 +146,11 @@ defines where each NoticeOS metadata key goes; the import follows it.
 | `noticeos_choices`, `noticeos_choice` | `tasks.choices`, `tasks.choice` |
 | Every other metadata key, such as `noticeos_card`, `noticeos_card_shipped` and `noticeos_operation_id` | `tasks.metadata`, as given. A retry record needs the sender's key and request, which Beads did not keep, so an operation id stays in metadata |
 | `parent-child` link | `tasks.parent_id` |
-| `blocks`, `related`, `discovered-from` links | `task_edges` rows, with Beads' creation time and author |
+| `blocks`, `related`, `discovered-from`, `duplicates` links | `task_edges` rows of the same type, with Beads' creation time and author |
+| `relates-to` links, which `bd relate` writes in both directions | `related` rows in `task_edges`, both directions kept |
+| `supersedes` links | `supersedes` rows in `task_edges`, turned around: `bd supersede old --with new` records `old supersedes new`, meaning old is superseded, while in Ntasks `new supersedes old` means new replaces old. So the link moves to the replacing task, in every past version too, and the replacing task must be in the same Beads database |
+| A link to a task in another Beads database, which Beads keeps as the task's id in `depends_on_external` | A `task_edges` row of the same type, like any other link between projects |
+| A link to a web address outside the hub (`depends_on_external`) | A `task_external_links` row: the address as the URL standard writes it, also as its title, with Beads' creation time and author |
 | `noticeos_related_tasks` | `related` rows in `task_edges`, dated by the change that added them |
 | Labels | `task_labels` |
 | Comments | `task_comments`, ids kept, and a `commented` history event each |
@@ -195,20 +200,23 @@ problem, each naming the task or project, so one run shows them all.
 Out of scope, as [the task store](../../docs/task-store.md#beads-behaviour-in-and-out-of-scope)
 lists:
 
-- links of any type other than `blocks`, `related`, `discovered-from` and
-  `parent-child`, such as `waits-for` and `conditional-blocks`;
+- links of any type other than `blocks`, `related`, `relates-to`,
+  `discovered-from`, `duplicates`, `supersedes` and `parent-child`, such as
+  `waits-for` and `conditional-blocks`;
 - a prefix with a hyphen, and any id that is not an Ntasks task id;
 - statuses and types outside Ntasks' lists;
 - wisps, molecules, formulas and templates, and approvals that wait on
   anything but a person;
-- links to wisps or to tasks outside the hub;
+- links to wisps, and links outside the hub that are not web addresses, such
+  as Beads' `external:<project>:<capability>`, which waits for another
+  project to ship something;
 - tasks Beads compacted;
 - a Dolt database with more than one branch.
 
 Data the import cannot carry whole:
 
-- a column that holds a value Ntasks has no field for, such as `notes`,
-  `design` or `external_ref`, quoting the value;
+- a column that holds a value Ntasks has no field for, such as
+  `external_ref`, quoting the value;
 - a table holding rows that the import neither reads nor knows to be Beads'
   own bookkeeping;
 - a link, parent or duplicate that names a task not in the export;
@@ -237,9 +245,10 @@ leaves out, after what it imported:
 imported from, three ways:
 
 1. **Against the export's own rows:** tasks per project and status, every id,
-   label, link, parent and comment, every close's time and reason, the
-   choices of decisions, approvals and whom they wait on, and every metadata
-   key, such as the cards NoticeOS froze when a task shipped.
+   label, link, external link, parent and comment, every task's notes,
+   design and estimate, every close's time and reason, the choices of
+   decisions, approvals and whom they wait on, and every metadata key, such
+   as the cards NoticeOS froze when a task shipped.
 2. **Against the import plan,** row by row, for every table.
 3. **Against itself:** each task's history must start with its creation,
    number its versions without gaps, end at the task's version, rebuild the
@@ -288,6 +297,48 @@ Two commands back up a deployed task store and check the backup:
 `verify --from backup.json --store restored.sqlite` compares a store copy
 with a backup again. The backup file holds every task: keep it private.
 
+## Load into the deployed store
+
+`load` puts an import from Beads, or a backup, into a deployed store that
+holds nothing yet, through its restore routes
+([API](../../docs/api.md#loading-an-empty-store)):
+
+1. It loads the file into a local copy of the store in memory and verifies
+   it there, as `import` and `restore` do. If the file does not import or
+   verify, it stops before sending anything.
+2. It sends the copy's rows, each with every column as the store holds it,
+   table by table in pages of at most 500 rows, and commits them. The store
+   writes every row in one transaction, or none.
+3. It reads the store back through its backup route and compares it with the
+   file: an export through the import's verifier, a backup row by row. It
+   prints `0 differences.` when they match.
+
+The store must run the same version of Ntasks as this checkout: the load is
+refused when its migrations differ. The credential needs the restore choice,
+to load, and the backup choice, to read the store back.
+
+### The cutover from a Beads hub
+
+The last step of moving a hub to Ntasks, once nothing writes to the hub:
+
+1. Export the hub, check that the export imports, and keep the file private
+   ([Run a migration](#run-a-migration), steps 1 to 3).
+2. As the owner, make a credential for the load: `POST /api/access/services`
+   with `{"name": "cutover-load", "backup": true, "restore": true}`. Save its
+   token in a file only you can read.
+3. Load it:
+
+   ```sh
+   node tools/migrate/src/cli.ts load --api https://tasks.example.com --token-file token --from export.json
+   ```
+
+4. When it prints `0 differences.`, revoke the credential
+   (`POST /api/access/services/<credential id>/revoke`) and delete the export
+   and the token file.
+
+A load refused at its commit writes nothing; `load` aborts it, and the store
+stays empty, ready for another try.
+
 ## Tests
 
 ```sh
@@ -307,3 +358,7 @@ The task store's own loading is tested in workerd, in
 every kind of row through a stand-in for the backup route, and restores it;
 the route itself is tested in workerd, in
 [`workers/api/test/backup.test.ts`](../../workers/api/test/backup.test.ts).
+[`test/load.test.ts`](test/load.test.ts) loads an export and a backup through
+a stand-in for the restore routes; the routes themselves are tested in
+workerd, in [`workers/api/test/load.test.ts`](../../workers/api/test/load.test.ts),
+against a local store only.

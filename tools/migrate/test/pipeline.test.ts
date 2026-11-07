@@ -46,6 +46,7 @@ describe('export, import and verify', () => {
       tasks: 11,
       labels: 2,
       links: 5,
+      externalLinks: 0,
       comments: 4,
       events: plan!.task_events.length,
     });
