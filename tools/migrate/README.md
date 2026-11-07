@@ -150,6 +150,7 @@ defines where each NoticeOS metadata key goes; the import follows it.
 | `blocks`, `related`, `discovered-from`, `duplicates` links | `task_edges` rows of the same type, with Beads' creation time and author |
 | `relates-to` links, which `bd relate` writes in both directions | `related` rows in `task_edges`, both directions kept |
 | `supersedes` links | `supersedes` rows in `task_edges`, turned around: `bd supersede old --with new` records `old supersedes new`, meaning old is superseded, while in Ntasks `new supersedes old` means new replaces old. So the link moves to the replacing task, in every past version too, and the replacing task must be in the same Beads database |
+| A link to a task in another Beads database, which Beads keeps as the task's id in `depends_on_external` | A `task_edges` row of the same type, like any other link between projects |
 | A link to a web address outside the hub (`depends_on_external`) | A `task_external_links` row: the address as the URL standard writes it, also as its title, with Beads' creation time and author |
 | `noticeos_related_tasks` | `related` rows in `task_edges`, dated by the change that added them |
 | Labels | `task_labels` |

@@ -127,6 +127,22 @@ describe('links', () => {
   });
 });
 
+describe('links Beads keeps as external', () => {
+  it('imports a link to a task in another Beads database as a link between projects', async () => {
+    const web = hub((c) => {
+      c.create({ id: 'web-a1', title: 'First' });
+      c.link('web-a1', 'app-a1', 'blocks', { depends_on_issue_id: null, depends_on_external: 'app-a1' });
+    });
+    const app = new FakeHub({ database: 'app_tasks', key: 'app.example.com', name: 'App', id: 'a-1', prefix: 'app' });
+    app.commit(t(0), 'beads', (c) => c.create({ id: 'app-a1', title: 'In another database' }));
+    const { plan } = await imported(web, app);
+    expect(plan!.task_edges).toEqual([
+      { task_id: 'web-a1', depends_on_id: 'app-a1', type: 'blocks', created_at: t(0), created_by: 'beads' },
+    ]);
+    expect(plan!.task_external_links).toEqual([]);
+  });
+});
+
 describe('external links', () => {
   it('imports a link to a web address as an external link, written as the URL standard writes it', async () => {
     const { plan, store } = await imported(

@@ -222,9 +222,18 @@ export function sortLinks(links: readonly LinkState[]): LinkState[] {
   return [...links].sort((a, b) => a.taskId.localeCompare(b.taskId));
 }
 
-/** The task a Beads link row points to. */
+/**
+ * The task a Beads link row points to. Beads keeps a link to a task in
+ * another of its databases in `depends_on_external`, as the task's id; any
+ * other value there, such as a web address, is not a task.
+ */
 export function linkTarget(row: BeadsRow): string | null {
-  return textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
+  const external = textOf(row.depends_on_external);
+  return (
+    textOf(row.depends_on_issue_id) ??
+    textOf(row.depends_on_id) ??
+    (external !== null && isTaskId(external) ? external : null)
+  );
 }
 
 /** A Beads link type as Ntasks names it. */

@@ -26,7 +26,7 @@ import {
   type Version,
 } from './history.ts';
 import { sameJson, stableJson } from './json.ts';
-import { linkTypeOf, webAddress, type TaskState } from './task-state.ts';
+import { linkTarget, linkTypeOf, webAddress, type TaskState } from './task-state.ts';
 
 /** Data the import leaves out by the owner's choice, reported so nothing goes unseen. */
 export interface LeftOut {
@@ -390,7 +390,7 @@ export function planImport(data: BeadsExport): {
     const linkRows = new Map<string, { at: string | null; by: string | null }>();
     const externalRows = new Map<string, { at: string | null; by: string | null }>();
     for (const row of history.links) {
-      const target = textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
+      const target = linkTarget(row);
       const external = textOf(row.depends_on_external);
       const made = { at: timeOf(row.created_at) ?? null, by: isEmpty(row.created_by) ? null : textOf(row.created_by) };
       if (target !== null) linkRows.set(`${target} ${linkTypeOf(row)}`, made);
