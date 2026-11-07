@@ -76,15 +76,53 @@ export function capabilities({ principal }: ReadContext, url: URL): Response {
   });
 }
 
+/** The most tasks one page of a label read returns when `limit` is left out. */
+const LABEL_PAGE = 100;
+
+/**
+ * GET /api/tasks?project=…&label=…&limit=…&after=…: every task of the project
+ * carrying the label, in every status and closed of any age, by id. `after`
+ * is the previous page's `next`, which is null on the last page.
+ */
+async function labelRoute(context: ReadContext, query: Readonly<Record<string, string>>): Promise<Response> {
+  const { engine, now } = context;
+  if (query.status !== undefined || query.closedDays !== undefined)
+    invalidRequest('a label read reads every status and every close: leave out status and closedDays');
+  const label = query.label!;
+  if (label.length < 1 || label.length > TASK_LIMITS.label)
+    invalidRequest(`label must be 1 to ${TASK_LIMITS.label} characters`);
+  const limit = wholeOf(query, 'limit', 1, TASK_LIMITS.page, LABEL_PAGE);
+  if (query.after !== undefined && !isTaskId(query.after))
+    invalidRequest('after must be a task id: the next of the page before');
+  const project = await projectOf(context, query.project);
+  const [page, links] = await Promise.all([
+    engine.listLabelled(project.id, { label, limit, ...(query.after === undefined ? {} : { after: query.after }) }),
+    linksSeenBy(context),
+  ]);
+  return json({
+    project: project.key,
+    prefix: project.prefix,
+    repo: '',
+    readAt: now(),
+    label,
+    tasks: page.tasks.map((task) => webTask(links.task(task))),
+    next: page.next,
+  });
+}
+
 /**
  * GET /api/tasks?project=…&status=…&closedDays=…: a project's board. `status`
  * is a comma-separated list (every status when left out). `closedDays`
  * reaches further back than the board's week, and only on a read of closed
- * tasks alone, so the board itself stays a small read.
+ * tasks alone, so the board itself stays a small read. With `label` it is
+ * the label read above instead.
  */
 export async function boardRoute(context: ReadContext, url: URL): Promise<Response> {
   const { engine, now } = context;
-  const query = queryOf(url, ['project', 'status', 'closedDays']);
+  const query = queryOf(url, ['project', 'status', 'closedDays', 'label', 'limit', 'after']);
+  if (query.label !== undefined) return labelRoute(context, query);
+  if (query.limit !== undefined || query.after !== undefined)
+    invalidRequest('limit and after page a label read: label=');
   const statuses = query.status === undefined ? [...TASK_STATUSES] : query.status.split(',');
   if (
     statuses.length < 1 ||

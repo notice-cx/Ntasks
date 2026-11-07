@@ -199,6 +199,30 @@ describe('reads from memory', () => {
     expect(await readCost(one, ['open'])).toBeGreaterThan(0);
   });
 
+  it('serves a repeated label read from memory, keeps each label apart, and reads again after a label changes', async () => {
+    const meter = newMeter();
+    const tasks = cachedReads(createEngine(storeDatabase(meter)), () => new Date().toISOString());
+    const project = await newProject(tasks);
+    const { task: first } = await tasks.createTask(project.id, { title: 'Handoff', labels: ['handoff'] }, AGENT);
+    await tasks.createTask(project.id, { title: 'Review', labels: ['review'] }, AGENT);
+    const labelled = async (label: string) => {
+      Object.assign(meter, newMeter());
+      const page = await tasks.listLabelled(project.id, { label, limit: 10 });
+      return { titles: page.tasks.map((task) => task.title), rowsRead: meter.rowsRead };
+    };
+
+    expect((await labelled('handoff')).titles).toEqual(['Handoff']);
+    expect(await labelled('handoff')).toEqual({ titles: ['Handoff'], rowsRead: 0 });
+    const review = await labelled('review');
+    expect(review.titles).toEqual(['Review']);
+    expect(review.rowsRead).toBeGreaterThan(0);
+
+    await tasks.writeTask(project.id, first.id, { expectedVersion: 1, removeLabels: ['handoff'] }, AGENT);
+    const after = await labelled('handoff');
+    expect(after.titles).toEqual([]);
+    expect(after.rowsRead).toBeGreaterThan(0);
+  });
+
   it('forgets after a refused write too, and never serves a list another caller could reorder', async () => {
     const tasks = cachedReads(createEngine(storeDatabase()), () => new Date().toISOString());
     const project = await newProject(tasks);
