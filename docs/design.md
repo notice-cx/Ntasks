@@ -333,8 +333,10 @@ start and an `end`, such as the `Kbd` of the key that focuses it.
 field's label ends in an asterisk and its control has `required` and
 `aria-required`; other fields carry no mark and are never labelled optional.
 `error` is tied to the control with `aria-describedby` and sets
-`aria-invalid`. `Select` is a native choice among a few fixed values, drawn
-like a field with the theme's chevron, as the board's Filter menu uses it.
+`aria-invalid`. `FieldError` draws an error the same way under a control
+that has no `Field`, such as the field in a fact's menu. `Select` is a native
+choice among a few fixed values, drawn like a field with the theme's chevron,
+as the board's Filter menu uses it.
 
 ### Menu (`menu.tsx`)
 
@@ -349,7 +351,8 @@ popover.
 A menu that picks a value, such as a fact's, gives each value `checked`: the
 value held ends in an Accent tick, and the menu opens on it. `MenuContent`'s
 `footer` holds what is not an item, such as the field for a value the list
-does not hold, under a divider and outside the menu's own keys.
+does not hold, under a divider and outside the menu's own keys. A menu with
+no items is its footer alone.
 
 The Close menu (`src/components/CloseResolution.tsx`) is a button, Close or
 Close as, with a chevron: Done first where the task can be closed as
@@ -448,23 +451,30 @@ you"), and the action that fills it, when there is one.
 
 The top bar holds the task's path: its project's badge and name, its epic's
 id, then its id. Its end holds Copy link, the More menu (add or edit the
-description and Done when, copy the id or the link) and the task's verbs, the
-primary one last: Claim, or Close once someone holds it; Approve or Answer on
-a task waiting for you, beside Close as.
+description, Done when, design and notes, add a link, copy the id or the
+link) and the task's verbs, the primary one last: Claim, or Close once
+someone holds it; Approve or Answer on a task waiting for you, beside Close
+as.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),
 how a closed task ended, the description, a decision's card or its recorded
 choice, Done when as a checklist with its count, Design, Notes, Links, an
 epic's Tasks with their `Progress`, and Activity. A section's heading is
-`text-sm` semibold with its count in Text 3; an empty description or Done
-when takes no room. Links are quiet lines grouped under their relation in
-Text 3 (Waits on, Holds back, Related, Duplicates, Replaces, a pull request,
-a document): a status mark, the id and the title, or for a page outside
-Ntasks its icon, title and host, opening in a new tab. Activity is one line
-per moment, oldest first: the actor's 20 px avatar (an icon where the read
-names nobody), what they did, and its age at the end; a comment's words sit
-under its line. The comment box ends the page, with Comment and its `⌘↵`.
+`text-sm` semibold with its count in Text 3; an empty description, Done
+when, Design, Notes or Links takes no room, and the More menu adds it. The
+description, Done when, Design and Notes are Markdown, each edited in place
+in a field of `text-code` with Save and Cancel; a pointer finds Edit beside
+each one. Links are quiet lines grouped under their relation in Text 3
+(Waits on, Holds back, Related, Duplicates, Replaces, a pull request, a
+document): a status mark, the id and the title, or for a page outside
+Ntasks its icon, title and host, opening in a new tab. A page's line ends in
+Remove, and the heading in Add link, while pointed at. Add link opens a
+Surface panel under the links: URL\* and Title\*, both required, and Kind
+(Link, Pull request or Document). Activity is one line per moment, oldest
+first: the actor's 20 px avatar (an icon where the read names nobody), what
+they did, and its age at the end; a comment's words sit under its line. The
+comment box ends the page, with Comment and its `⌘↵`.
 
 The right column is 300 px on Canvas, ruled off by Border: each fact as a
 line (`Fact` in `src/components/Fact.tsx`), its name in Text 3 and its value
@@ -473,6 +483,31 @@ created and last changed. A fact this sign-in may change is pressable along
 its whole line, which turns Hover and shows a chevron while pointed at or
 focused, and opens a menu of values; a fact it may not change is only its
 words. Below 1024 px wide the facts sit between the title and the text.
+
+A fact's menu is one of four kinds: a value to pick (Status, Priority,
+Assignee, Epic), values to turn on and off (Labels), a date with Tomorrow,
+In a week and In a month (Parked until, Due), or a value to type, with
+presets where there are some (Estimate takes `90`, `45m`, `1h 30m`, `1.5h`
+or `1:30` and shows hours and minutes). A typed value that does not fit
+shows what is wrong under its field, as `FieldError` draws it, and is not
+saved. None takes a value off.
+
+After the task's own facts come the custom fields its project defines,
+under the names the project gave them, in the order it defined them. Each
+field in use opens the menu its type takes: its options for a single
+choice, its options to turn on and off for a multiple choice, Yes and No, a
+date with Today, Tomorrow and In a week, or a field for text, a number or a
+URL, which shows as a link. A retired field shows the value a task keeps as
+words. Until the project's fields are read, a value is named from its key
+(`story_points` is Story points) and is not pressable.
+
+The board's Filter menu offers the custom fields of the one project in view
+(the Project filter's, or the only project there is), after the other
+filters: a choice of a field's options, or of Yes and No, each with its
+count, a date, or a typed value that applies on Enter. Each filter by a
+field is part of the address (`field.<key>=<value>`, as the API takes it),
+shows as a badge that clears it, and is dropped when another project is
+picked.
 
 ## Density and layout
 

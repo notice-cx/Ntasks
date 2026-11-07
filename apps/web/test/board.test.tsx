@@ -87,6 +87,57 @@ describe('the board', () => {
     expect(screen.getByRole('button', { name: 'Filter, 1 set' })).toBeTruthy();
   });
 
+  it("filters one project's board by a custom field from the Filter menu, through the server's filter", async () => {
+    const api = createFixtureTasksApi();
+    const board = vi.spyOn(api, 'board');
+    renderApp('/tasks?project=web', api);
+    await group('Open');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter, 1 set' }));
+    const area = await screen.findByRole('combobox', { name: 'Product area' });
+    // Each option with how many of the project's tasks hold it.
+    expect([...area.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      'Any',
+      'Accessibility · 1',
+      'Email · 1',
+      'Sign-in · 0',
+      'Performance · 0',
+    ]);
+    expect(screen.queryByRole('combobox', { name: 'Sprint' })).toBeNull();
+    fireEvent.change(area, { target: { value: 'Accessibility' } });
+    await waitFor(() => expect(rowIds(document.body)).toEqual(['web-k3m9.2']));
+    expect(board).toHaveBeenCalledWith('web', expect.anything(), { area: 'Accessibility' });
+    expect(screen.queryByRole('region', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Filter, 2 set' })).toBeTruthy();
+    // The menu's counts stay the whole project's, as for every other filter.
+    const project = screen.getByRole('combobox', { name: 'Project' }) as HTMLSelectElement;
+    expect(project.selectedOptions[0]?.textContent).toBe('Example web app · 10');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Product area: Accessibility' }));
+    expect(rowIds(await group('Open'))).toContain('web-b2r6');
+  });
+
+  it('reads a filter by a custom field from the address, and drops it when another project is picked', async () => {
+    renderApp('/tasks?project=web&field.customer_facing=true');
+    await waitFor(() => expect(rowIds(document.body).sort()).toEqual(['web-b2r6', 'web-k3m9.2']));
+    expect(screen.getByRole('button', { name: 'Clear Customer facing: Yes' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Filter, 2 set' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Project' }), { target: { value: 'docs' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear Customer facing: Yes' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Clear Project: Example docs' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Customer facing' })).toBeNull();
+  });
+
+  it('offers no custom field to filter by while several projects are in view', async () => {
+    renderApp('/tasks?field.area=Email');
+    await group('Open');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await screen.findByRole('combobox', { name: 'Priority' });
+    expect(screen.queryByRole('combobox', { name: 'Product area' })).toBeNull();
+    // A filter by one project's field does not narrow a board of several projects.
+    expect(screen.queryByRole('button', { name: /Clear Product area/ })).toBeNull();
+    expect(rowIds(await group('Open'))).toContain('docs-m2v7');
+  });
+
   it('searches by title or id', async () => {
     renderApp('/tasks');
     await group('Open');

@@ -129,6 +129,76 @@ describe('the HTTP Tasks API client', () => {
     ]);
   });
 
+  it("reads a project's custom fields, and a board filtered by them, by the project's id", async () => {
+    const fields = [
+      {
+        key: 'area',
+        name: 'Product area',
+        type: 'single-choice',
+        options: ['Email', 'Sign-in'],
+        createdAt: '2026-11-01T00:00:00.000Z',
+        retiredAt: null,
+      },
+      {
+        key: 'sprint',
+        name: 'Sprint',
+        type: 'text',
+        options: null,
+        createdAt: '2026-11-01T00:00:00.000Z',
+        retiredAt: '2026-11-02T00:00:00.000Z',
+      },
+    ];
+    const { api, sent } = server((request) =>
+      Response.json(request.url.startsWith('/api/fields') ? { project: 'web', fields } : { project: 'web', tasks: [] }),
+    );
+    await expect(api.fields('web')).resolves.toEqual({ project: 'web', fields });
+    await api.board('web', undefined, { area: 'Sign-in', customer_facing: 'true' });
+    expect(sent.map((request) => `${request.method} ${request.url}`)).toEqual([
+      'GET /api/fields?project=p-web',
+      'GET /api/tasks?project=p-web&field.area=Sign-in&field.customer_facing=true',
+    ]);
+  });
+
+  it('does not retry a field list whose shape it cannot read', async () => {
+    const { api } = server(() => Response.json({ project: 'web', fields: [{ key: 'area' }] }));
+    const error: unknown = await api.fields('web').catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(UnreadableAnswer);
+    expect(retryRead(0, error)).toBe(false);
+  });
+
+  it("sends a change to notes, design, estimate, due date, links and custom fields in the route's shape, with a retry key", async () => {
+    const { api, sent } = server(() => Response.json({ task: {} }));
+    await api.updateTask('web-a1b2', 'web', {
+      notes: 'Tab order fixed.',
+      design: '',
+      estimateMinutes: 90,
+      dueAt: '2030-01-15',
+      addExternalLinks: [{ url: 'https://example.com/spec', title: 'The spec', kind: 'document' }],
+      removeExternalLinks: ['https://example.com/old'],
+      fields: { area: 'Email', platforms: ['Web', 'iOS'], points: 3, customer_facing: false, team: null },
+    });
+    await api.updateTask('web-a1b2', 'web', { estimateMinutes: null, dueAt: null }, { idempotencyKey: 'retry-one' });
+    expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
+      [
+        'PATCH',
+        '/api/tasks/web-a1b2',
+        {
+          notes: 'Tab order fixed.',
+          design: '',
+          estimateMinutes: 90,
+          dueAt: '2030-01-15',
+          addExternalLinks: [{ url: 'https://example.com/spec', title: 'The spec', kind: 'document' }],
+          removeExternalLinks: ['https://example.com/old'],
+          fields: { area: 'Email', platforms: ['Web', 'iOS'], points: 3, customer_facing: false, team: null },
+          projectId: 'p-web',
+        },
+      ],
+      ['PATCH', '/api/tasks/web-a1b2', { estimateMinutes: null, dueAt: null, projectId: 'p-web' }],
+    ]);
+    expect(sent[0]?.headers.get('idempotency-key')?.length).toBeGreaterThanOrEqual(8);
+    expect(sent[1]?.headers.get('idempotency-key')).toBe('retry-one');
+  });
+
   it('gives every write its own retry key', async () => {
     const { api, sent } = server();
     await api.comment('web-a1b2', 'web', 'one');

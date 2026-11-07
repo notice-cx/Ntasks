@@ -3,7 +3,7 @@
  * pages draw, with times relative to `nowMs` so ages read the same on any
  * day. Nothing here describes a real project, person or task.
  */
-import type { LiveTask, TaskActor, TaskComment, TaskProject } from './types';
+import type { LiveTask, TaskActor, TaskComment, TaskField, TaskProject } from './types';
 
 export interface FixtureTask extends LiveTask {
   /** The project's key. */
@@ -14,6 +14,8 @@ export interface FixtureSeed {
   projects: TaskProject[];
   tasks: FixtureTask[];
   comments: Map<string, TaskComment[]>;
+  /** Each project's custom fields, by the project's key, in the order they were defined. */
+  fields: Map<string, TaskField[]>;
 }
 
 /** Who the fixture API records as the sender of every change. */
@@ -115,7 +117,13 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
           kind: 'pull-request',
         },
       ],
-      fields: { area: 'Accessibility', story_points: 3 },
+      fields: {
+        area: 'Accessibility',
+        story_points: 3,
+        platforms: ['Web', 'iOS'],
+        customer_facing: true,
+        sprint: 'Sprint 14',
+      },
       comments: 1,
     }),
     base('web', 'web-k3m9.3', 'Send the new sign-in page to every visitor', {
@@ -198,6 +206,8 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
         '- Links sent before the move still expire after an hour.',
       ].join('\n'),
       acceptance: '- [ ] A new reset link opens the reset form\n- [ ] A test covers a link younger than an hour',
+      estimateMinutes: 45,
+      fields: { area: 'Email', story_points: 2, customer_facing: true },
     }),
     base('web', 'web-t5w3', 'Rename the Settings tab to Account', {
       priority: 3,
@@ -285,5 +295,31 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     { projectId: 'p-docs', logicalKey: 'docs', displayName: 'Example docs', prefix: 'docs' },
   ];
 
-  return { projects, tasks, comments };
+  // One field of every type, and one retired, whose values tasks keep.
+  const field = (key: string, name: string, type: string, options: string[] | null = null): TaskField => ({
+    key,
+    name,
+    type,
+    options,
+    createdAt: at(30 * DAY),
+    retiredAt: null,
+  });
+  const fields = new Map<string, TaskField[]>([
+    [
+      'web',
+      [
+        { ...field('sprint', 'Sprint', 'text'), retiredAt: at(10 * DAY) },
+        field('area', 'Product area', 'single-choice', ['Accessibility', 'Email', 'Sign-in', 'Performance']),
+        field('story_points', 'Points', 'number'),
+        field('platforms', 'Platforms', 'multiple-choice', ['Web', 'iOS', 'Android']),
+        field('release_date', 'Release date', 'date'),
+        field('spec', 'Spec', 'url'),
+        field('customer_facing', 'Customer facing', 'yes-no'),
+        field('team', 'Team', 'text'),
+      ],
+    ],
+    ['docs', []],
+  ]);
+
+  return { projects, tasks, comments, fields };
 }

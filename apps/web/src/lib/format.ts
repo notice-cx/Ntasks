@@ -38,6 +38,31 @@ export function formatMinutes(minutes: number): string {
   return rest === 0 ? `${formatInt(hours)}h` : `${formatInt(hours)}h ${rest}m`;
 }
 
+const DURATION = /^(?:(\d+(?:\.\d+)?)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?$/i;
+
+/**
+ * An estimate as a person types it, in whole minutes: `90` and `90m` are
+ * minutes, `2h` and `1.5h` hours, `1h 30m` and `1:30` both. Null for
+ * anything else, and for more than `max` minutes.
+ */
+export function parseMinutes(text: string, max: number): number | null {
+  // `formatMinutes` groups thousands of hours, so what a fact shows reads back.
+  const words = text.trim().replace(/,/g, '');
+  if (words === '') return null;
+  let minutes: number | null = null;
+  const clock = /^(\d+):([0-5]\d)$/.exec(words);
+  if (/^\d+$/.test(words)) minutes = Number(words);
+  else if (clock) minutes = Number(clock[1]) * 60 + Number(clock[2]);
+  else {
+    const parts = DURATION.exec(words);
+    if (parts && (parts[1] !== undefined || parts[2] !== undefined))
+      minutes = Number(parts[1] ?? 0) * 60 + Number(parts[2] ?? 0);
+  }
+  if (minutes === null || !Number.isFinite(minutes)) return null;
+  const whole = Math.round(minutes);
+  return whole <= max ? whole : null;
+}
+
 /** A custom field's key as a name, until the page reads the field's own: `story_points` is Story points. */
 export function fieldKeyName(key: string): string {
   const words = key.replace(/[_-]+/g, ' ').trim();

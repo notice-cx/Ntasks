@@ -11,6 +11,7 @@ import {
   Plus,
   Reply,
   SearchX,
+  X,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -24,7 +25,7 @@ import { Progress } from '@/components/ui/badge';
 import { Button, IconButton } from '@/components/ui/button';
 import { OptionList } from '@/components/ui/choice';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Textarea } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Kbd } from '@/components/ui/kbd';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { BarSpacer, TopBar } from '@/components/ui/shell';
@@ -45,6 +46,7 @@ import {
   verbReason,
 } from '@/hooks/useTasks';
 import { copyText } from '@/lib/clipboard';
+import { httpUrl } from '@/lib/custom-fields';
 import { isAgentActor, statusMarkOfStored } from '@/lib/symbols';
 import {
   actorLabel,
@@ -176,6 +178,9 @@ export function TaskRoute() {
 /** The panel under the title where an action that needs words is finished. */
 type Panel = { kind: 'close-done' } | { kind: 'answer' } | null;
 
+/** The task's Markdown fields, each read and edited in place. */
+type TextField = 'description' | 'acceptance' | 'design' | 'notes';
+
 function TaskPage({
   task,
   project,
@@ -210,7 +215,8 @@ function TaskPage({
   const hides = useAnswerHides();
   const answer = useInboxAnswer();
   const [panel, setPanel] = useState<Panel>(null);
-  const [editing, setEditing] = useState<'description' | 'acceptance' | null>(null);
+  const [editing, setEditing] = useState<TextField | null>(null);
+  const [addingLink, setAddingLink] = useState(false);
   const [answerText, setAnswerText] = useState('');
   const [option, setOption] = useState<TaskChoiceKey | null>(null);
   const [note, setNote] = useState('');
@@ -354,7 +360,7 @@ function TaskPage({
             onClick={() => void copyText(window.location.href, 'the link')}
             className="max-sm:hidden"
           />
-          <MoreMenu task={task} onEdit={setEditing} canEdit={writable} />
+          <MoreMenu task={task} onEdit={setEditing} onAddLink={() => setAddingLink(true)} canEdit={writable} />
           {actions ? <span className="ms-1 flex items-center gap-2">{actions}</span> : null}
         </div>
       </TopBar>
@@ -441,7 +447,15 @@ function TaskPage({
               ) : null
             }
           />
-          <TaskLinks task={task} siblings={siblings} />
+          <TaskLinks
+            task={task}
+            project={key}
+            siblings={siblings}
+            adding={addingLink}
+            onAdding={setAddingLink}
+            canAdd={writable('addExternalLinks')}
+            canRemove={writable('removeExternalLinks')}
+          />
           {epic || siblings.some((row) => row.parent === task.id) ? (
             <EpicTasks epic={epic} tasks={siblings.filter((row) => row.parent === task.id)} />
           ) : null}
@@ -481,37 +495,50 @@ function ClaimAction({ id, project, disabledReason }: { id: string; project: str
   );
 }
 
-/** The top bar's menu: adding or editing the task's text, which a pointer also reaches on hover, and copying. */
+/** The words a Markdown field goes by in the More menu, after Add or Edit. */
+const TEXT_WORDS: Readonly<Record<TextField, string>> = {
+  description: 'description',
+  acceptance: 'Done when',
+  design: 'design',
+  notes: 'notes',
+};
+
+/** The top bar's menu: adding or editing the task's text and links, which a pointer also reaches on the page, and copying. */
 function MoreMenu({
   task,
   onEdit,
+  onAddLink,
   canEdit,
 }: {
-  task: Pick<LiveTask, 'id' | 'description' | 'acceptance'>;
-  onEdit: (field: 'description' | 'acceptance') => void;
+  task: Pick<LiveTask, 'id' | 'description' | 'acceptance' | 'design' | 'notes'>;
+  onEdit: (field: TextField) => void;
+  onAddLink: () => void;
   canEdit: (field: string) => boolean;
 }) {
-  const verb = (text: string) => (text.trim() === '' ? 'Add' : 'Edit');
+  const fields: TextField[] = ['description', 'acceptance', 'design', 'notes'];
   return (
     <Menu>
       <MenuTrigger asChild>
         <IconButton label="More" icon={<Ellipsis aria-hidden />} />
       </MenuTrigger>
       <MenuContent label={`Actions for ${task.id}`} align="end">
-        {canEdit('description') ? (
-          <MenuItem
-            icon={task.description.trim() === '' ? <Plus aria-hidden /> : <Pencil aria-hidden />}
-            onSelect={() => onEdit('description')}
-          >
-            {verb(task.description)} description
-          </MenuItem>
-        ) : null}
-        {canEdit('acceptance') ? (
-          <MenuItem
-            icon={task.acceptance.trim() === '' ? <Plus aria-hidden /> : <Pencil aria-hidden />}
-            onSelect={() => onEdit('acceptance')}
-          >
-            {verb(task.acceptance)} Done when
+        {fields
+          .filter((field) => canEdit(field))
+          .map((field) => {
+            const empty = (task[field] ?? '').trim() === '';
+            return (
+              <MenuItem
+                key={field}
+                icon={empty ? <Plus aria-hidden /> : <Pencil aria-hidden />}
+                onSelect={() => onEdit(field)}
+              >
+                {empty ? 'Add' : 'Edit'} {TEXT_WORDS[field]}
+              </MenuItem>
+            );
+          })}
+        {canEdit('addExternalLinks') ? (
+          <MenuItem icon={<Plus aria-hidden />} onSelect={onAddLink}>
+            Add link
           </MenuItem>
         ) : null}
         <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
@@ -547,8 +574,8 @@ function TaskText({
 }: {
   task: LiveTask;
   project: string;
-  editing: 'description' | 'acceptance' | null;
-  onEditing: (field: 'description' | 'acceptance' | null) => void;
+  editing: TextField | null;
+  onEditing: (field: TextField | null) => void;
   decision: ReactNode;
 }) {
   const capabilities = useCapabilities();
@@ -609,18 +636,25 @@ function TaskText({
           {...(canTick && checklist.total > 0 ? { onToggleTask: (line: number) => void tick(line) } : {})}
         />
       </LongText>
-      {task.design?.trim() ? (
-        <section className="flex flex-col gap-2" data-task-field="Design">
-          <SectionHeading title="Design" />
-          <MarkdownText source={task.design} />
-        </section>
-      ) : null}
-      {task.notes?.trim() ? (
-        <section className="flex flex-col gap-2" data-task-field="Notes">
-          <SectionHeading title="Notes" />
-          <MarkdownText source={task.notes} />
-        </section>
-      ) : null}
+      {(['design', 'notes'] as const).map((field) => {
+        const label = field === 'design' ? 'Design' : 'Notes';
+        const value = task[field] ?? '';
+        return (
+          <LongText
+            key={field}
+            label={label}
+            field={field}
+            value={value}
+            heading
+            writable={!closed && fieldAvailable(capabilities, field)}
+            editing={editing === field}
+            onEditing={(on) => onEditing(on ? field : null)}
+            onCommit={(next) => save({ label: `the ${field}`, edit: { [field]: next }, undo: { [field]: value } })}
+          >
+            <MarkdownText source={value} />
+          </LongText>
+        );
+      })}
     </>
   );
 }
@@ -797,31 +831,186 @@ function hostOf(url: string): string | null {
   }
 }
 
-function TaskLinks({ task, siblings }: { task: LiveTask; siblings: readonly LiveTask[] }) {
+/** A control shown while its line or section is pointed at or holds focus, and always on a touch screen. */
+const ON_HOVER = 'opacity-0 focus-visible:opacity-100 pointer-coarse:opacity-100';
+
+function TaskLinks({
+  task,
+  project,
+  siblings,
+  adding,
+  onAdding,
+  canAdd,
+  canRemove,
+}: {
+  task: LiveTask;
+  project: string;
+  siblings: readonly LiveTask[];
+  /** The form that adds a page is open. */
+  adding: boolean;
+  onAdding: (on: boolean) => void;
+  canAdd: boolean;
+  canRemove: boolean;
+}) {
+  const save = useFieldSave(task.id, project);
   const groups = linkGroups(task, siblings);
-  if (groups.length === 0) return null;
+  // An empty section takes no room; the top bar's menu adds a link.
+  if (groups.length === 0 && !(adding && canAdd)) return null;
+
+  function remove(row: Extract<LinkRow, { kind: 'external' }>) {
+    void save({
+      label: 'the link',
+      said: 'Removed the link',
+      edit: { removeExternalLinks: [row.url] },
+      undo: {
+        addExternalLinks: [{ url: row.url, title: row.title, ...(row.linkKind ? { kind: row.linkKind } : {}) }],
+      },
+    });
+  }
+
   return (
-    <section className="flex flex-col gap-1" data-task-links="">
-      <SectionHeading title="Links" />
-      <dl className="m-0 flex flex-col">
-        {groups.map((group) => (
-          <div key={group.label} className="flex gap-2.5 max-sm:flex-col max-sm:gap-0">
-            <dt className="w-28 shrink-0 pt-1.5 text-meta font-medium text-ink-3">{group.label}</dt>
-            <div className="flex min-w-0 flex-1 flex-col">
-              {group.rows.map((row) => (
-                <dd
-                  key={row.kind === 'task' ? row.id : row.url}
-                  className="m-0 flex min-h-8 min-w-0 items-center"
-                  {...(row.kind === 'task' ? { 'data-linked-task': row.id } : { 'data-external-link': row.url })}
-                >
-                  {row.kind === 'task' ? <TaskLinkRow row={row} /> : <ExternalLinkRow row={row} />}
-                </dd>
-              ))}
+    <section className="group/links flex flex-col gap-1" data-task-links="">
+      <SectionHeading title="Links">
+        {canAdd && !adding ? (
+          <IconButton
+            size="sm"
+            label="Add link"
+            icon={<Plus aria-hidden />}
+            onClick={() => onAdding(true)}
+            className={cn(ON_HOVER, 'group-hover/links:opacity-100')}
+          />
+        ) : null}
+      </SectionHeading>
+      {groups.length > 0 ? (
+        <dl className="m-0 flex flex-col">
+          {groups.map((group) => (
+            <div key={group.label} className="flex gap-2.5 max-sm:flex-col max-sm:gap-0">
+              <dt className="w-28 shrink-0 pt-1.5 text-meta font-medium text-ink-3">{group.label}</dt>
+              <div className="flex min-w-0 flex-1 flex-col">
+                {group.rows.map((row) => (
+                  <dd
+                    key={row.kind === 'task' ? row.id : row.url}
+                    className="group/link m-0 flex min-h-8 min-w-0 items-center gap-1"
+                    {...(row.kind === 'task' ? { 'data-linked-task': row.id } : { 'data-external-link': row.url })}
+                  >
+                    {row.kind === 'task' ? <TaskLinkRow row={row} /> : <ExternalLinkRow row={row} />}
+                    {row.kind === 'external' && canRemove ? (
+                      <IconButton
+                        size="sm"
+                        label={`Remove ${row.title}`}
+                        icon={<X aria-hidden />}
+                        onClick={() => remove(row)}
+                        className={cn(ON_HOVER, 'ms-auto shrink-0 group-hover/link:opacity-100')}
+                      />
+                    ) : null}
+                  </dd>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </dl>
+          ))}
+        </dl>
+      ) : null}
+      {adding && canAdd ? <LinkForm task={task} project={project} onDone={() => onAdding(false)} /> : null}
     </section>
+  );
+}
+
+/** What a new link's Kind offers, in the words the Links section groups pages under. */
+const LINK_KINDS: readonly { value: string; label: string }[] = [
+  { value: 'other', label: 'Link' },
+  { value: 'pull-request', label: 'Pull request' },
+  { value: 'document', label: 'Document' },
+];
+
+/** Add a page the task links to: its address and title, both required, and its kind. Enter adds, Escape cancels. */
+function LinkForm({ task, project, onDone }: { task: LiveTask; project: string; onDone: () => void }) {
+  const save = useFieldSave(task.id, project);
+  const retryKey = useRetryKey();
+  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState('');
+  const [kind, setKind] = useState('other');
+  const [checked, setChecked] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const address = httpUrl(url);
+  const urlError = checked && url.trim() !== '' && address === null ? 'Not an http or https address' : null;
+  const ready = address !== null && title.trim() !== '' && !saving;
+
+  async function add() {
+    setChecked(true);
+    if (!ready || address === null) return;
+    const link = { url: address, title: title.trim(), kind };
+    const held = task.externalLinks?.find((existing) => existing.url === address);
+    setSaving(true);
+    try {
+      const saved = await save({
+        label: 'the link',
+        said: 'Added the link',
+        edit: { addExternalLinks: [link] },
+        // A page the task linked to already keeps its old title and kind on Undo.
+        undo: held
+          ? { addExternalLinks: [{ url: held.url, title: held.title, ...(held.kind ? { kind: held.kind } : {}) }] }
+          : { removeExternalLinks: [address] },
+        idempotencyKey: retryKey.keyFor(JSON.stringify(link)),
+      });
+      if (saved) {
+        retryKey.done();
+        onDone();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      className="mt-1 flex flex-col gap-3 rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border"
+      data-task-form="link"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void add();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onDone();
+      }}
+    >
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px] gap-2 max-sm:grid-cols-1">
+        <Field label="URL" required error={urlError}>
+          <Input
+            type="url"
+            autoFocus
+            spellCheck={false}
+            autoCapitalize="off"
+            value={url}
+            disabled={saving}
+            onChange={(event) => setUrl(event.target.value)}
+            onBlur={() => setChecked(true)}
+          />
+        </Field>
+        <Field label="Title" required>
+          <Input value={title} disabled={saving} onChange={(event) => setTitle(event.target.value)} />
+        </Field>
+        <Field label="Kind">
+          <Select value={kind} disabled={saving} onChange={(event) => setKind(event.target.value)}>
+            {LINK_KINDS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="primary" type="submit" disabled={!ready} data-task-confirm="link">
+          {saving ? 'Adding…' : 'Add link'}
+        </Button>
+        <Button type="button" variant="ghost" disabled={saving} onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 

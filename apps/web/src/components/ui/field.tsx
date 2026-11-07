@@ -79,14 +79,19 @@ export function Field({
           ) : null}
         </label>
         {children}
-        {invalid ? (
-          <p id={errorId} className="m-0 flex items-center gap-1.5 text-meta text-ink" data-field-error="">
-            <CircleAlert aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-ink-2" />
-            {error}
-          </p>
-        ) : null}
+        {invalid ? <FieldError id={errorId}>{error}</FieldError> : null}
       </div>
     </FieldContext.Provider>
+  );
+}
+
+/** What is wrong with a value, under its control: Text after a `circle-alert`, never red. The control names it with `aria-describedby`. */
+export function FieldError({ id, children, className }: { id: string; children: ReactNode; className?: string }) {
+  return (
+    <p id={id} className={cn('m-0 flex items-center gap-1.5 text-meta text-ink', className)} data-field-error="">
+      <CircleAlert aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-ink-2" />
+      {children}
+    </p>
   );
 }
 

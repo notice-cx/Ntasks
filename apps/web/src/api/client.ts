@@ -14,12 +14,15 @@ import type { TaskResolution } from '@ntasks/domain';
 import type {
   ChangesPage,
   CloseOptions,
+  FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
   NewTask,
+  ProjectFields,
   TaskChoiceKey,
   TaskCreated,
   TaskEdit,
+  TaskField,
   TaskProject,
   TasksCapabilities,
 } from './types';
@@ -36,9 +39,12 @@ export interface WriteOptions {
 export interface TasksApi {
   capabilities(signal?: AbortSignal): Promise<TasksCapabilities>;
   projects(signal?: AbortSignal): Promise<readonly TaskProject[]>;
-  /** One project's board: unfinished tasks and the last week's closes. */
-  board(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
+  /** One project's board: unfinished tasks and the last week's closes; with
+   * `fields`, only the tasks holding each value. */
+  board(project: string, signal?: AbortSignal, fields?: FieldFilters): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
+  /** The project's custom fields, retired ones included. */
+  fields(project: string, signal?: AbortSignal): Promise<ProjectFields>;
   /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
   changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
@@ -161,6 +167,32 @@ function readProjects(payload: unknown): readonly TaskProject[] {
       });
     }),
   );
+}
+
+function readFields(payload: unknown, project: string): ProjectFields {
+  const unreadable = () => new UnreadableAnswer(`The fields of ${project} could not be read.`);
+  if (!isRecord(payload) || !Array.isArray(payload.fields)) throw unreadable();
+  const fields = payload.fields.map((row: unknown): TaskField => {
+    if (
+      !isRecord(row) ||
+      typeof row.key !== 'string' ||
+      typeof row.name !== 'string' ||
+      typeof row.type !== 'string' ||
+      !(row.options === null || (Array.isArray(row.options) && row.options.every((o) => typeof o === 'string'))) ||
+      !(row.retiredAt === null || typeof row.retiredAt === 'string')
+    ) {
+      throw unreadable();
+    }
+    return {
+      key: row.key,
+      name: row.name,
+      type: row.type,
+      options: row.options === null ? null : [...(row.options as string[])],
+      createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+      retiredAt: row.retiredAt,
+    };
+  });
+  return { project, fields };
 }
 
 function readCapabilities(payload: unknown): TasksCapabilities {
@@ -290,9 +322,14 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       return readCapabilities(await read<unknown>('/api/tasks/capabilities', 'What this sign-in may do', signal));
     },
     projects: (signal) => until(readCatalog(), signal),
-    async board(project, signal) {
+    async board(project, signal, fields = {}) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
+      for (const [key, value] of Object.entries(fields)) params.append(`field.${key}`, value);
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
+    },
+    async fields(project, signal) {
+      const params = new URLSearchParams({ project: await projectId(project, signal) });
+      return readFields(await read<unknown>(`/api/fields?${params}`, `The fields of ${project}`, signal), project);
     },
     async changes(after, signal) {
       const page = await read<unknown>(

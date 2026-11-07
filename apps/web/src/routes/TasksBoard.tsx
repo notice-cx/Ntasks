@@ -13,11 +13,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { GroupHeader } from '@/components/ui/row';
 import { BarSpacer, TopBar } from '@/components/ui/shell';
 import { StatusMark } from '@/components/ui/symbols';
+import type { FieldFilters, LiveTask, TaskField } from '@/api/types';
 import { useBoard, type Board } from '@/hooks/useBoard';
 import { useNow } from '@/hooks/useNow';
-import { READ_ONLY, useAnswerHides, useCapabilities, writesAvailable } from '@/hooks/useTasks';
-import { groupRows, type BoardFilters } from '@/lib/board-read';
-import { ageMs, formatAge, formatInt } from '@/lib/format';
+import { READ_ONLY, useAnswerHides, useCapabilities, useProjectFields, writesAvailable } from '@/hooks/useTasks';
+import { FIELD_FILTER_PREFIX, fieldFiltersOf, groupRows, isWork, type BoardFilters } from '@/lib/board-read';
+import { fieldMatches, filterValueText, isKnownFieldType } from '@/lib/custom-fields';
+import { ageMs, fieldKeyName, formatAge, formatInt } from '@/lib/format';
 import { composeRequested, COMPOSE_STATE, searchRequested } from '@/lib/page-state';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, type StatusMark as StatusMarkKey } from '@/lib/symbols';
 import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '@/lib/task-model';
@@ -74,10 +76,14 @@ export function TasksBoard() {
     priority: params.get('priority') ?? 'all',
     label: params.get('label') ?? '',
     assignee: params.get('assignee') ?? 'all',
+    fields: fieldFiltersOf(params),
   };
   const view = viewOf(params.get('view'));
   const composing = params.get('new') === '1' || composeRequested(location.state);
   const board = useBoard(filters);
+  const fieldDefinitions = useProjectFields(board.fieldProject).data?.fields ?? [];
+  // A filter by custom field holds only while its project is the one in view.
+  const fieldFilters = board.fieldProject === null ? {} : filters.fields;
   const hides = useAnswerHides();
   const search = useRef<HTMLInputElement>(null);
   const phoneField = useRef<HTMLInputElement>(null);
@@ -101,9 +107,14 @@ export function TasksBoard() {
 
   function setParam(name: string, value: string) {
     const next = new URLSearchParams(params);
-    // A default never occupies the address: one view, one link.
-    if ((name !== 'q' && value === 'all') || value === '') next.delete(name);
+    const field = name.startsWith(FIELD_FILTER_PREFIX);
+    // A default never occupies the address: one view, one link. A field's value is never a default.
+    if ((name !== 'q' && !field && value === 'all') || value === '') next.delete(name);
     else next.set(name, value);
+    // Each project defines its own fields, so another project drops the filters by them.
+    if (name === 'project') {
+      for (const key of [...next.keys()]) if (key.startsWith(FIELD_FILTER_PREFIX)) next.delete(key);
+    }
     setParams(next, { replace: true });
   }
 
@@ -163,7 +174,13 @@ export function TasksBoard() {
           setPhoneSearch(!phoneSearch);
         }}
       />
-      <FilterMenu board={board} filters={filters} onPick={setParam} />
+      <FilterMenu
+        board={board}
+        filters={filters}
+        fieldFilters={fieldFilters}
+        fields={fieldDefinitions}
+        onPick={setParam}
+      />
       <Button
         variant="primary"
         disabled={!writable}
@@ -201,7 +218,17 @@ export function TasksBoard() {
   } else if (board.available.length === 0) {
     body = <EmptyState icon={<Inbox />} title="No projects yet" />;
   } else {
-    body = <Groups board={board} view={view} filters={filters} onClear={clearFilters} hides={hides} now={now} />;
+    body = (
+      <Groups
+        board={board}
+        view={view}
+        filters={filters}
+        narrowedByFields={Object.keys(fieldFilters).length > 0}
+        onClear={clearFilters}
+        hides={hides}
+        now={now}
+      />
+    );
   }
 
   return (
@@ -212,7 +239,14 @@ export function TasksBoard() {
           {searchField('w-full', phoneField)}
         </div>
       ) : null}
-      <ActiveFilters filters={filters} board={board} onPick={setParam} onClear={clearFilters} />
+      <ActiveFilters
+        filters={filters}
+        fieldFilters={fieldFilters}
+        fields={fieldDefinitions}
+        board={board}
+        onPick={setParam}
+        onClear={clearFilters}
+      />
       {capabilities.live && !writable ? (
         <p className="m-0 border-b border-border px-5.5 py-2 text-label text-ink-2" data-tasks-readonly="">
           {READ_ONLY}
@@ -256,6 +290,7 @@ function Groups({
   board,
   view,
   filters,
+  narrowedByFields,
   onClear,
   hides,
   now,
@@ -263,6 +298,8 @@ function Groups({
   board: Board;
   view: View;
   filters: BoardFilters;
+  /** A filter by custom field holds, which the server applied. */
+  narrowedByFields: boolean;
   onClear: () => void;
   hides: (id: string, fetchedAt: number | null) => boolean;
   now: number;
@@ -291,6 +328,7 @@ function Groups({
   });
   const marks = VIEW_GROUPS[view].filter((mark) => groups[mark].length > 0);
   const narrowed =
+    narrowedByFields ||
     filters.q.trim() !== '' ||
     FILTER_NAMES.some((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all'));
 
@@ -382,21 +420,32 @@ function Groups({
   );
 }
 
-/** The Filter button: a panel of the filters, each with its count. */
+/** The Filter button: a panel of the filters, each with its count, then the custom fields of the one project in view. */
 function FilterMenu({
   board,
   filters,
+  fieldFilters,
+  fields,
   onPick,
 }: {
   board: Board;
   filters: BoardFilters;
+  fieldFilters: FieldFilters;
+  /** The custom fields of the project in view; none with several projects in view. */
+  fields: readonly TaskField[];
   onPick: (name: string, value: string) => void;
 }) {
-  const set = FILTER_NAMES.filter((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all')).length;
+  const set =
+    FILTER_NAMES.filter((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all')).length +
+    Object.keys(fieldFilters).length;
   const names = new Map(
     board.allTasks.flatMap((task) =>
       task.assignee ? [[task.assignee, actorLabel(task.assignee, task.actors)] as const] : [],
     ),
+  );
+  // A retired field is offered while a filter by it holds, so its filter can be changed as well as cleared.
+  const offered = fields.filter(
+    (field) => isKnownFieldType(field.type) && (field.retiredAt === null || fieldFilters[field.key] !== undefined),
   );
   return (
     <Popover>
@@ -407,7 +456,7 @@ function FilterMenu({
           {set > 0 ? <Count value={set} /> : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-64 gap-3 p-3">
+      <PopoverContent align="end" className="grid max-h-[min(80vh,640px)] w-64 gap-3 overflow-y-auto p-3">
         {board.available.length > 1 ? (
           <Field label="Project">
             <Select value={filters.project} onChange={(event) => onPick('project', event.target.value)}>
@@ -457,19 +506,126 @@ function FilterMenu({
         <Field label="Label">
           <Input value={filters.label} onChange={(event) => onPick('label', event.target.value)} />
         </Field>
+        {offered.length > 0 ? <div role="separator" className="-mx-3 h-px bg-border" /> : null}
+        {offered.map((field) => (
+          <Field key={field.key} label={field.name}>
+            <FieldFilterControl
+              field={field}
+              value={fieldFilters[field.key] ?? ''}
+              tasks={board.fieldTasks}
+              onPick={(value) => onPick(`${FIELD_FILTER_PREFIX}${field.key}`, value)}
+            />
+          </Field>
+        ))}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * One custom field's filter, by its type: a choice of its options or of yes
+ * and no, each with how many tasks hold it; a date; or a value typed out,
+ * which applies on Enter or when the field loses focus, since each value is a
+ * read of the server.
+ */
+function FieldFilterControl({
+  field,
+  value,
+  tasks,
+  onPick,
+}: {
+  field: TaskField;
+  value: string;
+  /** The project's tasks before any filter by custom field. */
+  tasks: readonly LiveTask[];
+  onPick: (value: string) => void;
+}) {
+  const count = (wanted: string) =>
+    tasks.filter((task) => isWork(task) && fieldMatches(field, task.fields?.[field.key], wanted)).length;
+  const choices =
+    field.type === 'yes-no'
+      ? [
+          { value: 'true', label: 'Yes' },
+          { value: 'false', label: 'No' },
+        ]
+      : field.type === 'single-choice' || field.type === 'multiple-choice'
+        ? (field.options ?? []).map((option) => ({ value: option, label: option }))
+        : null;
+  if (choices !== null) {
+    return (
+      <Select
+        value={value}
+        onChange={(event) => onPick(event.target.value)}
+        data-tasks-filter={`${FIELD_FILTER_PREFIX}${field.key}`}
+      >
+        <option value="">Any</option>
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label} · {count(choice.value)}
+          </option>
+        ))}
+      </Select>
+    );
+  }
+  if (field.type === 'date') {
+    return (
+      <Input
+        type="date"
+        value={value}
+        onChange={(event) => onPick(event.target.value)}
+        data-tasks-filter={`${FIELD_FILTER_PREFIX}${field.key}`}
+      />
+    );
+  }
+  return <TypedFilter key={value} type={field.type} value={value} fieldKey={field.key} onPick={onPick} />;
+}
+
+/** A filter value typed out: it applies on Enter or when the field loses focus. */
+function TypedFilter({
+  type,
+  value,
+  fieldKey,
+  onPick,
+}: {
+  type: string;
+  value: string;
+  fieldKey: string;
+  onPick: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const apply = () => {
+    if (draft.trim() !== value) onPick(draft.trim());
+  };
+  return (
+    <Input
+      type={type === 'url' ? 'url' : 'text'}
+      inputMode={type === 'number' ? 'decimal' : undefined}
+      value={draft}
+      spellCheck={false}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={apply}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        apply();
+      }}
+      data-tasks-filter={`${FIELD_FILTER_PREFIX}${fieldKey}`}
+    />
   );
 }
 
 /** The filters in force, under the top bar: each one a badge that clears it, then Clear filters. */
 function ActiveFilters({
   filters,
+  fieldFilters,
+  fields,
   board,
   onPick,
   onClear,
 }: {
   filters: BoardFilters;
+  fieldFilters: FieldFilters;
+  fields: readonly TaskField[];
   board: Board;
   onPick: (name: string, value: string) => void;
   onClear: () => void;
@@ -490,6 +646,13 @@ function ActiveFilters({
     filters.priority !== 'all' ? { name: 'priority', text: `Priority: ${priority}` } : null,
     assignee !== null ? { name: 'assignee', text: `Assignee: ${assignee}` } : null,
     filters.label !== '' ? { name: 'label', text: `Label: ${filters.label}` } : null,
+    ...Object.entries(fieldFilters).map(([key, value]) => {
+      const field = fields.find((candidate) => candidate.key === key);
+      return {
+        name: `${FIELD_FILTER_PREFIX}${key}`,
+        text: `${field?.name ?? fieldKeyName(key)}: ${filterValueText(field, value)}`,
+      };
+    }),
   ].filter((entry) => entry !== null);
   if (set.length === 0 && filters.q.trim() === '') return null;
   return (

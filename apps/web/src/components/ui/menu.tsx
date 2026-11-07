@@ -1,5 +1,6 @@
 import { Check, ChevronRight } from 'lucide-react';
 import {
+  Children,
   createContext,
   useCallback,
   useContext,
@@ -66,10 +67,12 @@ export function MenuContent({
   /** The menu's name for a screen reader, such as the task it acts on. */
   label: string;
   align?: 'start' | 'center' | 'end';
-  /** What follows the items outside the menu itself, such as a field for a value the items do not hold. */
+  /** What follows the items outside the menu itself, such as a field for a value the items do not hold.
+   * A menu with no items is its footer alone. */
   footer?: ReactNode;
   className?: string;
 }) {
+  const items = Children.toArray(children).length > 0;
   return (
     <PopoverContent
       align={align}
@@ -77,10 +80,12 @@ export function MenuContent({
       // The panel puts focus on its first item instead of on itself.
       onOpenAutoFocus={(event) => event.preventDefault()}
     >
-      <MenuPanel label={label} autoFocus>
-        {children}
-      </MenuPanel>
-      {footer ? <div className="border-t border-border p-1">{footer}</div> : null}
+      {items ? (
+        <MenuPanel label={label} autoFocus>
+          {children}
+        </MenuPanel>
+      ) : null}
+      {footer ? <div className={cn('p-1', items && 'border-t border-border')}>{footer}</div> : null}
     </PopoverContent>
   );
 }

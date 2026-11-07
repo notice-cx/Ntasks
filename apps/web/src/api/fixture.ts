@@ -5,10 +5,21 @@
  * claim wins, a closed task leaves ready work, a decision closes on its
  * answer, and a task waits while anything it depends on is open.
  */
-import { isTaskId, type TaskResolution } from '@ntasks/domain';
+import { isExternalLinkKind, isTaskId, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
+import { fieldMatches, httpUrl, isCalendarDate } from '@/lib/custom-fields';
 import { ApiError, type TasksApi } from './client';
 import { FIXTURE_ACTOR, FIXTURE_ACTORS, fixtureSeed, type FixtureSeed, type FixtureTask } from './fixture-data';
-import type { LiveEpic, LiveTask, TaskChange, TaskComment, TaskProject } from './types';
+import type {
+  FieldFilters,
+  LiveEpic,
+  LiveTask,
+  TaskChange,
+  TaskComment,
+  TaskEdit,
+  TaskField,
+  TaskFieldValue,
+  TaskProject,
+} from './types';
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
@@ -169,6 +180,92 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       throw new ApiError(`Task ${task.id} is not waiting on a person.`, 409, 'task_refused');
   }
 
+  function invalid(detail: string): never {
+    throw new ApiError(detail, 400, 'invalid_request');
+  }
+
+  function fieldOf(key: string, name: string, at: string): TaskField {
+    return (
+      state.fields.get(key)?.find((field) => field.key === name) ??
+      invalid(`${at}${name}: the project has no field ${name}`)
+    );
+  }
+
+  /** A value as the API keeps it, or the API's refusal: of its field's type, and never a new value of a retired field. */
+  function fieldValue(field: TaskField, value: TaskFieldValue): TaskFieldValue {
+    const refuse = (rule: string): never =>
+      invalid(`fields.${field.key} must be ${rule}: ${field.name} is a ${field.type} field`);
+    if (field.retiredAt !== null) invalid(`fields.${field.key}: ${field.name} is retired and takes no new values`);
+    const options = field.options ?? [];
+    switch (field.type) {
+      case 'number':
+        return typeof value === 'number' && Number.isFinite(value) ? value : refuse('a number');
+      case 'date':
+        return typeof value === 'string' && isCalendarDate(value) ? value : refuse('a date as YYYY-MM-DD');
+      case 'single-choice':
+        return typeof value === 'string' && options.includes(value) ? value : refuse(`one of ${options.join(', ')}`);
+      case 'multiple-choice':
+        return Array.isArray(value) && value.length > 0 && value.every((option) => options.includes(option))
+          ? options.filter((option) => value.includes(option))
+          : refuse('a list of its options');
+      case 'url':
+        return (typeof value === 'string' ? httpUrl(value) : null) ?? refuse('an http or https URL');
+      case 'yes-no':
+        return typeof value === 'boolean' ? value : refuse('true or false');
+      default:
+        return typeof value === 'string' && value.trim() !== '' && value.length <= TASK_LIMITS.fieldText
+          ? value
+          : refuse(`text of 1 to ${TASK_LIMITS.fieldText} characters`);
+    }
+  }
+
+  /** The new fields an edit sets, as `updateTask` applies them. */
+  function applyFields(task: FixtureTask, edit: TaskEdit): void {
+    if (edit.notes !== undefined) task.notes = edit.notes;
+    if (edit.design !== undefined) task.design = edit.design;
+    if (edit.estimateMinutes !== undefined) {
+      const minutes = edit.estimateMinutes;
+      if (minutes !== null && !(Number.isInteger(minutes) && minutes >= 0 && minutes <= TASK_LIMITS.estimateMinutes))
+        invalid(`estimateMinutes must be whole minutes from 0 to ${TASK_LIMITS.estimateMinutes}`);
+      task.estimateMinutes = minutes;
+    }
+    if (edit.dueAt !== undefined) {
+      if (edit.dueAt !== null && !isCalendarDate(edit.dueAt)) invalid('dueAt must be a date as YYYY-MM-DD');
+      task.dueAt = edit.dueAt === null ? null : `${edit.dueAt}T00:00:00.000Z`;
+    }
+    if (edit.removeExternalLinks || edit.addExternalLinks) {
+      const links = new Map((task.externalLinks ?? []).map((link) => [link.url, link]));
+      for (const url of edit.removeExternalLinks ?? []) links.delete(httpUrl(url) ?? url);
+      for (const link of edit.addExternalLinks ?? []) {
+        const url = httpUrl(link.url) ?? invalid('addExternalLinks: each url must be an http or https URL');
+        const title = link.title.trim();
+        if (title === '' || title.length > TASK_LIMITS.externalLinkTitle || /\n/.test(title))
+          invalid(`addExternalLinks: each title is one line of 1 to ${TASK_LIMITS.externalLinkTitle} characters`);
+        if (link.kind !== undefined && !isExternalLinkKind(link.kind))
+          invalid('addExternalLinks: kind must be pull-request, document or other');
+        links.set(url, { url, title, kind: link.kind ?? null });
+      }
+      if (links.size > TASK_LIMITS.externalLinks) invalid(`a task links to at most ${TASK_LIMITS.externalLinks} pages`);
+      task.externalLinks = [...links.values()].sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+    }
+    if (edit.fields !== undefined) {
+      const values = { ...task.fields };
+      for (const [name, value] of Object.entries(edit.fields)) {
+        const field = fieldOf(task.project, name, 'fields.');
+        if (value === null) delete values[name];
+        else values[name] = fieldValue(field, value);
+      }
+      task.fields = values;
+    }
+  }
+
+  /** Whether a task holds every value a board's filter names. */
+  function holds(task: FixtureTask, filters: FieldFilters): boolean {
+    return Object.entries(filters).every(([name, wanted]) =>
+      fieldMatches(fieldOf(task.project, name, 'field.'), task.fields?.[name], wanted),
+    );
+  }
+
   return {
     state,
     async capabilities() {
@@ -179,13 +276,15 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
       reach();
       return copy(state.projects);
     },
-    async board(key) {
+    async board(key, _signal, fields = {}) {
       reach();
       const { prefix, logicalKey } = project(key);
+      for (const name of Object.keys(fields)) fieldOf(key, name, 'field.');
       const since = now() - CLOSED_DAYS * DAY;
       const tasks = state.tasks
         .filter((task) => task.project === key)
         .filter((task) => task.status !== 'closed' || Date.parse(task.closedAt ?? '') >= since)
+        .filter((task) => holds(task, fields))
         .map(withLinks);
       return copy({
         project: logicalKey,
@@ -217,6 +316,11 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         comments: state.comments.get(id) ?? [],
         actors: FIXTURE_ACTORS,
       });
+    },
+    async fields(key) {
+      reach();
+      const { logicalKey } = project(key);
+      return copy({ project: logicalKey, fields: state.fields.get(key) ?? [] });
     },
     async createTask(input, options) {
       reach();
@@ -299,6 +403,7 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         if (edit.acceptance !== undefined) task.acceptance = edit.acceptance;
         if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
         if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
+        applyFields(task, edit);
         touch(task);
       });
     },
