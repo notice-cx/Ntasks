@@ -31,7 +31,10 @@ Every feature and every change to an existing one meets all five:
   where it is needed.
 - **It is elegant.** Its design and architecture are as clear and simple as
   the problems it solves require: every part, layer and option exists because
-  one of those problems needs it, and there is one way to do each thing.
+  one of those problems needs it, and there is one way to do each thing. The
+  design is also ready to change: a new feature, an extension or a changed
+  rule fits into it without redesigning it or working around one of its
+  limits.
 - **It is fast.** A call is answered from the workspace's task store in one
   hop, a reply carries only what the caller needs, and the free plan's
   limits hold.
