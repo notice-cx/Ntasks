@@ -179,6 +179,21 @@ export function mcpSummary(task: Task): Record<string, unknown> {
   );
 }
 
+/** A field of a task as get_task shows it. */
+export type McpTaskField = keyof ReturnType<typeof mcpTask>;
+
+/** A task as a write's reply shows it unless asked for all of it: its id,
+ * the fields `named` lists as get_task shows them, and its version, which
+ * goes up with each change. */
+export function writtenView(task: Task, named: readonly McpTaskField[]): Record<string, unknown> {
+  const full = mcpTask(task);
+  return {
+    id: task.id,
+    ...Object.fromEntries([...new Set(named)].map((field) => [field, full[field]])),
+    version: task.version,
+  };
+}
+
 /** A custom field as list_fields and the HTTP field routes show it. */
 export function fieldView(field: CustomField) {
   return {

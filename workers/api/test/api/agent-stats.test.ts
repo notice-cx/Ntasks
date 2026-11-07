@@ -265,7 +265,7 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
     const reached = await read<{ projects: number; stats: { week: number } }>(limited, 'get_agent_stats');
     expect(reached).toMatchObject({ projects: 1, stats: { week: 1 } });
     expect((await callTool(limited, 'get_agent_stats', { workspace: WORKSPACE.id, project: hidden.id })).refused).toBe(
-      `refused: projectId ${hidden.id} names no project in this workspace; list_projects lists the current projectIds.`,
+      `refused: project ${hidden.id} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`,
     );
   });
 

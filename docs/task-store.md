@@ -162,9 +162,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `POST /api/tasks/projects` ([API](api.md#writes)) calls; an import writes
   its projects' rows itself.
 - **Custom fields:** `defineField` and `retireField`, each one batch, which
-  writes a retry record when the call carries a retry identity (an MCP
-  `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a
-  repeated definition is refused rather than replayed. A key the project has
+  writes a retry record when the call carries a retry identity (every MCP
+  call, keyed by its `idempotency_key` or else by its arguments, and an HTTP
+  write with an `Idempotency-Key` header); without one, a repeated definition
+  is refused rather than replayed. A key the project has
   used, retired or not, is refused as
   `invalid`, and so is a field past the project's 64.
 

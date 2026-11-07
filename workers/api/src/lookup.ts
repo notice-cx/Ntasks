@@ -15,18 +15,23 @@ export interface Reader {
 
 export const projectNamed = (project: Project) => `projectId ${project.id} (${project.name})`;
 
-/** The project a call names, or a refusal that says how to find one. With
- * `write`, a project the sender may only read is refused for that. */
+/** The project a call names by its projectId, key or prefix, in that order,
+ * or a refusal that says how to find one. With `write`, a project the sender
+ * may only read is refused for that. */
 export async function projectOf(
   { engine, principal }: Reader,
   projectId: string,
   access: ProjectAccess = 'read',
 ): Promise<Project> {
-  const project = reachable(principal, await engine.listProjects()).find((candidate) => candidate.id === projectId);
+  const projects = reachable(principal, await engine.listProjects());
+  const project =
+    projects.find((candidate) => candidate.id === projectId) ??
+    projects.find((candidate) => candidate.key === projectId) ??
+    projects.find((candidate) => candidate.prefix === projectId);
   if (!project) {
     throw new Refused(
       'not_found',
-      `refused: projectId ${projectId} names no project in this workspace; list_projects lists the current projectIds.`,
+      `refused: project ${projectId} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`,
       `no project ${projectId}; /api/tasks/projects lists them`,
     );
   }
@@ -80,6 +85,19 @@ export async function tasksIn(reader: Reader, project: Project, taskIds: readonl
 export async function ownerOf({ engine, principal }: Reader, taskId: string): Promise<Project | undefined> {
   const prefix = taskId.slice(0, taskId.indexOf('-'));
   return reachable(principal, await engine.listProjects()).find((candidate) => candidate.prefix === prefix);
+}
+
+/** The project a task id's prefix names, or the refusal of a task the sender
+ * cannot reach, which says no more than one that does not exist. */
+export async function projectOfTask(reader: Reader, taskId: string): Promise<Project> {
+  const owner = await ownerOf(reader, taskId);
+  if (owner) return owner;
+  const prefix = taskId.slice(0, taskId.indexOf('-'));
+  throw new Refused(
+    'not_found',
+    `refused: no project you can reach has prefix ${prefix}, so ${taskId} names no task; list_projects lists each one's prefix.`,
+    `no task ${taskId}`,
+  );
 }
 
 /** What a sender may see of the links between tasks. */

@@ -295,7 +295,7 @@ describe('list_tasks', () => {
   it('refuses arguments it does not take, in the words NoticeOS used', async () => {
     const refused = (args: Record<string, unknown>) =>
       refusal(target, 'list_tasks', { workspace: WORKSPACE.id, ...args });
-    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown colour');
+    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown argument colour');
     expect(await refused({ status: ['done'] })).toBe('invalid arguments: status');
     expect(await refused({ limit: 500 })).toBe('invalid arguments: limit (1–200)');
     expect(await refused({ closed_days: 57 })).toBe('invalid arguments: closed_days (1–56)');
@@ -310,11 +310,11 @@ describe('list_tasks', () => {
     ]) {
       expect(await refused({ [name!]: value }), value).toBe(`invalid arguments: ${name} (YYYY-MM-DD or an ISO time)`);
     }
-    expect(await refused({ project: 'no such project' })).toBe(
-      'invalid arguments: project (a projectId from list_projects)',
+    expect(await refused({ project: '' })).toBe(
+      'invalid arguments: project (a projectId, key or prefix from list_projects)',
     );
     expect(await refused({ project: 'missing' })).toBe(
-      'refused: projectId missing names no project in this workspace; list_projects lists the current projectIds.',
+      "refused: project missing names no project in this workspace; list_projects lists each one's projectId, key and prefix.",
     );
   });
 });
@@ -373,6 +373,28 @@ describe('get_task', () => {
       'invalid arguments: task (a task id such as abc-1x2)',
     );
   });
+
+  it('reads a task by its id alone, or in a project named by its key or prefix', async () => {
+    for (const named of [{}, { project: project.key }, { project: project.prefix }]) {
+      const answer = await read<{ project: string; task: { id: string } }>(target, 'get_task', {
+        task: ids.child,
+        ...named,
+      });
+      expect(answer, JSON.stringify(named)).toMatchObject({ project: project.key, task: { id: ids.child } });
+    }
+  });
+
+  it('names the argument a misnamed one most likely means', async () => {
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'get_task', { workspace: WORKSPACE.id, ...args });
+    expect(await refused({ id: ids.child })).toBe('invalid arguments: unknown argument id; this tool takes task');
+    expect(await refused({ task: ids.child, projectId: project.id })).toBe(
+      'invalid arguments: unknown argument projectId; this tool takes project',
+    );
+    expect(await refusal(target, 'get_task', { workspace_id: WORKSPACE.id, task: ids.child })).toBe(
+      'invalid arguments: unknown argument workspace_id; this tool takes workspace',
+    );
+  });
 });
 
 describe('get_task_history', () => {
@@ -428,14 +450,21 @@ describe('a sender granted some projects', () => {
     expect(every.tasks.map((task) => task.id)).toContain(ids.child);
     expect(every.total).toBe(every.tasks.length);
 
-    const missing = `refused: projectId ${other.id} names no project in this workspace; list_projects lists the current projectIds.`;
+    const missing = `refused: project ${other.id} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`;
     expect(await refusal(granted, 'list_tasks', { workspace: WORKSPACE.id, project: other.id })).toBe(missing);
+    expect(await refusal(granted, 'list_tasks', { workspace: WORKSPACE.id, project: other.prefix })).toBe(
+      missing.replace(other.id, other.prefix),
+    );
     expect(
       await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
     ).toBe(missing);
     expect(
       await refusal(granted, 'get_task_history', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
     ).toBe(missing);
+    // Named by its id alone, the task's prefix names a project the sender cannot reach: one that does not exist.
+    const unreached = await refusal(granted, 'get_task', { workspace: WORKSPACE.id, task: ids.elsewhere });
+    const nowhere = await refusal(granted, 'get_task', { workspace: WORKSPACE.id, task: 'nowhere-a1' });
+    expect(unreached.replace(ids.elsewhere!, 'nowhere-a1').replace(other.prefix, 'nowhere')).toBe(nowhere);
     // A task from a project the sender cannot reach is not traced to that project.
     expect(
       await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: project.id, task: ids.elsewhere }),

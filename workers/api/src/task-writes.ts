@@ -674,6 +674,7 @@ export async function commentOnTask(
   taskId: string,
   text: string,
   retryRequest?: RetryRequest,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly comment: TaskComment; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   await taskOf(context, project, taskId);
@@ -683,7 +684,7 @@ export async function commentOnTask(
       project.id,
       taskId,
       text,
-      actorOf(context.principal, undefined),
+      actorOf(context.principal, model),
       retry,
     );
     return { project, comment, replayed };
@@ -700,6 +701,7 @@ export async function addDependency(
   taskId: string,
   dependsOn: string,
   type: DependencyType,
+  model?: string,
 ): Promise<void> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -712,7 +714,7 @@ export async function addDependency(
     context,
     project,
     task,
-    actorOf(context.principal, undefined),
+    actorOf(context.principal, model),
     undefined,
     async (current) => {
       const standing = current.dependencies.find((link) => link.taskId === dependsOn);
@@ -736,6 +738,7 @@ export async function removeDependency(
   projectId: string,
   taskId: string,
   dependsOn: string,
+  model?: string,
 ): Promise<void> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -745,7 +748,7 @@ export async function removeDependency(
   if (other !== null && isDecision(other)) throw decisionRefusal(other.id);
   if (other === null && !task.dependencies.some((link) => link.taskId === dependsOn))
     await tasksIn(context, project, [dependsOn]);
-  await changing(context, project, task, actorOf(context.principal, undefined), undefined, async (current) =>
+  await changing(context, project, task, actorOf(context.principal, model), undefined, async (current) =>
     current.dependencies.some((link) => link.taskId === dependsOn)
       ? { expectedVersion: current.version, removeLinks: [dependsOn] }
       : null,
@@ -759,10 +762,11 @@ export async function requestApproval(
   projectId: string,
   taskId: string,
   reason: string,
+  model?: string,
 ): Promise<{ readonly gate: Task; readonly created: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   let task = await taskOf(context, project, taskId);
-  const actor = actorOf(context.principal, undefined);
+  const actor = actorOf(context.principal, model);
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     if (task.status === 'closed') throw closedRefusal(task.id);
     const open = (await openGates(context, project, task)).find(
@@ -826,11 +830,12 @@ export async function defineField(
   projectId: string,
   input: DefineFieldInput,
   retryRequest?: RetryRequest,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const retry = await retryOf(context.principal, retryRequest);
   const { field, replayed } = await engineChecked(() =>
-    context.engine.defineField(project.id, input, actorOf(context.principal, undefined), retry),
+    context.engine.defineField(project.id, input, actorOf(context.principal, model), retry),
   );
   return { project, field, replayed };
 }
@@ -841,6 +846,7 @@ export async function retireField(
   projectId: string,
   key: string,
   retryRequest?: RetryRequest,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const retry = await retryOf(context.principal, retryRequest);
@@ -848,7 +854,7 @@ export async function retireField(
     const { field, replayed } = await context.engine.retireField(
       project.id,
       key,
-      actorOf(context.principal, undefined),
+      actorOf(context.principal, model),
       retry,
     );
     return { project, field, replayed };

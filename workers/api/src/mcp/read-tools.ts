@@ -1,7 +1,9 @@
 /**
- * The MCP tools that read tasks. Their names, arguments, descriptions and
- * result fields are the ones NoticeOS's task tools had, so agents written for
- * those read Ntasks unchanged.
+ * The MCP tools that read tasks. Their names, arguments and result fields are
+ * the ones NoticeOS's task tools had, with fewer arguments required, so
+ * agents written for those read Ntasks unchanged. Each tool's input schema
+ * lists the arguments it takes: the server refuses any other before the tool
+ * runs (server.ts).
  */
 import {
   isTaskStatus,
@@ -23,7 +25,6 @@ import {
   booleanArg,
   instantArg,
   integerArg,
-  only,
   projectArg,
   refuse,
   stringsArg,
@@ -31,6 +32,7 @@ import {
   textArg,
   type Args,
 } from '../args.ts';
+import { projectFor } from './project.ts';
 
 export interface ToolContext {
   readonly engine: TaskEngine;
@@ -51,7 +53,11 @@ export interface TaskTool {
 
 export const READ = Object.freeze({ readOnlyHint: true, idempotentHint: true, openWorldHint: false });
 
-export const PROJECT = Object.freeze({ type: 'string', description: 'The projectId from list_projects.' });
+export const PROJECT = Object.freeze({
+  type: 'string',
+  description:
+    "The projectId, key or prefix from list_projects. A call that names a task may leave it out: the task id's prefix names its project.",
+});
 export const TASK = Object.freeze({ type: 'string', description: 'The task id, such as abc-1x2.' });
 /** The most tasks one list_tasks call returns when it names no limit. */
 const PAGE = 50;
@@ -67,8 +73,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     inputSchema: schema({}),
     annotations: READ,
     scope: 'tasks:read',
-    async run({ engine, principal }, args) {
-      only(args, []);
+    async run({ engine, principal }) {
       return {
         projects: reachable(principal, await engine.listProjects()).map((project) => ({
           projectId: project.id,
@@ -87,7 +92,10 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       'Each is a summary, leaving out fields with no value; get_task reads one in full. Filters narrow it live, so search here ' +
       'rather than keeping a copy. Answers a page at a time: pass nextOffset as offset for the next.',
     inputSchema: schema({
-      project: { ...PROJECT, description: 'The projectId from list_projects; leave it out to list every project.' },
+      project: {
+        ...PROJECT,
+        description: 'The projectId, key or prefix from list_projects; leave it out to list every project.',
+      },
       query: {
         type: 'string',
         maxLength: 512,
@@ -138,24 +146,6 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     scope: 'tasks:read',
     async run(context, args) {
       const { engine, principal, now } = context;
-      only(args, [
-        'project',
-        'query',
-        'status',
-        'ready',
-        'assignee',
-        'parent',
-        'labels',
-        'type',
-        'created_after',
-        'created_before',
-        'updated_after',
-        'updated_before',
-        'closed_days',
-        'limit',
-        'offset',
-        'fields',
-      ]);
       const closedDays = integerArg(args, 'closed_days', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
       const limit = integerArg(args, 'limit', 1, TASK_LIMITS.page, PAGE);
       const offset = integerArg(args, 'offset', 0, Number.MAX_SAFE_INTEGER, 0);
@@ -241,14 +231,13 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'get_task',
     description: 'Read one task with its comments.',
-    inputSchema: schema({ project: PROJECT, task: TASK }, ['project', 'task']),
+    inputSchema: schema({ project: PROJECT, task: TASK }, ['task']),
     annotations: READ,
     scope: 'tasks:read',
     async run(context, args) {
       const { engine, now } = context;
-      only(args, ['project', 'task']);
-      const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
+      const project = await projectOf(context, await projectFor(context, args, taskId));
       const [task, comments, links] = await Promise.all([
         taskOf(context, project, taskId),
         engine.listComments(project.id, taskId),
@@ -277,17 +266,16 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           description: 'Include full task snapshots instead of compact field changes (default false).',
         },
       },
-      ['project', 'task'],
+      ['task'],
     ),
     annotations: READ,
     scope: 'tasks:read',
     async run(context, args) {
       const { engine } = context;
-      only(args, ['project', 'task', 'limit', 'snapshots']);
       const limit = integerArg(args, 'limit', 1, 200, 50);
       const snapshots = booleanArg(args, 'snapshots') ?? false;
-      const project = await projectOf(context, projectArg(args));
       const taskId = taskArg(args);
+      const project = await projectOf(context, await projectFor(context, args, taskId));
       const [, events, links] = await Promise.all([
         taskOf(context, project, taskId),
         allEvents(engine, project.id, taskId),

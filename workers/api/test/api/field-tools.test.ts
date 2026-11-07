@@ -76,7 +76,7 @@ describe('define_field and list_fields', () => {
     );
     expect(
       await refusal(target, 'define_field', { ...base, key: 'size', name: 'Size', type: 'number', colour: 1 }),
-    ).toBe('invalid arguments: unknown colour');
+    ).toBe('invalid arguments: unknown argument colour');
     await define(project, { key: 'size', name: 'Size', type: 'number' });
     expect(
       await refusal(target, 'define_field', { ...base, idempotency_key: key(), key: 'size', name: 'S', type: 'text' }),
@@ -108,13 +108,13 @@ describe('values through the task tools', () => {
     });
     expect(read1.task.fields).toEqual({ severity: 'high', areas: ['web', 'api'], points: 3 });
 
-    const changed = await write<{ task: { fields: unknown } }>(target, 'update_task', {
+    const changed = await write<{ fields: unknown }>(target, 'update_task', {
       project: project.id,
       task: filed.id,
       fields: { points: 5, severity: null },
       idempotency_key: key(),
     });
-    expect(changed.task.fields).toEqual({ areas: ['web', 'api'], points: 5 });
+    expect(changed.fields).toEqual({ areas: ['web', 'api'], points: 5 });
 
     const ids = async (fields: Record<string, unknown>) =>
       (

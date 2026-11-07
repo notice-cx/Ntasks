@@ -133,13 +133,28 @@ export interface ToolReply {
   readonly error?: { readonly code: number; readonly message: string };
 }
 
+/** What a refused call answered, read apart. */
+export interface Refusal {
+  /** The whole text the agent reads. */
+  readonly text: string;
+  /** The task its last line names, when its sentence does not. */
+  readonly task: string | null;
+  /** Whether nothing was written, or the change may have been. */
+  readonly retry: 'safe' | 'unsure';
+}
+
+/** A refusal's last line: the task the call named, then whether a retry is safe. */
+const LAST_LINE =
+  /\n(?:Task (\S+)\. )?(Nothing was written; retrying is safe\.|The change may have been written; read the task before retrying\.)$/u;
+
 /** Calls one MCP tool in the initialize era; returns its result, or the
- * sentence it refused with as `refused`. */
+ * sentence it refused with as `refused` and the whole refusal as `refusal`.
+ * A refusal that does not end by saying whether a retry is safe fails the test. */
 export async function callTool<T = Record<string, unknown>>(
   target: TestApi,
   name: string,
   args: Record<string, unknown> = {},
-): Promise<{ value: T; refused: null } | { value: null; refused: string }> {
+): Promise<{ value: T; refused: null; refusal: null } | { value: null; refused: string; refusal: Refusal }> {
   const response = await target.fetch(
     new Request(`${ORIGIN}/api/mcp`, {
       method: 'POST',
@@ -150,7 +165,14 @@ export async function callTool<T = Record<string, unknown>>(
   const reply = (await response.json()) as ToolReply;
   if (!reply.result) throw new Error(`${name} failed: ${JSON.stringify(reply.error)}`);
   const text = reply.result.content[0]!.text;
-  return reply.result.isError ? { value: null, refused: text } : { value: JSON.parse(text) as T, refused: null };
+  if (!reply.result.isError) return { value: JSON.parse(text) as T, refused: null, refusal: null };
+  const last = LAST_LINE.exec(text);
+  if (!last) throw new Error(`${name} refused without saying whether a retry is safe: ${text}`);
+  return {
+    value: null,
+    refused: text.slice(0, last.index),
+    refusal: { text, task: last[1] ?? null, retry: last[2]!.startsWith('Nothing') ? 'safe' : 'unsure' },
+  };
 }
 
 /** Calls a tool that must answer; fails the test with its refusal otherwise. */
@@ -167,11 +189,20 @@ export async function read<T = Record<string, unknown>>(
 /** Calls a write tool that must answer; fails the test with its refusal otherwise. */
 export const write = read;
 
-/** Calls a tool that must refuse; returns the sentence. */
+/** Calls a tool that must refuse; returns the sentence that says what to fix. */
 export async function refusal(target: TestApi, name: string, args: Record<string, unknown>): Promise<string> {
+  return (await refusalOf(target, name, args)).sentence;
+}
+
+/** Calls a tool that must refuse; returns the sentence and the whole refusal. */
+export async function refusalOf(
+  target: TestApi,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Refusal & { readonly sentence: string }> {
   const answer = await callTool(target, name, args);
   if (answer.refused === null) throw new Error(`${name} answered: ${JSON.stringify(answer.value)}`);
-  return answer.refused;
+  return { sentence: answer.refused, ...answer.refusal };
 }
 
 /** GETs an HTTP route. */
