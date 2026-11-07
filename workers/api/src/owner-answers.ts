@@ -160,9 +160,12 @@ function sameActor(a: string, b: string): boolean {
   return a === b || canonicalActor(a) === canonicalActor(b);
 }
 
-/** Whether `owner` names the recording sender itself, with or without the kind its actor starts with. */
-function selfAnswer(owner: string, actor: string): boolean {
-  return sameActor(owner, actor) || sameActor(owner, actor.replace(/^(?:agent|service):/u, ''));
+/** Whether `owner` names the recording sender itself, with or without the
+ * kind its actor starts with. An agent that registered under the name of the
+ * person it acts for (`person`) may still record that person's answer. */
+function selfAnswer(owner: string, actor: string, person: string | undefined): boolean {
+  if (sameActor(owner, actor)) return true;
+  return sameActor(owner, actor.replace(/^(?:agent|service):/u, '')) && owner !== person;
 }
 
 /** A recorded pick, read strictly; null for anything else. */
@@ -800,6 +803,8 @@ export interface MaintenanceInput extends Surroundings {
   /** The task `duplicateOf` names, as read; undefined when it names none or none was found. */
   readonly duplicate?: Task;
   readonly actor: string;
+  /** The actor of the person the sender acts for, when it acts for one. */
+  readonly person?: string;
   readonly at: string;
   /** Whether the answer's source shows the owner said it: the server's check, never the caller's. */
   readonly ownerVerified: boolean;
@@ -813,7 +818,7 @@ export interface MaintenanceInput extends Surroundings {
  * permission and leaves its action blocked.
  */
 export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
-  const { operation: op, task, comments, actor, at, duplicate, ownerVerified } = input;
+  const { operation: op, task, comments, actor, person, at, duplicate, ownerVerified } = input;
   if (task.id !== op.taskId || proposalOf(task) !== op.proposal) {
     return refuse('The proposal changed. Read it again and match the owner’s answer to the proposal they saw.');
   }
@@ -873,7 +878,7 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
   /** The owner answer's own effect on the task, applied after the dependents'. */
   let answer: (() => void) | null = null;
   if (ownerAnswer) {
-    if (selfAnswer(op.owner!, actor))
+    if (selfAnswer(op.owner!, actor, person))
       return refuse(
         'An agent cannot supply its own answer as the owner’s. Send the human owner’s identity and original answer source.',
       );
@@ -1232,6 +1237,7 @@ export async function reconcileTask(
       task: current,
       ...(duplicate === undefined ? {} : { duplicate }),
       actor: actor.name,
+      ...(person === undefined ? {} : { person }),
       at: context.now(),
       ownerVerified,
     });

@@ -4,7 +4,14 @@
 // stand-in task client ran each decision as several commands, some of which a
 // test could fail; here each decision is one batch, so those cases become a
 // retry that replays.
-import { TASK_LIMITS, type Project, type Task, type TaskComment, type TaskEngine, type TaskEvent } from '@ntasks/domain';
+import {
+  TASK_LIMITS,
+  type Project,
+  type Task,
+  type TaskComment,
+  type TaskEngine,
+  type TaskEvent,
+} from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import {
@@ -769,7 +776,10 @@ describe('approvals', () => {
 
   it('tells and hands back every task waiting on it, more than a page of them, in one write', async () => {
     const project = await newProject(engine);
-    const { task: first, gate } = await make(project, 'Waits 0', { labels: ['human'], requestApproval: { reason: scope } });
+    const { task: first, gate } = await make(project, 'Waits 0', {
+      labels: ['human'],
+      requestApproval: { reason: scope },
+    });
     const waiting = [first];
     for (let i = 1; i < 205; i += 1) {
       const { task } = await make(project, `Waits ${i}`, {
@@ -779,7 +789,12 @@ describe('approvals', () => {
       waiting.push(task);
     }
 
-    const done = await answered(project, gate!.id, { ...directAnswer, question: `Approve: ${scope}?`, response: 'yes', scope });
+    const done = await answered(project, gate!.id, {
+      ...directAnswer,
+      question: `Approve: ${scope}?`,
+      response: 'yes',
+      scope,
+    });
 
     expect(done.status).toBe('closed');
     const after = await engine.listBoard(project.id, { statuses: ['open'] });
@@ -1041,6 +1056,33 @@ describe('relayed approvals and their disputes', () => {
 });
 
 describe('who records an owner answer', () => {
+  it('lets an agent named as its own person record that person’s answer, and refuses it anyone else’s', async () => {
+    const answer = async (sender: Principal) => {
+      const project = await newProject(engine);
+      const { task } = await make(project, 'Build the layout', { labels: ['human'], choices });
+      const as = api({ principal: sender, now: time.now, engine });
+      const { proposal } = await read<{ proposal: string }>(as, 'get_task', { project: project.id, task: task.id });
+      return callTool(as, 'reconcile_task', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        task: task.id,
+        proposal,
+        explanation: 'The owner picked in this chat.',
+        evidence: 'The linked conversation.',
+        idempotency_key: key(),
+        ...directAnswer,
+        response: 'A',
+      });
+    };
+    // An agent registered under the owner's own name, acting for the owner.
+    const named = { ...AGENT, id: 'principal-named', name: 'agent:Owner' };
+    expect((await answer(named)).refused).toBeNull();
+    // The same name acting for someone else is answering for itself.
+    expect((await answer({ ...named, person: 'Someone Else' })).refused).toBe(
+      'refused: An agent cannot supply its own answer as the owner’s. Send the human owner’s identity and original answer source.',
+    );
+  });
+
   it('needs the write scope in the project, and a person’s decision is refused to an agent over HTTP', async () => {
     const project = await newProject(engine);
     const { task } = await make(project, 'Pick', { type: 'decision', labels: ['human'], choices });
