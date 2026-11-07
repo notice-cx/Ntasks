@@ -108,6 +108,9 @@ describe('the board', () => {
     expect(board).toHaveBeenCalledWith('web', expect.anything(), { area: 'Accessibility' });
     expect(screen.queryByRole('region', { name: 'Open' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Filter, 2 set' })).toBeTruthy();
+    // The menu's counts stay the whole project's, as for every other filter.
+    const project = screen.getByRole('combobox', { name: 'Project' }) as HTMLSelectElement;
+    expect(project.selectedOptions[0]?.textContent).toBe('Example web app · 10');
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear Product area: Accessibility' }));
     expect(rowIds(await group('Open'))).toContain('web-b2r6');

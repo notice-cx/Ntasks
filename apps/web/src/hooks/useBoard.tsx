@@ -61,14 +61,28 @@ export function useBoard(filters: BoardFilters) {
         return [key, { data: board?.data, error: board?.error ?? null, fetchedAt: board?.dataUpdatedAt || null }];
       }),
     );
+    const boardFilters = JSON.parse(filterKey) as BoardFilters;
+    let read = readBoard(catalog.data ?? [], reads, boardFilters);
     if (filtering && fieldProject !== null) {
-      reads.set(fieldProject, {
-        data: narrowed.data,
-        error: narrowed.error ?? null,
-        fetchedAt: narrowed.dataUpdatedAt || null,
-      });
+      const whole = read;
+      read = readBoard(
+        catalog.data ?? [],
+        new Map(reads).set(fieldProject, {
+          data: narrowed.data,
+          error: narrowed.error ?? null,
+          fetchedAt: narrowed.dataUpdatedAt || null,
+        }),
+        boardFilters,
+      );
+      // The Filter menu's counts are the whole project's, as no other filter narrows them either.
+      read = {
+        ...read,
+        statusCounts: whole.statusCounts,
+        priorityCounts: whole.priorityCounts,
+        assigneeCounts: whole.assigneeCounts,
+        projectCounts: whole.projectCounts,
+      };
     }
-    const read = readBoard(catalog.data ?? [], reads, JSON.parse(filterKey) as BoardFilters);
     // A refusal for want of sign-in is never one project's: every read gets it, so
     // the page asks for sign-in instead of naming the projects it could not read.
     const signedOut = boards.find((board) => needsSignIn(board.error))?.error ?? null;
