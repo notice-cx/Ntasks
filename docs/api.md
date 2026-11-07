@@ -336,7 +336,9 @@ A closed approval takes no further answer but `owner_performed`, and that
 only while the approval it follows is in force and covers the approval's
 request as it stands; any other answer recorded there would replace the
 owner's. A person's own approval in the web app is final: no dispute
-withdraws it, including after an agent relays that the owner did the action.
+withdraws it, including after an agent relays on the closed approval that
+the owner did the action. Once the gate is opened again, its next answer is
+the one it stands on, and a relayed one can be disputed.
 
 A refused owner answer names the argument at fault first, such as
 `refused: proposal_version: The proposal changed after the owner saw it; show it again.`,

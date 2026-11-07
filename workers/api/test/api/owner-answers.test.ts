@@ -612,6 +612,30 @@ describe('relayed approvals and their disputes', () => {
     expect(await comments(project, photos.id)).toHaveLength(told);
   });
 
+  it('lets a person dispute a report an agent relayed after their own approval was reopened', async () => {
+    const { project, photos, gate } = await relayGate();
+    expect((await send(person, 'POST', `/api/gates/${gate.id}/resolve`, { projectId: project.id })).status).toBe(200);
+    const reopened = await callTool(agent, 'update_task', {
+      workspace: WORKSPACE.id,
+      project: project.id,
+      task: gate.id,
+      status: 'open',
+      idempotency_key: key(),
+    });
+    expect(reopened.refused).toBeNull();
+    const relayed = await answered(project, gate.id, {
+      ...RELAY,
+      action: 'owner_performed',
+      quote: 'I uploaded all 12 photos.',
+    });
+    expect(relayed).toMatchObject({ status: 'closed', answer: { relayed: true } });
+
+    const disputed = await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id });
+
+    expect(disputed).toMatchObject({ status: 200, body: { task: { status: 'open' } } });
+    expect((await current(project, photos.id)).ready).toBe(false);
+  });
+
   it('refuses the owner’s report on an approval whose request changed after it was approved', async () => {
     const { project, gate } = await relayGate();
     await answered(project, gate.id, relay);

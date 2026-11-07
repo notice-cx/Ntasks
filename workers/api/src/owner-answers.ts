@@ -589,12 +589,13 @@ export function approvalWrite(
  */
 export function disputeWrite(task: Task, around: Surroundings, actor: string, at: string): TaskWrite | null {
   const previous = maintenanceOf(task);
-  // The approval the gate stands on is its latest answer; the owner's report
-  // that they did the action, which may follow it, does not replace it. A
-  // person's own approval there is final. A record imported from NoticeOS
-  // marks a direct approval in `approvedDirectly`.
+  // The approval the gate stands on is its latest record, past any owner's
+  // report recorded after the gate closed (`follows`), which completes that
+  // approval rather than replacing it. A person's own approval there is
+  // final. A record imported from NoticeOS marks a direct approval in
+  // `approvedDirectly`.
   const standing = [previous, ...[...eventsOf(previous)].reverse()].find(
-    (record) => isRecord(record) && record.action === 'answer',
+    (record) => isRecord(record) && record.follows !== true,
   );
   const directOf = (record: Json | undefined) =>
     isRecord(record) ? (record.verification === 'person' ? record : record.approvedDirectly) : undefined;
@@ -877,6 +878,9 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
         ? { outcome: declined ? 'declined' : performed ? 'owner-performed' : 'approved', approved: !declined }
         : {}),
       ...(performed ? { performedBy: input.owner, recordedBy: actor } : {}),
+      // On a closed approval the owner's report completes the approval in
+      // force rather than standing as one: a dispute looks past it.
+      ...(performed && closed ? { follows: true } : {}),
       permission: op.action === 'answer' && gate ? 'approved-scope-only' : 'none',
     };
   }
