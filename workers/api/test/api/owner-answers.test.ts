@@ -1017,6 +1017,58 @@ describe('relayed approvals and their disputes', () => {
     expect(await comments(project, photos.id)).toHaveLength(2);
   });
 
+  it('refuses a dispute once the owner approved directly what an agent had relayed', async () => {
+    const { project, photos, gate } = await relayGate();
+    await answered(project, gate.id, relay);
+    time.advance(5);
+    expect((await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id })).status).toBe(200);
+    time.advance(5);
+    const approved = await send(person, 'POST', `/api/gates/${gate.id}/resolve`, { projectId: project.id });
+    expect(approved.status).toBe(200);
+    expect((await current(project, gate.id)).metadata.noticeos_maintenance).toMatchObject({
+      approvedDirectly: { by: OWNER, at: time.now() },
+    });
+    const told = (await comments(project, photos.id)).length;
+    time.advance(5);
+
+    const again = await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id });
+
+    expect(again).toEqual({
+      status: 409,
+      body: {
+        error: 'task_refused',
+        detail: `${gate.id} was approved directly by ${OWNER}; a dispute withdraws only an approval an agent relayed.`,
+      },
+    });
+    expect((await current(project, gate.id)).status).toBe('closed');
+    expect(await comments(project, photos.id)).toHaveLength(told);
+  });
+
+  it('tells the waiting tasks of a dispute once, however often it is sent', async () => {
+    const { project, photos, gate } = await relayGate();
+    await answered(project, gate.id, relay);
+    time.advance(5);
+    expect((await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id })).status).toBe(200);
+    // The reopened gate is set aside, so the same dispute sent again has a status to change.
+    const reopened = await current(project, gate.id);
+    await engine.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: reopened.version, set: { status: 'blocked' } },
+      ENGINE_OWNER,
+    );
+    time.advance(5);
+
+    const again = await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id });
+
+    expect(again.status).toBe(200);
+    expect((await current(project, gate.id)).status).toBe('open');
+    const notices = (await comments(project, photos.id)).filter((comment) =>
+      comment.text.startsWith(`Owner disputed approval ${gate.id}`),
+    );
+    expect(notices).toHaveLength(1);
+  });
+
   it('invalidates every earlier approval in a disputed owner-performed record', async () => {
     const { project, gate } = await relayGate();
     await answered(project, gate.id, relay);

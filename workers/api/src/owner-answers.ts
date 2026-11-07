@@ -653,20 +653,28 @@ export function dismissalWrite(
   return draft.write();
 }
 
-/** A person approving an approval: the gate closes as done, and the tasks waiting on it are free of it. */
-export function approvalWrite(task: Task, reason: string | undefined): TaskWrite | null {
+/**
+ * A person approving an approval: the gate closes as done, and the tasks
+ * waiting on it are free of it. An approval an agent relayed on it before is
+ * marked as answered by this one, so it can no longer be disputed.
+ */
+export function approvalWrite(task: Task, reason: string | undefined, actor: string, at: string): TaskWrite | null {
   if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
   if (task.type !== 'gate' || task.awaitType !== 'human')
     throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
   const draft = new Draft(task);
   draft.close = { reason: reason ?? 'Approved', resolution: 'done' };
+  const previous = maintenanceOf(task);
+  if (previous?.verification === 'agent-recorded')
+    draft.metadata[MAINTENANCE] = { ...previous, approvedDirectly: { by: actor, at } };
   return draft.write();
 }
 
 /**
  * A person disputing an approval an agent recorded for them: its authority is
  * withdrawn, the gate opens again, and every task waiting on it is told to
- * stop the recorded action until a new approval.
+ * stop the recorded action until a new approval. Once the person approved the
+ * gate directly, nothing relayed is left to dispute.
  */
 export function disputeWrite(task: Task, around: Surroundings, actor: string, at: string): TaskWrite | null {
   const previous = maintenanceOf(task);
@@ -677,6 +685,11 @@ export function disputeWrite(task: Task, around: Surroundings, actor: string, at
     (previous.approved !== true && !previous.disputed)
   )
     refuse('dispute requires a recorded agent-relayed approval on this gate.');
+  const direct = previous.approvedDirectly;
+  if (isRecord(direct))
+    refuse(
+      `${task.id} was approved directly by ${stringOf(direct.by)}; a dispute withdraws only an approval an agent relayed.`,
+    );
   const draft = new Draft(task);
   const events = Array.isArray(previous.events) ? previous.events.filter(isRecord) : [];
   const sources = [
@@ -690,10 +703,13 @@ export function disputeWrite(task: Task, around: Surroundings, actor: string, at
       approved: false,
     };
   const text = `Owner disputed the approval relayed by ${stringOf(previous.by)}. The gate is reopened; the recorded action requires a new owner approval.\nDisputed source: ${stringOf(previous.source)}`;
-  if (!around.comments.some((comment) => comment.text === text)) draft.comment = text;
+  // The gate's comment names the disputed source: once it is there, this
+  // dispute and its notice to the waiting tasks were already made together.
+  const announced = around.comments.some((comment) => comment.text === text);
+  if (!announced) draft.comment = text;
   if (task.status === 'closed') draft.reopen = true;
   else if (task.status !== 'open') draft.set.status = 'open';
-  for (const dependent of waiting(around)) {
+  for (const dependent of announced ? [] : waiting(around)) {
     draft.other(dependent).comment =
       `Owner disputed approval ${task.id}, relayed by ${stringOf(previous.by)}. Stop the recorded action until a new owner approval is recorded.`;
   }
@@ -1180,7 +1196,13 @@ export function approve(
   reason: string | undefined,
   retry?: RetryRequest,
 ): Promise<Written> {
-  return decide(context, projectId, taskId, (task) => approvalWrite(task, reason), retry);
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, _around, actor, at) => approvalWrite(task, reason, actor, at),
+    retry,
+  );
 }
 
 export function dispute(
