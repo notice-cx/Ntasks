@@ -64,7 +64,7 @@ export type {
   TaskWrite,
   WriteResult,
 } from './engine.ts';
-export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES } from './store-rows.ts';
+export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES, storeKey } from './store-rows.ts';
 export type {
   CommentRow,
   CustomFieldRow,
@@ -79,3 +79,16 @@ export type {
   StoreValue,
   TaskRow,
 } from './store-rows.ts';
+export {
+  BACKUP_FORMAT,
+  BACKUP_TABLES,
+  backupColumns,
+  backupKey,
+  backupPageSql,
+  BackupRefused,
+  backupSelectSql,
+  collectBackup,
+  isBackupTable,
+  loadStatements,
+} from './backup.ts';
+export type { BackupFile, BackupPage, BackupRow, BackupRows, BackupStart, BackupTable, ReceiptRow } from './backup.ts';

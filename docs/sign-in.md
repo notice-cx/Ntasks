@@ -22,9 +22,9 @@ sign-in library, with its OAuth provider plugin, on the Worker's D1 database.
 
 | Caller | How it signs in | What it reaches |
 |---|---|---|
-| **The owner**, a person in a browser | Signs in with GitHub on `/sign-in`. The GitHub account's numeric id must be in `OWNER_GITHUB_IDS`. | Every project. Only the owner's own browser session counts as the owner's decision. |
+| **The owner**, a person in a browser | Signs in with GitHub on `/sign-in`. The GitHub account's numeric id must be in `OWNER_GITHUB_IDS`. | Every project, and the backup of the whole store (`tasks:backup`). Only the owner's own browser session counts as the owner's decision. |
 | **An AI agent**, such as an MCP client | OAuth 2.1, the sign-in method of [MCP's authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization). The owner approves the agent on `/agent-access` and chooses its projects. | The projects the owner chose, to read (`tasks:read`) or to read and change (`tasks:write`) tasks. |
-| **A service**, such as a NoticeOS installation | A service credential the owner made, sent as a bearer token. | The projects named in the credential's grants, each to read or to read and change. |
+| **A service**, such as a NoticeOS installation | A service credential the owner made, sent as a bearer token. | The projects named in the credential's grants, each to read or to read and change. A credential the owner made with the backup choice also reads the whole store through the backup route (`tasks:backup`, [API](api.md#backing-up-the-whole-store)), and needs no grants. |
 
 GitHub user ids are numbers, such as `1001`, shown at
 `https://api.github.com/users/<login>`. Ntasks allowlists the id, not the
@@ -237,7 +237,7 @@ and the owner's own sign-in, keep working.
 | `GET /api/access/agents` | The owner's connected agents, with their grants |
 | `POST /api/access/agents/<client id>/revoke` | Revokes an agent |
 | `GET /api/access/services` | The service credentials, without their secrets |
-| `POST /api/access/services` | Makes a credential from `{"name": "...", "grants": [{"projectId": "...", "access": "read"}]}`. The answer holds its token, `ntasks_service.<id>.<secret>`, which is never shown again. |
+| `POST /api/access/services` | Makes a credential from `{"name": "...", "grants": [{"projectId": "...", "access": "read"}]}`, and with `"backup": true`, one that may also read the backup route; a backup credential may leave `grants` out. The answer holds its token, `ntasks_service.<id>.<secret>`, which is never shown again. The choice of backup never changes after. |
 | `POST /api/access/services/<credential id>/revoke` | Revokes a credential |
 
 Only the owner's browser session may use the `/api/access/` routes that list,

@@ -68,7 +68,11 @@ function text(value: unknown, where: string): string {
 
 /** Reads an export file's JSON, checking its shape. Its content is checked by the import. */
 export function readExport(json: string): BeadsExport {
-  const value: unknown = JSON.parse(json);
+  return exportFrom(JSON.parse(json));
+}
+
+/** An export, from the parsed contents of its file. */
+export function exportFrom(value: unknown): BeadsExport {
   if (!isJsonObject(value) || value.format !== EXPORT_FORMAT)
     throw new Error(`The file is not an export in the ${EXPORT_FORMAT} format.`);
   if (!Array.isArray(value.projects)) throw new Error('projects must be a list.');

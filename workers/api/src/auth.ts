@@ -10,6 +10,8 @@ export const SCOPES = Object.freeze({
   read: 'tasks:read',
   /** Create and change tasks and comments. */
   write: 'tasks:write',
+  /** Read every row of the store for a backup, whatever projects the sender reaches (GET /api/backup). */
+  backup: 'tasks:backup',
 });
 
 /** How far a sender may go in one project. Write includes read. */

@@ -7,25 +7,48 @@
  *   node tools/migrate/src/cli.ts import --from <export.json> --check
  *   node tools/migrate/src/cli.ts import --from <export.json> --store <new-file.sqlite>
  *   node tools/migrate/src/cli.ts verify --from <export.json> --store <file.sqlite>
+ *   node tools/migrate/src/cli.ts backup --api <https://address> --token-file <file> --out <backup.json>
+ *   node tools/migrate/src/cli.ts restore --from <backup.json> --store <new-file.sqlite>
+ *   node tools/migrate/src/cli.ts verify --from <backup.json> --store <file.sqlite>
  */
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { readExport, type BeadsExport } from './beads.ts';
+import { BACKUP_FORMAT, type BackupFile } from '@ntasks/domain';
+import {
+  backupFrom,
+  backupSummary,
+  backupUrl,
+  checkMigrations,
+  downloadBackup,
+  restoreBackup,
+  rowCounts,
+} from './backup.ts';
+import { exportFrom, type BeadsExport } from './beads.ts';
 import { doltClient } from './dolt-client.ts';
 import { describeExport, exportHub, readHubFile } from './export.ts';
-import { openLocalStore, type LocalStore } from './local-store.ts';
+import { isJsonObject } from './json.ts';
+import { openLocalStore, storeMigrations, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
-import { verify } from './verify.ts';
+import { verify, verifyBackup, type Difference } from './verify.ts';
 
-/** The free plan's limits an import meets (docs/architecture.md): data that Durable Objects store, in all, and rows the task store writes in a day. */
-export const FREE_PLAN = Object.freeze({ storedBytes: 5 * 1000 ** 3, rowsWrittenPerDay: 100_000 });
+/** The free plan's limits an import or a backup meets (docs/architecture.md): data that Durable Objects store, in all, and rows the task store writes and reads in a day. */
+export const FREE_PLAN = Object.freeze({
+  storedBytes: 5 * 1000 ** 3,
+  rowsWrittenPerDay: 100_000,
+  rowsReadPerDay: 5_000_000,
+});
 
 export interface Io {
   readonly out: (line: string) => void;
   readonly err: (line: string) => void;
+}
+
+/** What the commands reach outside the machine: only `backup` uses it. */
+export interface Network {
+  readonly fetch: typeof fetch;
 }
 
 const USAGE = `Usage:
@@ -33,7 +56,10 @@ const USAGE = `Usage:
   cli.ts export --hub <hub.json> --out <export.json>
   cli.ts import --from <export.json> --check
   cli.ts import --from <export.json> --store <new-file.sqlite>
-  cli.ts verify --from <export.json> --store <file.sqlite>`;
+  cli.ts verify --from <export.json> --store <file.sqlite>
+  cli.ts backup --api <https://address> --token-file <file> --out <backup.json>
+  cli.ts restore --from <backup.json> --store <new-file.sqlite>
+  cli.ts verify --from <backup.json> --store <file.sqlite>`;
 
 class UsageError extends Error {}
 
@@ -80,8 +106,29 @@ function option(values: Record<string, string | boolean | undefined>, name: stri
   return value;
 }
 
+/** An export or a backup file, by its format. */
+async function loadFile(
+  file: string,
+): Promise<{ kind: 'export'; data: BeadsExport } | { kind: 'backup'; data: BackupFile }> {
+  const value: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (isJsonObject(value) && value.format === BACKUP_FORMAT) return { kind: 'backup', data: backupFrom(value) };
+  return { kind: 'export', data: exportFrom(value) };
+}
+
 async function loadExport(file: string): Promise<BeadsExport> {
-  return readExport(await readFile(file, 'utf8'));
+  const loaded = await loadFile(file);
+  if (loaded.kind !== 'export') throw new UsageError(`${file} is a backup: load it with restore.`);
+  return loaded.data;
+}
+
+function printDifferences(differences: readonly Difference[], io: Io): number {
+  if (differences.length === 0) {
+    io.out('0 differences.');
+    return 0;
+  }
+  io.err(`${count(differences.length)} differences:`);
+  for (const difference of differences) io.err(`- ${difference.subject}: ${difference.difference}`);
+  return 1;
 }
 
 async function runExport(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
@@ -145,8 +192,17 @@ async function runImport(values: Record<string, string | boolean | undefined>, i
 }
 
 async function runVerify(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
-  const data = await loadExport(option(values, 'from'));
+  const loaded = await loadFile(option(values, 'from'));
   const file = path.resolve(option(values, 'store'));
+  if (loaded.kind === 'backup') {
+    const store = await openLocalStore(file, { create: false });
+    try {
+      return await checkBackup(loaded.data, store, String(values.from), io);
+    } finally {
+      store.close();
+    }
+  }
+  const data = loaded.data;
   const { plan, refusals } = planImport(data);
   if (plan === null) {
     io.err('The export does not import, so there is nothing to verify.');
@@ -167,19 +223,79 @@ async function runVerify(values: Record<string, string | boolean | undefined>, i
     for (const entry of report.counts)
       io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
     for (const line of costLines(store)) io.out(line);
-    if (report.differences.length === 0) {
-      io.out('0 differences.');
-      return 0;
-    }
-    io.err(`${count(report.differences.length)} differences:`);
-    for (const difference of report.differences) io.err(`- ${difference.subject}: ${difference.difference}`);
-    return 1;
+    return printDifferences(report.differences, io);
   } finally {
     store.close();
   }
 }
 
-export async function main(argv: readonly string[], io: Io): Promise<number> {
+/** Compares a store copy with the backup it was restored from, and prints the result. */
+async function checkBackup(backup: BackupFile, store: LocalStore, from: string, io: Io): Promise<number> {
+  const report = await verifyBackup(backup, (table) => store.read(table));
+  io.out(`Verified ${store.description} against the backup ${from}, taken at ${backup.takenAt}.`);
+  io.out(`The store holds ${backupSummary(report.rows)}.`);
+  io.out('Tasks per project and status (backup / store):');
+  for (const entry of report.counts)
+    io.out(`  ${entry.project}  ${entry.status}: ${count(entry.expected)} / ${count(entry.actual)}`);
+  for (const line of costLines(store)) io.out(line);
+  return printDifferences(report.differences, io);
+}
+
+async function runBackup(
+  values: Record<string, string | boolean | undefined>,
+  io: Io,
+  network: Network,
+): Promise<number> {
+  const api = option(values, 'api');
+  const out = option(values, 'out');
+  backupUrl(api);
+  const token = (await readFile(option(values, 'token-file'), 'utf8')).replace(/\r?\n$/u, '');
+  if (token === '') throw new UsageError('The token file is empty.');
+  if (existsSync(out)) {
+    io.err(`Refused: ${out} already exists. The backup never writes over a file.`);
+    return 1;
+  }
+  const { file, pages } = await downloadBackup({
+    api,
+    token,
+    fetch: network.fetch,
+    onRestart: (attempt) => io.err(`The store was written to during attempt ${attempt}; starting again.`),
+  });
+  // The backup holds every task: private to its owner, and never written over.
+  await writeFile(out, `${JSON.stringify(file)}\n`, { mode: 0o600, flag: 'wx' });
+  const rows = Object.values(file.tables).reduce((sum, list) => sum + list.length, 0);
+  io.out(
+    `Backed up ${backupSummary(rowCounts(file.tables))}, as the store stood at ${file.takenAt}, in ${count(pages)} pages.`,
+  );
+  io.out(
+    `The store read about ${count(rows)} rows for it, ${share(rows, FREE_PLAN.rowsReadPerDay)} of the 5,000,000 it may read in a day.`,
+  );
+  io.out(`Wrote ${out}. It holds task data: keep it private.`);
+  io.out('Next: check it with restore --from <backup.json> --store <new-file.sqlite>.');
+  return 0;
+}
+
+async function runRestore(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
+  const from = option(values, 'from');
+  const loaded = await loadFile(from);
+  if (loaded.kind !== 'backup') throw new UsageError(`${from} is not a backup: import an export with import.`);
+  // Checked before the store file is made, so a refused restore leaves nothing behind.
+  checkMigrations(loaded.data, storeMigrations());
+  const store = await openLocalStore(path.resolve(option(values, 'store')), { create: true });
+  try {
+    restoreBackup(loaded.data, store);
+    io.out(`Restored ${backupSummary(rowCounts(loaded.data.tables))} into ${store.description}.`);
+    return await checkBackup(loaded.data, store, from, io);
+  } finally {
+    store.close();
+  }
+}
+
+export async function main(
+  argv: readonly string[],
+  io: Io,
+  network: Network = { fetch: globalThis.fetch },
+): Promise<number> {
   try {
     const [command, ...rest] = argv;
     const { values } = parseArgs({
@@ -191,12 +307,16 @@ export async function main(argv: readonly string[], io: Io): Promise<number> {
         from: { type: 'string' },
         store: { type: 'string' },
         check: { type: 'boolean' },
+        api: { type: 'string' },
+        'token-file': { type: 'string' },
       },
       strict: true,
     });
     if (command === 'export') return await runExport(values, io);
     if (command === 'import') return await runImport(values, io);
     if (command === 'verify') return await runVerify(values, io);
+    if (command === 'backup') return await runBackup(values, io, network);
+    if (command === 'restore') return await runRestore(values, io);
     throw new UsageError(command === undefined ? 'Name a command.' : `Unknown command ${command}.`);
   } catch (error) {
     if (error instanceof UsageError || (error as { code?: string }).code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {

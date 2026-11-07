@@ -1,16 +1,17 @@
 # @ntasks/migrate
 
 Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
-Dolt into the Ntasks task store, with its full history. **Dolt** is the
+Dolt into the Ntasks task store, with its full history, and backs a task
+store up and restores it ([below](#back-up-and-restore)). **Dolt** is the
 versioned SQL database Beads stores tasks in. The **task store** is the
 Durable Object that holds Ntasks' tasks in its own SQLite database
-([The task store](../../docs/task-store.md)). Three commands do it:
+([The task store](../../docs/task-store.md)). Three commands move a hub:
 
 | Command | Reads | Writes |
 |---|---|---|
 | `export` | The hub, through a Dolt SQL client, with read-only queries | One export file, readable only by its owner (mode 600). It never writes over an existing file |
 | `import` | The export file | With `--check`, nothing. With `--store`, a new local copy of the task store: a SQLite file with the store's schema |
-| `verify` | The export file and a store copy | Nothing. It prints the comparison and fails on any difference |
+| `verify` | The export file, or a backup file, and a store copy | Nothing. It prints the comparison and fails on any difference |
 
 A store copy is made from the store's own migration files
 ([`workers/api/src/store/migrations/`](../../workers/api/src/store/migrations/))
@@ -18,11 +19,11 @@ and loaded with the same statements the store runs
 ([`packages/domain/src/store-rows.ts`](../../packages/domain/src/store-rows.ts)),
 so a dry run needs no Worker and reaches nothing outside the machine.
 
-The task store loads an import itself with `importRows`, in one
+The task store loads an import or a backup itself with `importRows`, in one
 transaction, and returns each table's rows with `tableRows`
 ([`workers/api/src/store/import.ts`](../../workers/api/src/store/import.ts)).
-No route reaches them yet: they are for an owner-only Worker route, which
-needs sign-in. Until then, the store's tests call them.
+No route reaches them yet: they are for an owner-only Worker route. Until
+then, the store's tests call them.
 
 ## Run a migration
 
@@ -247,6 +248,46 @@ imported from, three ways:
 It prints the tasks per project and status, the totals, the size, and either
 `0 differences.` or each difference.
 
+## Back up and restore
+
+Two commands back up a deployed task store and check the backup:
+
+| Command | Reads | Writes |
+|---|---|---|
+| `backup` | Every page of the store's backup route, `GET /api/backup` ([API](../../docs/api.md#backing-up-the-whole-store)) | One backup file, readable only by its owner (mode 600). It never writes over an existing file |
+| `restore` | The backup file | A new local store copy holding the backup's rows, which it then compares with the file, as `verify` does |
+
+1. Make a service credential for backups: as the owner, `POST
+   /api/access/services` with `{"name": "nightly-backup", "backup": true}`
+   ([Sign-in](../../docs/sign-in.md#routes)). Save the token it answers in a
+   file only you can read.
+
+2. Back the store up:
+
+   ```sh
+   node tools/migrate/src/cli.ts backup --api https://tasks.example.com --token-file token --out backup.json
+   ```
+
+   The token goes only to an `https` address, or to `http://localhost` for a
+   store `pnpm dev` runs. If the store is written to while the backup reads
+   it, the route refuses the next page and the backup starts again, three
+   times at most; run it when agents are quiet. It prints the rows of each
+   table and the share of the day's 5,000,000 rows read it used.
+
+3. Check that the file restores, into a new store copy:
+
+   ```sh
+   node tools/migrate/src/cli.ts restore --from backup.json --store restored.sqlite
+   ```
+
+   The copy is made with this checkout's store migrations, which must be
+   exactly the backup's; restore a backup with the version of Ntasks it was
+   taken from. It loads every row in one transaction and prints `0
+   differences.` when every table holds exactly the backup's rows.
+
+`verify --from backup.json --store restored.sqlite` compares a store copy
+with a backup again. The backup file holds every task: keep it private.
+
 ## Tests
 
 ```sh
@@ -262,3 +303,7 @@ tests import into store copies in memory and in temporary files, and
 [`test/fake-dolt.mjs`](test/fake-dolt.mjs) stands in for the `dolt` client.
 The task store's own loading is tested in workerd, in
 [`workers/api/test/store-import.test.ts`](../../workers/api/test/store-import.test.ts).
+[`test/backup.test.ts`](test/backup.test.ts) backs up a store copy holding
+every kind of row through a stand-in for the backup route, and restores it;
+the route itself is tested in workerd, in
+[`workers/api/test/backup.test.ts`](../../workers/api/test/backup.test.ts).

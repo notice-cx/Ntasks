@@ -8,6 +8,9 @@ The Worker answers under `/api` in two ways, both over the same task engine:
 - **The HTTP routes** under `/api/tasks` and `/api/changes` are for the web
   app.
 
+A third route, `/api/backup`, hands out the whole store for a backup
+([below](#backing-up-the-whole-store)).
+
 Both read tasks and change them: they file, claim, change, comment on and
 close tasks, link one task to another and ask a person for an approval. A
 person's own decisions (answering a task that waits on them, choosing one of
@@ -320,6 +323,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
+| The store changed during a backup | `409` with `store_changed` ([below](#backing-up-the-whole-store)) |
 | A method the path does not take | `405` with an `allow` header naming the ones it takes |
 
 ## Reading changes instead of reloading
@@ -332,6 +336,51 @@ nothing changed it returns no events and the same `lastSeq`.
 This is the cheapest read the API has. A client that shows a board starts
 from the board's own `lastSeq`, asks for the changes after it, and reloads
 the board only when an event arrives.
+
+## Backing up the whole store
+
+`GET /api/backup` hands out every row the task store keeps, page by page:
+the rows of each table [the task store](task-store.md#tables) lists, retry
+records included, exactly as stored, so a backup loads into an empty store
+as the same rows. It needs the `tasks:backup` scope, which the owner's
+browser session holds, and a service credential holds when the owner made it
+with `"backup": true` ([Sign-in](sign-in.md#routes)). It reads every
+project, whatever projects the sender was granted. Any other sender gets
+`403` with `insufficient_scope`.
+
+| Request | Answer |
+|---|---|
+| `GET /api/backup` | The first page |
+| `GET /api/backup?page=<next>` | The page after the one whose `next` this is |
+
+Each page is a JSON object:
+
+| Field | Holds |
+|---|---|
+| `format` | `ntasks-backup-v1` |
+| `takenAt` | When the first page was read. Every page holds the store as it stood then. |
+| `migrations` | The names of the store's schema migrations. A backup loads only into a store with exactly these. |
+| `table` | The table the rows are from. The tables come in the order the task store lists them. |
+| `rows` | Rows of that table in primary key order, each with every column |
+| `next` | The token that asks for the next page, or null after the last |
+
+A page holds at most 500 rows, or rows holding about 512 KB of values,
+whichever comes first, so one request stays well inside the free plan's
+10 ms of CPU. A table's last page may be empty.
+
+The pages of one backup fit together only if nothing is written while they
+are read: a task written after its table was read would be missing from the
+backup, though its history was in it. So every page after the first checks
+that the store has changed no row since the first page, and has not
+restarted. If it has, the page answers `409` with `store_changed`, and the
+backup starts again from the first page. A busy store can refuse several
+tries in a row; a backup succeeds when agents are quiet. A `page` the route
+did not give gets `400` with `invalid_request`.
+
+A whole backup reads each row once. A store of 100,000 rows costs about 2%
+of the 5,000,000 rows the free plan reads in a day.
+[`tools/migrate`](../tools/migrate/README.md#back-up-and-restore) writes the
+pages to one file and restores the file into an empty store copy.
 
 ## What a read costs
 

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator, type SignedIn } from '../../src/access/authenticator.ts';
 import { mayReach } from '../../src/auth.ts';
-import { Browser, call, createProject, meWithToken, ORIGIN } from './client.ts';
+import { Browser, call, connectAgent, createProject, meWithToken, ORIGIN } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
 standInForGitHub();
@@ -198,5 +198,61 @@ describe('a service credential', () => {
     });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'owner_only' });
+  });
+});
+
+describe('the backup route through the Worker', () => {
+  it('answers a backup credential granted no project, which reads no project otherwise', async () => {
+    await createProject('Backed up');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const response = await browser.fetchJson('/api/access/services', { name: 'nightly-backup', backup: true });
+    expect(response.status).toBe(201);
+    const { service } = await response.json<{ service: CreatedService & { backup: boolean } }>();
+    expect(service).toMatchObject({ backup: true, grants: [] });
+    expect(await principalFor(service.token)).toMatchObject({ scopes: ['tasks:backup'], projects: new Map() });
+
+    const page = await getWith(service.token, '/api/backup');
+    expect(page.status).toBe(200);
+    expect(page.body).toMatchObject({ format: 'ntasks-backup-v1', table: 'projects' });
+    expect((page.body.rows as unknown[]).length).toBeGreaterThan(0);
+    expect(await getWith(service.token, '/api/tasks/projects')).toEqual({
+      status: 403,
+      body: { error: 'insufficient_scope', detail: 'this route needs tasks:read' },
+    });
+    const listed = await (
+      await browser.fetch('/api/access/services', { method: 'GET' })
+    ).json<{
+      services: { id: string; backup: boolean }[];
+    }>();
+    expect(listed.services.find((listedService) => listedService.id === service.id)).toMatchObject({ backup: true });
+  });
+
+  it('answers the owner, and refuses an agent and a credential made without the backup choice', async () => {
+    const project = await createProject('Not backed up');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    expect((await browser.fetch('/api/backup', { method: 'GET' })).status).toBe(200);
+
+    const { service } = await (
+      await createService(browser, 'writer', [{ projectId: project, access: 'write' }])
+    ).json<{ service: CreatedService & { backup: boolean } }>();
+    expect(service.backup).toBe(false);
+    const { tokens } = await connectAgent(browser, [project]);
+    for (const token of [service.token, tokens.access_token]) {
+      expect(await getWith(token, '/api/backup')).toEqual({
+        status: 403,
+        body: { error: 'insufficient_scope', detail: 'this route needs tasks:backup' },
+      });
+    }
+  });
+
+  it('makes a credential with no grants only for a backup, and takes backup only as true or false', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    expect((await browser.fetchJson('/api/access/services', { name: 'no-grants' })).status).toBe(400);
+    const notBoolean = await browser.fetchJson('/api/access/services', { name: 'yes-backup', backup: 'yes' });
+    expect(notBoolean.status).toBe(400);
+    expect(await notBoolean.json()).toEqual({ error: 'invalid_request', message: 'backup is true or false' });
   });
 });

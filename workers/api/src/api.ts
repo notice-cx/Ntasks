@@ -5,6 +5,7 @@
  */
 import type { TaskEngine } from '@ntasks/domain';
 import { SCOPES, type Principal } from './auth.ts';
+import { backupRoute } from './http/backup.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
   boardRoute,
@@ -29,6 +30,7 @@ import { serveMcp } from './mcp/protocol.ts';
 import { taskServer } from './mcp/server.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { Workspace } from './service.ts';
+import type { BackupAnswer } from './store/backup.ts';
 
 export const MCP_PATH = '/api/mcp';
 /** The largest MCP message: a create_tasks call filing many long tasks fits. */
@@ -39,11 +41,19 @@ export interface ApiContext {
   readonly workspace: Workspace;
   /** The current time as UTC ISO 8601 text. */
   readonly now: () => string;
+  /** One page of a backup of the whole store: the first when the token is null (store/backup.ts). */
+  readonly backup: (token: string | null) => Promise<BackupAnswer>;
 }
 
-type Route = (context: ReadContext, url: URL, request: Request) => Response | Promise<Response>;
-/** A path's routes by method. A route that answers GET answers HEAD too. */
-type Routes = Readonly<{ GET?: Route; POST?: Route; PATCH?: Route }>;
+export interface RouteContext extends ReadContext {
+  readonly backup: ApiContext['backup'];
+}
+
+type Route = (context: RouteContext, url: URL, request: Request) => Response | Promise<Response>;
+/** A path's routes by method, and the scope they need when it is not the
+ * usual one: read for GET, write for a change. A route that answers GET
+ * answers HEAD too. */
+type Routes = Readonly<{ GET?: Route; POST?: Route; PATCH?: Route; scope?: string }>;
 
 /** The routes by path, other than a task's own. */
 const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
@@ -52,6 +62,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks/capabilities': { GET: capabilities },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
+  '/api/backup': { GET: backupRoute, scope: SCOPES.backup },
 });
 
 /** POST /api/fields/:key/retire. */
@@ -108,7 +119,7 @@ const REFUSALS: Readonly<Record<RefusalKind, readonly [number, string]>> = Objec
 /** Answers one request from a signed-in sender. */
 export async function serveApi(request: Request, principal: Principal, context: ApiContext): Promise<Response> {
   const url = new URL(request.url);
-  const { engine, workspace, now } = context;
+  const { engine, workspace, now, backup } = context;
   if (url.pathname === MCP_PATH) {
     if (url.search) return json({ error: 'invalid_request', detail: 'the MCP endpoint takes no query' }, 400);
     return serveMcp(request, taskServer({ engine, workspace, principal, now }), { maxBytes: MCP_BYTES });
@@ -118,7 +129,7 @@ export async function serveApi(request: Request, principal: Principal, context: 
   const method = request.method === 'HEAD' ? 'GET' : request.method;
   const route = method === 'GET' || method === 'POST' || method === 'PATCH' ? routes[method] : undefined;
   if (!route) return json({ error: 'method_not_allowed' }, 405, { allow: allowed(routes) });
-  const scope = method === 'GET' ? SCOPES.read : SCOPES.write;
+  const scope = routes.scope ?? (method === 'GET' ? SCOPES.read : SCOPES.write);
   if (!principal.scopes.includes(scope)) {
     return json({ error: 'insufficient_scope', detail: `this route needs ${scope}` }, 403);
   }
@@ -128,7 +139,7 @@ export async function serveApi(request: Request, principal: Principal, context: 
     return json({ error: 'forbidden', detail: 'origin refused' }, 403);
   }
   try {
-    return await route({ engine, principal, now }, url, request);
+    return await route({ engine, principal, now, backup }, url, request);
   } catch (error) {
     if (error instanceof HttpRefused) return error.response();
     if (error instanceof Refused) {

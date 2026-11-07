@@ -17,7 +17,8 @@ contributors working on the engine, the API or the import from Beads. Read
 | The engine | [`workers/api/src/engine/`](../workers/api/src/engine/) |
 | Lint rules, from Beads | [`packages/domain/src/lint.ts`](../packages/domain/src/lint.ts) |
 | The tables' rows, as an import writes and reads them | [`packages/domain/src/store-rows.ts`](../packages/domain/src/store-rows.ts) |
-| Loading an import from Beads | [`workers/api/src/store/import.ts`](../workers/api/src/store/import.ts) |
+| Loading an import from Beads or a backup | [`workers/api/src/store/import.ts`](../workers/api/src/store/import.ts) |
+| A backup's pages, and its format | [`workers/api/src/store/backup.ts`](../workers/api/src/store/backup.ts), [`packages/domain/src/backup.ts`](../packages/domain/src/backup.ts) |
 | Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
 | Tests of the engine | [`workers/api/test/engine/`](../workers/api/test/engine/) |
 
@@ -65,6 +66,12 @@ takes no new value: the batch that sets a value fails as `version_conflict`
 when its field was retired after the write checked it, and the write is
 checked again. The database does not refuse a value of a retired field
 itself, so an import can load a retired field with the values tasks had.
+
+A backup holds every row of the tables above, in their order, as stored
+([API](api.md#backing-up-the-whole-store)). It loads into an empty store in
+one transaction, with the statements an import uses, and the store checks
+its foreign keys when the transaction ends, since a backup lists tasks by id
+and a parent's id can sort after its child's.
 
 ## Rules the database enforces
 

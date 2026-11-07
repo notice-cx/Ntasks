@@ -175,14 +175,21 @@ export interface ServiceCredential {
   readonly createdAt: string;
   readonly revokedAt: string | null;
   readonly grants: readonly ProjectGrant[];
+  /** Whether it may read the whole store for a backup (GET /api/backup). */
+  readonly backup: boolean;
 }
 
-/** Makes a credential and returns it with its token, which is never shown again. */
+/**
+ * Makes a credential and returns it with its token, which is never shown
+ * again. A backup credential may have no project grants: it reads the whole
+ * store only through the backup route.
+ */
 export async function createServiceCredential(
   db: D1Database,
   input: {
     readonly name: unknown;
     readonly grants: unknown;
+    readonly backup?: unknown;
     readonly createdBy: string;
     /** The task store's projects, which every grant must name. */
     readonly projects: readonly ProjectSummary[];
@@ -192,7 +199,12 @@ export async function createServiceCredential(
   if (!NAME.test(name)) {
     throw new AccessRefused('invalid_request', 'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores');
   }
-  const grants = parseGrants(input.grants);
+  if (input.backup !== undefined && typeof input.backup !== 'boolean') {
+    throw new AccessRefused('invalid_request', 'backup is true or false');
+  }
+  const backup = input.backup === true;
+  const noGrants = input.grants === undefined || (Array.isArray(input.grants) && input.grants.length === 0);
+  const grants = backup && noGrants ? [] : parseGrants(input.grants);
   assertProjectsExist(input.projects, grants);
   const id = crypto.randomUUID();
   const secret = randomSecret(32);
@@ -201,9 +213,9 @@ export async function createServiceCredential(
     await db.batch([
       db
         .prepare(
-          'INSERT INTO access_service_credentials (id, name, secret_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO access_service_credentials (id, name, secret_hash, created_by, created_at, backup) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .bind(id, name, hex(await sha256(secret)), input.createdBy, createdAt),
+        .bind(id, name, hex(await sha256(secret)), input.createdBy, createdAt, backup ? 1 : 0),
       ...grants.map((grant) =>
         db
           .prepare('INSERT INTO access_service_grants (credential_id, project_id, access) VALUES (?, ?, ?)')
@@ -216,24 +228,25 @@ export async function createServiceCredential(
     }
     throw error;
   }
-  return { id, name, createdAt, revokedAt: null, grants, token: serviceToken(id, secret) };
+  return { id, name, createdAt, revokedAt: null, grants, backup, token: serviceToken(id, secret) };
 }
 
 export async function listServiceCredentials(db: D1Database): Promise<ServiceCredential[]> {
   const { results } = await db
     .prepare(
-      `SELECT c.id, c.name, c.created_at, c.revoked_at,
+      `SELECT c.id, c.name, c.created_at, c.revoked_at, c.backup,
          (SELECT json_group_array(json_object('projectId', g.project_id, 'access', g.access)) FROM access_service_grants g
            WHERE g.credential_id = c.id) AS grants
        FROM access_service_credentials c ORDER BY c.created_at DESC LIMIT 200`,
     )
-    .all<{ id: string; name: string; created_at: string; revoked_at: string | null; grants: string }>();
+    .all<{ id: string; name: string; created_at: string; revoked_at: string | null; backup: number; grants: string }>();
   return results.map((row) => ({
     id: row.id,
     name: row.name,
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
     grants: JSON.parse(row.grants) as ProjectGrant[],
+    backup: row.backup === 1,
   }));
 }
 
