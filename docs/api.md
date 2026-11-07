@@ -332,6 +332,12 @@ can dispute a relayed approval ([below](#a-persons-decisions)): the approval
 opens again, the tasks waiting on it are told to stop, and an answer from the
 disputed source cannot approve it again.
 
+A closed approval takes no further answer but `owner_performed`, and that
+only while the approval it follows is in force and covers the approval's
+request as it stands; any other answer recorded there would replace the
+owner's. A person's own approval in the web app is final: no dispute
+withdraws it, including after an agent relays that the owner did the action.
+
 A refused owner answer names the argument at fault first, such as
 `refused: proposal_version: The proposal changed after the owner saw it; show it again.`,
 and ends with `The answer was not recorded.`

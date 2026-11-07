@@ -206,6 +206,11 @@ function offeredOf(task: Task): Offered | null {
   return choicesOf(task.choices) as Offered | null;
 }
 
+/** What an approval asks, as it stands: its action, environment, scope and verification. */
+function requestOf(gate: Task): string {
+  return askedOf(gate.description) ?? gate.title;
+}
+
 /**
  * The fields of an answer's record that say what was asked and what the
  * answer covers, in the meaning NoticeOS's record gave them: `response`, the
@@ -216,7 +221,7 @@ function offeredOf(task: Task): Offered | null {
  */
 function askedAndAnswered(task: Task, option: TaskChoiceKey | undefined, words: string | undefined): JsonObject {
   const offered = offeredOf(task);
-  const request = task.type === 'gate' ? (askedOf(task.description) ?? task.title) : undefined;
+  const request = task.type === 'gate' ? requestOf(task) : undefined;
   const scope = request ?? offered?.options.find((entry) => entry.key === option)?.label ?? words;
   return {
     ...(words === undefined ? {} : { response: words }),
@@ -584,9 +589,17 @@ export function approvalWrite(
  */
 export function disputeWrite(task: Task, around: Surroundings, actor: string, at: string): TaskWrite | null {
   const previous = maintenanceOf(task);
-  // A record imported from NoticeOS marks a direct approval in `approvedDirectly`.
-  const direct = previous?.verification === 'person' ? previous : previous?.approvedDirectly;
-  if (task.type === 'gate' && isRecord(direct) && direct.approved !== false)
+  // The approval the gate stands on is its latest answer; the owner's report
+  // that they did the action, which may follow it, does not replace it. A
+  // person's own approval there is final. A record imported from NoticeOS
+  // marks a direct approval in `approvedDirectly`.
+  const standing = [previous, ...[...eventsOf(previous)].reverse()].find(
+    (record) => isRecord(record) && record.action === 'answer',
+  );
+  const directOf = (record: Json | undefined) =>
+    isRecord(record) ? (record.verification === 'person' ? record : record.approvedDirectly) : undefined;
+  const direct = [previous, standing].map(directOf).find(isRecord);
+  if (task.type === 'gate' && direct !== undefined && direct.approved !== false)
     refuse(
       `${task.id} was approved directly by ${stringOf(direct.by)}; a dispute withdraws only an approval an agent relayed.`,
     );
@@ -755,11 +768,26 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
     );
   const retiring = ['completed', 'obsolete', 'superseded', 'duplicate'].includes(op.action);
   const closed = task.status === 'closed';
-  const approved = previous?.permission === 'approved-scope-only' && !previous?.disputed;
-  if (closed && !same && !(gate && approved && (performed || op.action === 'answer')))
-    return ownerAnswer
-      ? refuseAnswer('task', `${task.id} is closed; reopen it with update_task status open, then record the answer.`)
-      : refuse('status is closed. Use update_task with status open before recording a different disposition.');
+  // An approval in force that still covers the gate's request as it stands now.
+  const approved =
+    gate && previous?.permission === 'approved-scope-only' && !previous.disputed && previous.scope === requestOf(task);
+  // On a closed approval only the owner's report that they did the action may
+  // follow: any other answer recorded there would replace the owner's.
+  if (closed && !same && !(approved && performed)) {
+    if (!ownerAnswer)
+      return refuse('status is closed. Use update_task with status open before recording a different disposition.');
+    if (!gate)
+      return refuseAnswer(
+        'task',
+        `${task.id} is closed; reopen it with update_task status open, then record the answer.`,
+      );
+    return refuseAnswer(
+      'task',
+      performed
+        ? `${task.id}'s request changed after it was approved, or its approval was withdrawn; the owner's report does not complete it.`
+        : `${task.id} is already answered and closed; only owner_performed may follow its approval.`,
+    );
+  }
   if (gate && ['routine', 'release', 'completed'].includes(op.action)) {
     return refuse(
       'action cannot complete an approval or make it routine from implementation evidence. Record the owner’s answer, owner_performed with their completed result, or obsolete to retire an unnecessary request.',

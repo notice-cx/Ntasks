@@ -565,6 +565,7 @@ describe('relayed approvals and their disputes', () => {
       response: 'I uploaded all 12 photos.',
       scope: SCOPE,
     });
+    expect(performed.metadata.noticeos_maintenance!.events!.map((event) => event.response)).toEqual(['Yes']);
     const other = await newProject(engine);
     const { task } = await make(other, 'Build the layout', { labels: ['human'], choices });
     const picked = await answered(other, task.id, { ...RELAY, option: 'b', quote: 'B' });
@@ -575,36 +576,62 @@ describe('relayed approvals and their disputes', () => {
     });
   });
 
-  it('keeps each earlier answer as an event before the owner’s own completion', async () => {
+  it('refuses any relayed answer on a closed approval but the owner’s report, so a person’s approval stays as given', async () => {
+    const service: Principal = Object.freeze({
+      id: 'service:credential-2/relay-agent',
+      name: 'service:installation/relay-agent',
+      scopes: [SCOPES.read, SCOPES.write],
+      projects: 'all',
+    });
+    const as = api({ principal: service, now: time.now, engine });
+    const { project, photos, gate } = await relayGate();
+    expect((await send(person, 'POST', `/api/gates/${gate.id}/resolve`, { projectId: project.id })).status).toBe(200);
+    const before = await current(project, gate.id);
+    const told = await comments(project, photos.id);
+
+    for (const fields of [relay, { ...RELAY, action: 'declined', quote: 'No' }]) {
+      const refused = await reconcile(project, gate.id, fields, as);
+      expect(refused.refused, JSON.stringify(fields)).toMatch(/^refused: task: /u);
+      expect(refused.refused!.endsWith(NOT_RECORDED)).toBe(true);
+    }
+
+    expect(await current(project, gate.id)).toEqual(before);
+    expect(await comments(project, photos.id)).toEqual(told);
+  });
+
+  it('refuses a dispute of a person’s direct approval, even after an agent relays that the owner did the action', async () => {
+    const { project, photos, gate } = await relayGate();
+    expect((await send(person, 'POST', `/api/gates/${gate.id}/resolve`, { projectId: project.id })).status).toBe(200);
+    await answered(project, gate.id, { ...RELAY, action: 'owner_performed', quote: 'I uploaded all 12 photos.' });
+    const told = (await comments(project, photos.id)).length;
+
+    const disputed = await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id });
+
+    expect(disputed).toMatchObject({ status: 409, body: { error: 'task_refused' } });
+    expect((await current(project, gate.id)).status).toBe('closed');
+    expect(await comments(project, photos.id)).toHaveLength(told);
+  });
+
+  it('refuses the owner’s report on an approval whose request changed after it was approved', async () => {
     const { project, gate } = await relayGate();
-    await answered(project, gate.id, { ...relay, source: 'claude-code:session/first' });
-    await answered(project, gate.id, {
+    await answered(project, gate.id, relay);
+    const approved = await current(project, gate.id);
+    await engine.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: approved.version, set: { description: `${SCOPE}; also delete the originals` } },
+      ENGINE_OWNER,
+    );
+    const before = await current(project, gate.id);
+
+    const refused = await refusedWith(project, gate.id, {
       ...RELAY,
-      source: 'claude-code:session/second',
-      quote: 'Yes, upload and merge',
-    });
-    const completion = 'UPLOAD DONE: all 12 files are sent, and the file read back matches.';
-
-    const done = await answered(project, gate.id, {
       action: 'owner_performed',
-      source: 'claude-code:session/third',
-      quote: completion,
+      quote: 'I uploaded the photos and deleted the originals.',
     });
 
-    expect(done).toMatchObject({
-      status: 'closed',
-      resolution: 'done',
-      answer: { option: 'approve', quote: completion },
-    });
-    expect(done.metadata.noticeos_maintenance).toMatchObject({
-      approved: true,
-      outcome: 'owner-performed',
-      permission: 'none',
-    });
-    expect(done.metadata.noticeos_maintenance!.events!.map((event) => event.response)).toEqual([
-      'Yes',
-      'Yes, upload and merge',
-    ]);
+    expect(refused).toMatch(/^refused: task: /u);
+    expect(await current(project, gate.id)).toEqual(before);
   });
 
   it('closes an open approval on the owner’s own completed action, granting no future action', async () => {
