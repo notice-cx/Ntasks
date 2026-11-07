@@ -259,12 +259,14 @@ function Groups({
   const groups = groupRows(
     board.rows.filter((task) => !hides(task.id, fetchedAt(task))),
     board.statuses,
+    board.held,
   );
   groups.waiting = [...inbox, ...groups.waiting];
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
   const contextOf = (task: BoardTask): RowContext => ({
     statuses: board.statuses,
+    held: board.held,
     epicProgress: projects.get(task.project)?.epicProgress ?? new Map(),
     actionable: projects.get(task.project)?.ok === true && writable,
     age: formatAge(ageMs(now, task.updatedAt)),

@@ -58,6 +58,8 @@ export interface BoardProject {
   tasks: BoardTask[];
   /** The decisions waiting on a person, most urgent first. */
   waiting: BoardTask[];
+  /** Tasks that would wait on a person but a pending approval holds: the approval is asked instead. */
+  held: Set<string>;
   epicNames: Map<string, string>;
   /** Each epic's children, closed and in all, when the server could read them. */
   epicProgress: Map<string, { closed: number; total: number }>;
@@ -96,6 +98,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
       fetchedAt: null,
       tasks: [],
       waiting: [],
+      held: new Set(),
       epicNames: new Map(),
       epicProgress: new Map(),
     };
@@ -108,12 +111,13 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
   );
   // An approval is the one question for the task it holds, so that task is not asked again beside it.
   const approvals = new Set(tasks.filter((task) => isGate(task) && inboxAsk(task) !== null).map((task) => task.id));
-  const waiting = tasks
-    .filter(
-      (task) =>
-        inboxAsk(task) !== null && !task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)),
-    )
-    .sort(inboxOrder);
+  const asks = tasks.filter((task) => inboxAsk(task) !== null);
+  const held = new Set(
+    asks
+      .filter((task) => task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)))
+      .map((task) => task.id),
+  );
+  const waiting = asks.filter((task) => !held.has(task.id)).sort(inboxOrder);
   return {
     ...base,
     ok: true,
@@ -122,6 +126,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     fetchedAt: read?.fetchedAt ?? null,
     tasks,
     waiting,
+    held,
     epicNames: new Map([
       ...(payload.epics ?? []).map((epic) => [epic.id, epic.title] as const),
       ...tasks.filter((task) => task.issueType === 'epic').map((task) => [task.id, task.title] as const),
@@ -187,6 +192,8 @@ export function readBoard(
     rows: allTasks.filter((task) => !isGate(task) && matches(task) && !waitingIds.has(task.id)).sort(boardOrder),
     /** Every task's status by id, for `statusMarkFor` and `groupRows`. */
     statuses,
+    /** The tasks a pending approval holds, for `statusMarkFor` and `groupRows`. */
+    held: new Set(projects.flatMap((project) => [...project.held])) as ReadonlySet<string>,
     statusCounts,
     priorityCounts,
     assigneeCounts,
@@ -208,12 +215,13 @@ export function readBoard(
 export function groupRows(
   rows: readonly BoardTask[],
   statuses: ReadonlyMap<string, string>,
+  held: ReadonlySet<string> = new Set(),
 ): Record<StatusMark, BoardTask[]> {
   const groups = Object.fromEntries(STATUS_MARKS.map((mark) => [mark, [] as BoardTask[]])) as Record<
     StatusMark,
     BoardTask[]
   >;
-  for (const task of rows) groups[statusMarkFor(task, statuses)].push(task);
+  for (const task of rows) groups[statusMarkFor(task, statuses, held)].push(task);
   return groups;
 }
 

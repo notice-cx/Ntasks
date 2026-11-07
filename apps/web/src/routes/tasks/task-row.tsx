@@ -57,6 +57,8 @@ const UNAVAILABLE = 'This sign-in cannot answer it.';
 /** What a row needs from the board around it. */
 export interface RowContext {
   statuses: ReadonlyMap<string, string>;
+  /** The tasks a pending approval holds. */
+  held: ReadonlySet<string>;
   epicProgress: ReadonlyMap<string, { closed: number; total: number }>;
   /** Its project's read answered and this sign-in may write, so its actions can run. */
   actionable: boolean;
@@ -152,7 +154,7 @@ export function TaskRow({ task, context }: { task: BoardTask; context: RowContex
     ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}),
     onOpen: () => setForm(null),
   });
-  const mark = statusMarkFor(task, context.statuses);
+  const mark = statusMarkFor(task, context.statuses, context.held);
   const done = task.status === 'closed';
   const busy = claim.isPending || close.isPending || update.isPending;
   const can = {

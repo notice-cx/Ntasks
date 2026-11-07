@@ -26,14 +26,22 @@ type StatusFacts = Pick<LiveTask, 'status' | 'issueType' | 'labels' | 'ready' | 
 
 /**
  * The mark a task shows. Closed and parked come from the stored status. Of
- * the live tasks, one a person must answer is Waiting for you; one that is
- * blocked, or open and waiting on a task that is not closed, is Blocked.
- * `statuses` holds the other tasks' current statuses by id, for links whose
- * own read did not carry one. A status this build does not know shows as Open.
+ * the live tasks, one a person must answer is Waiting for you, unless an
+ * approval holds it: then the approval is the one question, and the task,
+ * like one that is blocked or open and waiting on a task that is not closed,
+ * is Blocked. `statuses` holds the other tasks' current statuses by id, for
+ * links whose own read did not carry one; `held` the ids of the tasks a
+ * pending approval holds (`readBoard`). A status this build does not know
+ * shows as Open.
  */
-export function statusMarkFor(task: StatusFacts, statuses: ReadonlyMap<string, string> = new Map()): StatusMark {
+export function statusMarkFor(
+  task: StatusFacts & { id: string },
+  statuses: ReadonlyMap<string, string> = new Map(),
+  held: ReadonlySet<string> = new Set(),
+): StatusMark {
   if (task.status === 'closed') return 'done';
   if (task.status === PARKED) return 'parked';
+  if (held.has(task.id)) return 'blocked';
   if (waitsOnPerson(task)) return 'waiting';
   if (task.status === 'blocked' || waitsOnTask(task, statuses)) return 'blocked';
   if (task.status === IN_PROGRESS) return 'in-progress';

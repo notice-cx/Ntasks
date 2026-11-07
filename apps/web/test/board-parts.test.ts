@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveTask } from '@/api/types';
 import { peopleOf } from '@/components/AppSidebar';
-import { groupRows } from '@/lib/board-read';
-import { isShortcut, statusMarkOfStored } from '@/lib/symbols';
+import { groupRows, NO_FILTERS, readBoard } from '@/lib/board-read';
+import { isShortcut, statusMarkFor, statusMarkOfStored } from '@/lib/symbols';
 import { actorLabel, checklistCount, waitingOn, type BoardTask } from '@/lib/task-model';
 
 function task(fields: Partial<BoardTask>): BoardTask {
@@ -76,6 +76,27 @@ describe('the facts on a row', () => {
 });
 
 describe('the board groups', () => {
+  it('put a task a pending approval holds in Blocked, and count only the approval as waiting', () => {
+    const approval = task({ id: 'web-g1', issueType: 'gate', awaitType: 'human', ready: false });
+    const held = task({ id: 'web-h1', labels: ['human'], dependencies: [blocks('web-g1', 'open')] });
+    const project = { projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' };
+    const payload = {
+      project: 'web',
+      prefix: 'web',
+      repo: '',
+      readAt: '2026-11-06T00:00:00Z',
+      tasks: [approval, held],
+      epics: [],
+    };
+    const read = readBoard([project], new Map([['web', { data: payload, error: null }]]), NO_FILTERS);
+    expect(read.inbox.map((row) => row.id)).toEqual(['web-g1']);
+    expect(read.totals.waiting).toBe(1);
+    const groups = groupRows(read.rows, read.statuses, read.held);
+    expect(groups.waiting).toEqual([]);
+    expect(groups.blocked.map((row) => row.id)).toEqual(['web-h1']);
+    expect(statusMarkFor(held, read.statuses, read.held)).toBe('blocked');
+  });
+
   it('put each row in the group its status mark names, keeping their order', () => {
     const rows = [
       task({ id: 'web-1', status: 'in_progress' }),
