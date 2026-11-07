@@ -69,6 +69,7 @@ describe('the actor an agent writes as', () => {
       credentialId: 'x',
       name: 'noticeos',
       projects: new Map(),
+      backup: false,
     } as const;
     expect(actorOf(service)).toEqual({ name: 'service:noticeos' });
   });

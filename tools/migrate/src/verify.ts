@@ -1,5 +1,6 @@
 /**
- * The verifier: compares the task store with the export it was imported from.
+ * The verifier: compares the task store with the export it was imported
+ * from, or with the backup it was restored from (verifyBackup, below).
  *
  * It checks three ways, so a mistake in one is caught by another:
  *
@@ -11,8 +12,8 @@
  * 3. Against itself: each task's history, replayed in order, must rebuild
  *    the task as it stands, with one version per change.
  */
-import { isTaskId } from '@ntasks/domain';
-import type { Json, JsonObject, StoreTable } from '@ntasks/domain';
+import { BACKUP_TABLES, backupKey, isTaskId } from '@ntasks/domain';
+import type { BackupFile, BackupTable, Json, JsonObject } from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport } from './beads.ts';
 import { isJsonObject, sameJson, stableJson } from './json.ts';
 import type { ImportPlan } from './plan.ts';
@@ -45,7 +46,7 @@ const IN_SCOPE_LINKS = new Set(['blocks', 'related', 'discovered-from', 'parent-
 export type Row = Record<string, unknown>;
 
 /** Reads one table of the store whose import is verified: a local copy of it (local-store.ts), or the store itself. */
-export type StoreReader = (table: StoreTable) => Promise<readonly Row[]> | readonly Row[];
+export type StoreReader = (table: BackupTable) => Promise<readonly Row[]> | readonly Row[];
 
 interface StoreContents {
   readonly projects: readonly Row[];
@@ -310,6 +311,32 @@ function againstExport(
   return { counts, approvals, decisions, frozenCards };
 }
 
+/** Compares one table's rows, matched by key: each row expected must be held with the same values, and no other. */
+function compareRows(
+  source: string,
+  table: string,
+  expected: readonly object[],
+  actual: readonly Row[],
+  keyOf: (row: Record<string, unknown>) => string,
+  subjectOf: (row: Record<string, unknown>) => string,
+  out: Difference[],
+) {
+  const want = new Map(expected.map((row) => [keyOf(row as Record<string, unknown>), row as Record<string, unknown>]));
+  const have = new Map(actual.map((row) => [keyOf(row), row]));
+  for (const [key, row] of want) {
+    const stored = have.get(key);
+    if (stored === undefined) {
+      out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} is missing` });
+      continue;
+    }
+    const fields = Object.keys(row).filter((field) => !sameJson(row[field] ?? null, stored[field] ?? null));
+    if (fields.length > 0)
+      out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} differs in ${fields.join(', ')}` });
+  }
+  for (const [key, row] of have)
+    if (!want.has(key)) out.push({ subject: subjectOf(row), difference: `${table} row ${key} is not in ${source}` });
+}
+
 /** Check 2: every table against the import plan, row by row. */
 function againstPlan(plan: ImportPlan, held: StoreContents, out: Difference[]) {
   const compare = (
@@ -318,24 +345,7 @@ function againstPlan(plan: ImportPlan, held: StoreContents, out: Difference[]) {
     actual: readonly Row[],
     keyOf: (row: Record<string, unknown>) => string,
     subjectOf: (row: Record<string, unknown>) => string,
-  ) => {
-    const want = new Map(
-      expected.map((row) => [keyOf(row as Record<string, unknown>), row as Record<string, unknown>]),
-    );
-    const have = new Map(actual.map((row) => [keyOf(row), row]));
-    for (const [key, row] of want) {
-      const stored = have.get(key);
-      if (stored === undefined) {
-        out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} is missing` });
-        continue;
-      }
-      const fields = Object.keys(row).filter((field) => !sameJson(row[field] ?? null, stored[field] ?? null));
-      if (fields.length > 0)
-        out.push({ subject: subjectOf(row), difference: `its ${table} row ${key} differs in ${fields.join(', ')}` });
-    }
-    for (const [key, row] of have)
-      if (!want.has(key)) out.push({ subject: subjectOf(row), difference: `${table} row ${key} is not in the plan` });
-  };
+  ) => compareRows('the plan', table, expected, actual, keyOf, subjectOf, out);
   const task = (row: Record<string, unknown>) => String(row.task_id);
   compare(
     'projects',
@@ -450,4 +460,60 @@ export async function verify(data: BeadsExport, plan: ImportPlan, read: StoreRea
     decisions: fromExport.decisions,
     frozenCards: fromExport.frozenCards,
   };
+}
+
+export interface BackupReport {
+  readonly differences: readonly Difference[];
+  /** The rows the store holds, per table. */
+  readonly rows: Readonly<Record<BackupTable, number>>;
+  /** Tasks per project and status: in the backup, and in the store. */
+  readonly counts: readonly StatusCount[];
+}
+
+/**
+ * Compares a store with the backup it was restored from, row by row: every
+ * table must hold exactly the backup's rows, with the same values. A backup
+ * holds rows as the store keeps them, so nothing is mapped on the way.
+ */
+export async function verifyBackup(file: BackupFile, read: StoreReader): Promise<BackupReport> {
+  const differences: Difference[] = [];
+  const rows = {} as Record<BackupTable, number>;
+  const held = {} as Record<BackupTable, readonly Row[]>;
+  for (const table of BACKUP_TABLES) {
+    held[table] = await read(table);
+    rows[table] = held[table].length;
+    const key = backupKey(table);
+    compareRows(
+      'the backup',
+      table,
+      file.tables[table],
+      held[table],
+      (row) => key.map((column) => String(row[column])).join(' '),
+      (row) =>
+        typeof row.task_id === 'string'
+          ? row.task_id
+          : table === 'tasks'
+            ? String(row.id)
+            : table === 'projects'
+              ? `project ${String(row.key)}`
+              : `retry record of ${String(row.principal)}`,
+      differences,
+    );
+  }
+  const keyOf = new Map(file.tables.projects.map((project) => [String(project.id), String(project.key)]));
+  const tally = (tasks: readonly Row[]) => {
+    const counts = new Map<string, number>();
+    for (const task of tasks) {
+      const at = `${keyOf.get(String(task.project_id)) ?? String(task.project_id)}\u0000${String(task.status)}`;
+      counts.set(at, (counts.get(at) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const expected = tally(file.tables.tasks);
+  const actual = tally(held.tasks);
+  const counts = [...new Set([...expected.keys(), ...actual.keys()])].sort().map((at) => {
+    const [project = '', status = ''] = at.split('\u0000');
+    return { project, status, expected: expected.get(at) ?? 0, actual: actual.get(at) ?? 0 };
+  });
+  return { differences, rows, counts };
 }

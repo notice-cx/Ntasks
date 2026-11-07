@@ -12,7 +12,8 @@
  *   still in place and the person still an owner. It reaches only the
  *   projects the person granted it.
  * - **A service**: a service credential as a bearer token, unrevoked. It
- *   reaches only the projects named in its grants.
+ *   reaches only the projects named in its grants, and the whole store for a
+ *   backup when the owner made it a backup credential.
  *
  * Each check is one D1 query and never builds Better Auth, to keep a call's
  * CPU time low: revoking a token, a consent, a grant or a credential cuts the
@@ -220,13 +221,13 @@ async function verifyServiceToken(db: D1Database, token: string): Promise<Servic
   if (!parsed) return null;
   const row = await db
     .prepare(
-      `SELECT c.name, c.secret_hash,
+      `SELECT c.name, c.secret_hash, c.backup,
          (SELECT json_group_array(json_array(g.project_id, g.access)) FROM access_service_grants g
            WHERE g.credential_id = c.id) AS grants
        FROM access_service_credentials c WHERE c.id = ? AND c.revoked_at IS NULL`,
     )
     .bind(parsed.id)
-    .first<{ name: string; secret_hash: string; grants: string | null }>();
+    .first<{ name: string; secret_hash: string; backup: number; grants: string | null }>();
   const expected = row ? fromHex(row.secret_hash) : null;
   if (!row || !expected || !sameBytes(expected, await sha256(parsed.secret))) return null;
   return Object.freeze({
@@ -235,6 +236,7 @@ async function verifyServiceToken(db: D1Database, token: string): Promise<Servic
     credentialId: parsed.id,
     name: row.name,
     projects: grantsOf(row.grants, 'write'),
+    backup: row.backup === 1,
   });
 }
 

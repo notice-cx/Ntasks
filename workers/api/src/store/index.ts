@@ -4,11 +4,12 @@
  * and hands it here; the object answers it with no network trip per query,
  * and serves repeated reads from memory (cache.ts).
  */
-import type { Project, StoreRows, StoreTable, TaskEngine } from '@ntasks/domain';
+import type { BackupRows, BackupTable, Project, TaskEngine } from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
 import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
 import { createEngine } from '../engine/index.ts';
+import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
 import { loadRows, readRows, type ImportResult } from './import.ts';
 import { migrate } from './schema.ts';
@@ -20,6 +21,8 @@ export const STORE_NAME = 'tasks';
 export class TaskStore extends DurableObject<Env> {
   /** The rows the store's statements have read and written since it started. */
   readonly meter: Meter = newMeter();
+  /** Names this run of the object, which a backup's pages must all come from (backup.ts). */
+  readonly #run = crypto.randomUUID();
   #tasks: TaskEngine;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -41,9 +44,9 @@ export class TaskStore extends DurableObject<Env> {
     return cachedReads(createEngine(objectDatabase(this.ctx.storage, this.meter), { now }), now);
   }
 
-  /** Loads an import from Beads into this store, which must hold no projects
-   * or tasks (import.ts). Only the owner may run it. */
-  async importRows(rows: StoreRows): Promise<ImportResult> {
+  /** Loads an import from Beads, or a backup, into this store, which must
+   * hold no projects or tasks (import.ts). Only the owner may run it. */
+  async importRows(rows: BackupRows): Promise<ImportResult> {
     try {
       return loadRows(this.ctx.storage, rows, this.meter);
     } finally {
@@ -53,8 +56,14 @@ export class TaskStore extends DurableObject<Env> {
   }
 
   /** One table's rows, for verifying an import against the export it came from. Only the owner may read them. */
-  async tableRows(table: StoreTable): Promise<Record<string, SqlStorageValue>[]> {
+  async tableRows(table: BackupTable): Promise<Record<string, SqlStorageValue>[]> {
     return readRows(this.ctx.storage, table);
+  }
+
+  /** One page of a backup of the whole store (backup.ts): the first when
+   * `token` is null. Only the owner and a service with the backup scope may read it. */
+  async backupPage(token: string | null): Promise<BackupAnswer> {
+    return readBackupPage(this.ctx.storage, this.#run, token, () => new Date().toISOString());
   }
 
   /** Every project, for parts of the Worker outside the API that name
@@ -69,6 +78,7 @@ export class TaskStore extends DurableObject<Env> {
       engine: this.tasks,
       workspace: { id: this.env.WORKSPACE_ID, name: this.env.WORKSPACE_NAME },
       now: () => new Date().toISOString(),
+      backup: (token) => this.backupPage(token),
     });
   }
 }
