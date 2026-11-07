@@ -32,11 +32,11 @@ Screenshots from the web app's example data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board. Its heading reads 4 decisions for you, beside counts of urgent, blocked and done tasks. Below it, the four decisions: an approval with an Approve button, two choices showing their options, and a question with an Answer button. Under them, filters and the list of all tasks, one row each with its id, project, assignee, age and state.">
+  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board beside the sidebar, which lists Waiting for you, Tasks, Focus, the two projects and the people with open work. The board's first group, Waiting for you, holds four rows answered in place: an approval with an Approve button, two decisions with their options under their titles, and a question with an Answer button. Below it, the groups In progress, Open, Blocked, Parked and Done, one line per task with its priority, id, status, title, facts such as Bug, Epic progress or what it waits on, its holder and its age.">
 </picture>
 
-The board: decisions waiting on you first, answerable in place, then every
-task.
+The board: what waits for you first, answered in place, then every task by
+status.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
@@ -47,7 +47,7 @@ A task page. Text is Markdown; task ids link to their tasks.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">
-  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width: the counts sit under the heading, and the decisions fill the width of the screen.">
+  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width: the sidebar folds behind a button in the top bar, and each row waiting for you puts its answer on a line under its title.">
 </picture>
 
 The board at phone width.

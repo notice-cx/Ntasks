@@ -14,7 +14,7 @@ It writes WebP files to `docs/images/`:
 
 | File | Shows |
 |---|---|
-| `board-light.webp`, `board-dark.webp` | The Tasks board, 1280 pixels wide: the decisions, then the first rows of the task list |
+| `board-light.webp`, `board-dark.webp` | The Tasks board, 1100 pixels wide: the sidebar, Waiting for you, then every group to Done |
 | `task-light.webp`, `task-dark.webp` | The page of task `web-b2r6`, whose description uses headings, lists, a code block and a task-id link |
 | `phone-light.webp`, `phone-dark.webp` | The Tasks board, 390 pixels wide |
 | `design-light.webp`, `design-dark.webp` | The design gallery at `/design`, 1440 pixels wide and as tall as the page |

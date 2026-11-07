@@ -301,9 +301,11 @@ set.
 
 A key: 18 px tall, 11 px text in Text 3, a Border strong ring, 4 px corners.
 `size="sm"` (16 px) sits inside segmented options. On a primary button it is
-white on a translucent white fill.
+white on a translucent white fill. A key is drawn for the eye and hidden from
+screen readers, so it never joins the control's name; the control states its
+key with `aria-keyshortcuts` (`IconButton` does this from `shortcut`).
 
-### Field, Input and Textarea (`field.tsx`)
+### Field, Input, Textarea and Select (`field.tsx`)
 
 A field is 30 px tall (36 px on a touch screen), Background with a Border
 ring, 13 px text and a Text 3 placeholder. `Input` takes an `icon` at the
@@ -319,13 +321,15 @@ start and an `end`, such as the `Kbd` of the key that focuses it.
 field's label ends in an asterisk and its control has `required` and
 `aria-required`; other fields carry no mark and are never labelled optional.
 `error` is tied to the control with `aria-describedby` and sets
-`aria-invalid`.
+`aria-invalid`. `Select` is a native choice among a few fixed values, drawn
+like a field with the theme's chevron, as the board's Filter menu uses it.
 
 ### Menu (`menu.tsx`)
 
 A list of actions on a popover, 232 px wide: each item is a 15 px icon in
 Text 3, a label and its key, 30 px tall; `MenuSeparator` divides groups; an
-item with `submenu` ends in a chevron. On open, focus goes to the first item.
+item with `submenu` ends in a chevron and keeps the menu open, and so does
+an item with `keepOpen`, such as Back. On open, focus goes to the first item.
 ↑ and ↓ move, Enter runs the focused item, an item's letter runs it directly,
 and Escape closes the menu. `MenuPanel` draws the list in place, without the
 popover.
@@ -363,7 +367,9 @@ ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
 row puts its answer in `RowAnswer`: Approve, a `Segmented` choice, or
-Answer.
+Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
+its options take a line of their own under the title, so the title is never
+cut to make room for them.
 
 `GroupHeader` heads a group: its status mark, its name and its count on
 Surface, 36 px. The Waiting for you group is Waiting text on Waiting soft. A
@@ -444,7 +450,6 @@ Each action's key:
 | `A` | Assign to |
 | `P` | Priority |
 | `Z` | Park |
-| `⌘ .` | Copy the task's id |
 | `a` to `f` | Pick a decision's option, where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover or the composer |

@@ -43,8 +43,8 @@ interface Shot {
 }
 
 const SHOTS: readonly Shot[] = [
-  // Tall enough to reach past the decisions into the first rows of the task list.
-  { name: 'board', address: '/tasks', width: 1280, height: 1520, scale: 1.5, ready: '[data-task-row]' },
+  // Tall enough to show every group, Waiting for you to Done.
+  { name: 'board', address: '/tasks', width: 1100, height: 960, scale: 1.5, ready: '[data-task-row]' },
   {
     name: 'task',
     address: '/tasks/web-b2r6',
@@ -53,7 +53,7 @@ const SHOTS: readonly Shot[] = [
     scale: 1.5,
     ready: '[data-markdown] pre .hljs-keyword',
   },
-  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-page-answer]' },
+  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' },
   // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
   {
     name: 'design',
