@@ -127,6 +127,13 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       status: 'in_progress',
       priority: 1,
       assignee: CODEX,
+      for: 'a11y-check-1',
+      work: {
+        branch: 'codex/sign-in-a11y',
+        pr: 'https://github.example.com/example/web/pull/42',
+        next: 'Announce the password error to screen readers',
+      },
+      lastActivityAt: at(12 * 60_000),
       startedAt: at(3 * HOUR),
       updatedAt: at(40 * 60_000),
       metadata: { noticeos_claimed_model: MODELS[CODEX] },

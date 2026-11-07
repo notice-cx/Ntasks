@@ -14,7 +14,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
 import { fieldAvailable, useCapabilities, useProjectFields, useUpdateTask } from '@/hooks/useTasks';
-import { fieldEditable, parseFieldInput, toggledOptions } from '@/lib/custom-fields';
+import { fieldEditable, httpUrl, parseFieldInput, toggledOptions } from '@/lib/custom-fields';
 import {
   ageMs,
   calendarDay,
@@ -157,6 +157,7 @@ export function TaskFacts({
 
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
+  const helper = task.assignee ? (task.for ?? null) : null;
   const people = [...new Set([...siblings.flatMap((row) => (row.assignee ? [row.assignee] : [])), task.assignee ?? ''])]
     .filter(Boolean)
     .sort();
@@ -204,7 +205,7 @@ export function TaskFacts({
         </Fact>
         <Fact
           label="Assignee"
-          valueText={holder ?? 'Nobody'}
+          valueText={holder === null ? 'Nobody' : helper ? `${holder} for ${helper}` : holder}
           muted={holder === null}
           editor={
             can('assignee')
@@ -232,12 +233,14 @@ export function TaskFacts({
               <Avatar name={holder} agent={isAgentActor(task.assignee)} model={model} decorative />
               {/* The name keeps its room; the model gives way first. */}
               <span className="shrink-0">{holder}</span>
+              {helper ? <span className="font-normal text-ink-2">for {helper}</span> : null}
               {model ? <span className="font-normal text-ink-3">{model}</span> : null}
             </>
           ) : (
             'Nobody'
           )}
         </Fact>
+        {task.assignee && !closed ? <WorkFacts task={task} nowMs={nowMs} /> : null}
         <Fact label="Type" valueText={typeLabel(task.issueType, task.awaitType)}>
           <TypeMark type={typeMarkFor(task.issueType, task.awaitType)} size={14} label={null} />
           {typeLabel(task.issueType, task.awaitType)}
@@ -544,6 +547,50 @@ function CustomFieldFact({
         </span>
       )}
     </Fact>
+  );
+}
+
+/** The holder's work in hand: when they last wrote to the task, then each work detail they recorded. */
+function WorkFacts({ task, nowMs }: { task: LiveTask; nowMs: number }) {
+  const work = task.work ?? {};
+  const line = (label: string, value: string | undefined, link = false) => {
+    if (value === undefined) return null;
+    const url = link ? httpUrl(value) : null;
+    return (
+      <Fact label={label} valueText={value} wrap={label === 'Next step'}>
+        {url ? <ExternalFactLink href={url} /> : <span className="[overflow-wrap:anywhere]">{value}</span>}
+      </Fact>
+    );
+  };
+  const active = task.lastActivityAt ? `${formatAge(ageMs(nowMs, task.lastActivityAt))} ago` : null;
+  return (
+    <>
+      {active ? (
+        <Fact label="Last activity" valueText={active}>
+          <span className="nums">{active}</span>
+        </Fact>
+      ) : null}
+      {line('Next step', work.next)}
+      {line('Branch', work.branch)}
+      {line('Pull request', work.pr, true)}
+      {line('Commit', work.commit)}
+      {line('Worktree', work.worktree)}
+      {line('Session', work.session, true)}
+    </>
+  );
+}
+
+/** A fact's value that is a page outside Ntasks, opening in a new tab, shown without its scheme. */
+function ExternalFactLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="relative z-10 min-w-0 truncate text-ink no-underline underline-offset-3 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {href.replace(/^https?:\/\//, '')}
+    </a>
   );
 }
 
