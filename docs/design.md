@@ -80,9 +80,7 @@ An error, such as a field the server refused or a request that failed, is
 not red: its words are in Text after a `circle-alert` icon, and a refused
 field is ringed in Text.
 
-`index.css` also maps the names the screens built before this system read
-(`--primary`, `--muted-foreground`, `--warn` and others) onto these tokens, in
-a block of its own. New code uses only the names in the tables above.
+These are the only colour names `index.css` defines.
 
 ## Type
 
