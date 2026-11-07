@@ -377,8 +377,13 @@ are no longer reached after the update, and nothing moves them. To keep them:
    ```
 
    The task store's own migrations are unchanged by this update, so the
-   backup loads. When it prints `0 differences.`, revoke the load credential
-   and let writers start again.
+   backup loads. When it prints `0 differences.`, revoke the load credential.
+5. Invite everyone else who used the deployment
+   ([Members and invitations](../../docs/sign-in.md#members-and-invitations)).
+   The workspace's creator is its only member; a deployment admin still signs
+   in without an invitation, but reaches a workspace only as its member. Each
+   person's agents ask for access again, and services get new credentials, as
+   step 3 says. Then let writers start again.
 
 ## Tests
 
