@@ -7,6 +7,7 @@ import { retryRead, type TasksApi } from '@/api/client';
 import { TasksApiProvider } from '@/api/context';
 import { AppSidebar } from '@/components/AppSidebar';
 import { PageSkeleton } from '@/components/surface';
+import { WorkspaceGate } from '@/components/WorkspaceGate';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AppShell, TopBar } from '@/components/ui/shell';
@@ -19,6 +20,8 @@ import { COMPOSE_STATE, SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 const TasksBoard = lazy(() => import('@/routes/TasksBoard'));
 const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
 const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
+const ProjectsRoute = lazy(() => import('@/routes/ProjectsRoute'));
+const MembersRoute = lazy(() => import('@/routes/MembersRoute'));
 const DesignRoute = lazy(() => import('@/routes/DesignRoute'));
 
 export { SOURCE_URL };
@@ -44,12 +47,16 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
                 </Suspense>
               }
             />
-            <Route element={<Shell />}>
-              <Route index element={<Navigate to="/tasks" replace />} />
-              <Route path="tasks" element={<TasksBoard />} />
-              <Route path="tasks/focus" element={<FocusRoute />} />
-              <Route path="tasks/:id" element={<TaskRoute />} />
-              <Route path="*" element={<NoPage />} />
+            <Route element={<WorkspaceGate />}>
+              <Route element={<Shell />}>
+                <Route index element={<Navigate to="/tasks" replace />} />
+                <Route path="tasks" element={<TasksBoard />} />
+                <Route path="tasks/focus" element={<FocusRoute />} />
+                <Route path="tasks/:id" element={<TaskRoute />} />
+                <Route path="projects" element={<ProjectsRoute />} />
+                <Route path="members" element={<MembersRoute />} />
+                <Route path="*" element={<NoPage />} />
+              </Route>
             </Route>
           </Routes>
           <Toaster

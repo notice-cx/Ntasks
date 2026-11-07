@@ -1,11 +1,14 @@
 /**
- * What a link or a key asks of the Tasks board through the location's state,
- * without changing its address: open the composer, or put the cursor in the
- * search field.
+ * What a link or a key asks of a page through the location's state, without
+ * changing its address: open the board's composer, put the cursor in its
+ * search field, or open the Projects page's New project form.
  */
 
 /** Location state that opens the composer. */
 export const COMPOSE_STATE = 'newTask';
+
+/** Location state that opens the New project form. */
+export const NEW_PROJECT_STATE = 'newProject';
 
 /** Location state that focuses the board's search field; its value changes on each request. */
 export const SEARCH_STATE = 'search';
@@ -16,6 +19,10 @@ function field(state: unknown, name: string): unknown {
 
 export function composeRequested(state: unknown): boolean {
   return field(state, COMPOSE_STATE) === true;
+}
+
+export function newProjectRequested(state: unknown): boolean {
+  return field(state, NEW_PROJECT_STATE) === true;
 }
 
 /** The request's stamp, so a second press of `/` focuses the field again; null when none was made. */

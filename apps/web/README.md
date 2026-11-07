@@ -15,15 +15,28 @@ people use over a network. Keep that link in every version of the app.
 | `/tasks` | The board: what waits for you first, answered on its row, then every task grouped by status (In progress, Open, Blocked, Parked, Done). The view (`?view=active`, `done` or `waiting`), the search and the filters are part of the address. `?new=1` opens the composer. |
 | `/tasks/:id` | One task: its title, description, a decision's options, Done when, design, notes, links, epic tasks and activity, with a side panel of its facts. A fact this sign-in may change opens a menu of values; the others are plain words. |
 | `/tasks/focus` | Your decisions one at a time, each on a card: an option's letter selects it, Enter answers or approves, → skips. |
+| `/projects` | The workspace's projects, each with its prefix and open tasks. An owner creates one with New project (`N`): Name and Prefix, both required. |
+| `/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else sees neither. |
 | `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
 
+Every page but the gallery opens in a workspace (`src/components/WorkspaceGate.tsx`):
+the one chosen last in this browser, kept in local storage, else the first
+`GET /api/workspaces` lists. A sign-in that reaches none sees one step
+instead: a deployment admin (`deploymentAdmin` in `GET /api/access/me`)
+creates a workspace and goes on to its Projects page; anyone else sees No
+workspace. Opening another workspace sends an answer still in its Undo window
+in the workspace it was given in, drops every read of the last workspace, and
+draws the pages again.
+
 Every page sits in one frame (`src/App.tsx`): the sidebar
-(`src/components/AppSidebar.tsx`) with Waiting for you, Tasks, Focus, each
-project and each person or agent with open work, and the source-code link.
-The frame reads every project's board once, for the sidebar's counts and the
-page alike, and runs the one change feed (`BoardsProvider` in
-`src/hooks/useBoard.tsx`). On any page, `C` opens the composer, `/` puts the
-cursor in the board's search and `F` opens Focus.
+(`src/components/AppSidebar.tsx`) with the workspace's name, Waiting for you,
+Tasks, Focus, each project and each person or agent with open work, then
+Projects, Members (for an owner) and the source-code link. With two or more
+workspaces, the name is a menu that switches between them. The frame reads
+every project's board once, for the sidebar's counts and the page alike, and
+runs the one change feed (`BoardsProvider` in `src/hooks/useBoard.tsx`). On
+any page, `C` opens the composer, `/` puts the cursor in the board's search
+and `F` opens Focus.
 
 Every page draws with the design system's tokens and the components in
 `src/components/ui/`; [the design system](../../docs/design.md) gives the
@@ -70,6 +83,13 @@ Approve to `POST /api/gates/:id/resolve`, an option to `/choose`, Answer to
 else gets `403` with `insufficient_scope`, and the app shows the server's own
 sentence.
 
+Every call in a workspace names it in the `x-ntasks-workspace` header, and
+takes the workspace selected when the call starts, so a write still running
+after a switch lands where it began. The calls about the sign-in itself,
+`GET /api/workspaces`, `POST /api/workspaces` and `GET /api/access/me`, name
+none. A refused form shows the server's words under the field it is about:
+the refusal's `field`, else the field its sentence starts with.
+
 A visitor who is not signed in sees a Sign in step, which opens the Worker's
 own sign-in page; a refused read is shown at once, never retried.
 While a page is visible it asks the API's change feed every 30 seconds what
@@ -80,8 +100,10 @@ finds nothing costs almost no database reads.
 board, so the two cannot drift apart unnoticed.
 
 `src/api/fixture.ts` answers the same calls from invented tasks held in the
-page. The development server and the tests use it, so the pages can be built
-and checked without a running API. A production build never includes it.
+page, in two workspaces: Example, which the sign-in owns, and Example Labs,
+where it is a member. The development server and the tests use it, so the
+pages can be built and checked without a running API. A production build
+never includes it.
 
 ## Commands
 

@@ -1,12 +1,22 @@
-import { List, Pencil, Search, Target } from 'lucide-react';
+import { Folder, List, Pencil, Search, Target, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ui/avatar';
 import { Count } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/button';
-import { NavItem, NavSection, ProjectBadge, Sidebar, SidebarHeader, SidebarSpacer } from '@/components/ui/shell';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
+import {
+  NavItem,
+  NavSection,
+  ProjectBadge,
+  Sidebar,
+  SidebarHeader,
+  SidebarSpacer,
+  WorkspaceButton,
+} from '@/components/ui/shell';
 import { GitHubMark, StatusMark } from '@/components/ui/symbols';
 import { useBoard } from '@/hooks/useBoard';
 import { useAnswerHides, useCapabilities, writesAvailable } from '@/hooks/useTasks';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { NO_FILTERS } from '@/lib/board-read';
 import { COMPOSE_STATE, SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 import { isAgentActor } from '@/lib/symbols';
@@ -38,12 +48,47 @@ export function peopleOf(tasks: readonly BoardTask[]): Person[] {
   return [...people.values()].sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
 }
 
+/** Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board. */
+const WORKSPACE_PAGES = new Set(['/projects', '/members']);
+
+/** The open workspace's name, which opens the menu of the others. */
+function WorkspaceSwitcher() {
+  const { workspace, workspaces, switchTo } = useWorkspace();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <WorkspaceButton data-workspace-switcher="">{workspace.name}</WorkspaceButton>
+      </MenuTrigger>
+      <MenuContent label="Workspaces">
+        {workspaces.map((option) => (
+          <MenuItem
+            key={option.workspaceId}
+            checked={option.workspaceId === workspace.workspaceId}
+            onSelect={() => {
+              if (option.workspaceId === workspace.workspaceId) return;
+              switchTo(option.workspaceId);
+              if (!WORKSPACE_PAGES.has(pathname)) void navigate('/tasks');
+            }}
+          >
+            {option.name}
+          </MenuItem>
+        ))}
+      </MenuContent>
+    </Menu>
+  );
+}
+
 /**
- * The app's navigation: Waiting for you, Tasks and Focus, then each project
- * and each person or agent with open work, each a view of the board, and the
- * link to the source code at its foot.
+ * The app's navigation: the workspace, Waiting for you, Tasks and Focus, then
+ * each project and each person or agent with open work, each a view of the
+ * board, and at its foot the workspace's projects and members and the link
+ * to the source code.
  */
 export function AppSidebar() {
+  const { workspace, workspaces } = useWorkspace();
+  const owner = workspace.role === 'owner';
   const board = useBoard(NO_FILTERS);
   const hides = useAnswerHides();
   const writable = writesAvailable(useCapabilities());
@@ -61,7 +106,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar aria-label="Ntasks">
-      <SidebarHeader name="Ntasks">
+      <SidebarHeader name={workspaces.length > 1 ? <WorkspaceSwitcher /> : workspace.name}>
         <IconButton
           size="sm"
           label="Search"
@@ -131,6 +176,14 @@ export function AppSidebar() {
         </NavSection>
       ) : null}
       <SidebarSpacer />
+      <NavItem asChild icon={<Folder aria-hidden />} active={pathname === '/projects'}>
+        <Link to="/projects">Projects</Link>
+      </NavItem>
+      {owner ? (
+        <NavItem asChild icon={<Users aria-hidden />} active={pathname === '/members'}>
+          <Link to="/members">Members</Link>
+        </NavItem>
+      ) : null}
       <NavItem href={SOURCE_URL} icon={<GitHubMark size={16} />} data-source-link="">
         Source code
       </NavItem>

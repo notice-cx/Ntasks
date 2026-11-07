@@ -1,5 +1,5 @@
 import { Slot, Slottable } from '@radix-ui/react-slot';
-import { PanelLeft } from 'lucide-react';
+import { ChevronsUpDown, PanelLeft } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -137,14 +137,41 @@ function SidebarOpener() {
   );
 }
 
-/** The sidebar's first line: the logo, the workspace's name, and its search and new-task buttons. */
-export function SidebarHeader({ name, children }: { name: string; children?: ReactNode }) {
+/**
+ * The sidebar's first line: the logo, the workspace's name, and its search
+ * and new-task buttons. For a person in several workspaces the name is a
+ * `WorkspaceButton` that opens the menu of the others.
+ */
+export function SidebarHeader({ name, children }: { name: ReactNode; children?: ReactNode }) {
   return (
     <div className="mb-2 flex h-9 items-center gap-2 ps-2 pe-1.5">
       <NtasksLogo size={20} />
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{name}</span>
+      {typeof name === 'string' ? (
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{name}</span>
+      ) : (
+        name
+      )}
       {children}
     </div>
+  );
+}
+
+/** The workspace's name as a button, ending in a chevron pair that marks a choice. It takes the header's free width. */
+export function WorkspaceButton({ className, children, ...props }: ComponentProps<'button'>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        '-ms-1 flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-start text-sm font-semibold text-ink',
+        'transition-colors duration-120 hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent',
+        'aria-expanded:bg-hover',
+        className,
+      )}
+      {...props}
+    >
+      <span className="min-w-0 truncate">{children}</span>
+      <ChevronsUpDown aria-hidden size={14} strokeWidth={1.75} className="shrink-0 text-ink-3" />
+    </button>
   );
 }
 

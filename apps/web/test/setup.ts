@@ -35,6 +35,8 @@ afterEach(() => {
   cleanup();
   // The toaster's list outlives a render; each test starts with none.
   toast.dismiss();
+  // So does the workspace chosen last; each test opens the first.
+  window.localStorage.clear();
 });
 
 // A dismissed toast removes itself on a timer about 200 ms later. Each file

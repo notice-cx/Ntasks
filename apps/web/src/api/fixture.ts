@@ -3,12 +3,23 @@
  * server (`vite --mode fixture`) and its tests run against it. Every change
  * lives until the page reloads. It keeps the rules the pages rely on: one
  * claim wins, a closed task leaves ready work, a decision closes on its
- * answer, and a task waits while anything it depends on is open.
+ * answer, and a task waits while anything it depends on is open. Each
+ * workspace holds its own projects, members and invitations, and only an
+ * owner manages them.
  */
 import { isExternalLinkKind, isTaskId, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
 import { fieldMatches, httpUrl, isCalendarDate } from '@/lib/custom-fields';
 import { ApiError, type TasksApi } from './client';
-import { FIXTURE_ACTOR, FIXTURE_ACTORS, fixtureSeed, type FixtureSeed, type FixtureTask } from './fixture-data';
+import {
+  emptySeed,
+  FIXTURE_ACTOR,
+  FIXTURE_ACTORS,
+  FIXTURE_USER,
+  fixtureWorkspaces,
+  type FixtureSeed,
+  type FixtureTask,
+  type FixtureWorkspace,
+} from './fixture-data';
 import type {
   FieldFilters,
   LiveEpic,
@@ -19,7 +30,14 @@ import type {
   TaskField,
   TaskFieldValue,
   TaskProject,
+  Workspace,
 } from './types';
+
+/** A project's prefix starts its task ids: lowercase letters and digits, as `@ntasks/domain`'s task ids take them. */
+const PREFIX = /^[a-z0-9]{1,16}$/u;
+/** GitHub's rule for a username: letters, digits and single hyphens between them, at most 39. */
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/u;
+const NAME_LIMIT = 80;
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
@@ -32,16 +50,30 @@ function copy<T>(value: T): T {
 export interface FixtureOptions {
   /** The seed's clock and every change's time. */
   now?: () => number;
+  /** The first workspace's projects and tasks. */
   seed?: FixtureSeed;
+  /** Every workspace the sign-in reaches, `fixtureWorkspaces` unless given. The first is selected at the start. */
+  workspaces?: FixtureWorkspace[];
+  /** The sign-in is one of the deployment's admins, who may create workspaces. */
+  deploymentAdmin?: boolean;
   /** Fails every call, as a server that cannot be reached would. */
   unreachable?: boolean;
 }
 
-export function createFixtureTasksApi({ now = Date.now, seed, unreachable = false }: FixtureOptions = {}): TasksApi & {
-  /** The data as it stands, for tests to read back what a press wrote. */
+export function createFixtureTasksApi({
+  now = Date.now,
+  seed,
+  workspaces: given,
+  deploymentAdmin = false,
+  unreachable = false,
+}: FixtureOptions = {}): TasksApi & {
+  /** The selected workspace's data as it stands, for tests to read back what a press wrote. */
   readonly state: FixtureSeed;
 } {
-  const state = seed ?? fixtureSeed(now());
+  const spaces = given ?? fixtureWorkspaces(now(), seed);
+  let selected: string | null = spaces[0]?.workspaceId ?? null;
+  let space: FixtureWorkspace | null = spaces[0] ?? null;
+  let state = space?.seed ?? emptySeed();
   let made = 0;
   /** Each retry key's write and its answer: the same write again gets the
    * answer without being applied twice, and a different write is refused. */
@@ -72,8 +104,27 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
     return answer;
   }
 
-  function reach(): void {
+  function reachServer(): void {
     if (unreachable) throw new ApiError('The task list: the server answered 503.', 503, null);
+  }
+
+  /** The selected workspace, or the server's refusal when none is selected or it is not one the sign-in reaches. */
+  function reach(): FixtureWorkspace {
+    reachServer();
+    if (space !== null) return space;
+    if (selected === null) throw new ApiError('Name the workspace in x-ntasks-workspace.', 400, 'workspace_required');
+    throw new ApiError('No such workspace.', 404, 'not_found');
+  }
+
+  /** The selected workspace, when the sign-in owns it. */
+  function owned(): FixtureWorkspace {
+    const workspace = reach();
+    if (workspace.role !== 'owner') throw new ApiError('Only an owner of the workspace may do that.', 403, 'forbidden');
+    return workspace;
+  }
+
+  function listed({ workspaceId, name, role }: Workspace): Workspace {
+    return { workspaceId, name, role };
   }
 
   function project(key: string): TaskProject {
@@ -267,7 +318,44 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
   }
 
   return {
-    state,
+    get state() {
+      return state;
+    },
+    selectWorkspace(workspaceId) {
+      // A sender who reaches exactly one workspace may leave it unnamed.
+      const named = workspaceId ?? (spaces.length === 1 ? (spaces[0]?.workspaceId ?? null) : null);
+      selected = named;
+      space = spaces.find((workspace) => workspace.workspaceId === named) ?? null;
+      state = space?.seed ?? emptySeed();
+    },
+    async workspaces() {
+      reachServer();
+      return copy(spaces.map(listed));
+    },
+    async account() {
+      reachServer();
+      return { name: FIXTURE_ACTOR, deploymentAdmin };
+    },
+    async createWorkspace(name, options) {
+      reachServer();
+      return once(options?.idempotencyKey, ['workspace', name], () => {
+        if (!deploymentAdmin)
+          throw new ApiError("Only the deployment's admins may create a workspace.", 403, 'forbidden');
+        const trimmed = name.trim();
+        if (trimmed === '' || trimmed.length > NAME_LIMIT)
+          throw new ApiError(`Name must be 1 to ${NAME_LIMIT} characters.`, 400, 'invalid_request', 'name');
+        const created: FixtureWorkspace = {
+          workspaceId: crypto.randomUUID(),
+          name: trimmed,
+          role: 'owner',
+          seed: emptySeed(),
+          members: [FIXTURE_USER],
+          invitations: [],
+        };
+        spaces.push(created);
+        return listed(created);
+      });
+    },
     async capabilities() {
       reach();
       return { live: true, writable: true, projectSelection: true, reason: null };
@@ -472,6 +560,57 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         if (task.issueType !== 'gate') throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
         close(task, reason ? `Approved: ${reason}` : 'Approved');
       });
+    },
+    async createProject({ name, prefix }, options) {
+      const workspace = owned();
+      once(options?.idempotencyKey, ['project', workspace.workspaceId, name, prefix], () => {
+        const displayName = name.trim();
+        if (displayName === '' || displayName.length > NAME_LIMIT)
+          throw new ApiError(`Name must be 1 to ${NAME_LIMIT} characters.`, 400, 'invalid_request', 'name');
+        if (!PREFIX.test(prefix))
+          throw new ApiError('Prefix must be 1 to 16 lowercase letters or digits.', 400, 'invalid_request', 'prefix');
+        const taken = state.projects.find((row) => row.prefix === prefix);
+        if (taken)
+          throw new ApiError(`Prefix ${prefix} is taken by ${taken.displayName}.`, 409, 'project_exists', 'prefix');
+        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix });
+        state.fields.set(prefix, []);
+      });
+    },
+    async members() {
+      const { members, invitations } = owned();
+      return copy({ members, invitations });
+    },
+    async invite({ githubLogin, role }, options) {
+      const workspace = owned();
+      once(options?.idempotencyKey, ['invite', workspace.workspaceId, githubLogin, role], () => {
+        if (!GITHUB_LOGIN.test(githubLogin))
+          throw new ApiError('No GitHub username has that form.', 400, 'invalid_request', 'githubLogin');
+        const login = githubLogin.toLowerCase();
+        if (workspace.members.some((member) => member.githubLogin?.toLowerCase() === login))
+          throw new ApiError(`${githubLogin} is already a member.`, 409, 'already_member', 'githubLogin');
+        if (workspace.invitations.some((invitation) => invitation.githubLogin.toLowerCase() === login))
+          throw new ApiError(`${githubLogin} is already invited.`, 409, 'already_invited', 'githubLogin');
+        workspace.invitations.push({
+          invitationId: crypto.randomUUID(),
+          githubLogin,
+          role,
+          createdAt: new Date(now()).toISOString(),
+        });
+      });
+    },
+    async revokeInvitation(invitationId) {
+      const workspace = owned();
+      const at = workspace.invitations.findIndex((invitation) => invitation.invitationId === invitationId);
+      if (at < 0) throw new ApiError('The invitation: not found.', 404, 'not_found');
+      workspace.invitations.splice(at, 1);
+    },
+    async removeMember(userId) {
+      const workspace = owned();
+      const member = workspace.members.find((row) => row.userId === userId);
+      if (!member) throw new ApiError('The member: not found.', 404, 'not_found');
+      if (member.role === 'owner' && workspace.members.filter((row) => row.role === 'owner').length === 1)
+        throw new ApiError('A workspace keeps at least one owner.', 409, 'last_owner');
+      workspace.members.splice(workspace.members.indexOf(member), 1);
     },
   };
 }

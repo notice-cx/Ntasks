@@ -191,7 +191,8 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`,
 `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
-`star`, `inbox`, `circle-alert` and `bot`.
+`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`
+and `building-2`.
 
 ## Symbols
 
@@ -429,8 +430,11 @@ The sidebar holds `SidebarHeader` (the logo, the workspace's name, and its
 search and new-task buttons), `NavItem`s (a 16 px icon, a name and a count;
 the current one on Hover), `NavSection`s with their headings (Projects,
 People), `ProjectBadge` (a project prefix's first letter in a ringed square)
-and `SidebarSpacer`, which pushes Settings to the foot. `NavItem asChild`
-makes a router link the item.
+and `SidebarSpacer`, which pushes Projects, Members and Source code to the
+foot. `NavItem asChild` makes a router link the item. For a person in two or
+more workspaces, the name is a `WorkspaceButton`: the name and a 14 px
+`chevrons-up-down` in Text 3, Hover under the pointer and while its menu is
+open. Its menu lists the workspaces, the open one ticked.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions.
@@ -509,6 +513,29 @@ field is part of the address (`field.<key>=<value>`, as the API takes it),
 shows as a badge that clears it, and is dropped when another project is
 picked.
 
+### Projects, Members and the first workspace
+
+Projects and Members are lists of `Row`s under a `TopBar` whose primary
+button is the owner's one action, with its key: New project (`N`) and Invite
+(`I`). A member sees neither button, and Members is not in the sidebar. The
+button opens a Surface panel under the top bar, as Add link does on a task's
+page: Name\* and Prefix\* for a project; GitHub username\* and Role (Member
+or Owner) for an invitation. A refusal shows under the field it is about, as
+`Field` draws an error, or under the fields when it names none.
+
+A project's row is its `ProjectBadge`, its name as a link to its board, its
+prefix in Text 3 and its open tasks at the end. Members has a `GroupHeader`
+for Members and, while any are pending, one for Invitations: a member's row is
+an `Avatar`, the name, the GitHub username, a role `Badge` and Remove, which
+asks again in the row before it removes; an invitation's row is the username,
+its role, its age and Revoke.
+
+A sign-in in no workspace sees a page of its own on Canvas, outside the
+frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New
+workspace, Name\* and Create workspace, then Source code under the card. A
+sign-in that may not create one sees `EmptyState`'s No workspace there
+instead.
+
 ## Density and layout
 
 | Element | Size |
@@ -550,9 +577,11 @@ Each action's key:
 | `A` | Assign to |
 | `P` | Priority |
 | `Z` | Park |
+| `N` | New project, on the Projects page |
+| `I` | Invite, on the Members page |
 | `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
-| `Esc` | Close a menu, a popover or the composer |
+| `Esc` | Close a menu, a popover, the composer or an open form |
 
 ## Copy
 
