@@ -211,6 +211,7 @@ function TaskPage({
     issueType: task.issueType,
     awaitType: task.awaitType,
     status: task.status,
+    resolution: task.status === 'closed' ? (task.resolution ?? 'done') : null,
     priority: task.priority,
     holder:
       task.status !== 'closed' && task.assignee

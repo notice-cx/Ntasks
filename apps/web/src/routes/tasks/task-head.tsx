@@ -19,6 +19,8 @@ export interface TaskHeadFacts {
   issueType: string;
   awaitType: string | null;
   status: string;
+  /** How a closed task's close ended; null while it is not closed. */
+  resolution: TaskResolution | null;
   priority: number;
   /** Who holds it, the model they named when they claimed it, and when. */
   holder: { name: string; model: string | null; since: string | null } | null;
@@ -61,6 +63,9 @@ export function TaskHead({
 }) {
   const holderAge = facts?.holder ? ageMs(nowMs, facts.holder.since) : null;
   const status = facts ? statusMarkOfStored(facts.status) : null;
+  // A close where nothing shipped wears the grey tick and says how it ended, as a row does.
+  const notShipped =
+    status === 'done' && facts?.resolution != null && facts.resolution !== 'done' ? facts.resolution : null;
   return (
     <div
       data-task-band={facts?.issueType ?? ''}
@@ -111,8 +116,10 @@ export function TaskHead({
           {facts ? (
             <div className="flex flex-wrap items-center gap-2" data-task-chips="">
               {status ? (
-                <Badge icon={<StatusMark status={status} size={12} label={null} />}>
-                  <span data-task-status={status}>{STATUS_MARK_LABELS[status]}</span>
+                <Badge icon={<StatusMark status={status} muted={notShipped !== null} size={12} label={null} />}>
+                  <span data-task-status={status}>
+                    {notShipped ? RESOLUTION_LABELS[notShipped] : STATUS_MARK_LABELS[status]}
+                  </span>
                 </Badge>
               ) : null}
               <Badge icon={<PriorityMark priority={facts.priority} size={12} label={null} />}>

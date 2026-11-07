@@ -105,6 +105,11 @@ describe('a task page', () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    // Nothing shipped, so the header's state is the grey tick and the way it ended, never Done.
+    const chips = document.querySelector('[data-task-chips]') as HTMLElement;
+    expect(within(chips).getByText('No longer needed')).toBeTruthy();
+    expect(within(chips).queryByText('Done')).toBeNull();
+    expect(chips.querySelector('[data-status-mark="done"] circle')?.getAttribute('class')).toContain('fill-ink-3');
   });
 
   it('says when no task has the id', async () => {
