@@ -84,7 +84,12 @@ function Shell() {
   const board = `/tasks${pathname === '/tasks' ? search : ''}`;
   useShortcut('c', () => void navigate(board, { state: { [COMPOSE_STATE]: true } }), writable);
   useShortcut('/', () => void navigate(board, { state: { [SEARCH_STATE]: Date.now() } }));
-  useShortcut('f', () => void navigate('/tasks/focus', { state: { returnTo: `${pathname}${search}` } }));
+  // On Focus itself, F would start it again and drop the decision and project its address names.
+  useShortcut(
+    'f',
+    () => void navigate('/tasks/focus', { state: { returnTo: `${pathname}${search}` } }),
+    pathname !== '/tasks/focus',
+  );
   return (
     <BoardsProvider>
       <AppShell sidebar={<AppSidebar />}>

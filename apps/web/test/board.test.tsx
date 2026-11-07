@@ -299,6 +299,14 @@ describe('the keys', () => {
     press('f');
     expect(await screen.findByText(/Focus · 1 of 4 for you/)).toBeTruthy();
   });
+
+  it('leaves F alone on Focus, which keeps its own address', async () => {
+    renderApp('/tasks/focus?project=docs');
+    expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
+    press('f');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText('Focus · 1 of 1 for you')).toBeTruthy();
+  });
 });
 
 describe('a row waiting for you', () => {
