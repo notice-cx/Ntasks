@@ -1,7 +1,7 @@
 /**
- * Better Auth, the sign-in library, configured for Ntasks on D1: the owner
- * signs in with GitHub, and AI agents get OAuth 2.1 tokens for the MCP
- * endpoint through its OAuth provider plugin.
+ * Better Auth, the sign-in library, configured for Ntasks on D1: people sign
+ * in with GitHub, and AI agents get OAuth 2.1 tokens for the MCP endpoint
+ * through its OAuth provider plugin.
  *
  * Building it costs CPU time, so only the sign-in routes build one, once per
  * request. The token verifier that every other request runs (verify.ts)
@@ -10,6 +10,8 @@
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
 import type { SignInConfig } from './config.ts';
+import { acceptInvitations, githubAccountOf, mayJoin, type GitHubAccount } from './members.ts';
+import { NOT_INVITED } from './pages.ts';
 import {
   AGENT_ACCESS_PAGE,
   AGENT_ACCESS_TOKEN_SECONDS,
@@ -26,10 +28,12 @@ import { CORE_TABLES, OAUTH_TABLES } from './tables.ts';
 /** Session cookies are named `<prefix>.session_token`, with `__Secure-` in front over https. */
 export const COOKIE_PREFIX = 'ntasks';
 
-/** Whether a GitHub profile belongs to an allowlisted owner. */
-export function isOwnerProfile(config: SignInConfig, profile: Record<string, unknown> | undefined): boolean {
-  const id = profile?.id;
-  return (typeof id === 'number' || typeof id === 'string') && config.owners.has(String(id));
+/**
+ * Whether a GitHub account may sign in: it is a deployment admin, a member of
+ * a workspace, or its login holds an open invitation.
+ */
+async function mayTakePart(db: D1Database, config: SignInConfig, account: GitHubAccount): Promise<boolean> {
+  return config.owners.has(account.id) || (await mayJoin(db, account));
 }
 
 interface AuthOptions {
@@ -44,6 +48,11 @@ interface AuthOptions {
 export function createAuth(db: D1Database, config: SignInConfig, options: AuthOptions = {}) {
   const resource = mcpResource(config.origin);
   const scopes = [...Object.keys(AGENT_SCOPES), OFFLINE_ACCESS];
+  // The GitHub account this request's sign-in admitted, from the profile
+  // GitHub just returned. Its invitations are accepted once its session is
+  // made, when its user exists. An instance serves one request, so this holds
+  // only that request's account.
+  let admitted: GitHubAccount | null = null;
   return betterAuth({
     appName: 'Ntasks',
     baseURL: config.origin,
@@ -68,18 +77,34 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
       ...CORE_TABLES.user,
       // Runs before a person is created, before a GitHub account is linked,
       // and on every GitHub sign-in, with the profile GitHub just returned.
-      validateUserInfo: ({ source }) => {
-        if (
-          source.method === 'oauth' &&
-          source.oauth?.providerId === 'github' &&
-          isOwnerProfile(config, source.oauth.profile)
-        ) {
+      validateUserInfo: async ({ source }) => {
+        const account =
+          source.method === 'oauth' && source.oauth?.providerId === 'github'
+            ? githubAccountOf(source.oauth.profile)
+            : null;
+        if (account && (await mayTakePart(db, config, account))) {
+          admitted = account;
           return;
         }
-        return { error: 'not_an_owner', errorDescription: 'This GitHub account may not sign in to this Ntasks.' };
+        return {
+          error: NOT_INVITED,
+          errorDescription: 'This GitHub account is not a member of a workspace here and holds no invitation.',
+        };
       },
     },
     session: { ...CORE_TABLES.session, cookieCache: { enabled: false } },
+    databaseHooks: {
+      session: {
+        create: {
+          // A login matches an invitation only here, while GitHub's profile is
+          // fresh. The membership is bound to the user, so renaming the login
+          // later, or someone else taking it, changes nothing.
+          before: async (session) => {
+            if (admitted) await acceptInvitations(db, session.userId, admitted.login);
+          },
+        },
+      },
+    },
     // The GitHub token from sign-in is never used again; it is kept encrypted
     // under the auth secret so a copy of the database does not reveal it.
     account: { ...CORE_TABLES.account, accountLinking: { enabled: false }, encryptOAuthTokens: true },

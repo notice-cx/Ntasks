@@ -211,7 +211,10 @@ describe('a service credential', () => {
       body: JSON.stringify({ name: 'second', grants: [{ projectId: project, access: 'write' }] }),
     });
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: 'owner_only' });
+    expect(await response.json()).toEqual({
+      error: 'owner_only',
+      detail: 'only a person signed in in their browser may manage access, not an agent or a service',
+    });
   });
 });
 

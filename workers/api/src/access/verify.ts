@@ -6,12 +6,13 @@
  * A request signs in one of three ways:
  *
  * - **A person**: the session cookie that signing in with GitHub sets. The
- *   person's GitHub account must still be on the deployment's admin
- *   allowlist. They reach the workspaces they are members of.
+ *   person must still be a deployment admin or a member of a workspace. They
+ *   reach the workspaces they are members of.
  * - **An AI agent**: an OAuth access token as a bearer token. The token must
  *   be unexpired and unrevoked, its client enabled, the person's consent
- *   still in place and the person still an admin. It reaches only the
- *   projects the person granted it, in workspaces the person still belongs to.
+ *   still in place and the person still an admin or a member. It reaches
+ *   only the projects the person granted it, in workspaces the person still
+ *   belongs to.
  * - **A service**: a service credential as a bearer token, unrevoked. It
  *   reaches its credential's one workspace: the projects named in its grants,
  *   the whole store for a backup when its owner made it a backup credential,
@@ -184,7 +185,8 @@ function workspaceGrantsOf(text: string | null, most: ProjectAccess | null): Wor
 }
 
 /** The person a signed session cookie belongs to, with their workspaces; null
- * when its signature fails, it expired or its GitHub id left the allowlist. */
+ * when its signature fails, it expired, or the person is neither a deployment
+ * admin nor a member of any workspace any more. */
 async function verifySession(db: D1Database, config: SignInConfig, cookie: string): Promise<PersonPrincipal | null> {
   const dot = cookie.lastIndexOf('.');
   if (dot < 1) return null;
@@ -206,22 +208,23 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
     .first<{ user_id: string; name: string; github_ids: string | null; memberships: string | null }>();
   if (!row) return null;
   const admin = hasOwnerAccount(config, row.github_ids);
-  // Only the deployment's admins sign in until invitations let members in.
-  if (!admin) return null;
+  const memberships = membershipsOf(row.memberships);
+  if (!admin && memberships.length === 0) return null;
   return Object.freeze({
     kind: 'person',
     id: `person:${row.user_id}`,
     userId: row.user_id,
     name: displayName(row.name, 'owner'),
     admin,
-    memberships: membershipsOf(row.memberships),
+    memberships,
   });
 }
 
 /**
  * The agent an access token belongs to; null when the token is unknown,
  * expired, revoked or for another resource, its client is disabled, the
- * consent is gone or its person left the allowlist.
+ * consent is gone, or its person is neither a deployment admin nor a member
+ * of any workspace any more.
  */
 async function verifyAgentToken(db: D1Database, config: SignInConfig, token: string): Promise<AgentPrincipal | null> {
   // Better Auth stores an opaque token as base64url(SHA-256(token)).
@@ -235,7 +238,8 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
            JOIN workspaces w ON w.id = g.workspace_id
            WHERE g.user_id = t.user_id AND g.client_id = t.client_id) AS grants,
          (SELECT json_group_array(a.account_id) FROM auth_account a
-           WHERE a.user_id = t.user_id AND a.provider_id = 'github') AS github_ids
+           WHERE a.user_id = t.user_id AND a.provider_id = 'github') AS github_ids,
+         EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = t.user_id) AS member
        FROM auth_oauth_access_token t
        JOIN auth_oauth_client c ON c.client_id = t.client_id AND coalesce(c.disabled, 0) = 0
        JOIN auth_user u ON u.id = t.user_id
@@ -252,8 +256,9 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
       person_name: string | null;
       grants: string | null;
       github_ids: string | null;
+      member: number;
     }>();
-  if (!row || !hasOwnerAccount(config, row.github_ids)) return null;
+  if (!row || (row.member !== 1 && !hasOwnerAccount(config, row.github_ids))) return null;
   // A token names the resources it was issued for; one for another resource is refused.
   const resources = parseJson(row.resources);
   if (resources !== null && !(Array.isArray(resources) && resources.includes(mcpResource(config.origin)))) return null;

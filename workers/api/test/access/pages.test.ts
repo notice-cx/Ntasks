@@ -29,9 +29,9 @@ describe("the Worker's pages", () => {
   });
 
   it('show an error in words after the alert icon, never in a colour of its own', async () => {
-    const html = await signInPage({ signedInAs: null, oauthQuery: null, error: 'not_an_owner' }).text();
+    const html = await signInPage({ signedInAs: null, oauthQuery: null, error: 'not_invited' }).text();
     expect(html).toMatch(
-      /<p class="alert" role="alert"><svg[^>]*aria-hidden="true">.*<\/svg>This GitHub account may not sign in to this Ntasks\.<\/p>/su,
+      /<p class="alert" role="alert"><svg[^>]*aria-hidden="true">.*<\/svg>This GitHub account is not a member of a workspace here\. [^<]*<\/p>/su,
     );
   });
 
