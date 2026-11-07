@@ -437,8 +437,8 @@ export interface CheckedWrite {
  * approval and carries no further changes, each task named once. */
 function otherWrites(value: unknown): CheckedWrite['others'] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > TASK_LIMITS.links)
-    invalid(`others must be a list of at most ${TASK_LIMITS.links} changes to other tasks`);
+  if (!Array.isArray(value) || value.length > TASK_LIMITS.others)
+    invalid(`others must be a list of at most ${TASK_LIMITS.others} changes to other tasks`);
   const checked = value.map((entry: unknown, index) => {
     if (entry === null || typeof entry !== 'object') invalid(`others[${index}] must be an object`);
     const { taskId: id, ...change } = entry as TaskWrite & { readonly taskId?: unknown };

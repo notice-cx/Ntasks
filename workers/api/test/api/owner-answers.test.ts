@@ -4,10 +4,16 @@
 // stand-in task client ran each decision as several commands, some of which a
 // test could fail; here each decision is one batch, so those cases become a
 // retry that replays.
-import type { Project, Task, TaskComment, TaskEngine, TaskEvent } from '@ntasks/domain';
+import { TASK_LIMITS, type Project, type Task, type TaskComment, type TaskEngine, type TaskEvent } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
-import { commentProposalMatches, replyOption, type TaskMaintenance } from '../../src/owner-answers.ts';
+import {
+  commentProposalMatches,
+  disputeWrite,
+  MAINTENANCE,
+  replyOption,
+  type TaskMaintenance,
+} from '../../src/owner-answers.ts';
 import { proposalOf } from '../../src/views.ts';
 import { clock, newProject, OWNER as ENGINE_OWNER } from '../engine/helpers.ts';
 import { api, callTool, read, send, WORKSPACE, type TestApi } from './helpers.ts';
@@ -759,6 +765,41 @@ describe('approvals', () => {
     const waiting = await current(project, prod.id);
     expect(waiting.dependencies.find((link) => link.taskId === survivor!.id)?.type).toBe('blocks');
     expect(waiting.ready).toBe(false);
+  });
+
+  it('tells and hands back every task waiting on it, more than a page of them, in one write', async () => {
+    const project = await newProject(engine);
+    const { task: first, gate } = await make(project, 'Waits 0', { labels: ['human'], requestApproval: { reason: scope } });
+    const waiting = [first];
+    for (let i = 1; i < 205; i += 1) {
+      const { task } = await make(project, `Waits ${i}`, {
+        labels: ['human'],
+        links: [{ direction: 'depends-on', taskId: gate!.id, type: 'blocks' }],
+      });
+      waiting.push(task);
+    }
+
+    const done = await answered(project, gate!.id, { ...directAnswer, question: `Approve: ${scope}?`, response: 'yes', scope });
+
+    expect(done.status).toBe('closed');
+    const after = await engine.listBoard(project.id, { statuses: ['open'] });
+    expect(after.map((task) => task.id).sort()).toEqual(waiting.map((task) => task.id).sort());
+    expect(after.every((task) => task.labels.length === 0 && task.ready && task.commentCount === 1)).toBe(true);
+  }, 60_000);
+
+  it('refuses, naming the limit, a decision that would change more tasks than one write takes', async () => {
+    const project = await newProject(engine);
+    const { task, gate } = await make(project, 'Waits', { labels: ['human'], requestApproval: { reason: scope } });
+    const relayed = {
+      ...gate!,
+      metadata: { [MAINTENANCE]: { verification: 'agent-recorded', approved: true, by: AGENT.name, source: 'x' } },
+    };
+    const many = Array.from({ length: TASK_LIMITS.others + 1 }, (_, i) => ({ ...task, id: `${task.id}-${i}` }));
+    expect(() =>
+      disputeWrite(relayed, { comments: [], blockers: [], dependents: many, children: [] }, OWNER, time.now()),
+    ).toThrow(
+      `${gate!.id} has ${TASK_LIMITS.others + 1} open tasks waiting on it, more than the ${TASK_LIMITS.others} one decision tells.`,
+    );
   });
 });
 

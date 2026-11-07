@@ -9,6 +9,7 @@
  * and the changes to the tasks waiting on it land together or not at all.
  */
 import {
+  TASK_LIMITS,
   type Json,
   type JsonObject,
   type Project,
@@ -466,6 +467,10 @@ class Draft {
     };
   }
 }
+    if (others.length > TASK_LIMITS.others)
+      refuse(
+        `${this.task.id} has ${others.length} open tasks waiting on it, more than the ${TASK_LIMITS.others} one decision tells. Remove some of those dependencies, then decide again.`,
+      );
 
 /** The open tasks this one waits on through blocks links and the open
  * children under it refuse a decision's close; another holder or an open
@@ -1059,9 +1064,14 @@ async function surroundings(context: WriteContext, project: Project, task: Task)
   const dependentIds = task.dependents
     .filter((link) => link.type === 'blocks' && link.status !== 'closed')
     .map((link) => link.taskId);
-  const [comments, tasks, children] = await Promise.all([
+  const ids = [...new Set([...blockerIds, ...dependentIds])];
+  // A read takes at most a page of ids; an approval can hold more tasks than that.
+  const pages = Array.from({ length: Math.ceil(ids.length / TASK_LIMITS.page) }, (_, index) =>
+    ids.slice(index * TASK_LIMITS.page, (index + 1) * TASK_LIMITS.page),
+  );
+  const [comments, read, children] = await Promise.all([
     engine.listComments(project.id, task.id),
-    engine.getTasks(project.id, [...new Set([...blockerIds, ...dependentIds])]),
+    Promise.all(pages.map((page) => engine.getTasks(project.id, page))),
     engine.listBoard(project.id, { statuses: OPEN_STATUSES, parentId: task.id }),
   ]);
   const byId = new Map(tasks.map((entry) => [entry.id, entry]));
@@ -1073,6 +1083,7 @@ async function surroundings(context: WriteContext, project: Project, task: Task)
     children: children.map((child) => child.id),
   };
 }
+  const tasks = read.flat();
 
 /** A person's decision, run as one write: refused unless the sender is a person
  * signed in to the web app who may change the project. */
