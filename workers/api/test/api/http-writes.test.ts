@@ -409,6 +409,15 @@ describe('PATCH /api/tasks/:id', () => {
     expect(await current(id)).toMatchObject({ version, work });
   });
 
+  it('refuses a claim whose work is not an object, writing nothing', async () => {
+    const { id } = await task();
+    const before = await current(id);
+    expect(
+      (await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, claim: true, work: null })).status,
+    ).toBe(400);
+    expect(await current(id)).toEqual(before);
+  });
+
   it('refuses a claim with other changes, a close by status, an assignee with spaces around it, and a human label taken off', async () => {
     const { id } = await task({ title: 'Human', labels: ['human'] });
     const patch = (body: Record<string, unknown>) =>

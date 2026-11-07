@@ -201,7 +201,8 @@ export async function updateRoute(
   } else if (body.for !== undefined || body.work !== undefined) {
     refuse('invalid arguments: for and work (with claim: true; they describe the claim)');
   }
-  const details = body.work ?? {};
+  // Only a left-out work is none: null is not an object of work details, and is refused.
+  const details = body.work === undefined ? {} : body.work;
   if (details === null || typeof details !== 'object' || Array.isArray(details))
     refuse('invalid arguments: work (an object of work details)');
   only(details as Args, WORK_DETAILS);
