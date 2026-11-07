@@ -2,9 +2,9 @@
  * Every sign-in path the Worker answers: OAuth discovery, the Better Auth
  * routes MCP clients and browsers use, the sign-in and agent approval pages,
  * a person's routes for listing and revoking their agents, an owner's routes
- * for a workspace's service credentials, and the workspace routes, which read
- * and write D1 beside sign-in. Every path here is in wrangler.jsonc's
- * run_worker_first.
+ * for a workspace's members, invitations and service credentials, and the
+ * workspace routes, which read and write D1 beside sign-in. Every path here
+ * is in wrangler.jsonc's run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
 import { json } from '../http/respond.ts';
@@ -29,6 +29,7 @@ import {
   WORKSPACE_ID,
   workspaceNameOf,
 } from './grants.ts';
+import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
 import { agentAccessPage, expiredPage, signInPage, type WorkspaceProjects } from './pages.ts';
 import type { PersonPrincipal, Principal } from './principal.ts';
 import {
@@ -409,16 +410,19 @@ async function workspacesApi(request: Request, env: AccessEnv): Promise<Response
 }
 
 /**
- * The workspace whose service credentials a request manages: the one its
- * header names, or the person's only one. Only its owner manages them.
+ * The workspace whose members, invitations or service credentials a request
+ * manages: the one its header names, or the person's only one. Only its
+ * owner manages them; `what` names them in a member's refusal.
  */
-function ownedWorkspace(request: Request, principal: PersonPrincipal): WorkspaceReach | Response {
+function ownedWorkspace(request: Request, principal: PersonPrincipal, what: string): WorkspaceReach | Response {
   const chosen = chooseWorkspace(reachesOf(principal), request.headers.get(WORKSPACE_HEADER));
   if ('refused' in chosen) return chosen.refused;
-  return chosen.reach.role === 'owner' ? chosen.reach : json({ error: 'owner_only' }, 403);
+  if (chosen.reach.role === 'owner') return chosen.reach;
+  return json({ error: 'owner_only', detail: `only an owner of this workspace may manage ${what}` }, 403);
 }
 
-/** The JSON routes under /api/access: who the sender is, a person's agents, and a workspace's service credentials. */
+/** The JSON routes under /api/access: who the sender is, a person's agents,
+ * and a workspace's members, invitations and service credentials. */
 async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Response> {
   const verification = await verifyRequest(request, env);
   if (!verification.ok) return refusal(verification, env);
@@ -429,7 +433,15 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     return json(describe(principal), 200);
   }
   // Managing access is a person's own act, never an agent's or a service's.
-  if (principal.kind !== 'person') return json({ error: 'owner_only' }, 403);
+  if (principal.kind !== 'person') {
+    return json(
+      {
+        error: 'owner_only',
+        detail: 'only a person signed in in their browser may manage access, not an agent or a service',
+      },
+      403,
+    );
+  }
   if (path === '/agents' && request.method === 'GET')
     return json({ agents: await listAgents(env.DB, principal.userId) }, 200);
   const agent = /^\/agents\/([A-Za-z0-9_-]{1,255})\/revoke$/u.exec(path);
@@ -438,10 +450,12 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
       throw new AccessRefused('not_found', 'no such connected agent');
     return json({ revoked: true }, 200);
   }
+  const members = await membersApi(request, env, principal, path);
+  if (members) return members;
   const service = /^\/services\/([0-9a-f-]{36})\/revoke$/u.exec(path);
   const services = path === '/services' && (request.method === 'GET' || request.method === 'POST');
   if (!services && !(service?.[1] && request.method === 'POST')) return json({ error: 'not_found' }, 404);
-  const owned = ownedWorkspace(request, principal);
+  const owned = ownedWorkspace(request, principal, 'its service credentials');
   if (owned instanceof Response) return owned;
   const workspaceId = owned.workspace.id;
   if (service?.[1]) {
@@ -462,6 +476,80 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     createdBy: principal.userId,
   });
   return json({ service: created }, 201);
+}
+
+/**
+ * The member routes of the request's workspace, for its owners: GET /members
+ * lists its members and open invitations, POST /invitations invites a GitHub
+ * login, POST /invitations/<id>/revoke revokes an open invitation, and POST
+ * /members/<user id>/remove removes a member. Null for any other path.
+ */
+async function membersApi(
+  request: Request,
+  env: AccessEnv,
+  principal: PersonPrincipal,
+  path: string,
+): Promise<Response | null> {
+  const list = path === '/members' && request.method === 'GET';
+  const invite = path === '/invitations' && request.method === 'POST';
+  const post = request.method === 'POST';
+  const revoke = post ? /^\/invitations\/([0-9a-f-]{36})\/revoke$/u.exec(path)?.[1] : undefined;
+  const remove = post ? /^\/members\/([A-Za-z0-9_-]{1,255})\/remove$/u.exec(path)?.[1] : undefined;
+  if (!list && !invite && revoke === undefined && remove === undefined) return null;
+  const owned = ownedWorkspace(request, principal, 'its members and invitations');
+  if (owned instanceof Response) return owned;
+  const workspaceId = owned.workspace.id;
+  if (list) return json(await listMembers(env.DB, workspaceId), 200);
+  if (revoke !== undefined) {
+    if (!(await revokeInvitation(env.DB, workspaceId, revoke))) {
+      return json({ error: 'not_found', detail: 'no such open invitation in this workspace' }, 404);
+    }
+    return json({ revoked: true }, 200);
+  }
+  if (remove !== undefined) {
+    const outcome = await removeMember(env.DB, workspaceId, remove);
+    if (outcome === 'not_found') return json({ error: 'not_found', detail: 'no such member of this workspace' }, 404);
+    if (outcome === 'last_owner') {
+      return json(
+        { error: 'last_owner', detail: "this is the workspace's last owner, and a workspace keeps at least one" },
+        409,
+      );
+    }
+    return json({ removed: true }, 200);
+  }
+  const body = await jsonBody(request, 'invitation');
+  if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+  const unknown = Object.keys(body).filter((key) => key !== 'githubLogin' && key !== 'role');
+  if (unknown.length > 0) {
+    return json({ error: 'invalid_request', detail: `unknown ${unknown.join(', ')}; send githubLogin and role` }, 400);
+  }
+  const githubLogin = githubLoginOf(body.githubLogin);
+  if (githubLogin === null) {
+    return json(
+      {
+        error: 'invalid_request',
+        detail: 'githubLogin is a GitHub username: 1 to 39 letters, digits or hyphens, starting with a letter or digit',
+        field: 'githubLogin',
+      },
+      400,
+    );
+  }
+  const role = body.role ?? 'member';
+  if (role !== 'owner' && role !== 'member') {
+    return json({ error: 'invalid_request', detail: 'role is owner or member', field: 'role' }, 400);
+  }
+  const invitation = await createInvitation(env.DB, { workspaceId, githubLogin, role, createdBy: principal.userId });
+  if (invitation === null) {
+    return json(
+      {
+        error: 'invitation_exists',
+        detail: `${githubLogin} already has an open invitation to this workspace`,
+        field: 'githubLogin',
+      },
+      409,
+    );
+  }
+  return json({ invitation }, 201);
 }
 
 /**

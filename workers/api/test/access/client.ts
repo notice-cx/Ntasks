@@ -137,9 +137,10 @@ export class Browser {
 
   /**
    * Signs in with GitHub as the given GitHub user, from the sign-in page,
-   * and returns where the Worker sends the browser afterwards.
+   * and returns where the Worker sends the browser afterwards. The user's
+   * login is `person-<id>` unless `login` names another.
    */
-  async signInWithGitHub(githubId: number, oauthQuery?: string): Promise<URL> {
+  async signInWithGitHub(githubId: number, oauthQuery?: string, login?: string): Promise<URL> {
     const started = await this.fetch('/sign-in', {
       form: { action: 'github', ...(oauthQuery === undefined ? {} : { oauth_query: oauthQuery }) },
     });
@@ -148,7 +149,7 @@ export class Browser {
     expect(github.searchParams.get('redirect_uri')).toBe(`${ORIGIN}/api/auth/callback/github`);
     const state = github.searchParams.get('state') ?? '';
     const back = await this.fetch(
-      `/api/auth/callback/github?code=${codeFor(githubId)}&state=${encodeURIComponent(state)}`,
+      `/api/auth/callback/github?code=${codeFor(githubId, login)}&state=${encodeURIComponent(state)}`,
     );
     const userId = await userIdOf(githubId);
     if (this.joinTestWorkspace && userId !== null) await addMember(TEST_WORKSPACE, userId, 'owner');

@@ -38,12 +38,12 @@ describe('owner sign-in with GitHub', () => {
     expect(row?.access_token).not.toContain('stand-in-token');
   });
 
-  it('refuses a GitHub account that is not on the allowlist and creates no one', async () => {
+  it('refuses a GitHub account that is no admin, member or invitee, and creates no one', async () => {
     const browser = new Browser();
     const next = await browser.signInWithGitHub(2002);
 
     expect(next.pathname).toBe('/sign-in');
-    expect(next.searchParams.get('error')).toBe('not_an_owner');
+    expect(next.searchParams.get('error')).toBe('not_invited');
     expect(browser.cookie(SESSION_COOKIE)).toBeUndefined();
     const people = await env.DB.prepare("SELECT count(*) AS n FROM auth_account WHERE account_id = '2002'").first<{
       n: number;
@@ -51,21 +51,27 @@ describe('owner sign-in with GitHub', () => {
     expect(people?.n).toBe(0);
 
     const page = await browser.fetch(next.pathname + next.search);
-    expect(await page.text()).toContain('This GitHub account may not sign in to this Ntasks.');
+    expect(await page.text()).toContain('This GitHub account is not a member of a workspace here.');
   });
 
-  it('cuts off a signed-in owner whose GitHub id leaves the allowlist', async () => {
-    const browser = new Browser();
-    await browser.signInAsOwner();
-    const headers = { cookie: `${SESSION_COOKIE}=${browser.cookie(SESSION_COOKIE)}` };
+  it('keeps a former admin in their workspaces, and cuts off one who belongs to none', async () => {
+    const member = new Browser();
+    await member.signInAsOwner();
+    const loner = new Browser({ joinTestWorkspace: false });
+    expect((await loner.signInWithGitHub(1002)).pathname).toBe('/');
+    const asSent = (browser: Browser) =>
+      new Request(`${ORIGIN}/api/access/me`, {
+        headers: { cookie: `${SESSION_COOKIE}=${browser.cookie(SESSION_COOKIE)}` },
+      });
+    const departed = { ...env, OWNER_GITHUB_IDS: '3003' };
 
-    const still = await verifyRequest(new Request(`${ORIGIN}/api/access/me`, { headers }), env);
-    expect(still.ok).toBe(true);
-    const removed = await verifyRequest(new Request(`${ORIGIN}/api/access/me`, { headers }), {
-      ...env,
-      OWNER_GITHUB_IDS: '3003',
+    expect((await verifyRequest(asSent(loner), env)).ok).toBe(true);
+    expect(await verifyRequest(asSent(loner), departed)).toEqual({ ok: false, reason: 'invalid_token' });
+    const kept = await verifyRequest(asSent(member), departed);
+    expect(kept).toMatchObject({
+      ok: true,
+      principal: { kind: 'person', admin: false, memberships: [{ role: 'owner' }] },
     });
-    expect(removed).toEqual({ ok: false, reason: 'invalid_token' });
   });
 
   it('refuses a session cookie whose signature does not match', async () => {

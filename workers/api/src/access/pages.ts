@@ -58,10 +58,16 @@ function alert(words: string | null): string {
   return words ? `<p class="alert" role="alert">${ALERT_SVG}${escape(words)}</p>` : '';
 }
 
+/** The error code sign-in sends a GitHub account back with when it is not a
+ * deployment admin, a member of a workspace or invited to one (auth.ts). */
+export const NOT_INVITED = 'not_invited';
+
 /** What went wrong on the way back from GitHub, in words. */
 function signInError(code: string | null): string | null {
   if (code === null) return null;
-  if (code === 'not_an_owner') return 'This GitHub account may not sign in to this Ntasks.';
+  if (code === NOT_INVITED) {
+    return 'This GitHub account is not a member of a workspace here. Ask a workspace owner to invite your GitHub username, then sign in again.';
+  }
   return 'Signing in did not finish. Try again.';
 }
 

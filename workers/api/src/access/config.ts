@@ -11,9 +11,9 @@ export interface SignInConfig {
   readonly secure: boolean;
   /** Better Auth's secret: signs session cookies and sign-in state. */
   readonly secret: string;
-  /** The GitHub OAuth app the owner signs in through. */
+  /** The GitHub OAuth app people sign in through. */
   readonly github: { readonly clientId: string; readonly clientSecret: string };
-  /** GitHub user ids, the numbers, allowed to sign in. Logins can be renamed and reused, ids cannot. */
+  /** The deployment admins' GitHub user ids, the numbers: they always sign in and create workspaces. Logins can be renamed and reused, ids cannot. */
   readonly owners: ReadonlySet<string>;
 }
 
