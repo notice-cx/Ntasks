@@ -315,6 +315,14 @@ chose none, and on an approval. Nothing reads the quote: a quote such as
 `maybe?` or `Approve web-g1` is recorded as given. `explanation` and
 `evidence` are optional with an answer and required for every other action.
 
+An answer's record keeps the fields NoticeOS reads, with NoticeOS's meaning:
+`response`, the quote; `question`, what the proposal asked (an approval's
+request, a decision's question, else the task's title); `scope`, what the
+answer covers (an approval's request, the chosen option's label, else the
+quote); `source`; `by`, who recorded it; `verification`; and on an approval
+`outcome`, `approved`, `performedBy` for an owner-performed action, and
+`disputed` once disputed.
+
 An answer is recorded as relayed by the sender (`verification:
 agent-recorded`), whoever it is: an agent, a service, or a person calling the
 MCP endpoint. A pick it records names as the chooser the person the sender

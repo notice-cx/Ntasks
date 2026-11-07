@@ -21,7 +21,14 @@ import {
 import { listed } from './args.ts';
 import { SCOPES } from './auth.ts';
 import { linksSeenBy, projectOf, taskOf, tasksIn } from './lookup.ts';
-import { choiceName, choicesOf, NOTICEOS_METADATA, TASK_CHOICE_KEYS, type TaskChoiceKey } from './noticeos-fields.ts';
+import {
+  askedOf,
+  choiceName,
+  choicesOf,
+  NOTICEOS_METADATA,
+  TASK_CHOICE_KEYS,
+  type TaskChoiceKey,
+} from './noticeos-fields.ts';
 import { Refused } from './refused.ts';
 import {
   actorOf,
@@ -190,12 +197,32 @@ function pickOf(value: unknown): RecordedPick | null {
   return { option: option as TaskChoiceKey, label, by, at, ...(note === undefined ? {} : { note }) };
 }
 
-/** A task's choices as a pick reads them: the options and the one recommended. */
+/** A task's choices as a pick reads them: the question, the options and the one recommended. */
 interface Offered {
+  readonly question: string;
   readonly options: readonly { readonly key: TaskChoiceKey; readonly label: string; readonly recommended?: boolean }[];
 }
 function offeredOf(task: Task): Offered | null {
   return choicesOf(task.choices) as Offered | null;
+}
+
+/**
+ * The fields of an answer's record that say what was asked and what the
+ * answer covers, in the meaning NoticeOS's record gave them: `response`, the
+ * owner's words; `question`, what the proposal asked (an approval's request,
+ * a decision's question, else the task's title); and `scope`, what the answer
+ * authorizes (an approval's action, environment, scope and verification, the
+ * chosen option's label, else the owner's words).
+ */
+function askedAndAnswered(task: Task, option: TaskChoiceKey | undefined, words: string | undefined): JsonObject {
+  const offered = offeredOf(task);
+  const request = task.type === 'gate' ? (askedOf(task.description) ?? task.title) : undefined;
+  const scope = request ?? offered?.options.find((entry) => entry.key === option)?.label ?? words;
+  return {
+    ...(words === undefined ? {} : { response: words }),
+    question: request ?? offered?.question ?? task.title,
+    ...(scope === undefined ? {} : { scope }),
+  };
 }
 
 /** Whether a person has chosen: the pick named, null when it cannot be read, undefined when none. */
@@ -430,7 +457,7 @@ function recordDirect(
     taskId: draft.task.id,
     proposalVersion: deciding.proposalVersion,
     ...(answer.option === undefined ? {} : { option: answer.option }),
-    ...(answer.words === undefined ? {} : { response: answer.words }),
+    ...askedAndAnswered(draft.task, answer.option, answer.words),
     by: deciding.actor,
     at: deciding.at,
     verification: 'person',
@@ -654,8 +681,9 @@ export interface MaintenanceInput extends Surroundings {
   /** The task `duplicateOf` names, as read; undefined when it names none or none was found. */
   readonly duplicate?: Task;
   readonly actor: string;
-  /** Who a relayed pick records as choosing: the person the sender acts for, else the sender. */
-  readonly chooser: string;
+  /** The owner a relayed answer names as giving it, as a pick's chooser and an
+   * owner-performed action's performer: the person the sender acts for, else the sender. */
+  readonly owner: string;
   readonly at: string;
 }
 
@@ -795,7 +823,7 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
           option === undefined
             ? () => draft.handBack(true)
             : () => {
-                pickInto(draft, option, undefined, input, input.chooser, at, false, false, 'task');
+                pickInto(draft, option, undefined, input, input.owner, at, false, false, 'task');
               };
       }
     }
@@ -814,12 +842,13 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       by: actor,
       at,
       ...(fields as unknown as JsonObject),
-      ...(quote === undefined ? {} : { response: quote }),
+      ...(ownerAnswer ? askedAndAnswered(task, op.option, quote) : {}),
       events: withPrevious(previous),
       ...(ownerAnswer ? { verification: 'agent-recorded', answerMode: 'relayed' } : {}),
       ...(ownerAnswer && gate
         ? { outcome: declined ? 'declined' : performed ? 'owner-performed' : 'approved', approved: !declined }
         : {}),
+      ...(performed ? { performedBy: input.owner, recordedBy: actor } : {}),
       permission: op.action === 'answer' && gate ? 'approved-scope-only' : 'none',
     };
   }
@@ -1077,7 +1106,7 @@ export async function reconcileTask(
       proposalVersion,
       ...(duplicate === null ? {} : { duplicate }),
       actor: actor.name,
-      chooser: context.principal.person ?? actor.name,
+      owner: context.principal.person ?? actor.name,
       at: context.now(),
     });
   });

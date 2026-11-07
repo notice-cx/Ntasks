@@ -537,6 +537,42 @@ describe('approvals', () => {
 describe('relayed approvals and their disputes', () => {
   const relay = { ...RELAY, quote: 'Yes' };
 
+  it('keeps the record NoticeOS reads: who relayed it, the owner’s words, the question, the scope and the source', async () => {
+    const { project, gate } = await relayGate();
+    const approved = await answered(project, gate.id, relay);
+    expect(approved.metadata.noticeos_maintenance).toMatchObject({
+      verification: 'agent-recorded',
+      approved: true,
+      outcome: 'approved',
+      by: AGENT.name,
+      response: 'Yes',
+      question: SCOPE,
+      scope: SCOPE,
+      source: RELAY.source,
+    });
+    const performed = await answered(project, gate.id, {
+      ...RELAY,
+      action: 'owner_performed',
+      source: 'claude-code:session/completion',
+      quote: 'I uploaded all 12 photos.',
+    });
+    expect(performed.metadata.noticeos_maintenance).toMatchObject({
+      outcome: 'owner-performed',
+      performedBy: OWNER,
+      recordedBy: AGENT.name,
+      response: 'I uploaded all 12 photos.',
+      scope: SCOPE,
+    });
+    const other = await newProject(engine);
+    const { task } = await make(other, 'Build the layout', { labels: ['human'], choices });
+    const picked = await answered(other, task.id, { ...RELAY, option: 'b', quote: 'B' });
+    expect(picked.metadata.noticeos_maintenance).toMatchObject({
+      response: 'B',
+      question: choices.question,
+      scope: 'Wide layout',
+    });
+  });
+
   it('keeps each earlier answer as an event before the owner’s own completion', async () => {
     const { project, gate } = await relayGate();
     await answered(project, gate.id, { ...relay, source: 'claude-code:session/first' });
