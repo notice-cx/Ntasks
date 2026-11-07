@@ -66,7 +66,7 @@ Ntasks is in active development ahead of its first release.
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links and approval requests ([the API](docs/api.md)) |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields ([the API](docs/api.md)) |
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
 | A person's decisions through the API | Being built |
 
