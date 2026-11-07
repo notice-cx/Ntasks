@@ -21,8 +21,8 @@ for storage, and is designed to fit the free plan.
 <img src="docs/images/what-ntasks-does.svg" width="100%"
   alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
 
-Agents keep working on ready tasks while a decision waits for you; the work it
-blocks moves on once you answer.
+Agents keep working on ready tasks while a decision waits for you. Answering
+decisions through Ntasks is still being built (see [Status](#status)).
 
 Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
 
