@@ -60,14 +60,18 @@ and every call that needs a signed-in sender is refused.
 
 | Secret | Holds |
 |---|---|
-| `NTASKS_ORIGIN` | The address people and agents reach Ntasks at, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. |
+| `NTASKS_ORIGIN` | The address people and agents reach Ntasks at, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. A Worker on `workers.dev` is reached at `https://<Worker name>.<your subdomain>.workers.dev`. |
 | `AUTH_SECRET` | A random value of at least 32 characters. It signs session cookies and sign-in state, and encrypts stored GitHub tokens and agents' client secrets. Make one with `openssl rand -base64 32`. Changing it signs everyone out, and an agent that registered with a client secret must register again. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The GitHub OAuth app people sign in through. |
 | `OWNER_GITHUB_IDS` | The GitHub user ids of the deployment's admins, separated by commas: the people who create workspaces, and who may sign in without belonging to one. |
 
-On a deployment, set each with `wrangler secret put <NAME>` from
-`workers/api`. For `pnpm dev`, put them in `workers/api/.dev.vars`, which git
-ignores:
+The [Deploy to Cloudflare button](../README.md#deploy-your-own) asks for each
+one, from the names in [`.dev.vars.example`](../.dev.vars.example), with the
+descriptions under `cloudflare.bindings` in the root `package.json`. On a
+deployment made another way, set each with `wrangler secret put <NAME>` from
+the repository root. `wrangler deploy` refuses a Worker that lacks one of
+them. For `pnpm dev`, copy `.dev.vars.example` to `.dev.vars` at the
+repository root, which git ignores, and fill it in:
 
 ```sh
 NTASKS_ORIGIN=http://localhost:8787
@@ -80,7 +84,8 @@ OWNER_GITHUB_IDS=<your GitHub user id>
 ### Register the GitHub OAuth app
 
 Each address Ntasks runs at needs its own GitHub OAuth app, because GitHub
-sends the browser back to one callback address.
+sends the browser back to one callback address. Register it before you press
+the Deploy to Cloudflare button, which asks for its client ID and secret.
 
 1. On GitHub, open Settings, then Developer settings, then OAuth Apps, and
    choose New OAuth App.
@@ -266,7 +271,7 @@ Each of these takes effect at the caller's next request.
 ## Routes
 
 Every path below is in `assets.run_worker_first` in
-[`wrangler.jsonc`](../workers/api/wrangler.jsonc). Three limits, each
+[`wrangler.jsonc`](../wrangler.jsonc). Three limits, each
 Cloudflare's rate limiting binding, answer `429` once reached:
 
 - Every sign-in path but the resource metadata takes about 30 requests a
