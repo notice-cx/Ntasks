@@ -149,6 +149,63 @@ describe('links Beads keeps as external', () => {
   });
 });
 
+describe('two Beads rows that are one Ntasks link', () => {
+  /** web-a1 and web-a2, then each change committed by its own actor at t(1), t(2) and so on. */
+  function linkedBy(...changes: [string, (c: Change) => void][]): FakeHub {
+    const made = new FakeHub({ database: 'web_tasks', key: 'web.example.com', name: 'Web', id: 'w-1', prefix: 'web' });
+    made.commit(t(0), 'beads', twoTasks);
+    changes.forEach(([actor, change], index) => made.commit(t(index + 1), actor, change));
+    return made;
+  }
+
+  it('date the link from the earlier row, with its author', async () => {
+    const { plan } = await imported(
+      linkedBy(
+        ['alice', (c) => c.link('web-a1', 'web-a2', 'related')],
+        ['bob', (c) => c.link('web-a1', 'web-a2', 'relates-to')],
+        [
+          'alice',
+          (c) =>
+            c.link('web-a1', 'docs', 'related', {
+              depends_on_issue_id: null,
+              depends_on_external: 'HTTPS://Docs.Example.com/plan',
+            }),
+        ],
+        [
+          'bob',
+          (c) =>
+            c.link('web-a1', 'docs again', 'blocks', {
+              depends_on_issue_id: null,
+              depends_on_external: 'https://docs.example.com/plan',
+            }),
+        ],
+      ),
+    );
+    expect(plan!.task_edges).toEqual([
+      { task_id: 'web-a1', depends_on_id: 'web-a2', type: 'related', created_at: t(1), created_by: 'alice' },
+    ]);
+    expect(plan!.task_external_links).toEqual([
+      expect.objectContaining({ url: 'https://docs.example.com/plan', created_at: t(3), created_by: 'alice' }),
+    ]);
+  });
+
+  it('read a web address from depends_on_external though Beads 1.0.5 copies it into depends_on_id', async () => {
+    const { plan } = await imported(
+      hub(
+        (c) => c.create({ id: 'web-a1', title: 'First' }),
+        (c) =>
+          c.link('web-a1', 'docs', 'related', {
+            depends_on_issue_id: null,
+            depends_on_id: 'https://docs.example.com/plan',
+            depends_on_external: 'https://docs.example.com/plan',
+          }),
+      ),
+    );
+    expect(plan!.task_external_links).toEqual([expect.objectContaining({ url: 'https://docs.example.com/plan' })]);
+    expect(plan!.task_edges).toEqual([]);
+  });
+});
+
 describe('external links', () => {
   it('imports a link to a web address as an external link, written as the URL standard writes it', async () => {
     const { plan, store } = await imported(

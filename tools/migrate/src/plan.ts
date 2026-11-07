@@ -14,7 +14,7 @@ import type {
   StoreRows,
   TaskRow,
 } from '@ntasks/domain';
-import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject } from './beads.ts';
+import { isEmpty, textOf, timeOf, type BeadsExport, type BeadsProject, type BeadsRow } from './beads.ts';
 import {
   projectComments,
   projectHistory,
@@ -390,14 +390,20 @@ export function planImport(data: BeadsExport): {
     // Keyed by target and type, so a parent link never dates a link of another type to the same task.
     const linkRows = new Map<string, { at: string | null; by: string | null }>();
     const externalRows = new Map<string, { at: string | null; by: string | null }>();
+    // Two Beads rows can be one Ntasks link, such as related and relates-to rows to
+    // one task, or two spellings of one address: the link dates from the earlier.
+    const keepEarlier = (rows: Map<string, { at: string | null; by: string | null }>, key: string, row: BeadsRow) => {
+      const made = { at: timeOf(row.created_at) ?? null, by: isEmpty(row.created_by) ? null : textOf(row.created_by) };
+      const held = rows.get(key);
+      if (held === undefined || (made.at !== null && (held.at === null || made.at < held.at))) rows.set(key, made);
+    };
     for (const row of history.links) {
       const target = linkTarget(row);
       const external = textOf(row.depends_on_external);
-      const made = { at: timeOf(row.created_at) ?? null, by: isEmpty(row.created_by) ? null : textOf(row.created_by) };
-      if (target !== null) linkRows.set(`${target} ${linkTypeOf(row)}`, made);
+      if (target !== null) keepEarlier(linkRows, `${target} ${linkTypeOf(row)}`, row);
       else if (external !== null) {
         const url = webAddress(external);
-        if (url !== null) externalRows.set(url, made);
+        if (url !== null) keepEarlier(externalRows, url, row);
       }
     }
     for (const link of state.dependencies) {

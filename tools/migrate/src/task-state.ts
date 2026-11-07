@@ -227,15 +227,14 @@ export function sortLinks(links: readonly LinkState[]): LinkState[] {
 /**
  * The task a Beads link row points to. Beads keeps a link to a task in
  * another of its databases in `depends_on_external`, as the task's id; any
- * other value there, such as a web address, is not a task.
+ * other value there, such as a web address, is not a task. A row with
+ * `depends_on_external` is read by it alone: in Beads 1.0.5, `depends_on_id`
+ * is a column computed from the others, and holds the same value.
  */
 export function linkTarget(row: BeadsRow): string | null {
   const external = textOf(row.depends_on_external);
-  return (
-    textOf(row.depends_on_issue_id) ??
-    textOf(row.depends_on_id) ??
-    (external !== null && isTaskId(external) ? external : null)
-  );
+  if (external !== null) return isTaskId(external) ? external : null;
+  return textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
 }
 
 /** A Beads link type as Ntasks names it. */
@@ -260,6 +259,7 @@ export function ownLink(row: BeadsRow): BeadsRow {
     issue_id: target,
     ...(textOf(row.depends_on_issue_id) === null ? {} : { depends_on_issue_id: from }),
     ...(textOf(row.depends_on_id) === null ? {} : { depends_on_id: from }),
+    ...(textOf(row.depends_on_external) === null ? {} : { depends_on_external: from }),
   };
 }
 
