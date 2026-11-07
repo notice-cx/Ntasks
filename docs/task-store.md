@@ -1,12 +1,22 @@
 # The task store
 
 The task store is the Durable Object behind Ntasks: one Cloudflare object
-with its own SQLite database, which holds the tables of projects and tasks,
-enforces the rules on them, and runs the engine that every part of Ntasks
-reads and writes through. It is written for
-contributors working on the engine, the API or the import from Beads. Read
-[Concepts](concepts.md) first for the task model, and
+for each workspace, with its own SQLite database, which holds the tables of
+that workspace's projects and tasks, enforces the rules on them, and runs the
+engine that every part of Ntasks reads and writes through. This page is
+written for contributors working on the engine, the API or the import from
+Beads. Read [Concepts](concepts.md) first for the task model, and
 [Architecture](architecture.md) for where the store sits.
+
+A workspace's store is the object named `workspace:` followed by the
+workspace's id (`workspaceStore` in
+[`store/index.ts`](../workers/api/src/store/index.ts)), created by the first
+request that reaches it. Every store has the same schema and engine, and
+neither knows of workspaces: the Worker picks the store, and hands it the
+sender with its scopes and projects in that workspace. A store answers an
+HTTP request with `serve` and an MCP tool call with `callTool`, both over
+Durable Object RPC. Two workspaces may each hold a project with the same id
+or prefix, since no query reads across stores.
 
 | Part | Where |
 |---|---|
@@ -38,8 +48,8 @@ contributors working on the engine, the API or the import from Beads. Read
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
 
-A task's parent is the `parent_id` column, not a link. Sign-in and access
-grants have their own tables, in D1 ([Sign-in](sign-in.md#tables)).
+A task's parent is the `parent_id` column, not a link. Sign-in, workspaces
+and access grants have their own tables, in D1 ([Sign-in](sign-in.md#tables)).
 
 A task's text is in four Markdown columns of `tasks`: `description`,
 `acceptance`, `notes` and `design`. The database sets no length limit on
@@ -69,7 +79,7 @@ when its field was retired after the write checked it, and the write is
 checked again. The database does not refuse a value of a retired field
 itself, so an import can load a retired field with the values tasks had.
 
-A backup holds every row of the tables above but the two a load waits in, in
+A backup holds every row of one workspace's store, in the tables above but the two a load waits in, in
 their order, as stored ([API](api.md#backing-up-the-whole-store)). An import
 or a backup loads into an empty store in one transaction: through
 `importRows`, with the statements an import uses, or through
@@ -148,7 +158,9 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
-- **Projects:** `listProjects` and `createProject`.
+- **Projects:** `listProjects` and `createProject`, which
+  `POST /api/tasks/projects` ([API](api.md#writes)) calls; an import writes
+  its projects' rows itself.
 - **Custom fields:** `defineField` and `retireField`, each one batch, which
   writes a retry record when the call carries a retry identity (an MCP
   `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a

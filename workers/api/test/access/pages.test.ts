@@ -9,7 +9,10 @@ const AGENT = {
   oauthQuery: 'client_id=c1',
   error: null,
 };
-const PROJECTS = [{ id: 'p-web', key: 'web', name: 'Example web app' }];
+const WORKSPACE_ID = '0b9c8d7e-6f5a-4b3c-9d2e-1f0a9b8c7d6e';
+const WORKSPACES = [
+  { id: WORKSPACE_ID, name: 'Example', projects: [{ id: 'p-web', key: 'web', name: 'Example web app' }] },
+];
 
 describe("the Worker's pages", () => {
   it('draw with Inter from this origin, which their policy lets them load, and no colour of their own', async () => {
@@ -33,19 +36,28 @@ describe("the Worker's pages", () => {
   });
 
   it('offer Allow only when the agent asks for access and there is a project to give it', async () => {
-    const allowing = await agentAccessPage({ ...AGENT, access: 'read', projects: PROJECTS }).text();
+    const allowing = await agentAccessPage({ ...AGENT, access: 'read', workspaces: WORKSPACES }).text();
     expect(allowing).toContain('<dt>Access</dt><dd>Read tasks</dd>');
     expect(allowing).toContain('value="allow"');
-    expect(allowing).toContain('value="p-web"');
+    expect(allowing).toContain(`value="${WORKSPACE_ID}/p-web"`);
 
-    const nothingAsked = await agentAccessPage({ ...AGENT, access: null, projects: PROJECTS }).text();
+    const nothingAsked = await agentAccessPage({ ...AGENT, access: null, workspaces: WORKSPACES }).text();
     expect(nothingAsked).toContain('<dt>Access</dt><dd><span class="quiet">None</span></dd>');
     expect(nothingAsked).not.toContain('value="allow"');
     expect(nothingAsked).not.toContain('name="project"');
 
-    const noProjects = await agentAccessPage({ ...AGENT, access: 'write', projects: [] }).text();
-    expect(noProjects).toContain('<dt>Projects</dt><dd><span class="quiet">None yet</span></dd>');
-    expect(noProjects).not.toContain('value="allow"');
-    expect(noProjects).toContain('value="deny"');
+    for (const workspaces of [[], [{ ...WORKSPACES[0]!, projects: [] }]]) {
+      const noProjects = await agentAccessPage({ ...AGENT, access: 'write', workspaces }).text();
+      expect(noProjects).toContain('<dt>Projects</dt><dd><span class="quiet">None yet</span></dd>');
+      expect(noProjects).not.toContain('value="allow"');
+      expect(noProjects).toContain('value="deny"');
+    }
+  });
+
+  it("offer each workspace's projects, each naming its workspace", async () => {
+    const other = { id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Other', projects: WORKSPACES[0]!.projects };
+    const html = await agentAccessPage({ ...AGENT, access: 'write', workspaces: [...WORKSPACES, other] }).text();
+    const values = [...html.matchAll(/name="project" value="([^"]+)"/gu)].map((match) => match[1]);
+    expect(values).toEqual([`${WORKSPACE_ID}/p-web`, `${other.id}/p-web`]);
   });
 });

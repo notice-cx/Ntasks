@@ -1,9 +1,13 @@
+// The Worker in workers/api. This file is at the repository root because the
+// Deploy to Cloudflare button reads the Wrangler configuration at the root of
+// the repository it copies. Wrangler commands run in workers/api find it here.
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "workers/api/node_modules/wrangler/config-schema.json",
   "name": "ntasks",
-  "main": "src/index.ts",
+  "main": "workers/api/src/index.ts",
   // From compatibility date 2026-08-04 the runtime includes Node's built-in
-  // modules without the nodejs_compat flag; tsconfig.json types them.
+  // modules without the nodejs_compat flag; workers/api/tsconfig.json types
+  // them.
   "compatibility_date": "2026-11-06",
   "observability": {
     "enabled": true,
@@ -15,9 +19,9 @@
   // is listed, so an API client asking for a path that does not exist gets
   // the Worker's JSON 404, never the app's HTML. The sign-in pages and the
   // OAuth discovery documents MCP clients read are the Worker's too
-  // (src/access/protocol.ts).
+  // (workers/api/src/access/protocol.ts).
   "assets": {
-    "directory": "../../apps/web/dist",
+    "directory": "apps/web/dist",
     "not_found_handling": "single-page-application",
     "run_worker_first": [
       "/healthz",
@@ -29,9 +33,11 @@
       "/.well-known/oauth-protected-resource/*"
     ]
   },
-  // Sign-in settings, set with `wrangler secret put` on a deployment and in
-  // .dev.vars locally; docs/sign-in.md lists them. Without them sign-in is
-  // off and every call that needs a signed-in sender is refused.
+  // Sign-in settings; docs/sign-in.md lists them. The Deploy to Cloudflare
+  // button asks for the ones .dev.vars.example names, `wrangler secret put`
+  // sets them on any other deployment, and .dev.vars beside this file holds
+  // them locally. `wrangler deploy` refuses a Worker that lacks one, and a
+  // malformed one turns sign-in off.
   "secrets": {
     "required": ["NTASKS_ORIGIN", "AUTH_SECRET", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "OWNER_GITHUB_IDS"]
   },
@@ -59,30 +65,28 @@
       "simple": { "limit": 3, "period": 60 }
     }
   ],
-  // The one workspace this installation serves. Agents name it on every task
-  // tool call, as they named a NoticeOS workspace; an installation that takes
-  // over from NoticeOS sets WORKSPACE_ID to that workspace's id, so agents'
-  // instructions keep working.
-  "vars": {
-    "WORKSPACE_ID": "default",
-    "WORKSPACE_NAME": "Ntasks"
-  },
-  // The task store: one Durable Object with its own SQLite database
-  // (src/store). A store is created by the first request that names it, and
-  // `wrangler dev` and the tests keep theirs locally.
+  // The task stores: one Durable Object for each workspace, named
+  // 'workspace:' followed by the workspace's id, each with its own SQLite
+  // database (workers/api/src/store). A store is created by the first request
+  // that names it, and `wrangler dev` and the tests keep theirs locally.
   "durable_objects": {
     "bindings": [{ "name": "TASK_STORE", "class_name": "TaskStore" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStore"] }],
-  // The store's schema files are imported as text (src/store/schema.ts).
+  // The store's schema files are imported as text
+  // (workers/api/src/store/schema.ts).
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
-  // D1 holds the data that is not tasks, from the files in migrations/.
-  // database_id is left out: the first `wrangler deploy` creates the database
-  // (wrangler's automatic provisioning).
+  // D1 holds the data that is not tasks, from the files in migrations_dir.
+  // database_id is left out. The Deploy to Cloudflare button creates the
+  // database and writes its id into the copy of the repository it makes;
+  // otherwise the first `wrangler deploy` creates it (wrangler's automatic
+  // provisioning). Commands name the database by its binding, DB, so they
+  // work when the button gave it another name.
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ntasks"
+      "database_name": "ntasks",
+      "migrations_dir": "workers/api/migrations"
     }
   ]
 }

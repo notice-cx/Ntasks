@@ -6,24 +6,34 @@
  * A request signs in one of three ways:
  *
  * - **A person**: the session cookie that signing in with GitHub sets. The
- *   person's GitHub account must still be on the owner allowlist.
+ *   person's GitHub account must still be on the deployment's admin
+ *   allowlist. They reach the workspaces they are members of.
  * - **An AI agent**: an OAuth access token as a bearer token. The token must
  *   be unexpired and unrevoked, its client enabled, the person's consent
- *   still in place and the person still an owner. It reaches only the
- *   projects the person granted it.
+ *   still in place and the person still an admin. It reaches only the
+ *   projects the person granted it, in workspaces the person still belongs to.
  * - **A service**: a service credential as a bearer token, unrevoked. It
- *   reaches only the projects named in its grants, the whole store for a
- *   backup when the owner made it a backup credential, and loads into an
- *   empty store when the owner made it a restore credential.
+ *   reaches its credential's one workspace: the projects named in its grants,
+ *   the whole store for a backup when its owner made it a backup credential,
+ *   and loads into an empty store when its owner made it a restore credential.
  *
- * Each check is one D1 query and never builds Better Auth, to keep a call's
- * CPU time low: revoking a token, a consent, a grant or a credential cuts the
- * sender off at its next request.
+ * Each check is one D1 query, which also reads the sender's workspaces, and
+ * never builds Better Auth, to keep a call's CPU time low: revoking a token, a
+ * consent, a grant, a membership or a credential cuts the sender off at its
+ * next request.
  */
 import { COOKIE_PREFIX } from './auth.ts';
 import { signInConfig, type SignInConfig, type SignInSecrets } from './config.ts';
 import { base64url, fromHex, sameBytes, sha256, verifyCookieSignature } from './crypto.ts';
-import type { AgentPrincipal, PersonPrincipal, Principal, ProjectAccess, ServicePrincipal } from './principal.ts';
+import type {
+  AgentPrincipal,
+  Membership,
+  PersonPrincipal,
+  Principal,
+  ProjectAccess,
+  ServicePrincipal,
+  WorkspaceGrants,
+} from './principal.ts';
 import { bearerChallenge, bearerToken, mcpResource, scopeAccess } from './protocol.ts';
 import { parseServiceToken, SERVICE_TOKEN_PREFIX } from './service-token.ts';
 
@@ -130,10 +140,9 @@ function parseJson(text: string | null): unknown {
   }
 }
 
-/** Project grants, from a JSON array of [project id, access] pairs, lowered to `most`. */
-function grantsOf(text: string | null, most: ProjectAccess | null): ReadonlyMap<string, ProjectAccess> {
+/** Project grants, from an array of [project id, access] pairs, lowered to `most`. */
+function grantsOf(pairs: unknown, most: ProjectAccess | null): ReadonlyMap<string, ProjectAccess> {
   const projects = new Map<string, ProjectAccess>();
-  const pairs = parseJson(text);
   if (most === null || !Array.isArray(pairs)) return projects;
   for (const pair of pairs) {
     if (!Array.isArray(pair) || typeof pair[0] !== 'string') continue;
@@ -144,7 +153,38 @@ function grantsOf(text: string | null, most: ProjectAccess | null): ReadonlyMap<
   return projects;
 }
 
-/** The owner a signed session cookie belongs to; null when its signature fails, it expired or its GitHub id left the allowlist. */
+/** A person's memberships, from a JSON array of [workspace id, workspace name, role] rows. */
+function membershipsOf(text: string | null): Membership[] {
+  const rows = parseJson(text);
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row: unknown): Membership[] => {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') return [];
+    const role: unknown = row[2];
+    if (role !== 'owner' && role !== 'member') return [];
+    return [{ workspace: { id: row[0], name: row[1] }, role }];
+  });
+}
+
+/** An agent's grants by workspace, from a JSON array of [workspace id,
+ * workspace name, project id, access] rows, lowered to `most`. */
+function workspaceGrantsOf(text: string | null, most: ProjectAccess | null): WorkspaceGrants[] {
+  const rows = parseJson(text);
+  if (most === null || !Array.isArray(rows)) return [];
+  const byWorkspace = new Map<string, { readonly name: string; readonly pairs: unknown[][] }>();
+  for (const row of rows) {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string') continue;
+    const entry = byWorkspace.get(row[0]) ?? { name: row[1], pairs: [] };
+    entry.pairs.push([row[2], row[3]]);
+    byWorkspace.set(row[0], entry);
+  }
+  return [...byWorkspace].map(([id, { name, pairs }]) => ({
+    workspace: { id, name },
+    projects: grantsOf(pairs, most),
+  }));
+}
+
+/** The person a signed session cookie belongs to, with their workspaces; null
+ * when its signature fails, it expired or its GitHub id left the allowlist. */
 async function verifySession(db: D1Database, config: SignInConfig, cookie: string): Promise<PersonPrincipal | null> {
   const dot = cookie.lastIndexOf('.');
   if (dot < 1) return null;
@@ -155,18 +195,26 @@ async function verifySession(db: D1Database, config: SignInConfig, cookie: strin
     .prepare(
       `SELECT s.user_id, u.name,
          (SELECT json_group_array(a.account_id) FROM auth_account a
-           WHERE a.user_id = s.user_id AND a.provider_id = 'github') AS github_ids
+           WHERE a.user_id = s.user_id AND a.provider_id = 'github') AS github_ids,
+         (SELECT json_group_array(json_array(m.workspace_id, w.name, m.role))
+           FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
+           WHERE m.user_id = s.user_id) AS memberships
        FROM auth_session s JOIN auth_user u ON u.id = s.user_id
        WHERE s.token = ? AND s.expires_at > ?`,
     )
     .bind(token, new Date().toISOString())
-    .first<{ user_id: string; name: string; github_ids: string | null }>();
-  if (!row || !hasOwnerAccount(config, row.github_ids)) return null;
+    .first<{ user_id: string; name: string; github_ids: string | null; memberships: string | null }>();
+  if (!row) return null;
+  const admin = hasOwnerAccount(config, row.github_ids);
+  // Only the deployment's admins sign in until invitations let members in.
+  if (!admin) return null;
   return Object.freeze({
     kind: 'person',
     id: `person:${row.user_id}`,
     userId: row.user_id,
     name: displayName(row.name, 'owner'),
+    admin,
+    memberships: membershipsOf(row.memberships),
   });
 }
 
@@ -181,7 +229,10 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
   const row = await db
     .prepare(
       `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name, u.name AS person_name,
-         (SELECT json_group_array(json_array(g.project_id, g.access)) FROM access_agent_grants g
+         (SELECT json_group_array(json_array(g.workspace_id, w.name, g.project_id, g.access))
+           FROM access_agent_grants g
+           JOIN workspace_members m ON m.workspace_id = g.workspace_id AND m.user_id = g.user_id
+           JOIN workspaces w ON w.id = g.workspace_id
            WHERE g.user_id = t.user_id AND g.client_id = t.client_id) AS grants,
          (SELECT json_group_array(a.account_id) FROM auth_account a
            WHERE a.user_id = t.user_id AND a.provider_id = 'github') AS github_ids
@@ -215,7 +266,7 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
     personName: displayName(row.person_name, 'owner'),
     clientId: row.client_id,
     name: displayName(row.client_name, 'agent'),
-    projects: grantsOf(row.grants, most),
+    workspaces: workspaceGrantsOf(row.grants, most),
   });
 }
 
@@ -225,13 +276,22 @@ async function verifyServiceToken(db: D1Database, token: string): Promise<Servic
   if (!parsed) return null;
   const row = await db
     .prepare(
-      `SELECT c.name, c.secret_hash, c.backup, c.restore,
+      `SELECT c.name, c.secret_hash, c.backup, c.restore, c.workspace_id, w.name AS workspace_name,
          (SELECT json_group_array(json_array(g.project_id, g.access)) FROM access_service_grants g
            WHERE g.credential_id = c.id) AS grants
-       FROM access_service_credentials c WHERE c.id = ? AND c.revoked_at IS NULL`,
+       FROM access_service_credentials c JOIN workspaces w ON w.id = c.workspace_id
+       WHERE c.id = ? AND c.revoked_at IS NULL`,
     )
     .bind(parsed.id)
-    .first<{ name: string; secret_hash: string; backup: number; restore: number; grants: string | null }>();
+    .first<{
+      name: string;
+      secret_hash: string;
+      backup: number;
+      restore: number;
+      workspace_id: string;
+      workspace_name: string;
+      grants: string | null;
+    }>();
   const expected = row ? fromHex(row.secret_hash) : null;
   if (!row || !expected || !sameBytes(expected, await sha256(parsed.secret))) return null;
   return Object.freeze({
@@ -239,7 +299,8 @@ async function verifyServiceToken(db: D1Database, token: string): Promise<Servic
     id: `service:${parsed.id}`,
     credentialId: parsed.id,
     name: row.name,
-    projects: grantsOf(row.grants, 'write'),
+    workspace: Object.freeze({ id: row.workspace_id, name: row.workspace_name }),
+    projects: grantsOf(parseJson(row.grants), 'write'),
     backup: row.backup === 1,
     restore: row.restore === 1,
   });

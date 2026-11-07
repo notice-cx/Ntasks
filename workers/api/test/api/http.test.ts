@@ -67,7 +67,7 @@ describe('who may read', () => {
   });
 
   it('serves reads only', async () => {
-    const response = await target.fetch(new Request(`${ORIGIN}/api/tasks/projects`, { method: 'POST' }));
+    const response = await target.fetch(new Request(`${ORIGIN}/api/tasks/capabilities`, { method: 'POST' }));
     expect(response.status).toBe(405);
     expect(response.headers.get('allow')).toBe('GET, HEAD');
   });

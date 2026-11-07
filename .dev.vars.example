@@ -1,0 +1,8 @@
+# The secrets the Worker requires (wrangler.jsonc, secrets.required). The
+# Deploy to Cloudflare button asks for each one. For `pnpm dev`, copy this
+# file to .dev.vars and fill it in. docs/sign-in.md describes each value.
+NTASKS_ORIGIN=
+AUTH_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+OWNER_GITHUB_IDS=

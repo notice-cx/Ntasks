@@ -1,13 +1,14 @@
 # @ntasks/api
 
 The Ntasks Worker. It answers the paths that
-[`wrangler.jsonc`](wrangler.jsonc) lists in `assets.run_worker_first`, and
-Cloudflare serves the web app's build for every other path.
+[`wrangler.jsonc`](../../wrangler.jsonc), at the repository root, lists in
+`assets.run_worker_first`, and Cloudflare serves the web app's build for
+every other path. Wrangler commands run in this folder read that file.
 
 | Path | Holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The request handler |
-| [`src/access/`](src/access/) | Sign-in: the owner, AI agents over OAuth, service credentials, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
+| [`src/access/`](src/access/) | Sign-in: people, AI agents over OAuth, service credentials, the workspace routes, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
 | [`src/engine/`](src/engine/) | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md)) |
 | [`migrations/`](migrations/) | The D1 schema, as numbered SQL files ([rules](migrations/README.md)) |
 | [`test/`](test/) | Tests that run in workerd on a local D1 database |
@@ -32,3 +33,17 @@ pnpm --filter @ntasks/api run types  # regenerate worker-configuration.d.ts afte
 pnpm --filter @ntasks/api run dev    # the Worker at http://localhost:8787, serving the last web build
 pnpm --filter @ntasks/api build      # wrangler deploy --dry-run; needs the web build, which `pnpm build` makes first
 ```
+
+`pnpm run deploy`, from the repository root, runs this workspace's `deploy`
+script: it applies the D1 migrations the deployed database lacks, then
+deploys the Worker with the last web build, to the Cloudflare account
+wrangler is signed in to. The migrations step reads its input from
+`/dev/null`, so wrangler applies them without asking: wrangler exits
+successfully when its prompt is answered no, and the Worker would then
+deploy against tables that lack the migrations. The redirection needs a
+POSIX shell, as on Linux, macOS or WSL; under Windows' `cmd.exe` the script
+stops before it runs wrangler. The Deploy to Cloudflare button's builds run it
+([README](../../README.md#deploy-your-own)). The migrations step stops when
+the database does not exist yet. The button creates it before its first
+build; for a first deployment made without the button, create it once with
+`pnpm --filter @ntasks/api exec wrangler d1 create ntasks`.

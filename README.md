@@ -76,14 +76,15 @@ Ntasks is in active development ahead of its first release.
 
 | Part | Today |
 |---|---|
-| Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
+| Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
 | Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects and Members pages, where an owner creates projects and invites people. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
 | Task model | The task id format, the vocabulary and the engine contract |
-| Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
+| Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
+| Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](docs/api.md)) |
-| Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
-| Backups and loads | The owner, or a service credential made for backups, reads the whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
+| Sign-in | People sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
+| Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses
@@ -118,6 +119,43 @@ work gets the same list.
   signs in, the check made on every request, and how to set sign-in up.
 - [The design system](docs/design.md) lists the web app's colours, type,
   symbols and components, and the rules for using them.
+
+## Deploy your own
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
+
+The button copies this repository into your GitHub or GitLab account and
+deploys it to your Cloudflare account: one Worker, its D1 database and the
+Durable Object that holds the tasks. It asks for five secrets, so prepare
+them first:
+
+1. **The Worker's address**, `NTASKS_ORIGIN`. A Worker on `workers.dev` is
+   reached at `https://<Worker name>.<your subdomain>.workers.dev`, and the
+   Workers & Pages page of the Cloudflare dashboard shows your subdomain.
+   With the Worker name the setup page suggests, `ntasks`, the address is
+   `https://ntasks.<your subdomain>.workers.dev`.
+2. **A GitHub OAuth app for that address**, which you sign in through. Follow
+   [Register the GitHub OAuth app](docs/sign-in.md#register-the-github-oauth-app).
+   Its client ID and a client secret are `GITHUB_CLIENT_ID` and
+   `GITHUB_CLIENT_SECRET`.
+3. **Your numeric GitHub user id**, `OWNER_GITHUB_IDS`.
+   `https://api.github.com/users/<your login>` shows it. Separate several ids
+   with commas.
+4. **A random value of at least 32 characters**, `AUTH_SECRET`. Make one
+   with `openssl rand -base64 32`.
+
+On the setup page, the build command is `pnpm run build` and the deploy
+command is `pnpm run deploy`; set them if the page shows others. The build
+command builds the web app. The deploy command applies the D1 migrations to
+the database, then deploys the Worker. Cloudflare runs both again for each
+push to your copy's `main` branch. If you change the Worker's name, its
+address changes with it, and the OAuth app and `NTASKS_ORIGIN` must use the
+new one.
+
+When the deploy finishes, open the address and sign in with GitHub.
+[Sign-in](docs/sign-in.md#settings) describes each secret, and
+[How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects) the
+steps an MCP client takes.
 
 ## Run it locally
 
@@ -176,8 +214,9 @@ name at the top of the sidebar.
 |---|---|
 | [`apps/web/`](apps/web/) | The web app, built with React and Vite |
 | [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
+| [`wrangler.jsonc`](wrangler.jsonc), [`.dev.vars.example`](.dev.vars.example) | The Worker's Cloudflare settings and the names of the secrets it requires, at the root because the Deploy to Cloudflare button reads them there |
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
-| [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, and that no `wrangler.jsonc` names a secret in `vars` |
+| [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, that no `wrangler.jsonc` names a secret in `vars`, and that the Deploy to Cloudflare button asks for every secret the Worker requires |
 | [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
 | [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app and the design gallery's |
 | [`docs/`](docs/) | Concepts, architecture and the design system |

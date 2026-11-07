@@ -1,12 +1,15 @@
 # Architecture
 
-Ntasks is one Cloudflare Worker and one task store. The **task store** is a
-SQLite-backed Durable Object that holds every task and runs the task engine
-beside it. Sign-in keeps its data in D1. The Worker answers the
-API, the MCP endpoint that AI agents connect to, and sign-in; Cloudflare
-serves the web app's files from the same deployment. This page shows how the
-parts fit, the limits the design keeps to, and the rules every change keeps.
-Read [Concepts](concepts.md) first for the task model itself.
+Ntasks is one Cloudflare Worker and a task store for each workspace. A
+**workspace** is the set of projects, people, agents and services that work
+together; one deployment holds several, and none reaches another's tasks. The
+**task store** is a SQLite-backed Durable Object that holds one workspace's
+tasks and runs the task engine beside them. Sign-in, the workspaces and their
+members are in D1. The Worker answers the API, the MCP endpoint that AI agents
+connect to, and sign-in; Cloudflare serves the web app's files from the same
+deployment. This page shows how the parts fit, the limits the design keeps
+to, and the rules every change keeps. Read [Concepts](concepts.md) first for
+the task model itself.
 
 ## The parts
 
@@ -17,23 +20,24 @@ flowchart LR
   service["A service, such as NoticeOS"] --> worker
   subgraph cf["Cloudflare"]
     files["Web app files"]
-    worker["Ntasks Worker<br/>health · sign-in"] --> store[("Task store<br/>a Durable Object<br/>tasks · history · API")]
-    worker --> db[("D1<br/>sign-in")]
+    worker["Ntasks Worker<br/>health · sign-in · MCP"] --> storeA[("Task store of workspace A<br/>a Durable Object<br/>tasks · history · API")]
+    worker --> storeB[("Task store of workspace B")]
+    worker --> db[("D1<br/>sign-in · workspaces")]
   end
   person --> files
 ```
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts) | The health check at `/healthz` and sign-in; signs each API request in and hands it, with its sender, to the task store |
-| Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds the tasks, applies its schema and answers repeated reads from memory |
+| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts), [`workspaces.ts`](../workers/api/src/workspaces.ts) | The health check at `/healthz`, sign-in and the MCP endpoint; signs each API request in, picks the workspace it reaches, and hands it to that workspace's task store with its sender |
+| Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds one workspace's tasks, applies its schema and answers repeated reads from memory |
 | Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
-| Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | Sign-in's tables, in D1 ([Sign-in](sign-in.md#tables)) |
+| Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | The tables of sign-in and of workspaces, their members and invitations, in D1 ([Sign-in](sign-in.md#tables)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | The task pages, reading the Worker's routes; until they use the write routes, they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
 | API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/), [`task-writes.ts`](../workers/api/src/task-writes.ts), [`owner-answers.ts`](../workers/api/src/owner-answers.ts), [`agent-stats.ts`](../workers/api/src/agent-stats.ts) | The MCP tools and the HTTP routes that read and change tasks ([The API](api.md)), the rules of a person's decisions and of the owner answers agents record, and agent statistics |
-| Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Owner sign-in with GitHub, OAuth 2.1 for AI agents, service credentials, and the token verifier every route calls ([Sign-in](sign-in.md)) |
+| Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Sign-in with GitHub for people, OAuth 2.1 for AI agents, service credentials, the workspace routes, and the token verifier every route calls ([Sign-in](sign-in.md)) |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how
 AI agents call tools on a server. Ntasks offers its task operations, such
@@ -41,7 +45,7 @@ as listing ready work or claiming a task, as MCP tools.
 
 ## How a request is routed
 
-The Worker's configuration, [`wrangler.jsonc`](../workers/api/wrangler.jsonc),
+The Worker's configuration, [`wrangler.jsonc`](../wrangler.jsonc),
 lists the paths the Worker answers in `assets.run_worker_first`: `/healthz`,
 every path under `/api/`, the sign-in pages and the OAuth discovery documents
 ([Sign-in](sign-in.md#routes)). Any other path is a file from the web app's
@@ -54,24 +58,57 @@ Cloudflare serves the web app's files without starting the Worker, so they do
 not count against the Worker's request limit below. They hold no task data:
 the app asks the API for everything it shows.
 
-An API request goes from the Worker to the task store. The Worker answers
-`404` for a path the API does not serve, signs the sender in, and hands the
-request with its sender to the store. The store answers it with the task
-engine, whose queries run beside the data with no network trip. There is one
-store per installation, named `tasks`.
+An API request goes from the Worker to one workspace's task store. The Worker
+answers `404` for a path the API does not serve, signs the sender in, and
+picks the workspace the request reaches ([below](#workspaces)). It then hands
+an HTTP request to that workspace's store, with the sender as the store sees
+it: its scopes and projects in that workspace and nothing of any other. The
+store answers it with the task engine, whose queries run beside the data with
+no network trip. Each workspace has its own store, the Durable Object named
+`workspace:` followed by the workspace's id, so no query of one workspace can
+read another's rows.
+
+The Worker answers the MCP endpoint itself: the list of tools,
+`list_workspaces` and `get_task_guide` come from the sender's sign-in, and
+each other tool call goes, over Durable Object RPC, to the store of the
+workspace its `workspace` argument names.
+
+## Workspaces
+
+A workspace has an id, a UUID, and a name. Its people belong to it as its
+**owner** or as a **member**: both read, write and decide there, and an owner
+also creates its projects, makes its service credentials, and backs it up and
+loads it. The deployment's admins, the GitHub accounts in `OWNER_GITHUB_IDS`,
+create workspaces, and each becomes the owner of the workspaces they create.
+Only admins sign in: a GitHub account not in `OWNER_GITHUB_IDS` is refused.
+
+A request reaches one workspace:
+
+- A service credential belongs to one workspace and always reaches it.
+- A person or an agent names one in the `x-ntasks-workspace` header, and an
+  MCP tool call names one in its `workspace` argument.
+- A sender that reaches exactly one workspace may leave the header out. One
+  that reaches several and names none gets `400` with `workspace_required`.
+- A workspace the sender does not reach answers as one that does not exist.
+
+[The API](api.md#workspaces) lists the routes and answers.
 
 ## Who connects, and how they sign in
 
 Ntasks is designed to be reachable from the internet, so authentication is its
 boundary. Every API and MCP request names who sends it, and the Worker checks
-what that sender may do in the project the request names. Only the health
-check and the sign-in steps themselves answer without it.
+which workspaces that sender reaches and what it may do in the project the
+request names. Only the health check and the sign-in steps themselves answer
+without it.
 
-- **The owner** signs in in the browser with an allowlisted GitHub account.
+- **People** sign in in the browser with an allowlisted GitHub account, and
+  reach the workspaces they belong to.
 - **AI agents** connect with OAuth 2.1, the sign-in method MCP clients use,
-  and the owner approves which projects each agent may reach.
-- **Services**, such as a NoticeOS installation, use a named credential with
-  access to named projects, which the owner can revoke.
+  and the person who approves an agent chooses which projects of their
+  workspaces it may reach.
+- **Services**, such as a NoticeOS installation, use a named credential of
+  one workspace with access to named projects, which the workspace's owner
+  can revoke.
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
 how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
@@ -90,12 +127,17 @@ limits that shape the design, from Cloudflare's documentation in November
 | Durable Object requests | 100,000 a day |
 | Rows read, by the task store | 5,000,000 a day |
 | Rows written, by the task store | 100,000 a day |
+| Rows read, by D1 (sign-in) | 5,000,000 a day |
 | Data stored, by Durable Objects | 5 GB in all |
 
-Each API request is one Worker request and one request to the task store.
-When a daily limit is reached, operations of that kind fail until 00:00 UTC.
-To stay inside these limits, Ntasks:
+Each API request is one Worker request and one request to a task store. The
+MCP endpoint's list of tools, `list_workspaces` and `get_task_guide` reach no
+store. When a daily limit is reached, operations of that kind fail until
+00:00 UTC. To stay inside these limits, Ntasks:
 
+- reads the sender's workspaces in the same D1 query that signs the sender
+  in, so picking a workspace takes no further query; that query reads about
+  two more rows for each of the sender's memberships or grants;
 - answers a read it has answered since the last write from the store's
   memory, which reads no rows;
 - reaches every row it reads through an index, and returns a task's labels
