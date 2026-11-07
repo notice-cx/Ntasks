@@ -424,6 +424,49 @@ describe('a task page', () => {
     expect(within(status).queryByRole('button')).toBeNull();
   });
 
+  describe('an approval an agent relayed for the person', () => {
+    const answer = {
+      option: 'approve',
+      quote: 'Approve web-g7p2',
+      source: 'claude-code:session/example-session',
+      recordedBy: 'agent:example',
+      relayed: true,
+      proposalVersion: '0123456789ab',
+      at: '2026-11-06T12:00:00.000Z',
+      disputedBy: null,
+    };
+    const approved = {
+      status: 'closed',
+      resolution: 'done',
+      closeReason: 'Owner approved the recorded scope',
+      closedAt: '2026-11-06T12:00:00.000Z',
+    };
+
+    it('shows what was recorded, by whom and from where, and disputes it', async () => {
+      const api = createFixtureTasksApi();
+      Object.assign(task(api, 'web-g7p2')!, { ...approved, answer });
+      renderApp('/tasks/web-g7p2', api);
+
+      const recorded = await screen.findByRole('region', { name: 'Recorded answer' });
+      expect(within(recorded).getByRole('heading', { name: 'Approved' })).toBeTruthy();
+      expect(within(recorded).getByText(answer.quote)).toBeTruthy();
+      // The recorder by name, as every byline shows an agent.
+      expect(within(recorded).getByText('example')).toBeTruthy();
+      expect(within(recorded).getByText(`Relayed from ${answer.source}`)).toBeTruthy();
+      fireEvent.click(await enabledButton('Dispute', recorded));
+      await waitFor(() => expect(task(api, 'web-g7p2')?.status).toBe('open'));
+    });
+
+    it('offers no dispute once it is disputed', async () => {
+      const api = createFixtureTasksApi();
+      Object.assign(task(api, 'web-g7p2')!, { answer: { ...answer, disputedBy: 'Example Person' } });
+      renderApp('/tasks/web-g7p2', api);
+      const recorded = await screen.findByRole('region', { name: 'Recorded answer' });
+      expect(within(recorded).getByText(/Disputed by Example Person/u)).toBeTruthy();
+      expect(within(recorded).queryByRole('button', { name: 'Dispute' })).toBeNull();
+    });
+  });
+
   it('says when no task has the id', async () => {
     renderApp('/tasks/zzz-a1b2');
     expect(await screen.findByText('No task with this id')).toBeTruthy();

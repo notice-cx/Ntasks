@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
-import type { TaskChoice, TaskChoices } from '@/api/types';
+import type { TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices } from '@/api/types';
 import { Avatar } from '@/components/ui/avatar';
 import { OptionList } from '@/components/ui/choice';
 import { ProjectBadge } from '@/components/ui/shell';
@@ -118,6 +118,60 @@ export function ClosedSummary({
         </h2>
         <Byline by={by} at={at} nowMs={nowMs} />
       </div>
+      {children}
+    </section>
+  );
+}
+
+/** What an answer chose, as its heading names it. */
+function answerHeading(answer: TaskAnswer, choices: TaskChoices | null): string {
+  if (answer.option === 'approve') return 'Approved';
+  if (answer.option === 'decline') return 'Declined';
+  if (answer.option === null) return 'Answered';
+  const label = choices?.options.find((option) => option.key === answer.option)?.label;
+  return label === undefined
+    ? `Chose (${answer.option})`
+    : `Chose ${choiceName(answer.option as TaskChoiceKey, label)}`;
+}
+
+/**
+ * An answer an agent or a service recorded for a person: what it chose, who
+ * recorded it and when, where the person said it and their words, then
+ * `children`, such as the Dispute that withdraws it.
+ */
+export function AnswerSummary({
+  answer,
+  choices,
+  by,
+  nowMs,
+  children,
+}: {
+  answer: TaskAnswer;
+  choices: TaskChoices | null;
+  by: Actor;
+  nowMs: number;
+  children?: ReactNode;
+}) {
+  return (
+    <section
+      aria-label="Recorded answer"
+      data-task-answer=""
+      className="flex flex-col gap-2 rounded-xl bg-surface px-4 py-3 inset-ring inset-ring-border"
+    >
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2">
+        <h2 className="m-0 text-sm font-semibold text-ink">{answerHeading(answer, choices)}</h2>
+        <Byline by={by} at={answer.at} nowMs={nowMs} />
+      </div>
+      <p className="m-0 text-meta text-ink-3 [overflow-wrap:anywhere]">
+        {answer.relayed ? 'Relayed' : 'Answered here'}
+        {answer.source ? ` from ${answer.source}` : ''}
+        {answer.disputedBy ? ` · Disputed by ${answer.disputedBy}` : ''}
+      </p>
+      {answer.quote ? (
+        <blockquote className="m-0 border-s-2 border-border-strong ps-3 text-body whitespace-pre-line text-ink-2">
+          {answer.quote}
+        </blockquote>
+      ) : null}
       {children}
     </section>
   );
