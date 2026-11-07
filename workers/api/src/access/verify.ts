@@ -125,7 +125,7 @@ function sessionCookie(headers: Headers, config: SignInConfig): string | null {
   return null;
 }
 
-/** Whether any of the person's GitHub accounts, as a JSON array of ids, is on the allowlist. */
+/** Whether any of the person's GitHub accounts, as a JSON array of ids, is a deployment admin's (OWNER_GITHUB_IDS). */
 function hasOwnerAccount(config: SignInConfig, githubIds: string | null): boolean {
   const ids = parseJson(githubIds);
   return Array.isArray(ids) && ids.some((id) => typeof id === 'string' && config.owners.has(id));

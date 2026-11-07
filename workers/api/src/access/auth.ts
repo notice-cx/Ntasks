@@ -10,7 +10,7 @@
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
 import type { SignInConfig } from './config.ts';
-import { acceptInvitations, githubAccountOf, mayJoin, type GitHubAccount } from './members.ts';
+import { acceptInvitations, githubAccountOf, isMember, mayJoin, type GitHubAccount } from './members.ts';
 import { NOT_INVITED } from './pages.ts';
 import {
   AGENT_ACCESS_PAGE,
@@ -100,7 +100,11 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
           // fresh. The membership is bound to the user, so renaming the login
           // later, or someone else taking it, changes nothing.
           before: async (session) => {
-            if (admitted) await acceptInvitations(db, session.userId, admitted.login);
+            if (!admitted) return;
+            await acceptInvitations(db, session.userId, admitted.login);
+            // The invitation that let the account in may have been revoked, or
+            // run out, since validateUserInfo read it: then no session is made.
+            if (!config.owners.has(admitted.id) && !(await isMember(db, session.userId))) return false;
           },
         },
       },

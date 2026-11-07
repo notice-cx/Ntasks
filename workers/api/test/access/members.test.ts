@@ -4,6 +4,7 @@
 // (vitest.config.ts); the people they invite are 2101 and up.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { setAgentGrants } from '../../src/access/grants.ts';
 import { INVITATION_DAYS } from '../../src/access/members.ts';
 import { projectChoice } from '../../src/access/pages.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
@@ -265,6 +266,92 @@ describe('removing a member', () => {
     expect((await as(person, 'GET', '/api/access/me')).status).toBe(401);
     expect((await meWithToken(agent)).status).toBe(401);
     expect((await signIn(2106)).landed.searchParams.get('error')).toBe('not_invited');
+  });
+});
+
+describe('removing an owner', () => {
+  it('revokes what they made or were offered there, so nothing they control brings them back', async () => {
+    const { owner, workspace } = await adminWithWorkspace(1002, 'Takeover');
+    await invited(owner, workspace, 'person-2112', 'owner');
+    const removed = await admitted(2112);
+    const removedId = await idOf(2112);
+    // While an owner, they invite a second account they control, and make a service credential.
+    await invited(removed, workspace, 'person-2113', 'owner');
+    const made = await as(removed, 'POST', '/api/access/services', {
+      workspace,
+      json: { name: 'theirs', backup: true },
+    });
+    expect(made.status).toBe(201);
+    const token = (made.body.service as { token: string }).token;
+    expect((await meWithToken(token)).status).toBe(200);
+    // An invitation for their own login waits too, as a promotion would.
+    await invited(owner, workspace, 'person-2112', 'owner');
+
+    expect(await remove(owner, workspace, removedId)).toEqual({ status: 200, body: { removed: true } });
+
+    expect((await members(owner, workspace)).body.invitations).toEqual([]);
+    expect((await signIn(2113)).landed.searchParams.get('error')).toBe('not_invited');
+    expect((await signIn(2112)).landed.searchParams.get('error')).toBe('not_invited');
+    expect((await meWithToken(token)).status).toBe(401);
+  });
+
+  it('takes away the approval of an agent left with no grant, so it asks again', async () => {
+    const { owner, workspace } = await adminWithWorkspace(1003, 'Agents');
+    const created = await as(owner, 'POST', '/api/tasks/projects', { workspace, json: { name: 'ag', prefix: 'ag' } });
+    const projectId = (created.body.project as { projectId: string }).projectId;
+    await invited(owner, workspace, 'person-2114');
+    const person = await admitted(2114);
+    const personId = await idOf(2114);
+    await connectAgent(person, [projectChoice(workspace, projectId)]);
+    const consents = () =>
+      env.DB.prepare('SELECT count(*) AS n FROM auth_oauth_consent WHERE user_id = ?')
+        .bind(personId)
+        .first<{ n: number }>();
+    expect((await consents())?.n).toBe(1);
+
+    await remove(owner, workspace, personId);
+
+    expect((await consents())?.n).toBe(0);
+  });
+});
+
+describe('a sign-in whose invitation goes while it runs', () => {
+  it('gets no session', async () => {
+    const { owner, workspace } = await adminWithWorkspace(1004, 'Race');
+    const invitationId = await invited(owner, workspace, 'person-2115');
+    // The invitation is revoked between the check that admits the account and the one that accepts it.
+    await env.DB.prepare(
+      `CREATE TRIGGER revoke_during_sign_in AFTER INSERT ON auth_account BEGIN
+         UPDATE workspace_invitations SET revoked_at = '2026-11-07T00:00:00.000Z' WHERE id = '${invitationId}';
+       END`,
+    ).run();
+    try {
+      const { browser, landed } = await signIn(2115);
+      expect(landed.pathname).not.toBe('/');
+      expect((await browser.fetch('/api/access/me')).status).toBe(401);
+    } finally {
+      await env.DB.prepare('DROP TRIGGER revoke_during_sign_in').run();
+    }
+  });
+});
+
+describe('an agent grant', () => {
+  it('is written only while the person is a member of its workspace', async () => {
+    const { workspace } = await adminWithWorkspace(1001, 'Grants');
+    const ownerId = await idOf(1001);
+    await env.DB.prepare(
+      `INSERT INTO auth_oauth_client (id, client_id, name, created_at, updated_at, redirect_uris)
+       VALUES ('grant-race', 'grant-race', 'Race', '2026-11-07', '2026-11-07', '[]') ON CONFLICT DO NOTHING`,
+    ).run();
+    const outside = crypto.randomUUID();
+    await setAgentGrants(env.DB, ownerId, 'grant-race', [
+      { workspaceId: workspace, projectId: 'p-in', access: 'read' },
+      { workspaceId: outside, projectId: 'p-out', access: 'read' },
+    ]);
+    const rows = await env.DB.prepare('SELECT workspace_id FROM access_agent_grants WHERE client_id = ?')
+      .bind('grant-race')
+      .all<{ workspace_id: string }>();
+    expect(rows.results.map((row) => row.workspace_id)).toEqual([workspace]);
   });
 });
 

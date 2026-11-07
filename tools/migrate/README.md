@@ -381,9 +381,11 @@ are no longer reached after the update, and nothing moves them. To keep them:
 5. Invite everyone else who used the deployment
    ([Members and invitations](../../docs/sign-in.md#members-and-invitations)).
    The workspace's creator is its only member; a deployment admin still signs
-   in without an invitation, but reaches a workspace only as its member. Each
-   person's agents ask for access again, and services get new credentials, as
-   step 3 says. Then let writers start again.
+   in without an invitation, but reaches a workspace only as its member.
+   Migration `0004_workspaces.sql` drops agents' grants but not their
+   approvals, so each person revokes each agent
+   (`POST /api/access/agents/<client id>/revoke`) and connects it again;
+   services get new credentials, as step 3 says. Then let writers start again.
 
 ## Tests
 

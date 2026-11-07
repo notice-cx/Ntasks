@@ -215,8 +215,8 @@ A GitHub account may sign in when one of these holds:
 
 Any other account is sent back to `/sign-in?error=not_invited`, and the page
 shows the reason: the account is not a member of a workspace here, and a
-workspace owner can invite its GitHub username. A refused sign-in creates no
-account.
+workspace owner can invite its GitHub username. A refused sign-in gets no
+session, and creates no account unless its invitation went while it ran.
 
 An owner of a workspace manages its people with the routes below, naming
 the workspace in the `x-ntasks-workspace` header when they belong to
@@ -244,12 +244,17 @@ several.
   invitation that is no longer wanted.
 - **Revoking.** `POST /api/access/invitations/<invitation id>/revoke`
   revokes an open invitation. A revoked invitation admits nobody.
-- **Removing.** `POST /api/access/members/<user id>/remove` removes a member,
-  and deletes the project grants their agents hold in the workspace. From
-  their next request, their session and their agents no longer reach the
-  workspace; they keep their other workspaces. Inviting them again does not
-  give their agents the workspace back: they approve each agent again.
-  Service credentials they made stay, since they belong to the workspace.
+- **Removing.** `POST /api/access/members/<user id>/remove` removes a member.
+  From their next request, their session and their agents no longer reach
+  the workspace; they keep their other workspaces. In the same step, so that
+  nothing they control brings them back:
+  - the project grants their agents hold in the workspace are deleted, and an
+    agent left with no grant anywhere loses its approval, so inviting them
+    again shows each agent's approval page again;
+  - the open invitations they sent in the workspace are revoked, and so are
+    open invitations there for a login they joined under;
+  - the service credentials they made in the workspace are revoked: they hold
+    those tokens. Make new ones for services that still need access.
 - **The last owner.** A workspace keeps at least one owner: removing its
   only owner gets `409` with `{"error":"last_owner"}`. No route changes a
   role; to make a member an owner, invite their login as `owner`, and it
@@ -338,9 +343,9 @@ Only a person's browser session may use the `/api/access/` routes that list,
 make or revoke; an agent or a service gets `403` with `owner_only`. The
 service credential, member and invitation routes act in the request's
 workspace: the one the `x-ntasks-workspace` header names, or the person's
-only one. Only its owners may use them. Each refusal is JSON with `error`,
-the rule that refused, and `detail`, a sentence saying why; a refusal about
-one body field names it in `field`.
+only one. Only its owners may use them. A refusal of these routes is JSON
+with `error`, the rule that refused, and `detail`, a sentence saying why; a
+refusal about one body field names it in `field`.
 
 | Answer | When |
 |---|---|

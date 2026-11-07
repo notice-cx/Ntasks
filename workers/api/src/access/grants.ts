@@ -138,8 +138,12 @@ export async function setAgentGrants(
     db.prepare('DELETE FROM access_agent_grants WHERE user_id = ? AND client_id = ?').bind(userId, clientId),
     ...grants.map((grant) =>
       db
+        // Only while the person is still a member: a removal between reading
+        // the approval page and writing here leaves no grant behind.
         .prepare(
-          'INSERT INTO access_agent_grants (user_id, client_id, workspace_id, project_id, access, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          `INSERT INTO access_agent_grants (user_id, client_id, workspace_id, project_id, access, created_at)
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6
+           WHERE EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?3 AND user_id = ?1)`,
         )
         .bind(userId, clientId, grant.workspaceId, grant.projectId, grant.access, now),
     ),

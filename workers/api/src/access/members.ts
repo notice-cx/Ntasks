@@ -105,6 +105,15 @@ export async function acceptInvitations(db: D1Database, userId: string, login: s
   ]);
 }
 
+/** Whether the user is a member of any workspace. */
+export async function isMember(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 AS found FROM workspace_members WHERE user_id = ? LIMIT 1')
+    .bind(userId)
+    .first();
+  return row !== null;
+}
+
 /** A workspace's members, by name, and its open, unexpired invitations, newest first. */
 export async function listMembers(
   db: D1Database,
@@ -194,8 +203,8 @@ export async function createInvitation(
 export async function revokeInvitation(db: D1Database, workspaceId: string, id: string): Promise<boolean> {
   const result = await db
     .prepare(
-      `UPDATE workspace_invitations SET revoked_at = ?
-       WHERE id = ? AND workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL`,
+      `UPDATE workspace_invitations SET revoked_at = ?1
+       WHERE id = ?2 AND workspace_id = ?3 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?1`,
     )
     .bind(new Date().toISOString(), id, workspaceId)
     .run();
@@ -218,6 +227,7 @@ export async function removeMember(
   workspaceId: string,
   userId: string,
 ): Promise<'removed' | 'last_owner' | 'not_found'> {
+  const now = new Date().toISOString();
   const [removed] = await db.batch([
     db
       .prepare(
@@ -230,6 +240,35 @@ export async function removeMember(
       .prepare(
         `DELETE FROM access_agent_grants WHERE workspace_id = ?1 AND user_id = ?2
          AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
+      )
+      .bind(workspaceId, userId),
+    // Nothing the person made or was offered here may bring them, or someone
+    // they control, back in: invitations they sent, invitations still open for
+    // a login they joined under, and the service credentials they hold the
+    // token of. Each runs only once the membership is gone.
+    db
+      .prepare(
+        `UPDATE workspace_invitations SET revoked_at = ?3
+         WHERE workspace_id = ?1 AND accepted_at IS NULL AND revoked_at IS NULL
+           AND (created_by = ?2 OR lower(github_login) IN (SELECT lower(github_login) FROM workspace_invitations
+             WHERE workspace_id = ?1 AND accepted_by = ?2))
+           AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
+      )
+      .bind(workspaceId, userId, now),
+    db
+      .prepare(
+        `UPDATE access_service_credentials SET revoked_at = ?3
+         WHERE workspace_id = ?1 AND created_by = ?2 AND revoked_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
+      )
+      .bind(workspaceId, userId, now),
+    // An agent left with no grant anywhere loses its approval too, so asking
+    // again shows the approval page instead of a token that reaches nothing.
+    db
+      .prepare(
+        `DELETE FROM auth_oauth_consent WHERE user_id = ?2
+           AND client_id NOT IN (SELECT client_id FROM access_agent_grants WHERE user_id = ?2)
+           AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
       )
       .bind(workspaceId, userId),
   ]);

@@ -36,7 +36,7 @@
         "description": "A random value of at least 32 characters. Make one with `openssl rand -base64 32`. It signs session cookies and sign-in state, and encrypts stored GitHub tokens and agents' client secrets."
       },
       "GITHUB_CLIENT_ID": {
-        "description": "The client ID of the GitHub OAuth app the owner signs in through. [Register the app](https://github.com/notice-cx/Ntasks/blob/main/docs/sign-in.md#register-the-github-oauth-app) for this Worker's address first."
+        "description": "The client ID of the GitHub OAuth app people sign in through. [Register the app](https://github.com/notice-cx/Ntasks/blob/main/docs/sign-in.md#register-the-github-oauth-app) for this Worker's address first."
       },
       "GITHUB_CLIENT_SECRET": {
         "description": "A client secret generated for that GitHub OAuth app."
