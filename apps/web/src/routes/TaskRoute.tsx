@@ -153,6 +153,8 @@ export function TaskRoute() {
             {project ? (
               <Link
                 to={`/tasks?${new URLSearchParams({ project: project.logicalKey })}`}
+                // A phone hides the name beside the badge, so the link carries it.
+                aria-label={project.displayName}
                 className="flex min-w-0 items-center gap-1.5 text-ink-3 no-underline hover:text-ink"
               >
                 <ProjectBadge prefix={project.prefix} />

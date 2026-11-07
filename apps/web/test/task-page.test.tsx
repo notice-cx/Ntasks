@@ -26,6 +26,9 @@ describe('a task page', () => {
     expect(within(where).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
       '/tasks?project=web',
     );
+    // The top bar's path keeps the project's name when a phone hides its words.
+    const path = screen.getByRole('navigation', { name: 'Path' });
+    expect(within(path).getByRole('link').getAttribute('aria-label')).toBe('Example web app');
   });
 
   it('claims, comments, ticks Done when and closes with its evidence', async () => {
