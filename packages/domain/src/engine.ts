@@ -17,6 +17,7 @@
 import type {
   DependencyType,
   EpicProgress,
+  ExternalLink,
   ExternalLinkKind,
   Json,
   JsonObject,
@@ -208,6 +209,16 @@ export interface BoardQuery extends TaskFilters {
   /** With it, also every task closed at or after this time. A ready-only
    * board leaves closed tasks out, as no closed task is ready. */
   readonly closedSince?: string;
+  /** Leaves the tasks' external links unread, so each task's `externalLinks`
+   * is empty. For a caller that shows a page of the board: it reads the
+   * page's links with `listExternalLinks`, and no other task's. */
+  readonly withoutExternalLinks?: true;
+}
+
+/** One task's links to pages outside Ntasks, ordered by URL. */
+export interface TaskExternalLinks {
+  readonly taskId: string;
+  readonly externalLinks: readonly ExternalLink[];
 }
 
 export interface TaskPage {
@@ -269,6 +280,9 @@ export interface TaskEngine {
    * of any age, by id. Its cost follows the tasks carrying the label, not the
    * project's size. */
   listLabelled(projectId: string, query: LabelQuery): Promise<LabelPage>;
+  /** The external links of these tasks, reading theirs and no other task's.
+   * A task with none, or that does not exist, is left out. */
+  listExternalLinks(taskIds: readonly string[]): Promise<readonly TaskExternalLinks[]>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,

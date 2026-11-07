@@ -121,7 +121,10 @@ function links(text: string): TaskLink[] {
     .sort((a, b) => (a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0));
 }
 
-const byUrl = (a: ExternalLink, b: ExternalLink) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0);
+/** External links from their JSON array, ordered by URL, so every read lists them alike. */
+export function externalLinks(text: string): ExternalLink[] {
+  return (JSON.parse(text) as ExternalLink[]).sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+}
 
 export function toTask(row: TaskRow): Task {
   return {
@@ -143,7 +146,7 @@ export function toTask(row: TaskRow): Task {
     labels: (JSON.parse(row.labels_json) as string[]).sort(),
     dependencies: links(row.dependencies_json),
     dependents: links(row.dependents_json),
-    externalLinks: (JSON.parse(row.external_links_json) as ExternalLink[]).sort(byUrl),
+    externalLinks: externalLinks(row.external_links_json),
     ready: row.ready === 1,
     deferUntil: row.defer_until,
     dueAt: row.due_at,

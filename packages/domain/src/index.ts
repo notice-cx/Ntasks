@@ -47,6 +47,7 @@ export type {
   NewTaskLink,
   Retry,
   TaskEngine,
+  TaskExternalLinks,
   TaskFieldChanges,
   TaskFilters,
   TaskPage,

@@ -1200,6 +1200,18 @@ describe('external links', () => {
     ]);
     const listed = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
     expect(listed.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.task.externalLinks });
+    // A later page and a read of every project carry each task's links too.
+    const other = await task(project, { title: 'Also linked', priority: 4, externalLinks: [doc] });
+    const second = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', {
+      project: project.id,
+      limit: 1,
+      offset: 1,
+    });
+    expect(second.tasks).toMatchObject([{ id: other.id, externalLinks: [{ ...doc, kind: null }] }]);
+    const everywhere = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', {
+      query: 'pricing page',
+    });
+    expect(everywhere.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.task.externalLinks });
     // The same page is one URL, however it is written.
     const removed = await write<{ task: { externalLinks: unknown[] } }>(target, 'update_task', {
       project: project.id,

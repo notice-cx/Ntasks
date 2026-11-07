@@ -289,6 +289,8 @@ query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
 - a list or a board reads about ten rows for each task it returns;
+- `list_tasks` reads the external links of the tasks on the page it returns,
+  in one statement after the board, and no other task's;
 - a label read reads about fifteen rows for each task carrying the label in
   that project, however many tasks the project has;
 - no read runs more than four statements, however many projects there are.
