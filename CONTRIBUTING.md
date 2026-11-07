@@ -31,7 +31,7 @@ Run these from the repository root.
 | `pnpm lint` | Runs ESLint on every workspace's TypeScript. It reports a promise that nothing handles (awaits, returns, marks `void` or gives a `.catch()`), and a promise used where the code expects none. In Worker code it also reports the breaks of the other [rules for Worker code](#rules-for-worker-code) that it can see |
 | `pnpm format:check` | Checks that every file is formatted the way Prettier formats it. `pnpm format` rewrites the files that are not |
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
-| `pnpm test` | Runs every workspace's tests. They include tests that `pnpm lint` reports what it should, and a check that no `vars` setting in a `wrangler.jsonc` is named like a secret |
+| `pnpm test` | Runs every workspace's tests. They include tests that `pnpm lint` reports what it should, a check that no `vars` setting in a `wrangler.jsonc` is named like a secret, and a check that the Deploy to Cloudflare button asks for every secret the Worker requires |
 | `pnpm build` | Builds the web app, then checks that the Worker would deploy, without deploying it |
 
 CI runs `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` and
@@ -57,7 +57,7 @@ pnpm --filter @ntasks/domain test
   for [the task store](workers/api/src/store/migrations/README.md) and for
   [D1](workers/api/migrations/README.md); a merged migration never changes.
 - **Worker settings regenerate the Worker's types.** After editing
-  [`workers/api/wrangler.jsonc`](workers/api/wrangler.jsonc), run
+  [`wrangler.jsonc`](wrangler.jsonc) at the repository root, run
   `pnpm --filter @ntasks/api run types` and commit the regenerated
   `worker-configuration.d.ts`. `pnpm typecheck` fails while it is stale.
 - **TypeScript is strict.** Every workspace extends
@@ -115,7 +115,8 @@ Each rule below says which part a tool checks.
   does a comparison with `null`, `undefined` or `''`. Review checks a secret
   held under another name, and one compared inside a helper.
 - Never write a secret into `wrangler.jsonc`, the source or a test. Local
-  values go in `.dev.vars`, which git ignores. `pnpm test` fails when a
+  values go in `.dev.vars` at the repository root, which git ignores, and
+  `.dev.vars.example` holds only the names. `pnpm test` fails when a
   variable under `vars` in a `wrangler.jsonc` has a name that contains
   `secret`, `token`, `password`, `passcode`, `credential`, `api_key`,
   `private_key` or `signing_key`; a secret is set with `wrangler secret put`.

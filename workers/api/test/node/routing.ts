@@ -5,14 +5,13 @@
 // wrangler.jsonc and swaps only the web build for a one-file fixture, so
 // removing a path from assets.run_worker_first fails it.
 import assert from 'node:assert/strict';
+import { dirname, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createTestHarness, unstable_readConfig } from 'wrangler';
 
-const config = unstable_readConfig(
-  { config: fileURLToPath(new URL('../../wrangler.jsonc', import.meta.url)) },
-  { hideWarnings: true },
-);
+const configPath = fileURLToPath(new URL('../../../../wrangler.jsonc', import.meta.url));
+const config = unstable_readConfig({ config: configPath }, { hideWarnings: true });
 assert.ok(config.assets, 'wrangler.jsonc declares the web app as static assets');
 
 const server = createTestHarness({
@@ -23,7 +22,12 @@ const server = createTestHarness({
         main: config.main,
         compatibility_date: config.compatibility_date,
         assets: { ...config.assets, directory: fileURLToPath(new URL('./fixtures/web', import.meta.url)) },
-        d1_databases: config.d1_databases,
+        // migrations_dir is relative to wrangler.jsonc, and the harness would
+        // resolve it from the working directory.
+        d1_databases: config.d1_databases.map((database: { binding: string; migrations_dir?: string }) => ({
+          ...database,
+          migrations_dir: resolve(dirname(configPath), database.migrations_dir ?? 'migrations'),
+        })),
         ratelimits: config.ratelimits,
         // Sign-in settings, so its paths answer in full. Invented values, as
         // in vitest.config.ts; nothing here reaches GitHub.
