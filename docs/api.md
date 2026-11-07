@@ -16,6 +16,8 @@ a backup into an empty store ([below](#loading-an-empty-store)).
 
 Both read tasks and change them: they file, claim, change, comment on and
 close tasks, link one task to another and ask a person for an approval. A
+repository's automation and the agents that merge and deploy say where a
+closed task's change is: built, merged or live ([below](#delivery)). A
 person signed in to the web app makes their own decisions through the HTTP
 routes: answering a task that waits on them, choosing one of its options,
 declining it, approving an approval and disputing an approval an agent
@@ -140,9 +142,9 @@ start of the task guide and its rules for writing a task.
 | `list_workspaces` | Every workspace the sender reaches, ordered by name, each with its `workspaceId`, `name`, `status`, the sender's `role` in NoticeOS's words (`owner` for its owner, otherwise `operator` with `tasks:write` or `viewer`) and `access`, the scopes the sender holds there; and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
 | `reconcile_task` | The task as the disposition left it, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `project`, `task`, `action`, `proposal`, `explanation`, `evidence`, `idempotency_key`, and as the action needs `response`, `owner`, `source`, `scope`, `answer_mode`, `question`, `approval_item`, `option`, `duplicate_of`, `holder`, `inactive`, `activity_check`, `progress` and `model` |
-| `list_projects` | Each project's `projectId`, key, name and prefix | `workspace` |
+| `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
-| `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
+| `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
 | `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
@@ -153,7 +155,8 @@ start of the task guide and its rules for writing a task.
 | `add_dependency` | The link | `workspace`, `project`, `task`, `depends_on`, and optionally `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
 | `remove_dependency` | The link, removed | `workspace`, `project`, `task`, `depends_on` |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `project`, `task`, `reason` (at most 400 characters) |
-| `close_task` | The task as closed | `workspace`, `project`, `task`, `reason`, `idempotency_key`, and optionally `resolution` (`done` when left out), `duplicate_of` and `model` |
+| `close_task` | The task as closed | `workspace`, `project`, `task`, `reason`, `idempotency_key`, and optionally `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr` and `model` |
+| `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, and at least one of `pull_requests` and `commits` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `idempotency_key`, and `options` for a choice field |
 | `retire_field` | The field as retired, and `replayed` | `workspace`, `project`, `field` (its key), `idempotency_key` |
@@ -353,6 +356,102 @@ does not recognize, counts as `Other`. Approvals and epics are left out.
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
+## Delivery
+
+A task's **delivery** says where its change is, so a closed task shows
+whether its work still waits for a merge or a deploy. It has three stages:
+
+| Stage | Means |
+|---|---|
+| `built` | The task closed as `done` with a commit or a pull request: the change exists. |
+| `merged` | The change is merged. |
+| `live` | A deploy shipped the change. |
+
+A close as `done` with `commit` (7 to 64 hexadecimal characters) or `pr` (the
+pull request's URL) over MCP, or `commit` or `pullRequest` over HTTP, starts
+the task at `built`; either is refused with any other resolution. A close
+without them leaves the task with no delivery, and a reopen clears it; the
+task's history keeps each delivery and each move.
+
+A **signal** moves tasks on: `report_delivery` over MCP, or
+`POST /api/delivery` over HTTP, which takes the same fields. It names a
+`repository` (`owner/name`), a `stage` (`merged` or `live`), and pull
+requests and commits, at most 100 of each. A pull request is its URL, or its
+number in the repository, which names
+`https://github.com/<repository>/pull/<number>`; a GitHub pull request's URL
+is kept as that page whatever tab it shows. The signal moves each closed task
+whose pull request, commit or merge commit matches one it names, in the
+projects of the workspace the sender may change, to its stage:
+
+- Two commits match when one starts with the other.
+- A task never moves back, so a repeated signal moves nothing.
+- A `merged` signal that names exactly one commit records it as the task's
+  merge commit, which a later `live` signal matches.
+- A project says whether its changes go live by a deploy (`deploys`,
+  `false` when it is made). Its owner sets it on the web app's Projects page
+  or with `PATCH /api/tasks/projects`. For a project that does not deploy,
+  merged is the last stage: a `live` signal moves its tasks to `merged`.
+
+The answer lists each task moved, as `{ id, stage }`; a task in a project
+the sender may only read is left as it is. `get_task` returns a task's
+delivery as `delivery`, with its `stage`, `commit`, `pullRequest`,
+`mergeCommit`, `builtAt`, `mergedAt` and `liveAt`, and leaves it out when the
+task has none; `list_tasks` returns it on each task that has one.
+`list_tasks` with `stage` lists the closed tasks at that stage, whenever they
+closed unless `closed_days` is given. With `stage`, or with a `status` that
+includes `closed`, its answer carries `stages`: how many of the tasks it lists
+are `built`, `merged` and `live`.
+
+A repository's automation sends the signals with a
+[service credential](sign-in.md) granted the project for writing. This
+GitHub Actions workflow sends `merged` when a pull request merges and `live`
+when the deploy job finishes; `NTASKS_URL` and `NTASKS_TOKEN` are the
+repository's secrets, and `deploy` stands for the repository's own deploy
+job:
+
+```yaml
+name: Delivery
+on:
+  pull_request:
+    types: [closed]
+  push:
+    branches: [main]
+jobs:
+  merged:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl --fail -X POST "$NTASKS_URL/api/delivery" \
+            -H "Authorization: Bearer $NTASKS_TOKEN" -H 'content-type: application/json' \
+            -d '{"repository":"${{ github.repository }}","stage":"merged",
+                 "pullRequests":["${{ github.event.pull_request.number }}"],
+                 "commits":["${{ github.event.pull_request.merge_commit_sha }}"]}'
+        env:
+          NTASKS_URL: ${{ secrets.NTASKS_URL }}
+          NTASKS_TOKEN: ${{ secrets.NTASKS_TOKEN }}
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "The repository's own deploy steps go here."
+  live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl --fail -X POST "$NTASKS_URL/api/delivery" \
+            -H "Authorization: Bearer $NTASKS_TOKEN" -H 'content-type: application/json' \
+            -d '{"repository":"${{ github.repository }}","stage":"live","commits":["${{ github.sha }}"]}'
+        env:
+          NTASKS_URL: ${{ secrets.NTASKS_URL }}
+          NTASKS_TOKEN: ${{ secrets.NTASKS_TOKEN }}
+```
+
+The merge commit the first job sends is the commit the push to `main`
+carries, so the `live` signal matches the tasks the merge moved. Ntasks's own
+repository sends no signals, since no deployment of it exists.
+
 ## Retrying a write
 
 A write that would repeat its effect takes an idempotency key, a string of 8
@@ -389,10 +488,11 @@ misspelt filter fails instead of being ignored.
 
 | Route | Parameters | Answer |
 |---|---|---|
-| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
+| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person signed in to the web app also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
+| `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
@@ -411,10 +511,12 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
 | `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
-| `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution` and `duplicateOf` | `{ task }`, the task as closed |
+| `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit` and `pullRequest` | `{ task }`, the task as closed |
+| `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |
+| `PATCH /api/tasks/projects` | `projectId` and `deploys`, `true` or `false` | `{ project }`, as `GET /api/tasks/projects` lists it. Like creating a project, it needs `workspace:manage`. |
 
 A refused project names the body field at fault in `field`: `400` with
 `invalid_request` for a `name`, `prefix` or `key` that breaks its rule, and
@@ -448,6 +550,9 @@ an array of URLs.
 `fields` is an object of custom field values by key, as `fields` is over MCP,
 and in a change `null` takes a value off. The task answers its values as
 `fields`.
+
+A task answers its [delivery](#delivery) as `delivery`, null when it has
+none.
 
 NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the

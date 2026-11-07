@@ -188,7 +188,7 @@ decorative (`aria-hidden`) unless it is the control's only content, and then
 the control has a label (`IconButton`). The icons the app uses: `search`,
 `plus`, `list-filter`, `chevron-down`, `chevron-right`, `ellipsis`, `check`,
 `x`, `list`, `target`, `activity`, `bell`, `settings`, `hand`, `user-plus`,
-`tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`,
+`tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
 `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
 `star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`
@@ -397,7 +397,8 @@ parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
 ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
-`Until 11 Nov`) and badges, `RowSpacer`, then `RowActions`, the assignee's
+`Until 11 Nov`, and on a closed task how a close where nothing shipped ended,
+or where its change is: Built, Merged or Live) and badges, `RowSpacer`, then `RowActions`, the assignee's
 `Avatar` and `RowAge` (34 px, right-aligned).
 
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
@@ -410,7 +411,11 @@ disabled and each carries the reason as its description (`aria-describedby`;
 `Segmented` takes `describedBy`), shown to a pointer as a tip.
 
 `GroupHeader` heads a group: its status mark, its name and its count on
-Surface, 36 px. The Waiting for you group is Waiting text on Waiting soft. A
+Surface, 36 px. The Waiting for you group is Waiting text on Waiting soft.
+The Waiting for you view ends with two groups of closed tasks headed in Text
+with a 14 px icon in Text 3: Waiting for merge (`git-pull-request`), the
+built ones, and Waiting for deploy (`git-merge`), the merged ones of a project
+whose changes go live by a deploy. A
 group that folds starts with a chevron and is a button with `aria-expanded`.
 
 ### Badges and counts (`badge.tsx`)
@@ -462,7 +467,8 @@ as.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),
-how a closed task ended, the description, a decision's card or its recorded
+how a closed task ended (with where its change is: Built, Merged or Live,
+its pull request as a link and its commit), the description, a decision's card or its recorded
 choice, Done when as a checklist with its count, Design, Notes, Links, an
 epic's Tasks with their `Progress`, and Activity. A section's heading is
 `text-sm` semibold with its count in Text 3; an empty description, Done
@@ -524,7 +530,9 @@ or Owner) for an invitation. A refusal shows under the field it is about, as
 `Field` draws an error, or under the fields when it names none.
 
 A project's row is its `ProjectBadge`, its name as a link to its board, its
-prefix in Text 3 and its open tasks at the end. Members has a `GroupHeader`
+prefix in Text 3, its open tasks, and at the end the checkbox Changes go live
+by a deploy, a 15 px native box filled in Accent once ticked. An owner ticks
+it; a member sees it disabled. Members has a `GroupHeader`
 for Members and, while any are pending, one for Invitations: a member's row is
 an `Avatar`, the name, the GitHub username, a role `Badge` and Remove, which
 asks again in the row before it removes; an invitation's row is the username,
