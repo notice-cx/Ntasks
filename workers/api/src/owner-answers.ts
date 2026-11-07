@@ -509,6 +509,16 @@ function handedBackWith(dependent: Task): boolean {
   );
 }
 
+/** What an approval of `draft`'s gate does to the tasks waiting on it: each
+ * one labelled human goes back to agents, told to keep within the approval. */
+function handBackOnApproval(draft: Draft, around: Surroundings): void {
+  for (const dependent of waiting(around).filter(handedBackWith)) {
+    const other = draft.other(dependent);
+    other.comment = `Owner approval recorded on ${draft.task.id}. Continue only within that recorded scope; other approvals are unchanged.`;
+    other.handBack(true);
+  }
+}
+
 /**
  * A person's pick (choiceSteps): the pick, its comment, then a decision's
  * close or any other task's hand-back. A second pick is refused; the same
@@ -654,11 +664,18 @@ export function dismissalWrite(
 }
 
 /**
- * A person approving an approval: the gate closes as done, and the tasks
- * waiting on it are free of it. An approval an agent relayed on it before is
+ * A person approving an approval: the gate closes as done, the tasks waiting
+ * on it are free of it, and those labelled human go back to agents as after
+ * an approval an agent relays. An approval an agent relayed on it before is
  * marked as answered by this one, so it can no longer be disputed.
  */
-export function approvalWrite(task: Task, reason: string | undefined, actor: string, at: string): TaskWrite | null {
+export function approvalWrite(
+  task: Task,
+  reason: string | undefined,
+  around: Surroundings,
+  actor: string,
+  at: string,
+): TaskWrite | null {
   if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
   if (task.type !== 'gate' || task.awaitType !== 'human')
     throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
@@ -667,6 +684,7 @@ export function approvalWrite(task: Task, reason: string | undefined, actor: str
   const previous = maintenanceOf(task);
   if (previous?.verification === 'agent-recorded')
     draft.metadata[MAINTENANCE] = { ...previous, approvedDirectly: { by: actor, at } };
+  handBackOnApproval(draft, around);
   return draft.write();
 }
 
@@ -1064,13 +1082,7 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       ...(op.duplicateOf === undefined ? {} : { duplicateOf: op.duplicateOf }),
     };
   } else if (ownerAnswer) {
-    if (gate && !closed && !declined) {
-      for (const dependent of waiting(input).filter(handedBackWith)) {
-        const other = draft.other(dependent);
-        other.comment = `Owner approval recorded on ${task.id}. Continue only within that recorded scope; other approvals are unchanged.`;
-        other.handBack(true);
-      }
-    }
+    if (gate && !closed && !declined) handBackOnApproval(draft, input);
     answer?.();
   } else if (!closed && (op.action === 'routine' || op.action === 'release') && !(same && holder === '')) {
     draft.handBack(op.action === 'routine', op.action === 'release' && task.status !== 'in_progress');
@@ -1200,7 +1212,7 @@ export function approve(
     context,
     projectId,
     taskId,
-    (task, _around, actor, at) => approvalWrite(task, reason, actor, at),
+    (task, around, actor, at) => approvalWrite(task, reason, around, actor, at),
     retry,
   );
 }

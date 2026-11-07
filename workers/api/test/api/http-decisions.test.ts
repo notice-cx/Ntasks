@@ -337,6 +337,30 @@ describe('POST /api/gates/:id/resolve', () => {
     });
   });
 
+  it('hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is', async () => {
+    const { task: waiting, created } = await task({ requestApproval: { reason: 'Upload the photos once' } });
+    const gate = created[0]!;
+    await engine.writeTask(
+      project.id,
+      waiting.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'blocked' } },
+      AGENT,
+    );
+    const { task: decision } = await task({
+      type: 'decision',
+      choices: CHOICES,
+      links: [{ direction: 'depends-on', taskId: gate.id, type: 'blocks' }],
+    });
+
+    expect((await post(`/api/gates/${gate.id}/resolve`, {})).status).toBe(200);
+
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', assignee: null, labels: ['ui'], ready: true });
+    expect(await texts(waiting.id)).toEqual([
+      `Owner approval recorded on ${gate.id}. Continue only within that recorded scope; other approvals are unchanged.`,
+    ]);
+    expect(await current(decision.id)).toMatchObject({ labels: ['human', 'ui'], commentCount: 0 });
+  });
+
   it('refuses a task that is not an approval and an approval already closed', async () => {
     const { task: plain } = await task();
     expect((await post(`/api/gates/${plain.id}/resolve`, {})).body).toEqual({
