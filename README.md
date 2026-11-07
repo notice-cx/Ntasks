@@ -5,54 +5,45 @@
 [![CI](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 
-Ntasks is a task hub, being built for people and AI agents who share one
-project's work. It keeps that work as a graph of tasks: each task records what
-to do, the proof that it is done, and the other tasks it waits on. From that
-graph, Ntasks will:
+Ntasks is a task hub for people and AI agents working on the same projects.
+Work is a graph of tasks: each one records what to do, the proof that it is
+done, and the tasks it waits on. From that graph, Ntasks:
 
-- list the work that can start now, the same way for every agent;
-- give each task to one agent at a time;
-- hold a task that needs a person's decision or approval until the person
-  answers;
-- record every change, with who made it.
+- lists the work that can start now, the same for every agent;
+- gives each task to one agent at a time;
+- holds a task that needs a person's decision or approval until they answer;
+- records every change and who made it.
 
-AI agents will connect from wherever they run, over the
-[Model Context Protocol](https://modelcontextprotocol.io) (MCP), the standard
-way agents call tools on a server. People will use the web app.
-
-Ntasks runs as a Cloudflare **Worker**, a program Cloudflare runs on its
-servers in answer to web requests, and keeps its tasks in a **Durable
-Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
-designed to fit Cloudflare's free plan.
+Agents connect over [MCP](https://modelcontextprotocol.io); people use the web
+app. It runs as a single Cloudflare Worker with a SQLite-backed Durable Object
+for storage, and is designed to fit the free plan.
 
 <img src="docs/images/what-ntasks-does.svg" width="100%"
   alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
 
-Your AI agents keep taking ready work while a task that needs your decision
-waits for you, and the work it blocks moves on once you answer.
+Agents keep working on ready tasks while a decision waits for you. Answering
+decisions through Ntasks is still being built (see [Status](#status)).
 
 Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
 
 ## The web app
 
-These pictures show the web app with its invented example tasks. GitHub shows
-the light or the dark version to match your theme.
+Screenshots from the web app's example data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
   <img src="docs/images/board-light.webp" width="800" alt="The Tasks board. Its heading reads 4 decisions for you, beside counts of urgent, blocked and done tasks. Below it, the four decisions: an approval with an Approve button, two choices showing their options, and a question with an Answer button. Under them, filters and the list of all tasks, one row each with its id, project, assignee, age and state.">
 </picture>
 
-The board. The decisions waiting on you come first, and each is answered where
-it is listed; every task follows in one list, which the filters narrow.
+The board: decisions waiting on you first, answerable in place, then every
+task.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
   <img src="docs/images/task-light.webp" width="800" alt="The page of the bug Fix the broken reset link in the welcome email. Its description has two headings, a numbered list, a highlighted code block, a bulleted list and a link to the task web-k3m9.1. Below it, a Done when checklist with two boxes; beside it, the task's project, status, priority and assignee.">
 </picture>
 
-A task page. The description is written in Markdown, and a task id in it links
-to that task's page.
+A task page. Text is Markdown; task ids link to their tasks.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">
@@ -61,12 +52,12 @@ to that task's page.
 
 The board at phone width.
 
-`pnpm screenshots` makes these pictures again from the same example tasks
+Regenerate them with `pnpm screenshots`
 ([tools/screenshots](tools/screenshots/README.md)).
 
 ## Status
 
-Ntasks is under construction. The repository holds its skeleton:
+Ntasks is in active development ahead of its first release.
 
 | Part | Today |
 |---|---|
@@ -99,8 +90,8 @@ work gets the same list.
 
 ## Learn how it works
 
-- [Concepts](docs/concepts.md) introduces projects, tasks, dependencies, ready
-  work, claims, decisions and approvals, one idea at a time.
+- [Concepts](docs/concepts.md): projects, tasks, dependencies, ready work,
+  claims, decisions and approvals.
 - [Architecture](docs/architecture.md) shows how the Worker, the database and
   the web app fit together, the free-plan limits the design keeps to, and the
   rules every change keeps.

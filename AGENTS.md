@@ -78,8 +78,12 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
 - **Comments say what the code cannot:** a reason, an invariant, a trap. No
   task ids, decision numbers, dates of past changes, attributions or histories
   of what the code used to do.
-- **Documentation is literal.** State what a page, command or rule shows or
-  does. No metaphors or slogans; explain a term the first time it appears.
+- **Documentation is literal and written for developers.** State what a page,
+  command or rule shows or does. No metaphors or slogans. Explain an Ntasks
+  term (ready work, a claim, a gate) the first time it appears; name widely
+  used technology (Cloudflare Workers, Durable Objects, D1, MCP, OAuth,
+  SQLite) without explaining it, and link its documentation where a reader
+  may need it.
 - **Worker code** follows the rules in
   [CONTRIBUTING.md](CONTRIBUTING.md#rules-for-worker-code): no floating
   promises, no request data in module scope, Web Crypto for tokens and secret
