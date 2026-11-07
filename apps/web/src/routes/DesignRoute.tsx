@@ -50,6 +50,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
 import { Kbd } from '@/components/ui/kbd';
 import { Menu, MenuContent, MenuItem, MenuPanel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
+import { ThemeScope } from '@/components/ui/popover';
 import {
   GroupHeader,
   Row,
@@ -212,7 +213,7 @@ const WAITING: readonly {
 export default function DesignRoute() {
   const [theme, setTheme] = useState<Theme>('system');
   return (
-    <div className={cn('min-h-screen bg-canvas text-ink', theme !== 'system' && theme)} data-design-gallery="">
+    <ThemeScope theme={theme} className="min-h-screen bg-canvas text-ink" data-design-gallery="">
       <div className="mx-auto max-w-[1440px] px-16 pt-14 pb-20 max-md:px-6 max-sm:px-4">
         <Header theme={theme} onTheme={setTheme} />
         <Section title="Colour">
@@ -427,7 +428,7 @@ export default function DesignRoute() {
           <ShellSample />
         </Section>
       </div>
-    </div>
+    </ThemeScope>
   );
 }
 

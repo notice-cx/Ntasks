@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { COLOUR_TOKENS, MARK_TOKENS } from '@/lib/design-tokens';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, TYPE_MARK_LABELS } from '@/lib/symbols';
@@ -63,5 +63,35 @@ describe('the gallery at /design', () => {
     expect(page?.classList.contains('dark')).toBe(true);
     fireEvent.click(within(screen.getByRole('group', { name: 'Theme' })).getByRole('button', { name: 'System' }));
     expect(page?.classList.contains('dark')).toBe(false);
+  });
+
+  it("opens its menus in the theme chosen, whichever way it differs from the system's", async () => {
+    const root = document.documentElement;
+    try {
+      for (const [systemDark, chosen] of [
+        [false, 'dark'],
+        [true, 'light'],
+      ] as const) {
+        root.classList.toggle('dark', systemDark);
+        const view = renderApp('/design');
+        await screen.findByRole('heading', { name: 'Ntasks design' });
+        const themes = within(screen.getByRole('group', { name: 'Theme' }));
+        fireEvent.click(themes.getByRole('button', { name: chosen === 'dark' ? 'Dark' : 'Light' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Open a menu' }));
+        await waitFor(() =>
+          expect(document.querySelector('[data-radix-popper-content-wrapper] [role="menu"]')).not.toBeNull(),
+        );
+        const menu = document.querySelector('[data-radix-popper-content-wrapper] [role="menu"]');
+        const scope = menu?.closest('.light, .dark');
+        expect(
+          scope?.hasAttribute('data-design-gallery'),
+          `menu inside the gallery when the system is ${systemDark ? 'dark' : 'light'}`,
+        ).toBe(true);
+        expect(scope?.classList.contains(chosen)).toBe(true);
+        view.unmount();
+      }
+    } finally {
+      root.classList.remove('dark');
+    }
   });
 });

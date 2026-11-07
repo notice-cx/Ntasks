@@ -1,5 +1,5 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover';
-import type { ComponentProps } from 'react';
+import { createContext, useContext, useState, type ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -12,6 +12,9 @@ export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
 export const PopoverAnchor = PopoverPrimitive.Anchor;
 
+/** Where popovers render: the nearest `ThemeScope`, or the document's body when there is none. */
+const PortalContainer = createContext<HTMLElement | null>(null);
+
 export function PopoverContent({
   className,
   align = 'start',
@@ -20,7 +23,7 @@ export function PopoverContent({
   ...props
 }: ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={useContext(PortalContainer)}>
       <PopoverPrimitive.Content
         align={align}
         sideOffset={sideOffset}
@@ -32,5 +35,25 @@ export function PopoverContent({
         {...props}
       />
     </PopoverPrimitive.Portal>
+  );
+}
+
+/**
+ * A part of the page drawn in a theme of its own, whatever the system
+ * prefers: `light` or `dark`, or `system` to follow the page. Popovers opened
+ * inside it render inside it too, so they take its theme; one rendered on the
+ * document's body would take the page's.
+ */
+export function ThemeScope({
+  theme,
+  className,
+  children,
+  ...props
+}: ComponentProps<'div'> & { theme: 'system' | 'light' | 'dark' }) {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  return (
+    <div ref={setElement} className={cn(theme !== 'system' && theme, className)} {...props}>
+      <PortalContainer.Provider value={element}>{children}</PortalContainer.Provider>
+    </div>
   );
 }

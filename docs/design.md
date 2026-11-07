@@ -38,7 +38,9 @@ prefers. `pnpm screenshots design` captures it in both themes
 Light is the root's theme. `.dark` on `<html>` switches every token, and
 [`src/theme.ts`](../apps/web/src/theme.ts) sets it while the system prefers
 dark. `.light` or `.dark` on any element draws that element's subtree in that
-theme, which the gallery uses to show both palettes side by side.
+theme, which the gallery uses to show both palettes side by side. A part of a
+page drawn in a theme of its own goes in a `ThemeScope` (`popover.tsx`), so the
+popovers opened inside it render inside it and take its theme too.
 
 A token's variable name, without `--`, is its Tailwind colour: `--ink-3` is
 `text-ink-3`, `--canvas` is `bg-canvas`. Components use the utilities and never
@@ -329,7 +331,8 @@ and Escape closes the menu. `MenuPanel` draws the list in place, without the
 popover.
 
 `popover.tsx` is the popover itself: Radix places it and handles focus,
-Escape and outside clicks.
+Escape and outside clicks. It renders on the document's body, or inside the
+nearest `ThemeScope`.
 
 ### Choosing an option (`choice.tsx`)
 
