@@ -38,4 +38,7 @@ pnpm --filter @ntasks/api build      # wrangler deploy --dry-run; needs the web 
 script: it applies the D1 migrations the deployed database lacks, then
 deploys the Worker with the last web build, to the Cloudflare account
 wrangler is signed in to. The Deploy to Cloudflare button's builds run it
-([README](../../README.md#deploy-your-own)).
+([README](../../README.md#deploy-your-own)). The migrations step stops when
+the database does not exist yet. The button creates it before its first
+build; for a first deployment made without the button, create it once with
+`pnpm --filter @ntasks/api exec wrangler d1 create ntasks`.
