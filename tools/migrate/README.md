@@ -354,16 +354,26 @@ Before workspaces, a deployment kept every task in one store named `tasks`.
 This version reads only each workspace's own store, so the tasks in `tasks`
 are no longer reached after the update, and nothing moves them. To keep them:
 
-1. Before updating, stop every agent and service that writes, and back the
-   old store up with `backup` and a credential made with the backup choice,
-   then check the file with `restore` ([Back up and restore](#back-up-and-restore)).
-2. Update the deployment and apply its D1 migrations. Migration
+1. Stop every writer: signed-in people in the web app, agents and services.
+   Nothing may write from the backup until the load prints `0 differences.`,
+   or the change stays in the old store.
+2. Back the old store up with `backup` and a credential made with the backup
+   choice, then check the file with `restore`
+   ([Back up and restore](#back-up-and-restore)).
+3. Update the deployment and apply its D1 migrations. Migration
    `0004_workspaces.sql` drops the old service credentials and agent grants;
    make them again in the new workspace after the load.
-3. Create a workspace, make a load credential in it and `load` the backup,
-   as in steps 2 to 4 of [the cutover from a Beads hub](#the-cutover-from-a-beads-hub).
+4. Create a workspace and a load credential in it, as in step 2 of
+   [the cutover from a Beads hub](#the-cutover-from-a-beads-hub), then load
+   the backup file:
+
+   ```sh
+   node tools/migrate/src/cli.ts load --api https://tasks.example.com --token-file token --from backup.json
+   ```
+
    The task store's own migrations are unchanged by this update, so the
-   backup loads.
+   backup loads. When it prints `0 differences.`, revoke the load credential
+   and let writers start again.
 
 ## Tests
 
