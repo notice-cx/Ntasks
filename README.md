@@ -40,10 +40,17 @@ status.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
-  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug Fix the broken reset link in the welcome email. Its description has two headings, a numbered list, a highlighted code block, a bulleted list and a link to the task web-k3m9.1. Below it, a Done when checklist with two boxes; beside it, the task's project, status, priority and assignee.">
+  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug Fix the broken reset link in the welcome email. The top bar shows its project and id, then Copy link, More, Close and Claim. Its description has two headings, a numbered list, a highlighted code block, a bulleted list and a link to the task web-k3m9.1. Below it, a Done when checklist with two boxes, the activity and the comment box. A side panel lists its status, priority, assignee, type, project, epic, labels and parked date, and when it was created and updated.">
 </picture>
 
 A task page. Text is Markdown; task ids link to their tasks.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/focus-dark.webp">
+  <img src="docs/images/focus-light.webp" width="800" alt="Focus on the decision Choose the sign-in methods the page offers: a card headed Your choice, the task's id, project and age, with its description, the question, three options keyed A, B and C with the first one Recommended, a Note field, Not now and Answer.">
+</picture>
+
+Focus: the decisions waiting for you, one at a time.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">

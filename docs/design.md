@@ -114,6 +114,13 @@ hyphen between figures stays a hyphen. Ids, ages and counts use it.
 
 Text is sentence case. Nothing is set in capitals for emphasis.
 
+Task text is Markdown (`src/routes/tasks/task-markdown.tsx`), at `text-body`.
+Its headings sit below the page's own in the outline (`#` is an `h3`) and
+above the text in size: `#` is `text-heading`, `##` 16 / 24, and the rest
+`text-body`, all 600. Code blocks are `text-code` on Surface with a Border
+ring; links and task ids are Accent text; a checklist's box is 15 px, ringed
+in Border strong, and filled in Accent with a white tick once ticked.
+
 ## Spacing and radius
 
 Spacing is a 4 px grid: Tailwind's steps, where `1` is 4 px. The steps in use
@@ -332,6 +339,16 @@ an item with `keepOpen`, such as Back. On open, focus goes to the first item.
 and Escape closes the menu. `MenuPanel` draws the list in place, without the
 popover.
 
+A menu that picks a value, such as a fact's, gives each value `checked`: the
+value held ends in an Accent tick, and the menu opens on it. `MenuContent`'s
+`footer` holds what is not an item, such as the field for a value the list
+does not hold, under a divider and outside the menu's own keys.
+
+The Close menu (`src/components/CloseResolution.tsx`) is a button, Close or
+Close as, with a chevron: Done first where the task can be closed as
+done, then each close where nothing shipped, each with its glyph. A pick opens
+the form that finishes it under the task's title.
+
 `popover.tsx` is the popover itself: Radix places it and handles focus,
 Escape and outside clicks. It renders on the document's body, or inside the
 nearest `ThemeScope`.
@@ -347,10 +364,20 @@ A decision's options are named by letter, `a` to `f`.
   in 14 px semibold, its detail in Text 3, and Recommended with a star at the
   end of its line. A press or the option's letter selects it, and the card's
   Answer sends it. The selected option is ringed in Accent on Accent soft.
+  `readOnly` draws a choice already made: nothing to press, the chosen option
+  ringed with Chosen and a tick.
 - `Tabs` switches a page's view, such as All, Active and Done: the current
   view is ringed on Surface, the others are Text 3.
 
 `choiceForKey` maps a key press to an option on offer.
+
+The decision card (`DecisionAnswer` in `src/routes/tasks/decision-card.tsx`)
+is the question, an `OptionList`, then a Note field, whatever the page seats
+beside it (Not now on Focus) and Answer with its `↵`. Answer is disabled
+until an option is selected; Enter sends the selected option, and Enter on a
+focused option sends that one. Focus draws it on a card with `shadow-pop`,
+headed by Your choice, the id, the project and the age; a task's page draws
+it under the description.
 
 ### Rows (`row.tsx`)
 
@@ -410,6 +437,36 @@ What a list or page shows when it has nothing: a 20 px icon in Text 3 in a
 ringed circle, one line that names what is empty ("No tasks waiting for
 you"), and the action that fills it, when there is one.
 
+### A task's page
+
+The top bar holds the task's path: its project's badge and name, its epic's
+id, then its id. Its end holds Copy link, the More menu (add or edit the
+description and Done when, copy the id or the link) and the task's verbs, the
+primary one last: Claim, or Close once someone holds it; Approve or Answer on
+a task waiting for you, beside Close as.
+
+The page is two columns. The left is the reading column, 720 px of text: the
+title in `text-task-title`, the form an action opened (in a Surface panel),
+how a closed task ended, the description, a decision's card or its recorded
+choice, Done when as a checklist with its count, Design, Notes, Links, an
+epic's Tasks with their `Progress`, and Activity. A section's heading is
+`text-sm` semibold with its count in Text 3; an empty description or Done
+when takes no room. Links are quiet lines grouped under their relation in
+Text 3 (Waits on, Holds back, Related, Duplicates, Replaces, a pull request,
+a document): a status mark, the id and the title, or for a page outside
+Ntasks its icon, title and host, opening in a new tab. Activity is one line
+per moment, oldest first: the actor's 20 px avatar (an icon where the read
+names nobody), what they did, and its age at the end; a comment's words sit
+under its line. The comment box ends the page, with Comment and its `⌘↵`.
+
+The right column is 300 px on Canvas, ruled off by Border: each fact as a
+line (`Fact` in `src/components/Fact.tsx`), its name in Text 3 and its value
+in Text, an absence such as None or Nobody in Text 3, then when the task was
+created and last changed. A fact this sign-in may change is pressable along
+its whole line, which turns Hover and shows a chevron while pointed at or
+focused, and opens a menu of values; a fact it may not change is only its
+words. Below 1024 px wide the facts sit between the title and the text.
+
 ## Density and layout
 
 | Element | Size |
@@ -445,12 +502,13 @@ Each action's key:
 | `C` | New task |
 | `/` | Search |
 | `F` | Focus, the decisions one at a time |
-| `↵` | Open the task; answer a decision; approve on the Focus page |
+| `↵` | Open the task; answer a decision with the option selected; approve on the Focus page |
+| `⌘↵` | Send a comment; file a task from the composer |
 | `M` | Claim |
 | `A` | Assign to |
 | `P` | Priority |
 | `Z` | Park |
-| `a` to `f` | Pick a decision's option, where a decision has focus |
+| `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover or the composer |
 
