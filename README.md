@@ -25,19 +25,12 @@ servers in answer to web requests, and keeps its tasks in a **Durable
 Object**, a single Cloudflare object with its own SQLite database. It stays available when your own computer is off, and it is
 designed to fit Cloudflare's free plan.
 
-## How Ntasks works
+<img src="docs/images/what-ntasks-does.svg"
+  alt="Diagram of you and two AI agents sharing one task list with four columns: Waiting, Ready, In progress and Done. Agent 1 takes the ready task Write the plan and finishes it. Build the page, which waited on it, becomes ready, and Agent 2 takes it. Publish the site waits for you until you approve it, then becomes ready. A history line records each change and who made it.">
 
-<img src="docs/images/how-ntasks-works.svg"
-  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every API request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
-
-Every API request goes through the Worker, which signs it in before the task
-store answers it.
-
-<img src="docs/images/task-lifecycle.svg"
-  alt="Diagram of a task's life in five steps. 1: tasks A and B are filed, and A blocks B, so only A is in the list of ready work. 2: Agent 1 claims A; only one claim succeeds, and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with a commit as proof. 5: B is ready, and the list of ready work that Agent 2 reads shows it.">
-
-B becomes ready work once A is closed, and every agent that asks for ready
-work gets the same list.
+You and your AI agents share one task list: an agent takes a ready task, a
+task that needs you waits for your answer, and every change is recorded with
+who made it.
 
 ## Status
 
@@ -57,6 +50,20 @@ Ntasks is under construction. The repository holds its skeleton:
 Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses
 every request. [SECURITY.md](SECURITY.md) has the details.
+
+## Architecture
+
+<img src="docs/images/how-ntasks-works.svg"
+  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
+
+Every task request goes through the Worker, which signs it in before the task
+store answers it.
+
+<img src="docs/images/task-lifecycle.svg"
+  alt="Diagram of a task's life in five steps. 1: tasks A and B are filed, and A blocks B, so only A is in the list of ready work. 2: Agent 1 claims A; only one claim succeeds, and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with a commit as proof. 5: B is ready, and the list of ready work that Agent 2 reads shows it.">
+
+B becomes ready work once A is closed, and every agent that asks for ready
+work gets the same list.
 
 ## Learn how it works
 

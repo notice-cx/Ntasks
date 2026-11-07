@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 508" width="800" height="508" role="img" aria-labelledby="title desc">
   <title id="title">How Ntasks works</title>
-  <desc id="desc">AI agents connect to /api/mcp and sign in with OAuth 2.1. People use the web app; the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every API request goes to the Ntasks Worker on Cloudflare, which signs it in and checks which projects the caller may reach, then hands it to the task store: one Durable Object with its own SQLite database that holds the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards refresh from the change feed at /api/changes.</desc>
+  <desc id="desc">AI agents connect to /api/mcp and sign in with OAuth 2.1. People use the web app; the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in and checks which projects the caller may reach, then hands it to the task store: one Durable Object with its own SQLite database that holds the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards refresh from the change feed at /api/changes.</desc>
   <style>
     svg {
       --bg: #ffffff; --card: #f6f8fa; --line: #d0d7de; --edge: #818b98;
@@ -126,7 +126,7 @@
   <rect class="box" x="32" y="222" width="736" height="80" rx="12"/>
   <rect id="worker-pulse" class="pulse run" x="32" y="222" width="736" height="80" rx="12"/>
   <text class="h c" x="400" y="254">Ntasks Worker</text>
-  <text class="s c" x="400" y="282">signs in every API request and checks which projects the caller may reach</text>
+  <text class="s c" x="400" y="282">signs in every task request and checks which projects the caller may reach</text>
 
   <line class="edge" x1="200" y1="302" x2="200" y2="348"/>
   <polygon class="edge-head" points="194,348 206,348 200,358"/>
