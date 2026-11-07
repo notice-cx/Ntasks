@@ -32,7 +32,7 @@ flowchart LR
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | The task pages, reading the Worker's routes; until they use the write routes, they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
-| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/), [`task-writes.ts`](../workers/api/src/task-writes.ts) | The MCP tools and the HTTP routes that read and change tasks ([The API](api.md)); a person's decisions through them are not built yet |
+| API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/), [`task-writes.ts`](../workers/api/src/task-writes.ts), [`owner-answers.ts`](../workers/api/src/owner-answers.ts), [`agent-stats.ts`](../workers/api/src/agent-stats.ts) | The MCP tools and the HTTP routes that read and change tasks ([The API](api.md)), the rules of a person's decisions and of the owner answers agents record, and agent statistics |
 | Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Owner sign-in with GitHub, OAuth 2.1 for AI agents, service credentials, and the token verifier every route calls ([Sign-in](sign-in.md)) |
 
 **MCP**, the [Model Context Protocol](https://modelcontextprotocol.io), is how

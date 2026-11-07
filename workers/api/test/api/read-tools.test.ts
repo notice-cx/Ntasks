@@ -87,7 +87,9 @@ describe('tools/list', () => {
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'list_workspaces',
       'get_task_guide',
+      'reconcile_task',
       'list_projects',
+      'get_agent_stats',
       'list_tasks',
       'get_task',
       'get_task_history',
@@ -105,7 +107,15 @@ describe('tools/list', () => {
       'retire_field',
     ]);
     for (const tool of result.tools.slice(2)) expect(tool.inputSchema.required[0], tool.name).toBe('workspace');
-    const reads = ['list_workspaces', 'get_task_guide', 'list_projects', 'list_tasks', 'get_task', 'get_task_history'];
+    const reads = [
+      'list_workspaces',
+      'get_task_guide',
+      'list_projects',
+      'get_agent_stats',
+      'list_tasks',
+      'get_task',
+      'get_task_history',
+    ];
     for (const tool of result.tools)
       expect(tool.annotations, tool.name).toMatchObject({
         readOnlyHint: [...reads, 'list_fields'].includes(tool.name),
@@ -132,7 +142,7 @@ describe('list_workspaces and get_task_guide', () => {
     expect(listed.workspaces[0]).toMatchObject({ role: 'operator', access: [SCOPES.read, SCOPES.write] });
   });
 
-  it('name the tools of the guide this endpoint does not offer yet', async () => {
+  it('offer every tool the guide names, so neither says a step does not apply', async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -146,13 +156,16 @@ describe('list_workspaces and get_task_guide', () => {
       }),
     );
     const { result } = (await response.json()) as { result: { instructions: string } };
-    const note = unofferedTools(MCP_TOOLS.map((tool) => tool.name));
-    expect(note).toBe(
-      'This endpoint does not offer reconcile_task, get_agent_stats yet, so the steps that use them do not apply here.',
-    );
-    expect(result.instructions.startsWith(`${note}\n`)).toBe(true);
+    expect(unofferedTools(MCP_TOOLS.map((tool) => tool.name))).toBeNull();
+    expect(result.instructions.startsWith(TASK_START)).toBe(true);
     const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!;
-    expect(guide.guide).toContain(`## This endpoint\n\n${note}`);
+    expect(guide.guide).not.toContain('## This endpoint');
+    // The note an endpoint gives when it lacks some of them, naming each in any order.
+    const note = unofferedTools(['list_tasks']);
+    expect(note).toMatch(/^This endpoint does not offer /u);
+    expect(note).toContain('list_workspaces');
+    expect(note).toContain('list_projects');
+    expect(note).not.toContain('list_tasks');
   });
 
   it('come from a guide that names every tool it lists', () => {

@@ -19,7 +19,7 @@ import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.t
 import { fieldFiltersOf } from '../task-writes.ts';
 import { commentView, fieldView, historyView, proposalOf, webTask } from '../views.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
-import { EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
+import { DECISION_OPERATIONS, EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
 
 export interface ReadContext {
   readonly engine: TaskEngine;
@@ -62,17 +62,19 @@ export async function projects({ engine, principal }: ReadContext, url: URL): Pr
 }
 
 /** GET /api/tasks/capabilities: what the web app may offer this sender. It
- * may write when it holds the write scope and may change some project. */
+ * may write when it holds the write scope and may change some project, and
+ * decide as well when it is a person signed in to the web app. */
 export function capabilities({ principal }: ReadContext, url: URL): Response {
   queryOf(url, []);
   const writable =
     principal.scopes.includes(SCOPES.write) &&
     (principal.projects === 'all' || [...principal.projects.values()].includes('write'));
+  const decides = writable && principal.scopes.includes(SCOPES.decide);
   return json({
     live: true,
     writable,
     projectSelection: true,
-    operations: writable ? WRITE_OPERATIONS : [],
+    operations: writable ? [...WRITE_OPERATIONS, ...(decides ? DECISION_OPERATIONS : [])] : [],
     editableFields: writable ? EDITABLE_FIELDS : [],
   });
 }
@@ -255,12 +257,20 @@ export async function changesRoute(context: ReadContext, url: URL): Promise<Resp
   });
 }
 
+/** What a path under /api/tasks/:id names: its history, its comments, its
+ * close, or a person's answer, pick, dismissal or dispute. */
+export type TaskPart = 'history' | 'comments' | 'close' | 'respond' | 'choose' | 'dismiss' | 'dispute';
+
 /** The task id in /api/tasks/:id and the part of the task a path under it
- * names (its history, comments or close), or null for another path. */
-export function taskPath(
-  pathname: string,
-): { readonly taskId: string; readonly part: 'history' | 'comments' | 'close' | null } | null {
-  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close))?$/u.exec(pathname);
+ * names, or null for another path. */
+export function taskPath(pathname: string): { readonly taskId: string; readonly part: TaskPart | null } | null {
+  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close|respond|choose|dismiss|dispute))?$/u.exec(pathname);
   if (!match || !isTaskId(match[1])) return null;
-  return { taskId: match[1]!, part: (match[2] as 'history' | 'comments' | 'close' | undefined) ?? null };
+  return { taskId: match[1]!, part: (match[2] as TaskPart | undefined) ?? null };
+}
+
+/** The gate id in /api/gates/:id/resolve, or null for another path. */
+export function gatePath(pathname: string): string | null {
+  const match = /^\/api\/gates\/([^/]+)\/resolve$/u.exec(pathname);
+  return match && isTaskId(match[1]) ? match[1]! : null;
 }

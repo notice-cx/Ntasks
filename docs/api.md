@@ -14,9 +14,13 @@ a backup into an empty store ([below](#loading-an-empty-store)).
 
 Both read tasks and change them: they file, claim, change, comment on and
 close tasks, link one task to another and ask a person for an approval. A
-person's own decisions (answering a task that waits on them, choosing one of
-its options, approving) and `reconcile_task`, which records such an answer
-for an agent, are being built.
+person signed in to the web app makes their own decisions through the HTTP
+routes: answering a task that waits on them, choosing one of its options,
+declining it, approving an approval and disputing an approval an agent
+recorded ([below](#a-persons-decisions)). An agent records an answer the
+owner gave it elsewhere with `reconcile_task`
+([below](#recording-an-owner-answer)). Both also give agent statistics: who
+is working on what, and how fast work closes, by model.
 
 Agents written for NoticeOS's task tools work against Ntasks unchanged: the
 tool names, their arguments, the fields of their results and the sentences of
@@ -32,12 +36,14 @@ give the answers NoticeOS's task pages used, with the same additions.
 
 Every request under `/api` names who sends it, and the Worker checks it
 before anything else. A sender holds **scopes**, the kinds of call it may
-make: `tasks:read` to read and `tasks:write` to change tasks.
+make: `tasks:read` to read and `tasks:write` to change tasks. A person
+signed in to the web app also holds `tasks:decide`, which a person's
+decisions need; no agent or service holds it, whatever it was granted.
 
 | Answer | When |
 |---|---|
 | `401` | Nobody is signed in. |
-| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs. An MCP tool refuses the same call with a sentence instead. |
+| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person signed in to the web app says so in `detail`, which a client relaying a person's click can show as it is. |
 
 A sender also reaches certain **projects**. The owner reaches every project;
 an agent or a service reaches only the projects it was granted, each for
@@ -85,7 +91,9 @@ start of the task guide and its rules for writing a task.
 |---|---|---|
 | `list_workspaces` | The workspace, the sender's role and access in it, and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
+| `reconcile_task` | The task as the disposition left it, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `project`, `task`, `action`, `proposal`, `explanation`, `evidence`, `idempotency_key`, and as the action needs `response`, `owner`, `source`, `scope`, `answer_mode`, `question`, `approval_item`, `option`, `duplicate_of`, `holder`, `inactive`, `activity_check`, `progress` and `model` |
 | `list_projects` | Each project's `projectId`, key, name and prefix | `workspace` |
+| `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
 | `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
@@ -223,14 +231,88 @@ too.
   sections the task's type expects that it still lacks, and advice, such as
   passing lettered options as `choices`. Nothing is refused for it.
 
+## Recording an owner answer
+
+`reconcile_task` records an answer the owner already gave, or maintains a
+person's request (a **human request**: an approval, or a task labelled
+`human`) with evidence. It never makes a decision itself: it refuses an
+answer it cannot trace to the owner, and retiring a request grants no
+permission. Its rules and sentences are NoticeOS's, and
+[`owner-answers.ts`](../workers/api/src/owner-answers.ts) holds them. Each call
+is one write: the record of the disposition, kept in the task's metadata as
+`noticeos_maintenance` with every earlier one in its `events`, a comment
+holding the evidence, the close or the hand-back, and the comments and
+hand-backs of the tasks waiting on an approval.
+
+| `action` | What it does |
+|---|---|
+| `answer` | Records the owner's answer. On an approval it closes the approval as `done`, records `permission: approved-scope-only` for exactly its scope, and hands back the tasks labelled `human` waiting on it. On a decision or a task labelled `human` it records the option a short reply picks, takes off the `human` label and returns the task to agents, unassigned; an agent then closes it with implementation evidence. |
+| `declined` | On an approval only: closes it as `wont-do` and tells each task waiting on it that the action must not happen. |
+| `owner_performed` | On an approval only: the owner did the action themselves. It closes the approval as `done` and grants nothing. |
+| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
+| `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
+| `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
+
+An owner answer (`answer`, `declined` or `owner_performed`) names the owner's
+exact words (`response`), the owner (`owner`), where they said it (`source`)
+and what they authorized (`scope`; for an approval, exactly what it asks). It
+counts in one of three ways:
+
+- **Source-verified**: `source` is `comment:<id>`, a comment on the task that
+  the owner wrote, holding exactly `response`. It counts only when the person
+  the agent acts for wrote it, and only for the proposal the owner saw when
+  they wrote it: if the task changed after the comment, its history must show
+  the comment was written against the proposal the call names.
+- **Direct** (`answer_mode: direct`): the owner answered in the agent's own
+  chat. `source` is the conversation's `https://` or `codex://threads/` URL,
+  and `question` the exact question asked.
+- **Relayed** (`answer_mode: relayed`): the agent passes on an answer from
+  `claude-code:session/<id>`, a conversation URL, or a comment quoting the
+  question and the reply word for word.
+
+Direct and relayed answers are recorded as the agent's
+(`verification: agent-recorded`), not as independently authenticated. The
+owner can dispute a relayed approval ([below](#a-persons-decisions)): the
+approval opens again, the tasks waiting on it are told to stop, and the
+disputed source cannot approve it again.
+
+Every call names the `proposal` that `get_task` returned. A call whose
+proposal is not the task's current one is refused, so a task edited after
+the owner answered cannot borrow the answer. A reply that leaves the choice
+unclear, such as `maybe` or a bare `yes` to a decision, is refused with a
+sentence asking for one clarification. An approval is accepted only on a
+plain assent (`yes`, `approve`, `yes, your recommendation`, a numbered batch
+reply that leaves this item out, or a relayed `yes` naming steps the question
+and scope hold), never on a conditional, negative or broader one.
+
+## Agent statistics
+
+`get_agent_stats` and `GET /api/tasks/agent-stats` count the work of agents
+by the model each named, in the shape NoticeOS's Agents page reads
+([`agent-stats.ts`](../workers/api/src/agent-stats.ts)): the tasks in
+progress and blocked now, and those closed since the start of the day 56 days
+ago. A close counts for the model its closer named, and otherwise for the
+model of the agent that claimed it; a model nobody named, or a name Ntasks
+does not recognize, counts as `Other`. Approvals and epics are left out.
+
+| Field of `stats` | Holds |
+|---|---|
+| `workers` | One row for each model with work this week or in hand: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), and the median hours from claim to close (`medianHours`) |
+| `velocity` | Closes in each of the last eight weeks, from Monday, by the three models that closed the most |
+| `race` | This week's closes by model, with points by priority |
+| `trophies` | The most closes, the fastest close, the longest run of days and the most urgent closes |
+| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same, for every model together |
+
+The answer holds counts, model names and times: no task's text, id or metadata.
+
 ## Retrying a write
 
 A write that would repeat its effect takes an idempotency key, a string of 8
 to 128 letters, digits, dots, underscores, colons or hyphens: the
-`idempotency_key` argument of `create_task`, `create_tasks`, `claim_task`,
-`update_task`, `comment_on_task`, `close_task`, `define_field` and
-`retire_field`, and the optional
-`Idempotency-Key` header of an HTTP write. A retry with the same key and the
+`idempotency_key` argument of `reconcile_task`, `create_task`,
+`create_tasks`, `claim_task`, `update_task`, `comment_on_task`, `close_task`,
+`define_field` and `retire_field`, and the optional `Idempotency-Key` header
+of an HTTP write, a person's decisions included. A retry with the same key and the
 same arguments answers what the first call answered, with the tasks as they
 stand now and `replayed: true`, and changes nothing. The same key with other
 arguments, for another task or in another project is refused. A key is kept
@@ -258,13 +340,14 @@ misspelt filter fails instead of being ignored.
 | Route | Parameters | Answer |
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
-| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
+| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person signed in to the web app also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
+| `GET /api/tasks/agent-stats` | optionally `project` | `{ readAt, projects, broken, stats }`, as `get_agent_stats` answers ([agent statistics](#agent-statistics)): of the project, or of every project the sender reaches |
 
 ### Writes
 
@@ -311,6 +394,32 @@ NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the
 reads use.
 
+### A person's decisions
+
+These routes take a person's own decision. Only a person signed in to the
+web app may send one (`tasks:decide`), in a project they may change; any
+other sender gets `403` with `insufficient_scope` and a `detail` saying so,
+and nothing changes. Each takes one JSON object and the optional
+`Idempotency-Key` header, as the other writes do, is one write, and answers
+`{ task }`, the task as the decision left it. The task records the person as
+the closer or the author of the comment, and its history records who decided
+and when.
+
+| Route | Body | What it does |
+|---|---|---|
+| `POST /api/tasks/:id/respond` | `projectId`, `response` (at most 4,086 characters) | Answers a task labelled `human` that is not closed and not an approval. A reply that names one of the task's options, such as `B`, `the recommendation` or an option's label, is that pick, as `choose` makes it. Otherwise a decision closes as `done` with the reason `Responded` and the comment `Response: <response>`, and any other task goes back to ready work: open, unassigned, without the `human` label, with the comment `Answered: <response>`. A reply that leaves the question open, such as `maybe` or a bare `yes` to a task with options, is refused. |
+| `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), and optionally `note` (at most 2,000 characters) | Picks one of the task's options. The pick records the option, its label, the person and the time, with the comment `Chose (b) <label>.` and the note. A decision then closes with the reason `Chose (b) <label>`, past an open blocker or another holder; any other task goes back to ready work. A second pick is refused; the same person sending the same option again finishes a pick that stopped before its comment or its close. |
+| `POST /api/tasks/:id/dismiss` | `projectId`, and optionally `reason` (at most 2,037 characters), `resolution` (any but `done`; `wont-do` when left out) and, with `duplicate` only, `duplicateOf` | Declines a task labelled `human`: it closes with the reason `Dismissed` or `Dismissed: <reason>`. A duplicate is linked to the task it duplicates as `related`. |
+| `POST /api/gates/:id/resolve` | `projectId`, and optionally `reason` | Approves an approval: it closes as `done` with the reason, `Approved` when left out, and the tasks waiting on it are free of it. Each of them labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label, with a comment to keep within the approval, as after an approval an agent relays. An approval an agent relayed on it before can no longer be disputed. |
+| `POST /api/tasks/:id/dispute` | `projectId` | Withdraws an approval an agent relayed with `reconcile_task`: its record loses its permission and names who disputed it, the approval opens again, and it and each task waiting on it get a comment saying the recorded action must stop until a new approval. Disputing it again changes nothing, and tells the waiting tasks nothing again. Once the person approves it directly, a dispute of it is refused. |
+
+A decision's close, after a pick or an answer, is refused while the decision
+waits on an open approval or has children that are not closed. Each refusal
+is `409` with
+`task_refused` and a `detail` sentence, such as
+`web-a1 offers (a), (b) and (c), not (e).` or
+`web-a1 waits on approval web-b2. Approve it first.`
+
 ### Errors
 
 A refusal from a route carries a `detail` sentence a person can read.
@@ -318,7 +427,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | Error | Answer |
 |---|---|
 | A parameter, the body or a field is missing, unknown, repeated or out of range | `400` with `{ "error": "invalid_request", "detail": … }` |
-| The sender lacks the scope the route needs | `403` with `insufficient_scope` |
+| The sender lacks the scope the route needs, such as a decision from an agent or a service | `403` with `insufficient_scope` |
 | The sender may read the project but not change it, or a write comes from another site's page | `403` with `forbidden` |
 | The project or a task the request names does not exist | `404` with `{ "error": "not_found", "detail": … }` |
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
@@ -447,6 +556,9 @@ query:
 - a task's custom field values are part of its row, so they cost no row of
   their own, and a filter by them tests the rows the read reaches anyway; it
   adds one statement, which reads the project's fields;
+- agent statistics read one row for each task in progress, blocked or closed
+  in the last eight weeks, in one statement over every project, however many
+  tasks the projects hold;
 - the statements a read runs do not grow with the number of projects or
   tasks: at most six, for a board filtered by a custom field.
 

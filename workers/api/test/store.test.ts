@@ -271,6 +271,36 @@ describe('reads from memory', () => {
     expect(await readCost(one, ['open'])).toBeGreaterThan(0);
   });
 
+  it('serves repeated agent statistics from memory, and reads them again after a write', async () => {
+    const meter = newMeter();
+    const tasks = cachedReads(createEngine(storeDatabase(meter)), () => new Date().toISOString());
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Work' }, AGENT);
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
+    const work = async () => {
+      Object.assign(meter, newMeter());
+      const items = await tasks.listWork([project.id], '2026-01-01T00:00:00.000Z');
+      return { statuses: items.map((item) => item.status), rowsRead: meter.rowsRead };
+    };
+
+    expect((await work()).statuses).toEqual(['in_progress']);
+    expect(await work()).toEqual({ statuses: ['in_progress'], rowsRead: 0 });
+    await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 2, close: { reason: 'Done', resolution: 'done' } },
+      AGENT,
+    );
+    const after = await work();
+    expect(after.statuses).toEqual(['closed']);
+    expect(after.rowsRead).toBeGreaterThan(0);
+  });
+
   it('serves a repeated label read from memory, keeps each label apart, and reads again after a label changes', async () => {
     const meter = newMeter();
     const tasks = cachedReads(createEngine(storeDatabase(meter)), () => new Date().toISOString());

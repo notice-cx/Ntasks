@@ -10,7 +10,9 @@ import { api, callTool, granted, ORIGIN, READER, refusal, write, WORKSPACE, WRIT
 // ced74393 by importing its compiled scripts/hosted-mcp.mjs in Node, building
 // its standalone endpoint (createHostedMcp) and asking it for tools/list, so
 // the names, descriptions, input schemas and annotations are exactly the ones
-// agents written for NoticeOS were given.
+// agents written for NoticeOS were given. reconcile_task and get_agent_stats
+// are copied from their definitions in scripts/hosted-task-mcp.mts at commit
+// 09563bcc, with the workspace argument its endpoint adds to every tool.
 import NOTICEOS_TOOLS from '../fixtures/noticeos-task-tools.json';
 
 const time = clock('2026-11-06T12:00:00.000Z');

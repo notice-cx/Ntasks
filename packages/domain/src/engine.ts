@@ -175,6 +175,19 @@ export interface TaskWrite {
   readonly reopen?: true;
   /** A comment added in the same change, such as the answer behind it. */
   readonly comment?: string;
+  /** Changes to other tasks of the same project, in the same batch: a decision
+   * on an approval that also tells, or hands back, the tasks waiting on it. */
+  readonly others?: readonly OtherTaskWrite[];
+}
+
+/**
+ * A change to another task, riding with a write. Each names the version it
+ * read, as the write does, and the whole write is refused as
+ * `version_conflict` when the task moved since. One that only adds a comment
+ * leaves the task's version as it is, as `addComment` does.
+ */
+export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'others'> {
+  readonly taskId: string;
 }
 
 /** The filters every list of tasks takes. */
@@ -260,6 +273,24 @@ export interface ChangePage {
   readonly lastSeq: number;
 }
 
+/** What agent statistics count of one task: who holds or closed it, with the
+ * models they named, and when it started and closed. No text of the task. */
+export interface WorkItem {
+  readonly id: string;
+  readonly projectId: string;
+  readonly type: TaskType;
+  readonly awaitType: 'human' | null;
+  readonly status: TaskStatus;
+  readonly priority: number;
+  readonly assignee: string | null;
+  readonly assigneeModel: string | null;
+  readonly startedAt: string | null;
+  readonly updatedAt: string;
+  readonly closedAt: string | null;
+  readonly closedBy: string | null;
+  readonly closedModel: string | null;
+}
+
 export interface WriteResult {
   readonly task: Task;
   /** Tasks the write made as well, such as the gate of a requested approval. */
@@ -294,6 +325,8 @@ export interface TaskEngine {
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;
+  /** These tasks of the project, in one read; an id the project does not hold is left out. */
+  getTasks(projectId: string, taskIds: readonly string[]): Promise<readonly Task[]>;
   /** Which of these ids the project holds, closed or not. */
   findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
   /** Most urgent first: priority, then oldest. Ready work is worked out on the server (rule 5). */
@@ -311,6 +344,10 @@ export interface TaskEngine {
   listExternalLinks(taskIds: readonly string[]): Promise<readonly TaskExternalLinks[]>;
   /** The project's custom fields, retired ones included, in the order they were defined. */
   listFields(projectId: string): Promise<readonly CustomField[]>;
+  /** What agent statistics count, for the tasks of these projects that are in
+   * progress or blocked or that closed at or after `closedSince`, in one
+   * statement whatever the number of projects. */
+  listWork(projectIds: readonly string[], closedSince: string): Promise<readonly WorkItem[]>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,

@@ -89,6 +89,9 @@ export const TASK_LIMITS = Object.freeze({
   retryPrincipal: 128,
   /** The most tasks one list request returns. */
   page: 200,
+  /** The most other tasks one write changes beside its own: the open tasks
+   * waiting on one approval, which a decision on it tells or hands back. */
+  others: 500,
 });
 
 /** A JSON value, as stored in a task's metadata, choices and history. */

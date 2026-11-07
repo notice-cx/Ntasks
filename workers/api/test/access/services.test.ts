@@ -56,6 +56,8 @@ describe('a service credential', () => {
     expect(mayReach(principal, granted, 'read')).toBe(true);
     expect(mayReach(principal, granted, 'write')).toBe(true);
     expect(mayReach(principal, other, 'read')).toBe(false);
+    // A service acts for no person: it holds no decide scope and its comments are nobody's own words.
+    expect(principal.person).toBeUndefined();
     expect(await (await meWithToken(service.token)).json()).toEqual({
       kind: 'service',
       name: 'noticeos-laptop',

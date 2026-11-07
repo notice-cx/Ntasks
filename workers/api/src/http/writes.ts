@@ -79,11 +79,19 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'card',
   'changeClass',
 ]);
-/** The writes this API offers. A person's decisions are not among them yet. */
+/** The writes this API offers any sender that may change a project. */
 export const WRITE_OPERATIONS: readonly string[] = Object.freeze(['create', 'update', 'comment', 'close']);
+/** The decisions it offers a person signed in to the web app, in NoticeOS's names. */
+export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
+  'respond',
+  'dismiss',
+  'resolve',
+  'choose',
+  'dispute',
+]);
 
 /** A write's body and its retry key. The body is one JSON object, with no key twice. */
-async function writeOf(
+export async function writeOf(
   request: Request,
   url: URL,
   operation: string,

@@ -131,9 +131,12 @@ Some steps only a person can take. Ntasks has two kinds.
   as a deployment. While the approval is pending, the task is not ready, so
   no agent starts it.
 
-An agent may record an answer a person gave it somewhere else, such as in a
+Only a person signed in to the web app answers a decision or approves an
+approval; an agent or a service cannot, whatever projects it was granted. An
+agent may record an answer a person gave it somewhere else, such as in a
 chat. Ntasks records that answer as relayed by that agent, and the person can
-dispute it.
+dispute it: the approval opens again, and the tasks waiting on it are told to
+stop until a new approval.
 
 ## History and comments
 

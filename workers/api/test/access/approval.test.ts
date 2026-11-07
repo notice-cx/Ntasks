@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { actorOf } from '../../src/access/principal.ts';
+import { actorOf, personOf } from '../../src/access/principal.ts';
 import { verifyRequest } from '../../src/access/verify.ts';
 import { Browser, connectAgent, createProjects, McpClient, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
 import { standInForGitHub } from './github.ts';
@@ -60,6 +60,8 @@ describe('the actor an agent writes as', () => {
     expect(agent.principal.name).toBe(ownerName);
     expect(actorOf(agent.principal, 'example-model')).toEqual({ name: `agent:${ownerName}`, model: 'example-model' });
     expect(actorOf(owner.principal)).toEqual({ name: ownerName });
+    // The agent acts for the owner, whose own comments are recorded under the owner's actor.
+    expect(personOf(agent.principal)).toBe(actorOf(owner.principal).name);
   });
 
   it('prefixes a service the same way', () => {
@@ -81,6 +83,7 @@ describe('the actor an agent writes as', () => {
       kind: 'agent',
       id: 'agent:c:x',
       userId: 'x',
+      personName: 'agent:Alice',
       clientId: 'c',
       name: 'Alice',
       projects: new Map(),
@@ -88,5 +91,8 @@ describe('the actor an agent writes as', () => {
 
     expect(actorOf(owner)).toEqual({ name: 'person:agent:Alice' });
     expect(actorOf(agent)).toEqual({ name: 'agent:Alice' });
+    // The person an agent acts for is named as that person's own writes are.
+    expect(personOf(agent)).toBe('person:agent:Alice');
+    expect(personOf(owner)).toBe('person:agent:Alice');
   });
 });

@@ -115,7 +115,7 @@ const DEPENDENCY_ARG_TYPES = Object.freeze([
 ] as const satisfies readonly DependencyType[]);
 
 /** Optional on a new task, a claim and a close: the work is credited to this model as well as to the agent. */
-const MODEL = Object.freeze({
+export const MODEL = Object.freeze({
   type: 'string',
   maxLength: TASK_LIMITS.actor,
   description:

@@ -39,8 +39,9 @@ describe('the authenticator the API layer calls', () => {
     expect(signedIn).toMatchObject({
       id: `person:${userId}`,
       name: `Person ${OWNER_GITHUB_ID}`,
-      scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:restore'],
+      scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:restore', 'tasks:decide'],
       projects: 'all',
+      person: `Person ${OWNER_GITHUB_ID}`,
       principal: { kind: 'person', userId },
     });
   });
@@ -59,6 +60,8 @@ describe('the authenticator the API layer calls', () => {
       id: `agent:${client.clientId}:${userId}`,
       name: 'agent:Example Agent',
       scopes: ['tasks:read'],
+      // The person who approved it, whose own comments are their words.
+      person: `Person ${OWNER_GITHUB_ID}`,
       principal: { kind: 'agent', clientId: client.clientId, userId },
     });
     expect(signedIn?.projects).toEqual(new Map([[granted, 'read']]));

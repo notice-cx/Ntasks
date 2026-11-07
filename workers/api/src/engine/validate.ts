@@ -429,6 +429,25 @@ export interface CheckedWrite {
   readonly close: { reason: string; resolution: TaskResolution; duplicateOf: string | null } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
+  /** Changes to other tasks in the same batch, each checked as a write of its own. */
+  readonly others: readonly { readonly taskId: string; readonly write: CheckedWrite }[];
+}
+
+/** A write's changes to other tasks: each a write of its own that opens no
+ * approval and carries no further changes, each task named once. */
+function otherWrites(value: unknown): CheckedWrite['others'] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > TASK_LIMITS.others)
+    invalid(`others must be a list of at most ${TASK_LIMITS.others} changes to other tasks`);
+  const checked = value.map((entry: unknown, index) => {
+    if (entry === null || typeof entry !== 'object') invalid(`others[${index}] must be an object`);
+    const { taskId: id, ...change } = entry as TaskWrite & { readonly taskId?: unknown };
+    if (change.requestApproval !== undefined || change.others !== undefined)
+      invalid(`others[${index}] changes another task's fields, links or comments, and opens no approval`);
+    return { taskId: taskId(id, `others[${index}].taskId`), write: write(change) };
+  });
+  if (new Set(checked.map((other) => other.taskId)).size !== checked.length) invalid('others names each task once');
+  return checked;
 }
 
 export function write(input: TaskWrite): CheckedWrite {
@@ -505,6 +524,7 @@ export function write(input: TaskWrite): CheckedWrite {
     close,
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),
+    others: otherWrites(input.others),
   };
   const empty =
     Object.keys(set).length === 0 &&
