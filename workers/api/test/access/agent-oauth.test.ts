@@ -72,7 +72,7 @@ describe('an agent connecting over OAuth', () => {
     const { landing, verifier } = await client.authorize(browser, 'tasks:read tasks:write offline_access');
     expect(landing.pathname).toBe('/sign-in');
     const signInPage = await (await browser.fetch(landing.pathname + landing.search)).text();
-    expect(signInPage).toContain('An AI agent asked to connect to this Ntasks.');
+    expect(signInPage).toContain('An agent asks to connect');
 
     const afterSignIn = await browser.signInWithGitHub(OWNER_GITHUB_ID, landing.search.slice(1));
     expect(afterSignIn.pathname).toBe('/agent-access');
@@ -80,8 +80,8 @@ describe('an agent connecting over OAuth', () => {
     expect(approval.status).toBe(200);
     const page = await approval.text();
     expect(page).toContain('Allow Example Agent to use Ntasks?');
-    expect(page).toContain('asks to read and change tasks');
-    expect(page).toContain(`After you answer, your browser goes to ${new URL(REDIRECT_URI).origin}.`);
+    expect(page).toContain('<dt>Access</dt><dd>Read and change tasks</dd>');
+    expect(page).toContain(`<dt>Returns to</dt><dd>${new URL(REDIRECT_URI).origin}</dd>`);
     expect(page).toContain('Chosen');
     expect(page).toContain('Other');
 

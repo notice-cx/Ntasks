@@ -28,39 +28,47 @@ Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
 
 ## The web app
 
-Screenshots from the web app's example data.
+Screenshots from the web app's example data. Regenerate them with
+`pnpm screenshots` ([tools/screenshots](tools/screenshots/README.md)).
+
+**Tasks board.** Waiting for you, answered on each row, then every task by status.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board beside the sidebar, which lists Waiting for you, Tasks, Focus, the two projects and the people with open work. The board's first group, Waiting for you, holds four rows answered in place: an approval with an Approve button, two decisions with their options under their titles, and a question with an Answer button. Below it, the groups In progress, Open, Blocked, Parked and Done, one line per task with its priority, id, status, title, facts such as Bug, Epic progress or what it waits on, its holder and its age.">
+  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
 </picture>
 
-The board: what waits for you first, answered in place, then every task by
-status.
+**Task page.** Markdown text, Done when, activity and the task's facts.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
-  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug Fix the broken reset link in the welcome email. The top bar shows its project and id, then Copy link, More, Close and Claim. Its description has two headings, a numbered list, a highlighted code block, a bulleted list and a link to the task web-k3m9.1. Below it, a Done when checklist with two boxes, the activity and the comment box. A side panel lists its status, priority, assignee, type, project, epic, labels and parked date, and when it was created and updated.">
+  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug web-b2r6: its description with headings, lists and a code block, a Done when checklist, activity and a comment box, beside a panel of its status, priority, assignee, type, project, epic and labels.">
 </picture>
 
-A task page. Text is Markdown; task ids link to their tasks.
+**Focus.** The decisions waiting for you, one at a time.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/focus-dark.webp">
-  <img src="docs/images/focus-light.webp" width="800" alt="Focus on the decision Choose the sign-in methods the page offers: a card headed Your choice, the task's id, project and age, with its description, the question, three options keyed A, B and C with the first one Recommended, a Note field, Not now and Answer.">
+  <img src="docs/images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
 </picture>
 
-Focus: the decisions waiting for you, one at a time.
+**Phone.**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">
-  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width: the sidebar folds behind a button in the top bar, and each row waiting for you puts its answer on a line under its title.">
+  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width, with each waiting row's answer on a line under its title.">
 </picture>
 
-The board at phone width.
+**Sign-in and agent approval.** Pages the Worker serves itself.
 
-Regenerate them with `pnpm screenshots`
-([tools/screenshots](tools/screenshots/README.md)).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/sign-in-dark.webp">
+  <img src="docs/images/sign-in-light.webp" width="380" alt="The sign-in page: the Ntasks logo, Sign in to Ntasks and a Sign in with GitHub button.">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/agent-access-dark.webp">
+  <img src="docs/images/agent-access-light.webp" width="380" alt="The agent approval page: the agent's name and address, the access it asks for, the account, where the answer returns to, a project checklist, Deny and Allow.">
+</picture>
 
 ## Status
 

@@ -241,7 +241,7 @@ export function TopBar({ title, children, className }: { title: ReactNode; child
     >
       <SidebarOpener />
       {typeof title === 'string' ? (
-        <h1 className="m-0 me-2 text-page-title text-ink max-sm:text-lg">{title}</h1>
+        <h1 className="m-0 me-2 text-page-title text-ink max-sm:text-heading">{title}</h1>
       ) : (
         title
       )}
