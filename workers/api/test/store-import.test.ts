@@ -106,10 +106,25 @@ const ROWS: StoreRows = {
       notes: 'Two pages left for later.',
       design: 'One page per product.',
       estimate_minutes: 240,
+      field_values: '{"audience":["buyers"]}',
     },
   ],
   task_labels: [{ task_id: 'acme-e1.1', label: 'content' }],
   task_edges: [{ task_id: 'acme-e1.1', depends_on_id: 'acme-e1', type: 'related', created_at: AT, created_by: null }],
+  // A retired field with the value it had: an import loads both.
+  custom_fields: [
+    {
+      project_id: PROJECT,
+      key: 'audience',
+      name: 'Audience',
+      type: 'multiple-choice',
+      options: '["buyers","sellers"]',
+      created_at: AT,
+      created_by: 'agent-a',
+      retired_at: CLOSED,
+      retired_by: 'owner',
+    },
+  ],
   task_external_links: [
     {
       task_id: 'acme-e1.1',
@@ -181,11 +196,11 @@ describe('an import into the task store', () => {
   it('writes every row, and reads each table back as it was given, with the defaults of columns it left out', async () => {
     const stub = freshStore();
     const result = await stub.importRows(ROWS);
-    expect(result.rows).toBe(11);
-    expect(result.rowsWritten).toBeGreaterThanOrEqual(11);
+    expect(result.rows).toBe(12);
+    expect(result.rowsWritten).toBeGreaterThanOrEqual(12);
     const stored: StoreRows = {
       ...ROWS,
-      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, ...row })),
+      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, field_values: '{}', ...row })),
     };
     for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });
@@ -231,6 +246,7 @@ describe('an import into the task store', () => {
       parentId: 'acme-e1',
       labels: ['content'],
       externalLinks: [{ url: 'https://example.com/acme/pages/pull/3', title: 'Write the pages', kind: 'pull-request' }],
+      fields: { audience: ['buyers'] },
       close: { resolution: 'done', by: 'agent-a' },
     });
     expect(history.map((event) => [event.seq, event.kind])).toEqual([

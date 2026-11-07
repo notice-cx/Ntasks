@@ -5,7 +5,7 @@
  * MCP tool that does the same thing (task-writes.ts), checked by the same
  * rules (args.ts). An Idempotency-Key header makes a write safe to retry.
  */
-import { IDEMPOTENCY_KEY, TASK_LIMITS, type JsonObject, type TaskStatus } from '@ntasks/domain';
+import { IDEMPOTENCY_KEY, TASK_LIMITS, type DefineFieldInput, type JsonObject, type TaskStatus } from '@ntasks/domain';
 import {
   addsOrRemoves,
   assigneeArg,
@@ -16,6 +16,7 @@ import {
   emptyIsNone,
   estimateArg,
   externalLinksArg,
+  fieldsArg,
   instantArg,
   labelsArg,
   only,
@@ -36,6 +37,8 @@ import {
   closeTask,
   commentOnTask,
   createTask,
+  defineField,
+  retireField,
   updateTask,
   type NewTask,
   type RetryRequest,
@@ -43,7 +46,7 @@ import {
   type WriteContext,
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
-import { commentView, webTask } from '../views.ts';
+import { commentView, fieldView, webTask } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
 import { invalidRequest, json, queryOf } from './respond.ts';
 
@@ -72,6 +75,7 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'removeLabels',
   'addExternalLinks',
   'removeExternalLinks',
+  'fields',
   'card',
   'changeClass',
 ]);
@@ -129,6 +133,7 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     'estimateMinutes',
     'dueAt',
     'externalLinks',
+    'fields',
     'metadata',
     'card',
     'changeClass',
@@ -147,6 +152,7 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     estimateMinutes: estimateArg(body, 'estimateMinutes'),
     dueAt: instantArg(body, 'dueAt'),
     externalLinks: externalLinksArg(body, 'externalLinks'),
+    fields: fieldsArg(body, 'fields'),
     metadata: sourceMetadataArg(body),
     card: cardArg(body),
     changeClass: choiceArg(body, 'changeClass', TASK_CHANGE_CLASSES),
@@ -192,6 +198,7 @@ export async function updateRoute(
     removeLabels: labelsArg(body, 'removeLabels', 1),
     addExternalLinks: externalLinksArg(body, 'addExternalLinks', 1),
     removeExternalLinks: urlsArg(body, 'removeExternalLinks'),
+    fields: fieldsArg(body, 'fields', true),
     card: body.card === null ? null : cardArg(body),
     changeClass: body.changeClass === null ? null : choiceArg(body, 'changeClass', TASK_CHANGE_CLASSES),
   };
@@ -217,6 +224,36 @@ export async function commentRoute(
   const text = textArg(body, 'text', TASK_LIMITS.comment, true)!;
   const { comment } = await commentOnTask(context, projectId, taskId, text, retry(body));
   return json({ comment: commentView(comment) });
+}
+
+/** POST /api/fields: defines a custom field in a project. */
+export async function defineFieldRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'define_field', {});
+  only(body, ['projectId', 'key', 'name', 'type', 'options']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  // The engine checks each part and names the one at fault.
+  const input = {
+    key: body.key,
+    name: body.name,
+    type: body.type,
+    ...(body.options === undefined ? {} : { options: body.options }),
+  } as DefineFieldInput;
+  const { field } = await defineField(context, projectId, input, retry(body));
+  return json({ field: fieldView(field) });
+}
+
+/** POST /api/fields/:key/retire: retires a custom field, which then takes no new values. */
+export async function retireFieldRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  key: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'retire_field', { field: key });
+  only(body, ['projectId']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  const { field } = await retireField(context, projectId, key, retry(body));
+  return json({ field: fieldView(field) });
 }
 
 /** POST /api/tasks/:id/close: closes a task with its reason. */

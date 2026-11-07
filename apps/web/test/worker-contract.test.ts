@@ -33,6 +33,7 @@ function task(fields: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
     dependencies: [],
     dependents: [],
     externalLinks: [],
+    fields: {},
     ready: true,
     deferUntil: null,
     dueAt: null,

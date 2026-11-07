@@ -85,18 +85,21 @@ start of the task guide and its rules for writing a task.
 | `list_workspaces` | The workspace, the sender's role and access in it, and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
 | `list_projects` | Each project's `projectId`, key, name and prefix | `workspace` |
-| `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50) and `offset` |
+| `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
 | `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against | `workspace`, `project`, `task` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `project`, `task`, and optionally `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
+| `create_task` | The new task's `id`, its project's key, `replayed`, the approval it opened if any, and `lint` | `workspace`, `project`, `title`, `idempotency_key`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata` and `model` |
 | `create_tasks` | Each task filed, in order, with its `lint`; the first task refused, if any, and how many were not tried | `workspace`, `project`, `tasks` (1 to 25, each with `create_task`'s task fields), `idempotency_key`, and optionally `model` |
 | `claim_task` | The task, now held by the sender and in progress | `workspace`, `project`, `task`, `idempotency_key`, and optionally `model` |
-| `update_task` | The task as changed, and `lint` | `workspace`, `project`, `task`, `idempotency_key`, and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `choices`, `card` and `change_class` |
+| `update_task` | The task as changed, and `lint` | `workspace`, `project`, `task`, `idempotency_key`, and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class` |
 | `comment_on_task` | The comment | `workspace`, `project`, `task`, `text`, `idempotency_key` |
 | `add_dependency` | The link | `workspace`, `project`, `task`, `depends_on`, and optionally `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
 | `remove_dependency` | The link, removed | `workspace`, `project`, `task`, `depends_on` |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `project`, `task`, `reason` (at most 400 characters) |
 | `close_task` | The task as closed | `workspace`, `project`, `task`, `reason`, `idempotency_key`, and optionally `resolution` (`done` when left out), `duplicate_of` and `model` |
+| `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
+| `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `idempotency_key`, and `options` for a choice field |
+| `retire_field` | The field as retired, and `replayed` | `workspace`, `project`, `field` (its key), `idempotency_key` |
 
 `list_tasks` without a `project` reads every project, and each task then names
 its project.
@@ -121,6 +124,41 @@ the URL standard writes it, so `HTTPS://Example.com` and
 link the new title and kind. `get_task` and `list_tasks` return them as
 `externalLinks`, ordered by URL, each with its `url`, `title` and `kind`,
 which is null when none was given.
+
+Each project defines its own **custom fields**, and its tasks carry values
+of them. A field has a `key`, which names it in values and filters: a
+lowercase letter, then up to 63 lowercase letters, digits, underscores or
+hyphens. It has a `name`, one line of at most 128 characters, and a `type`.
+A value of each type is:
+
+| Type | Value |
+|---|---|
+| `text` | Text of 1 to 1,024 characters |
+| `number` | A number |
+| `date` | A date as `YYYY-MM-DD` |
+| `single-choice` | One of the field's `options` |
+| `multiple-choice` | A list of the field's `options`, none twice, kept in the field's order |
+| `url` | An http or https URL of at most 2,048 characters, kept as the URL standard writes it |
+| `yes-no` | `true` or `false` |
+
+A choice field has 1 to 64 options, each one line of at most 128
+characters. A project defines at most 64 fields, retired ones included, and
+a key names one field for good: defining a key the project has used, retired
+or not, is refused. A field keeps its key, type and options.
+
+`fields` in `create_task`, `create_tasks` and `update_task` is an object of
+values by field key, and in `update_task` `null` takes a value off.
+`get_task` and `list_tasks` return a task's values as `fields`. A value that
+is not of its field's type is refused with a sentence that names the field and
+its type, such as
+`invalid arguments: fields.points must be a number: Points is a number field`.
+`fields` in `list_tasks` lists only the tasks holding each value, by key; for
+a multiple-choice field, the value is one option, which the task's options
+include. It needs `project`, since each project defines its own fields.
+
+A retired field takes no new values: a task keeps the value it has, filters
+still find it, its history keeps every change, and `update_task` can take it
+off with `null`. Retiring a retired field changes nothing.
 
 In `update_task`, `""` releases the task (`assignee`), takes it out of its
 parent (`parent`) or clears its defer date (`defer`), and `null` takes off its
@@ -177,6 +215,9 @@ too.
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the
   task's due date.
+- **A custom field** is defined and retired by a sender who may change the
+  project, as any write needs. Listing a project's fields needs only reading
+  it.
 - **Lint**: `create_task`, `create_tasks` and `update_task` return `lint`, the
   sections the task's type expects that it still lacks, and advice, such as
   passing lettered options as `choices`. Nothing is refused for it.
@@ -186,7 +227,8 @@ too.
 A write that would repeat its effect takes an idempotency key, a string of 8
 to 128 letters, digits, dots, underscores, colons or hyphens: the
 `idempotency_key` argument of `create_task`, `create_tasks`, `claim_task`,
-`update_task`, `comment_on_task` and `close_task`, and the optional
+`update_task`, `comment_on_task`, `close_task`, `define_field` and
+`retire_field`, and the optional
 `Idempotency-Key` header of an HTTP write. A retry with the same key and the
 same arguments answers what the first call answered, with the tasks as they
 stand now and `replayed: true`, and changes nothing. The same key with other
@@ -216,11 +258,12 @@ misspelt filter fails instead of being ignored.
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName` and `prefix` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated) and `closedDays` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. |
-| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status` and `closedDays` are refused with `label`, and `limit` and `after` without it. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. |
+| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
+| `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
 
 ### Writes
 
@@ -231,10 +274,12 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
+| `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution` and `duplicateOf` | `{ task }`, the task as closed |
+| `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
+| `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 
 A new task's `metadata` holds where it came from, under the keys NoticeOS
 used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,
@@ -256,6 +301,10 @@ written again.
 object has a `url`, a `title` and optionally a `kind`, with the limits that
 [`external_links`](#the-mcp-endpoint) has over MCP. `removeExternalLinks` is
 an array of URLs.
+
+`fields` is an object of custom field values by key, as `fields` is over MCP,
+and in a change `null` takes a value off. The task answers its values as
+`fields`.
 
 NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the
@@ -353,7 +402,11 @@ query:
   in one statement after the board, and no other task's;
 - a label read reads about fifteen rows for each task carrying the label in
   that project, however many tasks the project has;
-- no read runs more than four statements, however many projects there are.
+- a task's custom field values are part of its row, so they cost no row of
+  their own, and a filter by them tests the rows the read reaches anyway; it
+  adds one statement, which reads the project's fields;
+- the statements a read runs do not grow with the number of projects or
+  tasks: at most six, for a board filtered by a custom field.
 
 [`read-cost.test.ts`](../workers/api/test/api/read-cost.test.ts) seeds a store
 of eight projects and about 7,000 tasks and fails when a read goes over its

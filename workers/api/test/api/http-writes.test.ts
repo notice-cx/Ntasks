@@ -53,6 +53,7 @@ describe('GET /api/tasks/capabilities', () => {
         'removeLabels',
         'addExternalLinks',
         'removeExternalLinks',
+        'fields',
         'card',
         'changeClass',
       ],

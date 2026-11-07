@@ -11,8 +11,11 @@ import {
   TaskRefused,
   type Actor,
   type CreateTaskInput,
+  type CustomField,
+  type DefineFieldInput,
   type DependencyType,
   type ExternalLink,
+  type FieldValue,
   type JsonObject,
   type NewTaskLink,
   type Project,
@@ -27,7 +30,8 @@ import {
 } from '@ntasks/domain';
 import { listed } from './args.ts';
 import type { Principal } from './auth.ts';
-import { ownerOf, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
+import { fieldFilters, fieldValues } from './engine/validate.ts';
+import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
 import {
   asksAlike,
   choiceName,
@@ -272,6 +276,8 @@ export interface NewTask {
   readonly links?: readonly NewLink[];
   /** Pages outside Ntasks, each URL as the URL standard writes it. */
   readonly externalLinks?: readonly ExternalLink[];
+  /** Values of the project's custom fields, by key; the engine checks each against its field. */
+  readonly fields?: Readonly<Record<string, FieldValue>>;
   /** What a person must approve before the task proceeds. */
   readonly approval?: string;
   readonly choices?: JsonObject;
@@ -323,6 +329,7 @@ export async function createTask(
     ...(task.labels === undefined ? {} : { labels: task.labels }),
     links: links.map((link) => ({ ...ENGINE_LINKS[link.kind], taskId: link.taskId })),
     ...(task.externalLinks === undefined ? {} : { externalLinks: task.externalLinks }),
+    ...(task.fields === undefined ? {} : { fields: task.fields }),
     ...(typeof due === 'string' ? { dueAt: due } : task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
@@ -372,6 +379,8 @@ export interface TaskChange {
   readonly addExternalLinks?: readonly ExternalLink[];
   /** URLs, as the URL standard writes them, whose links to take off. */
   readonly removeExternalLinks?: readonly string[];
+  /** Values of the project's custom fields, by key; null takes a value off. */
+  readonly fields?: Readonly<Record<string, FieldValue | null>>;
   /** null takes them off. */
   readonly choices?: JsonObject | null;
   /** A card's figures, or null to take it off. */
@@ -428,6 +437,12 @@ function linksOf(change: TaskChange): { readonly taskId: string; readonly type: 
 
 /** The write that makes `change` to `task` as it stands, or null when it changes nothing. */
 function planChange(context: WriteContext, task: Task, change: TaskChange, actor: Actor): TaskWrite | null {
+  // The values that differ from the task's, change.fields having been checked against the project's fields.
+  const setFields = Object.fromEntries(
+    Object.entries(change.fields ?? {}).filter(([key, value]) =>
+      value === null ? task.fields[key] !== undefined : !same(value, task.fields[key]),
+    ),
+  );
   if (change.removeLabels?.includes('human') && isDecision(task)) throw decisionRefusal(task.id);
   // A person's pick is recorded against the options they saw.
   if (change.choices !== undefined && task.choice !== null) {
@@ -517,6 +532,7 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
     ...(addLinks.length > 0 ? { addLinks } : {}),
     ...(addExternalLinks.length > 0 ? { addExternalLinks } : {}),
     ...(removeExternalLinks.length > 0 ? { removeExternalLinks } : {}),
+    ...(Object.keys(setFields).length > 0 ? { setFields } : {}),
   };
   return Object.keys(write).length > 1 ? write : null;
 }
@@ -541,6 +557,16 @@ export async function updateTask(
   }
   if (typeof change.parent === 'string') await tasksIn(context, project, [change.parent]);
   await linkTargets(context, project, linksOf(change));
+  // Checked here as well as in the engine, so a value the task already has is no change.
+  const checked: TaskChange =
+    change.fields === undefined
+      ? change
+      : {
+          ...change,
+          fields: await engineChecked(async () =>
+            fieldValues(await context.engine.listFields(project.id), change.fields, true),
+          ),
+        };
   const actor = actorOf(context.principal, model);
   const loop =
     typeof change.parent === 'string'
@@ -555,7 +581,7 @@ export async function updateTask(
     task,
     actor,
     retry,
-    async (current) => planChange(context, current, change, actor),
+    async (current) => planChange(context, current, checked, actor),
     loop,
   );
   return { project, result };
@@ -753,6 +779,84 @@ export async function requestApproval(
     }
   }
   throw unavailable(false);
+}
+
+// ─── Custom fields ────────────────────────────────────────────────────────────
+
+/** Runs `work`, turning an engine refusal into the API's. */
+async function engineChecked<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw fromEngine(error);
+  }
+}
+
+/** The project's custom fields, retired ones included. */
+export async function fieldsOf(
+  context: Reader,
+  projectId: string,
+): Promise<{
+  readonly project: Project;
+  readonly fields: readonly CustomField[];
+}> {
+  const project = await projectOf(context, projectId);
+  return { project, fields: await context.engine.listFields(project.id) };
+}
+
+/** Filters by the project's custom fields, checked against them, which are
+ * read unless the caller has read them: `at` names the argument in a refusal. */
+export async function fieldFiltersOf(
+  context: Reader,
+  project: Project,
+  values: unknown,
+  at: string,
+  fields?: readonly CustomField[],
+): Promise<Record<string, string | number | boolean>> {
+  return engineChecked(async () => fieldFilters(fields ?? (await context.engine.listFields(project.id)), values, at));
+}
+
+/** Defines a custom field in a project the sender may change. */
+export async function defineField(
+  context: WriteContext,
+  projectId: string,
+  input: DefineFieldInput,
+  retryRequest?: RetryRequest,
+): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
+  const project = await projectOf(context, projectId, 'write');
+  const retry = await retryOf(context.principal, retryRequest);
+  const { field, replayed } = await engineChecked(() =>
+    context.engine.defineField(project.id, input, actorOf(context.principal, undefined), retry),
+  );
+  return { project, field, replayed };
+}
+
+/** Retires a custom field in a project the sender may change: it takes no new values. */
+export async function retireField(
+  context: WriteContext,
+  projectId: string,
+  key: string,
+  retryRequest?: RetryRequest,
+): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
+  const project = await projectOf(context, projectId, 'write');
+  const retry = await retryOf(context.principal, retryRequest);
+  try {
+    const { field, replayed } = await context.engine.retireField(
+      project.id,
+      key,
+      actorOf(context.principal, undefined),
+      retry,
+    );
+    return { project, field, replayed };
+  } catch (error) {
+    if (error instanceof TaskRefused && error.refusal === 'not_found')
+      throw new Refused(
+        'not_found',
+        `refused: ${projectNamed(project)} has no field ${key}; list_fields lists its fields.`,
+        `${project.name} has no field ${key}.`,
+      );
+    throw fromEngine(error);
+  }
 }
 
 // ─── Lint ─────────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   TaskRefused,
   type BoardQuery,
   type ChangePage,
+  type CustomField,
   type EpicProgress,
   type LabelPage,
   type LabelQuery,
@@ -27,6 +28,7 @@ import {
 import {
   externalLinks,
   toComment,
+  toField,
   toEpic,
   toEvent,
   toProject,
@@ -34,6 +36,7 @@ import {
   type CommentRow,
   type EpicRow,
   type EventRow,
+  type FieldRow,
   type ProjectRow,
   type TaskRow,
 } from './rows.ts';
@@ -267,6 +270,22 @@ function filter(statement: Query, query: TaskFilters): void {
     if (!query.types.every(isTaskType)) invalid('types must be task types');
     where.push(`t.type IN (SELECT value FROM json_each(${statement.param(JSON.stringify(query.types))}))`);
   }
+  if (query.fields !== undefined && Object.keys(query.fields).length > 0) {
+    // Each wanted value as JSON text, against the task's value at its key's
+    // path in the task's own row: equal to it, or, for a multiple-choice
+    // value, one of its options. The key's characters need no escaping in a path.
+    const wanted = Object.entries(query.fields).map(([key, value]) => {
+      if (!/^[a-z][a-z0-9_-]{0,63}$/u.test(key)) invalid('fields must name fields by key');
+      if (!['string', 'number', 'boolean'].includes(typeof value) || (typeof value === 'number' && !isFinite(value)))
+        invalid(`fields.${key} must be text, a number, or true or false`);
+      return { path: `$."${key}"`, value: JSON.stringify(value) };
+    });
+    where.push(`NOT EXISTS (SELECT 1 FROM json_each(${statement.param(JSON.stringify(wanted))}) w
+      WHERE NOT coalesce(t.field_values -> json_extract(w.value, '$.path') = json_extract(w.value, '$.value')
+        OR (json_type(t.field_values, json_extract(w.value, '$.path')) = 'array' AND EXISTS (
+          SELECT 1 FROM json_each(t.field_values, json_extract(w.value, '$.path')) o
+          WHERE json_quote(o.value) = json_extract(w.value, '$.value'))), 0))`);
+  }
   const ranges = [
     ['created_at', '>=', query.createdAfter, 'createdAfter'],
     ['created_at', '<', query.createdBefore, 'createdBefore'],
@@ -398,6 +417,14 @@ export class Reads {
       .bind(JSON.stringify(taskIds))
       .all<{ task_id: string; links: string }>();
     return results.map((row) => ({ taskId: row.task_id, externalLinks: externalLinks(row.links) }));
+  }
+
+  async listFields(projectId: string): Promise<CustomField[]> {
+    const { results } = await this.#db
+      .prepare('SELECT * FROM custom_fields WHERE project_id = ?1 ORDER BY created_at, key')
+      .bind(projectId)
+      .all<FieldRow>();
+    return results.map(toField);
   }
 
   async listEpics(projectId: string): Promise<EpicProgress[]> {
