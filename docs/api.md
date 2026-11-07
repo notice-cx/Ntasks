@@ -110,6 +110,18 @@ gets its list. They are answered beside sign-in, so they count against its
 limit of about 30 requests a minute from one address
 ([Sign-in](sign-in.md#routes)).
 
+A workspace's owners manage its people with four routes in the request's
+workspace, which [Sign-in](sign-in.md#members-and-invitations) describes with
+their refusals. A member, an agent or a service gets `403` with
+`owner_only`.
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /api/access/members` | none | `{ members, invitations }`: each member as `{ userId, name, githubLogin, role }`, and each open invitation as `{ invitationId, githubLogin, role, createdAt }` |
+| `POST /api/access/invitations` | `githubLogin`, a GitHub username, and optionally `role`, `owner` or `member` (the default) | `201` with `{ invitation }`. The account holding that login joins the workspace with that role when it next signs in. |
+| `POST /api/access/invitations/<invitation id>/revoke` | none, or `{}` | `{ "revoked": true }` |
+| `POST /api/access/members/<user id>/remove` | none, or `{}` | `{ "removed": true }`. The member's session and their agents stop reaching the workspace; a workspace's only owner cannot be removed. |
+
 ## The MCP endpoint
 
 `POST /api/mcp` takes one JSON-RPC message of at most 256 KB and answers it. It speaks both

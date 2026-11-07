@@ -13,6 +13,7 @@ sign-in sits and what a workspace is.
 | The sign-in, agent approval and expired-link pages, and their look | [`workers/api/src/access/pages.ts`](../workers/api/src/access/pages.ts), [`page-look.ts`](../workers/api/src/access/page-look.ts) |
 | The token verifier | [`workers/api/src/access/verify.ts`](../workers/api/src/access/verify.ts) |
 | What a caller may do | [`workers/api/src/access/principal.ts`](../workers/api/src/access/principal.ts) |
+| Members and invitations | [`workers/api/src/access/members.ts`](../workers/api/src/access/members.ts) |
 | Scopes, paths and discovery documents | [`workers/api/src/access/protocol.ts`](../workers/api/src/access/protocol.ts) |
 | Workspaces: the one a request reaches, and the sender as its store sees it | [`workers/api/src/workspaces.ts`](../workers/api/src/workspaces.ts) |
 | Tables | [`workers/api/migrations/`](../workers/api/migrations/) |
@@ -25,7 +26,7 @@ sign-in library, with its OAuth provider plugin, on the Worker's D1 database.
 
 | Caller | How it signs in | What it reaches |
 |---|---|---|
-| **A person**, in a browser | Signs in with GitHub on `/sign-in`. The GitHub account's numeric id must be in `OWNER_GITHUB_IDS`: the deployment's admins are the only people who sign in. | Each workspace they belong to, as its owner or a member. In it, every project, to read and change tasks (`tasks:read`, `tasks:write`), and a person's decisions (`tasks:decide`). An owner also holds the backup of the workspace's store (`tasks:backup`), a load into its empty store (`tasks:restore`), and creating its projects (`workspace:manage`). Only a person's own browser session counts as their decision. |
+| **A person**, in a browser | Signs in with GitHub on `/sign-in`. The GitHub account must be a deployment admin (its numeric id is in `OWNER_GITHUB_IDS`), a member of a workspace, or invited to one ([below](#members-and-invitations)). | Each workspace they belong to, as its owner or a member. In it, every project, to read and change tasks (`tasks:read`, `tasks:write`), and a person's decisions (`tasks:decide`). An owner also holds the backup of the workspace's store (`tasks:backup`), a load into its empty store (`tasks:restore`), and creating its projects (`workspace:manage`). Only a person's own browser session counts as their decision. |
 | **An AI agent**, such as an MCP client | OAuth 2.1, the sign-in method of [MCP's authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization). A person approves the agent on `/agent-access` and chooses its projects among those of their workspaces. | The projects the person chose, to read (`tasks:read`) or to read and change (`tasks:write`) tasks, in each workspace the person still belongs to. |
 | **A service**, such as a NoticeOS installation | A service credential a workspace's owner made, sent as a bearer token. | Its credential's one workspace: the projects named in the credential's grants, each to read or to read and change. A credential made with the backup choice also reads the workspace's whole store through the backup route (`tasks:backup`, [API](api.md#backing-up-the-whole-store)), and one made with the restore choice may load rows into that store while it is empty (`tasks:restore`, [API](api.md#loading-an-empty-store)); either needs no grants. |
 
@@ -34,10 +35,12 @@ GitHub user ids are numbers, such as `1001`, shown at
 login, because a login can be renamed and then taken by someone else.
 
 A deployment admin creates workspaces (`POST /api/workspaces`,
-[API](api.md#workspaces)) and is the owner of each one they create. A
-request reaches one workspace: a service its credential's, and a person or an
-agent the one it names in the `x-ntasks-workspace` header or an MCP tool
-call's `workspace` argument, or the only one it reaches.
+[API](api.md#workspaces)) and is the owner of each one they create. An owner
+invites other people by their GitHub username
+([below](#members-and-invitations)). A request reaches one workspace: a
+service its credential's, and a person or an agent the one it names in the
+`x-ntasks-workspace` header or an MCP tool call's `workspace` argument, or
+the only one it reaches.
 
 An agent or a service may pass on an answer a person gave it, such as a
 choice in a decision, but that is a relayed answer, not the person's own
@@ -60,7 +63,7 @@ and every call that needs a signed-in sender is refused.
 | `NTASKS_ORIGIN` | The address people and agents reach Ntasks at, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. |
 | `AUTH_SECRET` | A random value of at least 32 characters. It signs session cookies and sign-in state, and encrypts stored GitHub tokens and agents' client secrets. Make one with `openssl rand -base64 32`. Changing it signs everyone out, and an agent that registered with a client secret must register again. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | The GitHub OAuth app people sign in through. |
-| `OWNER_GITHUB_IDS` | The GitHub user ids of the deployment's admins, separated by commas: the people who may sign in and create workspaces. |
+| `OWNER_GITHUB_IDS` | The GitHub user ids of the deployment's admins, separated by commas: the people who create workspaces, and who may sign in without belonging to one. |
 
 On a deployment, set each with `wrangler secret put <NAME>` from
 `workers/api`. For `pnpm dev`, put them in `workers/api/.dev.vars`, which git
@@ -140,8 +143,8 @@ refusal that `refusal()` turns into the answer.
 
 | The request carries | The verifier checks, in one D1 query |
 |---|---|
-| A session cookie | The signature, an unexpired session, and that the person's GitHub id is still allowlisted. The same query reads the person's memberships, with each workspace's name. A change (`POST` and other methods that are not reads) must also come from `NTASKS_ORIGIN`, shown by its `Origin` header, so another site cannot submit a form with the person's cookie. |
-| An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still allowlisted, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. |
+| A session cookie | The signature, an unexpired session, and that the person is still a deployment admin or a member of a workspace. The same query reads the person's memberships, with each workspace's name. A change (`POST` and other methods that are not reads) must also come from `NTASKS_ORIGIN`, shown by its `Origin` header, so another site cannot submit a form with the person's cookie. |
+| An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still a deployment admin or a member of a workspace, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. |
 | A service credential | That it exists and is not revoked, and that its secret matches the stored hash, compared in constant time. The same query reads its workspace's name. |
 
 So picking the workspace costs no D1 read beyond the one that signs the
@@ -195,6 +198,59 @@ x-ntasks-on-behalf-of: outcome-review-filer
 - People and OAuth agents sign in as themselves; the header is ignored for
   them, whatever its value.
 
+## Members and invitations
+
+A GitHub account may sign in when one of these holds:
+
+- it is a deployment admin: its numeric id is in `OWNER_GITHUB_IDS`;
+- it is already a member of a workspace;
+- its GitHub login holds an open invitation to a workspace: one nobody has
+  accepted and no owner has revoked.
+
+Any other account is sent back to `/sign-in?error=not_invited`, and the page
+shows the reason: the account is not a member of a workspace here, and a
+workspace owner can invite its GitHub username. A refused sign-in creates no
+account.
+
+An owner of a workspace manages its people with the routes below, naming
+the workspace in the `x-ntasks-workspace` header when they belong to
+several.
+
+- **Inviting.** `POST /api/access/invitations` with
+  `{"githubLogin": "...", "role": "member"}` invites a GitHub login as a
+  `member` or an `owner`; `role` is `member` when left out. Spaces and a
+  leading `@` are dropped, and the login is compared without case. A
+  workspace holds at most one open invitation for a login.
+- **Joining.** When the account that holds the login next signs in with
+  GitHub, each open invitation for that login becomes a membership with the
+  invitation's role, bound to the account's user, and the invitation records
+  who accepted it (`accepted_by`) and when (`accepted_at`). A person who is
+  already a member keeps their membership, and an invitation as owner makes
+  them an owner. A person who is signed in already joins by signing out and
+  in again.
+- **Renamed logins.** The login is matched only at sign-in, against the
+  profile GitHub returns then. After that the membership belongs to the
+  account, so renaming the login, or someone else taking the old one,
+  changes nothing. Until then the invitation admits whoever holds the login
+  on GitHub when they sign in, so revoke an invitation that is no longer
+  wanted.
+- **Revoking.** `POST /api/access/invitations/<invitation id>/revoke`
+  revokes an open invitation. A revoked invitation admits nobody.
+- **Removing.** `POST /api/access/members/<user id>/remove` removes a member,
+  and deletes the project grants their agents hold in the workspace. From
+  their next request, their session and their agents no longer reach the
+  workspace; they keep their other workspaces. Inviting them again does not
+  give their agents the workspace back: they approve each agent again.
+  Service credentials they made stay, since they belong to the workspace.
+- **The last owner.** A workspace keeps at least one owner: removing its
+  only owner gets `409` with `{"error":"last_owner"}`. No route changes a
+  role; to make a member an owner, invite their login as `owner`, and it
+  takes effect when they next sign in.
+
+A person who is neither a deployment admin nor a member of any workspace is
+signed out: their sessions and their agents are refused, and they sign in
+again only with a new invitation.
+
 ## Cutting a caller off
 
 Each of these takes effect at the caller's next request.
@@ -203,7 +259,8 @@ Each of these takes effect at the caller's next request.
 |---|---|
 | An agent | `POST /api/access/agents/<client id>/revoke`, signed in as the person who approved it. Its project grants in every workspace and the person's consent are deleted, and its access and refresh tokens are marked revoked. |
 | A service | `POST /api/access/services/<credential id>/revoke`, signed in as the owner of the credential's workspace, naming that workspace when they belong to several. |
-| A person | Remove their GitHub id from `OWNER_GITHUB_IDS`. Their sessions and the agents they approved are refused. |
+| A person, from one workspace | `POST /api/access/members/<user id>/remove`, signed in as an owner of the workspace ([above](#members-and-invitations)). Their session and their agents stop reaching it. |
+| A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. Their sessions and the agents they approved are refused. |
 | One token, from the agent itself | `POST /api/auth/oauth2/revoke` ([RFC 7009](https://www.rfc-editor.org/rfc/rfc7009)). |
 
 ## Routes
@@ -263,15 +320,31 @@ and people's own sign-in, keep working.
 | `GET /api/access/services` | The workspace's service credentials, without their secrets |
 | `POST /api/access/services` | Makes a credential in the workspace from `{"name": "...", "grants": [{"projectId": "...", "access": "read"}]}`, with `"backup": true`, one that may also read the backup route, and with `"restore": true`, one that may load the empty store; such a credential may leave `grants` out. Every grant names a project of the workspace, and the name is the credential's alone in the workspace. The answer holds its token, `ntasks_service.<id>.<secret>`, which is never shown again. Neither choice changes after. |
 | `POST /api/access/services/<credential id>/revoke` | Revokes a credential of the workspace |
+| `GET /api/access/members` | `{ members, invitations }`: the workspace's members, by name, each as `{ userId, name, githubLogin, role }`, where `githubLogin` is the login the member was invited under, or `null` for one who joined without an invitation, such as the workspace's creator; and its open invitations, newest first, each as `{ invitationId, githubLogin, role, createdAt }` |
+| `POST /api/access/invitations` | Invites a GitHub login to the workspace from `{"githubLogin": "...", "role": "member"}` and answers `201` with `{ invitation }`, shaped as `GET /api/access/members` lists it |
+| `POST /api/access/invitations/<invitation id>/revoke` | Revokes an open invitation of the workspace: `{ "revoked": true }` |
+| `POST /api/access/members/<user id>/remove` | Removes a member of the workspace and their agents' grants there: `{ "removed": true }` |
 | `GET /api/workspaces`, `POST /api/workspaces` | The workspaces the sender reaches, and a new one a deployment admin creates ([API](api.md#workspaces)) |
 
 Only a person's browser session may use the `/api/access/` routes that list,
-make or revoke; an agent or a service gets `403` with `{"error":"owner_only"}`.
-The service credential routes act in the request's workspace: the one the
-`x-ntasks-workspace` header names, or the person's only one. Only its owner
-may use them; a member gets `403` with `{"error":"owner_only"}`, and a person
-who belongs to several workspaces and names none gets `400` with
-`workspace_required`.
+make or revoke; an agent or a service gets `403` with `owner_only`. The
+service credential, member and invitation routes act in the request's
+workspace: the one the `x-ntasks-workspace` header names, or the person's
+only one. Only its owners may use them. Each refusal is JSON with `error`,
+the rule that refused, and `detail`, a sentence saying why; a refusal about
+one body field names it in `field`.
+
+| Answer | When |
+|---|---|
+| `400` with `workspace_required` | The person belongs to several workspaces and the request names none. |
+| `403` with `owner_only` | The sender is an agent or a service, or a member who is not an owner of the workspace. |
+| `400` with `invalid_request` | The body is not a JSON object, holds an unknown field, or a field is malformed: `githubLogin` is not a GitHub login, or `role` is not `owner` or `member`. |
+| `404` with `not_found` | The workspace has no such open invitation, or no such member. |
+| `409` with `invitation_exists` | The login already has an open invitation to the workspace (`field` is `githubLogin`). |
+| `409` with `last_owner` | The member to remove is the workspace's only owner. |
+
+A refusal of a service credential's body, such as an unknown project, holds
+its sentence in `message` instead of `detail`.
 
 ## Tables
 
@@ -282,7 +355,7 @@ who belongs to several workspaces and names none gets `400` with
 | `auth_oauth_resource`, `auth_oauth_client_resource`, `auth_oauth_client_assertion` | The MCP endpoint as a protected resource, and other OAuth provider records |
 | `workspaces` | Each workspace: `id`, a lowercase UUID, `name`, `created_by` and `created_at` |
 | `workspace_members` | Who belongs to each workspace: `workspace_id`, `user_id`, `role` (`owner` or `member`) and `created_at`, one row for each person in each workspace |
-| `workspace_invitations` | A GitHub login invited to a workspace: `id`, `workspace_id`, `github_login`, `role`, `created_by`, `created_at`, and `accepted_by` and `accepted_at` once it became a membership, or `revoked_at`. A workspace has at most one open invitation for a login, compared without case. No route reads or writes it. |
+| `workspace_invitations` | A GitHub login invited to a workspace: `id`, `workspace_id`, `github_login`, `role`, `created_by`, `created_at`, and `accepted_by` and `accepted_at` once it became a membership, or `revoked_at`. A workspace has at most one open invitation for a login, compared without case. Sign-in looks up the open invitations of the account's login. |
 | `access_agent_grants` | The projects each agent may reach for the person who approved it: `user_id`, `client_id`, `workspace_id`, `project_id`, `access` and `created_at` |
 | `access_service_credentials`, `access_service_grants` | Service credentials, each in one workspace (`workspace_id`), with the SHA-256 of each secret, the backup and restore choices, and their projects. A name is unique within its workspace. |
 | `access_registration_days` | How many agents registered on each UTC day, for the daily registration budget |

@@ -77,10 +77,14 @@ workspace its `workspace` argument names.
 
 A workspace has an id, a UUID, and a name. Its people belong to it as its
 **owner** or as a **member**: both read, write and decide there, and an owner
-also creates its projects, makes its service credentials, and backs it up and
-loads it. The deployment's admins, the GitHub accounts in `OWNER_GITHUB_IDS`,
-create workspaces, and each becomes the owner of the workspaces they create.
-Only admins sign in: a GitHub account not in `OWNER_GITHUB_IDS` is refused.
+also invites and removes its people, creates its projects, makes its service
+credentials, and backs it up and loads it. The deployment's admins, the
+GitHub accounts in `OWNER_GITHUB_IDS`, create workspaces, and each becomes
+the owner of the workspaces they create.
+An owner invites people by their GitHub username, and an invited account
+becomes a member when it signs in. Only admins, members and invited accounts
+sign in; any other GitHub account is refused
+([Sign-in](sign-in.md#members-and-invitations)).
 
 A request reaches one workspace:
 
@@ -101,8 +105,9 @@ which workspaces that sender reaches and what it may do in the project the
 request names. Only the health check and the sign-in steps themselves answer
 without it.
 
-- **People** sign in in the browser with an allowlisted GitHub account, and
-  reach the workspaces they belong to.
+- **People** sign in in the browser with GitHub, as a deployment admin, a
+  member of a workspace or an invited account, and reach the workspaces they
+  belong to.
 - **AI agents** connect with OAuth 2.1, the sign-in method MCP clients use,
   and the person who approves an agent chooses which projects of their
   workspaces it may reach.
