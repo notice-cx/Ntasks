@@ -63,8 +63,8 @@ describe('the import refuses what is out of scope, naming it', () => {
   });
 
   it('a column Ntasks has no field for, quoting what it holds', () => {
-    expect(refusalsOf(hubWith((c) => c.update('web-a1', { notes: 'Remember the footer.' })))).toEqual([
-      { subject: 'web-a1', reason: 'its column notes holds "Remember the footer.", and Ntasks has no field for it' },
+    expect(refusalsOf(hubWith((c) => c.update('web-a1', { external_ref: 'gh-123' })))).toEqual([
+      { subject: 'web-a1', reason: 'its column external_ref holds "gh-123", and Ntasks has no field for it' },
     ]);
   });
 
@@ -88,13 +88,13 @@ describe('the import refuses what is out of scope, naming it', () => {
   it('text that looks like zero or an empty list, which someone still wrote', () => {
     const refusals = refusalsOf(
       hubWith((c) => {
-        c.update('web-a1', { notes: '0', design: '[]' });
+        c.update('web-a1', { external_ref: '0', spec_id: '[]' });
         c.update('web-a2', { external_ref: '{}' });
       }),
     );
     expect(refusals).toEqual([
-      { subject: 'web-a1', reason: 'its column design holds "[]", and Ntasks has no field for it' },
-      { subject: 'web-a1', reason: 'its column notes holds "0", and Ntasks has no field for it' },
+      { subject: 'web-a1', reason: 'its column external_ref holds "0", and Ntasks has no field for it' },
+      { subject: 'web-a1', reason: 'its column spec_id holds "[]", and Ntasks has no field for it' },
       { subject: 'web-a2', reason: 'its column external_ref holds "{}", and Ntasks has no field for it' },
     ]);
   });
@@ -116,7 +116,7 @@ describe('the import refuses what is out of scope, naming it', () => {
     );
   });
 
-  it('a link to a task outside the hub or to a wisp', () => {
+  it('a link outside the hub that is not a web address', () => {
     const hub = hubWith((c) => {
       c.link('web-a1', 'web-a2', 'blocks', { depends_on_issue_id: null, depends_on_external: 'external:other:thing' });
     });
@@ -124,7 +124,7 @@ describe('the import refuses what is out of scope, naming it', () => {
       {
         subject: 'web-a1',
         reason:
-          'a link column depends_on_external holds "external:other:thing": it links to a task outside the hub, and external links are out of scope',
+          'its link to "external:other:thing" is not a web address; Ntasks links outside itself only to http and https addresses',
       },
     ]);
   });
@@ -172,12 +172,12 @@ describe('the import refuses data it cannot carry whole', () => {
   });
 
   it("out-of-scope data in a task's past, saying when", () => {
-    const hub = hubWith((c) => c.update('web-a1', { notes: 'Old note' }));
-    hub.commit(t(2), 'beads', (c) => c.update('web-a1', { notes: '' }));
+    const hub = hubWith((c) => c.update('web-a1', { external_ref: 'gh-1' }));
+    hub.commit(t(2), 'beads', (c) => c.update('web-a1', { external_ref: null }));
     expect(refusalsOf(hub)).toEqual([
       {
         subject: 'web-a1',
-        reason: `its column notes holds "Old note", and Ntasks has no field for it (in its history, at ${t(1)})`,
+        reason: `its column external_ref holds "gh-1", and Ntasks has no field for it (in its history, at ${t(1)})`,
       },
     ]);
   });
@@ -225,7 +225,7 @@ describe('the import refuses data it cannot carry whole', () => {
     const refusals = refusalsOf(
       hubWith((c) => {
         c.link('web-a1', 'web-a2', 'waits-for');
-        c.update('web-a2', { design: 'A sketch.' });
+        c.update('web-a2', { external_ref: 'gh-2' });
       }),
     );
     expect(refusals.map((refusal) => refusal.subject)).toEqual(['web-a1', 'web-a2']);
