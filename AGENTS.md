@@ -17,6 +17,28 @@ what is built today. [Concepts](docs/concepts.md) defines the task model,
 The numbered rules in Architecture's "Rules every change keeps" are
 invariants. A change that weakens one is the owner's decision, not a refactor.
 
+## Product principles
+
+Every feature and every change to an existing one meets all five:
+
+- **It fills a real gap.** A feature exists because people or agents hit the
+  problem it solves, and the task that adds it cites that evidence.
+- **It is easy to understand.** One sentence in the web app or the agent
+  guide explains each feature and each visible behavior. Familiar names come
+  before new terms, and fewer concepts before more options.
+- **It is easy to start with.** A new deployment, a new person and a new
+  agent each reach their first task in a few steps, and each step is shown
+  where it is needed.
+- **It is elegant.** Its design and architecture are as clear and simple as
+  the problems it solves require: every part, layer and option exists because
+  one of those problems needs it, and there is one way to do each thing. The
+  design is also ready to change: a new feature, an extension or a changed
+  rule fits into it without redesigning it or working around one of its
+  limits.
+- **It is fast.** A call is answered from the workspace's task store in one
+  hop, a reply carries only what the caller needs, and the free plan's
+  limits hold.
+
 ## Layout
 
 | Path | Owns |
