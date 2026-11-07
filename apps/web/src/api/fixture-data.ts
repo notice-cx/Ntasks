@@ -118,7 +118,17 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     }),
     base('web', 'web-k3m9.1', 'Draw the sign-in form', {
       parent: 'web-k3m9',
-      ...closed(2 * DAY, CLAUDE, 'Landed in 1a2b3c4: the form renders its fields and errors.'),
+      ...closed(2 * DAY, CLAUDE, 'Landed in 1a2b3c4: the form renders its fields and errors.', {
+        delivery: {
+          stage: 'built',
+          commit: '1a2b3c4',
+          pullRequest: 'https://github.com/example/web/pull/42',
+          mergeCommit: null,
+          builtAt: at(2 * DAY),
+          mergedAt: null,
+          liveAt: null,
+        },
+      }),
       acceptance:
         '- [x] The form shows email and password fields\n- [x] A wrong password shows its error under the field',
     }),
@@ -287,7 +297,17 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       description: 'Waiting on the credentials for the documentation host.',
     }),
     base('docs', 'docs-y5u2', 'Fix the broken links in the README', {
-      ...closed(3 * DAY, CLAUDE, 'Fixed in 9f8e7d6: every link now opens its page.'),
+      ...closed(3 * DAY, CLAUDE, 'Fixed in 9f8e7d6: every link now opens its page.', {
+        delivery: {
+          stage: 'merged',
+          commit: '9f8e7d6',
+          pullRequest: null,
+          mergeCommit: '9f8e7d6',
+          builtAt: at(3 * DAY),
+          mergedAt: at(3 * DAY - HOUR),
+          liveAt: null,
+        },
+      }),
     }),
   ];
 
@@ -317,8 +337,8 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
   ]);
 
   const projects: TaskProject[] = [
-    { projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' },
-    { projectId: 'p-docs', logicalKey: 'docs', displayName: 'Example docs', prefix: 'docs' },
+    { projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web', deploys: true },
+    { projectId: 'p-docs', logicalKey: 'docs', displayName: 'Example docs', prefix: 'docs', deploys: false },
   ];
 
   // One field of every type, and one retired, whose values tasks keep.

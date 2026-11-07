@@ -2,9 +2,12 @@ export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export {
   CHOICE_FIELD_TYPES,
+  COMMIT_SHA,
+  DELIVERY_STAGES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   FIELD_TYPES,
+  isDeliveryStage,
   isDependencyType,
   isExternalLinkKind,
   isFieldType,
@@ -20,6 +23,7 @@ export {
 } from './task.ts';
 export type {
   CustomField,
+  DeliveryStage,
   DependencyType,
   EpicProgress,
   ExternalLink,
@@ -32,6 +36,7 @@ export type {
   Task,
   TaskClose,
   TaskComment,
+  TaskDelivery,
   TaskEvent,
   TaskEventKind,
   TaskLink,
@@ -48,6 +53,8 @@ export type {
   CreateProjectInput,
   CreateTaskInput,
   DefineFieldInput,
+  DeliveryMove,
+  DeliverySignal,
   FieldResult,
   LabelPage,
   LabelQuery,

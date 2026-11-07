@@ -96,6 +96,7 @@ describe('tools/list', () => {
     expect(unchanged).toEqual(NOTICEOS_TOOLS);
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
+      'list_tasks.stage',
       'list_tasks.fields',
       'create_task.notes',
       'create_task.design',
@@ -119,6 +120,8 @@ describe('tools/list', () => {
       'update_task.add_external_links',
       'update_task.fields',
       'update_task.remove_external_links',
+      'close_task.commit',
+      'close_task.pr',
     ]);
   });
 });

@@ -2,6 +2,7 @@
 // failure is a TaskRefused('invalid') that names the field and the rule.
 import {
   CHOICE_FIELD_TYPES,
+  COMMIT_SHA,
   FIELD_TYPES,
   IDEMPOTENCY_KEY,
   isDependencyType,
@@ -18,6 +19,7 @@ import {
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
+  type DeliverySignal,
   type DependencyType,
   type ExternalLink,
   type FieldType,
@@ -426,7 +428,13 @@ export interface CheckedWrite {
   /** Checked against the project's fields when the write is made. */
   readonly setFields: Record<string, unknown> | null;
   readonly requestApproval: { reason: string } | null;
-  readonly close: { reason: string; resolution: TaskResolution; duplicateOf: string | null } | null;
+  readonly close: {
+    reason: string;
+    resolution: TaskResolution;
+    duplicateOf: string | null;
+    commit: string | null;
+    pullRequest: string | null;
+  } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
   /** Changes to other tasks in the same batch, each checked as a write of its own. */
@@ -547,9 +555,43 @@ export function write(input: TaskWrite): CheckedWrite {
 function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWrite['close']> {
   if (!isTaskResolution(value?.resolution)) invalid('close.resolution must be a resolution, such as done or wont-do');
   const reason = text(value.reason, 'close.reason', TASK_LIMITS.reason, true);
+  const commit = value.commit === undefined ? null : commitSha(value.commit, 'close.commit');
+  const pullRequest = value.pullRequest === undefined ? null : externalUrl(value.pullRequest, 'close.pullRequest');
+  if ((commit !== null || pullRequest !== null) && value.resolution !== 'done')
+    invalid('close.commit and close.pullRequest record what shipped, so they close a task as done');
   if (value.resolution === 'duplicate') {
-    return { reason, resolution: value.resolution, duplicateOf: taskId(value.duplicateOf, 'close.duplicateOf') };
+    return {
+      reason,
+      resolution: value.resolution,
+      duplicateOf: taskId(value.duplicateOf, 'close.duplicateOf'),
+      commit,
+      pullRequest,
+    };
   }
   if (value.duplicateOf !== undefined) invalid('close.duplicateOf is only for a close as duplicate');
-  return { reason, resolution: value.resolution, duplicateOf: null };
+  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest };
+}
+
+/** A commit: 7 to 64 lowercase hexadecimal characters. */
+export function commitSha(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !COMMIT_SHA.test(value))
+    invalid(`${field} must be a commit: 7 to 64 lowercase hexadecimal characters`);
+  return value;
+}
+
+/** The most pull requests, and the most commits, one delivery signal names. */
+export const SIGNAL_ITEMS = 100;
+
+export function deliverySignal(value: DeliverySignal): DeliverySignal {
+  if (value === null || typeof value !== 'object') invalid('the signal must be an object');
+  if (value.stage !== 'merged' && value.stage !== 'live') invalid('stage must be merged or live');
+  const list = <T>(items: unknown, field: string, each: (item: unknown, at: string) => T): T[] => {
+    if (!Array.isArray(items) || items.length > SIGNAL_ITEMS)
+      invalid(`${field} must be a list of at most ${SIGNAL_ITEMS}`);
+    return [...new Set(items.map((item: unknown, index) => each(item, `${field}[${index}]`)))];
+  };
+  const pullRequests = list(value.pullRequests, 'pullRequests', externalUrl);
+  const commits = list(value.commits, 'commits', commitSha);
+  if (pullRequests.length === 0 && commits.length === 0) invalid('a signal names a pull request or a commit');
+  return { stage: value.stage, pullRequests, commits };
 }

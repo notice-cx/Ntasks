@@ -9,6 +9,7 @@ import notesDesignEstimate from './migrations/0003_task_notes_design_estimate.sq
 import linkTypesExternalLinks from './migrations/0004_link_types_external_links.sql';
 import customFields from './migrations/0005_custom_fields.sql';
 import storeLoads from './migrations/0006_store_loads.sql';
+import delivery from './migrations/0007_delivery.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
@@ -17,6 +18,7 @@ export const MIGRATIONS: readonly { readonly name: string; readonly sql: string 
   { name: '0004_link_types_external_links', sql: linkTypesExternalLinks },
   { name: '0005_custom_fields', sql: customFields },
   { name: '0006_store_loads', sql: storeLoads },
+  { name: '0007_delivery', sql: delivery },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */

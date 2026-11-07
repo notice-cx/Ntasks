@@ -96,6 +96,8 @@ export function webTask(task: Task) {
     changeClass: changeClassOf(task.metadata),
     resolution: task.close?.resolution ?? null,
     duplicateOf: task.close?.duplicateOf ?? null,
+    /** Where a closed task's change is: built, merged or live; null when it has no delivery. */
+    delivery: task.delivery,
   };
 }
 
@@ -136,6 +138,7 @@ export function mcpTask(task: Task) {
     closeReason: web.closeReason,
     resolution: web.resolution,
     duplicateOf: web.duplicateOf,
+    ...(task.delivery === null ? {} : { delivery: task.delivery }),
   };
 }
 
@@ -168,6 +171,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     closedAt: full.closedAt,
     resolution: full.resolution,
     duplicateOf: full.duplicateOf,
+    delivery: full.delivery ?? null,
   };
   return Object.fromEntries(
     Object.entries(row).filter(
@@ -241,6 +245,7 @@ function snapshotView(state: Record<string, Json>) {
     closeReason: close?.reason ?? null,
     resolution: close?.resolution ?? null,
     duplicateOf: close?.duplicateOf ?? null,
+    delivery: objectOrNull(state.delivery),
   };
 }
 

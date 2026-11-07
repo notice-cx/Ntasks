@@ -102,6 +102,7 @@ describe('tools/list', () => {
       'remove_dependency',
       'request_human_approval',
       'close_task',
+      'report_delivery',
       'list_fields',
       'define_field',
       'retire_field',
@@ -205,13 +206,14 @@ describe('the workspace and scope of a call', () => {
 });
 
 describe('list_projects', () => {
-  it('lists each project with its id, key, name and prefix', async () => {
-    const { projects } = await read<{ projects: Record<string, string>[] }>(target, 'list_projects');
+  it('lists each project with its id, key, name, prefix and whether it deploys', async () => {
+    const { projects } = await read<{ projects: Record<string, unknown>[] }>(target, 'list_projects');
     expect(projects).toContainEqual({
       projectId: project.id,
       key: project.key,
       name: project.name,
       prefix: project.prefix,
+      deploys: false,
     });
   });
 });

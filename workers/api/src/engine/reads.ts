@@ -6,6 +6,7 @@
 // history, and returns a task with its labels and links in the same
 // statement. test/api/read-cost.test.ts holds each read to a budget.
 import {
+  isDeliveryStage,
   isTaskStatus,
   isTaskType,
   TASK_LIMITS,
@@ -134,13 +135,16 @@ const COLUMNS_WITHOUT_LINKS = `t.*, ${READY} AS ready,
 const TASK_COLUMNS = `${COLUMNS_WITHOUT_LINKS},
   ${EXTERNAL_LINKS} AS external_links_json`;
 
-/** Tasks in scope, for lists. A read of closed tasks from a date reaches
- * them through the closed_at index, not through every closed task. Without
- * links, each task's external links are an empty list, unread. */
-function tasksIn(scope: Scope, byCloseDate: boolean, links = true): string {
+/** The index a read of closed tasks reaches them through: by close date, or by stage of delivery. */
+type ClosedIndex = 'tasks_by_project_closed' | 'tasks_by_project_stage';
+
+/** Tasks in scope, for lists. A read of closed tasks from a date, or at a
+ * stage, reaches them through that index, not through every closed task.
+ * Without links, each task's external links are an empty list, unread. */
+function tasksIn(scope: Scope, index: ClosedIndex | null, links = true): string {
   return `WITH RECURSIVE ${blockedIn(scope)}
 SELECT ${links ? TASK_COLUMNS : `${COLUMNS_WITHOUT_LINKS}, '[]' AS external_links_json`}
-FROM tasks t${byCloseDate ? ' INDEXED BY tasks_by_project_closed' : ''} LEFT JOIN tasks p ON p.id = t.parent_id
+FROM tasks t${index === null ? '' : ` INDEXED BY ${index}`} LEFT JOIN tasks p ON p.id = t.parent_id
 WHERE ${inScope('t.project_id', scope)}`;
 }
 
@@ -232,6 +236,13 @@ function decodeCursor(cursor: string): [number, string, string] {
 function statusList(statuses: readonly string[]): string {
   if (!statuses.every(isTaskStatus)) invalid('statuses must be task statuses');
   return `(${statuses.map((status) => `'${status}'`).join(', ')})`;
+}
+
+/** Stages of delivery, written into the statement as statusList writes statuses. */
+function stageList(stages: unknown): string {
+  if (!Array.isArray(stages) || stages.length === 0 || !stages.every(isDeliveryStage))
+    invalid('stages must be stages of delivery: built, merged or live');
+  return `(${stages.map((stage) => `'${stage}'`).join(', ')})`;
 }
 
 /** A query under construction: its WHERE clauses and its values, numbered after ?1 and ?2. */
@@ -378,7 +389,7 @@ export class Reads {
       );
     }
     const byCloseDate = query.closedSince !== undefined || query.closedBefore !== undefined;
-    const sql = `${tasksIn('project', byCloseDate)}${where.map((clause) => ` AND ${clause}`).join('')} ${ORDER} LIMIT ${statement.param(query.limit + 1)}`;
+    const sql = `${tasksIn('project', byCloseDate ? 'tasks_by_project_closed' : null)}${where.map((clause) => ` AND ${clause}`).join('')} ${ORDER} LIMIT ${statement.param(query.limit + 1)}`;
     const { results } = await this.#db
       .prepare(sql)
       .bind(...statement.args)
@@ -397,20 +408,35 @@ export class Reads {
     const scope: Scope = projectId === null ? 'every' : 'project';
     const now = this.#now();
     const statements: Statement[] = [];
-    const add = (statuses: readonly string[], closedSince: string | undefined) => {
+    const add = (statuses: readonly string[], closedSince: string | undefined, stages?: string) => {
       const statement = new Query(projectId, now);
-      if (closedSince === undefined) statement.where.push(`t.status IN ${statusList(statuses)}`);
-      // Only a closed task has a closed_at (the schema checks it), so a close date reads closed tasks alone.
-      else statement.where.push(`t.closed_at >= ${statement.param(instant(closedSince, 'closedSince'))}`);
+      let index: ClosedIndex | null = null;
+      if (closedSince === undefined && stages === undefined)
+        statement.where.push(`t.status IN ${statusList(statuses)}`);
+      // Only a closed task has a closed_at or a stage (the schema checks it), so either reads closed tasks alone.
+      if (closedSince !== undefined) {
+        index = 'tasks_by_project_closed';
+        statement.where.push(`t.closed_at >= ${statement.param(instant(closedSince, 'closedSince'))}`);
+      }
+      if (stages !== undefined) {
+        index ??= 'tasks_by_project_stage';
+        statement.where.push(`t.delivery_stage IN ${stages}`);
+      }
       filter(statement, query);
-      const sql = `${tasksIn(scope, closedSince !== undefined, query.withoutExternalLinks !== true)}${statement.where.map((clause) => ` AND ${clause}`).join('')}`;
+      const sql = `${tasksIn(scope, index, query.withoutExternalLinks !== true)}${statement.where.map((clause) => ` AND ${clause}`).join('')}`;
       // An every-project statement never reads ?1, which is null; READY always reads ?2.
       statements.push(this.#db.prepare(sql).bind(...statement.args));
     };
     if ((query.statuses as readonly string[]).includes('closed'))
       invalid('a board reads closed tasks through closedSince');
-    if (query.statuses.length > 0) add(query.statuses, undefined);
-    if (query.closedSince !== undefined && query.ready !== true) add([], query.closedSince);
+    if (query.stages !== undefined) {
+      // No open task has a stage, and no closed task is ready.
+      const stages = stageList(query.stages);
+      if (query.ready !== true) add([], query.closedSince, stages);
+    } else {
+      if (query.statuses.length > 0) add(query.statuses, undefined);
+      if (query.closedSince !== undefined && query.ready !== true) add([], query.closedSince);
+    }
     if (statements.length === 0) return [];
     const results = await this.#db.batch<TaskRow>(statements);
     return results.flatMap((result) => result.results.map(toTask)).sort(byUrgency);

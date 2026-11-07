@@ -24,6 +24,8 @@ export interface ProjectRow {
   readonly name: string;
   readonly prefix: string;
   readonly created_at: string;
+  /** 1 when the project's changes go live by a deploy. Left out, 0. */
+  readonly deploys?: number;
 }
 
 export interface TaskRow {
@@ -62,6 +64,14 @@ export interface TaskRow {
   readonly estimate_minutes?: number | null;
   /** JSON text: the task's custom field values by key. Left out, '{}'. */
   readonly field_values?: string;
+  /** The task's delivery. Left out, null: no delivery. */
+  readonly delivery_commit?: string | null;
+  readonly delivery_pull_request?: string | null;
+  readonly delivery_merge_commit?: string | null;
+  readonly built_at?: string | null;
+  readonly merged_at?: string | null;
+  readonly live_at?: string | null;
+  readonly delivery_stage?: string | null;
 }
 
 export interface LabelRow {
@@ -139,7 +149,7 @@ type RowOf<T extends StoreTable> = NonNullable<StoreRows[T]>[number];
 
 /** Each table's columns, in the order the statements below name them. */
 export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<T> & string)[] } = Object.freeze({
-  projects: ['id', 'key', 'name', 'prefix', 'created_at'],
+  projects: ['id', 'key', 'name', 'prefix', 'created_at', 'deploys'],
   tasks: [
     'id',
     'project_id',
@@ -174,6 +184,13 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'design',
     'estimate_minutes',
     'field_values',
+    'delivery_commit',
+    'delivery_pull_request',
+    'delivery_merge_commit',
+    'built_at',
+    'merged_at',
+    'live_at',
+    'delivery_stage',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],

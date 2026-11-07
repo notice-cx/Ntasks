@@ -1,6 +1,7 @@
 // The database's rows, and how each becomes a record of the engine contract.
 import type {
   CustomField,
+  DeliveryStage,
   DependencyType,
   EpicProgress,
   ExternalLink,
@@ -10,6 +11,7 @@ import type {
   Project,
   Task,
   TaskComment,
+  TaskDelivery,
   TaskEvent,
   TaskEventKind,
   TaskLink,
@@ -55,6 +57,13 @@ export interface StoredTaskRow {
   readonly updated_at: string;
   readonly started_at: string | null;
   readonly closed_at: string | null;
+  readonly delivery_stage: DeliveryStage | null;
+  readonly delivery_commit: string | null;
+  readonly delivery_pull_request: string | null;
+  readonly delivery_merge_commit: string | null;
+  readonly built_at: string | null;
+  readonly merged_at: string | null;
+  readonly live_at: string | null;
 }
 
 /** A `tasks` row as the engine's reads select it, with the columns they compute. */
@@ -97,6 +106,7 @@ export interface ProjectRow {
   readonly name: string;
   readonly prefix: string;
   readonly created_at: string;
+  readonly deploys: number;
 }
 
 export interface CommentRow {
@@ -144,6 +154,20 @@ export function externalLinks(text: string): ExternalLink[] {
   return (JSON.parse(text) as ExternalLink[]).sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
 }
 
+/** A row's delivery; the schema keeps every delivery column null when its stage is. */
+export function deliveryOf(row: StoredTaskRow): TaskDelivery | null {
+  if (row.delivery_stage === null || row.built_at === null) return null;
+  return {
+    stage: row.delivery_stage,
+    commit: row.delivery_commit,
+    pullRequest: row.delivery_pull_request,
+    mergeCommit: row.delivery_merge_commit,
+    builtAt: row.built_at,
+    mergedAt: row.merged_at,
+    liveAt: row.live_at,
+  };
+}
+
 export function toTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -186,6 +210,7 @@ export function toTask(row: TaskRow): Task {
             model: row.closed_model,
           }
         : null,
+    delivery: deliveryOf(row),
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -208,7 +233,14 @@ export function toField(row: FieldRow): CustomField {
 }
 
 export function toProject(row: ProjectRow): Project {
-  return { id: row.id, key: row.key, name: row.name, prefix: row.prefix, createdAt: row.created_at };
+  return {
+    id: row.id,
+    key: row.key,
+    name: row.name,
+    prefix: row.prefix,
+    deploys: row.deploys === 1,
+    createdAt: row.created_at,
+  };
 }
 
 export function toComment(row: CommentRow): TaskComment {

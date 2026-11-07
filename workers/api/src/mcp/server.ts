@@ -17,6 +17,7 @@ import { TASK_GUIDE_TOOL, taskGuide, taskInstructions } from './guide.ts';
 import { objectsFromText, staleClientLine, WRITE_TOOLS } from './write-tools.ts';
 import { FIELD_TOOLS } from './field-tools.ts';
 import { GET_AGENT_STATS, RECONCILE_TASK } from './owner-tools.ts';
+import { REPORT_DELIVERY } from './delivery-tools.ts';
 
 export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
 
@@ -63,6 +64,7 @@ const TASK_TOOLS: readonly TaskTool[] = [
   GET_AGENT_STATS,
   ...READ_TOOLS.filter((tool) => tool.name !== 'list_projects'),
   ...WRITE_TOOLS,
+  REPORT_DELIVERY,
   ...FIELD_TOOLS,
 ];
 export const MCP_TOOLS: readonly McpTool[] = Object.freeze([

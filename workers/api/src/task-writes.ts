@@ -600,6 +600,9 @@ export interface TaskClosing {
   readonly resolution?: TaskResolution;
   /** With duplicate: the task this one duplicates, in the same project. */
   readonly duplicateOf?: string;
+  /** What shipped, with done: either starts the task's delivery at built. */
+  readonly commit?: string;
+  readonly pullRequest?: string;
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
@@ -657,7 +660,13 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
-      close: { reason: closing.reason, resolution, ...(duplicateOf === undefined ? {} : { duplicateOf }) },
+      close: {
+        reason: closing.reason,
+        resolution,
+        ...(duplicateOf === undefined ? {} : { duplicateOf }),
+        ...(closing.commit === undefined ? {} : { commit: closing.commit }),
+        ...(closing.pullRequest === undefined ? {} : { pullRequest: closing.pullRequest }),
+      },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
       ...(duplicateOf === undefined || linked ? {} : { addLinks: [{ taskId: duplicateOf, type: 'related' as const }] }),

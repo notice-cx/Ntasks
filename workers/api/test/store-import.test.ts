@@ -200,7 +200,21 @@ describe('an import into the task store', () => {
     expect(result.rowsWritten).toBeGreaterThanOrEqual(12);
     const stored: StoreRows = {
       ...ROWS,
-      tasks: ROWS.tasks.map((row) => ({ notes: '', design: '', estimate_minutes: null, field_values: '{}', ...row })),
+      projects: ROWS.projects.map((row) => ({ deploys: 0, ...row })),
+      tasks: ROWS.tasks.map((row) => ({
+        notes: '',
+        design: '',
+        estimate_minutes: null,
+        field_values: '{}',
+        delivery_commit: null,
+        delivery_pull_request: null,
+        delivery_merge_commit: null,
+        built_at: null,
+        merged_at: null,
+        live_at: null,
+        delivery_stage: null,
+        ...row,
+      })),
     };
     for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });
