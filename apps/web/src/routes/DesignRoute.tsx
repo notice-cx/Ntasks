@@ -251,7 +251,7 @@ export default function DesignRoute() {
               </div>
             </Panel>
             <Panel title="Radii">
-              <div className="flex gap-4.5">
+              <div className="flex flex-wrap gap-4.5">
                 {(
                   [
                     ['rounded-sm', '4', 'Keys'],
