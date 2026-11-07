@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { createHttpTasksApi, type TasksApi } from '@/api/client';
 import { App } from './App';
 import { followSystemTheme } from './theme';
+// The typefaces are served with the app, never from a font service: Inter
+// with its optical-size axis, and JetBrains Mono for code.
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/jetbrains-mono/wght.css';
 import './index.css';
 
 const root = document.getElementById('root');

@@ -397,7 +397,7 @@ function TaskHeader({
                   <Button
                     type="button"
                     size="sm"
-                    variant={claimable ? 'outline' : 'default'}
+                    variant={claimable ? 'secondary' : 'primary'}
                     disabled={closeReason !== null}
                     aria-expanded={closing}
                     onClick={() => setClosing((open) => !open)}
@@ -439,6 +439,7 @@ function ClaimAction({ id, project, disabled }: { id: string; project: string; d
   const claim = useClaimTask();
   return (
     <Button
+      variant="primary"
       type="button"
       size="sm"
       disabled={disabled || claim.isPending}
@@ -549,6 +550,7 @@ function CloseForm({
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="primary"
               type="submit"
               size="sm"
               disabled={reason.trim() === '' || close.isPending}
@@ -722,6 +724,7 @@ function LongTextField({
           />
           <div className="flex items-center gap-2">
             <Button
+              variant="primary"
               type="button"
               size="sm"
               disabled={saving || draft.trim() === value.trim()}
@@ -753,7 +756,7 @@ function LongTextField({
       ) : empty ? (
         <Button
           type="button"
-          variant="outline"
+          variant="secondary"
           size="sm"
           className="w-fit"
           disabled={!writable}
@@ -930,7 +933,7 @@ function CommentBox({ id, project }: { id: string; project: string }) {
         <Button
           type="submit"
           size="sm"
-          variant="outline"
+          variant="secondary"
           disabled={!writable || text.trim() === '' || comment.isPending}
           data-task-comment=""
         >

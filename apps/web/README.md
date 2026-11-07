@@ -15,10 +15,12 @@ people use over a network. Keep that link in every version of the app.
 | `/tasks` | The board: the decisions waiting on you, then every task, with filters that are part of the address. `?new=1` opens the composer. |
 | `/tasks/:id` | One task: its state, description, Done when, links, epic tasks and history, with its facts editable in place. |
 | `/tasks/focus` | Your decisions one at a time, answered with a press or a key: an option's letter, Enter to approve, → to skip. |
+| `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
 
-The pages are the task pages of NoticeOS's Tower, carried over with its design
-tokens (`src/index.css`) and its copy tests (`test/ui-lexicon.test.ts` and
-`test/ui-noun.test.ts`).
+The task pages are those of NoticeOS's Tower, carried over with its copy
+tests (`test/ui-lexicon.test.ts` and `test/ui-noun.test.ts`). They draw in the
+design system's tokens; its components are in `src/components/ui/` and its
+rules in [the design system](../../docs/design.md).
 
 An answer to a decision waits five seconds before it is sent, with Undo in the
 toast, because an answer cannot be reversed once the server records it

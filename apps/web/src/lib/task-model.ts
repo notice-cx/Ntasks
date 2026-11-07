@@ -245,7 +245,10 @@ export function boardRows(project: string, tasks: readonly LiveTask[], actors?: 
 }
 
 /** Whether an open task waits on another task that is not closed. */
-export function waitsOnTask(task: BoardTask, statuses: ReadonlyMap<string, string>): boolean {
+export function waitsOnTask(
+  task: Pick<LiveTask, 'status' | 'ready' | 'dependencies'>,
+  statuses: ReadonlyMap<string, string>,
+): boolean {
   return (
     task.status === 'open' &&
     task.dependencies.some((edge) => {
