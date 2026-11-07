@@ -53,7 +53,10 @@ export function Fact({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState(false);
+  // Toggles still saving, by value: a second press waits for the first, whose result the values show only after it.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const saving = picking || pending.size > 0;
   const editable = editor != null && onSave !== undefined;
   const face = (end?: ReactNode) => (
     <dd
@@ -88,15 +91,27 @@ export function Fact({
   async function save(next: string, on?: boolean) {
     if (!onSave) return;
     // A pick closes the menu and waits for its save; toggles stay open and may follow one another.
-    if (editor?.kind !== 'toggle') {
-      if (saving) return;
-      setOpen(false);
+    if (editor?.kind === 'toggle') {
+      if (pending.has(next)) return;
+      setPending((was) => new Set(was).add(next));
+      try {
+        await onSave(next, on);
+      } finally {
+        setPending((was) => {
+          const now = new Set(was);
+          now.delete(next);
+          return now;
+        });
+      }
+      return;
     }
-    setSaving(true);
+    if (saving) return;
+    setOpen(false);
+    setPicking(true);
     try {
       await onSave(next, on);
     } finally {
-      setSaving(false);
+      setPicking(false);
     }
   }
 

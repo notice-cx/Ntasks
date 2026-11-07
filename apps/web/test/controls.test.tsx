@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PageBoundary } from '@/App';
 import { CloseMenu } from '@/components/CloseResolution';
@@ -114,6 +114,25 @@ describe('a fact', () => {
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'docs' }));
     expect(onSave).toHaveBeenLastCalledWith('docs', true);
     expect(screen.getByRole('menu', { name: 'Labels' })).toBeTruthy();
+  });
+
+  it('ignores a second press on a value while its first save is still running', async () => {
+    let finish: (saved: boolean) => void = () => {};
+    const onSave = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    draw({
+      label: 'Labels',
+      valueText: 'None',
+      editor: { kind: 'toggle', values: [], choices: [{ value: 'copy', label: 'copy' }] },
+      onSave,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Labels: None' }));
+    const menu = await screen.findByRole('menu', { name: 'Labels' });
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'copy' }));
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'copy' }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    await act(async () => finish(true));
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'copy' }));
+    expect(onSave).toHaveBeenCalledTimes(2);
   });
 });
 
