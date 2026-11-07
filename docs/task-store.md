@@ -115,10 +115,14 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
-- **Reads:** `getTask`, `findTasks`, `listTasks`, `listBoard`, `listEpics`,
-  `listLabelled`, `listExternalLinks`, `listFields`, `listComments`,
-  `listHistory`, `listChanges`, `lint` and `recordedWrite`. `listTasks` and
-  `listBoard` take filters by custom field values.
+- **Reads:** `getTask`, `getTasks`, `findTasks`, `listTasks`, `listBoard`,
+  `listEpics`, `listLabelled`, `listExternalLinks`, `listFields`, `listWork`,
+  `listComments`, `listHistory`, `listChanges`, `lint` and `recordedWrite`.
+  `listTasks` and `listBoard` take filters by custom field values.
+  `listWork` reads, for the projects named, the tasks in progress or blocked
+  and those closed from a time, with only the columns agent statistics count:
+  one statement, through the `(project_id, status)` and
+  `(project_id, closed_at)` indexes.
   `listTasks` reads one project a page at a time; `listBoard` reads a whole
   board, in one project or in every project, in one round trip.
   `recordedWrite` returns what an earlier write with an idempotency key
@@ -129,7 +133,11 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   Each is one batch. `createTask` can open an approval the new task waits on.
   `writeTask` takes everything one change does at once: field changes,
   labels, links, metadata, a close or a reopen, an approval request and a
-  comment. `recordUnchanged` writes only the retry record of a change that
+  comment, and in `others` changes to other tasks of the project, such as
+  the comment and hand-back a decision on an approval gives the tasks waiting
+  on it. Each of those names the version it read, as the write does; one
+  that only comments leaves its task's version as `addComment` does.
+  `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
 - **Projects:** `listProjects` and `createProject`.
@@ -173,7 +181,11 @@ commands in a row (`scripts/hosted-task-command.mts` in NoticeOS). Each is one
 engine call. Its checks of who may decide, such as matching an owner's answer
 to the proposal they saw, stay in the API layer, which is ported from that
 file: [`task-writes.ts`](../workers/api/src/task-writes.ts) holds the checks
-of the writes the API offers.
+of the writes the API offers, and
+[`owner-answers.ts`](../workers/api/src/owner-answers.ts) those of a person's
+decisions and of the owner answers agents record. The proposal a comment was
+written against comes from the task's history in `task_events`, where
+NoticeOS read Dolt's versions of the task.
 
 | NoticeOS operation | Engine call |
 |---|---|
@@ -194,9 +206,10 @@ of the writes the API offers.
 | `attribute` | Nothing separate: the close records the closer, model and resolution itself |
 | `gate` | `writeTask` with `requestApproval`, after the API looks for an open approval asking the same |
 | `resolve-gate` | `writeTask` with `close` on the gate |
-| `dispute` | `writeTask` with `reopen` on the gate |
+| `dispute` | One `writeTask`: the withdrawn record in metadata, the comment and `reopen` on the gate, and in `others` a comment on each task waiting on it |
 | `respond`, `choose`, `record-choice` | One `writeTask`: the choice, the comment, and the close or hand-back |
-| `maintain`, `record-maintenance` | One `writeTask`: the maintenance record in metadata, the comment, and the close or hand-back |
+| `maintain`, `record-maintenance` | One `writeTask`: the maintenance record in metadata, the comment, the close or hand-back, and in `others` the comments, links and hand-backs of the tasks waiting on it |
+| Agent statistics | `listWork`, where NoticeOS read two boards of each project |
 
 ### Where NoticeOS's task metadata goes
 

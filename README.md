@@ -21,8 +21,8 @@ for storage, and is designed to fit the free plan.
 <img src="docs/images/what-ntasks-does.svg" width="100%"
   alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
 
-Agents keep working on ready tasks while a decision waits for you. Answering
-decisions through Ntasks is still being built (see [Status](#status)).
+Agents keep working on ready tasks while a decision waits for you. The API
+takes your answer; the web app does not send it yet (see [Status](#status)).
 
 Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
 
@@ -66,10 +66,9 @@ Ntasks is in active development ahead of its first release.
 | Task model | The task id format, the vocabulary and the engine contract |
 | Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields ([the API](docs/api.md)) |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](docs/api.md)) |
 | Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
 | Backups | The owner, or a service credential made for backups, reads the whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file and restores it into a local copy of the store |
-| A person's decisions through the API | Being built |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses
