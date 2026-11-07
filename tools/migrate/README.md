@@ -266,10 +266,13 @@ Two commands back up a deployed task store and check the backup:
 | `backup` | Every page of the store's backup route, `GET /api/backup` ([API](../../docs/api.md#backing-up-the-whole-store)) | One backup file, readable only by its owner (mode 600). It never writes over an existing file |
 | `restore` | The backup file | A new local store copy holding the backup's rows, which it then compares with the file, as `verify` does |
 
-1. Make a service credential for backups: as the owner, `POST
-   /api/access/services` with `{"name": "nightly-backup", "backup": true}`
-   ([Sign-in](../../docs/sign-in.md#routes)). Save the token it answers in a
-   file only you can read.
+1. Make a service credential for backups: as the owner of the workspace to
+   back up, `POST /api/access/services` with
+   `{"name": "nightly-backup", "backup": true}`, naming the workspace in the
+   `x-ntasks-workspace` header when you belong to several
+   ([Sign-in](../../docs/sign-in.md#routes)). The credential reads that
+   workspace's store alone. Save the token it answers in a file only you can
+   read.
 
 2. Back the store up:
 
@@ -323,9 +326,15 @@ The last step of moving a hub to Ntasks, once nothing writes to the hub:
 
 1. Export the hub, check that the export imports, and keep the file private
    ([Run a migration](#run-a-migration), steps 1 to 3).
-2. As the owner, make a credential for the load: `POST /api/access/services`
-   with `{"name": "cutover-load", "backup": true, "restore": true}`. Save its
-   token in a file only you can read.
+2. As a deployment admin, create the workspace the hub's tasks go into:
+   `POST /api/workspaces` with `{"name": "...", "workspaceId": "..."}`
+   ([API](../../docs/api.md#workspaces)). Giving it the id of the NoticeOS
+   workspace the hub served keeps agent instructions that name that id
+   working. Then, as its owner, make a credential for the load in it:
+   `POST /api/access/services` with
+   `{"name": "cutover-load", "backup": true, "restore": true}`, naming the
+   workspace in the `x-ntasks-workspace` header when you belong to several.
+   Save its token in a file only you can read.
 3. Load it:
 
    ```sh

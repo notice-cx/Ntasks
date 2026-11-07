@@ -7,9 +7,9 @@ amended.
 ## What this repository is
 
 Ntasks is a task hub for people and AI agents, being built as one Cloudflare
-Worker and one Durable Object that holds the tasks: an HTTP API, an MCP
-endpoint and sign-in, with the web app served as the Worker's static files.
-Sign-in's data is in D1. The [README](README.md) lists
+Worker and a Durable Object for each workspace that holds its tasks: an HTTP
+API, an MCP endpoint and sign-in, with the web app served as the Worker's
+static files. Sign-in's data and the workspaces are in D1. The [README](README.md) lists
 what is built today. [Concepts](docs/concepts.md) defines the task model,
 [Architecture](docs/architecture.md) the system, and
 [The task store](docs/task-store.md) the database and the engine contract.

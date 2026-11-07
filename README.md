@@ -76,14 +76,15 @@ Ntasks is in active development ahead of its first release.
 
 | Part | Today |
 |---|---|
-| Worker | Answers a health check at `/healthz`, signs each API request in and hands it to the task store |
+| Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
 | Web app | The task pages: the board, a task's page, focus and the composer, reading the Worker's routes. Until they use the write routes they change only invented tasks, on the server `pnpm --filter @ntasks/web dev` starts |
 | Task model | The task id format, the vocabulary and the engine contract |
-| Task store | One Durable Object that holds the tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
+| Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
+| Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](docs/api.md)) |
-| Sign-in | The owner signs in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials, each reaching only the projects granted to it |
-| Backups and loads | The owner, or a service credential made for backups, reads the whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
+| Sign-in | People sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
+| Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
 the projects granted to it. A deployment without its sign-in settings refuses
