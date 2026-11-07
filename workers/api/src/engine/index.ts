@@ -25,6 +25,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     listTasks: (projectId, query) => reads.listTasks(projectId, query),
     listBoard: (projectId, query) => reads.listBoard(projectId, query),
     listLabelled: (projectId, query) => reads.listLabelled(projectId, query),
+    listExternalLinks: (taskIds) => reads.listExternalLinks(taskIds),
     listEpics: (projectId) => reads.listEpics(projectId),
     nextDeferralAfter: (time) => reads.nextDeferralAfter(time),
     listComments: (projectId, taskId) => reads.listComments(projectId, taskId),

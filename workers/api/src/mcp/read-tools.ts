@@ -15,7 +15,7 @@ import {
 } from '@ntasks/domain';
 import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
-import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, type Workspace } from '../service.ts';
+import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks, type Workspace } from '../service.ts';
 import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
 import {
   booleanArg,
@@ -173,6 +173,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         ...optional('createdBefore', instantArg(args, 'created_before')),
         ...optional('updatedAfter', instantArg(args, 'updated_after')),
         ...optional('updatedBefore', instantArg(args, 'updated_before')),
+        // A page reads its own tasks' links after the board, not every matching task's.
+        withoutExternalLinks: true as const,
       };
       if (filters.types?.some((type) => !isTaskType(type))) refuse('invalid arguments: type');
       const nextOf = (shown: number, total: number) => (offset + shown < total ? offset + shown : null);
@@ -181,7 +183,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       if (args.project !== undefined) {
         const project = await projectOf(context, projectArg(args));
         const found = await board(engine, project.id, statuses as TaskStatus[], closedDays, filters, now);
-        const page = found.tasks.slice(offset, offset + limit);
+        const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
         return {
           project: project.key,
           readAt: found.readAt,
@@ -204,7 +206,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           { project: project.key, projectId: project.id, projectName: project.name },
         ]),
       );
-      const page = found.tasks.slice(offset, offset + limit);
+      const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
       return {
         readAt: found.readAt,
         closedSince: found.closedSince,

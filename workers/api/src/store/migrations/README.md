@@ -13,7 +13,11 @@ yet, each in one transaction, and records it in the `store_migrations` table.
 1. Add the next numbered file here, such as `0003_describe_the_change.sql`.
 2. Import it in [`schema.ts`](../schema.ts) and add it to the end of
    `MIGRATIONS`.
-3. Add the tests that rely on it.
+3. Add the tests that rely on it. A migration that rebuilds a table or
+   changes rows a store already holds also gets a case in
+   [`test/node/migrations.ts`](../../../test/node/migrations.ts), which
+   applies the migrations to a database with rows in it; the Worker's other
+   tests start from an empty store.
 
 ## Rules
 

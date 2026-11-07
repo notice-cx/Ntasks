@@ -9,7 +9,7 @@
     "dev": "wrangler dev",
     "types": "wrangler types",
     "typecheck": "wrangler types --check && tsc && tsc -p test && tsc -p test/node",
-    "test": "vitest run && node --test test/node/routing.ts",
+    "test": "vitest run && node --test test/node/routing.ts test/node/migrations.ts",
     "build": "wrangler deploy --dry-run --outdir dist"
   },
   "devDependencies": {

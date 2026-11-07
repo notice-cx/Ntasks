@@ -5,14 +5,18 @@
  * MCP tool that does the same thing (task-writes.ts), checked by the same
  * rules (args.ts). An Idempotency-Key header makes a write safe to retry.
  */
-import { IDEMPOTENCY_KEY, TASK_LIMITS, type TaskStatus } from '@ntasks/domain';
+import { IDEMPOTENCY_KEY, TASK_LIMITS, type JsonObject, type TaskStatus } from '@ntasks/domain';
 import {
+  addsOrRemoves,
   assigneeArg,
   cardArg,
   choiceArg,
   closingArgs,
   deferArg,
   emptyIsNone,
+  estimateArg,
+  externalLinksArg,
+  instantArg,
   labelsArg,
   only,
   priorityArg,
@@ -23,6 +27,7 @@ import {
   taskArg,
   textArg,
   typeArg,
+  urlsArg,
   type Args,
 } from '../args.ts';
 import { strictJson } from '../mcp/protocol.ts';
@@ -59,8 +64,14 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'parent',
   'defer',
   'acceptance',
+  'notes',
+  'design',
+  'estimateMinutes',
+  'dueAt',
   'addLabels',
   'removeLabels',
+  'addExternalLinks',
+  'removeExternalLinks',
   'card',
   'changeClass',
 ]);
@@ -95,6 +106,12 @@ async function writeOf(
   };
 }
 
+/** A card's kill date is the task's due date, so a write gives one of the two. */
+function oneDueDate(dueAt: string | null | undefined, card: JsonObject | null | undefined): void {
+  if (dueAt !== undefined && card?.kill !== undefined)
+    refuse("invalid arguments: dueAt (a card's kill date is the due date; send one of them)");
+}
+
 /** POST /api/tasks: files a task. Answers its id and its project's key. */
 export async function createRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'create_task', {});
@@ -107,6 +124,11 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     'labels',
     'parent',
     'acceptance',
+    'notes',
+    'design',
+    'estimateMinutes',
+    'dueAt',
+    'externalLinks',
     'metadata',
     'card',
     'changeClass',
@@ -120,10 +142,16 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     labels: labelsArg(body, 'labels'),
     parent: body.parent === undefined ? undefined : taskArg(body, 'parent'),
     acceptance: textArg(body, 'acceptance', TASK_LIMITS.acceptance, false, true),
+    notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
+    design: textArg(body, 'design', TASK_LIMITS.design, false, true),
+    estimateMinutes: estimateArg(body, 'estimateMinutes'),
+    dueAt: instantArg(body, 'dueAt'),
+    externalLinks: externalLinksArg(body, 'externalLinks'),
     metadata: sourceMetadataArg(body),
     card: cardArg(body),
     changeClass: choiceArg(body, 'changeClass', TASK_CHANGE_CLASSES),
   };
+  oneDueDate(fields.dueAt, fields.card);
   const task = Object.fromEntries(
     Object.entries(fields).filter(([, value]) => value !== undefined),
   ) as unknown as NewTask;
@@ -156,14 +184,22 @@ export async function updateRoute(
     parent: body.parent === '' ? null : body.parent === undefined ? undefined : taskArg(body, 'parent'),
     defer: emptyIsNone(deferArg(body)),
     acceptance: textArg(body, 'acceptance', TASK_LIMITS.acceptance, false, true),
+    notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
+    design: textArg(body, 'design', TASK_LIMITS.design, false, true),
+    estimateMinutes: estimateArg(body, 'estimateMinutes', true),
+    dueAt: body.dueAt === null ? null : instantArg(body, 'dueAt'),
     addLabels: labelsArg(body, 'addLabels', 1),
     removeLabels: labelsArg(body, 'removeLabels', 1),
+    addExternalLinks: externalLinksArg(body, 'addExternalLinks', 1),
+    removeExternalLinks: urlsArg(body, 'removeExternalLinks'),
     card: body.card === null ? null : cardArg(body),
     changeClass: body.changeClass === null ? null : choiceArg(body, 'changeClass', TASK_CHANGE_CLASSES),
   };
   const change = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as TaskChange;
   if (Object.keys(change).length === 0) refuse('invalid arguments: name at least one field to change');
   setOrTakeOff(body, ['card', 'changeClass']);
+  oneDueDate(change.dueAt, change.card);
+  addsOrRemoves(change.addExternalLinks, change.removeExternalLinks, 'addExternalLinks and removeExternalLinks');
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
   return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
 }

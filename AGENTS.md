@@ -26,6 +26,7 @@ invariants. A change that weakens one is the owner's decision, not a refactor.
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, and the test that no `wrangler.jsonc` names a secret in `vars`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, and the verifier |
+| `tools/screenshots/` | `pnpm screenshots`: the README's pictures of the web app, drawn from the fixture app by a local Chrome. CI never runs it |
 | `docs/` | Concepts and architecture |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
@@ -61,8 +62,10 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   brings to the current schema. Tests
   that Node must run live in `workers/api/test/node/` and run with
   `node --test`: `routing.ts` there puts the Worker behind Cloudflare's
-  static-file layer. A path added to `assets.run_worker_first` gets a case in
-  that test. A behavior counts as covered only when a test exercises it.
+  static-file layer, and `migrations.ts` applies the task store's migrations
+  to a database that already holds rows. A path added to
+  `assets.run_worker_first` gets a case in `routing.ts`. A behavior counts as
+  covered only when a test exercises it.
 - **Generated files are regenerated, never edited:**
   `workers/api/worker-configuration.d.ts` (`pnpm --filter @ntasks/api run
   types`, after any `wrangler.jsonc` change) and `pnpm-lock.yaml`.

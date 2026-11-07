@@ -29,7 +29,8 @@ contributors working on the engine, the API or the import from Beads. Read
 | `projects` | Each project's id, key, name and task id prefix |
 | `tasks` | One row per task: its fields, its current close, its version |
 | `task_labels` | A task's labels, one row each |
-| `task_edges` | Links between tasks: `blocks`, `related` and `discovered-from` |
+| `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
+| `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
 | `task_comments` | Comments, in the order they were added |
 | `task_events` | Every change to every task, in order |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
@@ -37,7 +38,24 @@ contributors working on the engine, the API or the import from Beads. Read
 A task's parent is the `parent_id` column, not a link. Sign-in and access
 grants have their own tables, in D1 ([Sign-in](sign-in.md#tables)).
 
-A backup holds every row of these tables, in this order, as stored
+A task's text is in four Markdown columns of `tasks`: `description`,
+`acceptance`, `notes` and `design`. The database sets no length limit on
+them, so a task imported from Beads fits; a new write through the API takes
+at most 8,192 characters in each (`TASK_LIMITS` in
+[`task.ts`](../packages/domain/src/task.ts)). `estimate_minutes` holds the
+task's estimate in whole minutes, or null when nobody estimated it.
+
+A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
+`duplicates` `web-1` means web-2 is the same work as web-1, filed again, and
+`web-3` `supersedes` `web-1` means web-3 replaces it. Only `blocks` holds a
+task out of ready work. A task links to another task once, whatever the type.
+
+A task's external links are http or https URLs, kept as the URL standard
+writes them, so one page has one URL and a task links to it once. The
+database allows URLs of at most 2,048 characters; a new write through the API
+also takes at most 32 links on a task and 512 characters in a title.
+
+A backup holds every row of the tables above, in their order, as stored
 ([API](api.md#backing-up-the-whole-store)). It loads into an empty store in
 one transaction, with the statements an import uses, and the store checks
 its foreign keys when the transaction ends, since a backup lists tasks by id
@@ -177,12 +195,13 @@ describe.
 
 | In scope | Out of scope |
 |---|---|
-| Tasks as a graph with `blocks`, `related` and `discovered-from` links | The `waits-for` and `conditional-blocks` link types |
+| Tasks as a graph with `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` links | The `waits-for` and `conditional-blocks` link types |
 | Parents and children, with child ids such as `web-a1b2.3` | Prefixes with hyphens, and ids whose key has hyphens |
 | Ready work, worked out on the server | Claims that expire as leases, and heartbeats |
 | Epics that can close once their children have | Formulas, molecules and wisps |
 | Approvals (gates a person answers) and decisions | Dolt branches, merges and sync |
 | Labels, comments, metadata and the full history of every task | |
+| Notes, design and estimated minutes | |
 
 An import from Beads refuses a task that uses something out of scope and
 names it, rather than dropping it. [`tools/migrate`](../tools/migrate/README.md)

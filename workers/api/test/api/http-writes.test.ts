@@ -45,8 +45,14 @@ describe('GET /api/tasks/capabilities', () => {
         'parent',
         'defer',
         'acceptance',
+        'notes',
+        'design',
+        'estimateMinutes',
+        'dueAt',
         'addLabels',
         'removeLabels',
+        'addExternalLinks',
+        'removeExternalLinks',
         'card',
         'changeClass',
       ],
@@ -233,6 +239,132 @@ describe('PATCH /api/tasks/:id', () => {
       changeClass: 'template',
       card: { measurability: 'cohort', by: WRITER.name },
     });
+  });
+
+  it("files, changes and takes off a task's notes, design and estimate, and records each in its history", async () => {
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Move the blog',
+      notes: 'Old posts keep their dates.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: 45,
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    const page = await get(target, `/api/tasks/${id}?project=${project.id}`);
+    expect(page.body.task).toMatchObject({
+      notes: 'Old posts keep their dates.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: 45,
+    });
+    const patched = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      notes: 'Redirects in place.',
+      estimateMinutes: null,
+    });
+    expect(patched.body.task).toMatchObject({
+      notes: 'Redirects in place.',
+      design: 'Copy, then redirect.',
+      estimateMinutes: null,
+    });
+    const history = await get(target, `/api/tasks/${id}/history?project=${project.id}`);
+    expect((history.body.changes as { fields: unknown }[])[0]!.fields).toEqual({
+      notes: { old: 'Old posts keep their dates.', new: 'Redirects in place.' },
+      estimateMinutes: { old: 45, new: null },
+    });
+    expect(
+      await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', estimateMinutes: 2.5 }),
+    ).toEqual({ status: 400, body: { error: 'invalid_request', detail: 'estimateMinutes (whole minutes, 0–525600)' } });
+  });
+
+  it('files a task with a due date, changes it and clears it, and refuses one beside a kill date', async () => {
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Review the panel',
+      dueAt: '2027-02-01',
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    expect((await current(id)).dueAt).toBe('2027-02-01T00:00:00.000Z');
+    expect((await get(target, `/api/tasks/${id}?project=${project.id}`)).body.task).toMatchObject({
+      dueAt: '2027-02-01T00:00:00.000Z',
+    });
+    const moved = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      dueAt: '2027-03-01T09:30:00+02:00',
+    });
+    expect(moved.body.task).toMatchObject({ dueAt: '2027-03-01T07:30:00.000Z' });
+    const cleared = await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: null });
+    expect(cleared.body.task).toMatchObject({ dueAt: null });
+    expect((await current(id)).dueAt).toBeNull();
+
+    const invalid = (detail: string) => ({ status: 400, body: { error: 'invalid_request', detail } });
+    expect(await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-31' })).toEqual(
+      invalid('dueAt (YYYY-MM-DD or an ISO time)'),
+    );
+    const card = {
+      valuePerMonth: 3,
+      likelihood: 0.5,
+      reviewMinutes: 2,
+      daysToSignal: 10,
+      measurability: 'cohort',
+      kill: { state: 'No lift', date: '2027-04-01' },
+    };
+    expect(
+      await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'T', dueAt: '2027-02-01', card }),
+    ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
+    expect(
+      await send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, dueAt: '2027-02-01', card }),
+    ).toEqual(invalid("dueAt (a card's kill date is the due date; send one of them)"));
+    expect((await current(id)).dueAt).toBeNull();
+
+    // After the card sets it, the due date changes on its own and the card stays as it was.
+    const carded = await send(target, 'POST', '/api/tasks', { projectId: project.id, title: 'Carded', card });
+    const cardedId = carded.body.id as string;
+    expect((await current(cardedId)).dueAt).toBe('2027-04-01T00:00:00.000Z');
+    const later = await send(target, 'PATCH', `/api/tasks/${cardedId}`, { projectId: project.id, dueAt: '2027-05-01' });
+    expect(later.body.task).toMatchObject({
+      dueAt: '2027-05-01T00:00:00.000Z',
+      card: { kill: { state: 'No lift', date: '2027-04-01' } },
+    });
+  });
+
+  it('files a task with external links, adds and takes them off, and refuses a URL that is not http or https', async () => {
+    const pr = { url: 'https://example.com/acme/web/pull/7', title: 'Move the blog', kind: 'pull-request' };
+    const filed = await send(target, 'POST', '/api/tasks', {
+      projectId: project.id,
+      title: 'Move the blog',
+      externalLinks: [pr],
+    });
+    expect(filed.status).toBe(200);
+    const id = filed.body.id as string;
+    expect((await get(target, `/api/tasks/${id}?project=${project.id}`)).body.task).toMatchObject({
+      externalLinks: [pr],
+    });
+    const doc = { url: 'https://docs.example.com/blog', title: 'Blog plan', kind: 'document' };
+    const added = await send(target, 'PATCH', `/api/tasks/${id}`, {
+      projectId: project.id,
+      addExternalLinks: [doc],
+      removeExternalLinks: [pr.url],
+    });
+    expect(added.body.task).toMatchObject({ externalLinks: [doc] });
+    const history = await get(target, `/api/tasks/${id}/history?project=${project.id}`);
+    expect((history.body.changes as { fields: unknown }[])[0]!.fields).toEqual({
+      externalLinks: { old: [pr], new: [doc] },
+    });
+    expect(
+      await send(target, 'PATCH', `/api/tasks/${id}`, {
+        projectId: project.id,
+        addExternalLinks: [{ url: 'file:///etc/hosts', title: 'Hosts' }],
+      }),
+    ).toEqual({
+      status: 400,
+      body: {
+        error: 'invalid_request',
+        detail: 'addExternalLinks[0].url (an http or https URL of at most 2048 characters)',
+      },
+    });
+    expect((await current(id)).externalLinks).toEqual([doc]);
   });
 
   it('takes a task with claim, and refuses one someone else holds', async () => {

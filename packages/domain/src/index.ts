@@ -2,7 +2,9 @@ export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export {
   DEPENDENCY_TYPES,
+  EXTERNAL_LINK_KINDS,
   isDependencyType,
+  isExternalLinkKind,
   isTaskResolution,
   isTaskStatus,
   isTaskType,
@@ -16,6 +18,8 @@ export {
 export type {
   DependencyType,
   EpicProgress,
+  ExternalLink,
+  ExternalLinkKind,
   Json,
   JsonObject,
   Project,
@@ -39,9 +43,11 @@ export type {
   CreateTaskInput,
   LabelPage,
   LabelQuery,
+  NewExternalLink,
   NewTaskLink,
   Retry,
   TaskEngine,
+  TaskExternalLinks,
   TaskFieldChanges,
   TaskFilters,
   TaskPage,
@@ -55,6 +61,7 @@ export type {
   CommentRow,
   EdgeRow,
   EventRow,
+  ExternalLinkRow,
   LabelRow,
   ProjectRow,
   StoreRows,

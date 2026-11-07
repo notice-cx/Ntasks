@@ -17,6 +17,8 @@
 import type {
   DependencyType,
   EpicProgress,
+  ExternalLink,
+  ExternalLinkKind,
   Json,
   JsonObject,
   Project,
@@ -74,10 +76,21 @@ export interface NewTaskLink {
   readonly type: DependencyType;
 }
 
+/** A link to a page outside Ntasks, as a write gives it. */
+export interface NewExternalLink {
+  /** An http or https URL; the engine keeps it as the URL standard writes it. */
+  readonly url: string;
+  readonly title: string;
+  readonly kind?: ExternalLinkKind | null;
+}
+
 export interface CreateTaskInput {
   readonly title: string;
   readonly description?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimateMinutes?: number;
   /** `task` when left out. A gate is made with `requestApproval`, never as a type. */
   readonly type?: Exclude<TaskType, 'gate'>;
   readonly priority?: number;
@@ -85,6 +98,7 @@ export interface CreateTaskInput {
   readonly parentId?: string;
   readonly labels?: readonly string[];
   readonly links?: readonly NewTaskLink[];
+  readonly externalLinks?: readonly NewExternalLink[];
   readonly deferUntil?: string;
   readonly dueAt?: string;
   readonly choices?: JsonObject;
@@ -99,6 +113,9 @@ export interface TaskFieldChanges {
   readonly title?: string;
   readonly description?: string;
   readonly acceptance?: string;
+  readonly notes?: string;
+  readonly design?: string;
+  readonly estimateMinutes?: number | null;
   readonly type?: Exclude<TaskType, 'gate'>;
   readonly priority?: number;
   /** Any status but `closed`; a write closes a task with `close`. */
@@ -135,6 +152,11 @@ export interface TaskWrite {
    * of tasks waiting on each other is refused as `cycle`. */
   readonly addLinks?: readonly { readonly taskId: string; readonly type: DependencyType }[];
   readonly removeLinks?: readonly string[];
+  /** Links to pages outside Ntasks. One to a URL the task already links to
+   * replaces its title and kind. A URL may not be both added and removed. */
+  readonly addExternalLinks?: readonly NewExternalLink[];
+  /** The URLs of external links to take off. */
+  readonly removeExternalLinks?: readonly string[];
   /** Opens an approval: a gate task that this task waits on until a person
    * answers it. The new gate's id is in the result's `created`. */
   readonly requestApproval?: { readonly reason: string };
@@ -187,6 +209,16 @@ export interface BoardQuery extends TaskFilters {
   /** With it, also every task closed at or after this time. A ready-only
    * board leaves closed tasks out, as no closed task is ready. */
   readonly closedSince?: string;
+  /** Leaves the tasks' external links unread, so each task's `externalLinks`
+   * is empty. For a caller that shows a page of the board: it reads the
+   * page's links with `listExternalLinks`, and no other task's. */
+  readonly withoutExternalLinks?: true;
+}
+
+/** One task's links to pages outside Ntasks, ordered by URL. */
+export interface TaskExternalLinks {
+  readonly taskId: string;
+  readonly externalLinks: readonly ExternalLink[];
 }
 
 export interface TaskPage {
@@ -248,6 +280,9 @@ export interface TaskEngine {
    * of any age, by id. Its cost follows the tasks carrying the label, not the
    * project's size. */
   listLabelled(projectId: string, query: LabelQuery): Promise<LabelPage>;
+  /** The external links of these tasks, reading theirs and no other task's.
+   * A task with none, or that does not exist, is left out. */
+  listExternalLinks(taskIds: readonly string[]): Promise<readonly TaskExternalLinks[]>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,
