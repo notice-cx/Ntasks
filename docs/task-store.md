@@ -133,8 +133,11 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
 - **Projects:** `listProjects` and `createProject`.
-- **Custom fields:** `defineField` and `retireField`, each one batch with its
-  retry record. A key the project has used, retired or not, is refused as
+- **Custom fields:** `defineField` and `retireField`, each one batch, which
+  writes a retry record when the call carries a retry identity (an MCP
+  `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a
+  repeated definition is refused rather than replayed. A key the project has
+  used, retired or not, is refused as
   `invalid`, and so is a field past the project's 64.
 
 The engine checks the task model's rules. It does not check who may act: the
