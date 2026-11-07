@@ -48,6 +48,16 @@ describe('a field', () => {
     expect(screen.getByRole('textbox', { name: 'Labels' }).hasAttribute('aria-required')).toBe(false);
   });
 
+  it('keeps its label on its control when the field is given an id, even if the control names another', () => {
+    render(
+      <Field id="task-title" label="Title">
+        <Input id="something-else" />
+      </Field>,
+    );
+    const input = screen.getByRole('textbox', { name: 'Title' });
+    expect(input.id).toBe('task-title');
+  });
+
   it('ties an error to its control', () => {
     render(
       <Field label="Email" error="This address has no @.">
