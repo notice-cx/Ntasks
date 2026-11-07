@@ -12,6 +12,10 @@ export const SCOPES = Object.freeze({
   write: 'tasks:write',
   /** Read every row of the store for a backup, whatever projects the sender reaches (GET /api/backup). */
   backup: 'tasks:backup',
+  /** Answer a decision, approve an approval or dispute one an agent recorded:
+   * a person's own act. Only a person signed in to the web app holds it; no
+   * agent or service does, whatever it was granted. */
+  decide: 'tasks:decide',
 });
 
 /** How far a sender may go in one project. Write includes read. */
@@ -28,6 +32,9 @@ export interface Principal {
   /** The projects the sender reaches: every one, as the owner does, or the
    * ones it was granted, each for reading or for writing too. */
   readonly projects: 'all' | ReadonlyMap<string, ProjectAccess>;
+  /** The actor name of the person the sender is, or acts for: a comment by
+   * that actor holds the person's own words. Absent for a service. */
+  readonly person?: string;
 }
 
 /** Whether the sender may read the project's tasks, or with `write`, change them. */

@@ -179,13 +179,14 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
   const stored = base64url(await sha256(token));
   const row = await db
     .prepare(
-      `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name,
+      `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name, u.name AS person_name,
          (SELECT json_group_array(json_array(g.project_id, g.access)) FROM access_agent_grants g
            WHERE g.user_id = t.user_id AND g.client_id = t.client_id) AS grants,
          (SELECT json_group_array(a.account_id) FROM auth_account a
            WHERE a.user_id = t.user_id AND a.provider_id = 'github') AS github_ids
        FROM auth_oauth_access_token t
        JOIN auth_oauth_client c ON c.client_id = t.client_id AND coalesce(c.disabled, 0) = 0
+       JOIN auth_user u ON u.id = t.user_id
        WHERE t.token = ? AND t.revoked IS NULL AND t.expires_at > ? AND t.user_id IS NOT NULL
          AND EXISTS (SELECT 1 FROM auth_oauth_consent k WHERE k.client_id = t.client_id AND k.user_id = t.user_id)`,
     )
@@ -196,6 +197,7 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
       scopes: string;
       resources: string | null;
       client_name: string | null;
+      person_name: string | null;
       grants: string | null;
       github_ids: string | null;
     }>();
@@ -209,6 +211,7 @@ async function verifyAgentToken(db: D1Database, config: SignInConfig, token: str
     kind: 'agent',
     id: `agent:${row.client_id}:${row.user_id}`,
     userId: row.user_id,
+    personName: displayName(row.person_name, 'owner'),
     clientId: row.client_id,
     name: displayName(row.client_name, 'agent'),
     projects: grantsOf(row.grants, most),
