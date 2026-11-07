@@ -5,7 +5,7 @@
  * `type` and `parent` on an MCP task, and NoticeOS's own fields (card,
  * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
  */
-import type { Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
+import type { CustomField, Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
 import { NOTICEOS_METADATA as NOTICEOS, TASK_CHANGE_CLASSES } from './noticeos-fields.ts';
 
 const CHANGE_CLASSES: readonly string[] = TASK_CHANGE_CLASSES;
@@ -82,6 +82,7 @@ export function webTask(task: Task) {
       status: link.status,
     })),
     externalLinks: task.externalLinks.map(({ url, title, kind }) => ({ url, title, kind })),
+    fields: task.fields,
     comments: task.commentCount,
     metadata: task.metadata,
     createdAt: task.createdAt,
@@ -125,6 +126,7 @@ export function mcpTask(task: Task) {
     deferUntil: task.deferUntil,
     dependencies: web.dependencies,
     externalLinks: web.externalLinks,
+    fields: task.fields,
     commentCount: task.commentCount,
     metadata: task.metadata,
     createdAt: task.createdAt,
@@ -159,6 +161,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     changeClass: full.changeClass,
     estimateMinutes: full.estimateMinutes,
     externalLinks: full.externalLinks,
+    fields: full.fields,
     deferUntil: full.deferUntil,
     createdAt: full.createdAt,
     updatedAt: full.updatedAt,
@@ -167,8 +170,25 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     duplicateOf: full.duplicateOf,
   };
   return Object.fromEntries(
-    Object.entries(row).filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0)),
+    Object.entries(row).filter(
+      ([, value]) =>
+        value !== null &&
+        !(Array.isArray(value) && value.length === 0) &&
+        !(typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0),
+    ),
   );
+}
+
+/** A custom field as list_fields and the HTTP field routes show it. */
+export function fieldView(field: CustomField) {
+  return {
+    key: field.key,
+    name: field.name,
+    type: field.type,
+    options: field.options,
+    createdAt: field.createdAt,
+    retiredAt: field.retiredAt,
+  };
 }
 
 export function commentView(comment: TaskComment) {
@@ -188,6 +208,7 @@ function snapshotView(state: Record<string, Json>) {
   const metadata = objectOrNull(state.metadata) ?? {};
   const dependencies = Array.isArray(state.dependencies) ? state.dependencies : [];
   const externalLinks = Array.isArray(state.externalLinks) ? state.externalLinks : [];
+  const fields = objectOrNull(state.fields) ?? {};
   return {
     id: state.id ?? null,
     title: state.title ?? null,
@@ -213,6 +234,7 @@ function snapshotView(state: Record<string, Json>) {
       return { id: entry.taskId ?? null, type: entry.type ?? null };
     }),
     externalLinks,
+    fields,
     metadata,
     startedAt: state.startedAt ?? null,
     closedAt: close?.at ?? null,

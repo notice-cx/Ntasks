@@ -16,7 +16,8 @@ import {
 import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
-import { commentView, historyView, proposalOf, webTask } from '../views.ts';
+import { fieldFiltersOf } from '../task-writes.ts';
+import { commentView, fieldView, historyView, proposalOf, webTask } from '../views.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
 import { EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
 
@@ -119,8 +120,12 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
  */
 export async function boardRoute(context: ReadContext, url: URL): Promise<Response> {
   const { engine, now } = context;
-  const query = queryOf(url, ['project', 'status', 'closedDays', 'label', 'limit', 'after']);
-  if (query.label !== undefined) return labelRoute(context, query);
+  const fieldNames = [...url.searchParams.keys()].filter((name) => name.startsWith(FIELD_PARAM));
+  const query = queryOf(url, ['project', 'status', 'closedDays', 'label', 'limit', 'after', ...fieldNames]);
+  if (query.label !== undefined) {
+    if (fieldNames.length > 0) invalidRequest('a label read reads every task carrying the label: leave out field.');
+    return labelRoute(context, query);
+  }
   if (query.limit !== undefined || query.after !== undefined)
     invalidRequest('limit and after page a label read: label=');
   const statuses = query.status === undefined ? [...TASK_STATUSES] : query.status.split(',');
@@ -135,11 +140,12 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     invalidRequest('closedDays is for a read of closed tasks alone: status=closed');
   const closedDays = wholeOf(query, 'closedDays', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
   const project = await projectOf(context, query.project);
+  const fields = await fieldParams(context, project, query);
   const active = statuses.some((status) => status !== 'closed');
   // Read before the board, so a change the board misses is after it in the feed.
   const lastSeq = await engine.latestChange();
   const [found, epics, links] = await Promise.all([
-    board(engine, project.id, statuses as TaskStatus[], closedDays, {}, now),
+    board(engine, project.id, statuses as TaskStatus[], closedDays, fields === undefined ? {} : { fields }, now),
     active ? engine.listEpics(project.id) : null,
     linksSeenBy(context),
   ]);
@@ -154,6 +160,39 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     actors: [],
     lastSeq,
   });
+}
+
+/** The parameter prefix of a board's filter by custom field: `field.severity=high`. */
+const FIELD_PARAM = 'field.';
+
+/** The board's filters by custom field, each value read as its field's type
+ * takes it: a number, true or false, or text. */
+async function fieldParams(
+  context: ReadContext,
+  project: Project,
+  query: Readonly<Record<string, string>>,
+): Promise<Record<string, string | number | boolean> | undefined> {
+  const given = Object.entries(query).filter(([name]) => name.startsWith(FIELD_PARAM));
+  if (given.length === 0) return undefined;
+  const fields = await context.engine.listFields(project.id);
+  const values = Object.fromEntries(
+    given.map(([name, text]) => {
+      const key = name.slice(FIELD_PARAM.length);
+      const type = fields.find((field) => field.key === key)?.type;
+      if (type === 'number' && text.trim() !== '' && Number.isFinite(Number(text))) return [key, Number(text)];
+      if (type === 'yes-no' && (text === 'true' || text === 'false')) return [key, text === 'true'];
+      return [key, text];
+    }),
+  );
+  return fieldFiltersOf(context, project, values, FIELD_PARAM, fields);
+}
+
+/** GET /api/fields?project=…: the project's custom fields, retired ones included. */
+export async function fieldsRoute(context: ReadContext, url: URL): Promise<Response> {
+  const query = queryOf(url, ['project']);
+  const project = await projectOf(context, query.project);
+  const fields = await context.engine.listFields(project.id);
+  return json({ project: project.key, fields: fields.map(fieldView) });
 }
 
 async function taskIn(engine: TaskEngine, project: Project, taskId: string) {

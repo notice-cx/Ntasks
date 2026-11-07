@@ -94,24 +94,28 @@ describe('tools/list', () => {
     expect(unchanged).toEqual(NOTICEOS_TOOLS);
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
+      'list_tasks.fields',
       'create_task.notes',
       'create_task.design',
       'create_task.estimate_minutes',
       'create_task.duplicates',
       'create_task.supersedes',
       'create_task.external_links',
+      'create_task.fields',
       'create_tasks.tasks.notes',
       'create_tasks.tasks.design',
       'create_tasks.tasks.estimate_minutes',
       'create_tasks.tasks.duplicates',
       'create_tasks.tasks.supersedes',
       'create_tasks.tasks.external_links',
+      'create_tasks.tasks.fields',
       'update_task.notes',
       'update_task.design',
       'update_task.estimate_minutes',
       'update_task.duplicates',
       'update_task.supersedes',
       'update_task.add_external_links',
+      'update_task.fields',
       'update_task.remove_external_links',
     ]);
   });

@@ -1,7 +1,8 @@
 // What each read costs the task store, on a store the size of a busy
 // installation: eight projects, one much larger than the rest, about a
 // thousand tasks open and several thousand closed, a quarter of them linking
-// a pull request. The free plan allows 5
+// a pull request, every one with the values of two custom fields. The free
+// plan allows 5
 // million rows read per day and refuses reads for the rest of the day once
 // that allowance is spent; these budgets keep each read far inside it. They
 // measure a read the store has not cached; a cached one reads no rows
@@ -67,6 +68,13 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
      INSERT INTO task_external_links (task_id, url, title, kind, created_at)
      SELECT ${id('i')}, 'https://example.com/' || ?2 || '/pull/' || i, 'Seeded change ' || i, 'pull-request', ?5
      FROM n WHERE i % 4 = 2`,
+    `INSERT INTO custom_fields (project_id, key, name, type, options, created_at) VALUES
+       (?1, 'severity', 'Severity', 'single-choice', '["low","medium","high"]', ?5),
+       (?1, 'points', 'Points', 'number', NULL, ?5)`,
+    `UPDATE tasks SET version = version + 1, field_values = json_object(
+       'severity', CASE CAST(substr(id, length(?2) + 3) AS INTEGER) % 3 WHEN 0 THEN 'low' WHEN 1 THEN 'medium' ELSE 'high' END,
+       'points', CAST(substr(id, length(?2) + 3) AS INTEGER) % 8)
+     WHERE project_id = ?1`,
     `${numbers}
      INSERT INTO task_labels (task_id, label)
      SELECT ${id('i')}, 'area-' || (i % 7) FROM n UNION ALL SELECT ${id('i')}, 'seo' FROM n WHERE i % 5 = 0`,
@@ -141,6 +149,8 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'list_tasks, every project': { statements: 4, rowsRead: 16_000 },
   'list_tasks search, every project': { statements: 4, rowsRead: 22_000 },
   'list_tasks, largest project': { statements: 4, rowsRead: 6_000 },
+  'list_tasks by a field, largest project': { statements: 5, rowsRead: 4_000 },
+  'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
   get_task: { statements: 3, rowsRead: 60 },
   get_task_history: { statements: 3, rowsRead: 60 },
 };
@@ -162,6 +172,9 @@ describe('the cost of each read', () => {
       'list_tasks, every project': () => read(target, 'list_tasks', {}),
       'list_tasks search, every project': () => read(target, 'list_tasks', { query: 'seeded indexing' }),
       'list_tasks, largest project': () => read(target, 'list_tasks', { project: big.id }),
+      'list_tasks by a field, largest project': () =>
+        read(target, 'list_tasks', { project: big.id, fields: { severity: 'high' } }),
+      'HTTP board by a field, largest project': () => get(target, `/api/tasks?project=${big.id}&field.severity=high`),
       get_task: () => read(target, 'get_task', { project: big.id, task }),
       get_task_history: () => read(target, 'get_task_history', { project: big.id, task }),
     };

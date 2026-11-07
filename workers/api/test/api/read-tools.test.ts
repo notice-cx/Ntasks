@@ -73,7 +73,7 @@ beforeAll(async () => {
 });
 
 describe('tools/list', () => {
-  it("lists the task tools in NoticeOS's order, each but list_workspaces and get_task_guide naming its workspace", async () => {
+  it("lists NoticeOS's task tools in its order, then Ntasks' own, each but list_workspaces and get_task_guide naming its workspace", async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -100,12 +100,16 @@ describe('tools/list', () => {
       'remove_dependency',
       'request_human_approval',
       'close_task',
+      'list_fields',
+      'define_field',
+      'retire_field',
     ]);
     for (const tool of result.tools.slice(2)) expect(tool.inputSchema.required[0], tool.name).toBe('workspace');
-    for (const tool of result.tools.slice(0, 6))
-      expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: true });
-    for (const tool of result.tools.slice(6))
-      expect(tool.annotations, tool.name).toMatchObject({ readOnlyHint: false });
+    const reads = ['list_workspaces', 'get_task_guide', 'list_projects', 'list_tasks', 'get_task', 'get_task_history'];
+    for (const tool of result.tools)
+      expect(tool.annotations, tool.name).toMatchObject({
+        readOnlyHint: [...reads, 'list_fields'].includes(tool.name),
+      });
   });
 });
 

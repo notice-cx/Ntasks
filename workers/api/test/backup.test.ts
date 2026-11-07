@@ -91,6 +91,7 @@ const TASKS: TaskRow[] = [
     notes: 'Notes so far.',
     design: 'How it is built.',
     estimate_minutes: 90,
+    field_values: JSON.stringify({ points: 3, areas: ['api'] }),
   },
   // A duplicate of a task whose id sorts after its own.
   {
@@ -137,6 +138,30 @@ const ROWS: BackupRows = {
   projects: [
     { id: ACME, key: 'acme.example.com', name: 'Acme', prefix: 'acme', created_at: AT },
     { id: BETA, key: 'beta.example.com', name: 'Beta', prefix: 'beta', created_at: AT },
+  ],
+  custom_fields: [
+    {
+      project_id: ACME,
+      key: 'points',
+      name: 'Points',
+      type: 'number',
+      options: null,
+      created_at: AT,
+      created_by: 'owner',
+      retired_at: null,
+      retired_by: null,
+    },
+    {
+      project_id: ACME,
+      key: 'areas',
+      name: 'Areas',
+      type: 'multiple-choice',
+      options: JSON.stringify(['web', 'api']),
+      created_at: AT,
+      created_by: null,
+      retired_at: LATER,
+      retired_by: 'owner',
+    },
   ],
   tasks: TASKS,
   task_labels: [

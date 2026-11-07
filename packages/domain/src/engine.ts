@@ -15,10 +15,13 @@
  * guarantees, and each method's comment names the ones it relies on.
  */
 import type {
+  CustomField,
   DependencyType,
   EpicProgress,
   ExternalLink,
   ExternalLinkKind,
+  FieldType,
+  FieldValue,
   Json,
   JsonObject,
   Project,
@@ -99,6 +102,8 @@ export interface CreateTaskInput {
   readonly labels?: readonly string[];
   readonly links?: readonly NewTaskLink[];
   readonly externalLinks?: readonly NewExternalLink[];
+  /** Values of the project's custom fields, by key, each checked against its field. */
+  readonly fields?: Readonly<Record<string, FieldValue>>;
   readonly deferUntil?: string;
   readonly dueAt?: string;
   readonly choices?: JsonObject;
@@ -157,6 +162,9 @@ export interface TaskWrite {
   readonly addExternalLinks?: readonly NewExternalLink[];
   /** The URLs of external links to take off. */
   readonly removeExternalLinks?: readonly string[];
+  /** Values of the project's custom fields, by key; null takes a value off.
+   * A retired field takes no new value, though its value can be taken off. */
+  readonly setFields?: Readonly<Record<string, FieldValue | null>>;
   /** Opens an approval: a gate task that this task waits on until a person
    * answers it. The new gate's id is in the result's `created`. */
   readonly requestApproval?: { readonly reason: string };
@@ -188,6 +196,9 @@ export interface TaskFilters {
   /** Only tasks last changed at or after, or before, these times. */
   readonly updatedAfter?: string;
   readonly updatedBefore?: string;
+  /** Only tasks whose custom fields hold these values, by key. A
+   * multiple-choice field matches a task whose options include the one named. */
+  readonly fields?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface TaskQuery extends TaskFilters {
@@ -257,6 +268,21 @@ export interface WriteResult {
   readonly replayed: boolean;
 }
 
+/** A new custom field. */
+export interface DefineFieldInput {
+  readonly key: string;
+  readonly name: string;
+  readonly type: FieldType;
+  /** For a choice field, its options in order; for any other type, left out. */
+  readonly options?: readonly string[];
+}
+
+export interface FieldResult {
+  readonly field: CustomField;
+  /** True when a retry returned the recorded answer and nothing was written. */
+  readonly replayed: boolean;
+}
+
 export interface CommentResult {
   readonly comment: TaskComment;
   readonly replayed: boolean;
@@ -283,6 +309,8 @@ export interface TaskEngine {
   /** The external links of these tasks, reading theirs and no other task's.
    * A task with none, or that does not exist, is left out. */
   listExternalLinks(taskIds: readonly string[]): Promise<readonly TaskExternalLinks[]>;
+  /** The project's custom fields, retired ones included, in the order they were defined. */
+  listFields(projectId: string): Promise<readonly CustomField[]>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,
@@ -328,6 +356,12 @@ export interface TaskEngine {
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
   /** Changes an existing task in one batch (rules 1 to 4). */
   writeTask(projectId: string, taskId: string, write: TaskWrite, actor: Actor, retry?: Retry): Promise<WriteResult>;
+  /** Defines a custom field in the project. A key the project has used,
+   * retired or not, is refused as `invalid`. */
+  defineField(projectId: string, input: DefineFieldInput, actor: Actor, retry?: Retry): Promise<FieldResult>;
+  /** Retires a custom field: it takes no new values from then on. Retiring a
+   * retired field changes nothing. */
+  retireField(projectId: string, key: string, actor: Actor, retry?: Retry): Promise<FieldResult>;
   /** Adds a comment. It does not change the task's version, so it never conflicts with a write. */
   addComment(projectId: string, taskId: string, text: string, actor: Actor, retry?: Retry): Promise<CommentResult>;
 }

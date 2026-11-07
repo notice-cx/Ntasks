@@ -13,6 +13,7 @@ import {
   TASK_RESOLUTIONS,
   TASK_TYPES,
   type ExternalLink,
+  type FieldValue,
   type JsonObject,
   type TaskType,
 } from '@ntasks/domain';
@@ -343,6 +344,38 @@ export function addsOrRemoves(
 ): void {
   if (added?.some((link) => removed?.includes(link.url)))
     refuse(`invalid arguments: ${names} (a URL both added and taken off; send one)`);
+}
+
+/**
+ * Values of a project's custom fields, by key: text, a number, true or false,
+ * or a list of text, and with `clearable` null to take one off. Their fields
+ * check them further when the write is made.
+ */
+export function fieldsArg(
+  args: Args,
+  name: string,
+  clearable = false,
+): Readonly<Record<string, FieldValue | null>> | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  const shaped = (entry: unknown) =>
+    (typeof entry === 'string' && !CONTROL.test(entry)) ||
+    (typeof entry === 'number' && Number.isFinite(entry)) ||
+    typeof entry === 'boolean' ||
+    (clearable && entry === null) ||
+    (Array.isArray(entry) && entry.every((item) => typeof item === 'string'));
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length > TASK_LIMITS.fields ||
+    !Object.values(value).every(shaped)
+  ) {
+    refuse(
+      `invalid arguments: ${name} (an object of at most ${TASK_LIMITS.fields} values by field key: text, a number, true or false, or a list of options${clearable ? ', or null to take one off' : ''})`,
+    );
+  }
+  return value as Record<string, FieldValue | null>;
 }
 
 /** "" clears a field: null to the write. */

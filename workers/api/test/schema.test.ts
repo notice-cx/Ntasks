@@ -1,6 +1,7 @@
 import {
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
+  FIELD_TYPES,
   GUARD_REFUSALS,
   guardRefusalOf,
   TASK_EVENT_KINDS,
@@ -99,6 +100,7 @@ describe('the schema accepts exactly the task model vocabulary', () => {
     ['tasks', 'resolution', TASK_RESOLUTIONS],
     ['task_edges', 'type', DEPENDENCY_TYPES],
     ['task_external_links', 'kind', EXTERNAL_LINK_KINDS],
+    ['custom_fields', 'type', FIELD_TYPES],
     ['task_events', 'kind', TASK_EVENT_KINDS],
   ] as const)('%s.%s allows the domain list and nothing else', async (table, column, domainList) => {
     expect((await checkList(table, column)).sort()).toEqual([...domainList].sort());
@@ -360,6 +362,34 @@ describe('rules the database keeps whatever code writes to it', () => {
         created_at: NOW,
       }).run(),
     ).rejects.toThrow(/FOREIGN KEY constraint failed/u);
+  });
+
+  it("keeps a field's key, type and options, and a retired field retired, and never deletes one", async () => {
+    const project = await newProject();
+    const field = (row: Row) =>
+      insert('custom_fields', { project_id: project.id, name: 'Field', created_at: NOW, ...row });
+    await expect(field({ key: 'size', type: 'number' }).run()).resolves.toBeUndefined();
+    await expect(field({ key: 'tier', type: 'single-choice', options: '["a","b"]' }).run()).resolves.toBeUndefined();
+    await expect(field({ key: 'Size', type: 'number' }).run()).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(field({ key: 'pick', type: 'single-choice' }).run()).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(field({ key: 'note', type: 'text', options: '["a"]' }).run()).rejects.toThrow(
+      /CHECK constraint failed/u,
+    );
+    const update = (set: string) =>
+      db.prepare(`UPDATE custom_fields SET ${set} WHERE project_id = ?1 AND key = 'tier'`).bind(project.id).run();
+    await expect(update("type = 'multiple-choice'")).rejects.toThrow(/a field keeps its key, type and options/u);
+    await expect(update(`options = '["a"]'`)).rejects.toThrow(/a field keeps its key, type and options/u);
+    await expect(update(`name = 'Tier', retired_at = '${LATER}'`)).resolves.toBeUndefined();
+    await expect(update('retired_at = NULL')).rejects.toThrow(/stays retired/u);
+    await expect(db.prepare('DELETE FROM custom_fields WHERE project_id = ?1').bind(project.id).run()).rejects.toThrow(
+      /fields are never deleted/u,
+    );
+  });
+
+  it("keeps a task's field values as one JSON object", async () => {
+    await expect(newTask({ field_values: '{"size":3}' })).resolves.toBeDefined();
+    await expect(newTask({ field_values: '[3]' })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ field_values: 'size' })).rejects.toThrow(/CHECK constraint failed/u);
   });
 
   it('refuses a name longer than 255 characters', async () => {
