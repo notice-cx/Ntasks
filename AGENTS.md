@@ -22,9 +22,10 @@ invariants. A change that weakens one is the owner's decision, not a refactor.
 | Path | Owns |
 |---|---|
 | `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
+| `wrangler.jsonc`, `.dev.vars.example` | The Worker's Cloudflare settings and the names of the secrets it requires, with their descriptions under `cloudflare.bindings` in the root `package.json`. They sit at the root because the Deploy to Cloudflare button reads them there; wrangler commands run in `workers/api` find them, and `.dev.vars` for local runs goes beside them |
 | `apps/web/` | The web app. Its build in `dist/` is the Worker's static assets |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
-| `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, and the test that no `wrangler.jsonc` names a secret in `vars`. The lint configuration itself is `eslint.config.js` at the root |
+| `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, and the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, and the verifier |
 | `tools/screenshots/` | `pnpm screenshots`: the README's pictures of the web app and the design gallery's, drawn from the fixture app by a local Chrome. CI never runs it |
 | `docs/` | Concepts, architecture and the web app's design system ([design.md](docs/design.md)) |
@@ -109,8 +110,9 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
 
 Anything that reaches Cloudflare's servers or a deployed Ntasks, reads
 included: `wrangler deploy` without `--dry-run`, any `wrangler d1` command
-with `--remote`, `wrangler secret put`, `wrangler login`, and requests to a
-deployed Worker. Prepare and verify the change locally first, then ask with
+with `--remote`, `wrangler secret put`, `wrangler login`, `pnpm run deploy`
+(it runs `wrangler d1 migrations apply --remote`, then `wrangler deploy`),
+and requests to a deployed Worker. Prepare and verify the change locally first, then ask with
 the exact command, its target and its effect. Tests and CI never reach a
 deployed Worker or a remote database.
 

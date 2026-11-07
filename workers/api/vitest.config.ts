@@ -6,7 +6,7 @@ export default defineConfig({
     // Tests run inside workerd, the runtime that runs the deployed Worker,
     // with the bindings wrangler.jsonc declares and a local D1 database.
     cloudflareTest(async () => ({
-      wrangler: { configPath: './wrangler.jsonc' },
+      wrangler: { configPath: '../../wrangler.jsonc' },
       miniflare: {
         bindings: {
           // Read here in Node, because workerd has no file system;

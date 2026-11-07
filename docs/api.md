@@ -72,7 +72,7 @@ One Ntasks installation serves one **workspace**: the set of projects its
 people and agents share. Every MCP tool but `list_workspaces` and
 `get_task_guide` takes a `workspace` argument naming it, as NoticeOS's tools
 did. Its id and name are `WORKSPACE_ID` and `WORKSPACE_NAME` in the `vars` of
-[`wrangler.jsonc`](../workers/api/wrangler.jsonc). An installation that takes
+[`wrangler.jsonc`](../wrangler.jsonc). An installation that takes
 over from NoticeOS sets `WORKSPACE_ID` to that NoticeOS workspace's id, so
 agent instructions that name it keep working.
 

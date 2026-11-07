@@ -1,8 +1,9 @@
 # @ntasks/api
 
 The Ntasks Worker. It answers the paths that
-[`wrangler.jsonc`](wrangler.jsonc) lists in `assets.run_worker_first`, and
-Cloudflare serves the web app's build for every other path.
+[`wrangler.jsonc`](../../wrangler.jsonc), at the repository root, lists in
+`assets.run_worker_first`, and Cloudflare serves the web app's build for
+every other path. Wrangler commands run in this folder read that file.
 
 | Path | Holds |
 |---|---|
@@ -32,3 +33,9 @@ pnpm --filter @ntasks/api run types  # regenerate worker-configuration.d.ts afte
 pnpm --filter @ntasks/api run dev    # the Worker at http://localhost:8787, serving the last web build
 pnpm --filter @ntasks/api build      # wrangler deploy --dry-run; needs the web build, which `pnpm build` makes first
 ```
+
+`pnpm run deploy`, from the repository root, runs this workspace's `deploy`
+script: it applies the D1 migrations the deployed database lacks, then
+deploys the Worker with the last web build, to the Cloudflare account
+wrangler is signed in to. The Deploy to Cloudflare button's builds run it
+([README](../../README.md#deploy-your-own)).
