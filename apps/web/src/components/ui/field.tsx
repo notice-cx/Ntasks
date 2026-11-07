@@ -146,7 +146,8 @@ export function Select({ className, id, required, children, ...props }: Componen
       className={cn(
         boxClass,
         'h-7.5 cursor-pointer border-0 ps-2.25 text-ink outline-none pointer-coarse:h-9',
-        'focus-visible:inset-ring-accent focus-visible:ring-3 focus-visible:ring-accent-soft',
+        // The box's refused and disabled looks read what it holds; the select is its own box, so it reads itself.
+        'aria-[invalid=true]:inset-ring-ink disabled:cursor-not-allowed disabled:opacity-45',
         className,
       )}
     >
