@@ -6,7 +6,7 @@ import type { TaskChoiceKey } from '@/api/types';
 import { Progress, progressShare } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/button';
 import { choiceForKey, OptionList, Segmented, type ChoiceOption } from '@/components/ui/choice';
-import { Field, Input } from '@/components/ui/field';
+import { Field, Input, Textarea } from '@/components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { AppShell, NavItem, Sidebar, TopBar } from '@/components/ui/shell';
 import { useShortcut } from '@/hooks/useShortcut';
@@ -56,6 +56,24 @@ describe('a field', () => {
     );
     const input = screen.getByRole('textbox', { name: 'Title' });
     expect(input.id).toBe('task-title');
+  });
+
+  it('keeps the control of a required field required, whatever the control says', () => {
+    render(
+      <Field label="Title" required>
+        <Input required={false} />
+      </Field>,
+    );
+    expect(screen.getByRole('textbox', { name: /Title/ }).hasAttribute('required')).toBe(true);
+  });
+
+  it('keeps its label on a text area too, when the text area names another id', () => {
+    render(
+      <Field id="task-notes" label="Notes">
+        <Textarea id="something-else" />
+      </Field>,
+    );
+    expect(screen.getByRole('textbox', { name: 'Notes' }).id).toBe('task-notes');
   });
 
   it('ties an error to its control', () => {

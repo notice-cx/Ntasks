@@ -29,13 +29,13 @@ interface FieldWiring {
 const FieldContext = createContext<FieldWiring | null>(null);
 
 /** The props a control inside a `Field` takes from it: its id, required and invalid states and its error.
- * The field owns the id, so its label always names its control; give `Field` an `id` to choose it. */
-function useFieldWiring(props: { required?: boolean | undefined }) {
+ * The field owns the id and the required state, so its label and asterisk always match its control. */
+function useFieldWiring() {
   const field = useContext(FieldContext);
   if (!field) return {};
   return {
     id: field.id,
-    required: props.required ?? field.required,
+    required: field.required,
     'aria-required': field.required || undefined,
     'aria-invalid': field.invalid || undefined,
     'aria-describedby': field.describedBy,
@@ -101,7 +101,7 @@ export interface InputProps extends ComponentProps<'input'> {
 
 /** A one-line field. Inside a `Field` it takes the field's id, required state and error. */
 export function Input({ icon, end, boxClassName, className, id, required, ...props }: InputProps) {
-  const wiring = useFieldWiring({ required });
+  const wiring = useFieldWiring();
   return (
     <span
       className={cn(
@@ -119,7 +119,7 @@ export function Input({ icon, end, boxClassName, className, id, required, ...pro
 
 /** A field for several lines: a description, a comment, a note. */
 export function Textarea({ className, id, required, rows = 3, ...props }: ComponentProps<'textarea'>) {
-  const wiring = useFieldWiring({ required });
+  const wiring = useFieldWiring();
   return (
     <span className={cn(boxClass, 'items-stretch px-2.25 py-1.5')}>
       <textarea
