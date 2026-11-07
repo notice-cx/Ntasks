@@ -24,6 +24,9 @@ import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '@/lib
 import { WaitingGroup } from './tasks/ask-queue';
 import { TaskRow, type RowContext } from './tasks/task-row';
 
+/** Tailwind's `max-sm`: below it the top bar has no room for the search field. */
+const PHONE = '(width < 40rem)';
+
 /** Rows a group shows per press: enough to fill a laptop screen. */
 const PAGE_ROWS = 25;
 
@@ -77,15 +80,24 @@ export function TasksBoard() {
   const board = useBoard(filters);
   const hides = useAnswerHides();
   const search = useRef<HTMLInputElement>(null);
+  const phoneField = useRef<HTMLInputElement>(null);
   const [phoneSearch, setPhoneSearch] = useState(false);
+  // A request to focus the phone's field, kept until the field has mounted.
+  const [focusPhone, setFocusPhone] = useState<number | null>(null);
   const searchStamp = searchRequested(location.state);
 
-  // `/` or the sidebar's search button asked for the search field.
+  // `/` or the sidebar's search button asked for the search field: the top
+  // bar's, or on a phone, where the top bar has no room for it, the field under it.
   useEffect(() => {
     if (searchStamp === null) return;
-    setPhoneSearch(true);
-    search.current?.focus();
+    if (window.matchMedia(PHONE).matches) {
+      setPhoneSearch(true);
+      setFocusPhone(searchStamp);
+    } else search.current?.focus();
   }, [searchStamp]);
+  useEffect(() => {
+    if (focusPhone !== null) phoneField.current?.focus();
+  }, [focusPhone]);
 
   function setParam(name: string, value: string) {
     const next = new URLSearchParams(params);
@@ -146,7 +158,10 @@ export function TasksBoard() {
         className="sm:hidden"
         icon={<Search aria-hidden />}
         aria-expanded={phoneSearch}
-        onClick={() => setPhoneSearch((open) => !open)}
+        onClick={() => {
+          if (!phoneSearch) setFocusPhone(Date.now());
+          setPhoneSearch(!phoneSearch);
+        }}
       />
       <FilterMenu board={board} filters={filters} onPick={setParam} />
       <Button
@@ -193,7 +208,9 @@ export function TasksBoard() {
     <div className="flex min-h-full flex-col" data-tasks-board="">
       {bar}
       {phoneSearch || filters.q !== '' ? (
-        <div className="border-b border-border px-4 py-2 sm:hidden">{searchField('w-full')}</div>
+        <div className="border-b border-border px-4 py-2 sm:hidden" data-phone-search="">
+          {searchField('w-full', phoneField)}
+        </div>
       ) : null}
       <ActiveFilters filters={filters} board={board} onPick={setParam} onClear={clearFilters} />
       {capabilities.live && !writable ? (

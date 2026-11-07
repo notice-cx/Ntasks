@@ -316,6 +316,25 @@ describe('the keys', () => {
     await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Search tasks'));
   });
 
+  it('opens the search field on a phone and puts the cursor in it', async () => {
+    const media = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...media(query),
+      matches: query === '(width < 40rem)',
+    })) as typeof media;
+    try {
+      renderApp('/tasks');
+      await group('Waiting for you');
+      press('/');
+      await waitFor(() => expect(document.activeElement?.closest('[data-phone-search]')).not.toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: 'Search', expanded: true }));
+      fireEvent.click(screen.getByRole('button', { name: 'Search', expanded: false }));
+      await waitFor(() => expect(document.activeElement?.closest('[data-phone-search]')).not.toBeNull());
+    } finally {
+      window.matchMedia = media;
+    }
+  });
+
   it('opens Focus on F', async () => {
     renderApp('/tasks');
     await group('Waiting for you');
