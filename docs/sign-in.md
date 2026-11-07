@@ -149,8 +149,9 @@ refusal that `refusal()` turns into the answer.
 | An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still allowlisted, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. |
 | A service credential | That it exists and is not revoked, and that its secret matches the stored hash, compared in constant time. The same query reads its workspace's name. |
 
-So picking the workspace costs no D1 read beyond the one that signs the
-sender in.
+So picking the workspace takes no D1 query beyond the one that signs the
+sender in; that query reads about two more rows for each of the sender's
+memberships or grants.
 
 The verifier never builds Better Auth, which costs CPU time; only the
 sign-in routes do. A refused request gets:

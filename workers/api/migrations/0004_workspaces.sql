@@ -12,8 +12,11 @@
 -- account signs in.
 
 CREATE TABLE workspaces (
-  -- A UUID, lowercase.
-  id TEXT PRIMARY KEY CHECK (length(id) = 36 AND id NOT GLOB '*[^0-9a-f-]*'),
+  -- A UUID, lowercase, in its 8-4-4-4-12 shape: it names the workspace's task store.
+  id TEXT PRIMARY KEY CHECK (
+    length(id) = 36 AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-' AND substr(id, 19, 1) = '-'
+    AND substr(id, 24, 1) = '-' AND length(replace(id, '-', '')) = 32 AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
+  ),
   name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 128),
   created_by TEXT NOT NULL REFERENCES auth_user (id),
   created_at TEXT NOT NULL
@@ -40,6 +43,9 @@ CREATE TABLE workspace_invitations (
   role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
   created_by TEXT NOT NULL REFERENCES auth_user (id),
   created_at TEXT NOT NULL,
+  -- A login can be renamed and then taken by someone else, so an invitation
+  -- admits nobody after this time.
+  expires_at TEXT NOT NULL CHECK (expires_at > created_at),
   -- The person the invitation became a membership for, and when.
   accepted_by TEXT REFERENCES auth_user (id),
   accepted_at TEXT,

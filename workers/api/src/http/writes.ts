@@ -280,10 +280,12 @@ function oneLine(text: string): boolean {
 /**
  * POST /api/tasks/projects: creates a project in the workspace, from its
  * `name` and `prefix`, and optionally the `key` people know it by, which is
- * the prefix when left out. A field at fault is named in the refusal.
+ * the prefix when left out. A field at fault is named in the refusal. It
+ * keeps no retry record: sent again with an idempotency key, it answers the
+ * project that already has exactly this name, prefix and key.
  */
 export async function createProjectRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
-  const { body } = await writeOf(request, url, 'create_project', {});
+  const { body, retry } = await writeOf(request, url, 'create_project', {});
   only(body, ['name', 'prefix', 'key']);
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!oneLine(name)) throw new HttpRefused(400, 'invalid_request', 'name is one line of 1 to 128 characters', 'name');
@@ -296,21 +298,35 @@ export async function createProjectRoute(context: WriteContext, url: URL, reques
   if (!oneLine(key)) throw new HttpRefused(400, 'invalid_request', 'key is one line of 1 to 128 characters', 'key');
   const taken = (which: 'prefix' | 'key') =>
     new HttpRefused(409, 'project_exists', `another project in this workspace uses this ${which}`, which);
-  const existing = await context.engine.listProjects();
-  if (existing.some((project) => project.prefix === prefix)) throw taken('prefix');
-  if (existing.some((project) => project.key === key)) throw taken('key');
+  const answer = (made: Project, replayed: boolean) =>
+    json(
+      {
+        project: { projectId: made.id, logicalKey: made.key, displayName: made.name, prefix: made.prefix },
+        ...(replayed ? { replayed: true } : {}),
+      },
+      201,
+    );
+  const clash = (projects: readonly Project[]): Project | 'prefix' | 'key' | null => {
+    const same = projects.find((row) => row.prefix === prefix);
+    if (same && retry({}) !== undefined && same.key === key && same.name === name) return same;
+    if (same) return 'prefix';
+    return projects.some((row) => row.key === key) ? 'key' : null;
+  };
+  const found = clash(await context.engine.listProjects());
+  if (typeof found === 'string') throw taken(found);
+  if (found !== null) return answer(found, true);
   let project: Project;
   try {
     project = await context.engine.createProject({ id: crypto.randomUUID(), key, name, prefix });
   } catch (error) {
-    // Another request made a project with this prefix or key since the check above.
-    if (error instanceof TaskRefused && error.refusal === 'invalid') throw taken('prefix');
-    throw error;
+    if (!(error instanceof TaskRefused && error.refusal === 'invalid')) throw error;
+    // Another request may have made a project with this prefix or key since the check above.
+    const since = clash(await context.engine.listProjects());
+    if (since === null) throw error;
+    if (typeof since === 'string') throw taken(since);
+    return answer(since, true);
   }
-  return json(
-    { project: { projectId: project.id, logicalKey: project.key, displayName: project.name, prefix: project.prefix } },
-    201,
-  );
+  return answer(project, false);
 }
 
 /** POST /api/tasks/:id/close: closes a task with its reason. */
