@@ -21,6 +21,7 @@ const ON_BEHALF_OF = /^[A-Za-z0-9._:/-]{1,128}$/u;
 const READ = SCOPES.read;
 const WRITE = SCOPES.write;
 const BACKUP = SCOPES.backup;
+const RESTORE = SCOPES.restore;
 const DECIDE = SCOPES.decide;
 
 /**
@@ -40,13 +41,15 @@ export interface SignInAuthenticator extends Authenticator {
 }
 
 /** The scopes for the most the principal may do in any one project, none
- * for a sender with no grants, the backup scope for the owner and a backup
- * credential, and the decide scope for the owner alone (`mayDecide`). */
+ * for a sender with no grants, the backup and restore scopes for the owner
+ * and for a credential the owner made with each, and the decide scope for the
+ * owner alone (`mayDecide`). */
 function scopesOf(principal: Principal): readonly string[] {
-  if (principal.kind === 'person') return [READ, WRITE, BACKUP, DECIDE];
+  if (principal.kind === 'person') return [READ, WRITE, BACKUP, RESTORE, DECIDE];
   const access = new Set(principal.projects.values());
   const scopes = access.has('write') ? [READ, WRITE] : access.has('read') ? [READ] : [];
-  return principal.kind === 'service' && principal.backup ? [...scopes, BACKUP] : scopes;
+  if (principal.kind !== 'service') return scopes;
+  return [...scopes, ...(principal.backup ? [BACKUP] : []), ...(principal.restore ? [RESTORE] : [])];
 }
 
 type Refusal = Extract<Verification, { ok: false }> | { readonly ok: false; readonly invalidRequest: string };

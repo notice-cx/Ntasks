@@ -90,6 +90,12 @@ export function api(
         workspace: WORKSPACE,
         now,
         backup: (token) => store().backupPage(token),
+        load: {
+          begin: (migrations, by) => store().loadBegin(migrations, by),
+          rows: (load, table, rows) => store().loadRows(load, table, rows),
+          commit: (load, counts) => store().loadCommit(load, counts),
+          abort: (load) => store().loadAbort(load),
+        },
       }),
   };
 }

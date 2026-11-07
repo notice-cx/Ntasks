@@ -42,6 +42,8 @@ export interface ServicePrincipal {
   readonly projects: ReadonlyMap<string, ProjectAccess>;
   /** Whether it may read the whole store for a backup, whatever its projects (GET /api/backup). */
   readonly backup: boolean;
+  /** Whether it may load rows into the store while it is empty (POST /api/restore). */
+  readonly restore: boolean;
   /**
    * The agent the service says a request is for (authenticator.ts). It names
    * the actor; it grants nothing beyond the credential's own projects.

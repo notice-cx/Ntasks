@@ -39,7 +39,7 @@ describe('the authenticator the API layer calls', () => {
     expect(signedIn).toMatchObject({
       id: `person:${userId}`,
       name: `Person ${OWNER_GITHUB_ID}`,
-      scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:decide'],
+      scopes: ['tasks:read', 'tasks:write', 'tasks:backup', 'tasks:restore', 'tasks:decide'],
       projects: 'all',
       person: `Person ${OWNER_GITHUB_ID}`,
       principal: { kind: 'person', userId },

@@ -12,6 +12,8 @@ export const SCOPES = Object.freeze({
   write: 'tasks:write',
   /** Read every row of the store for a backup, whatever projects the sender reaches (GET /api/backup). */
   backup: 'tasks:backup',
+  /** Load rows into the store while it is empty, such as an import or a backup (POST /api/restore). */
+  restore: 'tasks:restore',
   /** Answer a decision, approve an approval or dispute one an agent recorded:
    * a person's own act. Only a person signed in to the web app holds it; no
    * agent or service does, whatever it was granted. */

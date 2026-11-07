@@ -19,6 +19,7 @@ contributors working on the engine, the API or the import from Beads. Read
 | The tables' rows, as an import writes and reads them | [`packages/domain/src/store-rows.ts`](../packages/domain/src/store-rows.ts) |
 | Loading an import from Beads or a backup | [`workers/api/src/store/import.ts`](../workers/api/src/store/import.ts) |
 | A backup's pages, and its format | [`workers/api/src/store/backup.ts`](../workers/api/src/store/backup.ts), [`packages/domain/src/backup.ts`](../packages/domain/src/backup.ts) |
+| A load into the empty store, page by page | [`workers/api/src/store/load.ts`](../workers/api/src/store/load.ts), [`packages/domain/src/load.ts`](../packages/domain/src/load.ts) |
 | Tests of the schema's rules | [`workers/api/test/schema.test.ts`](../workers/api/test/schema.test.ts) |
 | Tests of the engine | [`workers/api/test/engine/`](../workers/api/test/engine/) |
 
@@ -35,6 +36,7 @@ contributors working on the engine, the API or the import from Beads. Read
 | `task_comments` | Comments, in the order they were added |
 | `task_events` | Every change to every task, in order |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
+| `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
 
 A task's parent is the `parent_id` column, not a link. Sign-in and access
 grants have their own tables, in D1 ([Sign-in](sign-in.md#tables)).
@@ -67,11 +69,15 @@ when its field was retired after the write checked it, and the write is
 checked again. The database does not refuse a value of a retired field
 itself, so an import can load a retired field with the values tasks had.
 
-A backup holds every row of the tables above, in their order, as stored
-([API](api.md#backing-up-the-whole-store)). It loads into an empty store in
-one transaction, with the statements an import uses, and the store checks
-its foreign keys when the transaction ends, since a backup lists tasks by id
-and a parent's id can sort after its child's.
+A backup holds every row of the tables above but the two a load waits in, in
+their order, as stored ([API](api.md#backing-up-the-whole-store)). An import
+or a backup loads into an empty store in one transaction: through
+`importRows`, with the statements an import uses, or through
+[a load](api.md#loading-an-empty-store), whose pages wait in
+`store_load_pages` until the commit inserts them all with one statement per
+table. Either way the store checks foreign keys when the transaction ends,
+since a backup lists tasks by id and a parent's id can sort after its
+child's.
 
 ## Rules the database enforces
 

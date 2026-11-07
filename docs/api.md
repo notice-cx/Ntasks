@@ -8,8 +8,9 @@ The Worker answers under `/api` in two ways, both over the same task engine:
 - **The HTTP routes** under `/api/tasks` and `/api/changes` are for the web
   app.
 
-A third route, `/api/backup`, hands out the whole store for a backup
-([below](#backing-up-the-whole-store)).
+Two more serve the store as a whole: `/api/backup` hands it out for a backup
+([below](#backing-up-the-whole-store)), and `/api/restore` loads an import or
+a backup into an empty store ([below](#loading-an-empty-store)).
 
 Both read tasks and change them: they file, claim, change, comment on and
 close tasks, link one task to another and ask a person for an approval. A
@@ -433,6 +434,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
 | The store changed during a backup | `409` with `store_changed` ([below](#backing-up-the-whole-store)) |
+| A load into a store that is not empty, or that does not fit the store | `409` with the reason ([below](#loading-an-empty-store)) |
 | A method the path does not take | `405` with an `allow` header naming the ones it takes |
 
 ## Reading changes instead of reloading
@@ -490,6 +492,46 @@ A whole backup reads each row once. A store of 100,000 rows costs about 2%
 of the 5,000,000 rows the free plan reads in a day.
 [`tools/migrate`](../tools/migrate/README.md#back-up-and-restore) writes the
 pages to one file and restores the file into an empty store copy.
+
+## Loading an empty store
+
+`POST /api/restore` and the routes under it load rows into the store while it
+holds none: an import from Beads, or a backup. The rows arrive in pages, wait
+in the store, and are written together when the load is committed, in one
+transaction. So a load lands whole or not at all, and nobody reading the
+store sees part of one. They need the `tasks:restore` scope, which the
+owner's browser session holds, and a service credential holds when the owner
+made it with `"restore": true` ([Sign-in](sign-in.md#routes)). Any other
+sender gets `403` with `insufficient_scope`. Each takes one JSON object, of
+at most 1 MB, and no query.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /api/restore` | `migrations`: the names of the store migrations the rows were made with | `{ load }`: the load's id. Refused unless the store holds no row in any table a backup holds, and has exactly these migrations. A load that was waiting is dropped. |
+| `POST /api/restore/rows` | `load`, `table` and `rows`: 1 to 500 rows of that table, each an object holding exactly the table's columns, as GET /api/backup gives them | `{ table, page, rows }`: the page's number and its rows |
+| `POST /api/restore/commit` | `load` and `counts`: the rows sent for each table | `{ rows, rowsWritten }`: the rows written, and the rows Cloudflare counts as written for them, index entries included |
+| `POST /api/restore/abort` | `load` | `{ aborted: true }`: the waiting load and its pages are gone |
+
+The commit writes nothing unless every check passes:
+
+| Refusal | When |
+|---|---|
+| `409` with `store_not_empty` | The store held a row when the load began, or someone wrote one before the commit |
+| `409` with `schema_mismatch` | The rows were made with other migrations than the store has; load them with the version of Ntasks the store runs |
+| `409` with `counts_differ` | The pages that arrived do not hold the rows `counts` gives, such as when a page was lost |
+| `409` with `load_refused` | A row breaks a rule of the store, such as a check or a link to a task the load does not hold. The load keeps waiting, to be aborted. |
+| `409` with `no_such_load` | No load with this id is waiting |
+| `500` with `load_failed` | The store could not write the load for a reason other than its rows, named in `detail`. Nothing was written, and the load keeps waiting. |
+| `400` with `invalid_request` | A page names another table, holds no row or more than 500, or a row lacks a column, has one the table lacks, or holds a value that is not text, a number or null |
+
+A load does not stop others from writing: the commit finds any row written
+since the load began, and refuses. Cloudflare counts each index entry as a
+row written, so a load writes about three times as many rows as it holds: a
+hub of 40,000 rows, mostly history, comes to about 120,000, more than the
+free plan's 100,000 a day. Such a one-time load fits the paid plan.
+[`tools/migrate`](../tools/migrate/README.md#load-into-the-deployed-store)'s
+`load` command checks the rows in a local copy first, sends the pages,
+commits, and reads the store back to verify it.
 
 ## What a read costs
 
