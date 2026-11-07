@@ -132,6 +132,19 @@ function Centered({ children }: { children: ReactNode }) {
 function FirstStep({ onCreated }: { onCreated: (workspace: Workspace) => void }) {
   const account = useAccount(true);
   if (account.isPending) return <Loading />;
+  if (account.isError) {
+    // Without the account it is unknown whether this person may create a workspace.
+    return (
+      <Centered>
+        <ReadFailed
+          title="Couldn't load your account"
+          error={account.error}
+          retrying={account.isFetching}
+          onRetry={() => void account.refetch()}
+        />
+      </Centered>
+    );
+  }
   if (account.data?.deploymentAdmin) return <CreateWorkspace onCreated={onCreated} />;
   return (
     <Centered>

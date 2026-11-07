@@ -126,6 +126,17 @@ describe('an owner', () => {
       expect.objectContaining({ githubLogin: 'example-new', role: 'owner' }),
     );
 
+    // A refusal names what was sent, so editing the username takes it away.
+    fireEvent.click(await enabledButton('Invite'));
+    const again = await screen.findByRole('form', { name: 'Invite' });
+    const login = within(again).getByLabelText(/^GitHub username/);
+    fireEvent.change(login, { target: { value: 'example-new' } });
+    fireEvent.click(within(again).getByRole('button', { name: 'Invite' }));
+    await waitFor(() => expect(login.getAttribute('aria-invalid')).toBe('true'));
+    fireEvent.change(login, { target: { value: 'example-other' } });
+    expect(login.getAttribute('aria-invalid')).toBeNull();
+    fireEvent.click(within(again).getByRole('button', { name: 'Cancel' }));
+
     const pending = document.querySelector('[data-invitation-row="i-example-invitee"]') as HTMLElement;
     fireEvent.click(within(pending).getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(document.querySelector('[data-invitation-row="i-example-invitee"]')).toBeNull());
@@ -174,6 +185,17 @@ describe('a sign-in with no workspace', () => {
     expect(await api.workspaces()).toEqual([expect.objectContaining({ name: 'Example Co', role: 'owner' })]);
     // The new workspace is the one every call is made in.
     expect(await api.projects()).toEqual([]);
+  });
+
+  it('shows why the account could not be read, and retries, instead of saying there is no workspace', async () => {
+    const api = createFixtureTasksApi({ workspaces: [], deploymentAdmin: true });
+    const account = vi.spyOn(api, 'account').mockRejectedValueOnce(new Error('The server did not answer.'));
+    renderApp('/tasks', api);
+    const failed = await screen.findByRole('alert');
+    expect(within(failed).getByText('The server did not answer.')).toBeTruthy();
+    fireEvent.click(within(failed).getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('form', { name: 'New workspace' })).toBeTruthy();
+    expect(account).toHaveBeenCalledTimes(2);
   });
 
   it('offers no step to anyone else', async () => {

@@ -225,14 +225,21 @@ function InviteForm({ onDone }: { onDone: () => void }) {
               spellCheck={false}
               value={login}
               disabled={invite.isPending}
-              onChange={(event) => setLogin(event.target.value)}
+              onChange={(event) => {
+                // The refusal was about what was sent; an edit makes it stale.
+                if (invite.isError) invite.reset();
+                setLogin(event.target.value);
+              }}
             />
           </Field>
           <Field label="Role">
             <Select
               value={role}
               disabled={invite.isPending}
-              onChange={(event) => setRole(event.target.value === 'owner' ? 'owner' : 'member')}
+              onChange={(event) => {
+                if (invite.isError) invite.reset();
+                setRole(event.target.value === 'owner' ? 'owner' : 'member');
+              }}
             >
               <option value="member">{ROLE_WORDS.member}</option>
               <option value="owner">{ROLE_WORDS.owner}</option>
