@@ -9,14 +9,23 @@
  * list and sends the project's id: `?project=<id>` on a read and `projectId`
  * in a write's body. A key the list does not hold is refused here, before
  * any request, so a typed address can never reach another project.
+ *
+ * Every call but the three about the sign-in itself (`workspaces`, `account`
+ * and `createWorkspace`) is made in the workspace `selectWorkspace` chose,
+ * and names it in the `x-ntasks-workspace` header. A call takes the workspace
+ * selected when it starts, so a call still running after a switch finishes
+ * in the workspace it began in.
  */
 import type { TaskResolution } from '@ntasks/domain';
 import type {
+  Account,
   ChangesPage,
   CloseOptions,
   FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
+  NewInvitation,
+  NewProject,
   NewTask,
   ProjectFields,
   TaskChoiceKey,
@@ -25,7 +34,13 @@ import type {
   TaskField,
   TaskProject,
   TasksCapabilities,
+  Workspace,
+  WorkspaceMembers,
+  WorkspaceRole,
 } from './types';
+
+/** The header that names the workspace a call is made in. */
+export const WORKSPACE_HEADER = 'x-ntasks-workspace';
 
 export interface WriteOptions {
   /** Send the write while the page is leaving. */
@@ -37,6 +52,14 @@ export interface WriteOptions {
 }
 
 export interface TasksApi {
+  /** The workspace every call after this one is made in; null names none, as a sender who reaches one may. */
+  selectWorkspace(workspaceId: string | null): void;
+  /** The workspaces this sign-in reaches, with its role in each. */
+  workspaces(signal?: AbortSignal): Promise<readonly Workspace[]>;
+  /** Who is signed in. */
+  account(signal?: AbortSignal): Promise<Account>;
+  /** Only the deployment's admins may create a workspace; its creator becomes its owner. */
+  createWorkspace(name: string, options?: WriteOptions): Promise<Workspace>;
   capabilities(signal?: AbortSignal): Promise<TasksCapabilities>;
   projects(signal?: AbortSignal): Promise<readonly TaskProject[]>;
   /** One project's board: unfinished tasks and the last week's closes; with
@@ -62,7 +85,18 @@ export interface TasksApi {
   dispute(id: string, project: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions): Promise<void>;
+  /** Only the workspace's owners may create a project. */
+  createProject(input: NewProject, options?: WriteOptions): Promise<void>;
+  /** The workspace's members and pending invitations; only its owners may read them. */
+  members(signal?: AbortSignal): Promise<WorkspaceMembers>;
+  /** Invite a GitHub account: it joins the workspace when it first signs in. */
+  invite(input: NewInvitation, options?: WriteOptions): Promise<void>;
+  revokeInvitation(invitationId: string, options?: WriteOptions): Promise<void>;
+  removeMember(userId: string, options?: WriteOptions): Promise<void>;
 }
+
+/** The calls made in one workspace. */
+type WorkspaceCalls = Omit<TasksApi, 'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace'>;
 
 /** Where the owner signs in: the Worker's own page, outside this app. */
 export const SIGN_IN_PATH = '/sign-in';
@@ -94,12 +128,27 @@ export class UnreadableAnswer extends Error {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
-  constructor(message: string, status: number, code: string | null) {
+  /** The body field the refusal is about, when the server named one. */
+  readonly field: string | null;
+  constructor(message: string, status: number, code: string | null, field: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.field = field;
   }
+}
+
+/**
+ * Which of a form's fields a refusal is about, so its words show under that
+ * field: the field the server named, else the one its sentence starts with,
+ * as in "prefix must be lowercase letters and digits". Null when it names
+ * none of them, or the request failed for another reason.
+ */
+export function refusedField<Name extends string>(error: unknown, fields: readonly Name[]): Name | null {
+  if (!(error instanceof ApiError) || error.status >= 500) return null;
+  const named = (error.field ?? /^\s*([A-Za-z]+)/u.exec(error.message)?.[1] ?? '').toLowerCase();
+  return fields.find((field) => field.toLowerCase() === named) ?? null;
 }
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -114,11 +163,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function refusal(response: Response, what: string): Promise<ApiError> {
   let code: string | null = null;
   let detail: string | null = null;
+  let field: string | null = null;
   try {
     const body: unknown = await response.json();
     if (isRecord(body)) {
       code = typeof body.error === 'string' ? body.error : null;
       detail = typeof body.detail === 'string' && body.detail.trim() !== '' ? body.detail : null;
+      field = typeof body.field === 'string' ? body.field : null;
     }
   } catch {
     // A body that is not JSON carries no sentence of its own.
@@ -132,7 +183,7 @@ async function refusal(response: Response, what: string): Promise<ApiError> {
         : response.status === 401 || response.status === 403
           ? `${what}: this sign-in may not do that.`
           : `${what}: the server answered ${response.status}.`);
-  return new ApiError(sentence, response.status, code);
+  return new ApiError(sentence, response.status, code, field);
 }
 
 /** A successful answer's body. A body that is not JSON is an `UnreadableAnswer`, which is not retried. */
@@ -211,6 +262,57 @@ function readCapabilities(payload: unknown): TasksCapabilities {
   };
 }
 
+/** A role this build does not know grants nothing more than a member's. */
+function readRole(value: unknown): WorkspaceRole {
+  return value === 'owner' ? 'owner' : 'member';
+}
+
+function readWorkspace(row: unknown, unreadable: string): Workspace {
+  if (!isRecord(row) || typeof row.workspaceId !== 'string' || typeof row.name !== 'string')
+    throw new UnreadableAnswer(unreadable);
+  return { workspaceId: row.workspaceId, name: row.name, role: readRole(row.role) };
+}
+
+function readWorkspaces(payload: unknown): readonly Workspace[] {
+  const unreadable = 'The workspace list could not be read.';
+  if (!isRecord(payload) || !Array.isArray(payload.workspaces)) throw new UnreadableAnswer(unreadable);
+  return Object.freeze(payload.workspaces.map((row: unknown) => Object.freeze(readWorkspace(row, unreadable))));
+}
+
+function readAccount(payload: unknown): Account {
+  if (!isRecord(payload)) throw new UnreadableAnswer('The sign-in could not be read.');
+  return {
+    name: typeof payload.name === 'string' ? payload.name : '',
+    deploymentAdmin: payload.deploymentAdmin === true,
+  };
+}
+
+function readMembers(payload: unknown): WorkspaceMembers {
+  const unreadable = () => new UnreadableAnswer('The member list could not be read.');
+  if (!isRecord(payload) || !Array.isArray(payload.members) || !Array.isArray(payload.invitations)) throw unreadable();
+  return {
+    members: payload.members.map((row: unknown) => {
+      if (!isRecord(row) || typeof row.userId !== 'string' || typeof row.name !== 'string') throw unreadable();
+      return {
+        userId: row.userId,
+        name: row.name,
+        githubLogin: typeof row.githubLogin === 'string' ? row.githubLogin : null,
+        role: readRole(row.role),
+      };
+    }),
+    invitations: payload.invitations.map((row: unknown) => {
+      if (!isRecord(row) || typeof row.invitationId !== 'string' || typeof row.githubLogin !== 'string')
+        throw unreadable();
+      return {
+        invitationId: row.invitationId,
+        githubLogin: row.githubLogin,
+        role: readRole(row.role),
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : null,
+      };
+    }),
+  };
+}
+
 /** Waits for `promise`, or stops waiting when `signal` aborts. The promise
  * itself runs on, so a cancelled caller never fails its other waiters. */
 function until<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -232,8 +334,103 @@ function until<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
+/** `fetch`, with every request naming `workspace`. */
+function inWorkspace(fetch: Fetch, workspace: string | null): Fetch {
+  if (workspace === null) return fetch;
+  return (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set(WORKSPACE_HEADER, workspace);
+    return fetch(input, { ...init, headers });
+  };
+}
+
+async function readJson<T>(fetch: Fetch, path: string, what: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { headers: JSON_READ, ...(signal ? { signal } : {}) });
+  if (!response.ok) throw await refusal(response, what);
+  return (await answerJson(response, `${what}: the answer could not be read.`)) as T;
+}
+
+/** Every write carries a retry key: the caller's, for a second attempt at
+ * one submission, else a new one. */
+async function writeJson(
+  fetch: Fetch,
+  method: 'POST' | 'PATCH',
+  path: string,
+  body: Record<string, unknown>,
+  what: string,
+  { keepalive = false, idempotencyKey }: WriteOptions = {},
+): Promise<Response> {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...JSON_READ,
+      'content-type': 'application/json',
+      'idempotency-key': idempotencyKey ?? crypto.randomUUID(),
+    },
+    body: JSON.stringify(body),
+    ...(keepalive ? { keepalive: true } : {}),
+  });
+  if (!response.ok) throw await refusal(response, what);
+  return response;
+}
+
 /** The Tasks API over HTTP, on the page's own origin. */
 export function createHttpTasksApi(fetch: Fetch): TasksApi {
+  let selected: string | null = null;
+  /** Each workspace's calls, made once, so each keeps its own project list. */
+  const scopes = new Map<string | null, WorkspaceCalls>();
+
+  /** The calls in the workspace selected now. */
+  function scope(): WorkspaceCalls {
+    let calls = scopes.get(selected);
+    if (calls === undefined) {
+      calls = workspaceCalls(inWorkspace(fetch, selected));
+      scopes.set(selected, calls);
+    }
+    return calls;
+  }
+
+  return {
+    selectWorkspace(workspaceId) {
+      selected = workspaceId;
+    },
+    async workspaces(signal) {
+      return readWorkspaces(await readJson<unknown>(fetch, '/api/workspaces', 'The workspace list', signal));
+    },
+    async account(signal) {
+      return readAccount(await readJson<unknown>(fetch, '/api/access/me', 'The sign-in', signal));
+    },
+    async createWorkspace(name, options) {
+      const response = await writeJson(fetch, 'POST', '/api/workspaces', { name }, 'The new workspace', options);
+      const unreadable = 'The workspace was created, but the answer could not be read.';
+      const created = await answerJson(response, unreadable);
+      return readWorkspace(isRecord(created) ? created.workspace : null, unreadable);
+    },
+    capabilities: (signal) => scope().capabilities(signal),
+    projects: (signal) => scope().projects(signal),
+    board: (project, signal, fields) => scope().board(project, signal, fields),
+    task: (id, project, signal) => scope().task(id, project, signal),
+    fields: (project, signal) => scope().fields(project, signal),
+    changes: (after, signal) => scope().changes(after, signal),
+    createTask: (input, options) => scope().createTask(input, options),
+    updateTask: (id, project, edit, options) => scope().updateTask(id, project, edit, options),
+    closeTask: (id, project, reason, options) => scope().closeTask(id, project, reason, options),
+    comment: (id, project, text, options) => scope().comment(id, project, text, options),
+    respond: (id, project, response, options) => scope().respond(id, project, response, options),
+    choose: (id, project, option, note, options) => scope().choose(id, project, option, note, options),
+    dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
+    dispute: (id, project) => scope().dispute(id, project),
+    resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
+    createProject: (input, options) => scope().createProject(input, options),
+    members: (signal) => scope().members(signal),
+    invite: (input, options) => scope().invite(input, options),
+    revokeInvitation: (invitationId, options) => scope().revokeInvitation(invitationId, options),
+    removeMember: (userId, options) => scope().removeMember(userId, options),
+  };
+}
+
+/** The calls in one workspace, each request made through `fetch`, which names it. */
+function workspaceCalls(fetch: Fetch): WorkspaceCalls {
   /** The last project list read, which every request names its project's id
    * from. Several requests share it, so it is read without any one caller's
    * signal. */
@@ -262,34 +459,14 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     return found.projectId;
   }
 
-  async function read<T>(path: string, what: string, signal?: AbortSignal): Promise<T> {
-    const response = await fetch(path, { headers: JSON_READ, ...(signal ? { signal } : {}) });
-    if (!response.ok) throw await refusal(response, what);
-    return (await answerJson(response, `${what}: the answer could not be read.`)) as T;
-  }
-
-  /** Every write carries a retry key: the caller's, for a second attempt at
-   * one submission, else a new one. */
-  async function write(
+  const read = <T>(path: string, what: string, signal?: AbortSignal) => readJson<T>(fetch, path, what, signal);
+  const write = (
     method: 'POST' | 'PATCH',
     path: string,
     body: Record<string, unknown>,
     what: string,
-    { keepalive = false, idempotencyKey }: WriteOptions = {},
-  ): Promise<Response> {
-    const response = await fetch(path, {
-      method,
-      headers: {
-        ...JSON_READ,
-        'content-type': 'application/json',
-        'idempotency-key': idempotencyKey ?? crypto.randomUUID(),
-      },
-      body: JSON.stringify(body),
-      ...(keepalive ? { keepalive: true } : {}),
-    });
-    if (!response.ok) throw await refusal(response, what);
-    return response;
-  }
+    options?: WriteOptions,
+  ) => writeJson(fetch, method, path, body, what, options);
 
   const taskPath = (id: string, action?: string) =>
     `/api/tasks/${encodeURIComponent(id)}${action === undefined ? '' : `/${action}`}`;
@@ -401,6 +578,23 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
         `Approval ${id}`,
         sending,
       );
+    },
+    async createProject({ name, prefix }, options) {
+      await write('POST', '/api/tasks/projects', { name, prefix }, 'The new project', options);
+    },
+    async members(signal) {
+      return readMembers(await read<unknown>('/api/access/members', 'The member list', signal));
+    },
+    async invite({ githubLogin, role }, options) {
+      await write('POST', '/api/access/invitations', { githubLogin, role }, 'The invitation', options);
+    },
+    async revokeInvitation(invitationId, options) {
+      const path = `/api/access/invitations/${encodeURIComponent(invitationId)}/revoke`;
+      await write('POST', path, {}, 'The invitation', options);
+    },
+    async removeMember(userId, options) {
+      const path = `/api/access/members/${encodeURIComponent(userId)}/remove`;
+      await write('POST', path, {}, 'The member', options);
     },
   };
 }

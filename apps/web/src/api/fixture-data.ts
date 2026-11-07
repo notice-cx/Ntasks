@@ -1,9 +1,18 @@
 /**
- * Invented projects and tasks for the fixture API: every kind of task the
- * pages draw, with times relative to `nowMs` so ages read the same on any
- * day. Nothing here describes a real project, person or task.
+ * Invented workspaces, projects and tasks for the fixture API: every kind of
+ * task the pages draw, with times relative to `nowMs` so ages read the same
+ * on any day. Nothing here describes a real project, person or task.
  */
-import type { LiveTask, TaskActor, TaskComment, TaskField, TaskProject } from './types';
+import type {
+  LiveTask,
+  TaskActor,
+  TaskComment,
+  TaskField,
+  TaskProject,
+  Workspace,
+  WorkspaceInvitation,
+  WorkspaceMember,
+} from './types';
 
 export interface FixtureTask extends LiveTask {
   /** The project's key. */
@@ -16,6 +25,18 @@ export interface FixtureSeed {
   comments: Map<string, TaskComment[]>;
   /** Each project's custom fields, by the project's key, in the order they were defined. */
   fields: Map<string, TaskField[]>;
+}
+
+/** A workspace with what it holds: its projects and tasks, its members and its pending invitations. */
+export interface FixtureWorkspace extends Workspace {
+  seed: FixtureSeed;
+  members: WorkspaceMember[];
+  invitations: WorkspaceInvitation[];
+}
+
+/** A workspace with no projects. */
+export function emptySeed(): FixtureSeed {
+  return { projects: [], tasks: [], comments: new Map(), fields: new Map() };
 }
 
 /** Who the fixture API records as the sender of every change. */
@@ -33,11 +54,10 @@ export const FIXTURE_ACTORS: readonly TaskActor[] = [
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-export function fixtureSeed(nowMs: number): FixtureSeed {
+/** An open task, filed six days before `nowMs`, with `fields` set over it. */
+function taskAt(nowMs: number) {
   const at = (ago: number) => new Date(nowMs - ago).toISOString();
-  const day = (ahead: number) => new Date(nowMs + ahead * DAY).toISOString().slice(0, 10);
-
-  const base = (project: string, id: string, title: string, fields: Partial<LiveTask> = {}): FixtureTask => ({
+  return (project: string, id: string, title: string, fields: Partial<LiveTask> = {}): FixtureTask => ({
     project,
     id,
     title,
@@ -66,6 +86,12 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     awaitType: null,
     ...fields,
   });
+}
+
+export function fixtureSeed(nowMs: number): FixtureSeed {
+  const at = (ago: number) => new Date(nowMs - ago).toISOString();
+  const day = (ahead: number) => new Date(nowMs + ahead * DAY).toISOString().slice(0, 10);
+  const base = taskAt(nowMs);
 
   const closed = (ago: number, by: string, reason: string, fields: Partial<LiveTask> = {}): Partial<LiveTask> => ({
     status: 'closed',
@@ -322,4 +348,63 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
   ]);
 
   return { projects, tasks, comments, fields };
+}
+
+/** Who signs in to the fixture API, as a member of a workspace. */
+export const FIXTURE_USER: WorkspaceMember = {
+  userId: 'u-example-owner',
+  name: FIXTURE_ACTOR,
+  githubLogin: 'example-owner',
+  role: 'owner',
+};
+
+/**
+ * The workspaces the fixture API's sign-in reaches: Example, which it owns,
+ * with `seed`'s projects (by default `fixtureSeed`'s), two other members and
+ * an invitation; and Example Labs, where it is a member, with one project.
+ */
+export function fixtureWorkspaces(nowMs: number, seed: FixtureSeed = fixtureSeed(nowMs)): FixtureWorkspace[] {
+  const at = (ago: number) => new Date(nowMs - ago).toISOString();
+  const task = taskAt(nowMs);
+  const labs: FixtureSeed = {
+    projects: [{ projectId: 'p-lab', logicalKey: 'lab', displayName: 'Example research', prefix: 'lab' }],
+    tasks: [
+      task('lab', 'lab-r2k8', 'Compare search ranking on the sample queries', { ready: true, priority: 1 }),
+      task('lab', 'lab-t5w1', 'Write up the indexing benchmark', {
+        status: 'in_progress',
+        assignee: CLAUDE,
+        startedAt: at(3 * HOUR),
+        updatedAt: at(HOUR),
+      }),
+    ],
+    comments: new Map(),
+    fields: new Map([['lab', []]]),
+  };
+  return [
+    {
+      workspaceId: '0f6c2a52-6d1e-4c39-9a57-2f1b8e4d7a10',
+      name: 'Example',
+      role: 'owner',
+      seed,
+      members: [
+        FIXTURE_USER,
+        { userId: 'u-example-member', name: 'Example Member', githubLogin: 'example-member', role: 'member' },
+        { userId: 'u-example-lead', name: 'Example Lead', githubLogin: 'example-lead', role: 'owner' },
+      ],
+      invitations: [
+        { invitationId: 'i-example-invitee', githubLogin: 'example-invitee', role: 'member', createdAt: at(2 * DAY) },
+      ],
+    },
+    {
+      workspaceId: '5b3e9d84-1c27-4f60-8e2a-7c4d1a9b6e35',
+      name: 'Example Labs',
+      role: 'member',
+      seed: labs,
+      members: [
+        { userId: 'u-example-lead', name: 'Example Lead', githubLogin: 'example-lead', role: 'owner' },
+        { ...FIXTURE_USER, role: 'member' },
+      ],
+      invitations: [],
+    },
+  ];
 }

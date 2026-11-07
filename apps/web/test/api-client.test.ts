@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, createHttpTasksApi, retryRead, UnreadableAnswer } from '@/api/client';
+import {
+  ApiError,
+  createHttpTasksApi,
+  refusedField,
+  retryRead,
+  UnreadableAnswer,
+  WORKSPACE_HEADER,
+} from '@/api/client';
 
 interface Sent {
   url: string;
@@ -290,5 +297,131 @@ describe('the HTTP Tasks API client', () => {
       code: 'task_refused',
       message: 'Task web-a1b2 is held by agent-one.',
     });
+  });
+});
+
+describe('the workspace a call is made in', () => {
+  /** A server whose project list names the workspace it was asked in, recording each request and its workspace. */
+  function workspaces(answer: (path: string) => Response = () => Response.json({})) {
+    const sent: { method: string; url: string; workspace: string | null; body: unknown }[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holding = false;
+    const api = createHttpTasksApi(async (url, init) => {
+      const workspace = new Headers(init?.headers).get(WORKSPACE_HEADER);
+      sent.push({
+        method: init?.method ?? 'GET',
+        url,
+        workspace,
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
+      });
+      if (url === '/api/tasks/projects') {
+        if (holding) await held;
+        return Response.json({
+          projects: [{ projectId: `p-${workspace}`, logicalKey: 'web', displayName: 'Example web app', prefix: 'web' }],
+        });
+      }
+      return answer(url);
+    });
+    return {
+      api,
+      sent,
+      hold: () => {
+        holding = true;
+      },
+      release,
+    };
+  }
+
+  it('names the selected workspace on every call in it, and on none of the calls about the sign-in', async () => {
+    const { api, sent } = workspaces((url) =>
+      url === '/api/workspaces'
+        ? Response.json({ workspaces: [{ workspaceId: 'ws-a', name: 'Example', role: 'owner' }] })
+        : url === '/api/access/me'
+          ? Response.json({ kind: 'person', name: 'Example Owner', deploymentAdmin: true })
+          : url === '/api/access/members'
+            ? Response.json({ members: [], invitations: [] })
+            : Response.json({ project: 'web', tasks: [] }),
+    );
+    await api.workspaces();
+    await api.account();
+    api.selectWorkspace('ws-a');
+    await api.board('web');
+    await api.createProject({ name: 'Example shop', prefix: 'shop' });
+    await api.members();
+    await api.invite({ githubLogin: 'example-new', role: 'member' });
+    await api.revokeInvitation('i-1');
+    await api.removeMember('u-2');
+    expect(sent.map((request) => [request.method, request.url, request.workspace, request.body])).toEqual([
+      ['GET', '/api/workspaces', null, null],
+      ['GET', '/api/access/me', null, null],
+      ['GET', '/api/tasks/projects', 'ws-a', null],
+      ['GET', '/api/tasks?project=p-ws-a', 'ws-a', null],
+      ['POST', '/api/tasks/projects', 'ws-a', { name: 'Example shop', prefix: 'shop' }],
+      ['GET', '/api/access/members', 'ws-a', null],
+      ['POST', '/api/access/invitations', 'ws-a', { githubLogin: 'example-new', role: 'member' }],
+      ['POST', '/api/access/invitations/i-1/revoke', 'ws-a', {}],
+      ['POST', '/api/access/members/u-2/remove', 'ws-a', {}],
+    ]);
+  });
+
+  it("finishes a call in the workspace it started in, and reads each workspace's own projects", async () => {
+    const { api, sent, hold, release } = workspaces(() => Response.json({ project: 'web', tasks: [] }));
+    api.selectWorkspace('ws-a');
+    hold();
+    const started = api.board('web');
+    api.selectWorkspace('ws-b');
+    release();
+    await started;
+    await api.board('web');
+    expect(sent.map((request) => [request.url, request.workspace])).toEqual([
+      ['/api/tasks/projects', 'ws-a'],
+      ['/api/tasks?project=p-ws-a', 'ws-a'],
+      ['/api/tasks/projects', 'ws-b'],
+      ['/api/tasks?project=p-ws-b', 'ws-b'],
+    ]);
+  });
+
+  it('reads a new workspace, the members, and a role this build does not know as a member', async () => {
+    const { api } = workspaces((url) =>
+      url === '/api/workspaces'
+        ? Response.json({ workspace: { workspaceId: 'ws-new', name: 'Example Co', role: 'owner' } }, { status: 201 })
+        : Response.json({
+            members: [{ userId: 'u-1', name: 'Example Owner', githubLogin: 'example-owner', role: 'admin' }],
+            invitations: [{ invitationId: 'i-1', githubLogin: 'example-new', role: 'owner' }],
+          }),
+    );
+    await expect(api.createWorkspace('Example Co')).resolves.toEqual({
+      workspaceId: 'ws-new',
+      name: 'Example Co',
+      role: 'owner',
+    });
+    await expect(api.members()).resolves.toEqual({
+      members: [{ userId: 'u-1', name: 'Example Owner', githubLogin: 'example-owner', role: 'member' }],
+      invitations: [{ invitationId: 'i-1', githubLogin: 'example-new', role: 'owner', createdAt: null }],
+    });
+  });
+});
+
+describe('the field a refusal is about', () => {
+  it("is the field the server names, else the one its sentence starts with, and none for a server's failure", () => {
+    const fields = ['name', 'prefix'] as const;
+    expect(refusedField(new ApiError('That is taken.', 409, 'project_exists', 'prefix'), fields)).toBe('prefix');
+    expect(refusedField(new ApiError('Prefix web is taken.', 409, 'project_exists'), fields)).toBe('prefix');
+    expect(refusedField(new ApiError('name must be 1 to 80 characters.', 400, 'invalid_request'), fields)).toBe('name');
+    expect(refusedField(new ApiError('Only an owner may do that.', 403, 'forbidden'), fields)).toBeNull();
+    expect(refusedField(new ApiError('prefix: the server answered 503.', 503, null), fields)).toBeNull();
+    expect(refusedField(new Error('prefix'), fields)).toBeNull();
+  });
+
+  it("reads the field from the server's refusal", async () => {
+    const api = createHttpTasksApi(async () =>
+      Response.json({ error: 'invalid_request', detail: 'That prefix is taken.', field: 'prefix' }, { status: 409 }),
+    );
+    api.selectWorkspace('ws-a');
+    const error: unknown = await api.createProject({ name: 'Example', prefix: 'web' }).catch((failure) => failure);
+    expect(refusedField(error, ['name', 'prefix'])).toBe('prefix');
   });
 });

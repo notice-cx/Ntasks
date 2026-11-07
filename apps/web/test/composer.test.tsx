@@ -9,7 +9,7 @@ describe('the composer', () => {
   it('opens from New task and files a task from its title, project and Enter', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    fireEvent.click(await enabledButton('New task', screen.getByRole('main')));
+    fireEvent.click(await enabledButton('New task', await screen.findByRole('main')));
     const dialog = await screen.findByRole('dialog', { name: 'File a task' });
     const title = within(dialog).getByLabelText(/Title/);
     expect(title.getAttribute('aria-required')).toBe('true');
@@ -143,9 +143,9 @@ describe('the composer', () => {
     seed.projects = seed.projects.filter((project) => project.logicalKey === 'docs');
     seed.tasks = seed.tasks.filter((task) => task.project === 'docs');
     renderApp('/tasks?new=1', createFixtureTasksApi({ seed }));
-    const select = screen.getByLabelText(/^Project/, {
+    const select = (await screen.findByLabelText(/^Project/, {
       selector: 'select[data-composer-project]',
-    }) as HTMLSelectElement;
+    })) as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe('docs'));
   });
 

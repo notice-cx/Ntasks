@@ -292,3 +292,56 @@ export interface CloseOptions {
   resolution?: TaskResolution;
   duplicateOf?: string;
 }
+
+/** What a person may do in a workspace. Both read, write and decide; an owner also manages its members and projects. */
+export type WorkspaceRole = 'owner' | 'member';
+
+/** One workspace the sign-in reaches, as `GET /api/workspaces` lists it. */
+export interface Workspace {
+  workspaceId: string;
+  name: string;
+  role: WorkspaceRole;
+}
+
+/** Who is signed in, as `GET /api/access/me` answers. */
+export interface Account {
+  name: string;
+  /** One of the deployment's admins, who alone create workspaces. */
+  deploymentAdmin: boolean;
+}
+
+/** A new project, as `POST /api/tasks/projects` takes it. */
+export interface NewProject {
+  name: string;
+  /** Starts every task id in the project: lowercase letters and digits. */
+  prefix: string;
+}
+
+/** A person in the workspace. */
+export interface WorkspaceMember {
+  userId: string;
+  name: string;
+  /** The GitHub account they sign in with, when the server names it. */
+  githubLogin: string | null;
+  role: WorkspaceRole;
+}
+
+/** A GitHub account invited to the workspace that has not signed in yet. */
+export interface WorkspaceInvitation {
+  invitationId: string;
+  githubLogin: string;
+  role: WorkspaceRole;
+  createdAt: string | null;
+}
+
+/** The workspace's members and its pending invitations, as `GET /api/access/members` answers. */
+export interface WorkspaceMembers {
+  members: WorkspaceMember[];
+  invitations: WorkspaceInvitation[];
+}
+
+/** An invitation, as `POST /api/access/invitations` takes it. */
+export interface NewInvitation {
+  githubLogin: string;
+  role: WorkspaceRole;
+}

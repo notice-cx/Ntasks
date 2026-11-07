@@ -7,15 +7,18 @@
 import {
   Activity,
   ArrowUpRight,
+  Building2,
   Bell,
   Calendar,
   Check,
   ChevronDown,
+  ChevronsUpDown,
   Clock,
   Command,
   Copy,
   CornerDownLeft,
   Ellipsis,
+  Folder,
   GitPullRequest,
   Hand,
   Inbox,
@@ -36,6 +39,7 @@ import {
   Target,
   Undo2,
   UserPlus,
+  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -72,6 +76,7 @@ import {
   SidebarHeader,
   SidebarSpacer,
   TopBar,
+  WorkspaceButton,
 } from '@/components/ui/shell';
 import { GitHubMark, NtasksLogo, PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
 import { COLOUR_TOKENS, type ColourToken } from '@/lib/design-tokens';
@@ -128,6 +133,10 @@ const ICONS: readonly [string, LucideIcon][] = [
   ['paperclip', Paperclip],
   ['keyboard', Keyboard],
   ['command', Command],
+  ['chevrons-up-down', ChevronsUpDown],
+  ['folder', Folder],
+  ['users', Users],
+  ['building-2', Building2],
 ];
 
 const TYPE_SAMPLES: readonly { name: string; spec: string; sample: ReactNode }[] = [
@@ -850,7 +859,7 @@ function ShellSample() {
         className="min-h-0"
         sidebar={
           <Sidebar aria-label="Sample sidebar" className="static h-auto">
-            <SidebarHeader name="Ntasks">
+            <SidebarHeader name={<WorkspaceButton>Example</WorkspaceButton>}>
               <IconButton size="sm" label="Search" shortcut="/" icon={<Search aria-hidden />} />
               <IconButton size="sm" label="New task" shortcut="C" icon={<Pencil aria-hidden />} />
             </SidebarHeader>
@@ -890,8 +899,11 @@ function ShellSample() {
               </NavItem>
             </NavSection>
             <SidebarSpacer />
-            <NavItem href="#settings" icon={<Settings aria-hidden />}>
-              Settings
+            <NavItem href="#projects" icon={<Folder aria-hidden />}>
+              Projects
+            </NavItem>
+            <NavItem href="#members" icon={<Users aria-hidden />}>
+              Members
             </NavItem>
           </Sidebar>
         }
