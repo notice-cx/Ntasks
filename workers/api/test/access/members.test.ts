@@ -286,10 +286,13 @@ describe('removing an owner', () => {
     expect((await meWithToken(token)).status).toBe(200);
     // An invitation for their own login waits too, as a promotion would.
     await invited(owner, workspace, 'person-2112', 'owner');
+    // One the removal has no reason to touch.
+    const unrelated = await invited(owner, workspace, 'person-2199');
 
     expect(await remove(owner, workspace, removedId)).toEqual({ status: 200, body: { removed: true } });
 
-    expect((await members(owner, workspace)).body.invitations).toEqual([]);
+    const open = (await members(owner, workspace)).body.invitations as { invitationId: string }[];
+    expect(open.map((invitation) => invitation.invitationId)).toEqual([unrelated]);
     expect((await signIn(2113)).landed.searchParams.get('error')).toBe('not_invited');
     expect((await signIn(2112)).landed.searchParams.get('error')).toBe('not_invited');
     expect((await meWithToken(token)).status).toBe(401);
@@ -329,6 +332,15 @@ describe('a sign-in whose invitation goes while it runs', () => {
       const { browser, landed } = await signIn(2115);
       expect(landed.pathname).not.toBe('/');
       expect((await browser.fetch('/api/access/me')).status).toBe(401);
+      // The trigger ran after the account row was made, so the refusal came from the session hook.
+      const revoked = await env.DB.prepare('SELECT revoked_at FROM workspace_invitations WHERE id = ?')
+        .bind(invitationId)
+        .first<{ revoked_at: string | null }>();
+      expect(revoked?.revoked_at).not.toBeNull();
+      const memberships = await env.DB.prepare('SELECT count(*) AS n FROM workspace_members WHERE user_id = ?')
+        .bind(await idOf(2115))
+        .first<{ n: number }>();
+      expect(memberships?.n).toBe(0);
     } finally {
       await env.DB.prepare('DROP TRIGGER revoke_during_sign_in').run();
     }
