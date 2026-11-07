@@ -53,12 +53,30 @@ export class DevTools {
     return new DevTools(socket);
   }
 
-  send<T>(method: string, params: object = {}, sessionId?: string): Promise<T> {
+  /**
+   * Sends one request and resolves with its answer. With `signal`, aborting
+   * stops the wait: the request fails with the signal's reason, and a late
+   * answer to it is dropped.
+   */
+  send<T>(
+    method: string,
+    params: object = {},
+    { sessionId, signal }: { sessionId?: string; signal?: AbortSignal } = {},
+  ): Promise<T> {
     if (this.#closed) return Promise.reject(this.#closed);
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const id = this.#next++;
     const answer = new Promise<T>((resolve, reject) => {
       this.#waiting.set(id, { resolve: resolve as (value: unknown) => void, reject });
     });
+    signal?.addEventListener(
+      'abort',
+      () => {
+        this.#waiting.get(id)?.reject(signal.reason as Error);
+        this.#waiting.delete(id);
+      },
+      { once: true },
+    );
     this.#socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     return answer;
   }
@@ -76,26 +94,40 @@ export class DevTools {
 
 /**
  * Resolves once `check` answers true, asking every 100 ms; rejects after
- * `waitMs` with `what` in its message. A check that fails rejects at once,
- * with that failure, unless `retryFailures` is set: then a failure counts as
- * not yet, as when a server that is starting refuses a connection.
+ * `waitMs` with `what` in its message, even while a check is still waiting
+ * on its answer. Each check gets a signal that aborts at the deadline, so a
+ * request it started is cancelled rather than left running. A check that
+ * fails rejects at once, with that failure, unless `retryFailures` is set:
+ * then a failure counts as not yet, as when a server that is starting
+ * refuses a connection.
  */
 export async function until(
   what: string,
-  check: () => Promise<boolean>,
+  check: (signal: AbortSignal) => Promise<boolean>,
   { waitMs, retryFailures = false }: { waitMs: number; retryFailures?: boolean },
 ): Promise<void> {
-  const end = Date.now() + waitMs;
-  for (;;) {
-    let holds: boolean;
-    try {
-      holds = await check();
-    } catch (error) {
-      if (!retryFailures) throw error;
-      holds = false;
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new Error(`Timed out waiting for ${what}.`)), waitMs);
+  const expired = new Promise<never>((_, reject) => {
+    deadline.signal.addEventListener('abort', () => reject(deadline.signal.reason as Error), { once: true });
+  });
+  // Only a race below reads this; once until returns, nothing does.
+  expired.catch(() => undefined);
+  let pause: ReturnType<typeof setTimeout> | undefined;
+  try {
+    for (;;) {
+      let holds: boolean;
+      try {
+        holds = await Promise.race([check(deadline.signal), expired]);
+      } catch (error) {
+        if (deadline.signal.aborted || !retryFailures) throw deadline.signal.aborted ? deadline.signal.reason : error;
+        holds = false;
+      }
+      if (holds) return;
+      await Promise.race([new Promise((resolve) => (pause = setTimeout(resolve, 100))), expired]);
     }
-    if (holds) return;
-    if (Date.now() > end) throw new Error(`Timed out waiting for ${what}.`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    clearTimeout(timer);
+    clearTimeout(pause);
   }
 }

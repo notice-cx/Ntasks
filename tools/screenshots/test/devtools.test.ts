@@ -29,7 +29,7 @@ describe('the DevTools client', () => {
     const socket = new StandInSocket();
     const devtools = new DevTools(socket);
     const first = devtools.send('Page.enable');
-    const second = devtools.send('Runtime.evaluate', { expression: '1' }, 'session-1');
+    const second = devtools.send('Runtime.evaluate', { expression: '1' }, { sessionId: 'session-1' });
     assert.deepEqual(JSON.parse(socket.sent[1] ?? ''), {
       id: 2,
       method: 'Runtime.evaluate',
@@ -52,6 +52,20 @@ describe('the DevTools client', () => {
     await assert.rejects(capturing, /connection to Chrome closed/);
     await assert.rejects(devtools.send('Page.navigate'), /connection to Chrome closed/);
     assert.equal(socket.sent.length, 2);
+  });
+
+  it('stops waiting for a request whose signal aborts, and drops its late answer', async () => {
+    const socket = new StandInSocket();
+    const devtools = new DevTools(socket);
+    const stop = new AbortController();
+    const waiting = devtools.send('Runtime.evaluate', {}, { signal: stop.signal });
+    stop.abort(new Error('Timed out waiting for the page to draw.'));
+    await assert.rejects(waiting, /Timed out waiting for the page to draw/);
+    // The answer that arrives after the abort is dropped, and the client keeps working.
+    socket.deliver('message', JSON.stringify({ id: 1, result: {} }));
+    const next = devtools.send('Page.enable');
+    socket.deliver('message', JSON.stringify({ id: 2, result: { ok: true } }));
+    assert.deepEqual(await next, { ok: true });
   });
 
   it('fails waiting requests when the connection errors', async () => {
@@ -87,6 +101,24 @@ describe('until', () => {
       { waitMs: 5_000, retryFailures: true },
     );
     assert.equal(asked, 3);
+  });
+
+  it('gives up on time while a check never answers, and aborts that check', async () => {
+    let handed: AbortSignal | undefined;
+    const started = Date.now();
+    await assert.rejects(
+      until(
+        'the page to draw',
+        (signal) => {
+          handed = signal;
+          return new Promise<boolean>(() => {});
+        },
+        { waitMs: 150 },
+      ),
+      /Timed out waiting for the page to draw/,
+    );
+    assert.ok(Date.now() - started < 1_000);
+    assert.equal(handed?.aborted, true);
   });
 
   it('gives up after its time, naming what it waited for', async () => {

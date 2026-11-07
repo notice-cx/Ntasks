@@ -113,7 +113,10 @@ async function startApp(): Promise<ChildProcess> {
   try {
     // Until Vite listens, a request is refused: that is "not yet", not a failure.
     await Promise.race([
-      until('the web app', async () => (await fetch(ORIGIN)).ok, { waitMs: WAIT_MS, retryFailures: true }),
+      until('the web app', async (signal) => (await fetch(ORIGIN, { signal })).ok, {
+        waitMs: WAIT_MS,
+        retryFailures: true,
+      }),
       exited,
     ]);
   } catch (error) {
@@ -167,7 +170,8 @@ async function startChrome(profile: string): Promise<{ chrome: ChildProcess; end
 }
 
 async function capture(devtools: DevTools, session: string, shot: Shot, theme: (typeof THEMES)[number]) {
-  const send = <T>(method: string, params: object = {}) => devtools.send<T>(method, params, session);
+  const send = <T>(method: string, params: object = {}, signal?: AbortSignal) =>
+    devtools.send<T>(method, params, { sessionId: session, ...(signal ? { signal } : {}) });
   await send('Emulation.setDeviceMetricsOverride', {
     width: shot.width,
     height: shot.height,
@@ -186,11 +190,12 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   // A failed request, as when Chrome exits, ends the wait at once.
   await until(
     `${shot.address} to draw`,
-    async () => {
-      const answer = await send<{ result: { value: unknown } }>('Runtime.evaluate', {
-        expression: drawn,
-        returnByValue: true,
-      });
+    async (signal) => {
+      const answer = await send<{ result: { value: unknown } }>(
+        'Runtime.evaluate',
+        { expression: drawn, returnByValue: true },
+        signal,
+      );
       return answer.result.value === true;
     },
     { waitMs: WAIT_MS },
@@ -215,7 +220,7 @@ async function main() {
       targetId,
       flatten: true,
     });
-    await devtools.send('Page.enable', {}, sessionId);
+    await devtools.send('Page.enable', {}, { sessionId });
     for (const shot of SHOTS) {
       for (const theme of THEMES) {
         const file = await capture(devtools, sessionId, shot, theme);
