@@ -53,8 +53,16 @@ const SHOTS: readonly Shot[] = [
     scale: 1.5,
     ready: '[data-markdown] pre .hljs-keyword',
   },
-  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' },
-  // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
+  // A decision with options, so the card shows its keys, Note, Not now and Answer.
+  {
+    name: 'focus',
+    address: '/tasks/focus?task=web-d4x1',
+    width: 1100,
+    height: 760,
+    scale: 1.5,
+    ready: '[data-focus-decision] [role="radio"]',
+  },
+  { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' }, // docs/design.md shows it 800 pixels wide, as the README shows the desktop shots.
   {
     name: 'design',
     address: '/design',

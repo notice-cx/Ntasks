@@ -29,6 +29,28 @@ export function formatAge(ms: number | null): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** An estimate in whole minutes as hours and minutes: `45m`, `2h`, `1h 30m`. */
+export function formatMinutes(minutes: number): string {
+  const whole = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(whole / 60);
+  const rest = whole % 60;
+  if (hours === 0) return `${rest}m`;
+  return rest === 0 ? `${formatInt(hours)}h` : `${formatInt(hours)}h ${rest}m`;
+}
+
+/** A custom field's key as a name, until the page reads the field's own: `story_points` is Story points. */
+export function fieldKeyName(key: string): string {
+  const words = key.replace(/[_-]+/g, ' ').trim();
+  return words === '' ? key : words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** A custom field's value in words: yes or no, a list joined by commas, anything else as it is. */
+export function fieldValueText(value: string | number | boolean | readonly string[]): string {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
+}
+
 const DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 const DAY_YEAR = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 

@@ -85,6 +85,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       priority: 1,
       description:
         'WHAT: Replace the sign-in page with the new form.\nWHY: 1 in 5 visitors who start signing in give up on the old form.\nWHERE: `src/pages/sign-in.tsx`',
+      design: 'One form, two steps: the email address first, then the way to sign in.',
       createdAt: at(12 * DAY),
     }),
     base('web', 'web-k3m9.1', 'Draw the sign-in form', {
@@ -104,6 +105,17 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       description: 'Walk the form with the keyboard and a screen reader, and fix what they cannot reach.',
       acceptance:
         '- [x] Every field is reachable with Tab\n- [ ] Every error is announced\n- [ ] The submit button names what it does',
+      notes: 'Tab order fixed. The error under the password field is not announced yet.',
+      estimateMinutes: 90,
+      dueAt: at(-2 * DAY),
+      externalLinks: [
+        {
+          url: 'https://github.example.com/example/web/pull/42',
+          title: 'Fix the tab order on the sign-in form',
+          kind: 'pull-request',
+        },
+      ],
+      fields: { area: 'Accessibility', story_points: 3 },
       comments: 1,
     }),
     base('web', 'web-k3m9.3', 'Send the new sign-in page to every visitor', {

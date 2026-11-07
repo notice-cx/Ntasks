@@ -27,9 +27,16 @@ describe('answering a decision', () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-d4x1', api);
     expect(await screen.findByText('Which sign-in methods should the page offer?')).toBeTruthy();
-    expect(screen.getByText('Needs your choice')).toBeTruthy();
+    const facts = screen.getByRole('complementary', { name: 'Facts' });
+    expect(within(facts).getByText('Waiting for you')).toBeTruthy();
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'Fewer paths to support.' } });
-    fireEvent.click(await enabledButton('(a) Email link only'));
+    // A press selects an option; Answer sends it.
+    await waitFor(() =>
+      expect((screen.getByRole('radio', { name: /Email link only/ }) as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Email link only/ }));
+    expect(task(api, 'web-d4x1')?.choice).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
 
     // The pick is drawn at once and the toast offers Undo; nothing is sent yet.
     expect(await screen.findByText('Chose (a) Email link only')).toBeTruthy();
@@ -44,8 +51,10 @@ describe('answering a decision', () => {
       by: FIXTURE_ACTOR,
       note: 'Fewer paths to support.',
     });
-    // Read again, the page records who chose and how.
-    expect(await screen.findByRole('region', { name: 'Choice' })).toBeTruthy();
+    // Read again, the page records who chose and how, with the options as a record.
+    const choice = await screen.findByRole('region', { name: 'Choice' });
+    expect(choice.querySelector('[data-choice-chosen]')?.getAttribute('data-choice-option')).toBe('a');
+    expect(within(choice).queryByRole('radio')).toBeNull();
   });
 
   it('Undo cancels an answer before it is sent', async () => {
@@ -78,6 +87,19 @@ describe('answering a decision', () => {
     await waitFor(() => expect(task(api, 'web-q8n5')?.labels).not.toContain('human'));
     expect(api.state.comments.get('web-q8n5')?.[0]?.text).toBe('support@example.com');
     expect(task(api, 'web-q8n5')?.status).toBe('open');
+  });
+
+  it('answers a question on its page', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks/web-q8n5', api);
+    fireEvent.click(await enabledButton('Answer'));
+    const box = screen.getByRole('textbox', { name: 'Your answer to web-q8n5' });
+    fireEvent.change(box, { target: { value: 'help@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    // The answer waits in the Undo window, and the page offers nothing more to do meanwhile.
+    expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull();
+    await waitOutUndo();
+    await waitFor(() => expect(api.state.comments.get('web-q8n5')?.[0]?.text).toBe('help@example.com'));
   });
 
   it("closes a question as Won't do, with its note", async () => {

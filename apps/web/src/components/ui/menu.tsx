@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -18,10 +18,12 @@ import { roveFocus } from './rove';
  * A menu of actions, on a Popover. Each item has a 15 px icon, a label and
  * its key. While the menu is open, ↑ and ↓ move between items, Enter runs
  * the focused one, and an item's letter runs it directly; Escape closes it.
+ * A menu that picks a value marks the value held with a tick (`checked`) and
+ * opens on it.
  */
 const MenuContext = createContext<{ close: () => void } | null>(null);
 
-const ITEM = '[role="menuitem"]:not([disabled])';
+const ITEM = '[role^="menuitem"]:not([disabled])';
 
 export function Menu({
   children,
@@ -57,12 +59,15 @@ export function MenuContent({
   children,
   label,
   align = 'start',
+  footer,
   className,
 }: {
   children: ReactNode;
   /** The menu's name for a screen reader, such as the task it acts on. */
   label: string;
   align?: 'start' | 'center' | 'end';
+  /** What follows the items outside the menu itself, such as a field for a value the items do not hold. */
+  footer?: ReactNode;
   className?: string;
 }) {
   return (
@@ -75,6 +80,7 @@ export function MenuContent({
       <MenuPanel label={label} autoFocus>
         {children}
       </MenuPanel>
+      {footer ? <div className="border-t border-border p-1">{footer}</div> : null}
     </PopoverContent>
   );
 }
@@ -93,7 +99,9 @@ export function MenuPanel({
 }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (autoFocus) panel.current?.querySelector<HTMLElement>(ITEM)?.focus();
+    if (!autoFocus) return;
+    const items = panel.current?.querySelectorAll<HTMLElement>(ITEM) ?? [];
+    ([...items].find((item) => item.getAttribute('aria-checked') === 'true') ?? items[0])?.focus();
   }, [autoFocus]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -126,6 +134,7 @@ export function MenuItem({
   shortcut,
   submenu = false,
   keepOpen = false,
+  checked,
   disabled = false,
   onSelect,
   className,
@@ -139,6 +148,8 @@ export function MenuItem({
   submenu?: boolean;
   /** The menu stays open after it runs, as for an item that goes back to the previous list. */
   keepOpen?: boolean;
+  /** One of a set of values: true on the value held, which ends in a tick. */
+  checked?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
   className?: string;
@@ -148,7 +159,8 @@ export function MenuItem({
   return (
     <button
       type="button"
-      role="menuitem"
+      role={checked === undefined ? 'menuitem' : 'menuitemradio'}
+      aria-checked={checked}
       tabIndex={-1}
       disabled={disabled}
       aria-haspopup={submenu ? 'menu' : undefined}
@@ -171,6 +183,10 @@ export function MenuItem({
         <ChevronRight aria-hidden size={14} strokeWidth={1.75} className="text-ink-3" />
       ) : shortcut ? (
         <Kbd aria-hidden>{shortcut.length === 1 ? shortcut.toUpperCase() : shortcut}</Kbd>
+      ) : checked ? (
+        <span aria-hidden className="inline-flex text-accent">
+          <Check size={15} strokeWidth={2} />
+        </span>
       ) : null}
     </button>
   );

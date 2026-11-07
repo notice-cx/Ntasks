@@ -18,14 +18,10 @@ export const THEME_TEXT_SIZES = [
   'heading',
   'page-title',
   'task-title',
-  'display',
-  'figure',
-  'figure-sm',
-  'micro',
 ] as const;
 
 /** The elevations index.css defines; unlisted, `shadow-pop` would be read as a shadow colour. */
-export const THEME_SHADOWS = ['raise', 'pop', 'raised'] as const;
+export const THEME_SHADOWS = ['raise', 'pop'] as const;
 
 const twMerge = extendTailwindMerge({
   extend: { theme: { text: [...THEME_TEXT_SIZES], shadow: [...THEME_SHADOWS] } },

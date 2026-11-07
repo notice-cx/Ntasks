@@ -1,12 +1,12 @@
-import { useId, useRef, useState, type ComponentType, type KeyboardEvent } from 'react';
-import { CheckCheck, ChevronDown, CircleSlash, Copy, Lock, SearchX } from 'lucide-react';
-import { isTaskId, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
+import { useState, type ComponentType, type FormEvent } from 'react';
+import { Check, CheckCheck, ChevronDown, CircleSlash, Copy, SearchX } from 'lucide-react';
+import { toast } from 'sonner';
+import { isTaskId, type TaskResolution } from '@ntasks/domain';
 import { Button } from '@/components/ui/button';
-import { fieldClass, pillChoiceClass, pillChoiceStateClass } from '@/components/ui/chrome';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { focusStart, roveFocus } from '@/components/ui/rove';
+import { Field, Input, Textarea } from '@/components/ui/field';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
+import { useCloseTask } from '@/hooks/useTasks';
 import { NOT_DONE, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
-import { cn } from '@/lib/utils';
 
 /** Each close where nothing shipped wears a glyph beside its words; none has a colour of its own. */
 export const RESOLUTION_GLYPH: Readonly<Record<NotDone, ComponentType<{ className?: string }>>> = {
@@ -18,142 +18,62 @@ export const RESOLUTION_GLYPH: Readonly<Record<NotDone, ComponentType<{ classNam
 };
 
 /**
- * The ways a close ends, as one row of chips, Done first: a radio group whose
- * arrow keys move the pick. Every chip keeps its border, so a press never
- * reflows the row.
+ * The ways a close can end, as a menu on a button: Done first when the task
+ * can be closed as done, then each close where nothing shipped. Picking one
+ * hands it to `onPick`, which opens the form that finishes it.
  */
-export function ResolutionChips({
-  value,
-  onChange,
-}: {
-  value: TaskResolution;
-  onChange: (resolution: TaskResolution, byKey: boolean) => void;
-}) {
-  const chips = useRef<(HTMLButtonElement | null)[]>([]);
-  function step(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const last = TASK_RESOLUTIONS.length - 1;
-    const to =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? last
-          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
-            ? index === last
-              ? 0
-              : index + 1
-            : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-              ? index === 0
-                ? last
-                : index - 1
-              : null;
-    if (to === null) return;
-    event.preventDefault();
-    onChange(TASK_RESOLUTIONS[to] ?? 'done', true);
-    chips.current[to]?.focus();
-  }
-  return (
-    <div role="radiogroup" aria-label="How it ended" className="flex flex-wrap gap-1.5" data-resolution-chips="">
-      {TASK_RESOLUTIONS.map((resolution, index) => {
-        const picked = resolution === value;
-        return (
-          <button
-            key={resolution}
-            ref={(node) => {
-              chips.current[index] = node;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={picked}
-            tabIndex={picked ? 0 : -1}
-            className={cn(pillChoiceClass, pillChoiceStateClass(picked), 'py-1.5 motion-safe:active:scale-[0.97]')}
-            data-resolution={resolution}
-            onClick={() => onChange(resolution, false)}
-            onKeyDown={(event) => step(event, index)}
-          >
-            <span
-              aria-hidden
-              className={cn('size-2.5 shrink-0 rounded-full border-[1.5px] border-current', picked && 'bg-current')}
-            />
-            {RESOLUTION_LABELS[resolution]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** The closes where nothing shipped, as a menu beside a row's other verbs. */
-export function CloseAsMenu({
-  onPick,
+export function CloseMenu({
+  label,
   subject,
+  done = false,
+  onPick,
+  variant = 'secondary',
   disabledReason = null,
 }: {
-  onPick: (resolution: NotDone) => void;
+  /** The button's words: Close, or Close as when Done is not on offer. */
+  label: string;
+  /** What the menu closes, named for a screen reader. */
   subject: string;
+  done?: boolean;
+  onPick: (resolution: TaskResolution) => void;
+  variant?: 'primary' | 'secondary' | 'ghost';
+  /** Why this sign-in cannot close it, shown as the button's tip; null when it can. */
   disabledReason?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const reasonId = useId();
-  const disabled = disabledReason !== null;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
-            aria-haspopup="menu"
-            disabled={disabled}
-            aria-describedby={disabledReason ? reasonId : undefined}
-            data-close-as-trigger=""
-          >
-            Close as
-            <ChevronDown aria-hidden className={cn('motion-safe:transition-transform', open && 'rotate-180')} />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          role="menu"
-          aria-label={`Close ${subject} as`}
-          align="end"
-          className="w-52 p-1.5"
-          data-close-as-menu=""
-          // A menu opens on its first item and moves with the arrow keys.
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            focusStart(event.target as HTMLElement, '[role="menuitem"]');
-          }}
-          onKeyDown={(event) => roveFocus(event, '[role="menuitem"]')}
+    <Menu>
+      <MenuTrigger asChild>
+        <Button
+          type="button"
+          variant={variant}
+          disabled={disabledReason !== null}
+          title={disabledReason ?? undefined}
+          data-close-trigger=""
         >
-          {NOT_DONE.map((resolution) => {
-            const Glyph = RESOLUTION_GLYPH[resolution];
-            return (
-              <button
-                key={resolution}
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm text-foreground outline-none hover:bg-muted focus-visible:bg-muted max-sm:min-h-11"
-                onClick={() => {
-                  setOpen(false);
-                  onPick(resolution);
-                }}
-                data-close-as={resolution}
-              >
-                <Glyph className="size-4 shrink-0 text-muted-foreground" />
-                {RESOLUTION_LABELS[resolution]}
-              </button>
-            );
-          })}
-        </PopoverContent>
-      </Popover>
-      {disabledReason ? (
-        <span id={reasonId} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="size-3.5 shrink-0" aria-hidden />
-          {disabledReason}
-        </span>
-      ) : null}
-    </span>
+          <Check aria-hidden />
+          {label}
+          <ChevronDown aria-hidden />
+        </Button>
+      </MenuTrigger>
+      <MenuContent label={`Close ${subject} as`} align="end">
+        {done ? (
+          <>
+            <MenuItem icon={<Check aria-hidden />} onSelect={() => onPick('done')}>
+              {RESOLUTION_LABELS.done}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        ) : null}
+        {NOT_DONE.map((resolution) => {
+          const Glyph = RESOLUTION_GLYPH[resolution];
+          return (
+            <MenuItem key={resolution} icon={<Glyph aria-hidden />} onSelect={() => onPick(resolution)}>
+              {RESOLUTION_LABELS[resolution]}
+            </MenuItem>
+          );
+        })}
+      </MenuContent>
+    </Menu>
   );
 }
 
@@ -163,7 +83,7 @@ export interface CloseAsInput {
 }
 
 /**
- * The one line a close where nothing shipped takes: its resolution named, a
+ * The line a close where nothing shipped takes: its resolution named, a
  * Note, and for a duplicate the other task's id first. Enter sends, Escape
  * steps back; the caller's send carries the Undo.
  */
@@ -172,18 +92,12 @@ export function CloseNoteForm({
   resolution,
   onSend,
   onCancel,
-  named = true,
-  autoFocus = true,
 }: {
   id: string;
   resolution: NotDone;
   onSend: (close: CloseAsInput) => void;
   onCancel: () => void;
-  /** Whether the line names its resolution; beside chips that already show it, it does not. */
-  named?: boolean;
-  autoFocus?: boolean;
 }) {
-  const ids = useId();
   const [note, setNote] = useState('');
   const [other, setOther] = useState('');
   const duplicate = resolution === 'duplicate';
@@ -199,7 +113,7 @@ export function CloseNoteForm({
 
   return (
     <form
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-wrap items-end gap-2"
       data-task-form="close-as"
       data-close-resolution={resolution}
       onSubmit={(event) => {
@@ -212,51 +126,108 @@ export function CloseNoteForm({
         onCancel();
       }}
     >
-      {named ? (
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground">
-          <Glyph className="size-4 text-muted-foreground" aria-hidden />
-          {RESOLUTION_LABELS[resolution]}
-        </span>
-      ) : null}
+      <span className="inline-flex h-7.5 shrink-0 items-center gap-1.5 text-label font-semibold text-ink [&_svg]:size-[15px] [&_svg]:text-ink-3">
+        <Glyph aria-hidden />
+        {RESOLUTION_LABELS[resolution]}
+      </span>
       {duplicate ? (
-        <span className="flex items-center gap-2">
-          <label htmlFor={`${ids}-other`} className="shrink-0 text-xs font-medium text-muted-foreground">
-            Duplicate of
-          </label>
-          <input
-            id={`${ids}-other`}
-            type="text"
-            autoFocus={autoFocus}
+        <Field label="Duplicate of" required className="w-40">
+          <Input
+            autoFocus
             spellCheck={false}
             autoCapitalize="off"
-            className={cn(fieldClass, 'h-8 w-36 font-mono text-xs')}
+            className="nums"
             value={other}
             onChange={(event) => setOther(event.target.value)}
             aria-invalid={otherId !== '' && !ready ? true : undefined}
           />
-        </span>
+        </Field>
       ) : null}
-      <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
-        <label htmlFor={`${ids}-note`} className="shrink-0 text-xs font-medium text-muted-foreground">
-          Note
-        </label>
-        <input
-          id={`${ids}-note`}
-          type="text"
-          autoFocus={autoFocus && !duplicate}
-          className={cn(fieldClass, 'h-8 min-w-0 flex-1')}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </span>
-      <span className="flex items-center gap-2">
-        <Button variant="primary" type="submit" size="sm" disabled={!ready} data-task-confirm="close-as">
-          Close task
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </span>
+      <Field label="Note" className="min-w-0 flex-1 basis-56">
+        <Input autoFocus={!duplicate} value={note} onChange={(event) => setNote(event.target.value)} />
+      </Field>
+      <Button variant="primary" type="submit" disabled={!ready} data-task-confirm="close-as">
+        Close task
+      </Button>
+      <Button type="button" variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+    </form>
+  );
+}
+
+/** Close a task as done, with its evidence: a commit, a link, what proves it. */
+export function CloseDoneForm({
+  id,
+  project,
+  multiline = false,
+  onDone,
+}: {
+  id: string;
+  project: string;
+  /** A field of several lines, where the page has the room; a row takes one. */
+  multiline?: boolean;
+  onDone: () => void;
+}) {
+  const close = useCloseTask();
+  const [reason, setReason] = useState('');
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
+    if (reason.trim() === '' || close.isPending) return;
+    try {
+      await close.mutateAsync({ id, project, reason: reason.trim() });
+    } catch (error) {
+      toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not close ${id}`);
+      return;
+    }
+    toast.success(`Closed ${id}`);
+    onDone();
+  }
+  const fieldProps = {
+    autoFocus: true,
+    value: reason,
+    onChange: (event: { target: { value: string } }) => setReason(event.target.value),
+  };
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      data-task-form="close"
+      onSubmit={(event) => void submit(event)}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onDone();
+        }
+      }}
+    >
+      <Field label="Evidence" required className="min-w-0 flex-1 basis-64">
+        {multiline ? (
+          <Textarea
+            rows={2}
+            {...fieldProps}
+            onKeyDown={(event) => {
+              // Enter sends; Shift+Enter is a new line.
+              if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              void submit();
+            }}
+          />
+        ) : (
+          <Input {...fieldProps} />
+        )}
+      </Field>
+      <Button
+        variant="primary"
+        type="submit"
+        disabled={close.isPending || reason.trim() === ''}
+        data-task-confirm="close"
+      >
+        <Check aria-hidden strokeWidth={2} />
+        {close.isPending ? 'Closing…' : 'Close task'}
+      </Button>
+      <Button type="button" variant="ghost" onClick={onDone}>
+        Cancel
+      </Button>
     </form>
   );
 }

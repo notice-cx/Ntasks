@@ -11,6 +11,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { AppShell, NavItem, Sidebar, TopBar } from '@/components/ui/shell';
 import { useShortcut } from '@/hooks/useShortcut';
 import { isShortcut } from '@/lib/symbols';
+import { DecisionAnswer } from '@/routes/tasks/decision-card';
 
 const OPTIONS: readonly ChoiceOption[] = [
   { key: 'a', label: 'Email link only', recommended: true },
@@ -125,6 +126,30 @@ describe('a menu', () => {
     expect(onPark).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('ticks the value a picking menu holds, opens on it, and keeps a field for another value outside the menu', () => {
+    render(
+      <Menu>
+        <MenuTrigger asChild>
+          <button type="button">Priority</button>
+        </MenuTrigger>
+        <MenuContent label="Priority" footer={<input aria-label="Another" />}>
+          <MenuItem checked={false}>Top</MenuItem>
+          <MenuItem checked>High</MenuItem>
+          <MenuItem checked={false}>Normal</MenuItem>
+        </MenuContent>
+      </Menu>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Priority' }));
+    const menu = screen.getByRole('menu', { name: 'Priority' });
+    const high = screen.getByRole('menuitemradio', { name: 'High' });
+    expect(high.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemradio', { name: 'Top' }).getAttribute('aria-checked')).toBe('false');
+    expect(document.activeElement).toBe(high);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Normal' }));
+    expect(menu.contains(screen.getByRole('textbox', { name: 'Another' }))).toBe(false);
+  });
 });
 
 describe('choosing an option', () => {
@@ -155,6 +180,45 @@ describe('choosing an option', () => {
       'true',
     );
     fireEvent.click(screen.getByRole('radio', { name: /Email link only/ }));
+    expect(screen.getByRole('radio', { name: /Email link only/ }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('draws a choice already made as a record: nothing to press, the chosen option marked', () => {
+    render(<OptionList question="Which sign-in methods?" options={OPTIONS} value="b" readOnly />);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    const list = screen.getByRole('list', { name: 'Which sign-in methods?' });
+    const chosen = list.querySelector('[data-choice-chosen]');
+    expect(chosen?.getAttribute('data-choice-option')).toBe('b');
+    expect(chosen?.getAttribute('aria-current')).toBe('true');
+    expect(chosen?.textContent).toContain('Chosen');
+  });
+
+  it('answers on the card with the selected option, and with an option Enter is pressed on', () => {
+    const onAnswer = vi.fn();
+    function Card() {
+      const [value, setValue] = useState<TaskChoiceKey | null>(null);
+      const [note, setNote] = useState('');
+      return (
+        <DecisionAnswer
+          choices={{ question: 'Which sign-in methods?', options: OPTIONS.map(({ key, label }) => ({ key, label })) }}
+          value={value}
+          onChange={setValue}
+          note={note}
+          onNote={setNote}
+          onAnswer={onAnswer}
+        />
+      );
+    }
+    render(<Card />);
+    const answer = screen.getByRole('button', { name: /Answer/ }) as HTMLButtonElement;
+    // Nothing is selected yet, so nothing can be sent.
+    expect(answer.disabled).toBe(true);
+    fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'b' });
+    fireEvent.click(answer);
+    expect(onAnswer).toHaveBeenLastCalledWith('b');
+    fireEvent.keyDown(screen.getByRole('radio', { name: /Email link only/ }), { key: 'Enter' });
+    expect(onAnswer).toHaveBeenLastCalledWith('a');
     expect(screen.getByRole('radio', { name: /Email link only/ }).getAttribute('aria-checked')).toBe('true');
   });
 });
