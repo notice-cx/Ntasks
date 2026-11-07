@@ -11,7 +11,7 @@
 import type { Json, JsonObject, TaskEventKind } from '@ntasks/domain';
 import { textOf, timeOf, type BeadsProject, type BeadsRow } from './beads.ts';
 import { excerpt, sameJson, stableJson } from './json.ts';
-import { mapTask, unmappedProblems, linkTarget, type MappedTask, type TaskState } from './task-state.ts';
+import { linkTarget, mapTask, ownLink, unmappedProblems, type MappedTask, type TaskState } from './task-state.ts';
 
 /** One version of a task: the state a commit left it in. */
 export interface Version {
@@ -190,11 +190,12 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
       }
       const map = table === 'labels' ? labels : links;
       const keyOf = table === 'labels' ? (row: BeadsRow) => textOf(row.label) ?? '' : linkKey;
-      for (const [row, present] of [
+      for (const [side, present] of [
         [from, false],
         [to, true],
       ] as const) {
-        if (row === null) continue;
+        if (side === null) continue;
+        const row = table === 'labels' ? side : ownLink(side);
         const issueId = textOf(row.issue_id);
         if (issueId === null) continue;
         const rowsOfIssue = map.get(issueId) ?? new Map<string, BeadsRow>();
@@ -235,7 +236,7 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
   }
 
   const currentLabels = groupBy(project.rows.labels, 'issue_id');
-  const currentLinks = groupBy(project.rows.dependencies, 'issue_id');
+  const currentLinks = groupBy(project.rows.dependencies.map(ownLink), 'issue_id');
   const tasks = new Map<string, TaskHistory>();
   for (const issue of project.rows.issues) {
     const id = textOf(issue.id) ?? '';
@@ -266,8 +267,16 @@ export function projectHistory(project: BeadsProject): ProjectHistory {
     ['label', currentLabels],
     ['link', currentLinks],
   ] as const) {
-    for (const issueId of groups.keys()) {
-      if (!tasks.has(issueId)) projectProblems.push(`${table} rows name ${issueId}, which is not one of its issues`);
+    for (const [issueId, rows] of groups) {
+      if (tasks.has(issueId)) continue;
+      // A supersedes link is the replacement's in Ntasks, so its replacement must be in the same database.
+      const superseded = rows.filter((row) => textOf(row.type) === 'supersedes').map((row) => linkTarget(row));
+      for (const old of superseded)
+        projectProblems.push(
+          `${old ?? ''} is superseded by ${issueId}, which is not one of its issues; Ntasks records the link on the replacement`,
+        );
+      if (superseded.length < rows.length)
+        projectProblems.push(`${table} rows name ${issueId}, which is not one of its issues`);
     }
   }
   return { tasks, problems: projectProblems };

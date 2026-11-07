@@ -17,7 +17,15 @@ import type { BackupFile, BackupTable, Json, JsonObject } from '@ntasks/domain';
 import { isEmpty, textOf, timeOf, type BeadsExport } from './beads.ts';
 import { isJsonObject, sameJson, stableJson } from './json.ts';
 import type { ImportPlan } from './plan.ts';
-import { COLUMN_METADATA_KEYS, linkTarget, sortLinks, TYPES_AS_LABELS } from './task-state.ts';
+import {
+  COLUMN_METADATA_KEYS,
+  linkTarget,
+  linkTypeOf,
+  ownLink,
+  sortLinks,
+  TYPES_AS_LABELS,
+  webAddress,
+} from './task-state.ts';
 
 export interface Difference {
   readonly subject: string;
@@ -34,13 +42,16 @@ export interface StatusCount {
 export interface VerifyReport {
   readonly differences: readonly Difference[];
   readonly counts: readonly StatusCount[];
-  readonly totals: Readonly<Record<'projects' | 'tasks' | 'labels' | 'links' | 'comments' | 'events', number>>;
+  readonly totals: Readonly<
+    Record<'projects' | 'tasks' | 'labels' | 'links' | 'externalLinks' | 'comments' | 'events', number>
+  >;
   readonly approvals: number;
   readonly decisions: number;
   readonly frozenCards: number;
 }
 
-const IN_SCOPE_LINKS = new Set(['blocks', 'related', 'discovered-from', 'parent-child']);
+/** Link types as Ntasks names them (linkTypeOf), parents included. */
+const IN_SCOPE_LINKS = new Set(['blocks', 'related', 'discovered-from', 'duplicates', 'supersedes', 'parent-child']);
 
 /** One row of the store, as it reads back. */
 export type Row = Record<string, unknown>;
@@ -53,6 +64,7 @@ interface StoreContents {
   readonly tasks: readonly Row[];
   readonly labels: readonly Row[];
   readonly edges: readonly Row[];
+  readonly externalLinks: readonly Row[];
   readonly comments: readonly Row[];
   readonly events: readonly Row[];
 }
@@ -63,6 +75,7 @@ async function readStore(read: StoreReader): Promise<StoreContents> {
     tasks: await read('tasks'),
     labels: await read('task_labels'),
     edges: await read('task_edges'),
+    externalLinks: await read('task_external_links'),
     comments: await read('task_comments'),
     events: await read('task_events'),
   };
@@ -73,7 +86,12 @@ function parse(text: unknown): Json {
 }
 
 /** The task as the store holds it, in the shape its history records. */
-function storedState(task: Row, labels: readonly string[], edges: readonly Row[]): JsonObject {
+function storedState(
+  task: Row,
+  labels: readonly string[],
+  edges: readonly Row[],
+  external: readonly Row[],
+): JsonObject {
   const closed = task.status === 'closed';
   return {
     id: task.id as string,
@@ -86,6 +104,10 @@ function storedState(task: Row, labels: readonly string[], edges: readonly Row[]
     title: task.title as string,
     description: task.description as string,
     acceptance: task.acceptance as string,
+    notes: task.notes as string,
+    design: task.design as string,
+    estimateMinutes:
+      task.estimate_minutes === null || task.estimate_minutes === undefined ? null : Number(task.estimate_minutes),
     assignee: (task.assignee ?? null) as string | null,
     assigneeModel: (task.assignee_model ?? null) as string | null,
     startedAt: (task.started_at ?? null) as string | null,
@@ -98,6 +120,14 @@ function storedState(task: Row, labels: readonly string[], edges: readonly Row[]
     dependencies: sortLinks(
       edges.map((edge) => ({ taskId: edge.depends_on_id as string, type: edge.type as 'blocks' })),
     ) as unknown as Json,
+    externalLinks: [...external]
+      .sort((a, b) => (String(a.url) < String(b.url) ? -1 : String(a.url) > String(b.url) ? 1 : 0))
+      .map((link) => ({
+        url: link.url as string,
+        title: link.title as string,
+        kind: (link.kind ?? null) as string | null,
+      })),
+    fields: parse(task.field_values),
     close: closed
       ? {
           at: task.closed_at as string,
@@ -148,6 +178,7 @@ function againstExport(
   const tasksById = new Map(held.tasks.map((task) => [String(task.id), task]));
   const labelsByTask = groupRows(held.labels, 'task_id');
   const edgesByTask = groupRows(held.edges, 'task_id');
+  const externalByTask = groupRows(held.externalLinks, 'task_id');
   const commentsById = new Map(held.comments.map((comment) => [String(comment.id), comment]));
   let approvals = 0;
   let decisions = 0;
@@ -203,10 +234,17 @@ function againstExport(
     );
 
     const linksByIssue = new Map<string, string[]>();
-    for (const row of project.rows.dependencies) {
+    const externalByIssue = new Map<string, string[]>();
+    // Each link on the task Ntasks gives it to: a supersedes link on the replacement.
+    for (const row of project.rows.dependencies.map(ownLink)) {
       const issueId = textOf(row.issue_id) ?? '';
-      const type = textOf(row.type) ?? 'blocks';
+      const type = linkTypeOf(row);
       const target = linkTarget(row) ?? '';
+      const external = textOf(row.depends_on_external);
+      if (linkTarget(row) === null && external !== null) {
+        externalByIssue.set(issueId, [...(externalByIssue.get(issueId) ?? []), webAddress(external) ?? external]);
+        continue;
+      }
       if (!IN_SCOPE_LINKS.has(type)) continue;
       // The import leaves out a parent's blocks link onto its own child.
       if (type === 'blocks' && parentOf.get(target) === issueId) continue;
@@ -255,6 +293,18 @@ function againstExport(
       if (task.parent_id !== null && task.parent_id !== undefined)
         storedLinks.push(`parent-child ${String(task.parent_id)}`);
       compareSets(id, 'link', new Set(links), storedLinks, out);
+      compareSets(
+        id,
+        'external link',
+        externalByIssue.get(id) ?? [],
+        (externalByTask.get(id) ?? []).map((link) => String(link.url)),
+        out,
+      );
+      if ((task.notes ?? '') !== (textOf(issue.notes) === null ? '' : issue.notes)) differ('its notes differ');
+      if ((task.design ?? '') !== (textOf(issue.design) === null ? '' : issue.design)) differ('its design differs');
+      const estimate = textOf(issue.estimated_minutes);
+      if ((task.estimate_minutes ?? null) !== (estimate === null ? null : Number(estimate)))
+        differ(`its estimate is ${String(task.estimate_minutes ?? 'none')}, not ${estimate ?? 'none'}`);
       for (const edge of edgesByTask.get(id) ?? []) {
         if (!tasksById.has(String(edge.depends_on_id)))
           differ(`its link to ${String(edge.depends_on_id)} names no task`);
@@ -369,6 +419,13 @@ function againstPlan(plan: ImportPlan, held: StoreContents, out: Difference[]) {
     (row) => `${String(row.task_id)} -> ${String(row.depends_on_id)}`,
     task,
   );
+  compare(
+    'task_external_links',
+    plan.task_external_links ?? [],
+    held.externalLinks,
+    (row) => JSON.stringify([row.task_id, row.url]),
+    task,
+  );
   compare('task_comments', plan.task_comments, held.comments, (row) => String(row.id), task);
   compare(
     'task_events',
@@ -384,6 +441,7 @@ function againstHistory(held: StoreContents, out: Difference[]) {
   const eventsByTask = groupRows(held.events, 'task_id');
   const labelsByTask = groupRows(held.labels, 'task_id');
   const edgesByTask = groupRows(held.edges, 'task_id');
+  const externalByTask = groupRows(held.externalLinks, 'task_id');
   const commentsByTask = groupRows(held.comments, 'task_id');
   for (const task of held.tasks) {
     const id = String(task.id);
@@ -418,6 +476,7 @@ function againstHistory(held: StoreContents, out: Difference[]) {
       task,
       (labelsByTask.get(id) ?? []).map((row) => String(row.label)),
       edgesByTask.get(id) ?? [],
+      externalByTask.get(id) ?? [],
     );
     if (!sameJson(state, stored)) {
       const fields = Object.keys(stored).filter((field) => !sameJson(state[field] ?? null, stored[field] ?? null));
@@ -453,6 +512,7 @@ export async function verify(data: BeadsExport, plan: ImportPlan, read: StoreRea
       tasks: held.tasks.length,
       labels: held.labels.length,
       links: held.edges.length,
+      externalLinks: held.externalLinks.length,
       comments: held.comments.length,
       events: held.events.length,
     },

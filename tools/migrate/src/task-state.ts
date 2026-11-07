@@ -17,6 +17,13 @@ export interface LinkState {
   readonly type: DependencyType;
 }
 
+/** A link to a page outside Ntasks, as the engine's history records it. */
+export interface ExternalLinkState {
+  readonly url: string;
+  readonly title: string;
+  readonly kind: null;
+}
+
 export interface CloseState {
   readonly at: string;
   readonly reason: string | null;
@@ -37,6 +44,9 @@ export interface TaskState {
   readonly title: string;
   readonly description: string;
   readonly acceptance: string;
+  readonly notes: string;
+  readonly design: string;
+  readonly estimateMinutes: number | null;
   readonly assignee: string | null;
   readonly assigneeModel: string | null;
   readonly startedAt: string | null;
@@ -49,6 +59,10 @@ export interface TaskState {
   readonly labels: readonly string[];
   /** The tasks this one links to, sorted by id. */
   readonly dependencies: readonly LinkState[];
+  /** Sorted by URL. */
+  readonly externalLinks: readonly ExternalLinkState[];
+  /** Custom field values, by key. Beads has no custom fields, so an imported task has none. */
+  readonly fields: JsonObject;
   readonly close: CloseState | null;
   readonly filedBy: string | null;
   readonly filedModel: string | null;
@@ -76,6 +90,9 @@ const ISSUE_COLUMNS = new Set([
   'title',
   'description',
   'acceptance_criteria',
+  'notes',
+  'design',
+  'estimated_minutes',
   'status',
   'priority',
   'issue_type',
@@ -100,7 +117,17 @@ const ISSUE_LEFT_OUT = new Set(['owner']);
 const ISSUE_SKIPPED = new Set([...ISSUE_DERIVED, ...ISSUE_LEFT_OUT]);
 /** Beads types Ntasks lacks, each imported as a type Ntasks has, labelled with its own name. */
 export const TYPES_AS_LABELS: Readonly<Record<string, TaskType>> = { spike: 'task' };
-const LINK_COLUMNS = new Set(['issue_id', 'depends_on_issue_id', 'depends_on_id', 'type', 'created_at', 'created_by']);
+const LINK_COLUMNS = new Set([
+  'issue_id',
+  'depends_on_issue_id',
+  'depends_on_id',
+  'depends_on_external',
+  'type',
+  'created_at',
+  'created_by',
+]);
+/** Beads link types Ntasks names otherwise. `relates-to` is the link `bd relate` makes, in both directions. */
+const LINK_TYPES: Readonly<Record<string, DependencyType>> = { 'relates-to': 'related' };
 /** A link's row id, which Beads numbers again whenever it migrates its schema. */
 const LINK_DERIVED = new Set(['id']);
 const LABEL_COLUMNS = new Set(['issue_id', 'label']);
@@ -117,7 +144,6 @@ const OUT_OF_SCOPE_COLUMNS: Readonly<Record<string, string>> = {
   waiters: 'only approvals a person answers are in scope',
   compaction_level: 'Beads compacted it, so its original text is in a compaction snapshot',
   depends_on_wisp_id: 'it links to a wisp, and wisps are out of scope',
-  depends_on_external: 'it links to a task outside the hub, and external links are out of scope',
 };
 
 /** NoticeOS metadata keys that are Ntasks columns or links; every other key stays in metadata as given. */
@@ -141,6 +167,9 @@ const SAME_CLOSE_MS = 1000;
 /** The longest name the schema stores, such as an assignee, label or model. */
 const NAME_LIMIT = 255;
 const TITLE_LIMIT = 1024;
+/** The longest URL an external link may have, and the longest title the API takes for one (TASK_LIMITS). */
+const URL_LIMIT = 2048;
+const LINK_TITLE_LIMIT = 512;
 
 /**
  * Beads' number and JSON columns. Through a Dolt server, the SQL client prints
@@ -195,9 +224,60 @@ export function sortLinks(links: readonly LinkState[]): LinkState[] {
   return [...links].sort((a, b) => a.taskId.localeCompare(b.taskId));
 }
 
-/** The task a Beads link row points to. */
+/**
+ * The task a Beads link row points to. Beads keeps a link to a task in
+ * another of its databases in `depends_on_external`, as the task's id; any
+ * other value there, such as a web address, is not a task. A row with
+ * `depends_on_external` is read by it alone: in Beads 1.0.5, `depends_on_id`
+ * is a column computed from the others, and holds the same value.
+ */
 export function linkTarget(row: BeadsRow): string | null {
+  const external = textOf(row.depends_on_external);
+  if (external !== null) return isTaskId(external) ? external : null;
   return textOf(row.depends_on_issue_id) ?? textOf(row.depends_on_id);
+}
+
+/** A Beads link type as Ntasks names it. */
+export function linkTypeOf(row: BeadsRow): string {
+  const type = textOf(row.type) ?? 'blocks';
+  return Object.hasOwn(LINK_TYPES, type) ? LINK_TYPES[type]! : type;
+}
+
+/**
+ * A link row as the task Ntasks gives it to sees it. `bd supersede old --with
+ * new` records `old supersedes new`, meaning old is superseded; in Ntasks, `A
+ * supersedes B` means A replaces B. So a supersedes link between two tasks
+ * belongs to the replacement, pointing at the task it replaces. Every other
+ * link stays on the task that has it in Beads.
+ */
+export function ownLink(row: BeadsRow): BeadsRow {
+  const target = linkTarget(row);
+  const from = textOf(row.issue_id);
+  if (textOf(row.type) !== 'supersedes' || target === null || from === null) return row;
+  return {
+    ...row,
+    issue_id: target,
+    ...(textOf(row.depends_on_issue_id) === null ? {} : { depends_on_issue_id: from }),
+    ...(textOf(row.depends_on_id) === null ? {} : { depends_on_id: from }),
+    ...(textOf(row.depends_on_external) === null ? {} : { depends_on_external: from }),
+  };
+}
+
+/**
+ * An http or https address as the URL standard writes it, so one page has one
+ * address, as the engine keeps it (httpUrl in workers/api/src/engine/validate.ts);
+ * null when the text is not one.
+ */
+export function webAddress(value: string): string | null {
+  if (/[\s\u0000-\u001f\u007f]/u.test(value)) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  return url.href.length > URL_LIMIT ? null : url.href;
 }
 
 function metadataOf(value: Json | undefined): JsonObject | null {
@@ -244,6 +324,16 @@ export function mapTask(input: {
       return null;
     }
     return result;
+  };
+  const estimate = (): number | null => {
+    const value = issue.estimated_minutes;
+    if (value === undefined || value === null) return null;
+    const minutes = typeof value === 'number' ? value : /^\d{1,15}$/u.test(String(value)) ? Number(value) : Number.NaN;
+    if (!Number.isSafeInteger(minutes) || minutes < 0) {
+      problems.push(`its estimated_minutes "${excerpt(value)}" is not a whole number of minutes`);
+      return null;
+    }
+    return minutes;
   };
   const longText = (column: string): string => {
     const value = issue[column];
@@ -375,10 +465,23 @@ export function mapTask(input: {
       problems.push(`it links to ${target} twice, as ${existing} and ${type}; Ntasks keeps one link per pair`);
     links.set(target, type);
   };
+  const externalLinks = new Map<string, ExternalLinkState>();
   for (const row of input.links) {
     problems.push(...unmappedProblems(row, LINK_COLUMNS, LINK_DERIVED, 'a link'));
     const target = linkTarget(row);
-    const linkType = textOf(row.type) ?? 'blocks';
+    const linkType = linkTypeOf(row);
+    const external = textOf(row.depends_on_external);
+    if (target === null && external !== null) {
+      const url = webAddress(external);
+      if (url === null) {
+        problems.push(
+          `its link to "${excerpt(external)}" is not a web address; Ntasks links outside itself only to http and https addresses`,
+        );
+      } else {
+        externalLinks.set(url, { url, title: Array.from(url).slice(0, LINK_TITLE_LIMIT).join(''), kind: null });
+      }
+      continue;
+    }
     if (target === null) continue;
     if (!isTaskId(target)) {
       problems.push(`it links to "${excerpt(target)}", which is not a task id Ntasks accepts`);
@@ -430,6 +533,9 @@ export function mapTask(input: {
     title,
     description: longText('description'),
     acceptance: longText('acceptance_criteria'),
+    notes: longText('notes'),
+    design: longText('design'),
+    estimateMinutes: estimate(),
     assignee,
     assigneeModel: assignee === null ? null : claimedModel,
     startedAt: time('started_at'),
@@ -440,6 +546,8 @@ export function mapTask(input: {
     metadata: kept,
     labels,
     dependencies: sortLinks([...links].map(([taskId, linkType]) => ({ taskId, type: linkType }))),
+    externalLinks: [...externalLinks.values()].sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)),
+    fields: {},
     close,
     filedBy,
     filedModel,

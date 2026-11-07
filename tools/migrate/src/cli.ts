@@ -99,6 +99,7 @@ function planSummary(plan: ImportPlan): string {
     `${count(plan.task_events.length)} history events`,
     `${count(plan.task_comments.length)} comments`,
     `${count(plan.task_edges.length)} links`,
+    `${count(plan.task_external_links?.length ?? 0)} external links`,
     `${count(plan.task_labels.length)} labels`,
   ].join(', ');
 }
@@ -219,7 +220,7 @@ async function runVerify(values: Record<string, string | boolean | undefined>, i
     io.out(`Verified ${store.description} against ${String(values.from)}.`);
     io.out(
       `The store holds ${count(totals.projects)} projects, ${count(totals.tasks)} tasks, ${count(totals.events)} history events, ` +
-        `${count(totals.comments)} comments, ${count(totals.links)} links and ${count(totals.labels)} labels; ` +
+        `${count(totals.comments)} comments, ${count(totals.links)} links, ${count(totals.externalLinks)} external links and ${count(totals.labels)} labels; ` +
         `${count(report.approvals)} approvals, ${count(report.decisions)} decisions and ${count(report.frozenCards)} frozen cards among them.`,
     );
     io.out('Tasks per project and status (export / store):');
