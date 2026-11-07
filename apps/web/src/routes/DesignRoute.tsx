@@ -828,7 +828,7 @@ function ShellSample() {
       <AppShell
         className="min-h-0"
         sidebar={
-          <Sidebar aria-label="Sample sidebar" className="static h-auto max-sm:flex">
+          <Sidebar aria-label="Sample sidebar" className="static h-auto">
             <SidebarHeader name="Ntasks">
               <IconButton size="sm" label="Search" shortcut="/" icon={<Search aria-hidden />} />
               <IconButton size="sm" label="New task" shortcut="C" icon={<Pencil aria-hidden />} />

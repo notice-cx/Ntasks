@@ -392,6 +392,12 @@ makes a router link the item.
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions.
 
+On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
+with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a
+sheet over the page, with focus on its first link. The sheet closes on
+Escape, which puts focus back on the button, on a press outside it, on a link
+inside it, and when the browser goes back or forward.
+
 ### EmptyState (`empty-state.tsx`)
 
 What a list or page shows when it has nothing: a 20 px icon in Text 3 in a
@@ -410,9 +416,9 @@ you"), and the action that fills it, when there is one.
 | Badge | 20 px |
 
 On a touch screen, buttons, fields, tabs and menu items grow one step.
-Below 640 px wide, the sidebar is hidden, rows drop their id, facts and
-actions, and a waiting row wraps its answer onto a second line under the
-title.
+Below 640 px wide, the sidebar is hidden behind the top bar's Sidebar
+button, rows drop their id, facts and actions, and a waiting row wraps its
+answer onto a second line under the title.
 
 ## Keyboard
 

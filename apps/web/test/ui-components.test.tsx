@@ -8,6 +8,7 @@ import { IconButton } from '@/components/ui/button';
 import { choiceForKey, OptionList, Segmented, type ChoiceOption } from '@/components/ui/choice';
 import { Field, Input } from '@/components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
+import { AppShell, NavItem, Sidebar, TopBar } from '@/components/ui/shell';
 import { useShortcut } from '@/hooks/useShortcut';
 import { isShortcut } from '@/lib/symbols';
 
@@ -166,5 +167,69 @@ describe('progress', () => {
     expect(progressShare(0, 0)).toBe(0);
     render(<Progress done={1} total={4} />);
     expect(screen.getByRole('img', { name: '1 of 4 done' })).toBeTruthy();
+  });
+});
+
+describe('the frame on a phone', () => {
+  function Frame() {
+    return (
+      <AppShell
+        sidebar={
+          <Sidebar aria-label="Pages">
+            <NavItem href="#tasks" icon={null}>
+              Tasks
+            </NavItem>
+            <NavItem href="#focus" icon={null}>
+              Focus
+            </NavItem>
+          </Sidebar>
+        }
+      >
+        <TopBar title="Tasks" />
+      </AppShell>
+    );
+  }
+
+  it('opens the sidebar from the top bar, with focus on its first link', () => {
+    render(<Frame />);
+    const opener = screen.getByRole('button', { name: 'Sidebar' });
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    expect(opener.getAttribute('aria-expanded')).toBe('false');
+    expect(opener.getAttribute('aria-controls')).toBe(nav.id);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    fireEvent.click(opener);
+    expect(opener.getAttribute('aria-expanded')).toBe('true');
+    expect(nav.hasAttribute('data-open')).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Tasks' }));
+  });
+
+  it('closes on Escape, a press outside it, a link inside it, and the browser going back', () => {
+    render(<Frame />);
+    const opener = screen.getByRole('button', { name: 'Sidebar' });
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+
+    fireEvent.click(opener);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(document.activeElement).toBe(opener);
+
+    fireEvent.click(opener);
+    fireEvent.click(document.querySelector('[data-sidebar-backdrop]') as HTMLElement);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole('link', { name: 'Focus' }));
+    expect(nav.hasAttribute('data-open')).toBe(false);
+
+    fireEvent.click(opener);
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(nav.hasAttribute('data-open')).toBe(false);
+  });
+
+  it('has no opener outside the frame', () => {
+    render(<TopBar title="Tasks" />);
+    expect(screen.queryByRole('button', { name: 'Sidebar' })).toBeNull();
   });
 });
