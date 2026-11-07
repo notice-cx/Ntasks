@@ -40,6 +40,15 @@ export function statusMarkFor(task: StatusFacts, statuses: ReadonlyMap<string, s
   return 'open';
 }
 
+/** The mark for a stored status alone, for a linked task whose other facts the read did not carry. */
+export function statusMarkOfStored(stored: string): StatusMark {
+  if (stored === 'closed') return 'done';
+  if (stored === PARKED) return 'parked';
+  if (stored === 'blocked') return 'blocked';
+  if (stored === IN_PROGRESS) return 'in-progress';
+  return 'open';
+}
+
 // --- Priority -----------------------------------------------------------------
 
 /** Priority 0 to 4 in words, Top to Lowest. */
@@ -106,6 +115,11 @@ const CODEX = /codex|openai|\bgpt\b/i;
 const AGENT_ACTOR = /^(?:agent|service):/;
 const PERSON_ACTOR = /^person:/;
 
+/** Whether the API records this actor as an agent or a service rather than a person. */
+export function isAgentActor(actor: string): boolean {
+  return AGENT_ACTOR.test(actor);
+}
+
 /**
  * Who an avatar shows. Only an agent gets a brand mark: an actor the API
  * records as an agent or a service, one that named a model, or one the
@@ -152,10 +166,12 @@ export function avatarMarkSize(avatarSize: number): number {
 
 // --- Keys -----------------------------------------------------------------------
 
-/** Whether a key press belongs to a text field the person is typing in, so a page's single-key shortcuts leave it alone. */
+/** Whether a key press belongs to a text field the person is typing in, or to a dialog, menu or list that takes its own keys, so a page's single-key shortcuts leave it alone. */
 export function typingIn(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
+  // A dialog, a menu and a list of options take their own keys.
+  if (target.closest('[role="dialog"], [role="menu"], [role="listbox"]')) return true;
   if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
   if (target instanceof HTMLInputElement) {
     return !['button', 'checkbox', 'radio', 'submit', 'reset', 'range', 'color', 'file'].includes(target.type);

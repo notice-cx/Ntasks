@@ -12,10 +12,18 @@ people use over a network. Keep that link in every version of the app.
 
 | Address | Shows |
 |---|---|
-| `/tasks` | The board: the decisions waiting on you, then every task, with filters that are part of the address. `?new=1` opens the composer. |
+| `/tasks` | The board: what waits for you first, answered on its row, then every task grouped by status (In progress, Open, Blocked, Parked, Done). The view (`?view=active`, `done` or `waiting`), the search and the filters are part of the address. `?new=1` opens the composer. |
 | `/tasks/:id` | One task: its state, description, Done when, links, epic tasks and history, with its facts editable in place. |
 | `/tasks/focus` | Your decisions one at a time, answered with a press or a key: an option's letter, Enter to approve, → to skip. |
 | `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
+
+Every page sits in one frame (`src/App.tsx`): the sidebar
+(`src/components/AppSidebar.tsx`) with Waiting for you, Tasks, Focus, each
+project and each person or agent with open work, and the source-code link.
+The frame reads every project's board once, for the sidebar's counts and the
+page alike, and runs the one change feed (`BoardsProvider` in
+`src/hooks/useBoard.tsx`). On any page, `C` opens the composer, `/` puts the
+cursor in the board's search and `F` opens Focus.
 
 The task pages are those of NoticeOS's Tower, carried over with its copy
 tests (`test/ui-lexicon.test.ts` and `test/ui-noun.test.ts`). They draw in the

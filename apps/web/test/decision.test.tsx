@@ -51,10 +51,8 @@ describe('answering a decision', () => {
   it('Undo cancels an answer before it is sent', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    const queue = await screen.findByRole('region', { name: 'Your decisions' });
-    const row = within(queue)
-      .getByText('Approve sending the new sign-in page to every visitor')
-      .closest('li') as HTMLElement;
+    const queue = await screen.findByRole('region', { name: 'Waiting for you' });
+    const row = queue.querySelector('[data-task-row="web-g7p2"]') as HTMLElement;
     fireEvent.click(await enabledButton('Approve', row));
     // The row leaves the list at once.
     await waitFor(() =>
@@ -66,13 +64,13 @@ describe('answering a decision', () => {
     expect(await within(queue).findByText('Approve sending the new sign-in page to every visitor')).toBeTruthy();
   });
 
-  it('answers a question from its row in the decisions list', async () => {
+  it('answers a question from its row in Waiting for you', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    const queue = await screen.findByRole('region', { name: 'Your decisions' });
-    const row = within(queue).getByText('Confirm the support address on the error page').closest('li') as HTMLElement;
+    const queue = await screen.findByRole('region', { name: 'Waiting for you' });
+    const row = queue.querySelector('[data-task-row="web-q8n5"]') as HTMLElement;
     fireEvent.click(await enabledButton('Answer', row));
-    const box = within(row).getByRole('textbox', { name: 'Your answer to web-q8n5' });
+    const box = screen.getByRole('textbox', { name: 'Your answer to web-q8n5' });
     fireEvent.change(box, { target: { value: 'support@example.com' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     await waitOutUndo();

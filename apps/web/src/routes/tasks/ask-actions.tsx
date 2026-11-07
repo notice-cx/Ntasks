@@ -1,20 +1,26 @@
 import { useState, type ReactNode } from 'react';
-import { Check, Reply, SendHorizontal } from 'lucide-react';
+import { Check, CornerDownLeft, Reply, SendHorizontal } from 'lucide-react';
 import type { TaskChoiceKey, TaskChoices } from '@/api/types';
 import { ChoiceButtons } from '@/components/ChoiceButtons';
 import { Button } from '@/components/ui/button';
+import { Segmented } from '@/components/ui/choice';
 import { fieldClass } from '@/components/ui/chrome';
+import { Textarea } from '@/components/ui/field';
 import { useInboxAnswer } from '@/hooks/useTasks';
 import type { InboxAsk } from '@/lib/task-model';
 import { cn } from '@/lib/utils';
 import { useCloseAs } from './close-actions';
 
 /**
- * What a task waiting on a person offers, on its decision row and its own
- * page: Approve on an approval; Answer and Close as on a question; and on a
- * question that carries options, one button per option with Answer and
- * Close as under them. Every answer waits in the Undo window. `buttons` sit
+ * What a task waiting on a person offers, on its row in Waiting for you and
+ * on its own page. Every answer waits in the Undo window. `buttons` sit
  * beside the title and `box` under it; both are null when nothing is asked.
+ *
+ * On a row: Approve on an approval, the options side by side on a decision
+ * (one press answers), and Answer on a question, which opens a box under
+ * the row. Closing as something else is in the row's menu. On the page:
+ * Approve; Answer and Close as on a question; and on a decision, one button
+ * per option with Answer and Close as under them.
  */
 export function useAskActions({
   ask,
@@ -35,7 +41,7 @@ export function useAskActions({
   /** Why the verbs cannot run here, or null. */
   disabledReason?: string | null;
   chooseDisabledReason?: string | null;
-  /** A row indents the box under its title; the page's header sets it in a panel. */
+  /** A row in Waiting for you, or the task page's header. */
   placement: 'row' | 'header';
   /** An option was pressed: the page draws it as the pick while the Undo window runs. */
   onChosen?: (option: TaskChoiceKey) => void;
@@ -43,7 +49,6 @@ export function useAskActions({
   const [answering, setAnswering] = useState(false);
   const [text, setText] = useState('');
   const answer = useInboxAnswer();
-  const indent = placement === 'row' ? 'pb-2 pe-2 ps-9' : undefined;
   // The header writes the reason once beside its buttons, so the controls under it are disabled without repeating it.
   const quiet = (reason: string | null) => (placement === 'header' && reason !== null ? '' : reason);
   const closeAs = useCloseAs({
@@ -67,6 +72,102 @@ export function useAskActions({
   if (ask === null) return { buttons: null, box: null };
 
   const choosing = ask === 'choose' && choices !== null;
+
+  function choose(option: TaskChoiceKey, note?: string) {
+    const label = choices?.options.find((entry) => entry.key === option)?.label;
+    answer({
+      kind: 'choose',
+      id,
+      title,
+      project,
+      option,
+      ...(label === undefined ? {} : { label }),
+      ...(note === undefined ? {} : { note }),
+    });
+    setAnswering(false);
+    onChosen?.(option);
+  }
+
+  if (placement === 'row') {
+    const rowButtons =
+      ask === 'approve' ? (
+        <Button
+          variant="primary"
+          type="button"
+          size="sm"
+          disabled={disabled}
+          title={disabledReason ?? undefined}
+          onClick={() => answer({ kind: 'approve', id, title, project })}
+          data-task-action="approve"
+        >
+          <Check aria-hidden strokeWidth={2} />
+          Approve
+        </Button>
+      ) : choosing ? (
+        <Segmented
+          question={choices.question}
+          options={choices.options.map((option) => ({
+            key: option.key,
+            label: option.label,
+            recommended: option.recommended === true,
+          }))}
+          disabled={chooseDisabledReason !== null}
+          onChoose={(option) => choose(option)}
+        />
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          aria-expanded={answering}
+          disabled={disabled}
+          title={disabledReason ?? undefined}
+          onClick={() => setAnswering((open) => !open)}
+          data-task-action="answer"
+        >
+          <CornerDownLeft aria-hidden />
+          Answer
+        </Button>
+      );
+    const rowBox = answering ? (
+      <form
+        className="flex items-start gap-2 max-sm:flex-wrap"
+        data-task-form="answer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          send();
+        }}
+      >
+        <span className="min-w-0 flex-1 max-sm:basis-full">
+          <Textarea
+            autoFocus
+            rows={2}
+            aria-label={`Your answer to ${id}`}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setAnswering(false);
+                return;
+              }
+              // Enter sends; Shift+Enter is a new line.
+              if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              send();
+            }}
+          />
+        </span>
+        <Button variant="primary" type="submit" size="sm" disabled={text.trim() === ''} data-task-confirm="answer">
+          <SendHorizontal aria-hidden />
+          Send
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setAnswering(false)}>
+          Cancel
+        </Button>
+      </form>
+    ) : null;
+    return { buttons: rowButtons, box: rowBox };
+  }
   // Under a set of options the free-text verbs step back: the options are what this question wants first.
   const answerVerbs = (
     <>
@@ -109,29 +210,15 @@ export function useAskActions({
   const options = choosing ? (
     <ChoiceButtons
       choices={choices}
-      className={indent}
       disabledReason={quiet(chooseDisabledReason)}
-      onChoose={(option, note) => {
-        const label = choices.options.find((entry) => entry.key === option)?.label;
-        answer({
-          kind: 'choose',
-          id,
-          title,
-          project,
-          option,
-          ...(label === undefined ? {} : { label }),
-          ...(note === undefined ? {} : { note }),
-        });
-        setAnswering(false);
-        onChosen?.(option);
-      }}
+      onChoose={(option, note) => choose(option, note)}
       footer={answerVerbs}
     />
   ) : null;
 
   const answerBox = answering ? (
     <form
-      className={cn('flex items-start gap-2 max-sm:flex-wrap', indent)}
+      className="flex items-start gap-2 max-sm:flex-wrap"
       data-task-form="answer"
       onSubmit={(event) => {
         event.preventDefault();
@@ -168,7 +255,7 @@ export function useAskActions({
     </form>
   ) : null;
 
-  const closeBox = closeAs.box ? <div className={indent}>{closeAs.box}</div> : null;
+  const closeBox = closeAs.box;
   const box =
     options || answerBox || closeBox ? (
       <>

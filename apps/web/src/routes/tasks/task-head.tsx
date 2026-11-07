@@ -5,13 +5,13 @@ import type { TaskResolution } from '@ntasks/domain';
 import type { TaskChoice, TaskChoices } from '@/api/types';
 import { ChoiceButtons } from '@/components/ChoiceButtons';
 import { RESOLUTION_GLYPH } from '@/components/CloseResolution';
-import { StateChip } from '@/components/surface';
-import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { eyebrowClass, pillControlClass } from '@/components/ui/chrome';
+import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
 import { ageMs, formatAge } from '@/lib/format';
+import { priorityLabel, statusMarkOfStored, STATUS_MARK_LABELS, typeLabel, typeMarkFor } from '@/lib/symbols';
 import { choiceName, RESOLUTION_LABELS, type InboxAsk } from '@/lib/task-model';
 import { cn } from '@/lib/utils';
-import { askGlyph, PriorityChip, TaskStatusChip, TypeMark, typeFace } from './task-face';
 
 /** What a task page's header states. */
 export interface TaskHeadFacts {
@@ -59,13 +59,12 @@ export function TaskHead({
   nowMs: number;
   children?: ReactNode;
 }) {
-  const face = facts ? typeFace(facts.issueType, facts.awaitType, facts.status) : null;
   const holderAge = facts?.holder ? ageMs(nowMs, facts.holder.since) : null;
+  const status = facts ? statusMarkOfStored(facts.status) : null;
   return (
-    <Card
-      kind={face?.surface ?? 'neutral'}
+    <div
       data-task-band={facts?.issueType ?? ''}
-      className="viz-arrive rounded-xl px-4 py-4 md:px-5"
+      className="viz-arrive rounded-xl bg-background inset-ring inset-ring-border px-4 py-4 md:px-5"
     >
       <nav
         aria-label="Where this task sits"
@@ -91,27 +90,38 @@ export function TaskHead({
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
             <span className={eyebrowClass} data-task-type={facts?.issueType ?? ''}>
-              {face?.word ?? 'Task'}
+              {facts ? typeLabel(facts.issueType, facts.awaitType) : 'Task'}
             </span>
             {/* The id is what people quote in a commit and type into a command, so it stays whole and in its own case. */}
             <span className="font-mono text-xs text-muted-foreground">{id}</span>
           </div>
           <h1 className="m-0 flex min-w-0 items-center gap-3 font-semibold text-foreground">
-            {facts ? <TypeMark issueType={facts.issueType} awaitType={facts.awaitType} status={facts.status} /> : null}
+            {facts ? (
+              <span
+                aria-hidden
+                className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface inset-ring inset-ring-border"
+              >
+                <TypeMark type={typeMarkFor(facts.issueType, facts.awaitType)} size={18} label={null} />
+              </span>
+            ) : null}
             <span className="min-w-0 text-2xl leading-tight [overflow-wrap:anywhere] max-sm:text-xl">
               {facts?.title ?? 'Task'}
             </span>
           </h1>
           {facts ? (
             <div className="flex flex-wrap items-center gap-2" data-task-chips="">
-              <TaskStatusChip status={facts.status} />
-              <PriorityChip priority={facts.priority} />
+              {status ? (
+                <Badge icon={<StatusMark status={status} size={12} label={null} />}>
+                  <span data-task-status={status}>{STATUS_MARK_LABELS[status]}</span>
+                </Badge>
+              ) : null}
+              <Badge icon={<PriorityMark priority={facts.priority} size={12} label={null} />}>
+                {priorityLabel(facts.priority)} priority
+              </Badge>
               {facts.ask ? (
-                <StateChip
-                  tone="caution"
-                  glyph={<span className="text-micro font-bold leading-none">{askGlyph(facts)}</span>}
-                  label={<span data-task-ask={facts.ask}>{ASK_LINE[facts.ask]}</span>}
-                />
+                <Badge icon={<StatusMark status="waiting" size={12} label={null} />} className="text-wait-text">
+                  <span data-task-ask={facts.ask}>{ASK_LINE[facts.ask]}</span>
+                </Badge>
               ) : null}
               {facts.holder ? (
                 // Its parts wrap as wholes, so a name or a model is never broken inside itself.
@@ -145,7 +155,7 @@ export function TaskHead({
       {Children.toArray(children).length > 0 ? (
         <div className="mt-3 flex flex-col gap-3 border-t border-border/70 pt-3">{children}</div>
       ) : null}
-    </Card>
+    </div>
   );
 }
 

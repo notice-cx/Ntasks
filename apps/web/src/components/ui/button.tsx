@@ -75,6 +75,7 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
+      aria-keyshortcuts={shortcut}
       title={title ?? (shortcut ? `${label} (${shortcut})` : label)}
       className={cn(buttonVariants({ variant, size, icon: true, className }))}
       {...props}

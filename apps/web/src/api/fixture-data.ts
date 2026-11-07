@@ -3,7 +3,7 @@
  * pages draw, with times relative to `nowMs` so ages read the same on any
  * day. Nothing here describes a real project, person or task.
  */
-import type { LiveTask, TaskComment, TaskProject } from './types';
+import type { LiveTask, TaskActor, TaskComment, TaskProject } from './types';
 
 export interface FixtureTask extends LiveTask {
   /** The project's key. */
@@ -18,6 +18,15 @@ export interface FixtureSeed {
 
 /** Who the fixture API records as the sender of every change. */
 export const FIXTURE_ACTOR = 'Example Owner';
+
+/** The two agents, as the API records them, and the names a read gives them. */
+const CLAUDE = 'agent:claude';
+const CODEX = 'agent:codex';
+const MODELS: Readonly<Record<string, string>> = { [CLAUDE]: 'claude-example', [CODEX]: 'codex-example' };
+export const FIXTURE_ACTORS: readonly TaskActor[] = [
+  { principalId: CLAUDE, displayName: 'Claude' },
+  { principalId: CODEX, displayName: 'Codex' },
+];
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -62,7 +71,11 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     updatedAt: at(ago),
     closeReason: reason,
     resolution: 'done',
-    metadata: { noticeos_closed_by: by, noticeos_closed_model: 'example-model-1', noticeos_closed_at: at(ago) },
+    metadata: {
+      noticeos_closed_by: by,
+      ...(MODELS[by] === undefined ? {} : { noticeos_closed_model: MODELS[by] }),
+      noticeos_closed_at: at(ago),
+    },
     ...fields,
   });
 
@@ -76,7 +89,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     }),
     base('web', 'web-k3m9.1', 'Draw the sign-in form', {
       parent: 'web-k3m9',
-      ...closed(2 * DAY, 'agent-one', 'Landed in 1a2b3c4: the form renders its fields and errors.'),
+      ...closed(2 * DAY, CLAUDE, 'Landed in 1a2b3c4: the form renders its fields and errors.'),
       acceptance:
         '- [x] The form shows email and password fields\n- [x] A wrong password shows its error under the field',
     }),
@@ -84,10 +97,10 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       parent: 'web-k3m9',
       status: 'in_progress',
       priority: 1,
-      assignee: 'agent-two',
+      assignee: CODEX,
       startedAt: at(3 * HOUR),
       updatedAt: at(40 * 60_000),
-      metadata: { noticeos_claimed_model: 'example-model-2' },
+      metadata: { noticeos_claimed_model: MODELS[CODEX] },
       description: 'Walk the form with the keyboard and a screen reader, and fix what they cannot reach.',
       acceptance:
         '- [x] Every field is reachable with Tab\n- [ ] Every error is announced\n- [ ] The submit button names what it does',
@@ -226,7 +239,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       description: 'Waiting on the credentials for the documentation host.',
     }),
     base('docs', 'docs-y5u2', 'Fix the broken links in the README', {
-      ...closed(3 * DAY, 'agent-one', 'Fixed in 9f8e7d6: every link now opens its page.'),
+      ...closed(3 * DAY, CLAUDE, 'Fixed in 9f8e7d6: every link now opens its page.'),
     }),
   ];
 
@@ -236,7 +249,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       [
         {
           id: 'c1',
-          author: 'agent-two',
+          author: CODEX,
           text: 'Started with the keyboard order. Tab skips the **submit** button; fixing that first.',
           createdAt: at(2 * HOUR),
         },
@@ -247,7 +260,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       [
         {
           id: 'c2',
-          author: 'agent-one',
+          author: CLAUDE,
           text: 'Support answered 31 password questions last month and 2 about email links.',
           createdAt: at(2 * DAY),
         },

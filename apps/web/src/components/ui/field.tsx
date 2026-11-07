@@ -133,3 +133,24 @@ export function Textarea({ className, id, required, rows = 3, ...props }: Compon
     </span>
   );
 }
+
+/** A choice among a few fixed values, drawn like a field with the theme's chevron. Inside a `Field` it takes the field's id. */
+export function Select({ className, id, required, children, ...props }: ComponentProps<'select'>) {
+  const wiring = useFieldWiring();
+  return (
+    <select
+      id={id}
+      required={required}
+      {...wiring}
+      {...props}
+      className={cn(
+        boxClass,
+        'h-7.5 cursor-pointer border-0 ps-2.25 text-ink outline-none pointer-coarse:h-9',
+        'focus-visible:inset-ring-accent focus-visible:ring-3 focus-visible:ring-accent-soft',
+        className,
+      )}
+    >
+      {children}
+    </select>
+  );
+}

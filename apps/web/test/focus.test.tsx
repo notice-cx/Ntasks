@@ -49,11 +49,11 @@ describe('focus', () => {
     expect(task(api, 'web-d4x1')?.status).toBe('open');
   });
 
-  it('ends on a line that says every decision is done', async () => {
+  it('ends on a line that says nothing is waiting', async () => {
     renderApp('/tasks/focus?project=docs');
     expect(await screen.findByText('Focus · 1 of 1 for you')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-    expect(await screen.findByText("That's every decision for you.")).toBeTruthy();
+    expect(await screen.findByText('Nothing is waiting for you')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
     expect(current()).toBe('docs-r4s9');
   });

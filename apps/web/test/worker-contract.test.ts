@@ -105,7 +105,6 @@ describe("the Worker's task answers", () => {
       [{ projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' }],
       new Map([['web', { data: payload, error: null, fetchedAt: Date.parse(NOW) }]]),
       NO_FILTERS,
-      Date.parse(NOW),
     );
     // A gate's ask is its reason, and it is the one question for the task it holds.
     expect(read.inbox.map((row) => [row.id, row.title, inboxAsk(row)])).toEqual([

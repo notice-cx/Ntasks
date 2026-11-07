@@ -125,6 +125,7 @@ export function MenuItem({
   icon,
   shortcut,
   submenu = false,
+  keepOpen = false,
   disabled = false,
   onSelect,
   className,
@@ -134,8 +135,10 @@ export function MenuItem({
   icon?: ReactNode;
   /** The key shown at the end. A single letter or digit also runs the item while the menu is open. */
   shortcut?: string;
-  /** It opens a further list: a chevron takes the key's place. */
+  /** It opens a further list: a chevron takes the key's place, and the menu stays open. */
   submenu?: boolean;
+  /** The menu stays open after it runs, as for an item that goes back to the previous list. */
+  keepOpen?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
   className?: string;
@@ -159,7 +162,7 @@ export function MenuItem({
       )}
       onClick={() => {
         onSelect?.();
-        if (!submenu) menu?.close();
+        if (!submenu && !keepOpen) menu?.close();
       }}
     >
       {icon}

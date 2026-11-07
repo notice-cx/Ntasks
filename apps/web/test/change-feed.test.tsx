@@ -43,7 +43,7 @@ describe('the change feed', () => {
     const { api, wrapped, pollsAfter } = counted();
     await api.comment('web-b2r6', 'web', 'An earlier change');
     renderApp('/tasks', wrapped);
-    await screen.findByRole('heading', { level: 1, name: '4 decisions for you' });
+    await screen.findByRole('region', { name: 'Waiting for you' });
     await waitFor(() => expect(pollsAfter.length).toBeGreaterThan(0));
     expect(pollsAfter[0]).toBe(1);
   });
@@ -51,7 +51,7 @@ describe('the change feed', () => {
   it('reads no board when a poll finds nothing', async () => {
     const { wrapped, boardReads, pollsAfter } = counted();
     renderApp('/tasks', wrapped);
-    await screen.findByRole('heading', { level: 1, name: '4 decisions for you' });
+    await screen.findByRole('region', { name: 'Waiting for you' });
     await waitFor(() => expect(pollsAfter.length).toBe(1));
     const before = new Map(boardReads);
     await waitOnePoll();
@@ -101,7 +101,7 @@ describe('the change feed', () => {
   it('asks nothing while the page is hidden', async () => {
     const { wrapped, pollsAfter } = counted();
     renderApp('/tasks', wrapped);
-    await screen.findByRole('heading', { level: 1, name: '4 decisions for you' });
+    await screen.findByRole('region', { name: 'Waiting for you' });
     await waitFor(() => expect(pollsAfter.length).toBe(1));
     focusManager.setFocused(false);
     await waitOnePoll();

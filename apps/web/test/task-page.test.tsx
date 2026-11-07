@@ -15,7 +15,7 @@ describe('a task page', () => {
       await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' }),
     ).toBeTruthy();
     expect(screen.getByText('Bug')).toBeTruthy();
-    expect(screen.getByText('top priority')).toBeTruthy();
+    expect(screen.getByText('Top priority')).toBeTruthy();
     expect(screen.getByText('0 of 2')).toBeTruthy();
     const facts = screen.getByRole('complementary', { name: 'Facts' });
     expect(within(facts).getByText('Example web app')).toBeTruthy();

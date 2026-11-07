@@ -14,8 +14,8 @@ export function closeOperation(task: { readonly labels: readonly string[] }): 'd
 }
 
 /**
- * A close where nothing shipped, on a task's row: the Close as menu and, once
- * one is picked, its one-line note, sent through the Undo window.
+ * A close where nothing shipped: the Close as menu and, once one is picked
+ * there or through `pick`, its one-line note, sent through the Undo window.
  */
 export function useCloseAs({
   id,
@@ -31,7 +31,7 @@ export function useCloseAs({
   via?: 'dismiss';
   disabledReason?: string | null;
   onOpen?: () => void;
-}): { menu: ReactNode; box: ReactNode; cancel: () => void } {
+}): { menu: ReactNode; box: ReactNode; cancel: () => void; pick: (resolution: NotDone) => void } {
   const [picked, setPicked] = useState<NotDone | null>(null);
   const answer = useInboxAnswer();
   const menu = (
@@ -65,5 +65,13 @@ export function useCloseAs({
         }}
       />
     );
-  return { menu, box, cancel: () => setPicked(null) };
+  return {
+    menu,
+    box,
+    cancel: () => setPicked(null),
+    pick: (resolution) => {
+      setPicked(resolution);
+      onOpen?.();
+    },
+  };
 }

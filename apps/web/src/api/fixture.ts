@@ -7,7 +7,7 @@
  */
 import { isTaskId, type TaskResolution } from '@ntasks/domain';
 import { ApiError, type TasksApi } from './client';
-import { FIXTURE_ACTOR, fixtureSeed, type FixtureSeed, type FixtureTask } from './fixture-data';
+import { FIXTURE_ACTOR, FIXTURE_ACTORS, fixtureSeed, type FixtureSeed, type FixtureTask } from './fixture-data';
 import type { LiveEpic, LiveTask, TaskChange, TaskComment, TaskProject } from './types';
 
 /** How far back a board's closed tasks reach. */
@@ -196,6 +196,7 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         lastSeq: changes.length,
         tasks,
         epics: epics(key),
+        actors: FIXTURE_ACTORS,
       });
     },
     async changes(after) {
@@ -214,6 +215,7 @@ export function createFixtureTasksApi({ now = Date.now, seed, unreachable = fals
         readAt: new Date(now()).toISOString(),
         task: withLinks(task),
         comments: state.comments.get(id) ?? [],
+        actors: FIXTURE_ACTORS,
       });
     },
     async createTask(input, options) {

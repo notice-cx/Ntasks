@@ -5,6 +5,7 @@
  * missing, never as empty.
  */
 import type { LiveTasksPayload, TaskProject } from '@/api/types';
+import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
   boardOrder,
   boardRows,
@@ -17,7 +18,6 @@ import {
   waitsOnTask,
   type BoardTask,
 } from './task-model';
-import { weekStartMs } from './format';
 
 export interface BoardFilters {
   q: string;
@@ -59,6 +59,8 @@ export interface BoardProject {
   /** The decisions waiting on a person, most urgent first. */
   waiting: BoardTask[];
   epicNames: Map<string, string>;
+  /** Each epic's children, closed and in all, when the server could read them. */
+  epicProgress: Map<string, { closed: number; total: number }>;
 }
 
 /** Approvals and epics stay reachable, but are not work a row counts. */
@@ -95,6 +97,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
       tasks: [],
       waiting: [],
       epicNames: new Map(),
+      epicProgress: new Map(),
     };
   }
   // Only approvals a person answers are drawn; one that resolves itself waits on nobody.
@@ -123,6 +126,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
       ...(payload.epics ?? []).map((epic) => [epic.id, epic.title] as const),
       ...tasks.filter((task) => task.issueType === 'epic').map((task) => [task.id, task.title] as const),
     ]),
+    epicProgress: new Map((payload.epics ?? []).map((epic) => [epic.id, { closed: epic.closed, total: epic.total }])),
   };
 }
 
@@ -137,7 +141,6 @@ export function readBoard(
   catalog: readonly TaskProject[],
   reads: ReadonlyMap<string, ProjectRead>,
   filters: BoardFilters,
-  nowMs: number,
 ) {
   const available = catalog.map((project) => readProject(project, reads.get(project.logicalKey)));
   const projects = available.filter((project) => filters.project === 'all' || project.key === filters.project);
@@ -168,11 +171,10 @@ export function readBoard(
     .flatMap((project) => project.waiting)
     .filter(matches)
     .sort(inboxOrder);
-  // A decision is answered in the decisions list, so the table does not list it again.
+  // A decision is answered in the Waiting for you group, so no other group lists it again.
   const waitingIds = new Set(projects.flatMap((project) => project.waiting.map((task) => task.id)));
   const work = allTasks.filter(isWork);
   const live = work.filter((task) => task.status !== 'closed' && task.status !== PARKED);
-  const weekStart = weekStartMs(nowMs);
   const missing = projects.filter((project) => !project.ok);
   const readTimes = projects.flatMap((project) => (project.readAt === null ? [] : [project.readAt])).sort();
 
@@ -181,7 +183,10 @@ export function readBoard(
     projects,
     allTasks,
     inbox,
-    rows: work.filter((task) => matches(task) && !waitingIds.has(task.id)).sort(boardOrder),
+    /** Every task the filters keep, epics included, except the decisions in `inbox`; approvals are only ever decisions. */
+    rows: allTasks.filter((task) => !isGate(task) && matches(task) && !waitingIds.has(task.id)).sort(boardOrder),
+    /** Every task's status by id, for `statusMarkFor` and `groupRows`. */
+    statuses,
     statusCounts,
     priorityCounts,
     assigneeCounts,
@@ -194,19 +199,22 @@ export function readBoard(
     readAt: readTimes[0] ?? null,
     totals: {
       waiting: projects.reduce((sum, project) => sum + project.waiting.length, 0),
-      approvals: projects.reduce((sum, project) => sum + project.waiting.filter(isGate).length, 0),
-      open: live.length,
-      urgent: live.filter((task) => task.priority <= 1).length,
       blocked: live.filter((task) => workStatus(task, statuses) === 'blocked').length,
-      // A close where nothing shipped is not done work.
-      doneThisWeek: work.filter(
-        (task) =>
-          task.status === 'closed' &&
-          (task.resolution ?? 'done') === 'done' &&
-          Date.parse(task.closedAt ?? '') >= weekStart,
-      ).length,
     },
   };
+}
+
+/** Rows sorted into the groups a list shows, in `STATUS_MARKS` order, by each row's status mark. */
+export function groupRows(
+  rows: readonly BoardTask[],
+  statuses: ReadonlyMap<string, string>,
+): Record<StatusMark, BoardTask[]> {
+  const groups = Object.fromEntries(STATUS_MARKS.map((mark) => [mark, [] as BoardTask[]])) as Record<
+    StatusMark,
+    BoardTask[]
+  >;
+  for (const task of rows) groups[statusMarkFor(task, statuses)].push(task);
+  return groups;
 }
 
 export type BoardRead = ReturnType<typeof readBoard>;

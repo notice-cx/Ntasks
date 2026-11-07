@@ -48,12 +48,3 @@ export function localDay(ms: number, addDays = 0): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
-
-/** Midnight at the start of this local week, Monday first. */
-export function weekStartMs(nowMs: number): number {
-  const at = new Date(nowMs);
-  at.setHours(0, 0, 0, 0);
-  const sinceMonday = (at.getDay() + 6) % 7;
-  at.setDate(at.getDate() - sinceMonday);
-  return at.getTime();
-}

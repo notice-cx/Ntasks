@@ -20,7 +20,6 @@ import type {
   TasksCapabilities,
 } from '@/api/types';
 import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
-import { useChangeFeed } from './useChangeFeed';
 import { choiceName, closeAsReason, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 
@@ -84,13 +83,13 @@ export function useTaskProjects() {
  * Every named project's board, in the order given. A board is the API's most
  * expensive read (about two database rows per task), so it is read when a
  * page opens, after a write, and when the change feed names a change in its
- * project (`useChangeFeed`); never on a timer, and never just because the
- * window regained focus. The page says how old its read is.
+ * project; never on a timer, and never just because the window regained
+ * focus. The app's frame reads every board once and runs the one change feed
+ * (`BoardsProvider`); a page that asks for a board here shares that read.
  */
 export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasksPayload, Error>[] {
   const api = useTasksApi();
-  const catalog = useTaskProjects();
-  const boards = useQueries({
+  return useQueries({
     queries: projects.map((project) => ({
       queryKey: ['tasks', project],
       queryFn: ({ signal }: { signal: AbortSignal }) => api.board(project, signal),
@@ -98,11 +97,6 @@ export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasks
       refetchOnWindowFocus: false,
     })),
   });
-  useChangeFeed(
-    projects.map((project, index) => ({ project, lastSeq: boards[index]?.data?.lastSeq })),
-    catalog.data,
-  );
-  return boards;
 }
 
 export function useTask(id: string, project: string | null) {
