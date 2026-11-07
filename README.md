@@ -31,6 +31,8 @@ designed to fit Cloudflare's free plan.
 Your AI agents keep taking ready work while a task that needs your decision
 waits for you, and the work it blocks moves on once you answer.
 
+Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
+
 ## Status
 
 Ntasks is under construction. The repository holds its skeleton:
