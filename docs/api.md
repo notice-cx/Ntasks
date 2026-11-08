@@ -394,8 +394,9 @@ one call too.
 - **Closing many.** `close_task` with `tasks` closes each with the same
   `reason`, resolution and proof, and `with_children: true` first closes
   every open task under each one named, deepest first, in a project the
-  sender may change; an epic with more than 50 open tasks under it is
-  refused, so a task under it is closed with `with_children` first. Each task closed or
+  sender may change. One call closes at most 50 tasks in all, counting the
+  tasks under them; a call that would close more is refused whole, naming
+  how many, before anything is written. Each task closed or
   refused is a result of its own: a task someone else holds is refused alone.
   `unblocked` lists, as `{ id, title }`, each task that waited on the closed
   ones through a `blocks` link and is now ready.

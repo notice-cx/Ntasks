@@ -2362,13 +2362,29 @@ describe('close_task on several tasks', () => {
     expect(named.results.map((result) => result.id)).toEqual([child.id, epic.id]);
   });
 
-  it('refuses an epic with more than 50 open tasks under it, closing none of them', async () => {
+  it('refuses a call that would close more than 50 tasks in all, writing nothing, and names how many', async () => {
     const project = await newProject(engine);
-    const epic = await task(project, { title: 'Too big', type: 'epic' });
-    for (let index = 0; index < 51; index += 1) await task(project, { title: `Part ${index}`, parentId: epic.id });
-    const reply = await write<Closed>(target, 'close_task', { task: epic.id, with_children: true, reason: 'Done.' });
-    expect(reply.results).toEqual([{ id: epic.id, error: expect.stringMatching(/^refused: /u) }]);
-    expect((await engine.listBoard(project.id, { statuses: ['open'], parentId: epic.id })).length).toBe(51);
+    const epics = [
+      await task(project, { title: 'First', type: 'epic' }),
+      await task(project, { title: 'Second', type: 'epic' }),
+    ];
+    for (const epic of epics)
+      for (let index = 0; index < 30; index += 1) await task(project, { title: `Part ${index}`, parentId: epic.id });
+    const idempotency_key = key();
+    const refused = await refusal(target, 'close_task', {
+      workspace: WORKSPACE.id,
+      tasks: epics.map((epic) => epic.id),
+      with_children: true,
+      reason: 'Done.',
+      idempotency_key,
+    });
+    expect(refused).toMatch(/^invalid arguments: tasks /u);
+    expect(refused).toContain('62');
+    const open = await engine.listBoard(project.id, { statuses: ['open'] });
+    expect(open).toHaveLength(62);
+    // Nothing was written, not even the key's record: the key still takes a smaller call.
+    await write(target, 'close_task', { tasks: [epics[0]!.id], with_children: true, reason: 'Done.', idempotency_key });
+    expect((await current(project, epics[0]!.id)).status).toBe('closed');
   });
 
   it('refuses a key sent again with other tasks, writing none of them (rule 3)', async () => {

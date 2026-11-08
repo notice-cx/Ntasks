@@ -849,30 +849,25 @@ async function taskOfPullRequest(context: ToolContext, args: Args, pr: string): 
 /**
  * Every open task under `taskId`, deepest first, so each closes before its
  * parent, in a project the sender may change: a project it cannot reach
- * answers as one that does not exist, and shows none of its tasks. More than
- * MANY is refused, so one call closes a bounded number.
+ * answers as one that does not exist, and shows none of its tasks. It walks
+ * the project's open board, one read the store keeps in memory, so a deep
+ * tree costs no read per level.
  */
 async function openUnder(context: ToolContext, args: Args, taskId: string): Promise<string[]> {
   const project = await projectOf(context, await projectFor(context, args, taskId), 'write');
+  const children = new Map<string, string[]>();
+  for (const task of await openTasksOf(context, project.id)) {
+    if (task.parentId === null) continue;
+    children.set(task.parentId, [...(children.get(task.parentId) ?? []), task.id]);
+  }
   const under: string[] = [];
-  const walk = async (parentId: string): Promise<void> => {
-    const children = await context.engine.listBoard(project.id, {
-      statuses: OPEN_STATUSES,
-      parentId,
-      withoutExternalLinks: true,
-    });
-    for (const child of children) {
-      await walk(child.id);
-      under.push(child.id);
-      if (under.length > MANY)
-        refuse(
-          `refused: more than ${MANY} open tasks are under ${taskId}, more than one close_task closes; ` +
-            'close a task under it with with_children first.',
-          'state',
-        );
+  const walk = (parentId: string): void => {
+    for (const child of children.get(parentId) ?? []) {
+      walk(child);
+      under.push(child);
     }
   };
-  await walk(taskId);
+  walk(taskId);
   return under;
 }
 
@@ -1361,7 +1356,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     name: 'close_task',
     description:
       'Close a task with the reason it is done, citing evidence, and pass commit, pr or link as its proof. ' +
-      `tasks closes up to ${MANY} with the same evidence, and with_children closes an epic's open tasks first; ` +
+      `tasks closes several with the same evidence, and with_children closes an epic's open tasks first; one call closes at most ${MANY} tasks in all. ` +
       'The answer lists unblocked: tasks these closes made ready. ' +
       'When nothing shipped, pass the resolution that says why; the reason still cites the evidence. ' +
       'An approval the task waits on must first be answered or retired. A declined action must not happen.',
@@ -1432,7 +1427,6 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
         };
       }
-      await bindCall(context, 'close_task', args, ids);
       // An epic's open tasks close before it, deepest first; a task named twice closes once.
       const order: string[] = [];
       const refusedFirst: Record<string, string>[] = [];
@@ -1449,6 +1443,13 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         order.push(id);
       }
       const once = [...new Set(order)].filter((id) => !refusedFirst.some((entry) => entry.id === id));
+      // One rule bounds a call, counted before anything is written: the tasks named and every task under them.
+      if (once.length > MANY)
+        refuse(
+          `invalid arguments: ${one ? 'with_children' : 'tasks'} (this call would close ${once.length} tasks, ` +
+            `counting the open tasks under them, and one close_task call closes at most ${MANY}; split it into smaller calls)`,
+        );
+      await bindCall(context, 'close_task', args, ids);
       const results = [
         ...refusedFirst,
         ...(await eachTask(once, async (taskId) => ({
