@@ -93,6 +93,7 @@ import {
 import { linksSeenBy, projectOf } from '../lookup.ts';
 import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
 import { shippedArgs } from '../delivery.ts';
+import { citationWarnings, TASK_TEXT } from './citations.ts';
 import { projectFor, projectForNew } from './project.ts';
 import { PROJECT, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
 
@@ -667,6 +668,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     async run(context, args) {
       const warnings: string[] = [];
       const task = creation(args, (path, value) => taskArg({ [path]: value }, path), warnings);
+      warnings.push(...citationWarnings(args, TASK_TEXT));
       const model = modelArg(args);
       const detail = detailArg(args);
       const retry = await retryRequest(context, 'create_task', args);
@@ -716,6 +718,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           throw new Refused(error.kind, inEntry(error.message, index));
         }
       });
+      warnings.push(...entries.flatMap((entry, i) => citationWarnings(entry as Args, TASK_TEXT, `tasks[${i}].`)));
       const retry = await retryRequest(context, 'create_tasks', args);
       const projectId = await projectForNew(context, args, entries.flatMap(anchorsOf));
       const entry = async (generation: number, index: number): Promise<RetryRequest> => ({
@@ -903,6 +906,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const warnings: string[] = [];
       const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
       for (const link of oncePerTask(named, warnings)) (linked[link.kind] ??= []).push(link.taskId);
+      warnings.push(...citationWarnings(args, TASK_TEXT));
       const addExternalLinks = externalLinksArg(args, 'add_external_links', 1);
       const removeExternalLinks = urlsArg(args, 'remove_external_links');
       addsOrRemoves(addExternalLinks, removeExternalLinks, 'add_external_links and remove_external_links');
@@ -1116,7 +1120,11 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         'resolution',
         ...(result.task.delivery === null ? [] : ['delivery' as const]),
       ];
-      return written(context, detail, result.task, shown, result.replayed);
+      const warnings = citationWarnings(args, ['reason']);
+      return {
+        ...(await written(context, detail, result.task, shown, result.replayed)),
+        ...(warnings.length > 0 ? { warnings } : {}),
+      };
     },
   },
 ] satisfies TaskTool[]);
