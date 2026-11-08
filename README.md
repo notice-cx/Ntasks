@@ -87,8 +87,9 @@ Ntasks is in active development ahead of its first release.
 | Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
-the projects granted to it. A deployment refuses every request until its
-sign-in is set up. [SECURITY.md](SECURITY.md) has the details.
+the projects granted to it. A new deployment refuses every request until its
+sign-in is set up; [SECURITY.md](SECURITY.md) has the details, including
+which credentials keep working after `AUTH_SECRET` changes.
 
 ## Architecture
 

@@ -71,8 +71,13 @@ when `OWNER_GITHUB_IDS` holds anything but ids, or when only some of the
 three GitHub secrets are set or one is malformed. Until the setup page has
 run, sign-in is off too. While it is off, every sign-in path but the setup
 page answers `503` with `{"error":"sign_in_not_configured"}` and a `detail`
-sentence saying which of the two it is, and every call that needs a
-signed-in sender is refused.
+sentence saying which of the two it is. A call that needs a signed-in sender
+is refused, with one exception: when `AUTH_SECRET` changed on a deployment
+set up by the setup page, an agent's access token already issued, until it
+expires, and a service credential still sign their calls in, as
+[Changing AUTH_SECRET](#changing-auth_secret) describes. The token verifier
+needs only `AUTH_SECRET` and the stored origin, not the stored app's
+credentials.
 
 The [Deploy to Cloudflare button](../README.md#deploy-your-own) asks for
 `AUTH_SECRET`, the one name in [`.dev.vars.example`](../.dev.vars.example),
