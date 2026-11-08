@@ -6,39 +6,15 @@
  * hold their rules.
  */
 import { TASK_LIMITS } from '@ntasks/domain';
-import { choiceArg, keyArg, modelArg, only, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
+import { choiceArg, detailArg, modelArg, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { SCOPES } from '../auth.ts';
 import { TASK_CHOICE_KEYS } from '../noticeos-fields.ts';
 import { MAINTENANCE_ACTIONS, reconcileTask, seen, type TaskMaintenance } from '../owner-answers.ts';
-import { mcpTask } from '../views.ts';
+import { mcpTask, writtenView } from '../views.ts';
+import { projectFor } from './project.ts';
 import { PROJECT, READ, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
-import { IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
-
-/** The arguments reconcile_task takes. */
-const RECONCILE_ARGS = [
-  'project',
-  'task',
-  'action',
-  'proposal',
-  'explanation',
-  'evidence',
-  'response',
-  'owner',
-  'source',
-  'scope',
-  'answer_mode',
-  'question',
-  'approval_item',
-  'option',
-  'duplicate_of',
-  'holder',
-  'inactive',
-  'activity_check',
-  'progress',
-  'model',
-  'idempotency_key',
-] as const;
+import { DETAIL, IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
 
 /** An object with the keys whose value is undefined left out, in the order given. */
 function defined<T extends object>(row: T): T {
@@ -138,13 +114,13 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
       },
       model: MODEL,
       idempotency_key: IDEMPOTENCY,
+      detail: DETAIL,
     },
-    ['project', 'task', 'action', 'proposal', 'explanation', 'evidence', 'idempotency_key'],
+    ['task', 'action', 'proposal', 'explanation', 'evidence'],
   ),
   annotations: WRITE,
   scope: SCOPES.write,
   async run(context: ToolContext, args: Args) {
-    only(args, RECONCILE_ARGS);
     // Built in the order NoticeOS built it: a recorded disposition keeps this object as its identity.
     const operation: TaskMaintenance = defined({
       kind: 'maintain' as const,
@@ -168,11 +144,15 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
       activityCheck: textArg(args, 'activity_check', 800, false),
       progress: textArg(args, 'progress', 1000, false),
     });
-    const projectId = projectArg(args);
-    keyArg(args);
+    const detail = detailArg(args);
+    const retry = await retryRequest(context, 'reconcile_task', args);
     if (operation.action === undefined) refuse('refused: action is required for reconciliation.');
-    const { result } = await reconcileTask(context, projectId, operation, retryRequest('reconcile_task', args));
-    return { task: mcpTask(await seen(context, result.task)), replayed: result.replayed };
+    const projectId = await projectFor(context, args, operation.taskId);
+    const { result } = await reconcileTask(context, projectId, operation, retry);
+    const task = await seen(context, result.task);
+    return detail === 'full'
+      ? { task: mcpTask(task), replayed: result.replayed }
+      : { ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman']), replayed: result.replayed };
   },
 });
 
@@ -181,12 +161,11 @@ export const GET_AGENT_STATS: TaskTool = Object.freeze({
   description:
     'Agent work statistics grouped by model: current and blocked counts, closes in 7 days and the 7 before, eight weeks of velocity, ranking and leaders. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
   inputSchema: schema({
-    project: { ...PROJECT, description: 'The projectId from list_projects; omit for workspace totals.' },
+    project: { ...PROJECT, description: 'The projectId, key or prefix from list_projects; omit for workspace totals.' },
   }),
   annotations: READ,
   scope: SCOPES.read,
   async run(context: ToolContext, args: Args) {
-    only(args, ['project']);
     return agentStats(context, args.project === undefined ? undefined : projectArg(args));
   },
 });

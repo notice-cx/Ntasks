@@ -103,6 +103,7 @@ async function maintain(project: Project, task: string, fields: Record<string, u
     explanation: 'The recorded evidence resolves this request.',
     evidence: 'commit abc1234 and the referenced owner source',
     idempotency_key: key(),
+    detail: 'full',
     ...fields,
   });
 }
@@ -749,6 +750,7 @@ describe('approvals', () => {
       task: decision.id,
       reason: 'Implemented in abc1234; declined production check was not run.',
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(closed.value?.task.closeReason).toMatch(/abc1234/u);
   });
@@ -1187,6 +1189,7 @@ describe('who records an owner answer', () => {
       explanation: 'x',
       evidence: 'y',
       idempotency_key: key(),
+      detail: 'full',
       ...directAnswer,
       response: 'A',
     });
@@ -1212,7 +1215,7 @@ describe('the MCP refusals of reconcile_task', () => {
       'refused: action is required for reconciliation.',
     );
     expect((await callTool(agent, 'reconcile_task', { ...base, action: 'routine', extra: 1 })).refused).toBe(
-      'invalid arguments: unknown extra',
+      'invalid arguments: unknown argument extra',
     );
     expect((await callTool(agent, 'reconcile_task', { ...base, action: 'answer' })).refused).toBe(
       'refused: response is required, must be text without control characters and must fit within 1000 characters. Send that field again with the same owner words.',

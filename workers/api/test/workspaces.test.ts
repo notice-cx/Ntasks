@@ -78,7 +78,8 @@ async function withToken(
   return { status: response.status, body: await response.json<Record<string, unknown>>() };
 }
 
-/** One MCP tool call with a bearer token: its value, or the sentence it refused with. */
+/** One MCP tool call with a bearer token: its value, or the sentence it refused
+ * with, without the last line that says whether a retry is safe. */
 async function tool(
   token: string,
   name: string,
@@ -90,7 +91,9 @@ async function tool(
   const result = body.result as { isError?: boolean; content: { text: string }[] } | undefined;
   if (!result) throw new Error(`${name} failed: ${JSON.stringify(body)}`);
   const text = result.content[0]!.text;
-  return result.isError ? { refused: text } : { value: JSON.parse(text) as Record<string, unknown> };
+  return result.isError
+    ? { refused: text.slice(0, text.lastIndexOf('\n')) }
+    : { value: JSON.parse(text) as Record<string, unknown> };
 }
 
 /** The ids of the projects a sender lists. */
@@ -325,6 +328,8 @@ describe('an agent', () => {
     expect((listed.value?.projects as { projectId: string }[]).map((project) => project.projectId)).toEqual([
       projectOne,
     ]);
+    // It reaches One alone, so a call that names no workspace acts there.
+    expect(await tool(token, 'list_projects')).toEqual(listed);
     // Three is its person's, but the agent was granted nothing there; Two is not its person's.
     for (const workspace of [three.id, two.id]) {
       expect(await tool(token, 'list_projects', { workspace })).toEqual({
@@ -332,7 +337,7 @@ describe('an agent', () => {
       });
     }
     expect(await tool(token, 'get_task', { workspace: one.id, project: projectTwo, task: taskTwo })).toEqual({
-      refused: `refused: projectId ${projectTwo} names no project in this workspace; list_projects lists the current projectIds.`,
+      refused: `refused: project ${projectTwo} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`,
     });
 
     expect(projectIds(await withToken(token, 'GET', '/api/tasks/projects'))).toEqual([projectOne]);

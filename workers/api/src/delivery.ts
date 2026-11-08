@@ -123,7 +123,11 @@ export function shippedWith(
 }
 
 /** Moves the closed tasks a signal names, in the projects the sender may change. */
-export async function reportDelivery(context: WriteContext, signal: DeliverySignal): Promise<readonly DeliveryMove[]> {
+export async function reportDelivery(
+  context: WriteContext,
+  signal: DeliverySignal,
+  model?: string,
+): Promise<readonly DeliveryMove[]> {
   const { engine, principal } = context;
   const writable = (await engine.listProjects()).filter((project) => mayReach(principal, project.id, 'write'));
   if (writable.length === 0) return [];
@@ -131,7 +135,7 @@ export async function reportDelivery(context: WriteContext, signal: DeliverySign
     return await engine.reportDelivery(
       writable.map((project) => project.id),
       signal,
-      { name: principal.name },
+      model === undefined ? { name: principal.name } : { name: principal.name, model },
     );
   } catch (error) {
     if (!(error instanceof TaskRefused)) throw error;

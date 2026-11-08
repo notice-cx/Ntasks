@@ -153,8 +153,8 @@ describe('a service acting for an agent it names', () => {
       task: created.id,
       model: 'example-model',
       idempotency_key: 'claim-agent-a-0001',
-    })) as { task: { assignee: string } };
-    expect(claimed.task.assignee).toBe('service:noticeos-writes/agent-a');
+    })) as { assignee: string };
+    expect(claimed.assignee).toBe('service:noticeos-writes/agent-a');
     const stored = await runInDurableObject(store(), (instance: TaskStore) =>
       instance.tasks.getTask(project, created.id),
     );
@@ -170,7 +170,7 @@ describe('a service acting for an agent it names', () => {
     const fromB = await create(agentB);
     expect(fromB).toMatchObject({ replayed: false });
     expect(fromB.id).not.toBe(created.id);
-    expect(await create(agentA)).toEqual({ ...created, replayed: true });
+    expect(await create(agentA)).toMatchObject({ id: created.id, replayed: true });
   });
 
   it('refuses a malformed or too long agent name with 400, through the Worker', async () => {

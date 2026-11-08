@@ -4,12 +4,12 @@
  * does for a repository's automation.
  */
 import { DELIVERY_STAGES } from '@ntasks/domain';
-import { only, type Args } from '../args.ts';
+import { modelArg, type Args } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import { movedView, reportDelivery, signalArgs } from '../delivery.ts';
 import { SIGNAL_ITEMS } from '../engine/validate.ts';
 import { schema, type TaskTool, type ToolContext } from './read-tools.ts';
-import { WRITE } from './write-tools.ts';
+import { MODEL, WRITE } from './write-tools.ts';
 
 export const REPORT_DELIVERY: TaskTool = Object.freeze({
   name: 'report_delivery',
@@ -34,17 +34,15 @@ export const REPORT_DELIVERY: TaskTool = Object.freeze({
         description:
           "Commits, each 7 to 64 hexadecimal characters. One matches a task's commit or merge commit when either starts with the other.",
       },
+      model: MODEL,
     },
     ['repository', 'stage'],
   ),
   annotations: WRITE,
   scope: SCOPES.write,
   async run(context: ToolContext, args: Args) {
-    only(args, ['repository', 'stage', 'pull_requests', 'commits']);
-    const moves = await reportDelivery(
-      context,
-      signalArgs(args, { pullRequests: 'pull_requests', commits: 'commits' }),
-    );
+    const signal = signalArgs(args, { pullRequests: 'pull_requests', commits: 'commits' });
+    const moves = await reportDelivery(context, signal, modelArg(args));
     return { moved: movedView(moves) };
   },
 });

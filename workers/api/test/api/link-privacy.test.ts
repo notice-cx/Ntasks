@@ -107,9 +107,15 @@ describe('links to a task in a project the sender cannot reach', () => {
       project: a.id,
       task: linked.id,
       priority: 1,
-      idempotency_key: `key-${crypto.randomUUID()}`,
+      detail: 'full',
     });
     expect(linkIds(reply.task)).toEqual(seenIds());
+    // The short answer shows the links when a change names them, and keeps out the same ones.
+    const short = await write<{ dependencies: { id: string }[] }>(sender, 'update_task', {
+      task: linked.id,
+      related: [near.id],
+    });
+    expect(linkIds(short)).toEqual(seenIds());
     const patched = await send(sender, 'PATCH', `/api/tasks/${linked.id}`, { projectId: a.id, priority: 0 });
     expect(linkIds(patched.body.task as { dependencies: { id: string }[] })).toEqual(seenIds());
   });

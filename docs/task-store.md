@@ -187,6 +187,14 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
+  A retry identity marked `derived` (a key the API derived from an MCP
+  call's arguments) also records the version the write left each task it
+  wrote at, and marks a record of new tasks. Its record answers only while
+  every one of those tasks stands at that version, and a record of new tasks
+  also only for 24 hours; after that the same request is a new write, and
+  its batch replaces the stale record. The record carries this rule, so
+  `recordedWrite` reads it as the write does. A key a caller chose keeps
+  rule 3 unchanged.
 - **Projects:** `listProjects`, `createProject`, which
   `POST /api/tasks/projects` ([API](api.md#writes)) calls, and
   `setProjectDeploys`; an import writes its projects' rows itself.
@@ -196,9 +204,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   carries `commit` or `pullRequest` starts a task's delivery, and a reopen
   clears it. `listBoard` with `stages` reads closed tasks at those stages.
 - **Custom fields:** `defineField` and `retireField`, each one batch, which
-  writes a retry record when the call carries a retry identity (an MCP
-  `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a
-  repeated definition is refused rather than replayed. A key the project has
+  writes a retry record when the call carries a retry identity (every MCP
+  call, keyed by its `idempotency_key` or else by its arguments, and an HTTP
+  write with an `Idempotency-Key` header); without one, a repeated definition
+  is refused rather than replayed. A key the project has
   used, retired or not, is refused as
   `invalid`, and so is a field past the project's 64.
 

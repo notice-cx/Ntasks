@@ -1,6 +1,6 @@
 // The MCP tools that change tasks, as an agent calls them: their schemas,
-// what each one changes, the sentences each refusal returns, and retries.
-// Names, arguments, results and refusals are NoticeOS's task tools'.
+// what each one changes and answers, the sentences each refusal returns, and
+// retries. Names and arguments are NoticeOS's task tools'.
 import { TaskRefused, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { WORK_ARGS } from '../../src/args.ts';
@@ -14,6 +14,7 @@ import {
   read,
   READER,
   refusal,
+  refusalOf,
   write,
   WORKSPACE,
   WRITER,
@@ -49,16 +50,33 @@ async function current(project: Project, id: string): Promise<Task> {
 }
 
 const missingProject = (id: string) =>
-  `refused: projectId ${id} names no project in this workspace; list_projects lists the current projectIds.`;
+  `refused: project ${id} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`;
 
 type Schema = { readonly [key: string]: unknown };
 const isSchema = (value: unknown): value is Schema =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
+/** A schema without its descriptions and required lists, at any depth. */
+function shape(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(shape);
+  if (!isSchema(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== 'description' && key !== 'required')
+      .map(([key, entry]) => [
+        key,
+        key === 'properties' && isSchema(entry)
+          ? Object.fromEntries(Object.entries(entry).map(([name, property]) => [name, shape(property)]))
+          : shape(entry),
+      ]),
+  );
+}
+
 /**
  * `ours` without the properties `theirs` lacks, at any depth, such as an entry
- * of create_tasks. Each property left out is named in `added` by its path, and
- * in `required` too when the schema requires it.
+ * of create_tasks, and without descriptions and required lists. Each property
+ * left out is named in `added` by its path, and each argument `ours` requires
+ * that `theirs` did not is named in `required`.
  */
 function withoutAdded(
   ours: unknown,
@@ -70,9 +88,16 @@ function withoutAdded(
     return ours.map((entry: unknown, index): unknown =>
       withoutAdded(entry, (theirs as unknown[] | undefined)?.[index], at, found),
     );
-  if (!isSchema(ours) || !isSchema(theirs)) return ours;
+  if (!isSchema(ours) || !isSchema(theirs)) return shape(ours);
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(ours)) {
+    if (key === 'description') continue;
+    if (key === 'required') {
+      const before = Array.isArray(theirs.required) ? (theirs.required as unknown[]) : [];
+      if (Array.isArray(value))
+        found.required.push(...value.filter((name) => !before.includes(name)).map((name) => `${at}.${String(name)}`));
+      continue;
+    }
     if (key !== 'properties' || !isSchema(value) || !isSchema(theirs.properties)) {
       kept[key] = withoutAdded(value, theirs[key], at, found);
       continue;
@@ -84,7 +109,6 @@ function withoutAdded(
         continue;
       }
       found.added.push(`${at}.${name}`);
-      if (Array.isArray(ours.required) && ours.required.includes(name)) found.required.push(`${at}.${name}`);
     }
     kept[key] = properties;
   }
@@ -92,7 +116,7 @@ function withoutAdded(
 }
 
 describe('tools/list', () => {
-  it("offers NoticeOS's task tools with NoticeOS's names, descriptions, schemas and annotations, adding only optional arguments", async () => {
+  it("offers NoticeOS's task tools with every argument they took, requiring none they did not", async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -106,9 +130,10 @@ describe('tools/list', () => {
     expect(offered.map((tool) => tool.name)).toEqual(names);
     const found = { added: [] as string[], required: [] as string[] };
     const unchanged = offered.map((tool, index) => withoutAdded(tool, NOTICEOS_TOOLS[index], tool.name, found));
-    expect(unchanged).toEqual(NOTICEOS_TOOLS);
+    expect(unchanged).toEqual(shape(NOTICEOS_TOOLS));
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
+      'reconcile_task.detail',
       'list_tasks.stage',
       'list_tasks.fields',
       'create_task.notes',
@@ -118,6 +143,7 @@ describe('tools/list', () => {
       'create_task.supersedes',
       'create_task.external_links',
       'create_task.fields',
+      'create_task.detail',
       'create_tasks.tasks.notes',
       'create_tasks.tasks.design',
       'create_tasks.tasks.estimate_minutes',
@@ -126,6 +152,7 @@ describe('tools/list', () => {
       'create_tasks.tasks.external_links',
       'create_tasks.tasks.fields',
       ...WORK_ARGS.map((name) => `claim_task.${name}`),
+      'claim_task.detail',
       'update_task.notes',
       'update_task.design',
       'update_task.estimate_minutes',
@@ -134,9 +161,17 @@ describe('tools/list', () => {
       'update_task.add_external_links',
       'update_task.fields',
       'update_task.remove_external_links',
+      'update_task.model',
+      'update_task.detail',
+      'comment_on_task.model',
       ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
+      'comment_on_task.detail',
+      'add_dependency.model',
+      'remove_dependency.model',
+      'request_human_approval.model',
       'close_task.commit',
       'close_task.pr',
+      'close_task.detail',
     ]);
   });
 });
@@ -197,6 +232,148 @@ describe('who may write', () => {
   });
 });
 
+describe('a write that names only what it needs', () => {
+  it('claims, comments on and closes a task named by its id alone', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    expect(await write(target, 'claim_task', { task: id })).toEqual({
+      id,
+      status: 'in_progress',
+      assignee: WRITER.name,
+      version: 2,
+      replayed: false,
+    });
+    expect(await write(target, 'comment_on_task', { task: id, text: 'Halfway.' })).toEqual({
+      task: id,
+      commentId: (await engine.listComments(project.id, id))[0]!.id,
+      replayed: false,
+    });
+    const closed = await write(target, 'close_task', { task: id, reason: 'Shipped in abc1234.' });
+    expect(closed).toEqual({
+      id,
+      status: 'closed',
+      resolution: 'done',
+      version: (await current(project, id)).version,
+      replayed: false,
+    });
+  });
+
+  it("files a task in the project its prefix or key names, its parent's, or the sender's only writable one", async () => {
+    const project = await newProject(engine);
+    const other = await newProject(engine);
+    const epic = await task(project, { title: 'Epic', type: 'epic' });
+    const inProject = (id: string) => expect(id.startsWith(`${project.prefix}-`), id).toBe(true);
+    for (const named of [{ project: project.prefix }, { project: project.key }, { parent: epic.id }])
+      inProject((await write<{ id: string }>(target, 'create_task', { title: 'Filed', ...named })).id);
+    const writesOne = api({ principal: granted({ [project.id]: 'write', [other.id]: 'read' }), engine });
+    inProject((await write<{ id: string }>(writesOne, 'create_task', { title: 'Alone' })).id);
+    const writesTwo = api({ principal: granted({ [project.id]: 'write', [other.id]: 'write' }), engine });
+    const unnamed = await refusal(writesTwo, 'create_task', { workspace: WORKSPACE.id, title: 'Where?' });
+    expect(unnamed).toMatch(/^invalid arguments: project /u);
+    for (const prefix of [project.prefix, other.prefix]) expect(unnamed).toContain(`prefix ${prefix}`);
+  });
+
+  it('answers the same new task sent again without a key with its first result, while it is unchanged and for a day', async () => {
+    const project = await newProject(engine);
+    const args = { project: project.id, title: 'Once' };
+    const filed = async () => (await engine.listTasks(project.id, { limit: 10 })).tasks.length;
+    const first = await write<{ id: string }>(target, 'create_task', args);
+    expect(await write(target, 'create_task', args)).toEqual({ ...first, replayed: true });
+    expect(await filed()).toBe(1);
+    // A key of the caller's own makes the same change again on purpose, and another sender's call is its own.
+    await write(target, 'create_task', { ...args, idempotency_key: key() });
+    await write(api({ principal: granted({ [project.id]: 'write' }, 'agent-o'), engine }), 'create_task', args);
+    expect(await filed()).toBe(3);
+    // Once the task it filed has changed, the same call files another, which then answers it.
+    await write(target, 'update_task', { task: first.id, priority: 0 });
+    const second = await write<{ id: string }>(target, 'create_task', args);
+    expect(second).toMatchObject({ replayed: false });
+    expect(second.id).not.toBe(first.id);
+    expect(await write(target, 'create_task', args)).toEqual({ ...second, replayed: true });
+    expect(await filed()).toBe(4);
+    time.advance(24 * 60 + 1);
+    try {
+      expect(await write(target, 'create_task', args)).toMatchObject({ replayed: false });
+      expect(await filed()).toBe(5);
+    } finally {
+      time.advance(-(24 * 60 + 1));
+    }
+  });
+
+  it('files a keyless batch again whole once a task it filed has changed', async () => {
+    const project = await newProject(engine);
+    const args = {
+      project: project.id,
+      tasks: [
+        { title: 'Epic', type: 'epic' },
+        { title: 'Child', parent: '#0' },
+      ],
+    };
+    type Batch = { created: { id: string; replayed: boolean }[] };
+    const filing = (batch: Batch) => batch.created.map(({ id, replayed }) => [id, replayed]);
+    const first = await write<Batch>(target, 'create_tasks', args);
+    const [epic, child] = first.created.map((entry) => entry.id);
+    expect(filing(await write<Batch>(target, 'create_tasks', args))).toEqual([
+      [epic, true],
+      [child, true],
+    ]);
+    await write(target, 'update_task', { task: child, priority: 0 });
+    const again = await write<Batch>(target, 'create_tasks', args);
+    const [newEpic, newChild] = again.created.map((entry) => entry.id);
+    expect(again.created.map((entry) => entry.replayed)).toEqual([false, false]);
+    // The whole batch is filed again, its #0 naming the new epic.
+    expect([newEpic, newChild]).not.toContain(epic);
+    expect(newChild).toBe(`${newEpic}.1`);
+    expect(filing(await write<Batch>(target, 'create_tasks', args))).toEqual([
+      [newEpic, true],
+      [newChild, true],
+    ]);
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
+  });
+
+  it('runs the same write sent again without a key once the task has changed since its answer', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const claim = { task: id };
+    expect(await write(target, 'claim_task', claim)).toMatchObject({ replayed: false, version: 2 });
+    // Right after, nothing has changed: the same call answers with the first claim and writes nothing.
+    expect(await write(target, 'claim_task', claim)).toMatchObject({ replayed: true, version: 2 });
+    await write(target, 'update_task', { task: id, assignee: '', status: 'open' });
+    expect(await write(target, 'claim_task', claim)).toMatchObject({
+      replayed: false,
+      assignee: WRITER.name,
+      version: 4,
+    });
+
+    const close = { task: id, reason: 'Done in abc1234.' };
+    expect(await write(target, 'close_task', close)).toMatchObject({ status: 'closed', replayed: false });
+    await write(target, 'update_task', { task: id, status: 'open' });
+    expect(await write(target, 'close_task', close)).toMatchObject({ status: 'closed', replayed: false });
+
+    const renamed = await task(project, { title: 'X' });
+    for (const title of ['Y', 'X', 'Y']) await write(target, 'update_task', { task: renamed.id, title });
+    expect(await current(project, renamed.id)).toMatchObject({ title: 'Y', version: 4 });
+
+    // A comment leaves the task unchanged: the same one again is the first, until the task changes.
+    const say = { task: renamed.id, text: 'Same words.' };
+    const said = await write(target, 'comment_on_task', say);
+    expect(await write(target, 'comment_on_task', say)).toEqual({ ...said, replayed: true });
+    await write(target, 'update_task', { task: renamed.id, priority: 0 });
+    expect(await write(target, 'comment_on_task', say)).toMatchObject({ replayed: false });
+    expect(await engine.listComments(project.id, renamed.id)).toHaveLength(2);
+  });
+
+  it('names the task and the argument a refused write breaks, and says nothing was written', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const kin = await task(project, { title: 'Kin' });
+    expect(
+      await refusalOf(target, 'update_task', { workspace: WORKSPACE.id, task: id, related: [kin.id, 'Not An Id'] }),
+    ).toMatchObject({ sentence: 'invalid arguments: related[1] (a task id such as abc-1x2)', task: id, retry: 'safe' });
+    expect((await current(project, id)).version).toBe(1);
+  });
+});
+
 describe('create_task', () => {
   it('files a task with its fields, links, card and change class, crediting the filer and model', async () => {
     const project = await newProject(engine);
@@ -223,36 +400,28 @@ describe('create_task', () => {
       noticeos_rule: 'rule-1',
       noticeos_key: 'key-1',
     };
-    const reply = await write<{ id: string; project: string; replayed: boolean; lint: unknown }>(
-      target,
-      'create_task',
-      {
-        project: project.id,
-        title: 'Write the pricing page',
-        description: 'WHAT: the page.',
-        type: 'feature',
-        priority: 1,
-        labels: ['copy', 'web'],
-        parent: epic.id,
-        acceptance: 'The page is live.',
-        depends_on: [before.id],
-        blocks: [after.id],
-        related: [kin.id],
-        discovered_from: [found.id],
-        card,
-        change_class: 'copy',
-        metadata,
-        model: 'model-x',
-        idempotency_key: key(),
-      },
-    );
-
-    expect(reply).toEqual({
-      id: `${epic.id}.1`,
-      project: project.key,
-      replayed: false,
-      lint: { missing: [] },
+    const reply = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Write the pricing page',
+      description: 'WHAT: the page.',
+      type: 'feature',
+      priority: 1,
+      labels: ['copy', 'web'],
+      parent: epic.id,
+      acceptance: 'The page is live.',
+      depends_on: [before.id],
+      blocks: [after.id],
+      related: [kin.id],
+      discovered_from: [found.id],
+      card,
+      change_class: 'copy',
+      metadata,
+      model: 'model-x',
+      idempotency_key: key(),
     });
+
+    // The answer names the task, its status and version, and leaves its text out.
+    expect(reply).toEqual({ id: `${epic.id}.1`, status: 'open', version: 1, replayed: false });
     const filed = await current(project, reply.id);
     expect(filed).toMatchObject({
       title: 'Write the pricing page',
@@ -371,12 +540,12 @@ describe('create_task', () => {
       'invalid arguments: labels (at most 32 labels, each at most 128 characters on one line, without commas or surrounding spaces, none twice)',
     );
     expect(await refused({ parent: `${project.prefix}-a1`, related: [`${project.prefix}-a1`] })).toBe(
-      'invalid arguments: the parent is linked already; leave it out of the other links',
+      `invalid arguments: related[0] (${project.prefix}-a1 is the parent already; leave it out of the other links)`,
     );
-    expect(await refused({ depends_on: ['p-a1'], related: ['p-a1'] })).toBe(
-      'invalid arguments: a linked task is named twice; a task links to another once',
+    expect(await refused({ depends_on: ['p-a1'], blocks: ['p-b2', 'p-a1'] })).toBe(
+      'invalid arguments: depends_on[0] and blocks[1] (this task cannot both wait on p-a1 and block it)',
     );
-    expect(await refused({ blocks: 'p-a1' })).toBe('invalid arguments: blocks');
+    expect(await refused({ blocks: 'p-a1' })).toBe('invalid arguments: blocks (a list of at most 32 task ids)');
     expect(await refused({ card: { valuePerMonth: 1 } })).toBe('invalid arguments: card.likelihood (a number)');
     expect(
       await refused({
@@ -399,7 +568,7 @@ describe('create_task', () => {
     expect(await refused({ idempotency_key: 'short' })).toBe(
       'invalid arguments: idempotency_key (8–128 of A–Z a–z 0–9 . _ : -; reuse it when retrying this call)',
     );
-    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown colour');
+    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown argument colour');
     expect(await refused({ parent: `${project.prefix}-none` })).toBe(
       `refused: ${project.prefix}-none is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
     );
@@ -527,17 +696,16 @@ describe('create_tasks', () => {
       model: 'model-x',
       idempotency_key: key(),
     };
-    const reply = await write<{ project: string; created: { id: string; replayed: boolean }[]; note?: string }>(
+    const reply = await write<{ created: { id: string; replayed: boolean }[]; note?: string }>(
       target,
       'create_tasks',
       args,
     );
     const [epic, child, gated] = reply.created.map((entry) => entry.id);
     expect(reply).toMatchObject({
-      project: project.key,
       created: [
-        { index: 0, id: epic, replayed: false, lint: { missing: ['## Success Criteria'] } },
-        { index: 1, id: `${epic}.1`, replayed: false, lint: { missing: [] } },
+        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['## Success Criteria'] } },
+        { index: 1, id: `${epic}.1`, status: 'open', replayed: false },
         { index: 2, id: gated, replayed: false, approval: { status: 'open', reason: 'Approve it.' }, held: true },
       ],
       note: 'A task with an approval waits for the owner’s scoped approval. Record an existing answer with reconcile_task.',
@@ -560,29 +728,31 @@ describe('create_tasks', () => {
     };
     const reply = await write<Record<string, unknown> & { created: { id: string }[] }>(target, 'create_tasks', args);
     expect(reply).toMatchObject({
-      project: project.key,
       created: [{ index: 0, replayed: false }],
       failed: {
         index: 1,
         error: `refused: ${project.prefix}-none is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
       },
       notAttempted: 1,
-      retry:
-        'Retry with the same idempotency_key and tasks to finish after a passing failure; tasks already filed are not repeated. ' +
-        'To change a refused task, send it and the rest with a new key, naming filed tasks by id.',
     });
     expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(1);
   });
 
-  it('files nothing when an entry breaks a rule, naming the entry', async () => {
+  it('files nothing when an entry breaks a rule, naming the entry and the argument by its path', async () => {
     const project = await newProject(engine);
     const refused = (tasks: unknown) =>
       refusal(target, 'create_tasks', { workspace: WORKSPACE.id, project: project.id, tasks, idempotency_key: key() });
-    expect(await refused([{ title: 'Fine' }, { title: '' }])).toBe('invalid arguments: tasks[1]: title (empty)');
+    expect(await refused([{ title: 'Fine' }, { title: '' }])).toBe('invalid arguments: tasks[1].title (empty)');
     expect(await refused([{ title: 'A', parent: '#0' }])).toBe(
-      'invalid arguments: tasks[0]: parent (#n names an earlier task of this call)',
+      "invalid arguments: tasks[0].parent (#0 is not an earlier task of this call: #n counts this call's tasks from zero, so tasks[0] may name none, as the first)",
     );
-    expect(await refused([{ title: 'A', model: 'x' }])).toBe('invalid arguments: tasks[0]: unknown model');
+    expect(await refused([{ title: 'A' }, { title: 'B' }, { title: 'C', blocks: ['#1', '#2'] }])).toBe(
+      "invalid arguments: tasks[2].blocks[1] (#2 is not an earlier task of this call: #n counts this call's tasks from zero, so tasks[2] may name #0 to #1)",
+    );
+    expect(await refused([{ title: 'A', depends_on: ['Not An Id'] }])).toBe(
+      'invalid arguments: tasks[0].depends_on[0] (a task id such as abc-1x2)',
+    );
+    expect(await refused([{ title: 'A', model: 'x' }])).toBe('invalid arguments: unknown argument tasks[0].model');
     expect(await refused([])).toBe('invalid arguments: tasks (1–25)');
     expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
   });
@@ -594,7 +764,6 @@ describe('create_tasks', () => {
       idempotency_key: key(),
     });
     expect(reply).toMatchObject({
-      project: null,
       created: [],
       failed: { index: 0, error: missingProject('missing') },
       notAttempted: 1,
@@ -606,13 +775,13 @@ describe('claim_task', () => {
   it('assigns an open task to the sender, starts it and records the model', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
-    const reply = await write<{ task: Record<string, unknown>; replayed: boolean }>(target, 'claim_task', {
+    const reply = await write(target, 'claim_task', {
       project: project.id,
       task: id,
       model: 'model-x',
       idempotency_key: key(),
     });
-    expect(reply).toMatchObject({ task: { id, assignee: WRITER.name, status: 'in_progress' }, replayed: false });
+    expect(reply).toEqual({ id, status: 'in_progress', assignee: WRITER.name, version: 2, replayed: false });
     expect(await current(project, id)).toMatchObject({ assigneeModel: 'model-x', startedAt: time.now() });
   });
 
@@ -697,7 +866,7 @@ describe('the work a task shows', () => {
     const project = await newProject(engine);
     const { id } = await task(project);
     const claimedAt = time.now();
-    await write(target, 'claim_task', {
+    const claimed = await write(target, 'claim_task', {
       project: project.id,
       task: id,
       for: 'page-rebuild-2',
@@ -707,6 +876,8 @@ describe('the work a task shows', () => {
       idempotency_key: key(),
     });
     const work = { worktree: '/work/page-rebuild', branch: 'agent/page-rebuild', pr: 'https://example.com/pulls/7' };
+    // The claim's answer shows the helper and work details it recorded.
+    expect(claimed).toMatchObject({ id, status: 'in_progress', for: 'page-rebuild-2', work });
     expect(await getTask(project, id)).toMatchObject({
       assignee: WRITER.name,
       for: 'page-rebuild-2',
@@ -757,7 +928,7 @@ describe('the work a task shows', () => {
       commit: 'abc1234',
       idempotency_key: key(),
     };
-    const first = await write<{ comment: Shown; replayed: boolean }>(target, 'comment_on_task', update);
+    const first = await write(target, 'comment_on_task', update);
     const commentedAt = time.now();
     const after = await getTask(project, id);
     expect(after).toMatchObject({
@@ -765,7 +936,7 @@ describe('the work a task shows', () => {
       lastActivityAt: commentedAt,
     });
     // A retry adds nothing.
-    expect(await write(target, 'comment_on_task', update)).toEqual({ comment: first.comment, replayed: true });
+    expect(await write(target, 'comment_on_task', update)).toEqual({ ...first, replayed: true });
     expect(await engine.listComments(project.id, id)).toHaveLength(1);
 
     const other = api({ principal: granted({ [project.id]: 'write' }, 'agent-o'), engine, now: time.now });
@@ -855,45 +1026,52 @@ describe('update_task', () => {
     const epic = await task(project, { title: 'Epic', type: 'epic' });
     const kin = await task(elsewhere, { title: 'Kin' });
     const { id } = await task(project, { title: 'Old', parentId: epic.id, labels: ['old'] });
-    const reply = await write<{ task: Record<string, unknown>; replayed: boolean; lint: unknown }>(
-      target,
-      'update_task',
-      {
-        project: project.id,
-        task: id,
-        title: 'New',
-        priority: 0,
-        status: 'blocked',
-        description: 'WHAT: it.',
-        parent: '',
-        defer: '2027-01-02',
-        add_labels: ['new'],
-        remove_labels: ['old'],
-        related: [kin.id],
-        card: {
-          valuePerMonth: 10,
-          likelihood: 0.5,
-          reviewMinutes: 5,
-          daysToSignal: 7,
-          measurability: 'unmeasured',
-          kill: { state: 'Nothing', date: '2027-02-01' },
-        },
-        change_class: 'feature',
-        choices: {
-          question: 'Which?',
-          options: [
-            { key: 'a', label: 'One', recommended: true },
-            { key: 'b', label: 'Two' },
-          ],
-        },
-        idempotency_key: key(),
+    const reply = await write(target, 'update_task', {
+      project: project.id,
+      task: id,
+      title: 'New',
+      priority: 0,
+      status: 'blocked',
+      description: 'WHAT: it.',
+      parent: '',
+      defer: '2027-01-02',
+      add_labels: ['new'],
+      remove_labels: ['old'],
+      related: [kin.id],
+      card: {
+        valuePerMonth: 10,
+        likelihood: 0.5,
+        reviewMinutes: 5,
+        daysToSignal: 7,
+        measurability: 'unmeasured',
+        kill: { state: 'Nothing', date: '2027-02-01' },
       },
-    );
+      change_class: 'feature',
+      choices: {
+        question: 'Which?',
+        options: [
+          { key: 'a', label: 'One', recommended: true },
+          { key: 'b', label: 'Two' },
+        ],
+      },
+      idempotency_key: key(),
+    });
+    // The answer shows each field the call changed, but not the long text it sent.
     expect(reply).toMatchObject({
-      task: { title: 'New', priority: 0, status: 'blocked', parent: null, labels: ['new'], changeClass: 'feature' },
+      id,
+      title: 'New',
+      priority: 0,
+      status: 'blocked',
+      parent: null,
+      deferUntil: '2027-01-02T00:00:00.000Z',
+      labels: ['new'],
+      dependencies: [{ id: kin.id, type: 'related' }],
+      changeClass: 'feature',
+      version: 2,
       replayed: false,
       lint: { missing: ['## Acceptance Criteria'] },
     });
+    expect(reply).not.toHaveProperty('description');
     expect(await current(project, id)).toMatchObject({
       deferUntil: '2027-01-02T00:00:00.000Z',
       dueAt: '2027-02-01T00:00:00.000Z',
@@ -923,28 +1101,25 @@ describe('update_task', () => {
     const project = await newProject(engine);
     const { id } = await task(project);
     const assign = (assignee: string) =>
-      write<{ task: { assignee: string | null } }>(target, 'update_task', {
+      write<{ assignee: string | null }>(target, 'update_task', {
         project: project.id,
         task: id,
         assignee,
         idempotency_key: key(),
       });
-    expect((await assign('agent-c')).task.assignee).toBe('agent-c');
-    expect((await assign('')).task.assignee).toBeNull();
+    expect((await assign('agent-c')).assignee).toBe('agent-c');
+    expect((await assign('')).assignee).toBeNull();
   });
 
   it('records the key of a change that changed nothing, so a retry replays it and the key stays its own', async () => {
     const project = await newProject(engine);
     const { id } = await task(project, { title: 'Same', priority: 2 });
     const args = { project: project.id, task: id, title: 'Same', idempotency_key: key() };
-    expect(await write(target, 'update_task', args)).toMatchObject({ replayed: false, task: { title: 'Same' } });
+    expect(await write(target, 'update_task', args)).toMatchObject({ replayed: false, title: 'Same' });
     await engine.writeTask(project.id, id, { expectedVersion: 1, set: { title: 'Renamed since' } }, OWNER);
 
     // The retry answers what the first call did; it does not write "Same" over the newer title.
-    expect(await write(target, 'update_task', args)).toMatchObject({
-      replayed: true,
-      task: { title: 'Renamed since' },
-    });
+    expect(await write(target, 'update_task', args)).toMatchObject({ replayed: true, title: 'Renamed since' });
     expect(await current(project, id)).toMatchObject({ title: 'Renamed since', version: 2 });
     expect(await refusal(target, 'update_task', { workspace: WORKSPACE.id, ...args, priority: 0 })).toMatch(
       /^conflict: this idempotency_key was first used for a different change/u,
@@ -969,13 +1144,13 @@ describe('update_task', () => {
         },
       }),
     });
-    const reply = await write<{ task: Record<string, unknown>; replayed: boolean }>(racing, 'update_task', {
+    const reply = await write(racing, 'update_task', {
       project: project.id,
       task: id,
       title: 'Same',
       idempotency_key: key(),
     });
-    expect(reply).toMatchObject({ task: { title: 'Same' }, replayed: false });
+    expect(reply).toMatchObject({ title: 'Same', replayed: false });
     expect((await current(project, id)).version).toBe(3);
   });
 
@@ -993,6 +1168,7 @@ describe('update_task', () => {
       task: id,
       status: 'open',
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(reply.task).toMatchObject({ status: 'open', closedAt: null });
   });
@@ -1147,19 +1323,19 @@ describe('update_task', () => {
       task: id,
       title: 'After the race',
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(reply.task).toMatchObject({ title: 'After the race', description: 'Raced.' });
 
     conflicts = 10;
-    expect(
-      await refusal(racing, 'update_task', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: id,
-        title: 'Never',
-        idempotency_key: key(),
-      }),
-    ).toBe(
+    const unavailable = await refusalOf(racing, 'update_task', {
+      workspace: WORKSPACE.id,
+      task: id,
+      title: 'Never',
+    });
+    // Only a write that did not complete tells the agent to read the task before retrying.
+    expect(unavailable).toMatchObject({ task: id, retry: 'unsure' });
+    expect(unavailable.sentence).toBe(
       "unavailable: the task store did not complete this call, and nothing in the task's state explains it. Retry the same call; with the same idempotency_key a change lands at most once.",
     );
     expect((await current(project, id)).title).toBe('After the race');
@@ -1208,6 +1384,7 @@ describe("a task's notes, design and estimate", () => {
       design: '',
       estimate_minutes: 120,
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(changed.task).toMatchObject({ notes: 'Export done.', design: '', estimateMinutes: 120 });
     await write(target, 'update_task', {
@@ -1321,7 +1498,36 @@ describe('duplicates and supersedes links', () => {
     expect((await current(project, later.id)).dependencies.map((link) => link.taskId)).toEqual([filed.id]);
   });
 
-  it('refuse a link to the task itself, a task named twice, and a type add_dependency does not take', async () => {
+  it('link a task named in two kinds once, as the more specific kind, with a warning', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const kin = await task(project, { title: 'Kin' });
+    const blocker = await task(project, { title: 'Blocker' });
+    const changed = await write<{ dependencies: unknown[]; warnings: string[] }>(target, 'update_task', {
+      task: id,
+      related: [kin.id],
+      duplicates: [kin.id],
+    });
+    expect(changed.dependencies).toEqual([{ id: kin.id, type: 'duplicates', title: 'Kin', status: 'open' }]);
+    expect(changed.warnings).toHaveLength(1);
+    const filed = await write<{ id: string; warnings: string[] }>(target, 'create_task', {
+      project: project.id,
+      title: 'T',
+      related: [kin.id, blocker.id],
+      duplicates: [kin.id],
+      supersedes: [kin.id],
+      depends_on: [blocker.id],
+    });
+    expect(filed.warnings).toHaveLength(3);
+    expect((await current(project, filed.id)).dependencies.map((link) => [link.taskId, link.type]).sort()).toEqual(
+      [
+        [kin.id, 'supersedes'],
+        [blocker.id, 'blocks'],
+      ].sort(),
+    );
+  });
+
+  it('refuse a link to the task itself, and a type add_dependency does not take', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
     const kin = await task(project, { title: 'Kin' });
@@ -1329,19 +1535,6 @@ describe('duplicates and supersedes links', () => {
     expect(await refusal(target, 'update_task', { ...base, supersedes: [id] })).toBe(
       'invalid arguments: supersedes (another task than this one)',
     );
-    expect(await refusal(target, 'update_task', { ...base, related: [kin.id], duplicates: [kin.id] })).toBe(
-      'invalid arguments: a linked task is named twice; a task links to another once',
-    );
-    expect(
-      await refusal(target, 'create_task', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        title: 'T',
-        duplicates: [kin.id],
-        supersedes: [kin.id],
-        idempotency_key: key(),
-      }),
-    ).toBe('invalid arguments: a linked task is named twice; a task links to another once');
     expect(
       await refusal(target, 'add_dependency', {
         workspace: WORKSPACE.id,
@@ -1372,18 +1565,18 @@ describe('external links', () => {
       idempotency_key: key(),
     });
     const id = filed.id;
-    const added = await write<{ task: { externalLinks: unknown[] } }>(target, 'update_task', {
+    const added = await write<{ externalLinks: unknown[] }>(target, 'update_task', {
       project: project.id,
       task: id,
       add_external_links: [doc, { ...pr, title: 'Add the pricing page (merged)' }],
       idempotency_key: key(),
     });
-    expect(added.task.externalLinks).toEqual([
+    expect(added.externalLinks).toEqual([
       { url: doc.url, title: doc.title, kind: null },
       { ...pr, title: 'Add the pricing page (merged)' },
     ]);
     const listed = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
-    expect(listed.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.task.externalLinks });
+    expect(listed.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.externalLinks });
     // A later page and a read of every project carry each task's links too.
     const other = await task(project, { title: 'Also linked', priority: 4, externalLinks: [doc] });
     const second = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', {
@@ -1395,15 +1588,15 @@ describe('external links', () => {
     const everywhere = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', {
       query: 'pricing page',
     });
-    expect(everywhere.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.task.externalLinks });
+    expect(everywhere.tasks.find((row) => row.id === id)).toMatchObject({ externalLinks: added.externalLinks });
     // The same page is one URL, however it is written.
-    const removed = await write<{ task: { externalLinks: unknown[] } }>(target, 'update_task', {
+    const removed = await write<{ externalLinks: unknown[] }>(target, 'update_task', {
       project: project.id,
       task: id,
       remove_external_links: ['HTTPS://DOCS.example.com/pricing'],
       idempotency_key: key(),
     });
-    expect(removed.task.externalLinks).toEqual([{ ...pr, title: 'Add the pricing page (merged)' }]);
+    expect(removed.externalLinks).toEqual([{ ...pr, title: 'Add the pricing page (merged)' }]);
 
     const { changes } = await write<{ changes: { task: { externalLinks: unknown[] } }[] }>(target, 'get_task_history', {
       project: project.id,
@@ -1411,8 +1604,8 @@ describe('external links', () => {
       snapshots: true,
     });
     expect(changes.map((change) => change.task.externalLinks)).toEqual([
-      removed.task.externalLinks,
-      added.task.externalLinks,
+      removed.externalLinks,
+      added.externalLinks,
       [pr],
     ]);
   });
@@ -1484,7 +1677,7 @@ describe('comment_on_task', () => {
   it('adds a comment once, however often the call is retried', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
-    const args = { project: project.id, task: id, text: 'Halfway.', idempotency_key: key() };
+    const args = { project: project.id, task: id, text: 'Halfway.', idempotency_key: key(), detail: 'full' };
     const first = await write<{ comment: Record<string, unknown>; replayed: boolean }>(target, 'comment_on_task', args);
     expect(first).toEqual({
       comment: { id: expect.any(String), author: WRITER.name, text: 'Halfway.', createdAt: time.now() },
@@ -1574,7 +1767,7 @@ describe('add_dependency and remove_dependency', () => {
         task: id,
         depends_on: id,
       }),
-    ).toBe('invalid arguments: a task cannot depend on itself');
+    ).toBe('invalid arguments: depends_on (another task than this one)');
   });
 });
 
@@ -1744,6 +1937,7 @@ describe('close_task', () => {
       reason: 'Shipped in 4f2a9c1.',
       model: 'model-x',
       idempotency_key: key(),
+      detail: 'full',
     };
     const reply = await write<{ task: Record<string, unknown>; replayed: boolean }>(target, 'close_task', args);
     expect(reply).toMatchObject({
@@ -1778,6 +1972,7 @@ describe('close_task', () => {
       resolution: 'duplicate',
       duplicate_of: original.id,
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(reply.task).toMatchObject({ resolution: 'duplicate', duplicateOf: original.id, cardShipped: null });
     expect((await current(project, id)).dependencies).toEqual([

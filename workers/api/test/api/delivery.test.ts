@@ -126,12 +126,14 @@ describe('a closed task’s delivery', () => {
       commit: 'ABCDEF1',
       idempotency_key: key(),
     });
-    await write(target, 'close_task', {
+    const closed = await write(target, 'close_task', {
       project: project.id,
       task: task.id,
       reason: 'Shipped.',
       idempotency_key: key(),
     });
+    // The close's answer shows where the change is.
+    expect(closed).toMatchObject({ status: 'closed', delivery: { stage: 'built' } });
     expect(await deliveryOf(project, task.id)).toMatchObject({ stage: 'built', commit: 'abcdef1', pullRequest: pr });
   });
 
@@ -164,7 +166,13 @@ describe('a closed task’s delivery', () => {
     const id = await closedWith(project, { commit: 'aaaaaaa' });
     await write(target, 'update_task', { project: project.id, task: id, status: 'open', idempotency_key: key() });
     expect(await deliveryOf(project, id)).toBeUndefined();
-    await write(target, 'close_task', { project: project.id, task: id, reason: 'Again.', idempotency_key: key() });
+    const closed = await write(target, 'close_task', {
+      project: project.id,
+      task: id,
+      reason: 'Again.',
+      idempotency_key: key(),
+    });
+    expect(closed).not.toHaveProperty('delivery');
     expect(await deliveryOf(project, id)).toBeUndefined();
     const events = await engine.listHistory(project.id, id, { limit: 10 });
     expect(events.map((event) => event.changes.delivery).filter((delivery) => delivery !== undefined)).toEqual([

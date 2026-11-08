@@ -40,6 +40,18 @@ import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
 const RECEIPT_DAYS = 7;
+/** How long a derived key's record of a new task answers: a task asked for later is a new one. */
+const DERIVED_NEW_TASK_HOURS = 24;
+/**
+ * Whether a derived key's record no longer answers, as SQL on a write_receipts
+ * row. The record carries its own rule: a task its write left (`$.left`) has
+ * moved from the version it was left at, or a record of new tasks
+ * (`$.newTask`) is older than ?dayAgo. Every lookup reads the same rule.
+ */
+const STALE = (dayAgo: string) => `((json_extract(result, '$.newTask') = 1 AND created_at < ${dayAgo}) OR EXISTS (
+  SELECT 1 FROM json_each(write_receipts.result, '$.left') AS l
+  WHERE json_extract(l.value, '$.version') IS NOT (
+    SELECT version FROM tasks WHERE id = json_extract(l.value, '$.taskId') AND project_id = write_receipts.project_id)))`;
 /** How many times a write tries again, with a new task id or a fresh read,
  * after another write took its id or changed a task it also changes. */
 const ATTEMPTS = 5;
@@ -329,41 +341,93 @@ export class Writes {
     ];
   }
 
-  #cutoff(): string {
-    return new Date(Date.parse(this.#now()) - RECEIPT_DAYS * 86_400_000).toISOString();
+  #cutoff(hours = RECEIPT_DAYS * 24): string {
+    return new Date(Date.parse(this.#now()) - hours * 3_600_000).toISOString();
   }
 
-  /** The recorded result of an earlier write with this key, or null; a key reused for another request is refused. */
+  /**
+   * The recorded result of an earlier write with this key, or null; a key
+   * reused for another request is refused. A derived key's stale record
+   * answers nothing, so the write runs again (#staleReceipt clears it).
+   */
   async #recorded(retry: Retry | undefined, projectId: string): Promise<Record<string, Json> | null> {
     if (retry === undefined) return null;
     const row = await this.#db
       .prepare(
-        `SELECT project_id, request_hash, result FROM write_receipts
+        `SELECT project_id, request_hash, result, ${STALE('?5')} AS stale FROM write_receipts
          WHERE principal = ?1 AND operation = ?2 AND idempotency_key = ?3 AND created_at >= ?4`,
       )
-      .bind(retry.principal, retry.operation, retry.key, this.#cutoff())
-      .first<{ project_id: string; request_hash: string; result: string }>();
+      .bind(retry.principal, retry.operation, retry.key, this.#cutoff(), this.#cutoff(DERIVED_NEW_TASK_HOURS))
+      .first<{ project_id: string; request_hash: string; result: string; stale: number }>();
     if (row === null) return null;
     if (row.request_hash !== retry.requestHash || row.project_id !== projectId) refuse('retry_conflict');
+    if (retry.derived === true && row.stale) return null;
     return JSON.parse(row.result) as Record<string, Json>;
   }
 
-  /** Clears this principal's expired records, then records this write's result. */
-  #receipt(retry: Retry | undefined, projectId: string, result: JsonObject, at: string): Statement[] {
+  /**
+   * For a derived key, the statement that clears its record when stale. It
+   * goes first in the write's batch, so it reads the task as the write found
+   * it: a record that a racing identical write just made stands, and this
+   * write's own record then collides with it and replays it.
+   */
+  #staleReceipt(retry: Retry | undefined): Statement[] {
+    if (retry?.derived !== true) return [];
+    return [
+      this.#db
+        .prepare(
+          `DELETE FROM write_receipts WHERE principal = ?1 AND operation = ?2 AND idempotency_key = ?3 AND ${STALE('?4')}`,
+        )
+        .bind(retry.principal, retry.operation, retry.key, this.#cutoff(DERIVED_NEW_TASK_HOURS)),
+    ];
+  }
+
+  /**
+   * Clears this principal's expired records, then records this write's
+   * result. A derived key's record also keeps the version the batch leaves
+   * each task of `left` at, read as the record lands, and with `newTask`
+   * marks a record of tasks the write created, which answers for a day.
+   */
+  #receipt(
+    retry: Retry | undefined,
+    projectId: string,
+    result: JsonObject,
+    at: string,
+    left: readonly string[] = [],
+    newTask = false,
+  ): Statement[] {
     if (retry === undefined) return [];
     return [
       this.#db
         .prepare('DELETE FROM write_receipts WHERE principal = ?1 AND created_at < ?2')
         .bind(retry.principal, this.#cutoff()),
-      this.#insert('write_receipts', {
-        principal: retry.principal,
-        operation: retry.operation,
-        idempotency_key: retry.key,
-        project_id: projectId,
-        request_hash: retry.requestHash,
-        result: JSON.stringify(result),
-        created_at: at,
-      }),
+      retry.derived === true
+        ? this.#db
+            .prepare(
+              `INSERT INTO write_receipts (principal, operation, idempotency_key, project_id, request_hash, result, created_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, json_set(?6, '$.left', json((
+                 SELECT json_group_array(json_object('taskId', id, 'version', version)) FROM tasks
+                 WHERE project_id = ?4 AND id IN (SELECT value FROM json_each(?8))))), ?7)`,
+            )
+            .bind(
+              retry.principal,
+              retry.operation,
+              retry.key,
+              projectId,
+              retry.requestHash,
+              JSON.stringify(newTask ? { ...result, newTask: true } : result),
+              at,
+              JSON.stringify(left),
+            )
+        : this.#insert('write_receipts', {
+            principal: retry.principal,
+            operation: retry.operation,
+            idempotency_key: retry.key,
+            project_id: projectId,
+            request_hash: retry.requestHash,
+            result: JSON.stringify(result),
+            created_at: at,
+          }),
     ];
   }
 
@@ -420,6 +484,7 @@ export class Writes {
     if (replayed !== null) return replayed;
     try {
       await this.#db.batch([
+        ...this.#staleReceipt(retry),
         this.#db
           .prepare(
             `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
@@ -436,7 +501,7 @@ export class Writes {
              ), 'version_conflict'`,
           )
           .bind(taskId, projectId, expectedVersion),
-        ...this.#receipt(retry, projectId, { taskId, created: [] }, this.#now()),
+        ...this.#receipt(retry, projectId, { taskId, created: [] }, this.#now(), [taskId]),
       ]);
     } catch (error) {
       // The same retried request may have recorded its answer while this one ran.
@@ -613,6 +678,7 @@ export class Writes {
         for (const [key, value] of Object.entries(checked)) if (value !== null) values.set(key, value);
       }
       const statements: Statement[] = [
+        ...this.#staleReceipt(retry),
         this.#insert('tasks', {
           id,
           project_id: projectId,
@@ -706,7 +772,7 @@ export class Writes {
           filedBy: actor.name,
           filedModel: actor.model ?? null,
         }),
-        ...this.#receipt(retry, projectId, { taskId: id, created }, at),
+        ...this.#receipt(retry, projectId, { taskId: id, created }, at, [id, ...created], true),
       );
       try {
         await this.#db.batch(statements);
@@ -769,9 +835,14 @@ export class Writes {
         ...(commentId === null ? {} : { commentId }),
       };
       const statements: Statement[] = [
+        ...this.#staleReceipt(retry),
         ...change(gateId),
         ...others.flatMap((other) => other(null)),
-        ...this.#receipt(retry, projectId, recorded, at),
+        ...this.#receipt(retry, projectId, recorded, at, [
+          taskId,
+          ...recorded.created,
+          ...write.others.map((other) => other.taskId),
+        ]),
       ];
       try {
         await this.#db.batch(statements);
@@ -1225,6 +1296,7 @@ export class Writes {
     const at = this.#now();
     try {
       await this.#db.batch([
+        ...this.#staleReceipt(retry),
         this.#insert('task_comments', { id, task_id: taskId, author: actor.name, text, created_at: at }),
         this.#db
           .prepare(
@@ -1232,7 +1304,7 @@ export class Writes {
              SELECT id, project_id, version, 'commented', ?2, ?3, ?4, ?5 FROM tasks WHERE id = ?1`,
           )
           .bind(taskId, actor.name, actor.model ?? null, at, JSON.stringify({ commentId: id, text })),
-        ...this.#receipt(retry, projectId, { commentId: id }, at),
+        ...this.#receipt(retry, projectId, { commentId: id }, at, [taskId]),
       ]);
     } catch (error) {
       failureOf(error);

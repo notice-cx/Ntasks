@@ -29,14 +29,14 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-03: reconcile_task supports answer_mode relayed for local Claude Code sessions and quoted task comments, owner_performed for the owner’s completed action, and no-longer-needed for retirement. Relayed approvals close immediately and can be disputed on Tasks.',
   '2026-11-07: claim_task and comment_on_task take for, the helper agent working under you, and the work details session, worktree, branch, pr, commit and next; get_task shows them with lastActivityAt, when the holder last wrote to the task, and an epic’s open children with their holders; list_tasks shows for and lastActivityAt.',
   "2026-11-07: close_task takes commit and pr, and the task's delivery shows its change as built; report_delivery moves it to merged and live. list_tasks takes stage and counts closed tasks by stage.",
+  '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
 ]);
 
 /** How a session starts. */
 export const TASK_START =
-  'Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool takes a workspace from it. A tool that takes an idempotency_key: reuse the key when retrying it. On every create_task, create_tasks, claim_task and close_task, pass model: the name of the model you run as. The task records it beside your name, and the Agents page groups work by model; missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.';
+  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional. Without a key, an identical call repeats the first answer only while every task that answer wrote is unchanged since; a create also stops repeating after 24 hours. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
 
 /** The order of task work, in the tools' own names. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
