@@ -56,6 +56,7 @@ import {
   type WriteContext,
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
+import { shippedArgs } from '../delivery.ts';
 import { commentView, fieldView, webTask } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
 import { HttpRefused, invalidRequest, json, queryOf } from './respond.ts';
@@ -340,12 +341,14 @@ export async function createProjectRoute(context: WriteContext, url: URL, reques
   return answer(project, false);
 }
 
-/** POST /api/tasks/:id/close: closes a task with its reason. */
+/** POST /api/tasks/:id/close: closes a task with its reason, and with
+ * `commit` or `pullRequest` records what shipped. */
 export async function closeRoute(context: WriteContext, url: URL, request: Request, taskId: string): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'close_task', { task: taskId });
-  only(body, ['projectId', 'reason', 'resolution', 'duplicateOf']);
+  only(body, ['projectId', 'reason', 'resolution', 'duplicateOf', 'commit', 'pullRequest']);
   const projectId = projectArg(body, 'projectId', 'http');
-  const closing = closingArgs(body, taskId, 'duplicateOf');
+  const given = closingArgs(body, taskId, 'duplicateOf');
+  const closing = { ...given, ...shippedArgs(body, 'pullRequest', given.resolution) };
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
   return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
 }

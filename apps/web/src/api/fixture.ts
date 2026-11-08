@@ -396,6 +396,24 @@ export function createFixtureTasksApi({
         actors: FIXTURE_ACTORS,
       });
     },
+    async delivery(key) {
+      reach();
+      const { prefix, logicalKey } = project(key);
+      const stages: readonly (string | undefined)[] = ['built', 'merged'];
+      const tasks = state.tasks
+        .filter((task) => task.project === key && task.status === 'closed' && stages.includes(task.delivery?.stage))
+        .map(withLinks);
+      return copy({
+        project: logicalKey,
+        prefix,
+        repo: '',
+        readAt: new Date(now()).toISOString(),
+        lastSeq: changes.length,
+        tasks,
+        epics: null,
+        actors: FIXTURE_ACTORS,
+      });
+    },
     async changes(after) {
       reach();
       const events = changes.filter((change) => change.seq > after).slice(0, 100);
@@ -587,9 +605,13 @@ export function createFixtureTasksApi({
         const taken = state.projects.find((row) => row.prefix === prefix);
         if (taken)
           throw new ApiError(`Prefix ${prefix} is taken by ${taken.displayName}.`, 409, 'project_exists', 'prefix');
-        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix });
+        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix, deploys: false });
         state.fields.set(prefix, []);
       });
+    },
+    async setDeploys(key, deploys) {
+      owned();
+      project(key).deploys = deploys;
     },
     async members() {
       const { members, invitations } = owned();

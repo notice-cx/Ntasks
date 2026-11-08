@@ -37,8 +37,8 @@ or prefix, since no query reads across stores.
 
 | Table | Holds |
 |---|---|
-| `projects` | Each project's id, key, name and task id prefix |
-| `tasks` | One row per task: its fields, its current close, its version |
+| `projects` | Each project's id, key, name and task id prefix, and whether its changes go live by a deploy (`deploys`) |
+| `tasks` | One row per task: its fields, its current close and delivery, its version |
 | `task_labels` | A task's labels, one row each |
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
@@ -79,6 +79,16 @@ writes them, so one page has one URL and a task links to it once. The
 database allows URLs of at most 2,048 characters; a new write through the API
 also takes at most 32 links on a task and 512 characters in a title.
 
+A task's delivery ([concepts](concepts.md#where-a-change-is)) is seven
+columns of `tasks`: `delivery_stage` (`built`, `merged` or `live`),
+`delivery_commit`, `delivery_pull_request`, `delivery_merge_commit`, and
+`built_at`, `merged_at` and `live_at`. A signal names pull requests and
+commits, and reaches the tasks carrying them through one index on each of the
+three, never through a project's history: a commit matches by prefix, so it
+reads the range of the index that shares its first 7 characters.
+`tasks_by_project_stage` reaches a project's tasks at a stage, whenever they
+closed.
+
 A task's values of its project's custom fields are the `field_values` column
 of `tasks`: one JSON object by field key, holding text, a number, true or false,
 or a list of options. Being part of the task's row, they cost a read no row of
@@ -110,6 +120,10 @@ These hold whatever code writes to the database. Each has a test in
   `packages/domain/src/task.ts`.
 - A task is closed exactly when it records when and how it closed, and close
   details are empty while it is not closed.
+- Only a task closed as done with a commit or a pull request has a delivery,
+  and a task without a stage records no delivery at all. A commit is 7 to 64
+  lowercase hexadecimal characters; a merged task records when it merged,
+  and only a live one when it went live.
 - A task's helper and work details are empty while nobody holds it, and once
   it is closed.
 - Every update of a task raises its `version` by exactly one.
@@ -173,9 +187,14 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
-- **Projects:** `listProjects` and `createProject`, which
-  `POST /api/tasks/projects` ([API](api.md#writes)) calls; an import writes
-  its projects' rows itself.
+- **Projects:** `listProjects`, `createProject`, which
+  `POST /api/tasks/projects` ([API](api.md#writes)) calls, and
+  `setProjectDeploys`; an import writes its projects' rows itself.
+- **Delivery:** `reportDelivery` moves the closed tasks of the projects named
+  whose pull request, commit or merge commit a signal matches, each move with
+  its history, in one batch ([API](api.md#delivery)). A close as done that
+  carries `commit` or `pullRequest` starts a task's delivery, and a reopen
+  clears it. `listBoard` with `stages` reads closed tasks at those stages.
 - **Custom fields:** `defineField` and `retireField`, each one batch, which
   writes a retry record when the call carries a retry identity (an MCP
   `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a

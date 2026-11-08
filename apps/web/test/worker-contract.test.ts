@@ -2,7 +2,7 @@ import type { JsonObject, Task } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import type { LiveTask, LiveTasksPayload, TaskChoices } from '@/api/types';
 import { NO_FILTERS, readBoard } from '@/lib/board-read';
-import { claimedModel, closeAttribution, inboxAsk } from '@/lib/task-model';
+import { claimedModel, closeAttribution, deliveryWait, inboxAsk } from '@/lib/task-model';
 // The Worker's own code for a task as the web app reads it, so this test
 // fails when the two drift apart.
 import { webTask } from '../../../workers/api/src/views.ts';
@@ -47,6 +47,7 @@ function task(fields: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
     filedBy: 'agent-one',
     filedModel: null,
     close: null,
+    delivery: null,
     version: 1,
     createdAt: '2026-11-01T00:00:00.000Z',
     updatedAt: '2026-11-01T00:00:00.000Z',
@@ -142,5 +143,28 @@ describe("the Worker's task answers", () => {
       closeReason: 'Not needed after the redesign',
     });
     expect(answer ? closeAttribution(answer) : null).toEqual({ by: 'Example Owner', model: 'example-model' });
+  });
+
+  it("say where a closed task's change is, and so what it waits for", () => {
+    const close = {
+      at: NOW,
+      reason: 'Shipped.',
+      resolution: 'done',
+      duplicateOf: null,
+      by: 'agent-one',
+      model: null,
+    } as const;
+    const delivery = {
+      stage: 'merged',
+      commit: 'abc1234',
+      pullRequest: 'https://github.com/example/web/pull/7',
+      mergeCommit: 'def5678',
+      builtAt: NOW,
+      mergedAt: NOW,
+      liveAt: null,
+    } as const;
+    const [answer] = overTheWire([task({ id: 'web-x2', title: 'Ship the form', status: 'closed', close, delivery })]);
+    expect(answer?.delivery).toEqual(delivery);
+    expect(answer ? [deliveryWait(answer, true), deliveryWait(answer, false)] : null).toEqual(['deploy', null]);
   });
 });

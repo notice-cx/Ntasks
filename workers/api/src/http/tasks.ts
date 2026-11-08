@@ -4,6 +4,7 @@
  * unchanged; docs/api.md lists them.
  */
 import {
+  isDeliveryStage,
   isTaskId,
   isTaskStatus,
   TASK_LIMITS,
@@ -18,6 +19,7 @@ import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
 import { commentView, fieldView, historyView, proposalOf, webTask } from '../views.ts';
+import { projectView } from './delivery.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
 import { DECISION_OPERATIONS, EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
 
@@ -51,14 +53,7 @@ function epicView(epic: EpicProgress) {
 /** GET /api/tasks/projects */
 export async function projects({ engine, principal }: ReadContext, url: URL): Promise<Response> {
   queryOf(url, []);
-  return json({
-    projects: reachable(principal, await engine.listProjects()).map((project) => ({
-      projectId: project.id,
-      logicalKey: project.key,
-      displayName: project.name,
-      prefix: project.prefix,
-    })),
-  });
+  return json({ projects: reachable(principal, await engine.listProjects()).map(projectView) });
 }
 
 /** GET /api/tasks/capabilities: what the web app may offer this sender. It
@@ -89,8 +84,8 @@ const LABEL_PAGE = 100;
  */
 async function labelRoute(context: ReadContext, query: Readonly<Record<string, string>>): Promise<Response> {
   const { engine, now } = context;
-  if (query.status !== undefined || query.closedDays !== undefined)
-    invalidRequest('a label read reads every status and every close: leave out status and closedDays');
+  if (query.status !== undefined || query.closedDays !== undefined || query.stage !== undefined)
+    invalidRequest('a label read reads every status and every close: leave out status, closedDays and stage');
   const label = query.label!;
   if (label.length < 1 || label.length > TASK_LIMITS.label)
     invalidRequest(`label must be 1 to ${TASK_LIMITS.label} characters`);
@@ -117,20 +112,30 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
  * GET /api/tasks?project=…&status=…&closedDays=…: a project's board. `status`
  * is a comma-separated list (every status when left out). `closedDays`
  * reaches further back than the board's week, and only on a read of closed
- * tasks alone, so the board itself stays a small read. With `label` it is
- * the label read above instead.
+ * tasks alone, so the board itself stays a small read. `stage`, a
+ * comma-separated list of stages of delivery, reads the closed tasks at those
+ * stages, whenever they closed unless `closedDays` is given. With `label` it
+ * is the label read above instead.
  */
 export async function boardRoute(context: ReadContext, url: URL): Promise<Response> {
   const { engine, now } = context;
   const fieldNames = [...url.searchParams.keys()].filter((name) => name.startsWith(FIELD_PARAM));
-  const query = queryOf(url, ['project', 'status', 'closedDays', 'label', 'limit', 'after', ...fieldNames]);
+  const query = queryOf(url, ['project', 'status', 'closedDays', 'label', 'limit', 'after', 'stage', ...fieldNames]);
   if (query.label !== undefined) {
     if (fieldNames.length > 0) invalidRequest('a label read reads every task carrying the label: leave out field.');
     return labelRoute(context, query);
   }
   if (query.limit !== undefined || query.after !== undefined)
     invalidRequest('limit and after page a label read: label=');
-  const statuses = query.status === undefined ? [...TASK_STATUSES] : query.status.split(',');
+  const stages = query.stage?.split(',');
+  if (stages !== undefined) {
+    if (new Set(stages).size !== stages.length || !stages.every(isDeliveryStage))
+      invalidRequest('stage must be a comma-separated list of built, merged, live');
+    if (query.status !== undefined && query.status !== 'closed')
+      invalidRequest('a stage is a closed task’s: leave out status, or send status=closed');
+  }
+  const statuses =
+    stages !== undefined ? ['closed'] : query.status === undefined ? [...TASK_STATUSES] : query.status.split(',');
   if (
     statuses.length < 1 ||
     new Set(statuses).size !== statuses.length ||
@@ -140,14 +145,27 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
   }
   if (query.closedDays !== undefined && statuses.join(',') !== 'closed')
     invalidRequest('closedDays is for a read of closed tasks alone: status=closed');
-  const closedDays = wholeOf(query, 'closedDays', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
+  const closedDays =
+    stages !== undefined && query.closedDays === undefined
+      ? null
+      : wholeOf(query, 'closedDays', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
   const project = await projectOf(context, query.project);
   const fields = await fieldParams(context, project, query);
   const active = statuses.some((status) => status !== 'closed');
   // Read before the board, so a change the board misses is after it in the feed.
   const lastSeq = await engine.latestChange();
   const [found, epics, links] = await Promise.all([
-    board(engine, project.id, statuses as TaskStatus[], closedDays, fields === undefined ? {} : { fields }, now),
+    board(
+      engine,
+      project.id,
+      statuses as TaskStatus[],
+      closedDays,
+      {
+        ...(fields === undefined ? {} : { fields }),
+        ...(stages === undefined ? {} : { stages: stages.filter(isDeliveryStage) }),
+      },
+      now,
+    ),
     active ? engine.listEpics(project.id) : null,
     linksSeenBy(context),
   ]);

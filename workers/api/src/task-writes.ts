@@ -30,6 +30,7 @@ import {
   type WriteResult,
 } from '@ntasks/domain';
 import { listed, type WorkArgs } from './args.ts';
+import { shippedWith } from './delivery.ts';
 import type { Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
@@ -607,6 +608,10 @@ export interface TaskClosing {
   readonly resolution?: TaskResolution;
   /** With duplicate: the task this one duplicates, in the same project. */
   readonly duplicateOf?: string;
+  /** What shipped, with done: either starts the task's delivery at built. One
+   * left out comes from the task's work details (shippedWith). */
+  readonly commit?: string;
+  readonly pullRequest?: string;
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
@@ -664,7 +669,12 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
-      close: { reason: closing.reason, resolution, ...(duplicateOf === undefined ? {} : { duplicateOf }) },
+      close: {
+        reason: closing.reason,
+        resolution,
+        ...(duplicateOf === undefined ? {} : { duplicateOf }),
+        ...(resolution === 'done' ? shippedWith(closing, current.work) : {}),
+      },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
       ...(duplicateOf === undefined || linked ? {} : { addLinks: [{ taskId: duplicateOf, type: 'related' as const }] }),

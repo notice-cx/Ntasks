@@ -78,6 +78,17 @@ export function useCreateProject() {
   });
 }
 
+/** An owner's setting of whether a project's changes go live by a deploy. */
+export function useSetDeploys() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ project, deploys }: { project: string; deploys: boolean }) => api.setDeploys(project, deploys),
+    // The Waiting for you view lists merged work by this setting.
+    onSettled: () => client.invalidateQueries({ queryKey: ['task-projects'] }),
+  });
+}
+
 /** The members and pending invitations, for an owner: nobody else may read them. */
 export function useMembers(enabled: boolean) {
   const api = useTasksApi();

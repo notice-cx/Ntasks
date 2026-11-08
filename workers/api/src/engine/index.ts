@@ -20,6 +20,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
   return {
     listProjects: () => reads.listProjects(),
     createProject: (input) => writes.createProject(input),
+    setProjectDeploys: (projectId, deploys) => writes.setProjectDeploys(projectId, deploys),
     getTask: (projectId, taskId) => reads.getTask(projectId, taskId),
     getTasks: (projectId, taskIds) => reads.getTasks(projectId, taskIds),
     listWork: (projectIds, closedSince) => reads.listWork(projectIds, closedSince),
@@ -52,5 +53,6 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     createTask: (projectId, input, actor, retry) => writes.createTask(projectId, input, actor, retry),
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
     addComment: (projectId, taskId, text, actor, retry) => writes.addComment(projectId, taskId, text, actor, retry),
+    reportDelivery: (projectIds, signal, actor) => writes.reportDelivery(projectIds, signal, actor),
   };
 }

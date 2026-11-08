@@ -47,6 +47,18 @@ export const TASK_RESOLUTIONS = [
 ] as const;
 export type TaskResolution = (typeof TASK_RESOLUTIONS)[number];
 
+/**
+ * Where a closed task's change is. A task closed as done with a commit or a
+ * pull request is built; a signal from the repository moves it to merged, and
+ * to live once a deploy ships it. A project whose changes do not go live by a
+ * deploy stops at merged. A task only moves forward.
+ */
+export const DELIVERY_STAGES = ['built', 'merged', 'live'] as const;
+export type DeliveryStage = (typeof DELIVERY_STAGES)[number];
+
+/** A commit as a delivery records it: 7 to 64 lowercase hexadecimal characters. */
+export const COMMIT_SHA = /^[0-9a-f]{7,64}$/u;
+
 /** What a history event records. A comment is `commented`; every other write is one of the rest. */
 export const TASK_EVENT_KINDS = ['created', 'updated', 'closed', 'reopened', 'commented'] as const;
 export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
@@ -127,6 +139,8 @@ export interface Project {
   readonly name: string;
   /** Starts every task id in the project. */
   readonly prefix: string;
+  /** Its changes go live by a deploy; when false, merged is the last stage of a task's delivery. */
+  readonly deploys: boolean;
   readonly createdAt: string;
 }
 
@@ -179,6 +193,21 @@ export interface TaskClose {
   readonly model: string | null;
 }
 
+/** Where a closed task's change is, and when it got to each stage. */
+export interface TaskDelivery {
+  readonly stage: DeliveryStage;
+  /** The commit the task closed with. */
+  readonly commit: string | null;
+  /** The pull request the task closed with, as a URL. */
+  readonly pullRequest: string | null;
+  /** The commit that merged it, when the merge's signal named one. */
+  readonly mergeCommit: string | null;
+  readonly builtAt: string;
+  /** Null until a signal said it merged; a task can go live without one. */
+  readonly mergedAt: string | null;
+  readonly liveAt: string | null;
+}
+
 export interface Task {
   readonly id: string;
   readonly projectId: string;
@@ -229,6 +258,8 @@ export interface Task {
   readonly filedBy: string | null;
   readonly filedModel: string | null;
   readonly close: TaskClose | null;
+  /** Where its change is: only on a task closed as done with a commit or a pull request. */
+  readonly delivery: TaskDelivery | null;
   /** Raised by one with every change; a write names the version it read. */
   readonly version: number;
   readonly createdAt: string;
@@ -282,3 +313,4 @@ export const isDependencyType = isOneOf(DEPENDENCY_TYPES);
 export const isExternalLinkKind = isOneOf(EXTERNAL_LINK_KINDS);
 export const isFieldType = isOneOf(FIELD_TYPES);
 export const isTaskResolution = isOneOf(TASK_RESOLUTIONS);
+export const isDeliveryStage = isOneOf(DELIVERY_STAGES);

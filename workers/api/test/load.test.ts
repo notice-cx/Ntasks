@@ -196,6 +196,7 @@ describe('a load into an empty store', () => {
       name: 'Web',
       prefix: 'web',
       created_at: '2026-03-02T09:00:00.000Z',
+      deploys: 0,
     };
     const pages: [unknown, string][] = [
       [{ load, table: 'store_migrations', rows: [project] }, 'table must be one of'],
@@ -262,6 +263,7 @@ describe('a load into an empty store', () => {
       name: 'Web',
       prefix: 'web',
       created_at: '2026-03-02T09:00:00.000Z',
+      deploys: 0,
     };
     await post('/api/restore/rows', { load, table: 'projects', rows: [project] });
     // A fault no row causes: a table the commit writes is gone.

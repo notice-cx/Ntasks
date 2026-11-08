@@ -29,9 +29,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  "2026-10-21: close_task as done keeps the task's card as it stood, with the commit its reason names, and get_task returns it as cardShipped; update_task then refuses a card for that task.",
   '2026-11-03: reconcile_task supports answer_mode relayed for local Claude Code sessions and quoted task comments, owner_performed for the owner’s completed action, and no-longer-needed for retirement. Relayed approvals close immediately and can be disputed on Tasks.',
   '2026-11-07: claim_task and comment_on_task take for, the helper agent working under you, and the work details session, worktree, branch, pr, commit and next; get_task shows them with lastActivityAt, when the holder last wrote to the task, and an epic’s open children with their holders; list_tasks shows for and lastActivityAt.',
+  "2026-11-07: close_task takes commit and pr, and the task's delivery shows its change as built; report_delivery moves it to merged and live. list_tasks takes stage and counts closed tasks by stage.",
 ]);
 
 /** How a session starts. */
@@ -44,7 +44,7 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '2. list_tasks with ready: true and no project for work nothing blocks anywhere; assignee: "me" for what you hold. get_task reads one with its comments before you choose.',
   '3. claim_task the moment you start, naming your model. A helper agent that cannot reach these tools works under your claim: pass for with its name, and the branch, worktree and pr it works in.',
   '4. comment_on_task with progress and evidence as the work moves, with next, commit or pr when they change, so anyone who reads the task sees the work in hand.',
-  '5. close_task with what shipped and its evidence (the commit hash or URL), naming your model.',
+  '5. close_task with what shipped and its evidence (the commit hash or URL), naming your model, and pass commit or pr so the task shows its change as built. When you merge a pull request or finish a deploy, report_delivery moves its tasks to merged or live; list_tasks with stage built lists what is not merged yet.',
   '6. Found work goes to create_task, or create_tasks for several, in the project that owns it.',
   '7. A decision, credential or admin step only a person can do: label the task human, with choices when the person picks one option. A step that must wait for approval: request_human_approval. The owner may answer on Tasks or in conversation, including a local Claude Code session recorded as a relay.',
   '8. reconcile_task records the owner answer, takes off the human label and returns the task to agents, preserving the selected choice. Claim it to carry on, then close_task with the implementation commit. A person answering a decision directly on Tasks closes it on the answer instead.',
@@ -73,6 +73,7 @@ export const GUIDE_TOOLS: readonly string[] = Object.freeze([
   'claim_task',
   'comment_on_task',
   'close_task',
+  'report_delivery',
   'request_human_approval',
   'reconcile_task',
   'get_agent_stats',

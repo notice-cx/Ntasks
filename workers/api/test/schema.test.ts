@@ -1,4 +1,5 @@
 import {
+  DELIVERY_STAGES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   FIELD_TYPES,
@@ -102,6 +103,7 @@ describe('the schema accepts exactly the task model vocabulary', () => {
     ['task_external_links', 'kind', EXTERNAL_LINK_KINDS],
     ['custom_fields', 'type', FIELD_TYPES],
     ['task_events', 'kind', TASK_EVENT_KINDS],
+    ['tasks', 'delivery_stage', DELIVERY_STAGES],
   ] as const)('%s.%s allows the domain list and nothing else', async (table, column, domainList) => {
     expect((await checkList(table, column)).sort()).toEqual([...domainList].sort());
   });
@@ -315,6 +317,28 @@ describe('rules the database keeps whatever code writes to it', () => {
     ['a closer model', { closed_model: 'claude-opus-5-5' }],
   ] as const)('refuses %s on a task that is not closed', async (_case, fields) => {
     await expect(newTask(fields)).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
+  it('keeps a delivery on a task closed as done with a commit or pull request, and nowhere else', async () => {
+    const built = { delivery_stage: 'built', delivery_commit: 'abc1234', built_at: LATER };
+    await expect(newTask({ ...CLOSED, ...built })).resolves.toBeDefined();
+    await expect(newTask({ ...CLOSED, ...built, delivery_commit: 'ABC1234' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask(built)).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, resolution: 'wont-do' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, delivery_commit: null })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, delivery_commit: 'abc1234' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, delivery_stage: 'live' })).rejects.toThrow(/CHECK/u);
+    const { taskId } = await newTask({ ...CLOSED, ...built });
+    // A reopen that leaves the delivery behind is refused.
+    await expect(
+      db
+        .prepare(
+          `UPDATE tasks SET status = 'open', closed_at = NULL, resolution = NULL, close_reason = NULL, closed_by = NULL,
+             version = version + 1 WHERE id = ?`,
+        )
+        .bind(taskId)
+        .run(),
+    ).rejects.toThrow(/CHECK/u);
   });
 
   it('refuses a duplicate close left on a task that is not closed', async () => {

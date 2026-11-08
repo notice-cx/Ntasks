@@ -16,6 +16,7 @@
  */
 import type {
   CustomField,
+  DeliveryStage,
   DependencyType,
   EpicProgress,
   ExternalLink,
@@ -177,8 +178,17 @@ export interface TaskWrite {
    * answers it. The new gate's id is in the result's `created`. */
   readonly requestApproval?: { readonly reason: string };
   /** Closes the task, recording the actor as the closer. Refused on a task
-   * that is already closed. */
-  readonly close?: { readonly reason: string; readonly resolution: TaskResolution; readonly duplicateOf?: string };
+   * that is already closed. A close as done with a commit or a pull request
+   * URL starts the task's delivery at built. */
+  readonly close?: {
+    readonly reason: string;
+    readonly resolution: TaskResolution;
+    readonly duplicateOf?: string;
+    /** 7 to 64 lowercase hexadecimal characters (COMMIT_SHA). */
+    readonly commit?: string;
+    /** An http or https URL. */
+    readonly pullRequest?: string;
+  };
   /** Opens a closed task again. Its earlier close stays in its history (rule 6). */
   readonly reopen?: true;
   /** A comment added in the same change, such as the answer behind it. */
@@ -241,6 +251,10 @@ export interface BoardQuery extends TaskFilters {
   /** With it, also every task closed at or after this time. A ready-only
    * board leaves closed tasks out, as no closed task is ready. */
   readonly closedSince?: string;
+  /** Only closed tasks at these stages of delivery, whenever they closed, or
+   * with `closedSince` from that time. No open task has a stage, so the
+   * statuses are left out of a read by stage. */
+  readonly stages?: readonly DeliveryStage[];
   /** Leaves the tasks' external links unread, so each task's `externalLinks`
    * is empty. For a caller that shows a page of the board: it reads the
    * page's links with `listExternalLinks`, and no other task's. */
@@ -299,6 +313,22 @@ export interface WorkItem {
   readonly closedModel: string | null;
 }
 
+/** A repository's word that pull requests or commits reached a stage. */
+export interface DeliverySignal {
+  readonly stage: Exclude<DeliveryStage, 'built'>;
+  /** Pull request URLs, written as the task's delivery records them. */
+  readonly pullRequests: readonly string[];
+  /** Commits, each 7 to 64 lowercase hexadecimal characters (COMMIT_SHA). */
+  readonly commits: readonly string[];
+}
+
+/** A task a signal moved, and the stage it moved to. */
+export interface DeliveryMove {
+  readonly taskId: string;
+  readonly projectId: string;
+  readonly stage: DeliveryStage;
+}
+
 export interface WriteResult {
   readonly task: Task;
   /** Tasks the write made as well, such as the gate of a requested approval. */
@@ -332,6 +362,8 @@ export interface CommentResult {
 export interface TaskEngine {
   listProjects(): Promise<readonly Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
+  /** Says whether the project's changes go live by a deploy. */
+  setProjectDeploys(projectId: string, deploys: boolean): Promise<Project>;
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;
@@ -409,6 +441,17 @@ export interface TaskEngine {
   /** Retires a custom field: it takes no new values from then on. Retiring a
    * retired field changes nothing. */
   retireField(projectId: string, key: string, actor: Actor, retry?: Retry): Promise<FieldResult>;
+  /**
+   * Moves the closed tasks of these projects that a signal names to its
+   * stage: each built or merged task whose pull request, commit or merge
+   * commit matches one the signal names. Two commits match when one is a
+   * prefix of the other. A project that does not deploy stops its tasks at
+   * merged. A task never moves back, so a repeated signal moves nothing. A
+   * merged signal that names exactly one commit records it as the merge
+   * commit of each task it moves. Each move is a change with its history
+   * (rules 2 and 4), all in one batch.
+   */
+  reportDelivery(projectIds: readonly string[], signal: DeliverySignal, actor: Actor): Promise<readonly DeliveryMove[]>;
   /** Adds a comment. It does not change the task's version, so it never conflicts with a write. */
   addComment(projectId: string, taskId: string, text: string, actor: Actor, retry?: Retry): Promise<CommentResult>;
 }

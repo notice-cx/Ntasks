@@ -137,6 +137,19 @@ it.
 A closed task can be reopened. Reopening keeps its history, including the
 first close and its evidence.
 
+## Where a change is
+
+A task closed as done with a commit or a pull request has a **delivery**,
+which says where its change is: **built** when it closes, **merged** once the
+change is merged, and **live** once a deploy ships it. The repository's
+automation, or the agent that merges or deploys, sends a signal naming the
+pull requests or commits that merged or went live, and the tasks that carry
+them move to that stage. A task only moves forward. A project whose changes
+do not go live by a deploy, such as a library, stops at merged; the
+project's owner says which kind it is. The web app's Waiting for you view
+lists built work, which waits for a merge, and merged work of a project that
+deploys, which waits for a deploy. [API](api.md#delivery) gives the rules.
+
 ## Decisions and approvals
 
 Some steps only a person can take. Ntasks has two kinds.

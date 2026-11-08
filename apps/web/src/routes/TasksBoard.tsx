@@ -24,6 +24,7 @@ import { composeRequested, COMPOSE_STATE, searchRequested } from '@/lib/page-sta
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, type StatusMark as StatusMarkKey } from '@/lib/symbols';
 import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '@/lib/task-model';
 import { WaitingGroup } from './tasks/ask-queue';
+import { DELIVERY_GROUPS, DeliveryGroup, useDeliveryWaits } from './tasks/delivery-groups';
 import { TaskRow, type RowContext } from './tasks/task-row';
 
 /** Tailwind's `max-sm`: below it the top bar has no room for the search field. */
@@ -305,7 +306,10 @@ function Groups({
   now: number;
 }) {
   const [folded, setFolded] = useState<ReadonlySet<StatusMarkKey>>(() => new Set(['done']));
-  const [shown, setShown] = useState<Partial<Record<StatusMarkKey, number>>>({});
+  const [shown, setShown] = useState<Partial<Record<string, number>>>({});
+  // The Waiting for you view also lists the work waiting for a merge or a deploy.
+  const delivery = useDeliveryWaits(board, filters, view === 'waiting');
+  const deliveryGroups = DELIVERY_GROUPS.filter((group) => delivery[group.wait].length > 0);
   const projects = new Map(board.projects.map((project) => [project.key, project]));
   const fetchedAt = (task: BoardTask) => projects.get(task.project)?.fetchedAt ?? null;
   // An answered decision leaves its group at once, while its Undo window runs and until a later read says what the server holds.
@@ -332,7 +336,7 @@ function Groups({
     filters.q.trim() !== '' ||
     FILTER_NAMES.some((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all'));
 
-  if (marks.length === 0) {
+  if (marks.length === 0 && deliveryGroups.length === 0) {
     return narrowed ? (
       <EmptyState
         icon={<Search />}
@@ -353,7 +357,7 @@ function Groups({
     );
   }
 
-  const more = (mark: StatusMarkKey, total: number, limit: number) =>
+  const more = (mark: string, total: number, limit: number) =>
     total > limit ? (
       <div className="border-b border-border px-5.5 py-1.5 max-sm:px-4">
         <Button
@@ -414,6 +418,20 @@ function Groups({
               </>
             ) : null}
           </section>
+        );
+      })}
+      {deliveryGroups.map(({ wait }) => {
+        const rows = delivery[wait];
+        const limit = shown[wait] ?? PAGE_ROWS;
+        return (
+          <DeliveryGroup
+            key={wait}
+            wait={wait}
+            rows={rows.slice(0, limit)}
+            count={rows.length}
+            contextOf={contextOf}
+            more={more(wait, rows.length, limit)}
+          />
         );
       })}
     </div>

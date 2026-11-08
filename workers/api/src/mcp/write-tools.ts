@@ -86,6 +86,7 @@ import {
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { commentView, mcpTask } from '../views.ts';
+import { shippedArgs } from '../delivery.ts';
 import { PROJECT, schema, TASK, type TaskTool } from './read-tools.ts';
 
 export const WRITE = Object.freeze({
@@ -898,6 +899,16 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           description:
             'With resolution duplicate: the id of the task in this project it duplicates. The two are linked as related.',
         },
+        commit: {
+          type: 'string',
+          description:
+            "With done: the commit that holds the change; left out, the commit your work details name. The task's delivery starts at built, and report_delivery moves it to merged and live.",
+        },
+        pr: {
+          type: 'string',
+          description:
+            "With done: the pull request's URL; left out, the pr your work details name. The task's delivery starts at built, as with commit.",
+        },
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
       },
@@ -906,11 +917,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'reason', 'resolution', 'duplicate_of', 'model', 'idempotency_key']);
+      only(args, [
+        'project',
+        'task',
+        'reason',
+        'resolution',
+        'duplicate_of',
+        'commit',
+        'pr',
+        'model',
+        'idempotency_key',
+      ]);
       const projectId = projectArg(args);
       const taskId = taskArg(args);
       const model = modelArg(args);
-      const closing = closingArgs(args, taskId, 'duplicate_of');
+      const given = closingArgs(args, taskId, 'duplicate_of');
+      const closing = { ...given, ...shippedArgs(args, 'pr', given.resolution) };
       keyArg(args);
       const { result } = await closeTask(context, projectId, taskId, closing, model, retryRequest('close_task', args));
       return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };

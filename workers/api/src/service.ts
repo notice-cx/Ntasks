@@ -18,8 +18,9 @@ const DAY_MS = 86_400_000;
 
 export interface Board {
   readonly readAt: string;
-  /** The first day whose closed tasks the board holds, as YYYY-MM-DD. */
-  readonly closedSince: string;
+  /** The first day whose closed tasks the board holds, as YYYY-MM-DD; null
+   * when it holds the closed tasks at a stage whenever they closed. */
+  readonly closedSince: string | null;
   readonly tasks: readonly Task[];
 }
 
@@ -27,23 +28,25 @@ export interface Board {
  * A board, in one project or, with `projectId` null, in every project: the
  * tasks in the given statuses that are not closed, and those closed from
  * `closedDays` days before now, most urgent first. `filters` narrows both, in
- * the database.
+ * the database. With `filters.stages`, it holds the closed tasks at those
+ * stages alone, and with `closedDays` null whenever they closed.
  */
 export async function board(
   engine: TaskEngine,
   projectId: string | null,
   statuses: readonly TaskStatus[],
-  closedDays: number,
+  closedDays: number | null,
   filters: Omit<BoardQuery, 'statuses' | 'closedSince'>,
   now: () => string,
 ): Promise<Board> {
   const readAt = now();
-  const closedSince = new Date(Date.parse(readAt) - closedDays * DAY_MS).toISOString().slice(0, 10);
+  const closedSince =
+    closedDays === null ? null : new Date(Date.parse(readAt) - closedDays * DAY_MS).toISOString().slice(0, 10);
   const open = statuses.filter((status): status is Exclude<TaskStatus, 'closed'> => status !== 'closed');
   const tasks = await engine.listBoard(projectId, {
     ...filters,
     statuses: open,
-    ...(statuses.includes('closed') ? { closedSince: `${closedSince}T00:00:00.000Z` } : {}),
+    ...(statuses.includes('closed') && closedSince !== null ? { closedSince: `${closedSince}T00:00:00.000Z` } : {}),
   });
   return { readAt, closedSince, tasks };
 }

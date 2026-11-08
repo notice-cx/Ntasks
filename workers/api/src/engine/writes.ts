@@ -13,6 +13,9 @@ import {
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
+  type DeliveryMove,
+  type DeliverySignal,
+  type DeliveryStage,
   type DependencyType,
   type ExternalLink,
   type FieldResult,
@@ -22,6 +25,7 @@ import {
   type Project,
   type Retry,
   type Task,
+  type TaskDelivery,
   type TaskComment,
   type TaskEventKind,
   type TaskRefusal,
@@ -31,7 +35,7 @@ import {
 } from '@ntasks/domain';
 import type { Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import { toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
+import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
@@ -94,6 +98,51 @@ function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
     .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0))
     .map(({ url, title, kind }) => ({ url, title, kind }));
 }
+
+/** A delivery as history events record it. */
+function deliveryJson(delivery: TaskDelivery): JsonObject {
+  const { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt } = delivery;
+  return { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt };
+}
+
+/** The order of the stages: a task moves only to a later one. */
+const STAGE_ORDER: Readonly<Record<DeliveryStage, number>> = Object.freeze({ built: 0, merged: 1, live: 2 });
+
+/** The columns that hold a task's delivery, which a reopen clears. */
+const DELIVERY_COLUMNS = [
+  'delivery_stage',
+  'delivery_commit',
+  'delivery_pull_request',
+  'delivery_merge_commit',
+  'built_at',
+  'merged_at',
+  'live_at',
+] as const;
+
+/**
+ * The built and merged tasks of the projects in ?1 whose pull request is in
+ * ?2, or whose commit or merge commit matches one in ?3, with whether their
+ * project deploys. Two commits match when one is a prefix of the other; both
+ * then share their first 7 characters, so each commit reads one range of an
+ * index ('g' sorts after every hexadecimal digit).
+ */
+const DELIVERY_CANDIDATES = `WITH matched(id) AS (
+  SELECT t.id FROM json_each(?2) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_pull_request
+    ON t.delivery_pull_request = w.value
+  UNION
+  SELECT t.id FROM json_each(?3) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_commit
+    ON t.delivery_commit >= substr(w.value, 1, 7) AND t.delivery_commit < substr(w.value, 1, 7) || 'g'
+  WHERE substr(w.value, 1, length(t.delivery_commit)) = t.delivery_commit
+    OR substr(t.delivery_commit, 1, length(w.value)) = w.value
+  UNION
+  SELECT t.id FROM json_each(?3) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_merge_commit
+    ON t.delivery_merge_commit >= substr(w.value, 1, 7) AND t.delivery_merge_commit < substr(w.value, 1, 7) || 'g'
+  WHERE substr(w.value, 1, length(t.delivery_merge_commit)) = t.delivery_merge_commit
+    OR substr(t.delivery_merge_commit, 1, length(w.value)) = w.value
+)
+SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
+WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
+ORDER BY t.id`;
 
 /** Field values as history events record them: every value the task carries, by key in order. */
 function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
@@ -446,6 +495,81 @@ export class Writes {
     return this.#projectOf(id);
   }
 
+  async setProjectDeploys(projectId: string, deploys: boolean): Promise<Project> {
+    if (typeof deploys !== 'boolean') check.invalid('deploys must be true or false');
+    await this.#projectOf(projectId);
+    await this.#db
+      .prepare('UPDATE projects SET deploys = ?2 WHERE id = ?1')
+      .bind(projectId, deploys ? 1 : 0)
+      .run();
+    return this.#projectOf(projectId);
+  }
+
+  async reportDelivery(
+    projectIdsInput: readonly string[],
+    signalInput: DeliverySignal,
+    actorInput: Actor,
+  ): Promise<DeliveryMove[]> {
+    const actor = check.actor(actorInput);
+    const signal = check.deliverySignal(signalInput);
+    if (!Array.isArray(projectIdsInput) || !projectIdsInput.every((id) => typeof id === 'string'))
+      check.invalid('projectIds must be project ids');
+    if (projectIdsInput.length === 0) return [];
+    // Only a merge names its merge commit, and only when it names one commit.
+    const mergeCommit = signal.stage === 'merged' && signal.commits.length === 1 ? signal.commits[0]! : null;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const { results } = await this.#db
+        .prepare(DELIVERY_CANDIDATES)
+        .bind(
+          JSON.stringify([...new Set(projectIdsInput)]),
+          JSON.stringify(signal.pullRequests),
+          JSON.stringify(signal.commits),
+        )
+        .all<StoredTaskRow & { readonly deploys: number }>();
+      const at = this.#now();
+      const statements: Statement[] = [];
+      const moves: DeliveryMove[] = [];
+      for (const row of results) {
+        const current = deliveryOf(row);
+        if (current === null) continue;
+        // A project that does not deploy has nothing after merged.
+        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 ? 'merged' : signal.stage;
+        if (STAGE_ORDER[stage] <= STAGE_ORDER[current.stage]) continue;
+        const next: TaskDelivery = {
+          ...current,
+          stage,
+          mergeCommit: current.mergeCommit ?? mergeCommit,
+          mergedAt: stage === 'merged' ? at : current.mergedAt,
+          liveAt: stage === 'live' ? at : null,
+        };
+        statements.push(
+          this.#db
+            .prepare(
+              `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
+                 version = version + 1, updated_at = ?5
+               WHERE id = ?6 AND version = ?7`,
+            )
+            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
+            delivery: deliveryJson(next),
+          }),
+        );
+        moves.push({ taskId: row.id, projectId: row.project_id, stage });
+      }
+      if (statements.length === 0) return [];
+      try {
+        await this.#db.batch(statements);
+        return moves;
+      } catch (error) {
+        // Another write changed a task this signal moves: read the tasks again and decide again.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') continue;
+        throw error;
+      }
+    }
+    refuse('version_conflict', 'The tasks this signal moves kept changing; send it again.');
+  }
+
   async createTask(
     projectId: string,
     input: CreateTaskInput,
@@ -768,12 +892,37 @@ export class Writes {
         by: actor.name,
         model: actor.model ?? null,
       };
+      const { commit, pullRequest } = write.close;
+      if (commit !== null || pullRequest !== null) {
+        columns.delivery_stage = 'built';
+        columns.delivery_commit = commit;
+        columns.delivery_pull_request = pullRequest;
+        columns.built_at = at;
+        changes.delivery = deliveryJson({
+          stage: 'built',
+          commit,
+          pullRequest,
+          mergeCommit: null,
+          builtAt: at,
+          mergedAt: null,
+          liveAt: null,
+        });
+      }
     } else if (write.reopen) {
       kind = 'reopened';
-      for (const column of ['closed_at', 'close_reason', 'resolution', 'duplicate_of', 'closed_by', 'closed_model'])
+      for (const column of [
+        'closed_at',
+        'close_reason',
+        'resolution',
+        'duplicate_of',
+        'closed_by',
+        'closed_model',
+        ...DELIVERY_COLUMNS,
+      ])
         columns[column] = null;
       change('status', 'status', set.status ?? 'open');
       changes.close = null;
+      if (current.delivery !== null) changes.delivery = null;
     } else if (set.status !== undefined) {
       change('status', 'status', set.status);
     }
