@@ -102,6 +102,27 @@ export function useBoards(projects: readonly string[]): UseQueryResult<LiveTasks
 }
 
 /**
+ * Each named project's closed tasks whose change is built or merged, read
+ * while `enabled`. They share the board's key as their prefix, so whatever
+ * reads a project's board again reads these again too.
+ */
+export function useDeliveryBoards(
+  projects: readonly string[],
+  enabled: boolean,
+): UseQueryResult<LiveTasksPayload, Error>[] {
+  const api = useTasksApi();
+  return useQueries({
+    queries: projects.map((project) => ({
+      queryKey: ['tasks', project, 'delivery'],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.delivery(project, signal),
+      enabled,
+      staleTime: 15_000,
+      refetchOnWindowFocus: false,
+    })),
+  });
+}
+
+/**
  * One project's board with only the tasks holding each value of `fields`,
  * which the server filters. It shares the board's key as its prefix, so
  * whatever reads a project's board again reads this again too.

@@ -15,6 +15,7 @@ import {
   IDEMPOTENCY_KEY,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
+  WORK_LIMITS,
   type DependencyType,
   type Task,
   type TaskStatus,
@@ -45,6 +46,8 @@ import {
   textArg,
   typeArg,
   urlsArg,
+  WORK_ARGS,
+  workArgs,
   WRITABLE_TYPES,
   type Args,
 } from '../args.ts';
@@ -83,6 +86,7 @@ import {
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { commentView, mcpTask } from '../views.ts';
+import { shippedArgs } from '../delivery.ts';
 import { PROJECT, schema, TASK, type TaskTool } from './read-tools.ts';
 
 export const WRITE = Object.freeze({
@@ -125,6 +129,35 @@ export const IDEMPOTENCY = Object.freeze({
   type: 'string',
   pattern: IDEMPOTENCY_KEY.source,
   description: 'A key you choose for this call. Retrying with the same key and arguments never repeats the change.',
+});
+/** What a holder records about the work in hand, on a claim or a comment.
+ * Each is one line, and a newer value replaces the older. */
+const WORK = Object.freeze({
+  for: {
+    type: 'string',
+    maxLength: TASK_LIMITS.helper,
+    description:
+      'The name of the helper agent working under you, such as page-rebuild-2. You stay the holder, and the task shows both, as "claude for page-rebuild-2".',
+  },
+  session: {
+    type: 'string',
+    maxLength: WORK_LIMITS.session,
+    description: 'A link to, or the id of, the agent session doing the work.',
+  },
+  worktree: { type: 'string', maxLength: WORK_LIMITS.worktree, description: 'The worktree that holds the work.' },
+  branch: { type: 'string', maxLength: WORK_LIMITS.branch, description: 'The branch that holds the work.' },
+  pr: { type: 'string', maxLength: WORK_LIMITS.pr, description: "The pull request's URL." },
+  commit: {
+    type: 'string',
+    maxLength: WORK_LIMITS.commit,
+    description: 'The commit last tested, such as the one CI ran.',
+  },
+  next: {
+    type: 'string',
+    maxLength: WORK_LIMITS.next,
+    description:
+      'The next step, in one line. Each of these replaces the value before it, and closing or releasing the task clears them.',
+  },
 });
 const TASK_IDS = (description: string) => ({
   type: 'array',
@@ -556,7 +589,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'claim_task',
     description: 'Assign an open task to yourself and start it, naming your model. Fails if someone else holds it.',
-    inputSchema: schema({ project: PROJECT, task: TASK, model: MODEL, idempotency_key: IDEMPOTENCY }, [
+    inputSchema: schema({ project: PROJECT, task: TASK, model: MODEL, ...WORK, idempotency_key: IDEMPOTENCY }, [
       'project',
       'task',
       'idempotency_key',
@@ -564,16 +597,17 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'model', 'idempotency_key']);
+      only(args, ['project', 'task', 'model', ...WORK_ARGS, 'idempotency_key']);
       const projectId = projectArg(args);
       const taskId = taskArg(args);
       const model = modelArg(args);
+      const work = workArgs(args);
       keyArg(args);
       const { result } = await updateTask(
         context,
         projectId,
         taskId,
-        { claim: true },
+        { claim: true, ...work },
         model,
         retryRequest('claim_task', args),
       );
@@ -744,6 +778,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         project: PROJECT,
         task: TASK,
         text: { type: 'string', maxLength: TASK_LIMITS.comment },
+        ...WORK,
         idempotency_key: IDEMPOTENCY,
       },
       ['project', 'task', 'text', 'idempotency_key'],
@@ -751,10 +786,11 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'text', 'idempotency_key']);
+      only(args, ['project', 'task', 'text', ...WORK_ARGS, 'idempotency_key']);
       const projectId = projectArg(args);
       const taskId = taskArg(args);
       const text = textArg(args, 'text', TASK_LIMITS.comment, true)!;
+      const work = workArgs(args);
       keyArg(args);
       const { comment, replayed } = await commentOnTask(
         context,
@@ -762,6 +798,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         taskId,
         text,
         retryRequest('comment_on_task', args),
+        work,
       );
       return { comment: commentView(comment), replayed };
     },
@@ -862,6 +899,16 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           description:
             'With resolution duplicate: the id of the task in this project it duplicates. The two are linked as related.',
         },
+        commit: {
+          type: 'string',
+          description:
+            "With done: the commit that holds the change; left out, the commit your work details name. The task's delivery starts at built, and report_delivery moves it to merged and live.",
+        },
+        pr: {
+          type: 'string',
+          description:
+            "With done: the pull request's URL; left out, the pr your work details name. The task's delivery starts at built, as with commit.",
+        },
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
       },
@@ -870,11 +917,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'reason', 'resolution', 'duplicate_of', 'model', 'idempotency_key']);
+      only(args, [
+        'project',
+        'task',
+        'reason',
+        'resolution',
+        'duplicate_of',
+        'commit',
+        'pr',
+        'model',
+        'idempotency_key',
+      ]);
       const projectId = projectArg(args);
       const taskId = taskArg(args);
       const model = modelArg(args);
-      const closing = closingArgs(args, taskId, 'duplicate_of');
+      const given = closingArgs(args, taskId, 'duplicate_of');
+      const closing = { ...given, ...shippedArgs(args, 'pr', given.resolution) };
       keyArg(args);
       const { result } = await closeTask(context, projectId, taskId, closing, model, retryRequest('close_task', args));
       return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };

@@ -1,7 +1,8 @@
 // What each read costs the task store, on a store the size of a busy
 // installation: eight projects, one much larger than the rest, about a
 // thousand tasks open and several thousand closed, a quarter of them linking
-// a pull request, every one with the values of two custom fields. The free
+// a pull request, every one with the values of two custom fields, and a
+// quarter of the closed ones recording where their change is. The free
 // plan allows 5
 // million rows read per day and refuses reads for the rest of the day once
 // that allowance is spent; these budgets keep each read far inside it. They
@@ -10,7 +11,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { newMeter, type Meter } from '../../src/store/sqlite.ts';
 import { storeDatabase } from '../store.ts';
-import { api, get, read, type TestApi } from './helpers.ts';
+import { api, get, read, send, WRITER, type TestApi } from './helpers.ts';
 
 const NOW = '2026-11-06T12:00:00.000Z';
 /** Each project's task count and how many of those are not closed. */
@@ -75,6 +76,15 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
        'severity', CASE CAST(substr(id, length(?2) + 3) AS INTEGER) % 3 WHEN 0 THEN 'low' WHEN 1 THEN 'medium' ELSE 'high' END,
        'points', CAST(substr(id, length(?2) + 3) AS INTEGER) % 8)
      WHERE project_id = ?1`,
+    // One in ten of these is built, waiting for its merge; the rest are live.
+    `UPDATE tasks SET version = version + 1,
+       delivery_stage = CASE WHEN CAST(substr(id, length(?2) + 3) AS INTEGER) % 40 = 2 THEN 'built' ELSE 'live' END,
+       delivery_pull_request = 'https://example.com/' || ?2 || '/pull/' || substr(id, length(?2) + 3),
+       delivery_commit = printf('%08x', (CAST(substr(id, length(?2) + 3) AS INTEGER) * ${SPREAD} + unicode(substr(?2, -1)))
+         % 4294967296) || lower(hex(?2)),
+       built_at = closed_at,
+       live_at = CASE WHEN CAST(substr(id, length(?2) + 3) AS INTEGER) % 40 = 2 THEN NULL ELSE closed_at END
+     WHERE project_id = ?1 AND status = 'closed' AND CAST(substr(id, length(?2) + 3) AS INTEGER) % 4 = 2`,
     `${numbers}
      INSERT INTO task_labels (task_id, label)
      SELECT ${id('i')}, 'area-' || (i % 7) FROM n UNION ALL SELECT ${id('i')}, 'seo' FROM n WHERE i % 5 = 0`,
@@ -123,6 +133,16 @@ beforeAll(async () => {
   target = api({ now: () => NOW, meter });
 }, 60_000);
 
+/** Spreads the seeded commits over the hexadecimal range, as real ones are, so
+ * no two tasks share their first characters (Knuth's multiplicative hash). */
+const SPREAD = 2654435761;
+
+/** The commit the seed gives task `i` of the project with this prefix. */
+function seededCommit(prefix: string, i: number): string {
+  const head = ((i * SPREAD + prefix.charCodeAt(prefix.length - 1)) % 4294967296).toString(16).padStart(8, '0');
+  return head + Array.from(new TextEncoder().encode(prefix), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /** What one read cost. */
 async function costOf(work: () => Promise<unknown>): Promise<Meter> {
   Object.assign(meter, newMeter());
@@ -152,6 +172,8 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'list_tasks, largest project': { statements: 4, rowsRead: 6_000 },
   'list_tasks by a field, largest project': { statements: 5, rowsRead: 4_000 },
   'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
+  'list_tasks at a stage, largest project': { statements: 4, rowsRead: 1_000 },
+  'HTTP board at a stage, largest project': { statements: 5, rowsRead: 1_000 },
   get_task: { statements: 3, rowsRead: 60 },
   get_task_history: { statements: 3, rowsRead: 60 },
   'get_agent_stats, every project': { statements: 2, rowsRead: 800 },
@@ -178,6 +200,8 @@ describe('the cost of each read', () => {
       'list_tasks by a field, largest project': () =>
         read(target, 'list_tasks', { project: big.id, fields: { severity: 'high' } }),
       'HTTP board by a field, largest project': () => get(target, `/api/tasks?project=${big.id}&field.severity=high`),
+      'list_tasks at a stage, largest project': () => read(target, 'list_tasks', { project: big.id, stage: 'built' }),
+      'HTTP board at a stage, largest project': () => get(target, `/api/tasks?project=${big.id}&stage=built`),
       get_task: () => read(target, 'get_task', { project: big.id, task }),
       get_task_history: () => read(target, 'get_task_history', { project: big.id, task }),
       'get_agent_stats, every project': () => read(target, 'get_agent_stats'),
@@ -224,6 +248,24 @@ describe('the cost of each read', () => {
     expect(every.total).toBe(open + RECENTLY_CLOSED * SIZES.length);
     const stats = await read<{ projects: number; stats: { week: number } }>(target, 'get_agent_stats');
     expect(stats).toMatchObject({ projects: SIZES.length, stats: { week: RECENTLY_CLOSED * SIZES.length } });
+  });
+
+  it('finds the tasks a delivery signal names through their indexes: the cost follows those tasks, not the project', async () => {
+    // Live already, so the signal moves nothing and the store stays as the other reads measure it.
+    const named = [426, 430, 434, 438, 446];
+    const signal = {
+      repository: 'example/app',
+      stage: 'merged',
+      pullRequests: named.map((i) => `https://example.com/${big.prefix}/pull/${i}`),
+      commits: named.map((i) => seededCommit(big.prefix, i).slice(0, 12)),
+    };
+    const writer = api({ now: () => NOW, meter, principal: WRITER });
+    const cost = await costOf(async () =>
+      expect(await send(writer, 'POST', '/api/delivery', signal)).toMatchObject({ status: 200, body: { moved: [] } }),
+    );
+    // The project list, then the named tasks: about ten rows for each one named.
+    expect(cost.statements).toBeLessThanOrEqual(2);
+    expect(cost.rowsRead).toBeLessThan(200);
   });
 
   it("reads the agent statistics through the work's indexes: the cost follows the work, not the project", async () => {

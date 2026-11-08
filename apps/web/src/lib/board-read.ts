@@ -170,6 +170,17 @@ function matchesSearch(task: BoardTask, q: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
+/** Whether a task holds the search and every filter but the project, filtered by the status key `status`. */
+export function keptByFilters(task: BoardTask, filters: BoardFilters, status: string | null): boolean {
+  return (
+    matchesSearch(task, filters.q) &&
+    (filters.status === 'all' || status === filters.status) &&
+    (filters.priority === 'all' || priorityBand(task.priority) === filters.priority) &&
+    (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase()))) &&
+    (filters.assignee === 'all' || (task.assignee ?? '') === filters.assignee)
+  );
+}
+
 export function readBoard(
   catalog: readonly TaskProject[],
   reads: ReadonlyMap<string, ProjectRead>,
@@ -181,12 +192,7 @@ export function readBoard(
   const statuses = new Map(allTasks.map((task) => [task.id, task.status]));
   const filterStatus = (task: BoardTask) => statusKey(isWork(task) ? workStatus(task, statuses) : task.status);
 
-  const matches = (task: BoardTask) =>
-    matchesSearch(task, filters.q) &&
-    (filters.status === 'all' || filterStatus(task) === filters.status) &&
-    (filters.priority === 'all' || priorityBand(task.priority) === filters.priority) &&
-    (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase()))) &&
-    (filters.assignee === 'all' || (task.assignee ?? '') === filters.assignee);
+  const matches = (task: BoardTask) => keptByFilters(task, filters, filterStatus(task));
 
   const statusCounts = new Map<string, number>();
   const priorityCounts = new Map<string, number>();

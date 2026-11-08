@@ -187,11 +187,20 @@ export function createFixtureTasksApi({
     changes.push({ seq: changes.length + 1, projectId, taskId: task.id });
   }
 
+  /** Records a change by the fixture's sign-in, which is the holder's activity when it holds the task. */
   function touch(task: FixtureTask): string {
     const at = new Date(now()).toISOString();
     task.updatedAt = at;
+    if (task.assignee === FIXTURE_ACTOR) task.lastActivityAt = at;
     logChange(task);
     return at;
+  }
+
+  /** A release or a hand-on ends the holder's work: its helper, details and last activity go. A close keeps the activity. */
+  function endWork(task: FixtureTask, closing = false): void {
+    task.for = null;
+    task.work = {};
+    if (!closing) task.lastActivityAt = null;
   }
 
   function addComment(task: FixtureTask, text: string): void {
@@ -211,6 +220,7 @@ export function createFixtureTasksApi({
       throw new ApiError('A duplicate names the other task.', 409, 'task_refused');
     }
     const at = touch(task);
+    endWork(task, true);
     task.status = 'closed';
     task.closedAt = at;
     task.closeReason = reason;
@@ -386,6 +396,24 @@ export function createFixtureTasksApi({
         actors: FIXTURE_ACTORS,
       });
     },
+    async delivery(key) {
+      reach();
+      const { prefix, logicalKey } = project(key);
+      const stages: readonly (string | undefined)[] = ['built', 'merged'];
+      const tasks = state.tasks
+        .filter((task) => task.project === key && task.status === 'closed' && stages.includes(task.delivery?.stage))
+        .map(withLinks);
+      return copy({
+        project: logicalKey,
+        prefix,
+        repo: '',
+        readAt: new Date(now()).toISOString(),
+        lastSeq: changes.length,
+        tasks,
+        epics: null,
+        actors: FIXTURE_ACTORS,
+      });
+    },
     async changes(after) {
       reach();
       const events = changes.filter((change) => change.seq > after).slice(0, 100);
@@ -468,6 +496,7 @@ export function createFixtureTasksApi({
           if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
             throw new ApiError(`Task ${id} is held by ${task.assignee}.`, 409, 'task_refused');
           }
+          if (task.assignee !== FIXTURE_ACTOR) endWork(task);
           task.assignee = FIXTURE_ACTOR;
           task.status = 'in_progress';
           task.startedAt ??= new Date(now()).toISOString();
@@ -479,7 +508,11 @@ export function createFixtureTasksApi({
           if (edit.status !== 'deferred') task.deferUntil = null;
         }
         if (edit.priority !== undefined) task.priority = edit.priority;
-        if (edit.assignee !== undefined) task.assignee = edit.assignee === '' ? null : edit.assignee;
+        if (edit.assignee !== undefined) {
+          const next = edit.assignee === '' ? null : edit.assignee;
+          if (next !== task.assignee) endWork(task);
+          task.assignee = next;
+        }
         if (edit.parent !== undefined) task.parent = edit.parent === '' ? null : edit.parent;
         if (edit.defer !== undefined) {
           task.deferUntil = edit.defer === '' ? null : edit.defer;
@@ -572,9 +605,13 @@ export function createFixtureTasksApi({
         const taken = state.projects.find((row) => row.prefix === prefix);
         if (taken)
           throw new ApiError(`Prefix ${prefix} is taken by ${taken.displayName}.`, 409, 'project_exists', 'prefix');
-        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix });
+        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix, deploys: false });
         state.fields.set(prefix, []);
       });
+    },
+    async setDeploys(key, deploys) {
+      owned();
+      project(key).deploys = deploys;
     },
     async members() {
       const { members, invitations } = owned();

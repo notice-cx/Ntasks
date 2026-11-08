@@ -3,9 +3,22 @@
 // Names, arguments, results and refusals are NoticeOS's task tools'.
 import { TaskRefused, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { WORK_ARGS } from '../../src/args.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, callTool, granted, ORIGIN, READER, refusal, write, WORKSPACE, WRITER, type TestApi } from './helpers.ts';
+import {
+  api,
+  callTool,
+  granted,
+  ORIGIN,
+  read,
+  READER,
+  refusal,
+  write,
+  WORKSPACE,
+  WRITER,
+  type TestApi,
+} from './helpers.ts';
 // NoticeOS's own tools/list for these tools. Produced from NoticeOS at commit
 // ced74393 by importing its compiled scripts/hosted-mcp.mjs in Node, building
 // its standalone endpoint (createHostedMcp) and asking it for tools/list, so
@@ -96,6 +109,7 @@ describe('tools/list', () => {
     expect(unchanged).toEqual(NOTICEOS_TOOLS);
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
+      'list_tasks.stage',
       'list_tasks.fields',
       'create_task.notes',
       'create_task.design',
@@ -111,6 +125,7 @@ describe('tools/list', () => {
       'create_tasks.tasks.supersedes',
       'create_tasks.tasks.external_links',
       'create_tasks.tasks.fields',
+      ...WORK_ARGS.map((name) => `claim_task.${name}`),
       'update_task.notes',
       'update_task.design',
       'update_task.estimate_minutes',
@@ -119,6 +134,9 @@ describe('tools/list', () => {
       'update_task.add_external_links',
       'update_task.fields',
       'update_task.remove_external_links',
+      ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
+      'close_task.commit',
+      'close_task.pr',
     ]);
   });
 });
@@ -667,6 +685,166 @@ describe('claim_task', () => {
     expect(answers.find((answer) => answer.refused !== null)?.refused).toBe(
       `refused: ${id} is held by ${holder}. Choose another task, or reach ${holder} with comment_on_task.`,
     );
+  });
+});
+
+describe('the work a task shows', () => {
+  type Shown = Record<string, unknown>;
+  const getTask = async (project: Project, id: string) =>
+    (await read<{ task: Shown }>(target, 'get_task', { project: project.id, task: id })).task;
+
+  it('shows the helper and work details a claim names, and the holder’s last activity, in get_task and list_tasks', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const claimedAt = time.now();
+    await write(target, 'claim_task', {
+      project: project.id,
+      task: id,
+      for: 'page-rebuild-2',
+      branch: 'agent/page-rebuild',
+      worktree: '/work/page-rebuild',
+      pr: 'https://example.com/pulls/7',
+      idempotency_key: key(),
+    });
+    const work = { worktree: '/work/page-rebuild', branch: 'agent/page-rebuild', pr: 'https://example.com/pulls/7' };
+    expect(await getTask(project, id)).toMatchObject({
+      assignee: WRITER.name,
+      for: 'page-rebuild-2',
+      work,
+      lastActivityAt: claimedAt,
+    });
+    const { tasks } = await read<{ tasks: Shown[] }>(target, 'list_tasks', { project: project.id });
+    expect(tasks.find((row) => row.id === id)).toMatchObject({
+      assignee: WRITER.name,
+      for: 'page-rebuild-2',
+      lastActivityAt: claimedAt,
+    });
+
+    // One holder: another agent naming its own helper is still refused, and the work stays the holder's.
+    time.advance(5);
+    const rival = api({ principal: granted({ [project.id]: 'write' }, 'agent-r'), engine, now: time.now });
+    await refusal(rival, 'claim_task', {
+      workspace: WORKSPACE.id,
+      project: project.id,
+      task: id,
+      for: 'other-helper',
+      idempotency_key: key(),
+    });
+    expect(await getTask(project, id)).toMatchObject({
+      assignee: WRITER.name,
+      for: 'page-rebuild-2',
+      work,
+      lastActivityAt: claimedAt,
+    });
+  });
+
+  it('updates the work from its holder’s comments, which move its last activity, and from nobody else’s', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    await write(target, 'claim_task', {
+      project: project.id,
+      task: id,
+      branch: 'agent/fix',
+      next: 'Write the test',
+      idempotency_key: key(),
+    });
+    time.advance(12);
+    const update = {
+      project: project.id,
+      task: id,
+      text: 'Pushed; CI runs.',
+      next: 'Wait for CI',
+      commit: 'abc1234',
+      idempotency_key: key(),
+    };
+    const first = await write<{ comment: Shown; replayed: boolean }>(target, 'comment_on_task', update);
+    const commentedAt = time.now();
+    const after = await getTask(project, id);
+    expect(after).toMatchObject({
+      work: { branch: 'agent/fix', commit: 'abc1234', next: 'Wait for CI' },
+      lastActivityAt: commentedAt,
+    });
+    // A retry adds nothing.
+    expect(await write(target, 'comment_on_task', update)).toEqual({ comment: first.comment, replayed: true });
+    expect(await engine.listComments(project.id, id)).toHaveLength(1);
+
+    const other = api({ principal: granted({ [project.id]: 'write' }, 'agent-o'), engine, now: time.now });
+    time.advance(5);
+    await refusal(other, 'comment_on_task', {
+      workspace: WORKSPACE.id,
+      project: project.id,
+      task: id,
+      text: 'Taking over.',
+      next: 'Something else',
+      idempotency_key: key(),
+    });
+    await write(other, 'comment_on_task', {
+      project: project.id,
+      task: id,
+      text: 'Looks good.',
+      idempotency_key: key(),
+    });
+    expect(await getTask(project, id)).toMatchObject({ work: after.work, lastActivityAt: commentedAt });
+
+    // The holder's plain comment, or one repeating its details, is activity that leaves the version.
+    const version = (await current(project, id)).version;
+    time.advance(5);
+    await write(target, 'comment_on_task', {
+      project: project.id,
+      task: id,
+      text: 'Still waiting.',
+      next: 'Wait for CI',
+      idempotency_key: key(),
+    });
+    expect(await current(project, id)).toMatchObject({ version, lastActivityAt: time.now() });
+  });
+
+  it('clears the helper and work details when the task closes or is released, and its history keeps them', async () => {
+    const project = await newProject(engine);
+    const closing = await task(project);
+    const releasing = await task(project);
+    for (const { id } of [closing, releasing]) {
+      await write(target, 'claim_task', {
+        project: project.id,
+        task: id,
+        for: 'helper-1',
+        branch: 'agent/work',
+        idempotency_key: key(),
+      });
+    }
+    await write(target, 'close_task', {
+      project: project.id,
+      task: closing.id,
+      reason: 'Done in abc1234.',
+      idempotency_key: key(),
+    });
+    await write(target, 'update_task', {
+      project: project.id,
+      task: releasing.id,
+      assignee: '',
+      idempotency_key: key(),
+    });
+    expect(await getTask(project, closing.id)).toMatchObject({ status: 'closed', for: null, work: {} });
+    expect(await getTask(project, releasing.id)).toMatchObject({
+      assignee: null,
+      for: null,
+      work: {},
+      lastActivityAt: null,
+    });
+    const { changes } = await read<{ changes: { fields: Record<string, { old: unknown; new: unknown }> }[] }>(
+      target,
+      'get_task_history',
+      { project: project.id, task: closing.id },
+    );
+    const [closed, claimed] = changes;
+    expect(closed!.fields).toMatchObject({
+      assigneeFor: { old: 'helper-1', new: null },
+      work: { old: { branch: 'agent/work' }, new: {} },
+    });
+    expect(claimed!.fields).toMatchObject({
+      assigneeFor: { old: null, new: 'helper-1' },
+      work: { old: {}, new: { branch: 'agent/work' } },
+    });
   });
 });
 

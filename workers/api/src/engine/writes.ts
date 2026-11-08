@@ -6,12 +6,16 @@ import {
   guardRefusalOf,
   TASK_LIMITS,
   TaskRefused,
+  WORK_DETAILS,
   type Actor,
   type CommentResult,
   type CreateProjectInput,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
+  type DeliveryMove,
+  type DeliverySignal,
+  type DeliveryStage,
   type DependencyType,
   type ExternalLink,
   type FieldResult,
@@ -21,14 +25,17 @@ import {
   type Project,
   type Retry,
   type Task,
+  type TaskDelivery,
+  type TaskComment,
   type TaskEventKind,
   type TaskRefusal,
+  type TaskWork,
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
 import type { Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import { toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
+import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** How long a retry record answers a repeated key. */
@@ -92,9 +99,61 @@ function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
     .map(({ url, title, kind }) => ({ url, title, kind }));
 }
 
+/** A delivery as history events record it. */
+function deliveryJson(delivery: TaskDelivery): JsonObject {
+  const { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt } = delivery;
+  return { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt };
+}
+
+/** The order of the stages: a task moves only to a later one. */
+const STAGE_ORDER: Readonly<Record<DeliveryStage, number>> = Object.freeze({ built: 0, merged: 1, live: 2 });
+
+/** The columns that hold a task's delivery, which a reopen clears. */
+const DELIVERY_COLUMNS = [
+  'delivery_stage',
+  'delivery_commit',
+  'delivery_pull_request',
+  'delivery_merge_commit',
+  'built_at',
+  'merged_at',
+  'live_at',
+] as const;
+
+/**
+ * The built and merged tasks of the projects in ?1 whose pull request is in
+ * ?2, or whose commit or merge commit matches one in ?3, with whether their
+ * project deploys. Two commits match when one is a prefix of the other; both
+ * then share their first 7 characters, so each commit reads one range of an
+ * index ('g' sorts after every hexadecimal digit).
+ */
+const DELIVERY_CANDIDATES = `WITH matched(id) AS (
+  SELECT t.id FROM json_each(?2) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_pull_request
+    ON t.delivery_pull_request = w.value
+  UNION
+  SELECT t.id FROM json_each(?3) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_commit
+    ON t.delivery_commit >= substr(w.value, 1, 7) AND t.delivery_commit < substr(w.value, 1, 7) || 'g'
+  WHERE substr(w.value, 1, length(t.delivery_commit)) = t.delivery_commit
+    OR substr(t.delivery_commit, 1, length(w.value)) = w.value
+  UNION
+  SELECT t.id FROM json_each(?3) w CROSS JOIN tasks t INDEXED BY tasks_by_delivery_merge_commit
+    ON t.delivery_merge_commit >= substr(w.value, 1, 7) AND t.delivery_merge_commit < substr(w.value, 1, 7) || 'g'
+  WHERE substr(w.value, 1, length(t.delivery_merge_commit)) = t.delivery_merge_commit
+    OR substr(t.delivery_merge_commit, 1, length(w.value)) = w.value
+)
+SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
+WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
+ORDER BY t.id`;
+
 /** Field values as history events record them: every value the task carries, by key in order. */
 function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
   return Object.fromEntries([...values].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** Work details in WORK_DETAILS' order, so one set of details is stored and recorded one way. */
+function workIn(details: TaskWork): TaskWork {
+  return Object.fromEntries(
+    WORK_DETAILS.flatMap((detail) => (details[detail] === undefined ? [] : [[detail, details[detail]]])),
+  );
 }
 
 export class Writes {
@@ -244,6 +303,8 @@ export class Writes {
         estimateMinutes: null,
         assignee: null,
         assigneeModel: null,
+        assigneeFor: null,
+        work: {},
         startedAt: null,
         deferUntil: null,
         dueAt: null,
@@ -321,10 +382,20 @@ export class Writes {
     };
   }
 
+  /** A recorded write's answer as it stands now, with the comment it added, if any. */
+  async #recordedResult(projectId: string, recorded: Record<string, Json>, taskId: string): Promise<WriteResult> {
+    const result = await this.#result(projectId, taskId, recorded.created as string[], true);
+    if (typeof recorded.commentId !== 'string') return result;
+    const comment = (await this.#reads.listComments(projectId, taskId)).find(
+      (candidate) => candidate.id === recorded.commentId,
+    );
+    return comment === undefined ? result : { ...result, comment };
+  }
+
   async #replay(retry: Retry | undefined, projectId: string): Promise<WriteResult | null> {
     const recorded = await this.#recorded(retry, projectId);
     if (recorded === null) return null;
-    return this.#result(projectId, recorded.taskId as string, recorded.created as string[], true);
+    return this.#recordedResult(projectId, recorded, recorded.taskId as string);
   }
 
   async recordedWrite(projectId: string, retryInput: Retry): Promise<WriteResult | null> {
@@ -333,7 +404,7 @@ export class Writes {
     if (recorded === null) return null;
     // A comment's record names no task: its key was used for another kind of request.
     if (typeof recorded.taskId !== 'string') refuse('retry_conflict');
-    return this.#result(projectId, recorded.taskId, recorded.created as string[], true);
+    return this.#recordedResult(projectId, recorded, recorded.taskId);
   }
 
   async recordUnchanged(
@@ -422,6 +493,81 @@ export class Writes {
       throw error;
     }
     return this.#projectOf(id);
+  }
+
+  async setProjectDeploys(projectId: string, deploys: boolean): Promise<Project> {
+    if (typeof deploys !== 'boolean') check.invalid('deploys must be true or false');
+    await this.#projectOf(projectId);
+    await this.#db
+      .prepare('UPDATE projects SET deploys = ?2 WHERE id = ?1')
+      .bind(projectId, deploys ? 1 : 0)
+      .run();
+    return this.#projectOf(projectId);
+  }
+
+  async reportDelivery(
+    projectIdsInput: readonly string[],
+    signalInput: DeliverySignal,
+    actorInput: Actor,
+  ): Promise<DeliveryMove[]> {
+    const actor = check.actor(actorInput);
+    const signal = check.deliverySignal(signalInput);
+    if (!Array.isArray(projectIdsInput) || !projectIdsInput.every((id) => typeof id === 'string'))
+      check.invalid('projectIds must be project ids');
+    if (projectIdsInput.length === 0) return [];
+    // Only a merge names its merge commit, and only when it names one commit.
+    const mergeCommit = signal.stage === 'merged' && signal.commits.length === 1 ? signal.commits[0]! : null;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const { results } = await this.#db
+        .prepare(DELIVERY_CANDIDATES)
+        .bind(
+          JSON.stringify([...new Set(projectIdsInput)]),
+          JSON.stringify(signal.pullRequests),
+          JSON.stringify(signal.commits),
+        )
+        .all<StoredTaskRow & { readonly deploys: number }>();
+      const at = this.#now();
+      const statements: Statement[] = [];
+      const moves: DeliveryMove[] = [];
+      for (const row of results) {
+        const current = deliveryOf(row);
+        if (current === null) continue;
+        // A project that does not deploy has nothing after merged.
+        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 ? 'merged' : signal.stage;
+        if (STAGE_ORDER[stage] <= STAGE_ORDER[current.stage]) continue;
+        const next: TaskDelivery = {
+          ...current,
+          stage,
+          mergeCommit: current.mergeCommit ?? mergeCommit,
+          mergedAt: stage === 'merged' ? at : current.mergedAt,
+          liveAt: stage === 'live' ? at : null,
+        };
+        statements.push(
+          this.#db
+            .prepare(
+              `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
+                 version = version + 1, updated_at = ?5
+               WHERE id = ?6 AND version = ?7`,
+            )
+            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
+            delivery: deliveryJson(next),
+          }),
+        );
+        moves.push({ taskId: row.id, projectId: row.project_id, stage });
+      }
+      if (statements.length === 0) return [];
+      try {
+        await this.#db.batch(statements);
+        return moves;
+      } catch (error) {
+        // Another write changed a task this signal moves: read the tasks again and decide again.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') continue;
+        throw error;
+      }
+    }
+    refuse('version_conflict', 'The tasks this signal moves kept changing; send it again.');
   }
 
   async createTask(
@@ -544,6 +690,8 @@ export class Writes {
           estimateMinutes: fields.estimateMinutes,
           assignee: null,
           assigneeModel: null,
+          assigneeFor: null,
+          work: {},
           startedAt: null,
           deferUntil: fields.deferUntil,
           dueAt: fields.dueAt,
@@ -601,26 +749,36 @@ export class Writes {
     if (replayed !== null) return replayed;
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
-    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false);
+    const commentId = write.comment === null ? null : crypto.randomUUID();
+    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId);
     const others = await Promise.all(
       write.others.map(async (other) => {
         const found = rows.find((candidate) => candidate.id === other.taskId);
         if (found === undefined) refuse('not_found', `There is no task ${other.taskId}.`);
         if (found.version !== other.write.expectedVersion) refuse('version_conflict');
-        return this.#prepare(projectId, toTask(found), other.write, actor, at, true);
+        const otherComment = other.write.comment === null ? null : crypto.randomUUID();
+        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
       }),
     );
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+      const recorded = {
+        taskId,
+        created: gateId === null ? [] : [gateId],
+        ...(commentId === null ? {} : { commentId }),
+      };
       const statements: Statement[] = [
         ...change(gateId),
         ...others.flatMap((other) => other(null)),
-        ...this.#receipt(retry, projectId, { taskId, created: gateId === null ? [] : [gateId] }, at),
+        ...this.#receipt(retry, projectId, recorded, at),
       ];
       try {
         await this.#db.batch(statements);
-        return await this.#result(projectId, taskId, gateId === null ? [] : [gateId], false);
+        const result = await this.#result(projectId, taskId, recorded.created, false);
+        if (commentId === null || write.comment === null) return result;
+        const comment: TaskComment = { id: commentId, taskId, author: actor.name, text: write.comment, createdAt: at };
+        return { ...result, comment };
       } catch (error) {
         // The same retried request may have committed while this attempt ran;
         // its version then moved on, and the recorded result is the answer.
@@ -638,8 +796,10 @@ export class Writes {
 
   /**
    * The statements that make `write` to `current`, as of `at`, given the id a
-   * requested approval's gate takes. A write that only adds a comment to a
-   * task it rides beside (`others`) leaves that task's version as it is.
+   * requested approval's gate takes, and the id its comment takes. A write
+   * that only adds a comment to a task it rides beside (`others`), or a
+   * comment with a helper and work details that change nothing, leaves the
+   * task's version as it is.
    */
   async #prepare(
     projectId: string,
@@ -648,6 +808,7 @@ export class Writes {
     actor: Actor,
     at: string,
     beside: boolean,
+    commentId: string | null,
   ): Promise<(gateId: string | null) => Statement[]> {
     const taskId = current.id;
     const set = write.set;
@@ -695,6 +856,19 @@ export class Writes {
       change('assignee_model', 'assigneeModel', claim ? (actor.model ?? null) : null);
     }
 
+    // The helper and the work details are the holder's: a write that ends its
+    // hold, by a release, a hand-on or a close, starts them over from none.
+    const holder = set.assignee !== undefined ? set.assignee : current.assignee;
+    const closedAfter = write.close !== null || (closed && !write.reopen);
+    const ended = write.close !== null || (set.assignee !== undefined && set.assignee !== current.assignee);
+    const helper = set.assigneeFor !== undefined ? set.assigneeFor : ended ? null : current.assigneeFor;
+    const work = workIn({ ...(ended ? {} : current.work), ...set.work });
+    if ((helper !== null || Object.keys(work).length > 0) && (holder === null || closedAfter))
+      refuse('invalid', "A helper and work details belong to the task's holder: the task needs one, and to be open.");
+    if (helper !== current.assigneeFor) change('assignee_for', 'assigneeFor', helper);
+    if (JSON.stringify(work) !== JSON.stringify(workIn(current.work)))
+      change('work', 'work', JSON.stringify(work), work);
+
     let kind: TaskEventKind = 'updated';
     if (write.close !== null) {
       kind = 'closed';
@@ -718,12 +892,37 @@ export class Writes {
         by: actor.name,
         model: actor.model ?? null,
       };
+      const { commit, pullRequest } = write.close;
+      if (commit !== null || pullRequest !== null) {
+        columns.delivery_stage = 'built';
+        columns.delivery_commit = commit;
+        columns.delivery_pull_request = pullRequest;
+        columns.built_at = at;
+        changes.delivery = deliveryJson({
+          stage: 'built',
+          commit,
+          pullRequest,
+          mergeCommit: null,
+          builtAt: at,
+          mergedAt: null,
+          liveAt: null,
+        });
+      }
     } else if (write.reopen) {
       kind = 'reopened';
-      for (const column of ['closed_at', 'close_reason', 'resolution', 'duplicate_of', 'closed_by', 'closed_model'])
+      for (const column of [
+        'closed_at',
+        'close_reason',
+        'resolution',
+        'duplicate_of',
+        'closed_by',
+        'closed_model',
+        ...DELIVERY_COLUMNS,
+      ])
         columns[column] = null;
       change('status', 'status', set.status ?? 'open');
       changes.close = null;
+      if (current.delivery !== null) changes.delivery = null;
     } else if (set.status !== undefined) {
       change('status', 'status', set.status);
     }
@@ -790,9 +989,14 @@ export class Writes {
       refuse('invalid', `a task links to at most ${TASK_LIMITS.externalLinks} pages outside Ntasks`);
     if (addExternal.length > 0 || removeExternal.length > 0) changes.externalLinks = externalList(external);
 
+    // A comment riding beside another task's write, or one whose helper and
+    // work details change nothing, is a plain comment: the version stays.
+    const keys = Object.keys(set);
+    const detailsOnly = keys.length > 0 && keys.every((key) => key === 'assigneeFor' || key === 'work');
     const commentOnly =
-      beside &&
+      (beside || detailsOnly) &&
       write.comment !== null &&
+      write.requestApproval === null &&
       Object.keys(columns).length === 0 &&
       addLabels.length === 0 &&
       removeLabels.length === 0 &&
@@ -802,8 +1006,7 @@ export class Writes {
       removeExternal.length === 0;
     return (gateId) => {
       const comment = (version: number): Statement[] => {
-        if (write.comment === null) return [];
-        const commentId = crypto.randomUUID();
+        if (write.comment === null || commentId === null) return [];
         return [
           this.#insert('task_comments', {
             id: commentId,

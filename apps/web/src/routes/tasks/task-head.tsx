@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, GitPullRequest } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
-import type { TaskChoice, TaskChoices } from '@/api/types';
+import type { TaskChoice, TaskChoices, TaskDelivery } from '@/api/types';
 import { Avatar } from '@/components/ui/avatar';
 import { OptionList } from '@/components/ui/choice';
 import { ProjectBadge } from '@/components/ui/shell';
 import { StatusMark } from '@/components/ui/symbols';
 import { ageMs, formatAge } from '@/lib/format';
-import { choiceName, RESOLUTION_LABELS } from '@/lib/task-model';
+import { choiceName, RESOLUTION_LABELS, stageLabel } from '@/lib/task-model';
 import { taskPath } from '@/lib/task-path';
 import { cardOptions } from './decision-card';
 
@@ -81,11 +81,50 @@ function Byline({ by, at, nowMs }: { by: Actor | null; at: string | null; nowMs:
   );
 }
 
+/** A pull request's name: `owner/name#12` for GitHub's, its host and path for any other. */
+function pullRequestName(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const pull = /^\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(parsed.pathname);
+  return parsed.hostname === 'github.com' && pull ? `${pull[1]}#${pull[2]}` : `${parsed.host}${parsed.pathname}`;
+}
+
+/** Where a closed task's change is: its stage, then its pull request and commit. */
+function DeliveryLine({ delivery }: { delivery: TaskDelivery }) {
+  const { stage, pullRequest, commit, mergeCommit } = delivery;
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2" data-task-delivery={stage}>
+      <span className="font-medium text-ink">{stageLabel(stage)}</span>
+      {pullRequest ? (
+        <a
+          href={pullRequest}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-accent-text no-underline hover:underline"
+        >
+          <GitPullRequest aria-hidden size={14} />
+          {pullRequestName(pullRequest)}
+        </a>
+      ) : null}
+      {commit ? <code className="font-mono text-meta text-ink-3">{commit.slice(0, 7)}</code> : null}
+      {mergeCommit && mergeCommit !== commit ? (
+        <span className="text-ink-3">
+          merged as <code className="font-mono text-meta">{mergeCommit.slice(0, 7)}</code>
+        </span>
+      ) : null}
+    </p>
+  );
+}
+
 /**
  * How a closed task ended, under its title: Done, or the way a close where
- * nothing shipped ended, who closed it and when, then the evidence or note.
- * Closing records what shipped, not a measured outcome, so it is drawn in
- * greys like any other fact.
+ * nothing shipped ended, who closed it and when, where its change is, then
+ * the evidence or note. Closing records what shipped, not a measured
+ * outcome, so it is drawn in greys like any other fact.
  */
 export function ClosedSummary({
   by,
@@ -93,6 +132,7 @@ export function ClosedSummary({
   nowMs,
   resolution,
   duplicate,
+  delivery,
   children,
 }: {
   by: Actor | null;
@@ -100,6 +140,7 @@ export function ClosedSummary({
   nowMs: number;
   resolution: TaskResolution;
   duplicate?: ReactNode;
+  delivery?: TaskDelivery | null;
   children?: ReactNode;
 }) {
   const label = RESOLUTION_LABELS[resolution];
@@ -118,6 +159,7 @@ export function ClosedSummary({
         </h2>
         <Byline by={by} at={at} nowMs={nowMs} />
       </div>
+      {delivery ? <DeliveryLine delivery={delivery} /> : null}
       {children}
     </section>
   );
