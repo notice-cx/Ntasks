@@ -5,7 +5,7 @@
 import { TASK_LIMITS, type Project, type Task, type TaskComment, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
-import { disputeWrite, MAINTENANCE, NOT_RECORDED } from '../../src/owner-answers.ts';
+import { disputeWrite, MAINTENANCE } from '../../src/owner-answers.ts';
 import { clock, newProject, OWNER as ENGINE_OWNER } from '../engine/helpers.ts';
 import { api, callTool, get, read, send, WORKSPACE, type TestApi } from './helpers.ts';
 
@@ -88,6 +88,7 @@ async function reconcile(project: Project, task: string, fields: Record<string, 
     task,
     proposal_version: await versionOf(project, task, as),
     idempotency_key: key(),
+    detail: 'full',
     ...fields,
   });
 }
@@ -216,15 +217,15 @@ describe('an owner answer an agent relays', () => {
     );
     const before = await current(project, task.id);
 
-    const refused = await refusedWith(project, task.id, { ...RELAY, option: 'a', quote: 'A', proposal_version: seen });
+    const refused = await reconcile(project, task.id, { ...RELAY, option: 'a', quote: 'A', proposal_version: seen });
 
-    expect(refused).toMatch(/^refused: proposal_version: /u);
-    expect(refused.endsWith(NOT_RECORDED)).toBe(true);
+    expect(refused.refused).toMatch(/^refused: proposal_version: /u);
+    expect(refused.refusal?.retry, 'the refusal says nothing was written').toBe('safe');
     expect(await current(project, task.id)).toEqual(before);
     expect(await comments(project, task.id)).toEqual([]);
   });
 
-  it('names the argument at fault in every refusal, and records nothing', async () => {
+  it('names the argument at fault in every refusal, and says nothing was written', async () => {
     const project = await newProject(engine);
     const { task: asked } = await make(project, 'Build the layout', { labels: ['human'], choices });
     const { task: plain } = await make(project, 'Answer a question', { labels: ['human'] });
@@ -246,12 +247,30 @@ describe('an owner answer an agent relays', () => {
     ];
     for (const [field, id, fields] of cases) {
       const before = await current(project, id);
-      const refused = await refusedWith(project, id, { ...RELAY, ...fields });
-      expect(refused, JSON.stringify(fields)).toMatch(new RegExp(`^(?:refused|invalid arguments): ${field}\\b`, 'u'));
-      expect(refused.endsWith(NOT_RECORDED), refused).toBe(true);
+      const refused = await reconcile(project, id, { ...RELAY, ...fields });
+      expect(refused.refused, JSON.stringify(fields)).toMatch(
+        new RegExp(`^(?:refused|invalid arguments): ${field}\\b`, 'u'),
+      );
+      expect(refused.refusal?.retry, 'the refusal says nothing was written').toBe('safe');
       expect(await current(project, id)).toEqual(before);
     }
     expect(await comments(project, asked.id)).toEqual([]);
+  });
+
+  it('answers briefly unless asked for the whole task, with the answer it recorded', async () => {
+    const project = await newProject(engine);
+    const { task } = await make(project, 'Build the layout', { labels: ['human'], choices });
+    const brief = await reconcile(project, task.id, { ...RELAY, option: 'b', quote: 'B', detail: undefined });
+    expect(brief.value).toEqual({
+      id: task.id,
+      status: 'open',
+      assignee: null,
+      resolution: null,
+      awaitingHuman: false,
+      answer: expect.objectContaining({ option: 'b', quote: 'B', relayed: true }),
+      version: (await current(project, task.id)).version,
+      replayed: false,
+    });
   });
 
   it('answers a retry with the same key once', async () => {
@@ -471,6 +490,7 @@ describe('approvals', () => {
       task: decision.id,
       reason: 'Implemented in abc1234; declined production check was not run.',
       idempotency_key: key(),
+      detail: 'full',
     });
     expect(closed.value?.task.closeReason).toMatch(/abc1234/u);
   });
@@ -592,7 +612,7 @@ describe('relayed approvals and their disputes', () => {
     for (const fields of [relay, { ...RELAY, action: 'declined', quote: 'No' }]) {
       const refused = await reconcile(project, gate.id, fields, as);
       expect(refused.refused, JSON.stringify(fields)).toMatch(/^refused: task: /u);
-      expect(refused.refused!.endsWith(NOT_RECORDED)).toBe(true);
+      expect(refused.refusal?.retry, 'the refusal says nothing was written').toBe('safe');
     }
 
     expect(await current(project, gate.id)).toEqual(before);

@@ -13,7 +13,7 @@ import { BarSpacer, ProjectBadge, TopBar } from '@/components/ui/shell';
 import { useBoard } from '@/hooks/useBoard';
 import { useShortcut } from '@/hooks/useShortcut';
 import { useRetryKey } from '@/hooks/useTasks';
-import { useCreateProject, useIsOwner } from '@/hooks/useWorkspace';
+import { useCreateProject, useIsOwner, useSetDeploys } from '@/hooks/useWorkspace';
 import { NO_FILTERS } from '@/lib/board-read';
 import { newProjectRequested } from '@/lib/page-state';
 
@@ -25,6 +25,7 @@ export default function ProjectsRoute() {
   const [composing, setComposing] = useState(() => owner && newProjectRequested(state));
   useShortcut('n', () => setComposing(true), owner && !composing);
   const { catalog } = board;
+  const deploys = new Map((catalog.data ?? []).map((project) => [project.logicalKey, project.deploys === true]));
 
   let body: ReactNode;
   if (catalog.isError) {
@@ -80,6 +81,12 @@ export default function ProjectsRoute() {
                   {project.tasks.filter((task) => task.status !== 'closed').length} open
                 </span>
               ) : null}
+              <DeploysBox
+                project={project.key}
+                name={project.name}
+                deploys={deploys.get(project.key) ?? false}
+                owner={owner}
+              />
             </Row>
           </li>
         ))}
@@ -109,6 +116,40 @@ export default function ProjectsRoute() {
       {composing ? <NewProjectForm onDone={() => setComposing(false)} /> : null}
       {body}
     </>
+  );
+}
+
+/** Whether a project's changes go live by a deploy: an owner ticks it; anyone else sees it. */
+function DeploysBox({
+  project,
+  name,
+  deploys,
+  owner,
+}: {
+  project: string;
+  name: string;
+  deploys: boolean;
+  owner: boolean;
+}) {
+  const set = useSetDeploys();
+  const checked = set.isPending ? set.variables.deploys : deploys;
+  return (
+    <label className="flex shrink-0 items-center gap-2 text-meta text-ink-2" data-project-deploys={project}>
+      <input
+        type="checkbox"
+        className="size-[15px] accent-accent"
+        checked={checked}
+        disabled={!owner || set.isPending}
+        aria-label={`${name}: changes go live by a deploy`}
+        onChange={(event) =>
+          set.mutate(
+            { project, deploys: event.target.checked },
+            { onError: (error) => toast.error(error.message || `Could not change ${name}`) },
+          )
+        }
+      />
+      <span className="max-sm:hidden">Changes go live by a deploy</span>
+    </label>
   );
 }
 

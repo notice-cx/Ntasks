@@ -1,21 +1,27 @@
 /**
- * The MCP tools that change tasks. Their names, arguments, descriptions,
- * results and refusals are the ones NoticeOS's task tools had
- * (scripts/hosted-task-mcp.mts there), so agents written for those change
- * Ntasks tasks unchanged; test/api/write-tools.test.ts compares the schemas
- * with NoticeOS's own. Each tool runs one of the writes in task-writes.ts.
+ * The MCP tools that change tasks. Their names and arguments are the ones
+ * NoticeOS's task tools had (scripts/hosted-task-mcp.mts there), with fewer
+ * of them required, so agents written for those change Ntasks tasks
+ * unchanged; test/api/write-tools.test.ts compares the schemas with
+ * NoticeOS's own. Each tool runs one of the writes in task-writes.ts.
  *
- * A write that would repeat its effect takes an idempotency_key, so an agent
- * can retry an interrupted call safely; a dependency or an approval request
- * repeats harmlessly and takes none. A created or changed task comes back
- * with what lint finds missing, as advice: nothing is refused for it.
+ * A call that names a task needs no project: the task id's prefix names it
+ * (project.ts). A write that would repeat its effect takes an optional
+ * idempotency_key; without one, its own arguments key it (retryRequest), so
+ * an interrupted call sent again is answered, not repeated. A dependency or
+ * an approval request repeats harmlessly and takes none. A write answers with
+ * the task's id, version and what it changed, or with the whole task when
+ * asked for detail "full". A created or changed task comes back with what
+ * lint finds missing, as advice: nothing is refused for it.
  */
 import {
   EXTERNAL_LINK_KINDS,
   IDEMPOTENCY_KEY,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
+  WORK_LIMITS,
   type DependencyType,
+  type Project,
   type Task,
   type TaskStatus,
 } from '@ntasks/domain';
@@ -27,6 +33,7 @@ import {
   choicesArg,
   closingArgs,
   deferArg,
+  detailArg,
   emptyIsNone,
   estimateArg,
   externalLinksArg,
@@ -35,9 +42,7 @@ import {
   keyArg,
   labelsArg,
   modelArg,
-  only,
   priorityArg,
-  projectArg,
   listed,
   refuse,
   setOrTakeOff,
@@ -45,8 +50,10 @@ import {
   textArg,
   typeArg,
   urlsArg,
+  workArgs,
   WRITABLE_TYPES,
   type Args,
+  type WorkArgs,
 } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import {
@@ -67,6 +74,7 @@ import {
 import { Refused } from '../refused.ts';
 import {
   addDependency,
+  canonical,
   closeTask,
   commentOnTask,
   createTask,
@@ -74,6 +82,7 @@ import {
   lintView,
   removeDependency,
   requestApproval,
+  retryStanding,
   sha256,
   updateTask,
   type NewLink,
@@ -81,9 +90,11 @@ import {
   type RetryRequest,
   type TaskChange,
 } from '../task-writes.ts';
-import { linksSeenBy } from '../lookup.ts';
-import { commentView, mcpTask } from '../views.ts';
-import { PROJECT, schema, TASK, type TaskTool } from './read-tools.ts';
+import { linksSeenBy, projectOf } from '../lookup.ts';
+import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
+import { shippedArgs } from '../delivery.ts';
+import { projectFor, projectForNew } from './project.ts';
+import { PROJECT, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
 
 export const WRITE = Object.freeze({
   readOnlyHint: false,
@@ -114,17 +125,55 @@ const DEPENDENCY_ARG_TYPES = Object.freeze([
   'discovered-from',
 ] as const satisfies readonly DependencyType[]);
 
-/** Optional on a new task, a claim and a close: the work is credited to this model as well as to the agent. */
+/** Optional on every write: the change is credited to this model as well as to the agent. */
 export const MODEL = Object.freeze({
   type: 'string',
   maxLength: TASK_LIMITS.actor,
   description:
-    'The name of the model you run as, as you would say it. Pass it on every new task, claim and close: the Tower shows it beside your name, and the Agents page ranks your work by it.',
+    'Optional: the name of the model you run as, as you would say it. The task records it beside your name, and the Agents page groups work by it.',
 });
 export const IDEMPOTENCY = Object.freeze({
   type: 'string',
   pattern: IDEMPOTENCY_KEY.source,
-  description: 'A key you choose for this call. Retrying with the same key and arguments never repeats the change.',
+  description:
+    'Optional: a key you choose for this call. Retrying with the same key and arguments never repeats the change. ' +
+    'Without a key, an identical call repeats the first answer only while every task that answer wrote is unchanged since; a create also stops repeating after 24 hours.',
+});
+/** How much of the task a write's reply shows. */
+export const DETAIL = Object.freeze({
+  type: 'string',
+  enum: ['full'],
+  description:
+    'full returns the whole task, as get_task shows it. Left out, the reply has the task id, its version and what changed.',
+});
+/** What a holder records about the work in hand, on a claim or a comment.
+ * Each is one line, and a newer value replaces the older. */
+const WORK = Object.freeze({
+  for: {
+    type: 'string',
+    maxLength: TASK_LIMITS.helper,
+    description:
+      'The name of the helper agent working under you, such as page-rebuild-2. You stay the holder, and the task shows both, as "claude for page-rebuild-2".',
+  },
+  session: {
+    type: 'string',
+    maxLength: WORK_LIMITS.session,
+    description: 'A link to, or the id of, the agent session doing the work.',
+  },
+  worktree: { type: 'string', maxLength: WORK_LIMITS.worktree, description: 'The worktree that holds the work.' },
+  branch: { type: 'string', maxLength: WORK_LIMITS.branch, description: 'The branch that holds the work.' },
+  pr: { type: 'string', maxLength: WORK_LIMITS.pr, description: "The pull request's URL." },
+  commit: {
+    type: 'string',
+    maxLength: WORK_LIMITS.commit,
+    description: 'The commit last tested, such as the one CI ran.',
+  },
+  next: {
+    type: 'string',
+    maxLength: WORK_LIMITS.next,
+    description:
+      'The next step, in one line. Each of these replaces the value before it, and closing or releasing the task clears them.',
+  },
 });
 const TASK_IDS = (description: string) => ({
   type: 'array',
@@ -351,29 +400,104 @@ const NEW_TASK = Object.freeze({
 });
 const CREATE_FIELDS: readonly string[] = Object.freeze(Object.keys(NEW_TASK));
 
-/** The call's arguments as its retry record keeps them: everything but the key. */
-export function retryRequest(operation: string, args: Args): RetryRequest {
-  const { idempotency_key: key, ...request } = args;
-  return { operation, key: key as string, request };
+/** The links of a new task that stay in its project, so name its project as its parent does. */
+const IN_PROJECT_LINKS = Object.freeze(['depends_on', 'blocks', 'discovered_from'] as const);
+
+/** The task ids a new task names that stay in its project: its parent, then its links that do. */
+function anchorsOf(entry: unknown): unknown[] {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+  const row = entry as Args;
+  return [
+    row.parent,
+    ...IN_PROJECT_LINKS.flatMap((kind) => (Array.isArray(row[kind]) ? (row[kind] as unknown[]) : [])),
+  ];
+}
+
+/**
+ * The call's arguments as its retry record keeps them: all but the key, and
+ * detail, which changes only how much the reply shows. A call without a key
+ * of its own is keyed by its workspace, its sender, the tool and those
+ * arguments, and that derived key answers the same call again only while
+ * every task its answer wrote is unchanged since, and a create's for a day
+ * (Retry.derived), so an interrupted call writes once and a repeat after a
+ * change runs again.
+ */
+export async function retryRequest(context: ToolContext, operation: string, args: Args): Promise<RetryRequest> {
+  const request: Args = { ...args };
+  delete request.idempotency_key;
+  delete request.detail;
+  const given = keyArg(args);
+  if (given !== undefined) return { operation, key: given, request };
+  const key = `auto:${await sha256(
+    canonical({ workspace: context.workspace.id, sender: context.principal.id, tool: operation, arguments: request }),
+  )}`;
+  return { operation, key, request, derived: true };
+}
+
+/** How specific each kind of link is. A task named in two kinds is linked
+ * once, as the most specific; depends_on and blocks both hold a task back. */
+const LINK_RANK: Readonly<Record<NewLink['kind'], number>> = Object.freeze({
+  depends_on: 0,
+  blocks: 0,
+  discovered_from: 1,
+  supersedes: 2,
+  duplicates: 3,
+  related: 4,
+});
+
+interface NamedLink<K extends NewLink['kind']> {
+  readonly kind: K;
+  readonly taskId: string;
+  /** The argument that names it, such as related[0]. */
+  readonly path: string;
+}
+
+/** The links a call names, each task once: a task named twice keeps its most
+ * specific link, and `warnings` gets a sentence naming the one left out. */
+function oncePerTask<K extends NewLink['kind']>(links: readonly NamedLink<K>[], warnings: string[]): NamedLink<K>[] {
+  const kept = new Map<string, NamedLink<K>>();
+  for (const link of links) {
+    const standing = kept.get(link.taskId);
+    if (standing === undefined) {
+      kept.set(link.taskId, link);
+      continue;
+    }
+    if (standing.kind !== link.kind && LINK_RANK[standing.kind] === 0 && LINK_RANK[link.kind] === 0)
+      refuse(
+        `invalid arguments: ${standing.path} and ${link.path} (this task cannot both wait on ${link.taskId} and block it)`,
+      );
+    const [keep, drop] = LINK_RANK[link.kind] < LINK_RANK[standing.kind] ? [link, standing] : [standing, link];
+    kept.set(link.taskId, keep);
+    warnings.push(
+      `${drop.path} names ${link.taskId}, which ${keep.path} names too; it is linked once, as ${keep.kind}`,
+    );
+  }
+  return [...kept.values()];
 }
 
 /** A new task's fields, from create_task or one entry of create_tasks.
- * `target` reads each task id it names: a parent or a linked task. */
-function creation(args: Args, target: (name: string, value: unknown) => string): NewTask {
+ * `target` reads each task id it names, a parent or a linked task, by the
+ * path that names it; `at` starts each path a refusal or warning names. */
+function creation(args: Args, target: (path: string, value: unknown) => string, warnings: string[], at = ''): NewTask {
   const parent = args.parent === undefined ? undefined : target('parent', args.parent);
-  const links: NewLink[] = [];
+  const named: NamedLink<NewLink['kind']>[] = [];
   for (const kind of LINKS) {
     const value = args[kind];
     if (value === undefined) continue;
-    if (!Array.isArray(value) || value.length > TASK_LIMITS.links) refuse(`invalid arguments: ${kind}`);
-    for (const id of value) links.push({ kind, taskId: target(kind, id) });
+    if (!Array.isArray(value) || value.length > TASK_LIMITS.links)
+      refuse(`invalid arguments: ${kind} (a list of at most ${TASK_LIMITS.links} task ids)`);
+    value.forEach((id: unknown, index) => {
+      const path = `${kind}[${index}]`;
+      named.push({ kind, taskId: target(path, id), path: `${at}${path}` });
+    });
   }
-  const targets = links.map((link) => link.taskId);
-  if (targets.length > TASK_LIMITS.links) refuse(`invalid arguments: at most ${TASK_LIMITS.links} linked tasks`);
-  if (new Set(targets).size !== targets.length)
-    refuse('invalid arguments: a linked task is named twice; a task links to another once');
-  if (parent !== undefined && targets.includes(parent))
-    refuse('invalid arguments: the parent is linked already; leave it out of the other links');
+  if (named.length > TASK_LIMITS.links) refuse(`invalid arguments: at most ${TASK_LIMITS.links} linked tasks`);
+  const links = oncePerTask(named, warnings);
+  const linkedParent = parent === undefined ? undefined : links.find((link) => link.taskId === parent);
+  if (linkedParent !== undefined)
+    refuse(
+      `invalid arguments: ${linkedParent.path} (${parent} is the parent already; leave it out of the other links)`,
+    );
   const fields = {
     title: textArg(args, 'title', TASK_LIMITS.title, true)!,
     description: textArg(args, 'description', TASK_LIMITS.description, false, true),
@@ -407,90 +531,209 @@ function approvalOf(taskId: string, gate: Task) {
 }
 
 /** One create_tasks entry's own idempotency key: the call's key and the entry's
- * place, so a retried call replays each entry it already made. */
-async function entryKey(key: string, index: number): Promise<string> {
-  return `batch.${(await sha256(`noticeos-task-batch-v1:${key}`)).slice(0, 40)}.${index}`;
+ * place, so a retried call replays each entry it already made, and for a
+ * derived key the generation of the call's filing (batchGeneration). */
+async function entryKey(key: string, index: number, generation = 0): Promise<string> {
+  const call = generation === 0 ? key : `${key}:${generation}`;
+  return `batch.${(await sha256(`noticeos-task-batch-v1:${call}`)).slice(0, 40)}.${index}`;
 }
+
+/**
+ * The generation of a keyless create_tasks call's entry keys: the first whose
+ * records all still answer or were never made, entries filed in order. A call
+ * whose earlier filing has a task changed since runs again as a new
+ * generation, so the whole batch is filed again, never partly replayed.
+ */
+async function batchGeneration(
+  context: ToolContext,
+  project: Project,
+  entries: number,
+  entry: (generation: number, index: number) => Promise<RetryRequest>,
+): Promise<number> {
+  for (let generation = 0; ; generation += 1) {
+    const first = await retryStanding(context, project, await entry(generation, 0));
+    if (first === 'none') return generation;
+    let stale = first === 'stale';
+    for (let index = 1; !stale && index < entries; index += 1)
+      stale = (await retryStanding(context, project, await entry(generation, index))) === 'stale';
+    if (!stale) return generation;
+  }
+}
+
+/** A write's answer about a task: with detail "full" the whole task, as
+ * get_task shows it; otherwise its id, the fields `named` lists and its
+ * version. Either way without links the sender may not see. */
+async function written(
+  context: ToolContext,
+  detail: 'full' | undefined,
+  task: Task,
+  named: readonly McpTaskField[],
+  replayed: boolean,
+): Promise<Record<string, unknown>> {
+  const seen = detail === 'full' || named.includes('dependencies') ? (await linksSeenBy(context)).task(task) : task;
+  return detail === 'full' ? { task: mcpTask(seen), replayed } : { ...writtenView(seen, named), replayed };
+}
+
+/** The fields of the task a claim's answer shows for the helper and work details it names. */
+function workShown(work: WorkArgs | undefined): McpTaskField[] {
+  return [
+    ...(work?.assigneeFor === undefined ? [] : ['for' as const]),
+    ...(work?.work === undefined ? [] : ['work' as const]),
+  ];
+}
+
+/** Lint's answer, when it names a missing section or gives advice. */
+function lintIfAny(view: Record<string, readonly string[]> | null): { lint?: Record<string, readonly string[]> } {
+  return view !== null && Object.values(view).some((entries) => entries.length > 0) ? { lint: view } : {};
+}
+
+/** A refusal of one create_tasks entry, naming the argument by its path from the call. */
+function inEntry(message: string, index: number): string {
+  const rest = message.replace(/^invalid arguments: /u, '');
+  if (rest === message || rest.startsWith('tasks[')) return message;
+  const first = /^[a-z_]+/u.exec(rest)?.[0];
+  return first !== undefined && CREATE_FIELDS.includes(first)
+    ? `invalid arguments: tasks[${index}].${rest}`
+    : `invalid arguments: tasks[${index}]: ${rest}`;
+}
+
+/** The task ids an entry of create_tasks names: a task's id, or #n for the
+ * call's task at place n, counting from zero, which must come before it. */
+function earlierOrId(index: number): (path: string, value: unknown) => string {
+  return (path, value) => {
+    const earlier = typeof value === 'string' ? /^#(\d{1,2})$/u.exec(value) : null;
+    if (!earlier) return taskArg({ [path]: value }, path);
+    const place = Number(earlier[1]);
+    if (place >= index) {
+      const may = index === 0 ? 'none, as the first' : index === 1 ? 'only #0' : `#0 to #${index - 1}`;
+      refuse(
+        `invalid arguments: ${path} (#${place} is not an earlier task of this call: #n counts this call's tasks from zero, so tasks[${index}] may name ${may})`,
+      );
+    }
+    return value as string;
+  };
+}
+
+/** The field of the task update_task's reply shows for each argument it
+ * takes; null for long text, which the reply leaves out, and the arguments
+ * that name the call. */
+const SHOWN_CHANGES: Readonly<Record<string, McpTaskField | null>> = Object.freeze({
+  project: null,
+  task: null,
+  status: 'status',
+  priority: 'priority',
+  title: 'title',
+  description: null,
+  assignee: 'assignee',
+  parent: 'parent',
+  defer: 'deferUntil',
+  acceptance: null,
+  notes: null,
+  design: null,
+  estimate_minutes: 'estimateMinutes',
+  add_labels: 'labels',
+  remove_labels: 'labels',
+  related: 'dependencies',
+  duplicates: 'dependencies',
+  supersedes: 'dependencies',
+  add_external_links: 'externalLinks',
+  remove_external_links: 'externalLinks',
+  fields: 'fields',
+  choices: 'choices',
+  card: 'card',
+  change_class: 'changeClass',
+});
+
+/** The project of a new task, as create_task and create_tasks describe it. */
+const NEW_PROJECT = Object.freeze({
+  ...PROJECT,
+  description:
+    'Optional: the projectId, key or prefix from list_projects. Left out, the task goes to the project of its parent ' +
+    '(or of a task it depends on, blocks or was found from), else to the one project you may file in.',
+});
 
 export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'create_task',
     description:
-      "Create a task in a project, with its links, naming your model. The result's lint names sections it still lacks; " +
+      "Create a task in a project, with its links. The result's lint names sections it still lacks; " +
       'add them with update_task. create_tasks files many in one call.',
-    inputSchema: schema({ project: PROJECT, ...NEW_TASK, model: MODEL, idempotency_key: IDEMPOTENCY }, [
-      'project',
-      'title',
-      'idempotency_key',
-    ]),
+    inputSchema: schema(
+      { project: NEW_PROJECT, ...NEW_TASK, model: MODEL, idempotency_key: IDEMPOTENCY, detail: DETAIL },
+      ['title'],
+    ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', ...CREATE_FIELDS, 'model', 'idempotency_key']);
-      const task = creation(args, (name, value) => taskArg({ [name]: value }, name));
-      const projectId = projectArg(args);
+      const warnings: string[] = [];
+      const task = creation(args, (path, value) => taskArg({ [path]: value }, path), warnings);
       const model = modelArg(args);
-      keyArg(args);
-      const { project, result } = await createTask(context, projectId, task, model, retryRequest('create_task', args));
+      const detail = detailArg(args);
+      const retry = await retryRequest(context, 'create_task', args);
+      const projectId = await projectForNew(context, args, anchorsOf(args));
+      const { project, result } = await createTask(context, projectId, task, model, retry);
       const id = result.task.id;
       const gate = result.created[0];
       return {
-        id,
-        project: project.key,
-        replayed: result.replayed,
+        ...(await written(context, detail, result.task, ['status'], result.replayed)),
         ...(gate === undefined ? {} : approvalOf(id, gate)),
-        lint: lintView(await lintOf(context, project.id, [result.task]), id, choiceAdvice(result.task)),
+        ...lintIfAny(lintView(await lintOf(context, project.id, [result.task]), id, choiceAdvice(result.task))),
+        ...(warnings.length > 0 ? { warnings } : {}),
       };
     },
   },
   {
     name: 'create_tasks',
     description:
-      `Create up to ${BATCH} tasks in one call, in order, naming your model. A parent or link may name an earlier ` +
-      'task of the same call as #0 for the first, #1 for the second. Stops at the first task refused and says which; ' +
-      'retrying with the same idempotency_key and tasks never files one twice.',
+      `Create up to ${BATCH} tasks in one call, in order. A parent or link may name an earlier ` +
+      'task of the same call by its place, counting from zero: #0 for the first, #1 for the second. ' +
+      'Stops at the first task refused and says which; the same call sent again never files one twice.',
     inputSchema: schema(
       {
-        project: PROJECT,
+        project: NEW_PROJECT,
         tasks: { type: 'array', minItems: 1, maxItems: BATCH, items: schema(NEW_TASK, ['title']) },
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
       },
-      ['project', 'tasks', 'idempotency_key'],
+      ['tasks'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'tasks', 'model', 'idempotency_key']);
-      const projectId = projectArg(args);
-      const batchKey = keyArg(args);
       const entries = args.tasks;
       const model = modelArg(args);
       if (!Array.isArray(entries) || entries.length < 1 || entries.length > BATCH)
         refuse(`invalid arguments: tasks (1–${BATCH})`);
+      const warnings: string[] = [];
       // Every entry is read before any is filed, so a malformed one files nothing.
       const planned = entries.map((entry: unknown, index) => {
         try {
-          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) refuse('invalid arguments: a task');
-          const row = entry as Args;
-          only(row, CREATE_FIELDS);
-          return creation(row, (name, value) => {
-            const earlier = typeof value === 'string' ? /^#(\d{1,2})$/u.exec(value) : null;
-            if (!earlier) return taskArg({ [name]: value }, name);
-            if (Number(earlier[1]) >= index)
-              refuse(`invalid arguments: ${name} (#n names an earlier task of this call)`);
-            return value as string;
-          });
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+            refuse(`invalid arguments: tasks[${index}] (a task: an object with a title)`);
+          return creation(entry as Args, earlierOrId(index), warnings, `tasks[${index}].`);
         } catch (error) {
           if (!(error instanceof Refused)) throw error;
-          throw new Refused(
-            error.kind,
-            error.message.replace(/^invalid arguments: /u, `invalid arguments: tasks[${index}]: `),
-          );
+          throw new Refused(error.kind, inEntry(error.message, index));
         }
       });
+      const retry = await retryRequest(context, 'create_tasks', args);
+      const projectId = await projectForNew(context, args, entries.flatMap(anchorsOf));
+      const entry = async (generation: number, index: number): Promise<RetryRequest> => ({
+        operation: 'create_tasks',
+        key: await entryKey(retry.key, index, generation),
+        request: { project: projectId, task: entries[index] as unknown, model: model ?? null },
+        ...(retry.derived === true ? { derived: true } : {}),
+      });
+      let generation = 0;
+      if (retry.derived === true) {
+        // A project the sender cannot write to is answered below, as the first task refused.
+        const project = await projectOf(context, projectId, 'write').catch((error: unknown) => {
+          if (error instanceof Refused) return null;
+          throw error;
+        });
+        if (project !== null) generation = await batchGeneration(context, project, entries.length, entry);
+      }
       const made: { index: number; task: Task; replayed: boolean; gate: Task | undefined }[] = [];
-      let projectKey: string | null = null;
       let filedIn: string | null = null;
       const earlier = (id: string) => (id.startsWith('#') ? made[Number(id.slice(1))]!.task.id : id);
       let failed: Record<string, unknown> | null = null;
@@ -503,12 +746,13 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
             : { links: task.links.map((link) => ({ kind: link.kind, taskId: earlier(link.taskId) })) }),
         };
         try {
-          const { project, result } = await createTask(context, projectId, resolved, model, {
-            operation: 'create_tasks',
-            key: await entryKey(batchKey, index),
-            request: { project: projectId, task: entries[index] as unknown, model: model ?? null },
-          });
-          projectKey = project.key;
+          const { project, result } = await createTask(
+            context,
+            projectId,
+            resolved,
+            model,
+            await entry(generation, index),
+          );
           filedIn = project.id;
           made.push({ index, task: result.task, replayed: result.replayed, gate: result.created[0] });
         } catch (error) {
@@ -526,28 +770,28 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
               made.map((entry) => entry.task),
             );
       return {
-        project: projectKey,
         created: made.map(({ index, task, replayed, gate }) => ({
           index,
-          id: task.id,
+          ...writtenView(task, ['status']),
           replayed,
           ...(gate === undefined
             ? {}
             : { approval: { id: gate.id, status: gate.status, reason: gateReason(gate.description) }, held: true }),
-          lint: lintView(found, task.id, choiceAdvice(task)),
+          ...lintIfAny(lintView(found, task.id, choiceAdvice(task))),
         })),
         ...(made.some((entry) => entry.gate !== undefined)
           ? {
               note: 'A task with an approval waits for the owner’s scoped approval. Record an existing answer with reconcile_task.',
             }
           : {}),
+        ...(warnings.length > 0 ? { warnings } : {}),
         ...(failed
           ? {
               failed,
               notAttempted: planned.length - made.length - 1,
               retry:
-                'Retry with the same idempotency_key and tasks to finish after a passing failure; tasks already filed are not repeated. ' +
-                'To change a refused task, send it and the rest with a new key, naming filed tasks by id.',
+                'Send the same call again to finish after a passing failure; tasks already filed are not repeated. ' +
+                'To change a refused task, send it and the tasks after it in a new call, with a new idempotency_key if you chose one, naming filed tasks by id.',
             }
           : {}),
       };
@@ -555,29 +799,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   },
   {
     name: 'claim_task',
-    description: 'Assign an open task to yourself and start it, naming your model. Fails if someone else holds it.',
-    inputSchema: schema({ project: PROJECT, task: TASK, model: MODEL, idempotency_key: IDEMPOTENCY }, [
-      'project',
-      'task',
-      'idempotency_key',
-    ]),
+    description: 'Assign an open task to yourself and start it. Fails if someone else holds it.',
+    inputSchema: schema(
+      { project: PROJECT, task: TASK, model: MODEL, ...WORK, idempotency_key: IDEMPOTENCY, detail: DETAIL },
+      ['task'],
+    ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'model', 'idempotency_key']);
-      const projectId = projectArg(args);
       const taskId = taskArg(args);
       const model = modelArg(args);
-      keyArg(args);
-      const { result } = await updateTask(
-        context,
-        projectId,
-        taskId,
-        { claim: true },
-        model,
-        retryRequest('claim_task', args),
-      );
-      return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };
+      const work = workArgs(args);
+      const detail = detailArg(args);
+      const retry = await retryRequest(context, 'claim_task', args);
+      const projectId = await projectFor(context, args, taskId);
+      const { result } = await updateTask(context, projectId, taskId, { claim: true, ...work }, model, retry);
+      return written(context, detail, result.task, ['status', 'assignee', ...workShown(work)], result.replayed);
     },
   },
   {
@@ -643,51 +880,29 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           enum: [...TASK_CHANGE_CLASSES, null],
           description: `${CHANGE_CLASS.description} null takes it off.`,
         },
+        model: MODEL,
         idempotency_key: IDEMPOTENCY,
+        detail: DETAIL,
       },
-      ['project', 'task', 'idempotency_key'],
+      ['task'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, [
-        'project',
-        'task',
-        'status',
-        'priority',
-        'title',
-        'description',
-        'assignee',
-        'parent',
-        'defer',
-        'acceptance',
-        'notes',
-        'design',
-        'estimate_minutes',
-        'add_labels',
-        'remove_labels',
-        'choices',
-        'card',
-        'change_class',
-        'related',
-        'duplicates',
-        'supersedes',
-        'add_external_links',
-        'remove_external_links',
-        'fields',
-        'idempotency_key',
-      ]);
-      const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
+      const named: NamedLink<(typeof CHANGE_LINKS)[number]>[] = [];
       for (const name of CHANGE_LINKS) {
         const value = args[name];
         if (value === undefined) continue;
         if (!Array.isArray(value) || !value.length || value.length > TASK_LIMITS.links)
           refuse(`invalid arguments: ${name} (1–${TASK_LIMITS.links} task ids)`);
-        linked[name] = value.map((id: unknown) => taskArg({ task: id }));
+        value.forEach((id: unknown, index) => {
+          const path = `${name}[${index}]`;
+          named.push({ kind: name, taskId: taskArg({ [path]: id }, path), path });
+        });
       }
-      const targets = Object.values(linked).flat();
-      if (new Set(targets).size !== targets.length)
-        refuse('invalid arguments: a linked task is named twice; a task links to another once');
+      const warnings: string[] = [];
+      const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
+      for (const link of oncePerTask(named, warnings)) (linked[link.kind] ??= []).push(link.taskId);
       const addExternalLinks = externalLinksArg(args, 'add_external_links', 1);
       const removeExternalLinks = urlsArg(args, 'remove_external_links');
       addsOrRemoves(addExternalLinks, removeExternalLinks, 'add_external_links and remove_external_links');
@@ -719,20 +934,18 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       ) as TaskChange;
       if (Object.keys(change).length === 0) refuse('invalid arguments: name at least one field to change');
       setOrTakeOff(args, ['choices', 'card', 'change_class']);
-      const projectId = projectArg(args);
-      keyArg(args);
-      const { project, result } = await updateTask(
-        context,
-        projectId,
-        taskId,
-        change,
-        undefined,
-        retryRequest('update_task', args),
+      const model = modelArg(args);
+      const detail = detailArg(args);
+      const retry = await retryRequest(context, 'update_task', args);
+      const projectId = await projectFor(context, args, taskId);
+      const { project, result } = await updateTask(context, projectId, taskId, change, model, retry);
+      const shown = Object.keys(args).flatMap((name) =>
+        Object.hasOwn(SHOWN_CHANGES, name) && SHOWN_CHANGES[name] !== null ? [SHOWN_CHANGES[name]!] : [],
       );
       return {
-        task: mcpTask((await linksSeenBy(context)).task(result.task)),
-        replayed: result.replayed,
-        lint: lintView(await lintOf(context, project.id, [result.task]), taskId, choiceAdvice(result.task)),
+        ...(await written(context, detail, result.task, shown, result.replayed)),
+        ...lintIfAny(lintView(await lintOf(context, project.id, [result.task]), taskId, choiceAdvice(result.task))),
+        ...(warnings.length > 0 ? { warnings } : {}),
       };
     },
   },
@@ -744,26 +957,27 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         project: PROJECT,
         task: TASK,
         text: { type: 'string', maxLength: TASK_LIMITS.comment },
+        model: MODEL,
+        ...WORK,
         idempotency_key: IDEMPOTENCY,
+        detail: { ...DETAIL, description: 'full returns the whole comment. Left out, the reply has its id.' },
       },
-      ['project', 'task', 'text', 'idempotency_key'],
+      ['task', 'text'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'text', 'idempotency_key']);
-      const projectId = projectArg(args);
       const taskId = taskArg(args);
       const text = textArg(args, 'text', TASK_LIMITS.comment, true)!;
-      keyArg(args);
-      const { comment, replayed } = await commentOnTask(
-        context,
-        projectId,
-        taskId,
-        text,
-        retryRequest('comment_on_task', args),
-      );
-      return { comment: commentView(comment), replayed };
+      const model = modelArg(args);
+      const work = workArgs(args);
+      const detail = detailArg(args);
+      const retry = await retryRequest(context, 'comment_on_task', args);
+      const projectId = await projectFor(context, args, taskId);
+      const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, work, model);
+      return detail === 'full'
+        ? { comment: commentView(comment), replayed }
+        : { task: taskId, commentId: comment.id, replayed };
     },
   },
   {
@@ -780,18 +994,19 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           enum: DEPENDENCY_ARG_TYPES,
           description: 'blocks (default), related or discovered-from.',
         },
+        model: MODEL,
       },
-      ['project', 'task', 'depends_on'],
+      ['task', 'depends_on'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'depends_on', 'type']);
       const taskId = taskArg(args);
       const dependsOn = taskArg(args, 'depends_on');
       const type: DependencyType = choiceArg(args, 'type', DEPENDENCY_ARG_TYPES) ?? 'blocks';
-      if (taskId === dependsOn) refuse('invalid arguments: a task cannot depend on itself');
-      await addDependency(context, projectArg(args), taskId, dependsOn, type);
+      if (taskId === dependsOn) refuse('invalid arguments: depends_on (another task than this one)');
+      const model = modelArg(args);
+      await addDependency(context, await projectFor(context, args, taskId), taskId, dependsOn, type, model);
       return { task: taskId, dependsOn, type };
     },
   },
@@ -800,17 +1015,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Remove a dependency between two tasks. One on a human gate or decision stays until a person decides it.',
     inputSchema: schema(
-      { project: PROJECT, task: TASK, depends_on: { type: 'string', description: 'The task id it depends on.' } },
-      ['project', 'task', 'depends_on'],
+      {
+        project: PROJECT,
+        task: TASK,
+        depends_on: { type: 'string', description: 'The task id it depends on.' },
+        model: MODEL,
+      },
+      ['task', 'depends_on'],
     ),
     annotations: Object.freeze({ ...WRITE, destructiveHint: true }),
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'depends_on']);
       const taskId = taskArg(args);
       const dependsOn = taskArg(args, 'depends_on');
-      if (taskId === dependsOn) refuse('invalid arguments: a task cannot depend on itself');
-      await removeDependency(context, projectArg(args), taskId, dependsOn);
+      if (taskId === dependsOn) refuse('invalid arguments: depends_on (another task than this one)');
+      const model = modelArg(args);
+      await removeDependency(context, await projectFor(context, args, taskId), taskId, dependsOn, model);
       return { task: taskId, dependsOn, removed: true };
     },
   },
@@ -825,24 +1045,25 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         project: PROJECT,
         task: TASK,
         reason: { type: 'string', maxLength: GATE_REASON_MAX, description: 'What the person is asked to approve.' },
+        model: MODEL,
       },
-      ['project', 'task', 'reason'],
+      ['task', 'reason'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'reason']);
       const taskId = taskArg(args);
-      const projectId = projectArg(args);
       const reason = textArg(args, 'reason', GATE_REASON_MAX, true)!;
-      const { gate, created } = await requestApproval(context, projectId, taskId, reason);
+      const model = modelArg(args);
+      const projectId = await projectFor(context, args, taskId);
+      const { gate, created } = await requestApproval(context, projectId, taskId, reason, model);
       return { task: taskId, ...approvalOf(taskId, gate), created };
     },
   },
   {
     name: 'close_task',
     description:
-      'Close a task with the reason it is done, citing evidence such as a commit or URL, and naming your model. ' +
+      'Close a task with the reason it is done, citing evidence such as a commit or URL. ' +
       'When nothing shipped, pass the resolution that says why; the reason still cites the evidence. ' +
       'A task it depends on may still be open; an approval it waits on must first be answered or retired. A declined action must not happen.',
     inputSchema: schema(
@@ -862,22 +1083,40 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           description:
             'With resolution duplicate: the id of the task in this project it duplicates. The two are linked as related.',
         },
+        commit: {
+          type: 'string',
+          description:
+            "With done: the commit that holds the change; left out, the commit your work details name. The task's delivery starts at built, and report_delivery moves it to merged and live.",
+        },
+        pr: {
+          type: 'string',
+          description:
+            "With done: the pull request's URL; left out, the pr your work details name. The task's delivery starts at built, as with commit.",
+        },
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
+        detail: DETAIL,
       },
-      ['project', 'task', 'reason', 'idempotency_key'],
+      ['task', 'reason'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'task', 'reason', 'resolution', 'duplicate_of', 'model', 'idempotency_key']);
-      const projectId = projectArg(args);
       const taskId = taskArg(args);
       const model = modelArg(args);
-      const closing = closingArgs(args, taskId, 'duplicate_of');
-      keyArg(args);
-      const { result } = await closeTask(context, projectId, taskId, closing, model, retryRequest('close_task', args));
-      return { task: mcpTask((await linksSeenBy(context)).task(result.task)), replayed: result.replayed };
+      const given = closingArgs(args, taskId, 'duplicate_of');
+      const closing = { ...given, ...shippedArgs(args, 'pr', given.resolution) };
+      const detail = detailArg(args);
+      const retry = await retryRequest(context, 'close_task', args);
+      const projectId = await projectFor(context, args, taskId);
+      const { result } = await closeTask(context, projectId, taskId, closing, model, retry);
+      // A close that records where the change is shows its delivery too.
+      const shown: McpTaskField[] = [
+        'status',
+        'resolution',
+        ...(result.task.delivery === null ? [] : ['delivery' as const]),
+      ];
+      return written(context, detail, result.task, shown, result.replayed);
     },
   },
 ] satisfies TaskTool[]);

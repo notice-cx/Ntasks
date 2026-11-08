@@ -26,9 +26,11 @@ import {
   type TaskStatus,
   type TaskType,
   type TaskWrite,
+  type WorkDetail,
   type WriteResult,
 } from '@ntasks/domain';
-import { listed } from './args.ts';
+import { listed, type WorkArgs } from './args.ts';
+import { shippedWith } from './delivery.ts';
 import type { Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
@@ -55,6 +57,8 @@ export interface RetryRequest {
   readonly key: string;
   /** What the caller sent, without the key: a retry that sends anything else is refused. */
   readonly request: unknown;
+  /** The key was derived from the request, not chosen by the caller (Retry.derived). */
+  readonly derived?: boolean;
 }
 
 /** How many times a write reads its task again after another write changed it first. */
@@ -153,6 +157,7 @@ export async function retryOf(principal: Principal, retry: RetryRequest | undefi
     operation: retry.operation,
     key: retry.key,
     requestHash: await sha256(canonical(retry.request)),
+    ...(retry.derived === true ? { derived: true } : {}),
   };
 }
 
@@ -190,6 +195,19 @@ export async function recorded(
   } catch (error) {
     throw fromEngine(error);
   }
+}
+
+/** Whether a derived key's record answers the same request now, is stale
+ * (the request runs again), or does not exist. */
+export async function retryStanding(
+  context: Reader,
+  project: Project,
+  request: RetryRequest,
+): Promise<'answers' | 'stale' | 'none'> {
+  const retry = (await retryOf(context.principal, request))!;
+  if ((await recorded(context, project, retry)) !== null) return 'answers';
+  // Read as a caller's own key, the record answers whether or not it is stale.
+  return (await recorded(context, project, { ...retry, derived: false })) === null ? 'none' : 'stale';
 }
 
 /**
@@ -350,8 +368,9 @@ export async function createTask(
 
 // ─── Changing a task ──────────────────────────────────────────────────────────
 
-export interface TaskChange {
-  /** Take the task: the sender becomes its assignee and it moves to in progress. */
+export interface TaskChange extends WorkArgs {
+  /** Take the task: the sender becomes its assignee and it moves to in progress.
+   * Its helper and work details, if given, are the claim's. */
   readonly claim?: true;
   /** On a closed task, any status opens it again. */
   readonly status?: Exclude<TaskStatus, 'closed'>;
@@ -497,6 +516,11 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
   } else {
     put('assignee', change.assignee, task.assignee);
   }
+  put('assigneeFor', change.assigneeFor, task.assigneeFor);
+  const work = Object.fromEntries(
+    Object.entries(change.work ?? {}).filter(([detail, value]) => !same(value, task.work[detail as WorkDetail])),
+  );
+  if (Object.keys(work).length > 0) set.work = work;
 
   const metadata: Record<string, JsonObject | string | null> = {};
   if (change.card === null && task.metadata[NOTICEOS_METADATA.card] !== undefined)
@@ -600,6 +624,10 @@ export interface TaskClosing {
   readonly resolution?: TaskResolution;
   /** With duplicate: the task this one duplicates, in the same project. */
   readonly duplicateOf?: string;
+  /** What shipped, with done: either starts the task's delivery at built. One
+   * left out comes from the task's work details (shippedWith). */
+  readonly commit?: string;
+  readonly pullRequest?: string;
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
@@ -657,7 +685,12 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
-      close: { reason: closing.reason, resolution, ...(duplicateOf === undefined ? {} : { duplicateOf }) },
+      close: {
+        reason: closing.reason,
+        resolution,
+        ...(duplicateOf === undefined ? {} : { duplicateOf }),
+        ...(resolution === 'done' ? shippedWith(closing, current.work) : {}),
+      },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
       ...(duplicateOf === undefined || linked ? {} : { addLinks: [{ taskId: duplicateOf, type: 'related' as const }] }),
@@ -668,22 +701,60 @@ export async function closeTask(
 
 // ─── Comments, dependencies and approvals ─────────────────────────────────────
 
+/** The refusal a comment that records work details meets when the sender does not hold the open task. */
+function notHolding(task: Task, actor: Actor): Refused | null {
+  const id = task.id;
+  if (task.status === 'closed')
+    return refused(
+      `refused: ${id} is closed, so it has no work in hand to record. Send the comment without for and the work details.`,
+      `${id} is closed.`,
+    );
+  if (task.assignee === null)
+    return refused(
+      `refused: nobody holds ${id}, so it has no work in hand to record. Claim it with claim_task, passing these details.`,
+      `Nobody holds ${id}.`,
+    );
+  if (task.assignee !== actor.name)
+    return refused(
+      `refused: ${id} is held by ${task.assignee}, and only its holder records its work. Send the comment without for and the work details.`,
+      `${id} is held by ${task.assignee}, and only its holder records its work.`,
+    );
+  return null;
+}
+
+/** Adds a comment. With `update`, the holder also records its helper and
+ * work details, in the same change. */
 export async function commentOnTask(
   context: WriteContext,
   projectId: string,
   taskId: string,
   text: string,
   retryRequest?: RetryRequest,
+  update?: WorkArgs,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly comment: TaskComment; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
-  await taskOf(context, project, taskId);
+  const task = await taskOf(context, project, taskId);
   const retry = await retryOf(context.principal, retryRequest);
+  if (update !== undefined) {
+    const replay = await recorded(context, project, retry);
+    if (replay?.comment !== undefined) return { project, comment: replay.comment, replayed: true };
+    const actor = actorOf(context.principal, model);
+    const result = await changing(context, project, task, actor, retry, async (current) => {
+      const refusal = notHolding(current, actor);
+      if (refusal !== null) throw refusal;
+      // Details that change nothing leave the version as a plain comment does.
+      return { expectedVersion: current.version, set: update, comment: text };
+    });
+    if (result.comment === undefined) throw unavailable(retry !== undefined);
+    return { project, comment: result.comment, replayed: result.replayed };
+  }
   try {
     const { comment, replayed } = await context.engine.addComment(
       project.id,
       taskId,
       text,
-      actorOf(context.principal, undefined),
+      actorOf(context.principal, model),
       retry,
     );
     return { project, comment, replayed };
@@ -700,6 +771,7 @@ export async function addDependency(
   taskId: string,
   dependsOn: string,
   type: DependencyType,
+  model?: string,
 ): Promise<void> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -712,7 +784,7 @@ export async function addDependency(
     context,
     project,
     task,
-    actorOf(context.principal, undefined),
+    actorOf(context.principal, model),
     undefined,
     async (current) => {
       const standing = current.dependencies.find((link) => link.taskId === dependsOn);
@@ -736,6 +808,7 @@ export async function removeDependency(
   projectId: string,
   taskId: string,
   dependsOn: string,
+  model?: string,
 ): Promise<void> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -745,7 +818,7 @@ export async function removeDependency(
   if (other !== null && isDecision(other)) throw decisionRefusal(other.id);
   if (other === null && !task.dependencies.some((link) => link.taskId === dependsOn))
     await tasksIn(context, project, [dependsOn]);
-  await changing(context, project, task, actorOf(context.principal, undefined), undefined, async (current) =>
+  await changing(context, project, task, actorOf(context.principal, model), undefined, async (current) =>
     current.dependencies.some((link) => link.taskId === dependsOn)
       ? { expectedVersion: current.version, removeLinks: [dependsOn] }
       : null,
@@ -759,10 +832,11 @@ export async function requestApproval(
   projectId: string,
   taskId: string,
   reason: string,
+  model?: string,
 ): Promise<{ readonly gate: Task; readonly created: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   let task = await taskOf(context, project, taskId);
-  const actor = actorOf(context.principal, undefined);
+  const actor = actorOf(context.principal, model);
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     if (task.status === 'closed') throw closedRefusal(task.id);
     const open = (await openGates(context, project, task)).find(
@@ -826,11 +900,12 @@ export async function defineField(
   projectId: string,
   input: DefineFieldInput,
   retryRequest?: RetryRequest,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const retry = await retryOf(context.principal, retryRequest);
   const { field, replayed } = await engineChecked(() =>
-    context.engine.defineField(project.id, input, actorOf(context.principal, undefined), retry),
+    context.engine.defineField(project.id, input, actorOf(context.principal, model), retry),
   );
   return { project, field, replayed };
 }
@@ -841,6 +916,7 @@ export async function retireField(
   projectId: string,
   key: string,
   retryRequest?: RetryRequest,
+  model?: string,
 ): Promise<{ readonly project: Project; readonly field: CustomField; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const retry = await retryOf(context.principal, retryRequest);
@@ -848,7 +924,7 @@ export async function retireField(
     const { field, replayed } = await context.engine.retireField(
       project.id,
       key,
-      actorOf(context.principal, undefined),
+      actorOf(context.principal, model),
       retry,
     );
     return { project, field, replayed };

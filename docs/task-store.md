@@ -37,8 +37,8 @@ or prefix, since no query reads across stores.
 
 | Table | Holds |
 |---|---|
-| `projects` | Each project's id, key, name and task id prefix |
-| `tasks` | One row per task: its fields, its current close, its version |
+| `projects` | Each project's id, key, name and task id prefix, and whether its changes go live by a deploy (`deploys`) |
+| `tasks` | One row per task: its fields, its current close and delivery, its version |
 | `task_labels` | A task's labels, one row each |
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
@@ -58,6 +58,17 @@ at most 8,192 characters in each (`TASK_LIMITS` in
 [`task.ts`](../packages/domain/src/task.ts)). `estimate_minutes` holds the
 task's estimate in whole minutes, or null when nobody estimated it.
 
+A task's work in hand is two columns of `tasks`: `assignee_for`, the helper
+agent its holder works through, and `work`, the details its holder recorded
+(`session`, `worktree`, `branch`, `pr`, `commit` and `next`) as one JSON
+object, so a new detail needs no new column (`WORK_DETAILS` and
+`WORK_LIMITS` in [`task.ts`](../packages/domain/src/task.ts)). The engine
+clears both in the write that releases the task, gives it to someone else or
+closes it. A task's last activity is not stored: a read takes the latest
+`task_events` row its assignee made, which the `task_events_by_actor` index
+`(task_id, actor, at)` answers from one entry, so every write and comment
+the holder makes moves it without a write of its own.
+
 A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
 `duplicates` `web-1` means web-2 is the same work as web-1, filed again, and
 `web-3` `supersedes` `web-1` means web-3 replaces it. Only `blocks` holds a
@@ -67,6 +78,16 @@ A task's external links are http or https URLs, kept as the URL standard
 writes them, so one page has one URL and a task links to it once. The
 database allows URLs of at most 2,048 characters; a new write through the API
 also takes at most 32 links on a task and 512 characters in a title.
+
+A task's delivery ([concepts](concepts.md#where-a-change-is)) is seven
+columns of `tasks`: `delivery_stage` (`built`, `merged` or `live`),
+`delivery_commit`, `delivery_pull_request`, `delivery_merge_commit`, and
+`built_at`, `merged_at` and `live_at`. A signal names pull requests and
+commits, and reaches the tasks carrying them through one index on each of the
+three, never through a project's history: a commit matches by prefix, so it
+reads the range of the index that shares its first 7 characters.
+`tasks_by_project_stage` reaches a project's tasks at a stage, whenever they
+closed.
 
 A task's values of its project's custom fields are the `field_values` column
 of `tasks`: one JSON object by field key, holding text, a number, true or false,
@@ -99,6 +120,12 @@ These hold whatever code writes to the database. Each has a test in
   `packages/domain/src/task.ts`.
 - A task is closed exactly when it records when and how it closed, and close
   details are empty while it is not closed.
+- Only a task closed as done with a commit or a pull request has a delivery,
+  and a task without a stage records no delivery at all. A commit is 7 to 64
+  lowercase hexadecimal characters; a merged task records when it merged,
+  and only a live one when it went live.
+- A task's helper and work details are empty while nobody holds it, and once
+  it is closed.
 - Every update of a task raises its `version` by exactly one.
 - A task keeps its id, its project and its creation time.
 - Tasks, their history and their comments are never deleted, and history and
@@ -147,24 +174,40 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   open.
 - **Writes:** `createTask`, `writeTask`, `addComment` and `recordUnchanged`.
   Each is one batch. `createTask` can open an approval the new task waits on.
-  `writeTask` takes everything one change does at once: field changes,
-  labels, links, metadata, a close or a reopen, an approval request and a
-  comment, and in `others` changes to at most 500 other tasks of the project
+  `writeTask` takes everything one change does at once: field changes
+  (the holder's helper and work details among them), labels, links,
+  metadata, a close or a reopen, an approval request and a comment, which
+  its result returns, and in `others` changes to at most 500 other tasks of the project
   (`TASK_LIMITS.others`), such as the comment and hand-back a decision on an
   approval gives the tasks waiting on it. Each of those names the version it
   read, as the write does, and the whole batch fails as `version_conflict`
   when one of them moved since; one that only comments leaves its task's
-  version as `addComment` does.
+  version as `addComment` does, and so does a write whose comment comes with
+  a helper and work details that change nothing.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
-- **Projects:** `listProjects` and `createProject`, which
-  `POST /api/tasks/projects` ([API](api.md#writes)) calls; an import writes
-  its projects' rows itself.
+  A retry identity marked `derived` (a key the API derived from an MCP
+  call's arguments) also records the version the write left each task it
+  wrote at, and marks a record of new tasks. Its record answers only while
+  every one of those tasks stands at that version, and a record of new tasks
+  also only for 24 hours; after that the same request is a new write, and
+  its batch replaces the stale record. The record carries this rule, so
+  `recordedWrite` reads it as the write does. A key a caller chose keeps
+  rule 3 unchanged.
+- **Projects:** `listProjects`, `createProject`, which
+  `POST /api/tasks/projects` ([API](api.md#writes)) calls, and
+  `setProjectDeploys`; an import writes its projects' rows itself.
+- **Delivery:** `reportDelivery` moves the closed tasks of the projects named
+  whose pull request, commit or merge commit a signal matches, each move with
+  its history, in one batch ([API](api.md#delivery)). A close as done that
+  carries `commit` or `pullRequest` starts a task's delivery, and a reopen
+  clears it. `listBoard` with `stages` reads closed tasks at those stages.
 - **Custom fields:** `defineField` and `retireField`, each one batch, which
-  writes a retry record when the call carries a retry identity (an MCP
-  `idempotency_key` or an HTTP `Idempotency-Key` header); without one, a
-  repeated definition is refused rather than replayed. A key the project has
+  writes a retry record when the call carries a retry identity (every MCP
+  call, keyed by its `idempotency_key` or else by its arguments, and an HTTP
+  write with an `Idempotency-Key` header); without one, a repeated definition
+  is refused rather than replayed. A key the project has
   used, retired or not, is refused as
   `invalid`, and so is a field past the project's 64.
 

@@ -45,6 +45,15 @@ describe('the board', () => {
     expect(new Set(all).size).toBe(all.length);
   });
 
+  it('shows on a held task’s row the helper its holder works through and when the holder last wrote to it', async () => {
+    renderApp('/tasks');
+    const held = (await group('In progress')).querySelector('[data-task-row="web-k3m9.2"]') as HTMLElement;
+    expect(held.querySelector('[data-row-helper]')?.textContent).toContain('a11y-check-1');
+    expect(held.querySelector('[data-row-activity]')?.textContent).toContain('12m');
+    const unheld = (await group('Open')).querySelector('[data-task-row="web-b2r6"]') as HTMLElement;
+    expect(unheld.querySelector('[data-row-helper], [data-row-activity]')).toBeNull();
+  });
+
   it('folds Done, and opens it on a press', async () => {
     renderApp('/tasks');
     const done = await group('Done');

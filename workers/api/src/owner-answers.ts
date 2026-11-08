@@ -60,12 +60,9 @@ export const MAINTENANCE_ACTIONS = Object.freeze([
 export type MaintenanceAction = (typeof MAINTENANCE_ACTIONS)[number];
 
 /** The actions that record an answer the owner gave; the others maintain a request with evidence. */
-export function isOwnerAnswer(action: MaintenanceAction): boolean {
+function isOwnerAnswer(action: MaintenanceAction): boolean {
   return action === 'answer' || action === 'declined' || action === 'owner_performed';
 }
-
-/** The sentence every refused owner answer ends with. */
-export const NOT_RECORDED = 'The answer was not recorded.';
 
 /**
  * A disposition an agent records: an owner answer it relays, or maintenance
@@ -975,7 +972,7 @@ async function surroundings(context: WriteContext, project: Project, task: Task)
 function changedSinceShown(id: string): Refused {
   return new Refused(
     'state',
-    `refused: proposalVersion: The proposal changed after the owner saw it; show it again. ${NOT_RECORDED}`,
+    'refused: proposalVersion: The proposal changed after the owner saw it; show it again.',
     `${id} changed after this page showed it. Read it again, then answer; your answer was not recorded.`,
     'proposalVersion',
   );

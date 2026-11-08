@@ -30,27 +30,27 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-10-21: create_task, create_tasks and update_task take card, what the work is worth, which the board ranks tasks by, and change_class; update_task takes null to take either off; get_task and list_tasks return them as card and changeClass.',
-  "2026-10-21: close_task as done keeps the task's card as it stood, with the commit its reason names, and get_task returns it as cardShipped; update_task then refuses a card for that task.",
+  "2026-11-07: close_task takes commit and pr, and the task's delivery shows its change as built; report_delivery moves it to merged and live. list_tasks takes stage and counts closed tasks by stage.",
+  '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
   '2026-11-07: reconcile_task records an owner’s answer as the option they chose on the proposal_version get_task returned, with their exact words as quote and where they said it as source; nothing reads the quote, and an answer to an older version is refused.',
 ]);
 
 /** How a session starts. */
 export const TASK_START =
-  'Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool takes a workspace from it. A tool that takes an idempotency_key: reuse the key when retrying it. On every create_task, create_tasks, claim_task and close_task, pass model: the name of the model you run as. The task records it beside your name, and the Agents page groups work by model; missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.';
+  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional. Without a key, an identical call repeats the first answer only while every task that answer wrote is unchanged since; a create also stops repeating after 24 hours. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
 
 /** The order of task work, in the tools' own names. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '1. list_workspaces, then list_projects: a project is one repository or asset, and its prefix starts each of its task ids.',
   '2. list_tasks with ready: true and no project for work nothing blocks anywhere; assignee: "me" for what you hold. get_task reads one with its comments before you choose.',
-  '3. claim_task the moment you start, naming your model.',
-  '4. comment_on_task with progress and evidence as the work moves.',
-  '5. close_task with what shipped and its evidence (the commit hash or URL), naming your model.',
+  '3. claim_task the moment you start, naming your model. A helper agent that cannot reach these tools works under your claim: pass for with its name, and the branch, worktree and pr it works in.',
+  '4. comment_on_task with progress and evidence as the work moves, with next, commit or pr when they change, so anyone who reads the task sees the work in hand.',
+  '5. close_task with what shipped and its evidence (the commit hash or URL), naming your model, and pass commit or pr so the task shows its change as built. When you merge a pull request or finish a deploy, report_delivery moves its tasks to merged or live; list_tasks with stage built lists what is not merged yet.',
   '6. Found work goes to create_task, or create_tasks for several, in the project that owns it.',
   '7. A decision, credential or admin step only a person can do: label the task human, with choices when the person picks one option. A step that must wait for approval: request_human_approval. The owner may answer on Tasks or in conversation, including a local Claude Code session recorded as a relay.',
   '8. When the owner answers you in conversation, record it with reconcile_task: action answer (on an approval, answer approves it and declined declines it; owner_performed records that the owner did the action), proposal_version (the proposalVersion get_task returned for the proposal you showed them), quote (their exact words), source (where they said it, such as claude-code:session/<session id> or the conversation URL) and, on a task with choices, the option they chose. Nothing reads the quote: name the option yourself, and leave it out when they chose none. A refusal names the argument at fault and records nothing; a stale proposal_version means the task changed, so show it to the owner again.',
   '9. The answer is recorded as relayed by you. An approval closes and the human tasks waiting on it go back to agents within what it approved; the owner can dispute a relayed approval, which reopens it and tells those tasks to stop. A declined approval closes as wont-do and its action must not happen. Any other task goes back to ready work without the human label: claim it, then close_task with the implementation commit. A person answering on Tasks records their answer directly.',
-  '10. Without an owner answer, reconcile_task with an explanation and evidence retires a request (completed, obsolete, superseded, or duplicate with duplicate_of), takes the human label off routine work, or releases an assignment whose holder stopped (release with holder, inactive: true, activity_check and progress; age alone never proves it). Code existing does not prove a business decision was approved, and retiring an approval grants no permission.',
+  '10. Without an owner answer, reconcile_task with an explanation and evidence retires a request (completed, obsolete, superseded, or duplicate with duplicate_of), takes the human label off routine work, or releases an assignment whose holder stopped (release with holder, inactive: true, activity_check and progress; get_task shows the holder’s work details and lastActivityAt to start from; age alone never proves it). Code existing does not prove a business decision was approved, and retiring an approval grants no permission. Keep history; update_task can reopen a closed task.',
   'These tools are the task interface: never run bd, bv or br in a project folder.',
 ]);
 
@@ -69,6 +69,7 @@ export const GUIDE_TOOLS: readonly string[] = Object.freeze([
   'claim_task',
   'comment_on_task',
   'close_task',
+  'report_delivery',
   'request_human_approval',
   'reconcile_task',
   'get_agent_stats',

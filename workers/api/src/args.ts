@@ -12,10 +12,14 @@ import {
   TASK_PRIORITY,
   TASK_RESOLUTIONS,
   TASK_TYPES,
+  WORK_DETAILS,
+  WORK_LIMITS,
   type ExternalLink,
   type FieldValue,
   type JsonObject,
+  type TaskFieldChanges,
   type TaskType,
+  type WorkDetail,
 } from '@ntasks/domain';
 import { httpUrl } from './engine/validate.ts';
 import {
@@ -46,6 +50,67 @@ export function only(args: Args, allowed: readonly string[]): void {
   if (unknown.length > 0) refuse(`invalid arguments: unknown ${unknown.join(', ')}`);
 }
 
+/** Names agents send for an argument under another name, with the arguments
+ * each may mean, in order; one applies only where the tool takes it. */
+const ALIASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  id: ['task'],
+  task_id: ['task'],
+  project_id: ['project'],
+  workspace_id: ['workspace'],
+  key: ['idempotency_key'],
+  comment: ['text', 'reason'],
+  body: ['text', 'description'],
+  message: ['text', 'reason'],
+  labels: ['add_labels'],
+});
+
+/** Edit distance in which swapping two neighbouring letters is one edit. */
+function distance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(rows[i - 1]![j]! + 1, rows[i]![j - 1]! + 1, rows[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
+        best = Math.min(best, rows[i - 2]![j - 2]! + 1);
+      rows[i]![j] = best;
+    }
+  }
+  return rows[a.length]![b.length]!;
+}
+
+/**
+ * The argument of `allowed` that an unknown `name` most likely means: the same
+ * name in snake_case, a common other name for it, or the closest within two
+ * edits (one for a name of three or four letters). Null when none is close.
+ */
+export function suggestion(name: string, allowed: readonly string[]): string | null {
+  const snake = name.replace(/([a-z0-9])([A-Z])/gu, '$1_$2').toLowerCase();
+  if (allowed.includes(snake)) return snake;
+  const alias = (Object.hasOwn(ALIASES, snake) ? ALIASES[snake]! : []).find((other) => allowed.includes(other));
+  if (alias !== undefined) return alias;
+  const most = snake.length >= 5 ? 2 : snake.length >= 3 ? 1 : 0;
+  let best: { readonly name: string; readonly edits: number } | null = null;
+  for (const candidate of allowed) {
+    const edits = distance(snake, candidate);
+    if (edits <= most && (best === null || edits < best.edits)) best = { name: candidate, edits };
+  }
+  return best?.name ?? null;
+}
+
+/** The refusal of arguments a tool does not take, each named by its path
+ * and, when one is close, the argument it most likely means. */
+export function unknownArguments(unknown: readonly { readonly path: string; readonly meant: string | null }[]): string {
+  if (unknown.length === 1) {
+    const { path, meant } = unknown[0]!;
+    return `invalid arguments: unknown argument ${path}${meant === null ? '' : `; this tool takes ${meant}`}`;
+  }
+  const named = unknown.map(({ path, meant }) => (meant === null ? path : `${path} (this tool takes ${meant})`));
+  return `invalid arguments: unknown arguments ${listed(named)}`;
+}
+
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 
 export function textArg(args: Args, name: string, max: number, required: boolean, empty = false): string | undefined {
@@ -63,12 +128,17 @@ export function textArg(args: Args, name: string, max: number, required: boolean
 
 const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
+/** A project as a call names it: over HTTP by its projectId; over MCP by its
+ * projectId, key or prefix, so by any text a key may be. */
 export function projectArg(args: Args, name = 'project', caller: Caller = 'mcp'): string {
   const value = args[name];
-  if (typeof value !== 'string' || !PROJECT_ID.test(value))
-    refuse(
-      `invalid arguments: ${name} (a projectId from ${caller === 'mcp' ? 'list_projects' : '/api/tasks/projects'})`,
-    );
+  if (caller === 'http') {
+    if (typeof value !== 'string' || !PROJECT_ID.test(value))
+      refuse(`invalid arguments: ${name} (a projectId from /api/tasks/projects)`);
+    return value;
+  }
+  if (typeof value !== 'string' || !value.trim() || value.length > 128 || /[\u0000-\u001f\u007f]/u.test(value))
+    refuse(`invalid arguments: ${name} (a projectId, key or prefix from list_projects)`);
   return value;
 }
 
@@ -123,12 +193,21 @@ export function instantArg(args: Args, name: string): string | undefined {
 // ─── The arguments of a write ─────────────────────────────────────────────────
 // NoticeOS's task tools and Tasks API checked these, with these sentences.
 
-/** The retry key every write that would repeat its effect takes. */
-export function keyArg(args: Args, name = 'idempotency_key'): string {
+/** The retry key a write that would repeat its effect takes, when its caller chose one. */
+export function keyArg(args: Args, name = 'idempotency_key'): string | undefined {
   const value = args[name];
+  if (value === undefined) return undefined;
   if (typeof value !== 'string' || !IDEMPOTENCY_KEY.test(value)) {
     refuse(`invalid arguments: ${name} (8–128 of A–Z a–z 0–9 . _ : -; reuse it when retrying this call)`);
   }
+  return value;
+}
+
+/** How much of the task a write's reply shows: "full" for all of it, as get_task shows it. */
+export function detailArg(args: Args, name = 'detail'): 'full' | undefined {
+  const value = args[name];
+  if (value !== undefined && value !== 'full')
+    refuse(`invalid arguments: ${name} ("full" for the whole task; left out, the reply names what changed)`);
   return value;
 }
 
@@ -409,3 +488,41 @@ export function setOrTakeOff(args: Args, names: readonly string[]): void {
     );
   }
 }
+
+/** The arguments that name a holder's helper and work details: `for` and WORK_DETAILS. */
+export const WORK_ARGS: readonly string[] = Object.freeze(['for', ...WORK_DETAILS]);
+
+/**
+ * The helper (`for`) and work details a claim or a comment names, each one
+ * line and `pr` an http or https URL; undefined when it names none. `at`
+ * starts the names a refusal gives the details, such as `work.`.
+ */
+export function workArgs(args: Args, at = '', helperArgs: Args = args): WorkArgs | undefined {
+  const line = (from: Args, name: string, shown: string, max: number): string | undefined => {
+    const value = from[name];
+    if (value === undefined) return undefined;
+    if (
+      typeof value !== 'string' ||
+      !value ||
+      value.length > max ||
+      value.trim() !== value ||
+      /[\r\n\t]/u.test(value) ||
+      CONTROL.test(value)
+    )
+      refuse(`invalid arguments: ${shown} (one line of 1 to ${max} characters)`);
+    return value;
+  };
+  const helper = line(helperArgs, 'for', 'for', TASK_LIMITS.helper);
+  const work: Partial<Record<WorkDetail, string>> = {};
+  for (const detail of WORK_DETAILS) {
+    const value = line(args, detail, `${at}${detail}`, WORK_LIMITS[detail]);
+    if (value === undefined) continue;
+    work[detail] =
+      detail === 'pr' ? (httpUrl(value) ?? refuse(`invalid arguments: ${at}pr (an http or https URL)`)) : value;
+  }
+  if (helper === undefined && Object.keys(work).length === 0) return undefined;
+  return { ...(helper === undefined ? {} : { assigneeFor: helper }), ...(Object.keys(work).length ? { work } : {}) };
+}
+
+/** A holder's helper and work details, as the engine takes them. */
+export type WorkArgs = Pick<TaskFieldChanges, 'assigneeFor' | 'work'>;

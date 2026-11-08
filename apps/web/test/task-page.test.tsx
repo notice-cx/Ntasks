@@ -48,6 +48,18 @@ describe('a task page', () => {
     expect(within(path).getByText('web-b2r6')).toBeTruthy();
   });
 
+  it('shows the helper a held task’s holder works through, its work details and its last activity', async () => {
+    renderApp('/tasks/web-k3m9.2');
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    expect(fact('Assignee').textContent).toContain('a11y-check-1');
+    expect(fact('Last activity').textContent).toContain('12m');
+    expect(fact('Next step').textContent).toContain('Announce the password error to screen readers');
+    expect(fact('Branch').textContent).toContain('codex/sign-in-a11y');
+    expect(within(fact('Pull request')).getByRole('link').getAttribute('href')).toBe(
+      'https://github.example.com/example/web/pull/42',
+    );
+  });
+
   it('shows a fact it may not change as words, not as a control', async () => {
     renderApp('/tasks/web-b2r6');
     await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });

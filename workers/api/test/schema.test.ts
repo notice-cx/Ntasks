@@ -1,4 +1,5 @@
 import {
+  DELIVERY_STAGES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   FIELD_TYPES,
@@ -102,6 +103,7 @@ describe('the schema accepts exactly the task model vocabulary', () => {
     ['task_external_links', 'kind', EXTERNAL_LINK_KINDS],
     ['custom_fields', 'type', FIELD_TYPES],
     ['task_events', 'kind', TASK_EVENT_KINDS],
+    ['tasks', 'delivery_stage', DELIVERY_STAGES],
   ] as const)('%s.%s allows the domain list and nothing else', async (table, column, domainList) => {
     expect((await checkList(table, column)).sort()).toEqual([...domainList].sort());
   });
@@ -317,6 +319,28 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(newTask(fields)).rejects.toThrow(/CHECK constraint failed/u);
   });
 
+  it('keeps a delivery on a task closed as done with a commit or pull request, and nowhere else', async () => {
+    const built = { delivery_stage: 'built', delivery_commit: 'abc1234', built_at: LATER };
+    await expect(newTask({ ...CLOSED, ...built })).resolves.toBeDefined();
+    await expect(newTask({ ...CLOSED, ...built, delivery_commit: 'ABC1234' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask(built)).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, resolution: 'wont-do' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, delivery_commit: null })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, delivery_commit: 'abc1234' })).rejects.toThrow(/CHECK/u);
+    await expect(newTask({ ...CLOSED, ...built, delivery_stage: 'live' })).rejects.toThrow(/CHECK/u);
+    const { taskId } = await newTask({ ...CLOSED, ...built });
+    // A reopen that leaves the delivery behind is refused.
+    await expect(
+      db
+        .prepare(
+          `UPDATE tasks SET status = 'open', closed_at = NULL, resolution = NULL, close_reason = NULL, closed_by = NULL,
+             version = version + 1 WHERE id = ?`,
+        )
+        .bind(taskId)
+        .run(),
+    ).rejects.toThrow(/CHECK/u);
+  });
+
   it('refuses a duplicate close left on a task that is not closed', async () => {
     const other = await newTask();
     await expect(newTask({ resolution: 'duplicate', duplicate_of: other.taskId })).rejects.toThrow(
@@ -390,6 +414,22 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(newTask({ field_values: '{"size":3}' })).resolves.toBeDefined();
     await expect(newTask({ field_values: '[3]' })).rejects.toThrow(/CHECK constraint failed/u);
     await expect(newTask({ field_values: 'size' })).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
+  it('keeps a helper and work details only on a task someone holds that is not closed', async () => {
+    const held = { assignee: 'agent-a', status: 'in_progress' };
+    await expect(newTask({ ...held, assignee_for: 'helper-1', work: '{"branch":"b"}' })).resolves.toBeDefined();
+    await expect(newTask({ assignee_for: 'helper-1' })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ work: '{"branch":"b"}' })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ ...CLOSED, assignee: 'agent-a', work: '{"next":"n"}' })).rejects.toThrow(
+      /CHECK constraint failed/u,
+    );
+    await expect(newTask({ ...held, work: '["b"]' })).rejects.toThrow(/CHECK constraint failed/u);
+    const { taskId } = await newTask({ ...held, assignee_for: 'helper-1', work: '{"branch":"b"}' });
+    // A release that leaves them behind is refused.
+    await expect(
+      db.prepare('UPDATE tasks SET assignee = NULL, version = version + 1 WHERE id = ?1').bind(taskId).run(),
+    ).rejects.toThrow(/CHECK constraint failed/u);
   });
 
   it('refuses a name longer than 255 characters', async () => {

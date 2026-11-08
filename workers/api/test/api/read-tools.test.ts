@@ -13,7 +13,7 @@ import {
   unofferedTools,
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
-import { MCP_TOOLS } from '../../src/mcp/server.ts';
+import { MCP_TOOLS, taskServer } from '../../src/mcp/server.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
@@ -82,7 +82,13 @@ describe('tools/list', () => {
       }),
     );
     const { result } = (await response.json()) as {
-      result: { tools: { name: string; inputSchema: { required: string[] }; annotations: object }[] };
+      result: {
+        tools: {
+          name: string;
+          inputSchema: { properties: object; required: string[] };
+          annotations: object;
+        }[];
+      };
     };
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'list_workspaces',
@@ -102,11 +108,15 @@ describe('tools/list', () => {
       'remove_dependency',
       'request_human_approval',
       'close_task',
+      'report_delivery',
       'list_fields',
       'define_field',
       'retire_field',
     ]);
-    for (const tool of result.tools.slice(2)) expect(tool.inputSchema.required[0], tool.name).toBe('workspace');
+    for (const tool of result.tools.slice(2)) {
+      expect(tool.inputSchema.properties, tool.name).toHaveProperty('workspace');
+      expect(tool.inputSchema.required, tool.name).not.toContain('workspace');
+    }
     const reads = [
       'list_workspaces',
       'get_task_guide',
@@ -183,13 +193,38 @@ describe('list_workspaces and get_task_guide', () => {
 });
 
 describe('the workspace and scope of a call', () => {
-  it('refuses a call that names no workspace, or another one', async () => {
-    expect(await refusal(target, 'list_projects', {})).toBe(
-      'invalid arguments: workspace (a workspaceId from list_workspaces)',
-    );
+  it("acts in the sender's only workspace when the call names none, and refuses another one", async () => {
+    const named = await callTool<{ projects: unknown[] }>(target, 'list_projects', { workspace: WORKSPACE.id });
+    expect(await callTool(target, 'list_projects', {})).toEqual(named);
+    expect(named.value?.projects).toContainEqual(expect.objectContaining({ projectId: project.id }));
     expect(await refusal(target, 'list_projects', { workspace: 'elsewhere' })).toBe(
       'refused: workspace elsewhere is not one of yours; list_workspaces lists yours.',
     );
+  });
+
+  it('refuses a call that names no workspace from a sender who reaches several, listing them', async () => {
+    const other = Object.freeze({ id: 'workspace-two', name: 'Second workspace' });
+    const reach = (workspace: typeof WORKSPACE) => ({
+      workspace,
+      role: null,
+      scopes: READER.scopes,
+      projects: 'all' as const,
+    });
+    let ran = 0;
+    const server = taskServer([reach(WORKSPACE), reach(other)], async () => {
+      ran += 1;
+      return { ok: true, value: {} };
+    });
+    const refused = await server.call('list_projects', {}).then(
+      () => null,
+      (error: unknown) => (error as Error).message,
+    );
+    expect(refused).toMatch(/^invalid arguments: workspace /u);
+    for (const workspace of [WORKSPACE, other]) expect(refused).toContain(`${workspace.id} (${workspace.name})`);
+    expect(refused).toMatch(/\nNothing was written; retrying is safe\.$/u);
+    expect(ran).toBe(0);
+    await server.call('list_projects', { workspace: other.id });
+    expect(ran).toBe(1);
   });
 
   it('refuses a sender without the read scope, naming what they hold', async () => {
@@ -205,13 +240,14 @@ describe('the workspace and scope of a call', () => {
 });
 
 describe('list_projects', () => {
-  it('lists each project with its id, key, name and prefix', async () => {
-    const { projects } = await read<{ projects: Record<string, string>[] }>(target, 'list_projects');
+  it('lists each project with its id, key, name, prefix and whether it deploys', async () => {
+    const { projects } = await read<{ projects: Record<string, unknown>[] }>(target, 'list_projects');
     expect(projects).toContainEqual({
       projectId: project.id,
       key: project.key,
       name: project.name,
       prefix: project.prefix,
+      deploys: false,
     });
   });
 });
@@ -295,7 +331,7 @@ describe('list_tasks', () => {
   it('refuses arguments it does not take, in the words NoticeOS used', async () => {
     const refused = (args: Record<string, unknown>) =>
       refusal(target, 'list_tasks', { workspace: WORKSPACE.id, ...args });
-    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown colour');
+    expect(await refused({ colour: 'red' })).toBe('invalid arguments: unknown argument colour');
     expect(await refused({ status: ['done'] })).toBe('invalid arguments: status');
     expect(await refused({ limit: 500 })).toBe('invalid arguments: limit (1–200)');
     expect(await refused({ closed_days: 57 })).toBe('invalid arguments: closed_days (1–56)');
@@ -310,11 +346,11 @@ describe('list_tasks', () => {
     ]) {
       expect(await refused({ [name!]: value }), value).toBe(`invalid arguments: ${name} (YYYY-MM-DD or an ISO time)`);
     }
-    expect(await refused({ project: 'no such project' })).toBe(
-      'invalid arguments: project (a projectId from list_projects)',
+    expect(await refused({ project: '' })).toBe(
+      'invalid arguments: project (a projectId, key or prefix from list_projects)',
     );
     expect(await refused({ project: 'missing' })).toBe(
-      'refused: projectId missing names no project in this workspace; list_projects lists the current projectIds.',
+      "refused: project missing names no project in this workspace; list_projects lists each one's projectId, key and prefix.",
     );
   });
 });
@@ -345,6 +381,43 @@ describe('get_task', () => {
     expect(JSON.parse(answer.proposal)[0]).toBe(ids.child);
   });
 
+  it("lists an epic's open children with who holds each, for which helper, and their last activity", async () => {
+    const own = await newProject(engine);
+    const epic = (await engine.createTask(own.id, { title: 'Rebuild the pages', type: 'epic' }, OWNER)).task;
+    const child = async (title: string) => (await engine.createTask(own.id, { title, parentId: epic.id }, OWNER)).task;
+    const held = await child('Rebuild the home page');
+    const waiting = await child('Rebuild the pricing page');
+    const done = await child('Rebuild the about page');
+    time.advance(3);
+    const claimedAt = time.now();
+    await engine.writeTask(
+      own.id,
+      held.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress', assigneeFor: 'page-rebuild-2' } },
+      AGENT,
+    );
+    await engine.writeTask(
+      own.id,
+      done.id,
+      { expectedVersion: 1, close: { reason: 'Merged.', resolution: 'done' } },
+      OWNER,
+    );
+
+    const answer = await read<{ openChildren: unknown[] }>(target, 'get_task', { project: own.id, task: epic.id });
+    expect(answer.openChildren).toEqual([
+      {
+        id: held.id,
+        title: held.title,
+        status: 'in_progress',
+        assignee: AGENT.name,
+        for: 'page-rebuild-2',
+        lastActivityAt: claimedAt,
+      },
+      { id: waiting.id, title: waiting.title, status: 'open', assignee: null, for: null, lastActivityAt: null },
+    ]);
+    expect(await read(target, 'get_task', { project: own.id, task: held.id })).not.toHaveProperty('openChildren');
+  });
+
   it('marks a ready task labelled human as waiting on a person', async () => {
     const answer = await read<{ task: Record<string, unknown> }>(target, 'get_task', {
       project: project.id,
@@ -371,6 +444,28 @@ describe('get_task', () => {
     );
     expect(await refusal(target, 'get_task', { workspace: WORKSPACE.id, project: project.id, task: 'Not An Id' })).toBe(
       'invalid arguments: task (a task id such as abc-1x2)',
+    );
+  });
+
+  it('reads a task by its id alone, or in a project named by its key or prefix', async () => {
+    for (const named of [{}, { project: project.key }, { project: project.prefix }]) {
+      const answer = await read<{ project: string; task: { id: string } }>(target, 'get_task', {
+        task: ids.child,
+        ...named,
+      });
+      expect(answer, JSON.stringify(named)).toMatchObject({ project: project.key, task: { id: ids.child } });
+    }
+  });
+
+  it('names the argument a misnamed one most likely means', async () => {
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'get_task', { workspace: WORKSPACE.id, ...args });
+    expect(await refused({ id: ids.child })).toBe('invalid arguments: unknown argument id; this tool takes task');
+    expect(await refused({ task: ids.child, projectId: project.id })).toBe(
+      'invalid arguments: unknown argument projectId; this tool takes project',
+    );
+    expect(await refusal(target, 'get_task', { workspace_id: WORKSPACE.id, task: ids.child })).toBe(
+      'invalid arguments: unknown argument workspace_id; this tool takes workspace',
     );
   });
 });
@@ -428,14 +523,21 @@ describe('a sender granted some projects', () => {
     expect(every.tasks.map((task) => task.id)).toContain(ids.child);
     expect(every.total).toBe(every.tasks.length);
 
-    const missing = `refused: projectId ${other.id} names no project in this workspace; list_projects lists the current projectIds.`;
+    const missing = `refused: project ${other.id} names no project in this workspace; list_projects lists each one's projectId, key and prefix.`;
     expect(await refusal(granted, 'list_tasks', { workspace: WORKSPACE.id, project: other.id })).toBe(missing);
+    expect(await refusal(granted, 'list_tasks', { workspace: WORKSPACE.id, project: other.prefix })).toBe(
+      missing.replace(other.id, other.prefix),
+    );
     expect(
       await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
     ).toBe(missing);
     expect(
       await refusal(granted, 'get_task_history', { workspace: WORKSPACE.id, project: other.id, task: ids.elsewhere }),
     ).toBe(missing);
+    // Named by its id alone, the task's prefix names a project the sender cannot reach: one that does not exist.
+    const unreached = await refusal(granted, 'get_task', { workspace: WORKSPACE.id, task: ids.elsewhere });
+    const nowhere = await refusal(granted, 'get_task', { workspace: WORKSPACE.id, task: 'nowhere-a1' });
+    expect(unreached.replace(ids.elsewhere!, 'nowhere-a1').replace(other.prefix, 'nowhere')).toBe(nowhere);
     // A task from a project the sender cannot reach is not traced to that project.
     expect(
       await refusal(granted, 'get_task', { workspace: WORKSPACE.id, project: project.id, task: ids.elsewhere }),

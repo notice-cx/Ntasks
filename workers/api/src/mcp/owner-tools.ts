@@ -5,42 +5,15 @@
  * there). owner-answers.ts and agent-stats.ts hold their rules.
  */
 import { TASK_LIMITS } from '@ntasks/domain';
-import { choiceArg, keyArg, modelArg, only, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
+import { choiceArg, detailArg, modelArg, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { SCOPES } from '../auth.ts';
 import { TASK_CHOICE_KEYS } from '../noticeos-fields.ts';
-import {
-  isOwnerAnswer,
-  MAINTENANCE_ACTIONS,
-  NOT_RECORDED,
-  reconcileTask,
-  seen,
-  type TaskMaintenance,
-} from '../owner-answers.ts';
-import { Refused } from '../refused.ts';
-import { mcpTask, PROPOSAL_VERSION } from '../views.ts';
+import { MAINTENANCE_ACTIONS, reconcileTask, seen, type TaskMaintenance } from '../owner-answers.ts';
+import { mcpTask, PROPOSAL_VERSION, writtenView } from '../views.ts';
+import { projectFor } from './project.ts';
 import { PROJECT, READ, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
-import { IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
-
-/** The arguments reconcile_task takes. */
-const RECONCILE_ARGS = [
-  'project',
-  'task',
-  'action',
-  'proposal_version',
-  'option',
-  'quote',
-  'source',
-  'explanation',
-  'evidence',
-  'duplicate_of',
-  'holder',
-  'inactive',
-  'activity_check',
-  'progress',
-  'model',
-  'idempotency_key',
-] as const;
+import { DETAIL, IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
 
 /** An object with the keys whose value is undefined left out, in the order given. */
 function defined<T extends object>(row: T): T {
@@ -78,7 +51,7 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
   description:
     'Record an answer the owner gave you in conversation, or maintain a human request with evidence. Read get_task first. ' +
     'An answer: action answer (declined or owner_performed on an approval), proposal_version (the proposalVersion get_task returned for the proposal you showed the owner), quote (their exact words), source (where they said it) and, on a task with choices, the option they chose. ' +
-    'Nothing reads the quote: name the option yourself. It is recorded as relayed by you; the owner can dispute a relayed approval, which reopens it. A refusal names the argument at fault and records nothing. ' +
+    'Nothing reads the quote: name the option yourself. It is recorded as relayed by you; the owner can dispute a relayed approval, which reopens it. A refusal names the argument at fault. ' +
     'Maintenance, with explanation and evidence: completed, obsolete, superseded or duplicate (with duplicate_of) retires a request; routine takes off the human label; release frees an assignment whose holder stopped. ' +
     'Retirement grants no permission; production reads/writes, spending, messages, destructive actions and material commitments still require explicit action-specific approval.',
   inputSchema: schema(
@@ -142,26 +115,25 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
       },
       model: MODEL,
       idempotency_key: IDEMPOTENCY,
+      detail: DETAIL,
     },
-    ['project', 'task', 'action', 'proposal_version', 'idempotency_key'],
+    ['task', 'action', 'proposal_version'],
   ),
   annotations: WRITE,
   scope: SCOPES.write,
   async run(context: ToolContext, args: Args) {
-    const answering = MAINTENANCE_ACTIONS.some((action) => action === args.action && isOwnerAnswer(action));
-    try {
-      only(args, RECONCILE_ARGS);
-      const operation = maintenanceOf(args);
-      const projectId = projectArg(args);
-      keyArg(args);
-      const { result } = await reconcileTask(context, projectId, operation, retryRequest('reconcile_task', args));
-      return { task: mcpTask(await seen(context, result.task)), replayed: result.replayed };
-    } catch (error) {
-      // An owner answer's refusal says so, whatever refused it.
-      if (answering && error instanceof Refused && !error.message.endsWith(NOT_RECORDED))
-        throw new Refused(error.kind, `${error.message} ${NOT_RECORDED}`, error.detail, error.field);
-      throw error;
-    }
+    const operation = maintenanceOf(args);
+    const detail = detailArg(args);
+    const retry = await retryRequest(context, 'reconcile_task', args);
+    const projectId = await projectFor(context, args, operation.taskId);
+    const { result } = await reconcileTask(context, projectId, operation, retry);
+    const task = await seen(context, result.task);
+    return detail === 'full'
+      ? { task: mcpTask(task), replayed: result.replayed }
+      : {
+          ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman', 'answer']),
+          replayed: result.replayed,
+        };
   },
 });
 
@@ -170,12 +142,11 @@ export const GET_AGENT_STATS: TaskTool = Object.freeze({
   description:
     'Agent work statistics grouped by model: current and blocked counts, closes in 7 days and the 7 before, eight weeks of velocity, ranking and leaders. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
   inputSchema: schema({
-    project: { ...PROJECT, description: 'The projectId from list_projects; omit for workspace totals.' },
+    project: { ...PROJECT, description: 'The projectId, key or prefix from list_projects; omit for workspace totals.' },
   }),
   annotations: READ,
   scope: SCOPES.read,
   async run(context: ToolContext, args: Args) {
-    only(args, ['project']);
     return agentStats(context, args.project === undefined ? undefined : projectArg(args));
   },
 });

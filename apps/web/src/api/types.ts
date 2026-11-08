@@ -5,7 +5,7 @@
  * Statuses, types and link types stay strings here: a value this build has
  * never seen is drawn as itself instead of breaking the page.
  */
-import type { TaskResolution } from '@ntasks/domain';
+import type { TaskResolution, TaskWork } from '@ntasks/domain';
 
 /** Option keys, in the order options are shown. */
 export const TASK_CHOICE_KEYS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
@@ -100,6 +100,19 @@ export interface ProjectFields {
 /** A board's filter by custom field: each field's key and the one value a task must hold, as the address writes it. */
 export type FieldFilters = Readonly<Record<string, string>>;
 
+/** Where a closed task's change is, as the server records it. */
+export interface TaskDelivery {
+  /** `built`, `merged`, `live`, or a stage this build does not know. */
+  stage: string;
+  commit: string | null;
+  /** The pull request's URL. */
+  pullRequest: string | null;
+  mergeCommit: string | null;
+  builtAt: string;
+  mergedAt: string | null;
+  liveAt: string | null;
+}
+
 /** One task, as a board row and a task page read it. */
 export interface LiveTask {
   id: string;
@@ -158,6 +171,14 @@ export interface LiveTask {
   closedModel?: string | null;
   /** The model the assignee named when they claimed the task, when the server sends it. */
   assigneeModel?: string | null;
+  /** Where a closed task's change is; null when it has none. */
+  delivery?: TaskDelivery | null;
+  /** The helper agent the assignee works through, shown as `claude for page-rebuild-2`, when the server sends it. */
+  for?: string | null;
+  /** What the assignee recorded about the work in hand, such as its branch and next step, when the server sends it. */
+  work?: TaskWork;
+  /** When the assignee last changed or commented on the task, when the server sends it. */
+  lastActivityAt?: string | null;
 }
 
 /** An epic with its all-time child progress. */
@@ -255,6 +276,8 @@ export interface TaskProject {
   logicalKey: string;
   displayName: string;
   prefix: string;
+  /** Its changes go live by a deploy, when the server says; merged is its tasks' last stage otherwise. */
+  deploys?: boolean;
 }
 
 /** A new task. */

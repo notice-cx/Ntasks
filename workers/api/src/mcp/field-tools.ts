@@ -5,12 +5,12 @@
  * list_tasks filters by them.
  */
 import { FIELD_TYPES, TASK_LIMITS, type DefineFieldInput, type FieldType } from '@ntasks/domain';
-import { keyArg, only, projectArg, type Args } from '../args.ts';
+import { modelArg, projectArg, type Args } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import { defineField, fieldsOf, retireField } from '../task-writes.ts';
 import { fieldView } from '../views.ts';
 import { PROJECT, READ, schema, type TaskTool } from './read-tools.ts';
-import { IDEMPOTENCY, retryRequest, WRITE } from './write-tools.ts';
+import { IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
 
 const FIELD_KEY = Object.freeze({
   type: 'string',
@@ -28,7 +28,6 @@ export const FIELD_TOOLS: readonly TaskTool[] = Object.freeze([
     annotations: READ,
     scope: SCOPES.read,
     async run(context, args) {
-      only(args, ['project']);
       const { project, fields } = await fieldsOf(context, projectArg(args));
       return { project: project.key, fields: fields.map(fieldView) };
     },
@@ -57,16 +56,17 @@ export const FIELD_TOOLS: readonly TaskTool[] = Object.freeze([
           items: { type: 'string', maxLength: TASK_LIMITS.fieldOption },
           description: 'For a single-choice or multiple-choice field: its options, in order, none twice.',
         },
+        model: MODEL,
         idempotency_key: IDEMPOTENCY,
       },
-      ['project', 'key', 'name', 'type', 'idempotency_key'],
+      ['project', 'key', 'name', 'type'],
     ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
-      only(args, ['project', 'key', 'name', 'type', 'options', 'idempotency_key']);
       const projectId = projectArg(args);
-      keyArg(args);
+      const model = modelArg(args);
+      const retry = await retryRequest(context, 'define_field', args);
       // The engine checks each part and names the one at fault.
       const input: DefineFieldInput = {
         key: args.key as string,
@@ -74,7 +74,7 @@ export const FIELD_TOOLS: readonly TaskTool[] = Object.freeze([
         type: args.type as FieldType,
         ...(args.options === undefined ? {} : { options: args.options as string[] }),
       };
-      const { field, replayed } = await defineField(context, projectId, input, retryRequest('define_field', args));
+      const { field, replayed } = await defineField(context, projectId, input, retry, model);
       return { field: fieldView(field), replayed };
     },
   },
@@ -83,23 +83,17 @@ export const FIELD_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Retire a custom field: it takes no new values. Tasks keep the values they carry, and their history keeps ' +
       'every change. Retiring a retired field changes nothing.',
-    inputSchema: schema({ project: PROJECT, field: FIELD_KEY, idempotency_key: IDEMPOTENCY }, [
+    inputSchema: schema({ project: PROJECT, field: FIELD_KEY, model: MODEL, idempotency_key: IDEMPOTENCY }, [
       'project',
       'field',
-      'idempotency_key',
     ]),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args: Args) {
-      only(args, ['project', 'field', 'idempotency_key']);
       const projectId = projectArg(args);
-      keyArg(args);
-      const { field, replayed } = await retireField(
-        context,
-        projectId,
-        args.field as string,
-        retryRequest('retire_field', args),
-      );
+      const model = modelArg(args);
+      const retry = await retryRequest(context, 'retire_field', args);
+      const { field, replayed } = await retireField(context, projectId, args.field as string, retry, model);
       return { field: fieldView(field), replayed };
     },
   },

@@ -71,6 +71,8 @@ export interface TasksApi {
   /** One project's board: unfinished tasks and the last week's closes; with
    * `fields`, only the tasks holding each value. */
   board(project: string, signal?: AbortSignal, fields?: FieldFilters): Promise<LiveTasksPayload>;
+  /** One project's closed tasks whose change is built or merged, whenever they closed. */
+  delivery(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
   /** The project's custom fields, retired ones included. */
   fields(project: string, signal?: AbortSignal): Promise<ProjectFields>;
@@ -104,6 +106,8 @@ export interface TasksApi {
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Only the workspace's owners may create a project. */
   createProject(input: NewProject, options?: WriteOptions): Promise<void>;
+  /** Says whether a project's changes go live by a deploy: an owner's setting. */
+  setDeploys(project: string, deploys: boolean): Promise<void>;
   /** The workspace's members and pending invitations; only its owners may read them. */
   members(signal?: AbortSignal): Promise<WorkspaceMembers>;
   /** Invite a GitHub account: it joins the workspace when it first signs in. */
@@ -232,6 +236,7 @@ function readProjects(payload: unknown): readonly TaskProject[] {
         logicalKey: row.logicalKey,
         displayName: row.displayName,
         prefix: row.prefix,
+        ...(typeof row.deploys === 'boolean' ? { deploys: row.deploys } : {}),
       });
     }),
   );
@@ -426,6 +431,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     capabilities: (signal) => scope().capabilities(signal),
     projects: (signal) => scope().projects(signal),
     board: (project, signal, fields) => scope().board(project, signal, fields),
+    delivery: (project, signal) => scope().delivery(project, signal),
     task: (id, project, signal) => scope().task(id, project, signal),
     fields: (project, signal) => scope().fields(project, signal),
     changes: (after, signal) => scope().changes(after, signal),
@@ -439,6 +445,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     dispute: (id, project) => scope().dispute(id, project),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
     createProject: (input, options) => scope().createProject(input, options),
+    setDeploys: (project, deploys) => scope().setDeploys(project, deploys),
     members: (signal) => scope().members(signal),
     invite: (input, options) => scope().invite(input, options),
     revokeInvitation: (invitationId, options) => scope().revokeInvitation(invitationId, options),
@@ -526,6 +533,10 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       for (const [key, value] of Object.entries(fields)) params.append(`field.${key}`, value);
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
     },
+    async delivery(project, signal) {
+      const params = new URLSearchParams({ project: await projectId(project, signal), stage: 'built,merged' });
+      return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
+    },
     async fields(project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return readFields(await read<unknown>(`/api/fields?${params}`, `The fields of ${project}`, signal), project);
@@ -607,6 +618,9 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async createProject({ name, prefix }, options) {
       await write('POST', '/api/tasks/projects', { name, prefix }, 'The new project', options);
+    },
+    async setDeploys(project, deploys) {
+      await write('PATCH', '/api/tasks/projects', { projectId: await projectId(project), deploys }, project);
     },
     async members(signal) {
       return readMembers(await read<unknown>('/api/access/members', 'The member list', signal));
