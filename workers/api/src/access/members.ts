@@ -105,10 +105,10 @@ export async function acceptInvitations(db: D1Database, userId: string, login: s
   ]);
 }
 
-/** Whether the setup page recorded this GitHub account, by its numeric id, as a deployment admin. */
+/** Whether the setup page recorded this GitHub account, by its numeric id, as the deployment admin: it created the stored app. */
 export async function isRecordedAdmin(db: D1Database, githubId: string): Promise<boolean> {
   const row = await db
-    .prepare('SELECT 1 AS found FROM access_deployment_admins WHERE github_id = ?')
+    .prepare('SELECT 1 AS found FROM access_github_app WHERE admin_github_id = ?')
     .bind(githubId)
     .first();
   return row !== null;

@@ -25,10 +25,7 @@ function onlyAuthSecret(secret = SECRET): Env {
 }
 
 afterEach(async () => {
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM access_github_app'),
-    env.DB.prepare('DELETE FROM access_deployment_admins'),
-  ]);
+  await env.DB.prepare('DELETE FROM access_github_app').run();
 });
 
 async function storedApps(): Promise<{ origin: string; credentials: string }[]> {
@@ -40,10 +37,10 @@ async function storedApps(): Promise<{ origin: string; credentials: string }[]> 
 }
 
 async function recordedAdmins(): Promise<string[]> {
-  const rows = await env.DB.prepare('SELECT github_id FROM access_deployment_admins ORDER BY github_id').all<{
-    github_id: string;
+  const rows = await env.DB.prepare('SELECT admin_github_id FROM access_github_app').all<{
+    admin_github_id: string;
   }>();
-  return rows.results.map((row) => row.github_id);
+  return rows.results.map((row) => row.admin_github_id);
 }
 
 function unescape(html: string): string {
@@ -238,7 +235,7 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect(await recordedAdmins()).toEqual([winner]);
   });
 
-  it('shows the setup page again after AUTH_SECRET changes, behind the new one, and keeps recorded admins', async () => {
+  it('shows the setup page again after AUTH_SECRET changes, behind the new one, and its run replaces the admin', async () => {
     await setUp(5011);
     const rotated = onlyAuthSecret(ROTATED_SECRET);
     const browser = new Browser({ bindings: rotated, joinTestWorkspace: false });
@@ -247,13 +244,18 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect((await browser.fetch('/sign-in', { form: { action: 'github' } })).status).toBe(503);
     const oldSecret = await browser.fetch('/sign-in', { form: { action: 'setup', auth_secret: SECRET } });
     expect(oldSecret.status).toBe(403);
+    expect(await recordedAdmins()).toEqual(['5011']);
 
     await setUp(5012, rotated, ROTATED_SECRET);
     expect(await storedApps()).toHaveLength(1);
-    expect(await recordedAdmins()).toEqual(['5011', '5012']);
+    expect(await recordedAdmins()).toEqual(['5012']);
     const earlierAdmin = new Browser({ bindings: rotated, joinTestWorkspace: false });
-    expect((await signIn(earlierAdmin, 5011)).pathname).toBe('/');
-    expect(await (await earlierAdmin.me()).json()).toMatchObject({ deploymentAdmin: true });
+    const refused = await signIn(earlierAdmin, 5011);
+    expect(refused.pathname).toBe('/sign-in');
+    expect(refused.searchParams.get('error')).toBe('not_invited');
+    const newAdmin = new Browser({ bindings: rotated, joinTestWorkspace: false });
+    expect((await signIn(newAdmin, 5012)).pathname).toBe('/');
+    expect(await (await newAdmin.me()).json()).toMatchObject({ deploymentAdmin: true });
   });
 });
 

@@ -123,7 +123,7 @@ acts:
 |---|---|
 | `GET /sign-in` | Shows the setup page only while sign-in is off and `AUTH_SECRET` is valid; otherwise the sign-in page or `503`. |
 | `POST /sign-in` with `action=setup` | The request's origin is `https` or local (else `400`), its `Origin` header is that origin (else `403`), sign-in is not set up (else `409`), the address has made fewer than about 3 attempts this minute (`REGISTER_ADDRESS_LIMIT`, under keys of its own; else `429`), and the `auth_secret` field equals `AUTH_SECRET`, compared in constant time through SHA-256 hashes (else `403`). Then it sets the setup cookie, `__Host-ntasks.setup` (`HttpOnly`, `Secure`, `SameSite=Lax`, 10 minutes; `ntasks.setup` without `Secure` at a local `http` origin), to a random value, and answers with a form that posts the manifest to GitHub, with the state in its address. Its one inline script, allowed by a nonce in its content security policy, submits that form. |
-| `GET /sign-in` with `code` and `state`, GitHub's return | The origin as above, sign-in is not set up (else `409`), and the state: an expiry within 10 minutes and an HMAC-SHA-256 under `AUTH_SECRET` of the origin, the setup cookie's value and the expiry, compared in constant time (else `400`). The cookie's value is never in the state or an address, so a state works only in the browser that started it. Every answer deletes the cookie, so a state works once. Then it exchanges the code at `POST https://api.github.com/app-manifests/{code}/conversions` (else `502`), and stores the app and the admin in one batch that writes only while no other setup has stored an app (else `409`). |
+| `GET /sign-in` with `code` and `state`, GitHub's return | The origin as above, sign-in is not set up (else `409`), and the state: an expiry within 10 minutes and an HMAC-SHA-256 under `AUTH_SECRET` of the origin, the setup cookie's value and the expiry, compared in constant time (else `400`). The cookie's value is never in the state or an address, so a state works only in the browser that started it. Every answer deletes the cookie, so a state works once. Then it exchanges the code at `POST https://api.github.com/app-manifests/{code}/conversions` (else `502`), and stores the app with its owner as the admin in one statement that writes only while no other setup has stored an app (else `409`). |
 
 The `SIGN_IN_LIMIT` of every sign-in path applies to each step as well.
 
@@ -132,13 +132,15 @@ JSON value, encrypted with XChaCha20-Poly1305 (Better Auth's
 `symmetricEncrypt`, which also encrypts stored GitHub tokens) under a key
 derived from `AUTH_SECRET` by HMAC-SHA-256 for this use alone; the row holds
 neither in plain text. The conversion's private key and webhook secret are
-not stored. The admin is the app's owner, the GitHub account that created
-the app, recorded by numeric id in `access_deployment_admins`.
+not stored. The admin the setup records is the app's owner, the GitHub
+account that created the app, by numeric id in the same row
+(`admin_github_id`). The setup records one admin, and the ids in
+`OWNER_GITHUB_IDS` are admins beside it.
 
 **A second run.** Once sign-in is set up, by the setup page or by the GitHub
 secrets, `/sign-in` shows the sign-in page, and both setup requests answer
-`409` and change nothing. The table holds one row, and the batch stores an
-app only while the row is the one the setup read (none, or one that no
+`409` and change nothing. The table holds one row, and the statement stores
+an app only while the row is the one the setup read (none, or one that no
 longer decrypts), so of two setups that finish at once one stores its app
 and admin and the other answers `409`.
 
@@ -152,16 +154,19 @@ setup page shows again at `/sign-in`, and accepts only the new
 one; delete the old app on GitHub, under Settings, Developer settings,
 GitHub Apps. Until it runs, nobody signs in and no agent connects or
 refreshes a token; access tokens already issued, until they expire, and
-service credentials keep working. Admins recorded in
-`access_deployment_admins` stay admins, and the account that runs the setup
-again is added to them.
+service credentials keep working, and the admin the earlier setup recorded
+stays an admin. Running the setup again resets the recorded admin to the
+new app's owner, so an account that ran a setup with a leaked `AUTH_SECRET`
+is no longer an admin once you rotate the secret and run the setup
+yourself. Admins in `OWNER_GITHUB_IDS` stay admins.
 
 ### Moving to another address
 
 The stored app is bound to the origin the setup ran at. To serve sign-in at
 another address, such as a custom domain, delete the stored app with
 `pnpm --filter @ntasks/api exec wrangler d1 execute DB --remote --command "DELETE FROM access_github_app"`,
-then run the setup page at the new address. Recorded admins stay admins.
+then run the setup page at the new address; deleting the app also deletes
+the admin it recorded, and the new app's owner becomes the admin.
 Alternatively, set the three GitHub secrets for the new address.
 
 ### A GitHub OAuth app registered by hand
@@ -363,7 +368,7 @@ Each of these takes effect at the caller's next request.
 | An agent | `POST /api/access/agents/<client id>/revoke`, signed in as the person who approved it. Its project grants in every workspace and the person's consent are deleted, and its access and refresh tokens are marked revoked. |
 | A service | `POST /api/access/services/<credential id>/revoke`, signed in as the owner of the credential's workspace, naming that workspace when they belong to several. |
 | A person, from one workspace | `POST /api/access/members/<user id>/remove`, signed in as an owner of the workspace ([above](#members-and-invitations)). Their session and their agents stop reaching it. |
-| A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. When the setup page recorded them as an admin, delete their row with `pnpm --filter @ntasks/api exec wrangler d1 execute DB --remote --command "DELETE FROM access_deployment_admins WHERE github_id = '<id>'"`. Their sessions and the agents they approved are refused. |
+| A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. When they are the admin the setup page recorded, [change `AUTH_SECRET`](#changing-auth_secret) and run the setup page again with another GitHub account. Their sessions and the agents they approved are refused. |
 | One token, from the agent itself | `POST /api/auth/oauth2/revoke` ([RFC 7009](https://www.rfc-editor.org/rfc/rfc7009)). |
 
 ## Routes
@@ -465,8 +470,7 @@ its sentence in `message` instead of `detail`.
 | `access_agent_grants` | The projects each agent may reach for the person who approved it: `user_id`, `client_id`, `workspace_id`, `project_id`, `access` and `created_at` |
 | `access_service_credentials`, `access_service_grants` | Service credentials, each in one workspace (`workspace_id`), with the SHA-256 of each secret, the backup and restore choices, and their projects. A name is unique within its workspace. |
 | `access_registration_days` | How many agents registered on each UTC day, for the daily registration budget |
-| `access_github_app` | The GitHub App the setup page registered: one row, with the `origin` the setup ran at, the app's client ID and client secret as `credentials`, encrypted under a key derived from `AUTH_SECRET`, and `created_at` |
-| `access_deployment_admins` | The deployment admins the setup page recorded: `github_id`, the numeric id of the account that created the app, and `created_at` |
+| `access_github_app` | The GitHub App the setup page registered: one row, with the `origin` the setup ran at, the app's client ID and client secret as `credentials`, encrypted under a key derived from `AUTH_SECRET`, `admin_github_id`, the numeric id of the account that created the app and the admin the setup recorded, and `created_at` |
 
 These tables are in D1; the tasks and projects are in the workspaces' task
 stores, Durable Objects each with its own database. A task store holds no

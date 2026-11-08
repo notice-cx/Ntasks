@@ -180,7 +180,7 @@ function isAdmin(secrets: Secrets, recorded: number, githubIds: string | null): 
 function personColumns(user: string): string {
   return `(SELECT json_group_array(a.account_id) FROM auth_account a
            WHERE a.user_id = ${user} AND a.provider_id = 'github') AS github_ids,
-         EXISTS (SELECT 1 FROM auth_account a JOIN access_deployment_admins d ON d.github_id = a.account_id
+         EXISTS (SELECT 1 FROM auth_account a JOIN access_github_app g ON g.admin_github_id = a.account_id
            WHERE a.user_id = ${user} AND a.provider_id = 'github') AS recorded_admin,
          (SELECT origin FROM access_github_app) AS stored_origin`;
 }

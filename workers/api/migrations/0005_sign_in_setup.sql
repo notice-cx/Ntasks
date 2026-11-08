@@ -2,7 +2,7 @@
 
 -- The setup page on /sign-in: a deployment that sets no GitHub secrets
 -- registers a GitHub App from a manifest there, and keeps it here.
--- docs/sign-in.md describes the setup and these tables.
+-- docs/sign-in.md describes the setup and this table.
 
 -- The GitHub App people sign in through. One row: a deployment signs in
 -- through one app, and two setups that finish at once store one of them.
@@ -15,13 +15,11 @@ CREATE TABLE access_github_app (
   -- derived from AUTH_SECRET. After AUTH_SECRET changes it no longer
   -- decrypts, and the setup page replaces the row.
   credentials TEXT NOT NULL,
+  -- The numeric GitHub id of the account that created the app: a deployment
+  -- admin beside the ids in OWNER_GITHUB_IDS. A new setup replaces it with
+  -- the new app's owner.
+  admin_github_id TEXT NOT NULL CHECK (
+    length(admin_github_id) BETWEEN 1 AND 20 AND admin_github_id NOT GLOB '*[^0-9]*'
+  ),
   created_at TEXT NOT NULL
 ) STRICT;
-
--- The deployment admins the setup page recorded: the GitHub account that
--- registered the app, by its numeric id. They are admins beside the ids in
--- OWNER_GITHUB_IDS, and stay admins when the app is replaced.
-CREATE TABLE access_deployment_admins (
-  github_id TEXT PRIMARY KEY CHECK (length(github_id) BETWEEN 1 AND 20 AND github_id NOT GLOB '*[^0-9]*'),
-  created_at TEXT NOT NULL
-) STRICT, WITHOUT ROWID;

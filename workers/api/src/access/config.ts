@@ -161,11 +161,14 @@ export async function storedOrigin(db: D1Database): Promise<string | null> {
 }
 
 /**
- * Stores the app the setup registered, and records the GitHub account that
- * registered it as a deployment admin, in one batch. It writes only while
- * the stored app is still `stale`, the one this setup found (null for
- * none), so of two setups that finish at once one stores its app and the
- * other writes nothing. False when this one wrote nothing.
+ * Stores the app the setup registered, with the GitHub account that
+ * registered it as the deployment admin the setup records, in one
+ * statement. Replacing an app replaces that admin too, so an account that
+ * ran an earlier setup, perhaps with a leaked AUTH_SECRET, is no admin after
+ * the next one. It writes only while the stored app is still `stale`, the
+ * one this setup found (null for none), so of two setups that finish at once
+ * one stores its app and the other writes nothing. False when this one wrote
+ * nothing.
  */
 export async function storeGitHubApp(
   db: D1Database,
@@ -177,24 +180,14 @@ export async function storeGitHubApp(
     key: await credentialsKey(secrets.secret),
     data: JSON.stringify({ clientId: app.github.clientId, clientSecret: app.github.clientSecret }),
   });
-  const now = new Date().toISOString();
-  const [stored] = await db.batch([
-    db
-      .prepare(
-        `INSERT INTO access_github_app (id, origin, credentials, created_at) VALUES (1, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET origin = excluded.origin, credentials = excluded.credentials,
-           created_at = excluded.created_at
-         WHERE access_github_app.credentials IS ?`,
-      )
-      .bind(app.origin, credentials, now, stale),
-    // Encryption draws a new nonce each time, so the credentials match only the row this batch wrote.
-    db
-      .prepare(
-        `INSERT INTO access_deployment_admins (github_id, created_at)
-         SELECT ?, ? WHERE EXISTS (SELECT 1 FROM access_github_app WHERE credentials = ?)
-         ON CONFLICT (github_id) DO NOTHING`,
-      )
-      .bind(app.adminGithubId, now, credentials),
-  ]);
-  return stored?.meta.changes === 1;
+  const stored = await db
+    .prepare(
+      `INSERT INTO access_github_app (id, origin, credentials, admin_github_id, created_at) VALUES (1, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET origin = excluded.origin, credentials = excluded.credentials,
+         admin_github_id = excluded.admin_github_id, created_at = excluded.created_at
+       WHERE access_github_app.credentials IS ?`,
+    )
+    .bind(app.origin, credentials, app.adminGithubId, new Date().toISOString(), stale)
+    .run();
+  return stored.meta.changes === 1;
 }
