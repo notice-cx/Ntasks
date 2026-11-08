@@ -127,6 +127,14 @@ export function createFixtureTasksApi({
     return { workspaceId, name, role };
   }
 
+  /** A workspace's name as creating and renaming one take it, or the refusal of it. */
+  function workspaceName(name: string): string {
+    const trimmed = name.trim();
+    if (trimmed === '' || trimmed.length > NAME_LIMIT)
+      throw new ApiError(`Name must be 1 to ${NAME_LIMIT} characters.`, 400, 'invalid_request', 'name');
+    return trimmed;
+  }
+
   function project(key: string): TaskProject {
     const found = state.projects.find((row) => row.logicalKey === key);
     if (!found) throw new ApiError(`No project named ${key}.`, 404, 'unknown_project');
@@ -353,12 +361,9 @@ export function createFixtureTasksApi({
       return once(options?.idempotencyKey, ['workspace', name], () => {
         if (!deploymentAdmin)
           throw new ApiError("Only the deployment's admins may create a workspace.", 403, 'forbidden');
-        const trimmed = name.trim();
-        if (trimmed === '' || trimmed.length > NAME_LIMIT)
-          throw new ApiError(`Name must be 1 to ${NAME_LIMIT} characters.`, 400, 'invalid_request', 'name');
         const created: FixtureWorkspace = {
           workspaceId: crypto.randomUUID(),
-          name: trimmed,
+          name: workspaceName(name),
           role: 'owner',
           seed: emptySeed(),
           members: [FIXTURE_USER],
@@ -367,6 +372,15 @@ export function createFixtureTasksApi({
         spaces.push(created);
         return listed(created);
       });
+    },
+    async renameWorkspace(workspaceId, name) {
+      reachServer();
+      const workspace = spaces.find((row) => row.workspaceId === workspaceId);
+      if (!workspace) throw new ApiError('No such workspace.', 404, 'not_found');
+      if (workspace.role !== 'owner')
+        throw new ApiError('Only an owner of this workspace may do this.', 403, 'insufficient_scope');
+      workspace.name = workspaceName(name);
+      return listed(workspace);
     },
     async capabilities() {
       reach();

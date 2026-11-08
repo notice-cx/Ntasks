@@ -22,6 +22,7 @@ const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
 const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
 const ProjectsRoute = lazy(() => import('@/routes/ProjectsRoute'));
 const MembersRoute = lazy(() => import('@/routes/MembersRoute'));
+const SettingsRoute = lazy(() => import('@/routes/SettingsRoute'));
 const DesignRoute = lazy(() => import('@/routes/DesignRoute'));
 
 export { SOURCE_URL };
@@ -55,6 +56,7 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
                 <Route path="tasks/:id" element={<TaskRoute />} />
                 <Route path="projects" element={<ProjectsRoute />} />
                 <Route path="members" element={<MembersRoute />} />
+                <Route path="settings" element={<SettingsRoute />} />
                 <Route path="*" element={<NoPage />} />
               </Route>
             </Route>

@@ -172,6 +172,33 @@ export function avatarMarkSize(avatarSize: number): number {
   return Math.round(avatarSize * AVATAR_MARK_SHARE);
 }
 
+// --- Workspaces -------------------------------------------------------------------
+
+/**
+ * The fills a workspace's icon is drawn on, each with its letter's colour.
+ * Accent, amber, red and green keep their one meaning each, so these are
+ * greys, chosen to stay apart from one another in both themes.
+ */
+export const WORKSPACE_TONES = [
+  'bg-ink text-background',
+  'bg-ink-2 text-background',
+  'bg-ink-3 text-background',
+  'bg-avatar text-avatar-ink',
+] as const;
+
+/**
+ * A workspace's icon: the first letter or digit of its name, uppercase, on
+ * the tone its id picks. The id never changes, so a rename changes the
+ * letter and keeps the tone.
+ */
+export function workspaceMark(workspaceId: string, name: string): { letter: string; tone: string } {
+  const first = /[\p{L}\p{N}]/u.exec(name)?.[0] ?? Array.from(name.trim())[0] ?? '?';
+  let hash = 0;
+  for (let at = 0; at < workspaceId.length; at += 1) hash = Math.imul(hash, 31) + workspaceId.charCodeAt(at);
+  const tone = WORKSPACE_TONES[(hash >>> 0) % WORKSPACE_TONES.length] ?? WORKSPACE_TONES[0];
+  return { letter: Array.from(first.toUpperCase())[0] ?? '?', tone };
+}
+
 // --- Keys -----------------------------------------------------------------------
 
 /** Whether a key press belongs to a text field the person is typing in, or to a dialog, menu or list that takes its own keys, so a page's single-key shortcuts leave it alone. */

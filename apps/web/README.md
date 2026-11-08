@@ -17,6 +17,7 @@ people use over a network. Keep that link in every version of the app.
 | `/tasks/focus` | Your decisions one at a time, each on a card: an option's letter selects it, Enter answers or approves, → skips. |
 | `/projects` | The workspace's projects, each with its prefix and open tasks. An owner creates one with New project (`N`): Name and Prefix, both required. |
 | `/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else sees neither. |
+| `/settings` | The workspace's icon, name and ID, with Copy ID. An owner edits the name and saves it; anyone else reads it. |
 | `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
 
 Every page but the gallery opens in a workspace (`src/components/WorkspaceGate.tsx`):
@@ -29,13 +30,14 @@ in the workspace it was given in, drops every read of the last workspace, and
 draws the pages again.
 
 Every page sits in one frame (`src/App.tsx`): the sidebar
-(`src/components/AppSidebar.tsx`) with the workspace's name, Waiting for you,
-Tasks, Focus, each project and each person or agent with open work, then
-Projects, Members (for an owner) and the source-code link. With two or more
-workspaces, the name is a menu that switches between them. The frame reads
-every project's board once, for the sidebar's counts and the page alike, and
-runs the one change feed (`BoardsProvider` in `src/hooks/useBoard.tsx`). On
-any page, `C` opens the composer, `/` puts the cursor in the board's search
+(`src/components/AppSidebar.tsx`) with the workspace's icon and name, Waiting
+for you, Tasks, Focus, each project and each person or agent with open work,
+then Projects, Members (for an owner), Settings and the source-code link. With
+two or more workspaces, the name is a menu that switches between them and
+opens Settings. A rename shows in the sidebar and the menu at once. The frame
+reads every project's board once, for the sidebar's counts and the page alike,
+and runs the one change feed (`BoardsProvider` in `src/hooks/useBoard.tsx`).
+On any page, `C` opens the composer, `/` puts the cursor in the board's search
 and `F` opens Focus.
 
 Every page draws with the design system's tokens and the components in
@@ -87,8 +89,9 @@ Every call in a workspace names it in the `x-ntasks-workspace` header, and
 takes the workspace selected when the call starts, so a write still running
 after a switch lands where it began. The calls about the sign-in itself,
 `GET /api/workspaces`, `POST /api/workspaces` and `GET /api/access/me`, name
-none. A refused form shows the server's words under the field it is about:
-the refusal's `field`, else the field its sentence starts with.
+none, and `PATCH /api/workspaces` names its workspace in its body. A refused
+form shows the server's words under the field it is about: the refusal's
+`field`, else the field its sentence starts with.
 
 A visitor who is not signed in sees a Sign in step, which opens the Worker's
 own sign-in page; a refused read is shown at once, never retried.

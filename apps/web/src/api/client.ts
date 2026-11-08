@@ -10,8 +10,9 @@
  * in a write's body. A key the list does not hold is refused here, before
  * any request, so a typed address can never reach another project.
  *
- * Every call but the three about the sign-in itself (`workspaces`, `account`
- * and `createWorkspace`) is made in the workspace `selectWorkspace` chose,
+ * Every call but the four about the sign-in and its workspaces (`workspaces`,
+ * `account`, `createWorkspace` and `renameWorkspace`, which names its
+ * workspace in its body) is made in the workspace `selectWorkspace` chose,
  * and names it in the `x-ntasks-workspace` header. A call takes the workspace
  * selected when it starts, so a call still running after a switch finishes
  * in the workspace it began in.
@@ -66,6 +67,8 @@ export interface TasksApi {
   account(signal?: AbortSignal): Promise<Account>;
   /** Only the deployment's admins may create a workspace; its creator becomes its owner. */
   createWorkspace(name: string, options?: WriteOptions): Promise<Workspace>;
+  /** Only the workspace's owners may rename it. */
+  renameWorkspace(workspaceId: string, name: string, options?: WriteOptions): Promise<Workspace>;
   capabilities(signal?: AbortSignal): Promise<TasksCapabilities>;
   projects(signal?: AbortSignal): Promise<readonly TaskProject[]>;
   /** One project's board: unfinished tasks and the last week's closes; with
@@ -117,7 +120,10 @@ export interface TasksApi {
 }
 
 /** The calls made in one workspace. */
-type WorkspaceCalls = Omit<TasksApi, 'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace'>;
+type WorkspaceCalls = Omit<
+  TasksApi,
+  'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace' | 'renameWorkspace'
+>;
 
 /** Where the owner signs in: the Worker's own page, outside this app. */
 export const SIGN_IN_PATH = '/sign-in';
@@ -427,6 +433,13 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       const unreadable = 'The workspace was created, but the answer could not be read.';
       const created = await answerJson(response, unreadable);
       return readWorkspace(isRecord(created) ? created.workspace : null, unreadable);
+    },
+    async renameWorkspace(workspaceId, name, options) {
+      const body = { workspaceId, name };
+      const response = await writeJson(fetch, 'PATCH', '/api/workspaces', body, 'The new name', options);
+      const unreadable = 'The workspace was renamed, but the answer could not be read.';
+      const renamed = await answerJson(response, unreadable);
+      return readWorkspace(isRecord(renamed) ? renamed.workspace : null, unreadable);
     },
     capabilities: (signal) => scope().capabilities(signal),
     projects: (signal) => scope().projects(signal),

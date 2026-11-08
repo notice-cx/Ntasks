@@ -67,6 +67,25 @@ export function useCreateWorkspace() {
   });
 }
 
+/**
+ * Renames a workspace. The answer goes into the workspace list at once, so the
+ * sidebar and the switcher show the new name before the list is read again.
+ */
+export function useRenameWorkspace() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workspaceId, name }: { workspaceId: string; name: string }) =>
+      api.renameWorkspace(workspaceId, name),
+    onSuccess: (renamed) => {
+      client.setQueryData<readonly Workspace[]>(WORKSPACES_KEY, (known = []) =>
+        known.map((row) => (row.workspaceId === renamed.workspaceId ? renamed : row)),
+      );
+      return client.invalidateQueries({ queryKey: WORKSPACES_KEY });
+    },
+  });
+}
+
 /** Creates a project; the project list and the boards are read again, so it shows in the sidebar too. */
 export function useCreateProject() {
   const api = useTasksApi();

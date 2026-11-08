@@ -22,6 +22,14 @@ describe('the composer', () => {
     expect(filed).toMatchObject({ project: 'docs', priority: 2, issueType: 'task', status: 'open' });
   });
 
+  it('opens from C on the board', async () => {
+    renderApp('/tasks');
+    await enabledButton('New task', await screen.findByRole('main'));
+    expect(screen.queryByRole('dialog', { name: 'File a task' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'c' });
+    expect(await screen.findByRole('dialog', { name: 'File a task' })).toBeTruthy();
+  });
+
   it('previews the description as Markdown', async () => {
     renderApp('/tasks?new=1&project=web');
     fireEvent.click(await screen.findByRole('button', { name: 'More' }));
