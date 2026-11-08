@@ -271,8 +271,14 @@ export function useDisputeTask() {
   });
 }
 
-/** One answer from a person, as one press made it. */
-export type InboxAnswer = { readonly id: string; readonly title: string; readonly project: string } & (
+/** One answer from a person, as one press made it, with the proposal version
+ * the page showed when the press was made. */
+export type InboxAnswer = {
+  readonly id: string;
+  readonly title: string;
+  readonly project: string;
+  readonly proposalVersion?: string | null;
+} & (
   | { kind: 'approve' }
   | { kind: 'answer'; text: string }
   | { kind: 'choose'; option: TaskChoiceKey; label?: string; note?: string }
@@ -284,13 +290,14 @@ export type InboxAnswer = { readonly id: string; readonly title: string; readonl
 /** The API call for one answer. */
 export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = false): Promise<void> {
   const write = keepalive ? { keepalive: true } : {};
+  const shown = { ...write, proposalVersion: answer.proposalVersion ?? null };
   switch (answer.kind) {
     case 'approve':
-      return api.resolveGate(answer.id, answer.project, undefined, write);
+      return api.resolveGate(answer.id, answer.project, undefined, shown);
     case 'answer':
-      return api.respond(answer.id, answer.project, answer.text, write);
+      return api.respond(answer.id, answer.project, answer.text, shown);
     case 'choose':
-      return api.choose(answer.id, answer.project, answer.option, answer.note, write);
+      return api.choose(answer.id, answer.project, answer.option, answer.note, shown);
     case 'close': {
       const other = answer.duplicateOf === undefined ? {} : { duplicateOf: answer.duplicateOf };
       if (answer.via !== 'dismiss') {
@@ -301,7 +308,7 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
         });
       }
       const note = answer.note?.trim() ? answer.note.trim() : undefined;
-      return api.dismiss(answer.id, answer.project, note, { ...write, resolution: answer.resolution, ...other });
+      return api.dismiss(answer.id, answer.project, note, { ...shown, resolution: answer.resolution, ...other });
     }
   }
 }

@@ -242,13 +242,11 @@ ready filter and every task's `ready` flag use it.
 NoticeOS sent these operations to Beads, some of them as several `bd`
 commands in a row (`scripts/hosted-task-command.mts` in NoticeOS). Each is one
 engine call. Its checks of who may decide, such as matching an owner's answer
-to the proposal they saw, stay in the API layer, which is ported from that
-file: [`task-writes.ts`](../workers/api/src/task-writes.ts) holds the checks
+to the proposal version they saw, stay in the API layer:
+[`task-writes.ts`](../workers/api/src/task-writes.ts) holds the checks
 of the writes the API offers, and
 [`owner-answers.ts`](../workers/api/src/owner-answers.ts) those of a person's
-decisions and of the owner answers agents record. The proposal a comment was
-written against comes from the task's history in `task_events`, where
-NoticeOS read Dolt's versions of the task.
+decisions and of the owner answers agents record.
 
 | NoticeOS operation | Engine call |
 |---|---|

@@ -197,7 +197,10 @@ export async function serveApi(request: Request, principal: Principal, context: 
     if (error instanceof HttpRefused) return error.response();
     if (error instanceof Refused) {
       const [status, code] = REFUSALS[error.kind];
-      return json({ error: code, detail: error.detail }, status);
+      return json(
+        { error: code, detail: error.detail, ...(error.field === undefined ? {} : { field: error.field }) },
+        status,
+      );
     }
     throw error;
   }

@@ -57,7 +57,7 @@ import {
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { shippedArgs } from '../delivery.ts';
-import { commentView, fieldView, webTask } from '../views.ts';
+import { commentView, fieldView, webTasks } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
 import { HttpRefused, invalidRequest, json, queryOf } from './respond.ts';
 
@@ -236,7 +236,8 @@ export async function updateRoute(
   oneDueDate(change.dueAt, change.card);
   addsOrRemoves(change.addExternalLinks, change.removeExternalLinks, 'addExternalLinks and removeExternalLinks');
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
-  return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
+  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)]);
+  return json({ task });
 }
 
 /** POST /api/tasks/:id/comments: adds a comment. */
@@ -350,5 +351,6 @@ export async function closeRoute(context: WriteContext, url: URL, request: Reque
   const given = closingArgs(body, taskId, 'duplicateOf');
   const closing = { ...given, ...shippedArgs(body, 'pullRequest', given.resolution) };
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
-  return json({ task: webTask((await linksSeenBy(context)).task(result.task)) });
+  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)]);
+  return json({ task });
 }

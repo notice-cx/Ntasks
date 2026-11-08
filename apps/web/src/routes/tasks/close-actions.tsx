@@ -21,12 +21,15 @@ export function useCloseAs({
   id,
   title,
   project,
+  proposalVersion = null,
   via,
   onOpen,
 }: {
   id: string;
   title: string;
   project: string;
+  /** The proposal version the page shows, which a decline sends. */
+  proposalVersion?: string | null;
   via?: 'dismiss';
   onOpen?: () => void;
 }): { box: ReactNode; picked: NotDone | null; cancel: () => void; pick: (resolution: NotDone) => void } {
@@ -45,6 +48,7 @@ export function useCloseAs({
             id,
             title,
             project,
+            proposalVersion,
             resolution: picked,
             ...close,
             ...(via === undefined ? {} : { via }),

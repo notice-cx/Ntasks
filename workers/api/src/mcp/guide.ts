@@ -8,6 +8,7 @@
  * work for NoticeOS's owner follow it; a change to it is a change to how they
  * work.
  */
+import { shortHash } from '../short-hash.ts';
 
 /** How to write a task that reads cold. */
 export const TASK_QUALITY: readonly string[] = Object.freeze([
@@ -29,9 +30,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-07: claim_task and comment_on_task take for, the helper agent working under you, and the work details session, worktree, branch, pr, commit and next; get_task shows them with lastActivityAt, when the holder last wrote to the task, and an epic’s open children with their holders; list_tasks shows for and lastActivityAt.',
   "2026-11-07: close_task takes commit and pr, and the task's delivery shows its change as built; report_delivery moves it to merged and live. list_tasks takes stage and counts closed tasks by stage.",
   '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
+  '2026-11-07: reconcile_task records an owner’s answer as the option they chose on the proposal_version get_task returned, with their exact words as quote and where they said it as source; nothing reads the quote, and an answer to an older version is refused.',
 ]);
 
 /** How a session starts. */
@@ -47,14 +48,9 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '5. close_task with what shipped and its evidence (the commit hash or URL), naming your model, and pass commit or pr so the task shows its change as built. When you merge a pull request or finish a deploy, report_delivery moves its tasks to merged or live; list_tasks with stage built lists what is not merged yet.',
   '6. Found work goes to create_task, or create_tasks for several, in the project that owns it.',
   '7. A decision, credential or admin step only a person can do: label the task human, with choices when the person picks one option. A step that must wait for approval: request_human_approval. The owner may answer on Tasks or in conversation, including a local Claude Code session recorded as a relay.',
-  '8. reconcile_task records the owner answer, takes off the human label and returns the task to agents, preserving the selected choice. Claim it to carry on, then close_task with the implementation commit. A person answering a decision directly on Tasks closes it on the answer instead.',
-  '9. Use get_task then reconcile_task to record an existing owner answer and its exact scope; do not ask the owner to close the task or release an old assignment. For an answer received directly from the owner in your chat, set answer_mode: direct, include the exact question, reply and chat source, and map a decision-card selection with option when its label differs from the stored choice. This records your relay, not independent authentication. Other sources require verification. Match short replies to the proposal the owner saw. Apply a clearly scoped batch answer only to its named tasks. If ambiguous, ask one clarification only for the ambiguity.',
-  '10. With concrete evidence and a plain explanation, reconcile_task may close completed outcomes, obsolete requests, explicitly superseded decisions or duplicates that retain complete scope elsewhere; routine work loses its human label. Code existing does not prove a business decision was approved. Keep history; update_task can reopen a closed task.',
-  '11. Assignments are reservations: investigate an old assignment, verify its holder is no longer working and preserve progress before reconcile_task action release. get_task shows the holder’s work details and lastActivityAt to start from. Age alone never proves abandonment.',
-  '12. When the owner declines an approval gate, use reconcile_task on the gate with action: declined, its current proposal, the exact owner response, owner identity, original source and full requested scope. For a direct chat answer include answer_mode: direct and the exact question with the action, environment and verification. This closes the gate as wont-do, records the declined action on its task, and leaves remaining authorized work available. The declined action must not happen. Retiring an obsolete gate also grants no permission and does not block the remaining work. Other open approvals still block closing.',
-  '13. Relayed answers use answer_mode: relayed, the exact question, response, owner, scope and source claude-code:session/<session id> or comment:<id> preserving the relay. The approval closes immediately, is marked as relayed by the admitted agent, and the owner can Dispute it to reopen the gate and flag the recorder. No independent transcript authentication is claimed. Numbered batch replies require approval_item and a source comment preserving the item number. Owner-performed actions use action: owner_performed with the exact completed result in response, owner, scope and source; use answer_mode: relayed for an agent comment quoting that result. This closes as done, records approved and owner-performed, grants no new permission and preserves prior approval events. Obsolete and superseded requests close as no-longer-needed; only declined approvals close as wont-do.',
-  '14. list_tasks accepts closed_days from 1 to 56 (default 7) to audit earlier closed gates before changing them. Preserve actual declines and each source event.',
-  '15. Direct answers require an https:// or codex://threads/ conversation source and the human owner field. A comment:<id> source is for a source-verified answer authored by the owner with their exact response; an agent comment quoting an owner is a relay, not an owner-authored source. Preserve the original chat link for a direct relay. A changed proposal requires checking the actual question the owner saw; never replace their words to pass validation.',
+  '8. When the owner answers you in conversation, record it with reconcile_task: action answer (on an approval, answer approves it and declined declines it; owner_performed records that the owner did the action), proposal_version (the proposalVersion get_task returned for the proposal you showed them), quote (their exact words), source (where they said it, such as claude-code:session/<session id> or the conversation URL) and, on a task with choices, the option they chose. Nothing reads the quote: name the option yourself, and leave it out when they chose none. A refusal names the argument at fault and records nothing; a stale proposal_version means the task changed, so show it to the owner again.',
+  '9. The answer is recorded as relayed by you. An approval closes and the human tasks waiting on it go back to agents within what it approved; the owner can dispute a relayed approval, which reopens it and tells those tasks to stop. A declined approval closes as wont-do and its action must not happen. Any other task goes back to ready work without the human label: claim it, then close_task with the implementation commit. A person answering on Tasks records their answer directly.',
+  '10. Without an owner answer, reconcile_task with proposal_version, an explanation and evidence retires a request (completed, obsolete, superseded, or duplicate with duplicate_of), takes the human label off routine work, or releases an assignment whose holder stopped (release with holder, inactive: true, activity_check and progress; get_task shows the holder’s work details and lastActivityAt to start from; age alone never proves it). Code existing does not prove a business decision was approved, and retiring an approval grants no permission. Keep history; update_task can reopen a closed task.',
   'These tools are the task interface: never run bd, bv or br in a project folder.',
 ]);
 
@@ -119,10 +115,7 @@ function guideBody(offered: readonly string[]): string {
  * its SHA-256 as its version. */
 export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> {
   const body = guideBody(offered);
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
-  const version = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 12);
+  const version = await shortHash(body, 12);
   return Object.freeze({
     version,
     guide: `# Working with Ntasks tasks\n\nGuide version ${version}; list_workspaces returns the current one as guideVersion.\n\n${body}\n`,

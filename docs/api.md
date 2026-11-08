@@ -142,11 +142,11 @@ start of the task guide and its rules for writing a task.
 |---|---|---|
 | `list_workspaces` | Every workspace the sender reaches, ordered by name, each with its `workspaceId`, `name`, `status`, the sender's `role` in NoticeOS's words (`owner` for its owner, otherwise `operator` with `tasks:write` or `viewer`) and `access`, the scopes the sender holds there; and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
-| `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman` and `version`, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal`, `explanation`, `evidence`, as the action needs `response`, `owner`, `source`, `scope`, `answer_mode`, `question`, `approval_item`, `option`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
+| `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
-| `get_task` | One task in full, its comments, and the proposal an owner's answer is checked against; for an epic, also `openChildren` | `workspace`, `task`, and optionally `project` |
+| `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren` | `workspace`, `task`, and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `replayed`, the approval it opened if any, `lint` when it finds something, and `warnings` when a link was left out | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | Each task filed, in order, with its `id`, `status`, `version` and `lint` when it finds something; `warnings` when a link was left out; the first task refused, if any, and how many were not tried | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
@@ -339,55 +339,91 @@ too.
 
 `reconcile_task` records an answer the owner already gave, or maintains a
 person's request (a **human request**: an approval, or a task labelled
-`human`) with evidence. It never makes a decision itself: it refuses an
-answer it cannot trace to the owner, and retiring a request grants no
-permission. Its rules and sentences are NoticeOS's, and
-[`owner-answers.ts`](../workers/api/src/owner-answers.ts) holds them. Each call
-is one write: the record of the disposition, kept in the task's metadata as
-`noticeos_maintenance` with every earlier one in its `events`, a comment
-holding the evidence, the close or the hand-back, and the comments and
-hand-backs of the tasks waiting on an approval.
+`human`) with evidence. It never makes a decision itself, and retiring a
+request grants no permission. [`owner-answers.ts`](../workers/api/src/owner-answers.ts)
+holds its rules. Each call is one write: the record of the disposition, kept
+in the task's metadata as `noticeos_maintenance` with every earlier one in its
+`events`, a comment holding it, the close or the hand-back, and the comments
+and hand-backs of the tasks waiting on an approval.
 
 | `action` | What it does |
 |---|---|
-| `answer` | Records the owner's answer. On an approval it closes the approval as `done`, records `permission: approved-scope-only` for exactly its scope, and hands back the tasks labelled `human` waiting on it. On a decision or a task labelled `human` it records the option a short reply picks, takes off the `human` label and returns the task to agents, unassigned; an agent then closes it with implementation evidence. |
-| `declined` | On an approval only: closes it as `wont-do` and tells each task waiting on it that the action must not happen. |
-| `owner_performed` | On an approval only: the owner did the action themselves. It closes the approval as `done` and grants nothing. |
+| `answer` | Records the owner's answer. On an approval it approves it: the approval closes as `done` and records `permission: approved-scope-only`. Each task waiting on it that is labelled `human`, is neither a decision nor an approval, and offers no options goes back to agents: open, unassigned, without the label, with a comment to keep within the approval. Other waiting tasks keep their labels. On any other task it records the `option` the owner chose, if any, takes off the `human` label and returns the task to agents, unassigned; an agent then closes it with implementation evidence. |
+| `declined` | On an approval only: closes it as `wont-do`, tells each task waiting on it that the action must not happen, and hands back the same waiting tasks as `answer`. |
+| `owner_performed` | On an approval only: the owner did the action themselves. On an open approval it closes it as `done` and hands back the same waiting tasks as `answer`; on a closed one it records the report. Either way it records `permission: none`. |
 | `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
 | `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
 
+Every call names `proposal_version`: the `proposalVersion` that `get_task`
+returned, the first 32 hexadecimal characters (128 bits) of the SHA-256 of
+the task's `proposal`, so nobody can write two proposals with one version. A
+task's proposal is its id, title, description, acceptance, type and options;
+an approval's description is the action it asks for, with its
+environment, scope and verification. A call whose version is not the task's
+current one is refused, so a task edited after the owner saw it cannot borrow
+the answer.
+
 An owner answer (`answer`, `declined` or `owner_performed`) names the owner's
-exact words (`response`), the owner (`owner`), where they said it (`source`)
-and what they authorized (`scope`; for an approval, exactly what it asks). It
-counts in one of three ways:
+exact words in `quote`, where they said it in `source`, such as
+`claude-code:session/<id>`, a conversation URL or `comment:<id>`, and on a
+task with choices the `option` they chose; it leaves `option` out when they
+chose none, and on an approval. Nothing reads the quote: a quote such as
+`maybe?` or `Approve web-g1` is recorded as given. `explanation` and
+`evidence` are optional with an answer and required for every other action.
 
-- **Source-verified**: `source` is `comment:<id>`, a comment on the task that
-  the owner wrote, holding exactly `response`. It counts only when the person
-  the agent acts for wrote it, and only for the proposal the owner saw when
-  they wrote it: if the task changed after the comment, its history must show
-  the comment was written against the proposal the call names.
-- **Direct** (`answer_mode: direct`): the owner answered in the agent's own
-  chat. `source` is the conversation's `https://` or `codex://threads/` URL,
-  and `question` the exact question asked.
-- **Relayed** (`answer_mode: relayed`): the agent passes on an answer from
-  `claude-code:session/<id>`, a conversation URL, or a comment quoting the
-  question and the reply word for word.
+An answer's record keeps the fields NoticeOS reads, with NoticeOS's meaning:
+`response`, the quote; `question`, what the proposal asked (an approval's
+request, a decision's question, else the task's title); `scope`, what the
+answer covers (an approval's request, the chosen option's label, else the
+quote); `source`; `by`, who recorded it; `verification`; and on an approval
+`outcome`, `approved`, `performedBy` for an owner-performed action, and
+`disputed` once disputed.
 
-Direct and relayed answers are recorded as the agent's
-(`verification: agent-recorded`), not as independently authenticated. The
-owner can dispute a relayed approval ([below](#a-persons-decisions)): the
-approval opens again, the tasks waiting on it are told to stop, and the
+An answer is recorded as relayed by the sender (`verification:
+agent-recorded`), whoever it is: an agent, a service, or a person calling the
+MCP endpoint. A pick it records names as the chooser the person the sender
+acts for, or the sender when it acts for nobody, as a service does. The owner
+can dispute a relayed approval ([below](#a-persons-decisions)): the approval
+opens again, the tasks waiting on it are told to stop, and an answer from the
 disputed source cannot approve it again.
 
-Every call names the `proposal` that `get_task` returned. A call whose
-proposal is not the task's current one is refused, so a task edited after
-the owner answered cannot borrow the answer. A reply that leaves the choice
-unclear, such as `maybe` or a bare `yes` to a decision, is refused with a
-sentence asking for one clarification. An approval is accepted only on a
-plain assent (`yes`, `approve`, `yes, your recommendation`, a numbered batch
-reply that leaves this item out, or a relayed `yes` naming steps the question
-and scope hold), never on a conditional, negative or broader one.
+A closed approval takes no further answer but `owner_performed`, and that
+only while the approval it follows is in force and covers the approval's
+request as it stands; any other answer recorded there would replace the
+owner's. A person's own approval in the web app is final: no dispute
+withdraws it, including after an agent relays on the closed approval that
+the owner did the action. Once the gate is opened again, its next answer is
+the one it stands on, and a relayed one can be disputed.
+
+An approval, relayed or direct, permits exactly the request of the proposal
+version it answered: its action, environment, scope and verification. It
+grants nothing beyond that request, and nothing to any other approval: a task
+that waits on several approvals stays held until each is approved. The
+permission lasts while the gate stays closed as `done` with `permission:
+approved-scope-only` in its record. A dispute withdraws it: the record's
+`permission` becomes `none`, the gate opens again, and the tasks waiting on it
+are told to stop. The owner's report that they did the action
+(`owner_performed`) records `permission: none`: it permits no agent to do the
+action.
+
+A refused owner answer names the argument at fault first, such as
+`refused: proposal_version: The proposal changed after the owner saw it; show it again.`,
+and ends as every refusal does, with `Nothing was written; retrying is safe.`
+
+`get_task` and the HTTP task reads return the task's latest recorded answer
+as `answer`, or null:
+
+| Field of `answer` | Holds |
+|---|---|
+| `option` | The option chosen: a letter on a task with choices, or null when the answer chose none. On an approval, `decline` for a refusal, and `approve` both for an approval and for the owner's report that they did the action. It names the latest answer, not a standing permission: a disputed approval keeps `approve` and has `disputedBy` set. Whether the approved action may proceed is shown by the gate, as above |
+| `quote` | The owner's words, or null when a person answered in the web app without words: a pick with no note, or an approval with no reason |
+| `source` | Where the owner said it, as the relaying sender named it; null for an answer made in the web app |
+| `recordedBy` | The person who answered in the web app, or the agent or service that relayed the answer |
+| `relayed` | `false` for a person's own answer in the web app, `true` for any other |
+| `proposalVersion` | The proposal version it answered |
+| `at` | When it was recorded |
+| `disputedBy` | The person who disputed it, or null |
 
 ## Agent statistics
 
@@ -556,10 +592,10 @@ misspelt filter fails instead of being ignored.
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person signed in to the web app also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
-| `GET /api/tasks/:id` | `project` | The task, its comments and its proposal |
+| `GET /api/tasks/:id` | `project` | The task, its comments, its `proposal` and its `proposalVersion`, as `get_task` returns them ([recording an owner answer](#recording-an-owner-answer)) |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
@@ -640,11 +676,20 @@ and when.
 
 | Route | Body | What it does |
 |---|---|---|
-| `POST /api/tasks/:id/respond` | `projectId`, `response` (at most 4,086 characters) | Answers a task labelled `human` that is not closed and not an approval. A reply that names one of the task's options, such as `B`, `the recommendation` or an option's label, is that pick, as `choose` makes it. Otherwise a decision closes as `done` with the reason `Responded` and the comment `Response: <response>`, and any other task goes back to ready work: open, unassigned, without the `human` label, with the comment `Answered: <response>`. A reply that leaves the question open, such as `maybe` or a bare `yes` to a task with options, is refused. |
-| `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), and optionally `note` (at most 2,000 characters) | Picks one of the task's options. The pick records the option, its label, the person and the time, with the comment `Chose (b) <label>.` and the note. A decision then closes with the reason `Chose (b) <label>`, past an open blocker or another holder; any other task goes back to ready work. A second pick is refused; the same person sending the same option again finishes a pick that stopped before its comment or its close. |
-| `POST /api/tasks/:id/dismiss` | `projectId`, and optionally `reason` (at most 2,037 characters), `resolution` (any but `done`; `wont-do` when left out) and, with `duplicate` only, `duplicateOf` | Declines a task labelled `human`: it closes with the reason `Dismissed` or `Dismissed: <reason>`. A duplicate is linked to the task it duplicates as `related`. |
-| `POST /api/gates/:id/resolve` | `projectId`, and optionally `reason` | Approves an approval: it closes as `done` with the reason, `Approved` when left out, and the tasks waiting on it are free of it. Each of them labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label, with a comment to keep within the approval, as after an approval an agent relays. An approval an agent relayed on it before can no longer be disputed. |
+| `POST /api/tasks/:id/respond` | `projectId`, `response` (at most 4,086 characters), and optionally `proposalVersion` | Answers a task labelled `human` that is not closed and not an approval, in the person's words, recorded as given: a decision closes as `done` with the reason `Responded` and the comment `Response: <response>`, and any other task goes back to ready work: open, unassigned, without the `human` label, with the comment `Answered: <response>`. A reply never picks an option; `choose` does. |
+| `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), and optionally `note` (at most 2,000 characters) and `proposalVersion` | Picks one of the task's options. The pick records the option, its label, the person and the time, with the comment `Chose (b) <label>.` and the note. A decision then closes with the reason `Chose (b) <label>`, past an open blocker or another holder; any other task goes back to ready work. A second pick is refused; the same person sending the same option again finishes a pick that stopped before its comment or its close. |
+| `POST /api/tasks/:id/dismiss` | `projectId`, and optionally `reason` (at most 2,037 characters), `resolution` (any but `done`; `wont-do` when left out), `proposalVersion` and, with `duplicate` only, `duplicateOf` | Declines a task labelled `human`: it closes with the reason `Dismissed` or `Dismissed: <reason>`. A duplicate is linked to the task it duplicates as `related`. |
+| `POST /api/gates/:id/resolve` | `projectId`, and optionally `reason` and `proposalVersion` | Approves an approval: it closes as `done` with the reason, `Approved` when left out, and the tasks waiting on it are free of it. Each of them labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label, with a comment to keep within the approval, as after an approval an agent relays. The person's approval becomes the approval's recorded answer, so one an agent relayed before it can no longer be disputed. |
 | `POST /api/tasks/:id/dispute` | `projectId` | Withdraws an approval an agent relayed with `reconcile_task`: its record loses its permission and names who disputed it, the approval opens again, and it and each task waiting on it get a comment saying the recorded action must stop until a new approval. Disputing it again changes nothing, and tells the waiting tasks nothing again. Once the person approves it directly, a dispute of it is refused. |
+
+`proposalVersion` names the proposal version the person's page showed, as a
+task read returned it. When the task's proposal has changed since, the
+answer is refused with `409`, `task_refused` and `field: "proposalVersion"`,
+and nothing is written; without it, the answer applies to the proposal as it
+stands. An answer, a pick and an approval each become the task's recorded
+`answer` ([above](#recording-an-owner-answer)), with `relayed: false`, the
+person as `recordedBy`, the proposal version it answered, and the person's
+words, note or reason as its quote.
 
 A decision's close, after a pick or an answer, is refused while the decision
 waits on an open approval or has children that are not closed. Each refusal

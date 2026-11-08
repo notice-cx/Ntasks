@@ -25,9 +25,12 @@ export class Refused extends Error {
   override name = 'Refused';
   readonly kind: RefusalKind;
   readonly detail: string;
-  constructor(kind: RefusalKind, message: string, detail?: string) {
+  /** The body field at fault, which an HTTP answer names in `field`. */
+  readonly field: string | undefined;
+  constructor(kind: RefusalKind, message: string, detail?: string, field?: string) {
     super(message);
     this.kind = kind;
     this.detail = detail ?? message.replace(AGENT_PREFIX, '');
+    this.field = field;
   }
 }

@@ -1,9 +1,8 @@
 /**
- * reconcile_task, which records an owner answer an agent holds or maintains
+ * reconcile_task, which records an owner answer an agent relays or maintains
  * a human request with evidence, and get_agent_stats, which counts agents'
- * work. Their names, schemas, results and refusals are NoticeOS's
- * (scripts/hosted-task-mcp.mts there); owner-answers.ts and agent-stats.ts
- * hold their rules.
+ * work with NoticeOS's name, schema and result (scripts/hosted-task-mcp.mts
+ * there). owner-answers.ts and agent-stats.ts hold their rules.
  */
 import { TASK_LIMITS } from '@ntasks/domain';
 import { choiceArg, detailArg, modelArg, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
@@ -11,7 +10,7 @@ import { agentStats } from '../agent-stats.ts';
 import { SCOPES } from '../auth.ts';
 import { TASK_CHOICE_KEYS } from '../noticeos-fields.ts';
 import { MAINTENANCE_ACTIONS, reconcileTask, seen, type TaskMaintenance } from '../owner-answers.ts';
-import { mcpTask, writtenView } from '../views.ts';
+import { mcpTask, PROPOSAL_VERSION, writtenView } from '../views.ts';
 import { projectFor } from './project.ts';
 import { PROJECT, READ, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
 import { DETAIL, IDEMPOTENCY, MODEL, retryRequest, WRITE } from './write-tools.ts';
@@ -21,76 +20,78 @@ function defined<T extends object>(row: T): T {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as T;
 }
 
+/** The disposition reconcile_task's arguments describe. */
+function maintenanceOf(args: Args): TaskMaintenance {
+  const action = choiceArg(args, 'action', MAINTENANCE_ACTIONS);
+  if (action === undefined) refuse('refused: action is required for reconciliation.');
+  const version = args.proposal_version;
+  if (typeof version !== 'string' || !PROPOSAL_VERSION.test(version))
+    refuse('invalid arguments: proposal_version (the proposalVersion get_task returned: 32 hexadecimal characters)');
+  // Built in one order: a recorded disposition keeps this object as its identity.
+  return defined({
+    taskId: taskArg(args),
+    action,
+    proposalVersion: version,
+    explanation: textArg(args, 'explanation', 800, false),
+    evidence: textArg(args, 'evidence', 800, false),
+    model: modelArg(args),
+    option: choiceArg(args, 'option', TASK_CHOICE_KEYS),
+    quote: textArg(args, 'quote', 1000, false),
+    source: textArg(args, 'source', 512, false),
+    duplicateOf: args.duplicate_of === undefined ? undefined : taskArg(args, 'duplicate_of'),
+    holder: textArg(args, 'holder', TASK_LIMITS.actor, false),
+    inactive: args.inactive as boolean | undefined,
+    activityCheck: textArg(args, 'activity_check', 800, false),
+    progress: textArg(args, 'progress', 1000, false),
+  });
+}
+
 export const RECONCILE_TASK: TaskTool = Object.freeze({
   name: 'reconcile_task',
   description:
-    'Record an existing owner answer, retire a completed/obsolete/superseded/duplicate human request, ' +
-    'record a declined approval gate, remove a routine human label, or release a confirmed inactive assignment. Read get_task first and send its proposal snapshot. ' +
-    'For linkless local conversations use answer_mode relayed with the exact question, reply, owner, scope and claude-code:session/<session id> or a comment preserving those words. Relayed approvals close immediately and the owner may dispute them. owner_performed records the owner’s completed result as done without granting an agent permission. Obsolete requests close as no-longer-needed. ' +
-    'Evidence and a plain explanation are required. For an answer received directly from the owner in this chat, use answer_mode: direct with the exact question and reply; your authenticated agent identity is recorded as the recorder. Otherwise verify owner identity and the exact proposal in the linked source. Never invent an answer. ' +
-    'For batch replies, call once per explicitly named task within the answered scope. ' +
+    'Record an answer the owner gave you in conversation, or maintain a human request with evidence. Read get_task first. ' +
+    'An answer: action answer (declined or owner_performed on an approval), proposal_version (the proposalVersion get_task returned for the proposal you showed the owner), quote (their exact words), source (where they said it) and, on a task with choices, the option they chose. ' +
+    'Nothing reads the quote: name the option yourself. It is recorded as relayed by you; the owner can dispute a relayed approval, which reopens it. A refusal names the argument at fault. ' +
+    'Maintenance, with explanation and evidence: completed, obsolete, superseded or duplicate (with duplicate_of) retires a request; routine takes off the human label; release frees an assignment whose holder stopped. ' +
     'Retirement grants no permission; production reads/writes, spending, messages, destructive actions and material commitments still require explicit action-specific approval.',
   inputSchema: schema(
     {
       project: PROJECT,
       task: TASK,
       action: { type: 'string', enum: MAINTENANCE_ACTIONS },
-      proposal: {
+      proposal_version: {
         type: 'string',
-        description: 'The exact proposal snapshot from get_task for the proposal the owner saw.',
-      },
-      explanation: { type: 'string', maxLength: 800, description: 'Plain-language reason for this disposition.' },
-      evidence: {
-        type: 'string',
-        maxLength: 800,
+        pattern: PROPOSAL_VERSION.source,
         description:
-          'Concrete commit, task, test or source reference proving the reason; code alone never proves approval.',
-      },
-      response: {
-        type: 'string',
-        maxLength: 1000,
-        description:
-          'For answer, declined or owner_performed: exact owner words. A, a recommendation reply, a clear direction or the explicit refusal.',
-      },
-      owner: {
-        type: 'string',
-        description: 'Required for answer, declined or owner_performed: the human owner, never the relaying agent.',
-      },
-      source: {
-        type: 'string',
-        description:
-          'Original source: comment:<id> on this task, https:// or codex://threads/ conversation, or claude-code:session/<session id> with answer_mode relayed. owner_performed requires the owner’s reported result, never agent implementation evidence.',
-      },
-      scope: {
-        type: 'string',
-        maxLength: 1000,
-        description:
-          'For answer: exactly what the owner authorized. An approval gate requires its exact full Reason text.',
-      },
-      answer_mode: {
-        type: 'string',
-        enum: ['direct', 'relayed'],
-        description:
-          'direct requires a chat URL; relayed also accepts claude-code:session/<session id> or a task comment quoting the exact question and reply. Both record the admitted agent without independent authentication. Relayed approvals close immediately and the owner can dispute them. Omit for source-verified answers.',
-      },
-      question: {
-        type: 'string',
-        maxLength: 1000,
-        description:
-          'For direct or relayed answers: the exact question presented to the owner. Approval questions must include the complete requested action, environment and verification.',
-      },
-      approval_item: {
-        type: 'integer',
-        minimum: 1,
-        maximum: 99,
-        description:
-          'For a numbered batch approval relayed from a source comment: the item the gate requests. The source must preserve its number and the exact question and reply.',
+          'The proposalVersion get_task returned for the proposal the owner saw. A version older than the task’s current one is refused: show the owner the task again.',
       },
       option: {
         type: 'string',
         enum: TASK_CHOICE_KEYS,
         description:
-          'For a direct decision-card answer: the stored option corresponding to the exact selected reply. Preserve the reply in response; never map an uncertain or conflicting answer.',
+          'For answer on a task with choices: the option the owner chose. Leave it out when their answer chose none. An approval takes none.',
+      },
+      quote: {
+        type: 'string',
+        maxLength: 1000,
+        description: 'For answer, declined or owner_performed: the owner’s exact words, recorded as given.',
+      },
+      source: {
+        type: 'string',
+        maxLength: 512,
+        description:
+          'For answer, declined or owner_performed: where the owner said it, such as a conversation URL, claude-code:session/<session id> or comment:<id>.',
+      },
+      explanation: {
+        type: 'string',
+        maxLength: 800,
+        description: 'Plain-language reason for this disposition. Required for maintenance.',
+      },
+      evidence: {
+        type: 'string',
+        maxLength: 800,
+        description:
+          'Concrete commit, task, test or source reference proving the reason; code alone never proves approval. Required for maintenance.',
       },
       duplicate_of: {
         type: 'string',
@@ -116,43 +117,23 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
       idempotency_key: IDEMPOTENCY,
       detail: DETAIL,
     },
-    ['task', 'action', 'proposal', 'explanation', 'evidence'],
+    ['task', 'action', 'proposal_version'],
   ),
   annotations: WRITE,
   scope: SCOPES.write,
   async run(context: ToolContext, args: Args) {
-    // Built in the order NoticeOS built it: a recorded disposition keeps this object as its identity.
-    const operation: TaskMaintenance = defined({
-      kind: 'maintain' as const,
-      taskId: taskArg(args),
-      action: choiceArg(args, 'action', MAINTENANCE_ACTIONS)!,
-      proposal: textArg(args, 'proposal', 30000, true)!,
-      explanation: textArg(args, 'explanation', 800, true)!,
-      evidence: textArg(args, 'evidence', 800, true)!,
-      model: modelArg(args),
-      response: textArg(args, 'response', 1000, false),
-      owner: textArg(args, 'owner', TASK_LIMITS.actor, false),
-      source: textArg(args, 'source', 512, false),
-      scope: textArg(args, 'scope', 1000, false),
-      answerMode: choiceArg(args, 'answer_mode', ['direct', 'relayed'] as const),
-      question: textArg(args, 'question', 1000, false),
-      approvalItem: args.approval_item as number | undefined,
-      option: choiceArg(args, 'option', TASK_CHOICE_KEYS),
-      duplicateOf: args.duplicate_of === undefined ? undefined : taskArg(args, 'duplicate_of'),
-      holder: textArg(args, 'holder', TASK_LIMITS.actor, false),
-      inactive: args.inactive as boolean | undefined,
-      activityCheck: textArg(args, 'activity_check', 800, false),
-      progress: textArg(args, 'progress', 1000, false),
-    });
+    const operation = maintenanceOf(args);
     const detail = detailArg(args);
     const retry = await retryRequest(context, 'reconcile_task', args);
-    if (operation.action === undefined) refuse('refused: action is required for reconciliation.');
     const projectId = await projectFor(context, args, operation.taskId);
     const { result } = await reconcileTask(context, projectId, operation, retry);
     const task = await seen(context, result.task);
     return detail === 'full'
       ? { task: mcpTask(task), replayed: result.replayed }
-      : { ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman']), replayed: result.replayed };
+      : {
+          ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman', 'answer']),
+          replayed: result.replayed,
+        };
   },
 });
 

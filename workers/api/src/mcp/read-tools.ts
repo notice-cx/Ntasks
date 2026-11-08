@@ -20,7 +20,7 @@ import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import type { Workspace } from '../workspaces.ts';
-import { childView, commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
+import { childView, commentView, historyView, mcpSummary, mcpTask, proposalOf, proposalVersionOf } from '../views.ts';
 import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
 import {
   booleanArg,
@@ -289,6 +289,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         ...(children === null ? {} : { openChildren: children.map(childView) }),
         comments: comments.map(commentView),
         proposal: proposalOf(task),
+        proposalVersion: await proposalVersionOf(task),
       };
     },
   },
