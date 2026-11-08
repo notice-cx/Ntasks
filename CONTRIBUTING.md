@@ -55,7 +55,8 @@ pnpm --filter @ntasks/domain test
   [`packages/domain/test/`](packages/domain/test/) and run in Node.
 - **The databases change through migrations.** Follow the migration rules
   for [the task store](workers/api/src/store/migrations/README.md) and for
-  [D1](workers/api/migrations/README.md); a merged migration never changes.
+  [D1](workers/api/migrations/README.md); from the first deploy on, a merged
+  migration never changes.
 - **Worker settings regenerate the Worker's types.** After editing
   [`wrangler.jsonc`](wrangler.jsonc) at the repository root, run
   `pnpm --filter @ntasks/api run types` and commit the regenerated

@@ -2,7 +2,7 @@
  * Loading rows into an empty store in pages, such as an import from Beads or
  * a backup (tools/migrate's load command, docs/api.md). The owner begins a
  * load; each page of one table's rows waits in store_load_pages
- * (migrations/0006_store_loads.sql); the commit inserts every waiting row in
+ * (migrations/0001_task_store.sql); the commit inserts every waiting row in
  * one transaction and removes the load. So a load lands whole or not at all,
  * the store never shows part of one, and each request stays small.
  */

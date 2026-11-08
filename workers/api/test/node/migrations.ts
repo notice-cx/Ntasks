@@ -3,7 +3,8 @@
 // does to a store that already holds tasks, as a deployed store does when a
 // new migration ships. This file applies the task store's migration files in
 // order to a SQLite database in memory, writing rows between them, with
-// foreign keys enforced as the Durable Object enforces them.
+// foreign keys enforced as the Durable Object enforces them. A migration that
+// rebuilds a table or changes rows a store holds adds its own case here.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -14,6 +15,7 @@ const FILES = readdirSync(FOLDER)
   .filter((name) => name.endsWith('.sql'))
   .sort();
 const AT = '2026-11-06T12:00:00.000Z';
+const LATER = '2026-11-06T12:05:00.000Z';
 
 /** Applies these migration files in order, each in one transaction, as the store does (src/store/schema.ts). */
 function migrated(db: DatabaseSync, files: readonly string[]): void {
@@ -24,54 +26,86 @@ function migrated(db: DatabaseSync, files: readonly string[]): void {
   }
 }
 
-function edges(db: DatabaseSync) {
-  return db.prepare('SELECT * FROM task_edges ORDER BY task_id, depends_on_id').all();
+type Row = Record<string, string | number | null>;
+
+function insert(db: DatabaseSync, table: string, row: Row): void {
+  const columns = Object.keys(row);
+  db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).run(
+    ...Object.values(row),
+  );
 }
 
-test('0004 keeps every link a store holds, with its index, and takes the new link types', () => {
-  const next = FILES.indexOf('0004_link_types_external_links.sql');
-  assert.ok(next > 0, 'the migration that adds duplicates and supersedes is in the folder');
+/** A row in each table of the first migration that holds a workspace's tasks, as a deployed store holds them. */
+function heldRows(db: DatabaseSync): void {
+  insert(db, 'projects', { id: 'p1', key: 'web.example.com', name: 'Web', prefix: 'web', created_at: AT });
+  const task = (id: string, fields: Row = {}) =>
+    insert(db, 'tasks', {
+      id,
+      project_id: 'p1',
+      type: 'task',
+      status: 'open',
+      priority: 2,
+      title: `Task ${id}`,
+      created_at: AT,
+      updated_at: AT,
+      ...fields,
+    });
+  task('web-a1', { type: 'epic' });
+  task('web-a1.1', { parent_id: 'web-a1', status: 'in_progress', assignee: 'agent-a' });
+  task('web-b2', { status: 'closed', resolution: 'done', closed_at: LATER, closed_by: 'agent-a' });
+  insert(db, 'task_labels', { task_id: 'web-a1.1', label: 'backend' });
+  insert(db, 'task_edges', { task_id: 'web-a1.1', depends_on_id: 'web-b2', type: 'blocks', created_at: AT });
+  insert(db, 'task_external_links', {
+    task_id: 'web-b2',
+    url: 'https://example.com/pull/1',
+    title: 'The change',
+    created_at: AT,
+  });
+  insert(db, 'custom_fields', { project_id: 'p1', key: 'area', name: 'Area', type: 'text', created_at: AT });
+  insert(db, 'task_comments', { id: 'c1', task_id: 'web-a1.1', author: 'agent-a', text: 'Started.', created_at: AT });
+  insert(db, 'task_events', {
+    task_id: 'web-a1.1',
+    project_id: 'p1',
+    version: 1,
+    kind: 'created',
+    actor: 'agent-a',
+    at: AT,
+    changes: '{"title":"Task web-a1.1"}',
+  });
+  insert(db, 'write_receipts', {
+    principal: 'agent-a',
+    operation: 'create_task',
+    idempotency_key: 'key-0001',
+    project_id: 'p1',
+    request_hash: '0'.repeat(64),
+    result: '{}',
+    created_at: AT,
+  });
+}
+
+/** How many rows each table holds. */
+function rowCounts(db: DatabaseSync): Record<string, number> {
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all()
+    .map((row) => String(row.name));
+  return Object.fromEntries(
+    tables.map((table) => [table, Number(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n)]),
+  );
+}
+
+test('every later migration applies to a store that holds rows, and keeps them', () => {
+  assert.ok(FILES.length >= 1, 'the task store has a first migration');
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
-  migrated(db, FILES.slice(0, next));
+  migrated(db, FILES.slice(0, 1));
+  heldRows(db);
+  const before = rowCounts(db);
 
-  db.prepare('INSERT INTO projects (id, key, name, prefix, created_at) VALUES (?, ?, ?, ?, ?)').run(
-    'p1',
-    'web.example.com',
-    'Web',
-    'web',
-    AT,
-  );
-  const task = db.prepare(
-    `INSERT INTO tasks (id, project_id, type, status, priority, title, created_at, updated_at)
-     VALUES (?, 'p1', 'task', 'open', 2, ?, ?, ?)`,
-  );
-  for (const id of ['web-a1', 'web-b2', 'web-c3', 'web-d4']) task.run(id, `Task ${id}`, AT, AT);
-  const edge = db.prepare(
-    'INSERT INTO task_edges (task_id, depends_on_id, type, created_at, created_by) VALUES (?, ?, ?, ?, ?)',
-  );
-  edge.run('web-b2', 'web-a1', 'blocks', AT, 'agent-a');
-  edge.run('web-c3', 'web-a1', 'related', AT, null);
-  edge.run('web-d4', 'web-a1', 'discovered-from', AT, 'agent-b');
-  edge.run('web-c3', 'web-b2', 'blocks', AT, null);
-  const before = edges(db);
+  migrated(db, FILES.slice(1));
 
-  migrated(db, FILES.slice(next, next + 1));
-
-  assert.deepEqual(edges(db), before);
-  const indexes = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'task_edges'")
-    .all()
-    .map((row) => row.name);
-  assert.deepEqual(indexes, ['task_edges_by_dependency']);
-  edge.run('web-d4', 'web-b2', 'duplicates', AT, null);
-  edge.run('web-d4', 'web-c3', 'supersedes', AT, null);
-  assert.throws(() => edge.run('web-a1', 'web-d4', 'waits-for', AT, null), /CHECK constraint failed/u);
-  assert.throws(() => edge.run('web-a1', 'web-none', 'related', AT, null), /FOREIGN KEY constraint failed/u);
-  assert.throws(() => edge.run('web-a1', 'web-a1', 'related', AT, null), /CHECK constraint failed/u);
+  const after = rowCounts(db);
+  for (const [table, rows] of Object.entries(before)) assert.equal(after[table], rows, `${table} keeps its rows`);
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
-
-  // Every later migration applies on top of it.
-  migrated(db, FILES.slice(next + 1));
   db.close();
 });
