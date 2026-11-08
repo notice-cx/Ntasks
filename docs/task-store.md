@@ -87,7 +87,13 @@ commits, and reaches the tasks carrying them through one index on each of the
 three, never through a project's history: a commit matches by prefix, so it
 reads the range of the index that shares its first 7 characters.
 `tasks_by_project_stage` reaches a project's tasks at a stage, whenever they
-closed.
+closed. A close as done may also name a link, a URL that shows work no commit
+or pull request shows, in `close_link`; like the rest of the close, only a
+task closed as done has one, and a reopen clears it.
+
+The open tasks one holder holds are read through `tasks_by_assignee`, one
+entry for each task held, with each task's last activity from
+`task_events_by_actor`: the list an agent reads when it connects.
 
 A task's values of its project's custom fields are the `field_values` column
 of `tasks`: one JSON object by field key, holding text, a number, true or false,

@@ -136,7 +136,17 @@ of tools, `list_workspaces` and `get_task_guide` from the sender's sign-in,
 and runs every other tool in the task store of the workspace the call names.
 
 The server's instructions, which an agent reads when it connects, carry the
-start of the task guide and its rules for writing a task.
+start of the task guide and its rules for writing a task. The instructions an
+`initialize` answers with also list, before those rules, the open tasks the
+sender holds in the workspaces it reaches, so a new session starts from the
+work it has in hand: at most ten, most recently active first, one line each
+with the task's id, title, helper, branch, next step and last activity. Past
+ten, or past the room the list has, one more line gives how many more there
+are and the `list_tasks` call that lists them; a sender who holds none gets no
+list. The list ends within the first 4,096 characters of the instructions,
+which Claude Code shows and cuts after, so the rules after it are what a
+client cuts first; `get_task_guide` returns them whole. It is read with one
+statement per workspace, through the store's index of holders.
 
 | Tool | What it returns | Arguments |
 |---|---|---|
@@ -146,17 +156,16 @@ start of the task guide and its rules for writing a task.
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
-| `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren` | `workspace`, `task`, and optionally `project` |
+| `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`. With `tasks`, `tasks`: the same for each, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, `status` and `version`, `replayed`, the approval it opened if any, `lint` when it finds something, and `warnings` when a link was left out | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `model`, `idempotency_key` and `detail` |
-| `create_tasks` | Each task filed, in order, with its `id`, `status`, `version` and `lint` when it finds something; `warnings` when a link was left out; the first task refused, if any, and how many were not tried | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
-| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed` | `workspace`, `task`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
+| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
+| `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings`; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
+| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed` | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
-| `comment_on_task` | The `task` and the comment's `commentId`, and `replayed`; with `detail: "full"`, the whole comment | `workspace`, `task`, `text`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
-| `add_dependency` | The link | `workspace`, `task`, `depends_on`, and optionally `project`, `model` and `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
-| `remove_dependency` | The link, removed | `workspace`, `task`, `depends_on`, and optionally `project` and `model` |
+| `comment_on_task` | The `task` and the comment's `commentId`, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
+| `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `task`, `reason` (at most 400 characters), and optionally `project` and `model` |
-| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, and `replayed` | `workspace`, `task`, `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `model`, `idempotency_key` and `detail` |
+| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `unblocked`, and `warnings` when work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `model`, `idempotency_key` and `detail` |
 | `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
@@ -267,9 +276,9 @@ In `update_task`, `""` releases the task (`assignee`), takes it out of its
 parent (`parent`) or clears its defer date (`defer`), and `null` takes off its
 `choices`, `card`, `change_class` or `estimate_minutes`. A status on a closed
 task opens it again.
-In `create_tasks`, a parent or a link may name an earlier task of the same
+In `create_tasks`, a parent or a link may name another task of the same
 call by its place, counting from zero: `#0` for the first, `#1` for the
-second.
+second, earlier or later in the call.
 
 A refused call answers with a tool result marked as an error. Its first
 line is one sentence the agent can act on:
@@ -306,7 +315,8 @@ too.
 - **A close** is refused when someone else holds the task, when an approval it
   waits on is still open, when it has children that are not closed, and when
   the task is a person's decision: an approval, or a task labelled `human`.
-  A task it depends on may still be open. A close as `done` keeps the task's
+  A task it depends on may still be open. A task nobody holds is recorded as
+  held by its closer, so it shows who did the work. A close as `done` keeps the task's
   card as it stood, with the commit hash its reason names, and `get_task`
   returns it as `cardShipped`. A close as `duplicate` links the two tasks as
   `related`.
@@ -314,13 +324,13 @@ too.
   its card once it has shipped. Taking the `human` label off a person's
   decision is refused. A task someone is working on goes to someone else only
   from its holder.
-- **A dependency** keeps the type it was added with: asking for it with
-  another type is refused, and asking for it again changes nothing. A
+- **A link** between two tasks is one: `link_tasks` replaces the kind or the
+  direction it has, and asking for the link it has changes nothing. A
   `related`, `duplicates` or `supersedes` link may name a task in another
   project the sender reaches; every other link stays inside the project. A
-  link that would make tasks wait on
-  each other in a loop is refused. A dependency on a person's decision stays
-  until the person decides.
+  link that would make tasks wait on each other in a loop is refused. A link
+  to or from a person's decision changes and goes only when the person
+  decides; a new one may be added.
 - **An approval** asked again with the same reason returns the open one,
   with `created: false`.
 - **Who did it**: the task records the sender's name as its filer, holder,
@@ -334,6 +344,83 @@ too.
   when it finds something: the sections the task's type expects that it still
   lacks, and advice, such as passing lettered options as `choices`. Nothing is
   refused for it.
+
+## Filing, claiming and closing in one call
+
+Each step of a piece of work is one call, and a step taken on many tasks is
+one call too.
+
+- **Filing.** `claim: true` on `create_task`, or on an entry of
+  `create_tasks`, files the task claimed by the sender: assigned to it and in
+  progress. `done` files work already finished closed as done by the sender,
+  who is recorded as its holder: an object with `evidence`, the reason
+  `close_task` takes, and optionally `commit`, `pr` and `link`, as
+  `close_task` takes them. A task is filed claimed or done, not both; one
+  that opens an approval or is labelled `human` is not filed done. Either way
+  the task and its claim or close are one write, with one history event.
+- **Possible duplicates.** A new task's answer names `possibleDuplicates`
+  when it finds some: up to three open tasks in its project whose titles
+  share more than half the words of the longer title, most alike first, each
+  as `{ id, title, status }`. They are scored over the project's open tasks
+  as one board read, which the store serves from memory when nothing was
+  written since it last read them; a call's own tasks are not each other's.
+- **A batch.** `create_tasks` files each task it can: a task refused gets its
+  sentence as its result and the rest are still filed. A task that names a
+  refused one with `#n` is refused too, and tasks that name each other in a
+  loop are refused, each naming the loop. Tasks are filed in the call's
+  order, except that a task is filed after the tasks it names with `#n`.
+  A call that cannot file any task, such as one naming a project the sender
+  cannot change, is refused whole.
+- **Claiming by pull request.** `claim_task` with `pr` and no `task` claims
+  the open task whose work details name that pull request, or that links to
+  it with an external link of kind `pull-request`, in the project the call
+  names or in every project the sender reaches. A GitHub pull request is
+  matched as one page whatever tab its URL shows. No such task, or several,
+  is refused, naming them.
+- **Closing many.** `close_task` with `tasks` closes each with the same
+  `reason`, resolution and proof, and `with_children: true` first closes
+  every open task under each one named, deepest first. Each task closed or
+  refused is a result of its own: a task someone else holds is refused alone.
+  `unblocked` lists, as `{ id, title }`, each task that waited on the closed
+  ones through a `blocks` link and is now ready.
+- **Commenting on and reading many.** `comment_on_task` with `tasks` records
+  the same comment, and work details, on each; `get_task` with `tasks` reads
+  each. A task refused or not found is a result of its own.
+
+A call that names `task` keeps answering as before; `task` and `tasks`
+together are refused.
+
+### Proof of work done
+
+A close as `done` shows what proves the work: `commit` or `pr`, which start
+the task's [delivery](#delivery), or `link`, an http or https URL that shows
+work no commit or pull request shows, such as a document. `get_task`
+returns the link as `closeLink`. A task, bug, feature or chore closed as
+done with none of the three, where the work details its holder recorded
+count as they do for delivery, reads `proof: "none"` in `get_task` and
+`list_tasks`, and its close answers with a warning that names the proof
+`close_task` takes. Nothing is refused for it. A decision, an approval and an
+epic close without proof.
+
+## Linking two tasks
+
+Two tasks hold at most one link. `link_tasks` sets it: `task` links to `to`
+as `type`, read as `get_task` lists it among the task's `dependencies`:
+
+| `type` | `task` … `to` |
+|---|---|
+| `blocks` | waits on: `task` is not ready until `to` closes |
+| `related` | relates to, holding nothing back |
+| `discovered-from` | was found from the work of |
+| `duplicates` | is the same work as, filed later |
+| `supersedes` | replaces |
+
+A link the pair already has, either way round, is replaced in the same write,
+so changing `blocks` to `related` is one call. `remove: true` removes the
+pair's link, whichever way it points. Asking for a link the pair has, or to
+remove one it does not have, changes nothing. A link the other task holds in
+another project is changed from that task's side. `link_tasks` takes no
+idempotency key, since asking again changes nothing.
 
 ## Recording an owner answer
 
@@ -568,10 +655,13 @@ once, and claiming, releasing and claiming a task again claims it twice. A
 comment leaves its task unchanged, so the same comment sent again with
 nothing changed between is answered with the first one. `create_tasks`
 repeats its whole answer or none of it: when one task it filed has changed,
-the call files every task again.
+the call files every task again; a task it refused is tried again. A call
+that names `tasks` keeps a record for each task: under its key and the task,
+or without a key, under the key the same call naming that task alone would
+have, so each task it closed or commented on answers once, as that call would.
 
-`add_dependency`, `remove_dependency` and `request_human_approval` take no
-key, because asking again changes nothing.
+`link_tasks` and `request_human_approval` take no key, because asking again
+changes nothing.
 
 A write that another write beats to the same task reads the task again,
 checks the rules again and tries again, up to three times. After that it
@@ -613,7 +703,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
 | `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
-| `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit` and `pullRequest` | `{ task }`, the task as closed |
+| `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
@@ -654,7 +744,9 @@ and in a change `null` takes a value off. The task answers its values as
 `fields`.
 
 A task answers its [delivery](#delivery) as `delivery`, null when it has
-none.
+none, the link its close named as `closeLink`, and `proof`: `"none"` for
+work closed as done without proof ([above](#proof-of-work-done)), and null
+otherwise.
 
 A task answers its holder's work in hand as `for`, `work` and
 `lastActivityAt`, as `get_task` does.
@@ -842,6 +934,9 @@ query:
 - agent statistics read one row for each task in progress, blocked or closed
   in the last eight weeks, in one statement over every project, however many
   tasks the projects hold;
+- the tasks a sender holds, which the instructions list when an agent
+  connects, are one statement in each workspace it reaches, through the
+  index of holders: a row for each task held;
 - the statements a read runs do not grow with the number of projects or
   tasks: at most six, for a board filtered by a custom field.
 
