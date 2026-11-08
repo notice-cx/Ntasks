@@ -45,9 +45,10 @@
   },
   // About 30 sign-in requests a minute from one address; about 3 agent
   // registrations, and separately 3 setup attempts, a minute from one
-  // address, and 10 registrations from all addresses together. Each
-  // registration writes to D1 without anyone signed in, and the free plan's
-  // daily write limit stops every query once reached.
+  // address; 10 registrations, and separately 10 setup attempts, a minute
+  // from all addresses together. An IPv6 address counts by its /64 block.
+  // Each registration writes to D1 without anyone signed in, and the free
+  // plan's daily write limit stops every query once reached.
   // Cloudflare counts each limit separately in each of its locations, so the
   // numbers are approximate. namespace_id names a limiter within the account;
   // it is not a secret.

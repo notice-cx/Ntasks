@@ -68,7 +68,7 @@ export interface AccessEnv extends VerifierEnv, ProjectSource {
   readonly SIGN_IN_LIMIT: RateLimit;
   /** Limits agent registrations from one address, and, under its own keys, setup attempts from one address. */
   readonly REGISTER_ADDRESS_LIMIT: RateLimit;
-  /** Limits agent registrations from all addresses together. */
+  /** Limits agent registrations from all addresses together, and, under its own key, setup attempts. */
   readonly REGISTER_LIMIT: RateLimit;
 }
 
@@ -106,7 +106,7 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
       headers: { 'cache-control': 'public, max-age=300' },
     });
   }
-  const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const address = addressKey(request.headers.get('cf-connecting-ip') ?? 'unknown');
   const { success } = await env.SIGN_IN_LIMIT.limit({ key: address });
   if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
   try {
@@ -116,7 +116,7 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
       return await accessApi(request, env, url);
     }
     const signIn = await loadSignIn(env);
-    if (url.pathname === SIGN_IN_PAGE) return await signInPath(request, env, signIn, url);
+    if (url.pathname === SIGN_IN_PAGE) return await signInPath(request, env, signIn, url, address);
     if (signIn.state !== 'on') return notConfigured(env);
     const config = signIn.config;
     // Anyone may register an agent, from any number of addresses, and each
@@ -148,6 +148,27 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
 }
 
 class BodyTooLarge extends Error {}
+
+/**
+ * The key a client address is rate-limited under: an IPv4 address as it is,
+ * and an IPv6 address by its /64 block, since one client is commonly given a
+ * whole /64 and could otherwise use a new address for each request.
+ */
+function addressKey(address: string): string {
+  if (!address.includes(':')) return address;
+  const halves = address.toLowerCase().split('::');
+  if (halves.length > 2) return address;
+  const [front, back] = halves.map((half) => (half === '' ? [] : half.split(':')));
+  const missing = 8 - (front?.length ?? 0) - (back?.length ?? 0);
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return address;
+  const groups = [...(front ?? []), ...Array.from({ length: missing }, () => '0'), ...(back ?? [])];
+  // An IPv4 address written into IPv6 holds dots, and stays whole.
+  if (!groups.every((group) => /^[0-9a-f]{1,4}$/u.test(group))) return address;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => Number.parseInt(group, 16).toString(16))
+    .join(':')}::/64`;
+}
 
 /** Seconds until 00:00 UTC, when the registration budget starts again. */
 function secondsToNextUtcDay(now = new Date()): number {
@@ -259,12 +280,18 @@ function fromThisOrigin(request: Request, config: SignInConfig): boolean {
  * /sign-in: the setup page until the deployment can sign in with GitHub
  * (setupPath), then the sign-in page.
  */
-async function signInPath(request: Request, env: AccessEnv, signIn: SignIn, url: URL): Promise<Response> {
+async function signInPath(
+  request: Request,
+  env: AccessEnv,
+  signIn: SignIn,
+  url: URL,
+  address: string,
+): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
   }
   const form = request.method === 'POST' ? new URLSearchParams(await boundedText(request)) : null;
-  const setup = await setupPath(request, env, signIn, url, form);
+  const setup = await setupPath(request, env, signIn, url, form, address);
   if (setup) return setup;
   if (signIn.state !== 'on') return notConfigured(env);
   return form ? signInPost(request, env, signIn.config, form) : signInGet(request, env, signIn.config, url);
@@ -284,6 +311,7 @@ async function setupPath(
   signIn: SignIn,
   url: URL,
   form: URLSearchParams | null,
+  address: string,
 ): Promise<Response | null> {
   const starting = form?.get('action') === SETUP_ACTION;
   const returning = !form && url.searchParams.has('code') && url.searchParams.has('state');
@@ -308,9 +336,14 @@ async function setupPath(
   if (request.headers.get('origin') !== origin) return json({ error: 'cross_site_request' }, 403);
   if (signIn.state === 'off') return notConfigured(env);
   if (signIn.state === 'on') return alreadySetUp();
-  const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  const { success } = await env.REGISTER_ADDRESS_LIMIT.limit({ key: `setup:${address}` });
-  if (!success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+  // Each address is limited first, and an attempt it is refused does not
+  // count toward the deployment's limit, which bounds guesses of AUTH_SECRET
+  // from any number of addresses. Every attempt counts, since only one
+  // succeeds.
+  const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: `setup:${address}` });
+  if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
+  const fromAll = await env.REGISTER_LIMIT.limit({ key: 'setup' });
+  if (!fromAll.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
   // AUTH_SECRET proves the request comes from whoever made the deployment.
   const given = await sha256(form?.get(AUTH_SECRET_FIELD) ?? '');
   if (!sameBytes(given, await sha256(signIn.secrets.secret))) {

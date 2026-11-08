@@ -151,6 +151,53 @@ describe('the sign-in rate limit', () => {
     expect(new Set(signIn.keys).size).toBe(2);
   });
 
+  it('counts an IPv6 address by its /64 block', async () => {
+    const signIn = limiter(1);
+    const me = (address: string) =>
+      handleAccess(new Request(`${ORIGIN}/api/access/me`, { headers: { 'cf-connecting-ip': address } }), {
+        ...env,
+        SIGN_IN_LIMIT: signIn,
+      });
+
+    expect((await me('2001:db8:1:2::1'))?.status).toBe(401);
+    expect((await me('2001:0db8:0001:0002:ffff:0:0:9'))?.status).toBe(429);
+    expect((await me('2001:db8:1:3::1'))?.status).toBe(401);
+  });
+
+  it('caps setup attempts from all addresses together, under one key, and then refuses the right secret too', async () => {
+    const shared = limiter(3);
+    const fromAddress = limiter(OPEN);
+    const attempt = (secret: string) =>
+      handleAccess(
+        new Request(`${ORIGIN}/sign-in`, {
+          method: 'POST',
+          headers: {
+            origin: ORIGIN,
+            'content-type': 'application/x-www-form-urlencoded',
+            'cf-connecting-ip': freshAddress(),
+          },
+          body: new URLSearchParams({ action: 'setup', auth_secret: secret }).toString(),
+        }),
+        {
+          ...env,
+          NTASKS_ORIGIN: undefined,
+          GITHUB_CLIENT_ID: undefined,
+          GITHUB_CLIENT_SECRET: undefined,
+          OWNER_GITHUB_IDS: undefined,
+          SIGN_IN_LIMIT: limiter(OPEN),
+          REGISTER_LIMIT: shared,
+          REGISTER_ADDRESS_LIMIT: fromAddress,
+        },
+      );
+
+    const statuses = [];
+    for (let i = 0; i < 3; i += 1) statuses.push((await attempt(`wrong-guess-${i}-0123456789abcdefghijk`))?.status);
+    statuses.push((await attempt(env.AUTH_SECRET))?.status);
+    expect(statuses).toEqual([403, 403, 403, 429]);
+    expect(shared.keys).toEqual(['setup', 'setup', 'setup', 'setup']);
+    expect(new Set(fromAddress.keys).size).toBe(4);
+  });
+
   const validRegistration = {
     client_name: 'Example Agent',
     redirect_uris: ['http://127.0.0.1:43110/callback'],

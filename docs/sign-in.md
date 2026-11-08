@@ -122,7 +122,7 @@ acts:
 | Step | Checks |
 |---|---|
 | `GET /sign-in` | Shows the setup page only while sign-in is off and `AUTH_SECRET` is valid; otherwise the sign-in page or `503`. Over `http` at an address that is not local, it never shows the page and answers `303` to `https://<host>/sign-in`, so `AUTH_SECRET` is never typed into a page sent in the clear. |
-| `POST /sign-in` with `action=setup` | The request's origin is `https` or local (else `303` to `https://<host>/sign-in`, acting on nothing), its `Origin` header is that origin (else `403`), sign-in is not set up (else `409`), the address has made fewer than about 3 attempts this minute (`REGISTER_ADDRESS_LIMIT`, under keys of its own; else `429`), and the `auth_secret` field equals `AUTH_SECRET`, compared in constant time through SHA-256 hashes (else `403`). Then it sets the setup cookie, `__Host-ntasks.setup` (`HttpOnly`, `Secure`, `SameSite=Lax`, 10 minutes; `ntasks.setup` without `Secure` at a local `http` origin), to a random value, and answers with a form that posts the manifest to GitHub, with the state in its address. Its one inline script, allowed by a nonce in its content security policy, submits that form. |
+| `POST /sign-in` with `action=setup` | The request's origin is `https` or local (else `303` to `https://<host>/sign-in`, acting on nothing), its `Origin` header is that origin (else `403`), sign-in is not set up (else `409`), the address has made fewer than about 3 attempts this minute and all addresses together fewer than about 10 ([Routes](#routes); else `429`), and the `auth_secret` field equals `AUTH_SECRET`, compared in constant time through SHA-256 hashes (else `403`). Then it sets the setup cookie, `__Host-ntasks.setup` (`HttpOnly`, `Secure`, `SameSite=Lax`, 10 minutes; `ntasks.setup` without `Secure` at a local `http` origin), to a random value, and answers with a form that posts the manifest to GitHub, with the state in its address. Its one inline script, allowed by a nonce in its content security policy, submits that form. |
 | `GET /sign-in` with `code` and `state`, GitHub's return | The origin as above (else `303`), sign-in is not set up (else `409`), and the state: an expiry within 10 minutes and an HMAC-SHA-256 under `AUTH_SECRET` of the origin, the setup cookie's value and the expiry, compared in constant time (else `400`). The cookie's value is never in the state or an address, so a state works only in the browser that started it. Every answer deletes the cookie, so a state works once. Then it exchanges the code at `POST https://api.github.com/app-manifests/{code}/conversions` (else `502`), and stores the app with its owner as the admin in one statement that writes only while no other setup has stored an app (else `409`). |
 
 The `SIGN_IN_LIMIT` of every sign-in path applies to each step as well.
@@ -390,8 +390,16 @@ Cloudflare's rate limiting binding, answer `429` once reached:
   the cost of the limit: a minute without new registrations instead of a day
   without the database. Agents already registered are not affected.
 - A setup attempt, a `POST /sign-in` that submits `AUTH_SECRET`, takes about
-  3 a minute from one address, counted by `REGISTER_ADDRESS_LIMIT` under keys
-  of its own, apart from registrations.
+  3 a minute from one address (`REGISTER_ADDRESS_LIMIT`), and about 10 a
+  minute from all addresses together (`REGISTER_LIMIT`), each counted under
+  keys of their own, apart from registrations. An attempt refused for its
+  address does not count toward the shared limit. Every attempt counts,
+  right or wrong, since only one succeeds; the shared limit bounds guesses
+  of `AUTH_SECRET` from any number of addresses. A caller who uses it up
+  holds the setup off until the minute passes.
+
+An IPv6 address counts by its /64 block in each limit, since one client is
+commonly given a whole /64.
 
 These limits are approximate. Cloudflare counts each one separately in each
 of its locations, and a location can let a few more requests through before
