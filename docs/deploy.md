@@ -19,13 +19,43 @@ build command builds the web app. The deploy command applies the D1
 migrations to the database, then deploys the Worker. Cloudflare runs both
 again for each push to your copy's `main` branch.
 
+### Deploy from a checkout, without a copy
+
+The button always creates a new repository. To deploy from a checkout you
+already have, run these from its root after `pnpm install`:
+
+```sh
+pnpm run build
+pnpm --filter @ntasks/api exec wrangler login
+pnpm --filter @ntasks/api exec wrangler secret put AUTH_SECRET
+pnpm --filter @ntasks/api exec wrangler deploy
+pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --remote
+git checkout -- wrangler.jsonc
+```
+
+`wrangler secret put` asks for the secret and offers to create the `ntasks`
+Worker when it does not exist yet. The first `wrangler deploy` creates the D1
+database named `ntasks`, or connects to one of that name, creates the Durable
+Object that holds the tasks, and writes the database's id into
+`wrangler.jsonc`; the migrations step then finds the database by that id.
+The repository's `wrangler.jsonc` leaves the id out so it works in any
+account, so the last command drops it again. To deploy on each push, connect
+the Worker to the repository in the Cloudflare dashboard under Workers &
+Pages, the Worker, Settings, Builds, with the build and deploy commands
+above.
+
 When the deploy finishes, set up sign-in with GitHub on the deployment's
 setup page:
 
 1. Open `/sign-in` at the Worker's address, such as
    `https://ntasks.<your subdomain>.workers.dev/sign-in`. The Workers & Pages
    page of the Cloudflare dashboard shows the address. Sign-in is bound to
-   the address the setup runs at, so use the one people will use.
+   the address the setup runs at, so use the one people will use. On a
+   custom domain, use one that
+   [Google Safe Browsing](https://transparencyreport.google.com/safe-browsing/search)
+   does not list as unsafe: Chrome blocks GitHub's return to the sign-in
+   callback on a domain it lists, even when the deployment's own address is
+   not listed.
 2. Enter `AUTH_SECRET` and choose **Create the GitHub App**.
 3. GitHub shows the app it will create under your GitHub account. Create it.
 4. GitHub returns to Ntasks and asks you to authorize the app. You are
