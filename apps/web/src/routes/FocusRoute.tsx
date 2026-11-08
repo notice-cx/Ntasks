@@ -180,7 +180,12 @@ function FocusDecision({
     writable && operationAvailable(capabilities, choices ? 'choose' : isGate(task) ? 'resolve' : 'respond');
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
   const waited = ageMs(nowMs, task.createdAt ?? task.updatedAt);
-  const scope = { id: task.id, title: task.title, project: task.project };
+  const scope = {
+    id: task.id,
+    title: task.title,
+    project: task.project,
+    proposalVersion: task.proposalVersion ?? null,
+  };
 
   function choose(key: TaskChoiceKey) {
     if (choices === null || reason !== null) return;

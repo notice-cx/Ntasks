@@ -11,6 +11,7 @@ import {
   Plus,
   Reply,
   SearchX,
+  Undo2,
   X,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
@@ -38,6 +39,7 @@ import {
   useBoards,
   useCapabilities,
   useClaimTask,
+  useDisputeTask,
   useCommentOnTask,
   useInboxAnswer,
   useRetryKey,
@@ -55,6 +57,7 @@ import {
   closeAttribution,
   closeNote,
   inboxAsk,
+  isGate,
   isBlockingLink,
   RESOLUTION_LABELS,
   type NotDone,
@@ -65,7 +68,7 @@ import { AnswerForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
-import { ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
+import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
 
 const UNAVAILABLE = 'This sign-in cannot do this.';
@@ -225,6 +228,7 @@ function TaskPage({
     id: task.id,
     title: task.title,
     project: key,
+    proposalVersion: task.proposalVersion ?? null,
     ...(declinedOnClose(task) ? { via: 'dismiss' as const } : {}),
     onOpen: () => setPanel(null),
   });
@@ -233,12 +237,20 @@ function TaskPage({
   const answered = hides(task.id, fetchedAt);
   const ask = answered ? null : inboxAsk(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
-  const scope = { id: task.id, title: task.title, project: key };
+  const scope = { id: task.id, title: task.title, project: key, proposalVersion: task.proposalVersion ?? null };
   const reasonFor = (available: boolean) => verbReason(capabilities, available, UNAVAILABLE);
   const askReason = reasonFor(operationAvailable(capabilities, ask === 'approve' ? 'resolve' : 'respond'));
   const chooseReason = reasonFor(operationAvailable(capabilities, 'choose'));
   const closeReason = reasonFor(operationAvailable(capabilities, closeOperation(task)));
   const claimReason = reasonFor(fieldAvailable(capabilities, 'claim'));
+  // An approval an agent relayed closed this gate, and nobody has disputed it yet.
+  const disputable =
+    isGate(task) &&
+    closed &&
+    task.answer?.relayed === true &&
+    task.answer.option === 'approve' &&
+    task.answer.disputedBy === null;
+  const disputeReason = reasonFor(operationAvailable(capabilities, 'dispute'));
   const claimable = task.status === 'open' && task.assignee === null;
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
 
@@ -397,6 +409,16 @@ function TaskPage({
               {closeWords ? <MarkdownText source={closeWords} /> : null}
             </ClosedSummary>
           ) : null}
+          {task.answer?.relayed ? (
+            <AnswerSummary
+              answer={task.answer}
+              choices={task.choices ?? null}
+              by={actorOf(task.answer.recordedBy, null, actors)}
+              nowMs={nowMs}
+            >
+              {disputable ? <DisputeAction id={task.id} project={key} disabledReason={disputeReason} /> : null}
+            </AnswerSummary>
+          ) : null}
         </header>
         <div
           className="border-border bg-canvas px-4 py-5 max-lg:border-y lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-s"
@@ -495,6 +517,40 @@ function ClaimAction({ id, project, disabledReason }: { id: string; project: str
       <Hand aria-hidden />
       {claim.isPending ? 'Claiming…' : 'Claim'}
     </Button>
+  );
+}
+
+/** Withdraws an approval an agent relayed: the approval opens again and the tasks waiting on it are told to stop. */
+function DisputeAction({
+  id,
+  project,
+  disabledReason,
+}: {
+  id: string;
+  project: string;
+  disabledReason: string | null;
+}) {
+  const dispute = useDisputeTask();
+  return (
+    <div>
+      <Button
+        disabled={disabledReason !== null || dispute.isPending}
+        title={disabledReason ?? undefined}
+        data-task-action="dispute"
+        onClick={() =>
+          dispute.mutate(
+            { id, project },
+            {
+              onSuccess: () => toast.success(`Disputed ${id}`),
+              onError: (error) => toast.error(error.message),
+            },
+          )
+        }
+      >
+        <Undo2 aria-hidden />
+        {dispute.isPending ? 'Disputing…' : 'Dispute'}
+      </Button>
+    </div>
   );
 }
 

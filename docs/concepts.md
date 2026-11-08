@@ -161,12 +161,26 @@ Some steps only a person can take. Ntasks has two kinds.
   as a deployment. While the approval is pending, the task is not ready, so
   no agent starts it.
 
+A task's **proposal** is what a person answers: its title, description,
+acceptance, type and options. For an approval, that is the exact action it
+asks for, with its environment, scope and verification. The **proposal
+version** is a short hash of the proposal, so it changes whenever the
+proposal does.
+
+An **answer** records the option the person chose (for an approval, approve
+or decline), the person's exact words as a quote, where they said it, who
+recorded it, and the proposal version it answered. Ntasks never reads the
+quote to decide what it means: a quote such as "maybe" is kept as given.
+
 Only a person signed in to the web app answers a decision or approves an
-approval; an agent or a service cannot, whatever projects it was granted. An
-agent may record an answer a person gave it somewhere else, such as in a
-chat. Ntasks records that answer as relayed by that agent, and the person can
-dispute it: the approval opens again, and the tasks waiting on it are told to
-stop until a new approval.
+approval directly; an agent or a service cannot, whatever projects it was
+granted. An agent may record an answer a person gave it somewhere else, such
+as in a chat: it names the option, the quote, where it was said and the
+proposal version it showed the person. Ntasks records that answer as relayed
+by that agent, and refuses it when the proposal has changed since that
+version, so a task edited after the person answered cannot borrow the answer.
+The person can dispute a relayed approval: the approval opens again, and the
+tasks waiting on it are told to stop until a new approval.
 
 ## History and comments
 

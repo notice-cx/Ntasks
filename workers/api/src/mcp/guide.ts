@@ -9,6 +9,7 @@
  * work.
  */
 import type { HeldTask } from '@ntasks/domain';
+import { shortHash } from '../short-hash.ts';
 
 /** How to write a task that reads cold. */
 export const TASK_QUALITY: readonly string[] = Object.freeze([
@@ -30,8 +31,8 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  "2026-11-07: close_task takes commit and pr, and the task's delivery shows its change as built; report_delivery moves it to merged and live. list_tasks takes stage and counts closed tasks by stage.",
   '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
+  '2026-11-07: reconcile_task records an owner’s answer as the option they chose on the proposal_version get_task returned, with their exact words as quote and where they said it as source; nothing reads the quote, and an answer to an older version is refused.',
   '2026-11-07: one call each. create_task takes claim and done, and answers possibleDuplicates; create_tasks files the rest when one is refused, and #n names any task of the call. claim_task takes pr in place of task. close_task takes tasks, with_children and link, and lists unblocked; comment_on_task and get_task take tasks. link_tasks replaces add_dependency and remove_dependency. A task done without commit, pr or link shows proof: none. The instructions list the tasks you hold.',
 ]);
 
@@ -47,8 +48,8 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each.',
   '5. Finish: close_task with the evidence and its proof: commit, pr or link. tasks closes several, with_children an epic and its open tasks; unblocked lists what is ready next. create_task with done files work already finished. After a merge or a deploy, report_delivery.',
   '6. Found work: create_task, or create_tasks for several, where #n names another task of the call. link_tasks sets or removes the one link between two tasks; update_task changes any other field.',
-  '7. A step only a person can do: label the task human, with choices when they pick one option; request_human_approval when work must wait for approval. reconcile_task records an answer the owner gave elsewhere, with their exact words, source and scope; a declined action must not happen, and retiring a request grants nothing.',
-  '8. A claim is a reservation: release another holder’s task only with reconcile_task action release, after checking they stopped and keeping their progress. Never run bd, bv or br in a project folder: these tools are the task interface.',
+  '7. A step only a person can do: label the task human, with choices when they pick one option; request_human_approval when work must wait for approval. When the owner answers you in conversation, reconcile_task records it, relayed by you: action answer (declined or owner_performed on an approval), proposal_version from get_task, quote (their exact words), source (such as claude-code:session/<session id>) and the option they chose. An approved request’s waiting tasks go back to agents within its scope; a declined action must not happen; an answered task goes back to ready work, to claim and close with the implementation commit. A stale proposal_version means show the owner the task again.',
+  '8. Without an owner answer, reconcile_task with proposal_version, an explanation and evidence retires a request (completed, obsolete, superseded or duplicate), takes the human label off routine work, or releases a task whose holder stopped (release, with holder, inactive: true, activity_check and progress; age alone never proves it). Retiring an approval grants no permission. Never run bd, bv or br in a project folder: these tools are the task interface.',
 ]);
 
 export const TASK_GUIDE_TOOL = 'get_task_guide';
@@ -113,10 +114,7 @@ function guideBody(offered: readonly string[]): string {
  * its SHA-256 as its version. */
 export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> {
   const body = guideBody(offered);
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
-  const version = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 12);
+  const version = await shortHash(body, 12);
   return Object.freeze({
     version,
     guide: `# Working with Ntasks tasks\n\nGuide version ${version}; list_workspaces returns the current one as guideVersion.\n\n${body}\n`,

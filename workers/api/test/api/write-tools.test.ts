@@ -24,9 +24,11 @@ import {
 // ced74393 by importing its compiled scripts/hosted-mcp.mjs in Node, building
 // its standalone endpoint (createHostedMcp) and asking it for tools/list, so
 // the names, descriptions, input schemas and annotations are exactly the ones
-// agents written for NoticeOS were given. reconcile_task and get_agent_stats
-// are copied from their definitions in scripts/hosted-task-mcp.mts at commit
-// 09563bcc, with the workspace argument its endpoint adds to every tool.
+// agents written for NoticeOS were given. get_agent_stats is copied from its
+// definition in scripts/hosted-task-mcp.mts at commit 09563bcc, with the
+// workspace argument its endpoint adds to every tool. reconcile_task is not
+// here: it records an answer as the option chosen on a proposal version, so
+// its arguments are Ntasks's own.
 import NOTICEOS_TOOLS from '../fixtures/noticeos-task-tools.json';
 
 const time = clock('2026-11-06T12:00:00.000Z');
@@ -133,7 +135,6 @@ describe('tools/list', () => {
     expect(unchanged).toEqual(shape(NOTICEOS_TOOLS));
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
-      'reconcile_task.detail',
       'list_tasks.stage',
       'list_tasks.fields',
       'create_task.notes',

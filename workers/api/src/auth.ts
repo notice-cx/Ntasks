@@ -39,8 +39,8 @@ export interface Principal {
   /** The projects of the workspace the sender reaches: every one, as a
    * person does, or the ones it was granted, each for reading or for writing too. */
   readonly projects: 'all' | ReadonlyMap<string, ProjectAccess>;
-  /** The actor name of the person the sender is, or acts for: a comment by
-   * that actor holds the person's own words. Absent for a service. */
+  /** The actor name of the person the sender is, or acts for: a pick the
+   * sender relays records them as the one who chose. Absent for a service. */
   readonly person?: string;
 }
 

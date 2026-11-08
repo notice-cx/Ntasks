@@ -36,6 +36,23 @@ export interface TaskChoice {
   readonly note?: string;
 }
 
+/** The latest answer recorded on a task. */
+export interface TaskAnswer {
+  /** A letter on a task with choices, `approve` or `decline` on an approval, null when it chose none. */
+  readonly option: string | null;
+  /** The person's words, as given. */
+  readonly quote: string | null;
+  /** Where the person said it, as the agent or service that relayed it named it. */
+  readonly source: string | null;
+  readonly recordedBy: string;
+  /** An agent or a service recorded it for the person; false when the person answered here. */
+  readonly relayed: boolean;
+  /** The version of the proposal it answered. */
+  readonly proposalVersion: string | null;
+  readonly at: string;
+  readonly disputedBy: string | null;
+}
+
 /** One link from a task to another task. */
 export interface TaskDependency {
   /** The task on the other end. */
@@ -115,6 +132,11 @@ export interface LiveTask {
   dueAt?: string | null;
   choices?: TaskChoices | null;
   choice?: TaskChoice | null;
+  /** While the task waits on a person, the version of the proposal they answer,
+   * which an answer sends back; null otherwise, and absent when the server sends none. */
+  proposalVersion?: string | null;
+  /** The latest answer recorded on it, when the server sends one. */
+  answer?: TaskAnswer | null;
   /** How a closed task's close ended; null on a task that is not closed. */
   resolution?: TaskResolution | null;
   duplicateOf?: string | null;

@@ -110,6 +110,7 @@ describe('the HTTP Tasks API client', () => {
     await api.resolveGate('web-g1', 'web');
     await api.resolveGate('web-g1', 'web', 'Ship it');
     await api.dispute('web-g1', 'web');
+    await api.choose('web-a1b2', 'web', 'a', undefined, { proposalVersion: '0123456789abcdef0123456789abcdef' });
 
     expect(created).toEqual({ id: 'web-n1', project: 'web' });
     expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
@@ -133,6 +134,11 @@ describe('the HTTP Tasks API client', () => {
       ['POST', '/api/gates/web-g1/resolve', { projectId: 'p-web' }],
       ['POST', '/api/gates/web-g1/resolve', { reason: 'Ship it', projectId: 'p-web' }],
       ['POST', '/api/tasks/web-g1/dispute', { projectId: 'p-web' }],
+      [
+        'POST',
+        '/api/tasks/web-a1b2/choose',
+        { option: 'a', proposalVersion: '0123456789abcdef0123456789abcdef', projectId: 'p-web' },
+      ],
     ]);
   });
 

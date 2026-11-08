@@ -13,6 +13,8 @@ export const NOTICEOS_METADATA = Object.freeze({
   card: 'noticeos_card',
   cardShipped: 'noticeos_card_shipped',
   changeClass: 'noticeos_change_class',
+  /** The record of the task's last owner answer or maintenance, with the earlier ones in its `events`. */
+  maintenance: 'noticeos_maintenance',
 });
 
 /** A problem with a value: the field at fault, as the caller names it, and what it must be. */
