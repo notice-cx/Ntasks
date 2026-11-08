@@ -71,8 +71,12 @@ Cloudflare account is needed: local runs and tests use a local database.
 
 ```sh
 pnpm install
+pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --local
 pnpm dev
 ```
+
+The second command creates the local D1 database's tables. Run it again after
+pulling a change that adds a D1 migration.
 
 `pnpm dev` builds the web app and starts the Worker at
 [http://localhost:8787](http://localhost:8787). The health check at

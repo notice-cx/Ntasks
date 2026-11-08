@@ -58,8 +58,9 @@ branch, its pull request, its next step and when it last moved.
   <img src="docs/images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting to merge and to deploy; closed tasks show built, merged and live, and one closed without proof shows No proof.">
 </picture>
 
-Closed work shows whether its change is built, merged or live. Work closed
-without proof says so.
+Closed work shows whether its change is built, merged or live, moved on by
+the merge and deploy signals your repository sends
+([Delivery](docs/api.md#delivery)). Work closed without proof says so.
 
 ### Approve exactly what you saw
 
@@ -99,7 +100,7 @@ few calls. These are examples with invented ids:
 ```text
 claim_task       { "task": "web-a1b2", "branch": "fix-sign-in", "next": "Write the failing test" }
 comment_on_task  { "task": "web-a1b2", "text": "Test written; the redirect drops the return address." }
-close_task       { "task": "web-a1b2", "pr": "https://github.com/example/web/pull/42" }
+close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test passes.", "pr": "https://github.com/example/web/pull/42" }
 ```
 
 `get_task_guide` gives the agent the rest: filing work, linking tasks and
