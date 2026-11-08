@@ -30,7 +30,7 @@ export interface PersonPrincipal {
   readonly id: string;
   readonly userId: string;
   readonly name: string;
-  /** Whether their GitHub id is in OWNER_GITHUB_IDS: a deployment admin, who may create workspaces. */
+  /** Whether they are a deployment admin, who may create workspaces: the setup page recorded them, or their GitHub id is in OWNER_GITHUB_IDS. */
   readonly admin: boolean;
   readonly memberships: readonly Membership[];
 }

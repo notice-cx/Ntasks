@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createAuth } from '../../src/access/auth.ts';
-import { signInConfig } from '../../src/access/config.ts';
+import { loadSignIn, signInSecrets } from '../../src/access/config.ts';
 import { registrationDay, registrationsOn, REGISTRATIONS_PER_DAY } from '../../src/access/grants.ts';
 import { handleAccess } from '../../src/access/routes.ts';
 import { refusal, verifyRequest } from '../../src/access/verify.ts';
@@ -9,9 +9,9 @@ import { call, freshAddress, ORIGIN } from './client.ts';
 
 describe('the sign-in tables', () => {
   it('match the schema Better Auth expects, column for column', async () => {
-    const config = signInConfig(env);
-    expect(config).not.toBeNull();
-    const context = await createAuth(env.DB, config!, { validateSchema: true }).$context;
+    const signIn = await loadSignIn(env);
+    if (signIn.state !== 'on') throw new Error('the tests sign in with the GitHub secrets');
+    const context = await createAuth(env.DB, signIn.config, { validateSchema: true }).$context;
 
     expect(context.checkSchema).toBeTypeOf('function');
     await expect(context.checkSchema?.()).resolves.toBeUndefined();
@@ -27,16 +27,25 @@ describe('the sign-in settings', () => {
     OWNER_GITHUB_IDS: '1001, 1002',
   };
 
-  it('read an https origin, a long secret and numeric GitHub ids', () => {
-    expect(signInConfig(valid)).toMatchObject({
-      origin: 'https://ntasks.example.com',
-      secure: true,
+  it('read an https origin, a long secret, a GitHub app and numeric GitHub ids', () => {
+    expect(signInSecrets(valid)).toMatchObject({
       owners: new Set(['1001', '1002']),
+      app: { origin: 'https://ntasks.example.com', github: { clientId: 'id', clientSecret: 'secret' } },
     });
   });
 
-  it('accept a local http origin without the Secure cookie flag', () => {
-    expect(signInConfig({ ...valid, NTASKS_ORIGIN: 'http://localhost:8787' })).toMatchObject({ secure: false });
+  it('accept a local http origin', () => {
+    expect(signInSecrets({ ...valid, NTASKS_ORIGIN: 'http://localhost:8787' })).toMatchObject({
+      app: { origin: 'http://localhost:8787' },
+    });
+  });
+
+  it('need only AUTH_SECRET, leaving the GitHub app to the setup page', () => {
+    expect(signInSecrets({ AUTH_SECRET: valid.AUTH_SECRET })).toEqual({
+      secret: valid.AUTH_SECRET,
+      owners: new Set(),
+      app: null,
+    });
   });
 
   it.each([
@@ -44,10 +53,10 @@ describe('the sign-in settings', () => {
     ['an origin with a path', { NTASKS_ORIGIN: 'https://ntasks.example.com/app' }],
     ['a secret under 32 characters', { AUTH_SECRET: 'short' }],
     ['a GitHub login instead of an id', { OWNER_GITHUB_IDS: 'octocat' }],
-    ['no owners', { OWNER_GITHUB_IDS: '' }],
-    ['no GitHub client', { GITHUB_CLIENT_ID: '' }],
+    ['an origin and a client secret with no client id', { GITHUB_CLIENT_ID: '' }],
+    ['a GitHub app with no origin', { NTASKS_ORIGIN: '' }],
   ])('turn sign-in off with %s', (_, change) => {
-    expect(signInConfig({ ...valid, ...change })).toBeNull();
+    expect(signInSecrets({ ...valid, ...change })).toBeNull();
   });
 
   it('refuse every caller while sign-in is off', async () => {
@@ -140,6 +149,53 @@ describe('the sign-in rate limit', () => {
     expect(limited?.headers.get('retry-after')).toBe('60');
     expect((await me(OTHER_ADDRESS))?.status).toBe(401);
     expect(new Set(signIn.keys).size).toBe(2);
+  });
+
+  it('counts an IPv6 address by its /64 block', async () => {
+    const signIn = limiter(1);
+    const me = (address: string) =>
+      handleAccess(new Request(`${ORIGIN}/api/access/me`, { headers: { 'cf-connecting-ip': address } }), {
+        ...env,
+        SIGN_IN_LIMIT: signIn,
+      });
+
+    expect((await me('2001:db8:1:2::1'))?.status).toBe(401);
+    expect((await me('2001:0db8:0001:0002:ffff:0:0:9'))?.status).toBe(429);
+    expect((await me('2001:db8:1:3::1'))?.status).toBe(401);
+  });
+
+  it('caps setup attempts from all addresses together, under one key, and then refuses the right secret too', async () => {
+    const shared = limiter(3);
+    const fromAddress = limiter(OPEN);
+    const attempt = (secret: string) =>
+      handleAccess(
+        new Request(`${ORIGIN}/sign-in`, {
+          method: 'POST',
+          headers: {
+            origin: ORIGIN,
+            'content-type': 'application/x-www-form-urlencoded',
+            'cf-connecting-ip': freshAddress(),
+          },
+          body: new URLSearchParams({ action: 'setup', auth_secret: secret }).toString(),
+        }),
+        {
+          ...env,
+          NTASKS_ORIGIN: undefined,
+          GITHUB_CLIENT_ID: undefined,
+          GITHUB_CLIENT_SECRET: undefined,
+          OWNER_GITHUB_IDS: undefined,
+          SIGN_IN_LIMIT: limiter(OPEN),
+          REGISTER_LIMIT: shared,
+          REGISTER_ADDRESS_LIMIT: fromAddress,
+        },
+      );
+
+    const statuses = [];
+    for (let i = 0; i < 3; i += 1) statuses.push((await attempt(`wrong-guess-${i}-0123456789abcdefghijk`))?.status);
+    statuses.push((await attempt(env.AUTH_SECRET))?.status);
+    expect(statuses).toEqual([403, 403, 403, 429]);
+    expect(shared.keys).toEqual(['setup', 'setup', 'setup', 'setup']);
+    expect(new Set(fromAddress.keys).size).toBe(4);
   });
 
   const validRegistration = {

@@ -29,20 +29,8 @@
   },
   "cloudflare": {
     "bindings": {
-      "NTASKS_ORIGIN": {
-        "description": "The address people and agents reach Ntasks at, with no path or trailing slash: `https://` followed by the Worker name and your `workers.dev` subdomain, such as `https://ntasks.<your-subdomain>.workers.dev`. `https` is required."
-      },
       "AUTH_SECRET": {
-        "description": "A random value of at least 32 characters. Make one with `openssl rand -base64 32`. It signs session cookies and sign-in state, and encrypts stored GitHub tokens and agents' client secrets."
-      },
-      "GITHUB_CLIENT_ID": {
-        "description": "The client ID of the GitHub OAuth app people sign in through. [Register the app](https://github.com/notice-cx/Ntasks/blob/main/docs/sign-in.md#register-the-github-oauth-app) for this Worker's address first."
-      },
-      "GITHUB_CLIENT_SECRET": {
-        "description": "A client secret generated for that GitHub OAuth app."
-      },
-      "OWNER_GITHUB_IDS": {
-        "description": "The numeric GitHub user ids of the deployment's admins, who create workspaces and invite everyone else, separated by commas, such as `1001`. `https://api.github.com/users/<login>` shows an account's id."
+        "description": "A random value of at least 32 characters. Make one with `openssl rand -base64 32` and keep a copy: after the deploy, the setup page at `/sign-in` asks for it once to set up GitHub sign-in. It signs session cookies and sign-in state, and encrypts the stored GitHub App credentials, GitHub tokens and agents' client secrets."
       }
     }
   },

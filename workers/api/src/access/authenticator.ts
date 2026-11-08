@@ -150,7 +150,13 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
       });
     },
     challenge(request: Request): Response {
-      const refused = refusals.get(request) ?? { ok: false, reason: 'unauthenticated' };
+      // No recorded refusal means authenticate threw before it read the
+      // deployment's origin, so the challenge names the one the request came to.
+      const refused = refusals.get(request) ?? {
+        ok: false,
+        reason: 'unauthenticated',
+        origin: new URL(request.url).origin,
+      };
       if ('invalidRequest' in refused) return json({ error: 'invalid_request', detail: refused.invalidRequest }, 400);
       return refusal(refused, env);
     },

@@ -30,6 +30,21 @@ export function randomSecret(bytes = 32): string {
   return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
+/**
+ * HMAC-SHA-256 of `value` under `key`. Each use starts `value` with its own
+ * label, so a value made for one purpose never verifies for another.
+ */
+export async function hmac(key: string, value: string): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(value)));
+}
+
 /** Compares two hashes without revealing, by its timing, where they differ. */
 export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.byteLength === b.byteLength && crypto.subtle.timingSafeEqual(a, b);

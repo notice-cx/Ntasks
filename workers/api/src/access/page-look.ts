@@ -85,6 +85,8 @@ legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 500; colo
 .options label:last-child { border-radius: 0 0 8px 8px; }
 .options .key { margin-left: auto; font-size: 12.5px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; font-feature-settings: "calt" 0, "cv05" 1, "cv08" 1; }
 input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 6px; margin: 20px 0 0; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.field input { height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--background); color: var(--ink); font: inherit; font-size: 14px; font-weight: 400; box-shadow: inset 0 0 0 1px var(--border); }
 .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 24px 0 0; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color 120ms ease-out, filter 120ms ease-out; }
 .button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

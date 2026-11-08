@@ -1,9 +1,12 @@
 /**
- * The pages the Worker serves itself: signing in, approving an AI agent, and
- * a link that expired. They are plain HTML forms with no script, so they work
- * before the web app loads and hold nothing an agent could read. They draw in
- * the design system's look (page-look.ts). This module imports no runtime
- * code beyond that, so tools/screenshots can draw the pages in Node.
+ * The pages the Worker serves itself: setting sign-in up, signing in,
+ * approving an AI agent, and a link that expired. They are plain HTML forms
+ * with no script, so they work before the web app loads and hold nothing an
+ * agent could read; the one exception is the step that sends the setup's
+ * manifest to GitHub, which submits its own form with one inline script and
+ * shows its button when scripts are off. They draw in the design system's
+ * look (page-look.ts). This module imports no runtime code beyond that, so
+ * tools/screenshots can draw the pages in Node.
  */
 import { ALERT_SVG, githubSvg, LOGO_SVG, PAGE_STYLE } from './page-look.ts';
 import type { ProjectAccess } from './principal.ts';
@@ -20,7 +23,8 @@ function escape(value: string): string {
   return value.replace(/[&<>"']/gu, (char) => `&#${char.charCodeAt(0)};`);
 }
 
-function page(title: string, body: string): Response {
+/** A page; `scriptNonce` lets the one inline script that carries it run. */
+function page(title: string, body: string, scriptNonce?: string): Response {
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -45,8 +49,7 @@ ${body}
       // No script, no framing: another site cannot overlay the approval
       // buttons. form-action is left out because an approval redirects to the
       // agent's own address. Fonts come from this origin's static files.
-      'content-security-policy':
-        "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+      'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'${scriptNonce === undefined ? '' : `; script-src 'nonce-${scriptNonce}'`}`,
       'x-frame-options': 'DENY',
       'referrer-policy': 'no-referrer',
     },
@@ -106,6 +109,65 @@ ${query}
 <button type="submit" name="action" value="github" class="button primary wide">${githubSvg(16)}Sign in with GitHub</button>
 </form>`,
   );
+}
+
+/** The value of the setup page's button, which starts the setup. */
+export const SETUP_ACTION = 'setup';
+/** The setup page's field for AUTH_SECRET. */
+export const AUTH_SECRET_FIELD = 'auth_secret';
+
+/**
+ * The setup page, which /sign-in shows until the deployment can sign in with
+ * GitHub: AUTH_SECRET, and the button that has GitHub create the app people
+ * sign in through.
+ */
+export function setupPage(input: { readonly error: string | null; readonly status?: number }): Response {
+  const response = page(
+    'Set up sign-in',
+    `<h1>Set up sign-in</h1>
+<p class="sub">Enter this deployment's AUTH_SECRET. GitHub then creates the app people sign in through, under your GitHub account, and that account becomes this deployment's admin.</p>
+${alert(input.error)}
+<form method="post" action="${SIGN_IN_PAGE}">
+<label class="field">AUTH_SECRET<input type="password" name="${AUTH_SECRET_FIELD}" required autocomplete="off" spellcheck="false"></label>
+<button type="submit" name="action" value="${SETUP_ACTION}" class="button primary wide">${githubSvg(16)}Create the GitHub App</button>
+</form>`,
+  );
+  return new Response(response.body, { status: input.status ?? 200, headers: response.headers });
+}
+
+/**
+ * The step after the setup page: a form that posts the app's manifest to
+ * GitHub, which its script submits at once. Its button stays for a browser
+ * that runs no script.
+ */
+export function manifestPage(input: { readonly action: string; readonly manifest: string }, nonce: string): Response {
+  return page(
+    'Continue on GitHub',
+    `<h1>Continue on GitHub</h1>
+<p class="sub">GitHub shows the app it will create. Once you create it, GitHub returns here and you sign in.</p>
+<form method="post" action="${escape(input.action)}" id="manifest">
+<input type="hidden" name="manifest" value="${escape(input.manifest)}">
+<button type="submit" class="button primary wide">${githubSvg(16)}Continue to GitHub</button>
+</form>
+<script nonce="${escape(nonce)}">document.getElementById('manifest').submit();</script>`,
+    nonce,
+  );
+}
+
+/** Where a setup stopped: why, and the link back to /sign-in, labelled `next`. */
+export function setupEndPage(input: {
+  readonly status: number;
+  readonly heading: string;
+  readonly words: string;
+  readonly next: string;
+}): Response {
+  const response = page(
+    input.heading,
+    `<h1>${escape(input.heading)}</h1>
+<p class="sub">${escape(input.words)}</p>
+<div class="actions"><a href="${SIGN_IN_PAGE}" class="button primary">${escape(input.next)}</a></div>`,
+  );
+  return new Response(response.body, { status: input.status, headers: response.headers });
 }
 
 /** The access an agent's scopes ask for, in words. */

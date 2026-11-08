@@ -66,7 +66,7 @@ describe('owner sign-in with GitHub', () => {
     const departed = { ...env, OWNER_GITHUB_IDS: '3003' };
 
     expect((await verifyRequest(asSent(loner), env)).ok).toBe(true);
-    expect(await verifyRequest(asSent(loner), departed)).toEqual({ ok: false, reason: 'invalid_token' });
+    expect(await verifyRequest(asSent(loner), departed)).toMatchObject({ ok: false, reason: 'invalid_token' });
     const kept = await verifyRequest(asSent(member), departed);
     expect(kept).toMatchObject({
       ok: true,

@@ -79,8 +79,9 @@ A workspace has an id, a UUID, and a name. Its people belong to it as its
 **owner** or as a **member**: both read, write and decide there, and an owner
 also invites and removes its people, creates its projects, makes its service
 credentials, and backs it up and loads it. The deployment's admins, the
-GitHub accounts in `OWNER_GITHUB_IDS`, create workspaces, and each becomes
-the owner of the workspaces they create.
+GitHub account that ran the setup page and any in `OWNER_GITHUB_IDS`
+([Sign-in](sign-in.md#settings)), create workspaces, and each becomes the
+owner of the workspaces they create.
 An owner invites people by their GitHub username, and an invited account
 becomes a member when it signs in. Only admins, members and invited accounts
 sign in; any other GitHub account is refused
