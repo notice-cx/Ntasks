@@ -191,7 +191,37 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       ready: true,
       createdAt: at(26 * HOUR),
       updatedAt: at(26 * HOUR),
-      description: 'Approve only the switch of /sign-in to the new page. Rolling back is one revert.',
+      description: [
+        'Action: Switch /sign-in to the new page for every visitor.',
+        'Environment: Production, app.example.com.',
+        'Scope: The /sign-in route only. The old page stays in the code, so rolling back is one revert.',
+        'Verification: Sign in with a test account, then check that a wrong password shows its error.',
+      ].join('\n'),
+    }),
+    // An approval an agent recorded for a person, which the person can still dispute.
+    base('web', 'web-r2v9', 'Approve turning on the new sign-in page for staff', {
+      issueType: 'gate',
+      awaitType: 'human',
+      priority: 1,
+      createdAt: at(2 * DAY),
+      description: [
+        'Action: Turn on the new sign-in page for staff accounts.',
+        'Environment: Production, app.example.com.',
+        'Scope: Accounts on example.com only.',
+        'Verification: A staff member signs in with an email link.',
+      ].join('\n'),
+      ...closed(3 * HOUR, CLAUDE, 'Approved', {
+        answer: {
+          option: 'approve',
+          quote: 'Yes, turn it on for staff today.',
+          source: 'a Claude Code session',
+          recordedBy: CLAUDE,
+          relayed: true,
+          proposalVersion: 'a1b2c3d4',
+          at: at(3 * HOUR),
+          disputedBy: null,
+        },
+      }),
     }),
     base('web', 'web-d4x1', 'Choose the sign-in methods the page offers', {
       issueType: 'decision',
@@ -262,6 +292,19 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       status: 'deferred',
       deferUntil: day(5),
     }),
+    base('web', 'web-j6y4', 'Show the password rules under the field', {
+      ...closed(28 * HOUR, CODEX, 'Live with 7a8b9c0: the rules show under the password field.', {
+        delivery: {
+          stage: 'live',
+          commit: '7a8b9c0',
+          pullRequest: 'https://github.com/example/web/pull/39',
+          mergeCommit: '7a8b9c0',
+          builtAt: at(3 * DAY),
+          mergedAt: at(2 * DAY),
+          liveAt: at(28 * HOUR),
+        },
+      }),
+    }),
     base('web', 'web-h1z8', 'Remove the old landing page', {
       priority: 3,
       ...closed(1 * DAY, FIXTURE_ACTOR, 'The new home page replaced it.', { resolution: 'no-longer-needed' }),
@@ -298,6 +341,13 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
         ],
       },
     }),
+    // The work docs-r4s9's answer releases.
+    base('docs', 'docs-k8f2', 'Write the API reference', {
+      dependencies: [{ id: 'docs-r4s9', type: 'blocks', title: null, status: null }],
+      description: 'Write the reference for every endpoint, in the place docs-r4s9 chooses.',
+      acceptance: '- [ ] Every endpoint has its page\n- [ ] Each page shows one request and its answer',
+      estimateMinutes: 180,
+    }),
     base('docs', 'docs-w8e3', 'Publish the guide on docs.example.com', {
       status: 'blocked',
       priority: 2,
@@ -315,6 +365,10 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
           liveAt: null,
         },
       }),
+    }),
+    // Closed as done with nothing that shows the work.
+    base('docs', 'docs-p3t6', 'Update the screenshots in the setup guide', {
+      ...closed(6 * HOUR, CODEX, 'Updated the screenshots.', { proof: 'none' }),
     }),
   ];
 
