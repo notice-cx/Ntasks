@@ -212,6 +212,34 @@ export async function retryStanding(
 }
 
 /**
+ * Binds a caller's idempotency key to the whole of a call that writes several
+ * tasks, each under a record of its own (rule 3): the call's record, kept
+ * beside `taskId`, answers the same call sent again, and refuses the key for
+ * any other request before a task is written. It writes the record alone,
+ * leaving the task's version and history as they are.
+ */
+export async function bindRetry(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  request: RetryRequest,
+): Promise<void> {
+  const project = await projectOf(context, projectId, 'write');
+  const retry = (await retryOf(context.principal, request))!;
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    if ((await recorded(context, project, retry)) !== null) return;
+    const task = await taskOf(context, project, taskId);
+    try {
+      await context.engine.recordUnchanged(project.id, task.id, task.version, retry);
+      return;
+    } catch (error) {
+      if (!(error instanceof TaskRefused) || error.refusal !== 'version_conflict') throw fromEngine(error);
+    }
+  }
+  throw unavailable(true);
+}
+
+/**
  * Changes a task: `plan` reads the task as it stands and returns the write,
  * or null when it changes nothing, or throws the refusal its state calls for.
  * When another write changes the task first, it reads the task again and

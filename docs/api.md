@@ -672,6 +672,9 @@ the call files every task again; a task it refused is tried again. A call
 that names `tasks` keeps a record for each task: under its key and the task,
 or without a key, under the key the same call naming that task alone would
 have, so each task it closed or commented on answers once, as that call would.
+A key of the caller's own is also held to the whole call: sent again with
+other arguments, such as other tasks, it is refused before any task is
+written.
 
 `link_tasks` and `request_human_approval` take no key, because asking again
 changes nothing.

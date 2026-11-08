@@ -77,6 +77,7 @@ import {
 } from '../noticeos-fields.ts';
 import { Refused } from '../refused.ts';
 import {
+  bindRetry,
   canonical,
   closeTask,
   commentOnTask,
@@ -618,6 +619,26 @@ async function eachRetry(context: ToolContext, operation: string, args: Args, ta
   delete single.detail;
   const call = (await sha256(`ntasks-each-task-v1:${operation}:${given}`)).slice(0, 32);
   return { operation, key: `each.${call}.${taskId}`, request: single };
+}
+
+/**
+ * For a call that names several tasks under a key of its own: binds the key to
+ * the whole call (bindRetry), beside the first task named that the sender may
+ * change, so the key sent with another request is refused before any task is
+ * written. A keyless call needs none: its key is its arguments.
+ */
+async function bindCall(context: ToolContext, operation: string, args: Args, ids: readonly string[]): Promise<void> {
+  if (keyArg(args) === undefined) return;
+  const request = await retryRequest(context, operation, args);
+  for (const id of ids) {
+    try {
+      await bindRetry(context, await projectFor(context, args, id), id, request);
+      return;
+    } catch (error) {
+      // A task the sender cannot change is refused as its own result; the key binds beside the next.
+      if (!(error instanceof Refused) || (error.kind !== 'not_found' && error.kind !== 'forbidden')) throw error;
+    }
+  }
 }
 
 /** The task ids a call names: `task`, or `tasks`, each once. */
@@ -1283,6 +1304,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           : { task: taskId, commentId: comment.id, replayed };
       };
       if (one) return comment(ids[0]!, await retryRequest(context, 'comment_on_task', args));
+      await bindCall(context, 'comment_on_task', args, ids);
       return {
         results: await eachTask(
           ids,
@@ -1410,6 +1432,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
         };
       }
+      await bindCall(context, 'close_task', args, ids);
       // An epic's open tasks close before it, deepest first; a task named twice closes once.
       const order: string[] = [];
       const refusedFirst: Record<string, string>[] = [];

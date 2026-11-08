@@ -2357,6 +2357,27 @@ describe('close_task on several tasks', () => {
     expect(reply.results).toEqual([{ id: epic.id, error: expect.stringMatching(/^refused: /u) }]);
     expect((await engine.listBoard(project.id, { statuses: ['open'], parentId: epic.id })).length).toBe(51);
   });
+
+  it('refuses a key sent again with other tasks, writing none of them (rule 3)', async () => {
+    const project = await newProject(engine);
+    const [a, b, c] = [await task(project, { title: 'A' }), await task(project, { title: 'B' }), await task(project)];
+    const idempotency_key = key();
+    const args = { tasks: [a.id, b.id], reason: 'Shipped.', commit: '4f2a9c1', idempotency_key };
+    await write(target, 'close_task', args);
+    const again = await write<Closed>(target, 'close_task', args);
+    expect(again.results.map((result) => result.replayed)).toEqual([true, true]);
+    expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, ...args, tasks: [c.id] })).toMatch(
+      /^conflict: /u,
+    );
+    expect((await current(project, c.id)).status).toBe('open');
+
+    const comment = { tasks: [a.id, b.id], text: 'Checked.', idempotency_key: key() };
+    await write(target, 'comment_on_task', comment);
+    expect(await refusal(target, 'comment_on_task', { workspace: WORKSPACE.id, ...comment, tasks: [c.id] })).toMatch(
+      /^conflict: /u,
+    );
+    expect(await engine.listComments(project.id, c.id)).toEqual([]);
+  });
 });
 
 describe('proof of work closed as done', () => {
