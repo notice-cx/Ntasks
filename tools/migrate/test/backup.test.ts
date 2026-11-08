@@ -401,13 +401,17 @@ describe('a backup through the command line', () => {
   it('restores only into a new store file, from a backup taken with the same migrations', async () => {
     const taken = await backup(backupRoute(source.raw, { rows: 500 }));
     const contents = JSON.parse(await readFile(taken.file, 'utf8')) as Record<string, unknown>;
-    const older = path.join(folder, 'older.json');
-    await writeFile(older, JSON.stringify({ ...contents, migrations: ['0001_task_store'] }));
+    const newer = path.join(folder, 'newer.json');
+    const migrations = [...storeMigrations(), '9999_from_a_later_version'];
+    await writeFile(newer, JSON.stringify({ ...contents, migrations }));
     const target = path.join(folder, 'restored.sqlite');
     const run = io();
-    expect(await main(['restore', '--from', older, '--store', target], run.io)).toBe(1);
+    expect(await main(['restore', '--from', newer, '--store', target], run.io)).toBe(1);
     expect(run.err[0]).toMatch(
-      /^The backup was taken from a store with the migrations 0001_task_store, and this version/u,
+      new RegExp(
+        `^The backup was taken from a store with the migrations ${migrations.join(', ')}, and this version`,
+        'u',
+      ),
     );
     expect(existsSync(target)).toBe(false);
 

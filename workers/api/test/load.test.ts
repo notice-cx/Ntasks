@@ -185,7 +185,8 @@ describe('a load into an empty store', () => {
   it('refuses rows made with other migrations, and pages that do not fit their table', async () => {
     const target = freshStore();
     const post = poster(target);
-    expect(await post('/api/restore', { migrations: MIGRATION_NAMES.slice(0, 1) })).toMatchObject({
+    const later = [...MIGRATION_NAMES, '9999_from_a_later_version'];
+    expect(await post('/api/restore', { migrations: later })).toMatchObject({
       status: 409,
       body: { error: 'schema_mismatch' },
     });

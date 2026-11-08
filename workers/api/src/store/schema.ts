@@ -4,25 +4,9 @@
  * history, they are append-only: a change to the schema is a new file.
  */
 import taskStore from './migrations/0001_task_store.sql';
-import deferralIndex from './migrations/0002_deferral_index.sql';
-import notesDesignEstimate from './migrations/0003_task_notes_design_estimate.sql';
-import linkTypesExternalLinks from './migrations/0004_link_types_external_links.sql';
-import customFields from './migrations/0005_custom_fields.sql';
-import storeLoads from './migrations/0006_store_loads.sql';
-import delivery from './migrations/0007_delivery.sql';
-import liveWork from './migrations/0008_live_work.sql';
-import closeLink from './migrations/0009_close_link.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
-  { name: '0002_deferral_index', sql: deferralIndex },
-  { name: '0003_task_notes_design_estimate', sql: notesDesignEstimate },
-  { name: '0004_link_types_external_links', sql: linkTypesExternalLinks },
-  { name: '0005_custom_fields', sql: customFields },
-  { name: '0006_store_loads', sql: storeLoads },
-  { name: '0007_delivery', sql: delivery },
-  { name: '0008_live_work', sql: liveWork },
-  { name: '0009_close_link', sql: closeLink },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */
