@@ -49,7 +49,8 @@ ask() {
   has_tty || die "$2"
   printf '%s' "$1" >/dev/tty
   answer=''
-  IFS= read -r answer </dev/tty || true
+  # read fails at the end of input (Ctrl-D); a last line with no newline still counts.
+  IFS= read -r answer </dev/tty || [ -n "$answer" ] || die 'no answer.'
 }
 
 # The address as an origin, such as https://ntasks.example.com, or nothing when
@@ -168,7 +169,7 @@ registered_url() {
 register() {
   case $1 in
     claude)
-      if [ "$2" = replace ]; then quietly in_work claude mcp remove "$SERVER" --scope user; fi
+      if [ "$2" = replace ]; then quietly in_work claude mcp remove "$SERVER" --scope user || return 1; fi
       quietly in_work claude mcp add --transport http --scope user "$SERVER" "$endpoint"
       ;;
     # Both replace a registration of the same name.
@@ -191,13 +192,10 @@ fetch_skill() {
   grep -qx "name: $SERVER" "$skill" || die "$SKILL_SOURCE is not the Ntasks skill."
 }
 
-# Writes the skill unless the file already holds it.
+# Writes the skill. Each step is chained because set -e does not apply inside
+# a function whose status the caller tests.
 install_skill() {
-  local path=$1
-  if cmp -s "$skill" "$path"; then return 1; fi
-  mkdir -p "$(dirname "$path")"
-  cp "$skill" "$path.$$"
-  mv -f "$path.$$" "$path"
+  mkdir -p "$(dirname "$1")" && cp "$skill" "$1.$$" && mv -f "$1.$$" "$1"
 }
 
 main() {
@@ -345,7 +343,10 @@ main() {
           printf '%s: registered %s at %s\n' "$name" "$SERVER" "$endpoint"
           ;;
       esac
-      if install_skill "$path"; then printf '%s: installed the skill at %s\n' "$name" "$(shown "$path")"; fi
+      if ! cmp -s "$skill" "$path"; then
+        install_skill "$path" || die "could not write the skill at $(shown "$path")."
+        printf '%s: installed the skill at %s\n' "$name" "$(shown "$path")"
+      fi
     done
   fi
 

@@ -175,6 +175,19 @@ test('replaces a registration at another address only with --yes', async () => {
   ]);
 });
 
+test('fails when it cannot write the skill', async () => {
+  const at = await machine(['claude']);
+  const skills = join(at.home, '.claude/skills');
+  await mkdir(skills, { recursive: true });
+  await chmod(skills, 0o555);
+  try {
+    const run = await install(at, ['--url', 'https://ntasks.example.com', '--agents', 'claude', '--yes']);
+    assert.notEqual(run.code, 0, run.output);
+  } finally {
+    await chmod(skills, 0o755);
+  }
+});
+
 test('accepts http only for localhost, and only installed agents', async () => {
   const at = await machine(['claude']);
   for (const args of [
