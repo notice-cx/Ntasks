@@ -31,7 +31,10 @@ function page(title: string, body: string, scriptNonce?: string): Response {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/notice-icon-32.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/notice-icon-32-dark.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="16x16" href="/brand/notice-icon-16-dark.png" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="/brand/notice-icon-180.png">
 <title>${escape(title)} · Ntasks</title>
 <style>${PAGE_STYLE}</style>
 </head>
