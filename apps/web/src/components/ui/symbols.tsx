@@ -261,9 +261,10 @@ export function NtasksLogo({ size = 20, className, ...props }: Omit<MarkProps, '
 }
 
 /**
- * A workspace's icon: the first letter of its name on the grey its id picks
- * (`workspaceMark`), 20 px in the sidebar, 16 px in the workspace menu and
- * 32 px on Settings. The name always stands beside it, so screen readers skip it.
+ * A workspace's icon: the first letter of its name on the identity palette's
+ * hue its id picks (`workspaceMark`), 20 px in the sidebar, 16 px in the
+ * workspace menu and 32 px on Settings. The name always stands beside it, so
+ * screen readers skip it.
  */
 export function WorkspaceIcon({
   workspaceId,
@@ -276,13 +277,20 @@ export function WorkspaceIcon({
   size?: number;
   className?: string;
 }) {
-  const { letter, tone } = workspaceMark(workspaceId, name);
+  const { letter, hue } = workspaceMark(workspaceId, name);
   return (
     <span
       aria-hidden
       data-workspace-icon=""
-      className={cn('inline-grid shrink-0 place-items-center leading-none font-semibold', tone, className)}
-      style={{ width: size, height: size, borderRadius: size * 0.275, fontSize: size * 0.55 }}
+      className={cn('inline-grid shrink-0 place-items-center leading-none font-semibold', className)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.275,
+        fontSize: size * 0.55,
+        backgroundColor: `var(${hue.fill})`,
+        color: `var(${hue.ink})`,
+      }}
     >
       {letter}
     </span>

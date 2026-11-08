@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { COLOUR_TOKENS, MARK_TOKENS } from '@/lib/design-tokens';
+import { COLOUR_TOKENS, IDENTITY_HUES, MARK_TOKENS } from '@/lib/design-tokens';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, TYPE_MARK_LABELS } from '@/lib/symbols';
 import { cn, THEME_SHADOWS, THEME_TEXT_SIZES } from '@/lib/utils';
 import { GITHUB_PATH } from '@/components/ui/brand-marks';
@@ -27,13 +27,51 @@ function rule(selector: string): string {
   return CSS.slice(at, CSS.indexOf('}', at));
 }
 
+/** A token's value in one theme's rule, with its whitespace made single spaces. */
+function value(theme: string, name: string): string | undefined {
+  const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(theme)?.[1];
+  return found?.replace(/\s+/g, ' ').trim();
+}
+
+/** WCAG 2's contrast ratio between two `#rrggbb` colours. */
+function contrast(one: string, two: string): number {
+  const luminance = (hex: string) => {
+    const [r = 0, g = 0, b = 0] = [1, 3, 5].map((at) => {
+      const channel = parseInt(hex.slice(at, at + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [a, b] = [luminance(one), luminance(two)];
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
 describe('the tokens', () => {
   it('sets every listed token in the light theme and in the dark theme', () => {
     const light = rule(':root,\n.light');
     const dark = rule('.dark');
-    for (const { variable } of [...COLOUR_TOKENS, ...MARK_TOKENS]) {
+    const variables = [
+      ...[...COLOUR_TOKENS, ...MARK_TOKENS].map((token) => token.variable),
+      ...IDENTITY_HUES.flatMap((hue) => [hue.fill, hue.ink]),
+    ];
+    for (const variable of variables) {
       expect(light, `${variable} in light`).toMatch(new RegExp(`\\n\\s*${variable}:\\s*#[0-9a-f]{6};`));
       expect(dark, `${variable} in dark`).toMatch(new RegExp(`\\n\\s*${variable}:\\s*#[0-9a-f]{6};`));
+    }
+  });
+
+  it("draws each identity hue's letter at 4.5:1 or more on its fill, in both themes", () => {
+    // #767676 on white is the lightest grey that passes AA, at 4.54:1.
+    expect(contrast('#767676', '#ffffff')).toBeCloseTo(4.54, 2);
+    for (const [theme, css] of [
+      ['light', rule(':root,\n.light')],
+      ['dark', rule('.dark')],
+    ] as const) {
+      for (const hue of IDENTITY_HUES) {
+        const fill = value(css, hue.fill.slice(2)) ?? '';
+        const ink = value(css, hue.ink.slice(2)) ?? '';
+        expect(contrast(fill, ink), `${hue.name} in ${theme}: ${ink} on ${fill}`).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 
@@ -59,12 +97,6 @@ describe('the tokens', () => {
 });
 
 describe("the Worker's own pages", () => {
-  /** A token's value in one theme's rule, with its whitespace made single spaces. */
-  function value(theme: string, name: string): string | undefined {
-    const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(theme)?.[1];
-    return found?.replace(/\s+/g, ' ').trim();
-  }
-
   it('use the colours and elevations the app defines, in both themes', () => {
     const themes = [rule(':root,\n.light'), rule('.dark')] as const;
     for (const [name, values] of Object.entries({ ...PAGE_COLOURS, ...PAGE_SHADOWS })) {
@@ -113,6 +145,8 @@ describe('the gallery at /design', () => {
     for (const palette of ['light', 'dark']) {
       const swatches = document.querySelectorAll(`[data-palette="${palette}"] [data-swatch]`);
       expect(swatches).toHaveLength(COLOUR_TOKENS.length);
+      const hues = document.querySelectorAll(`[data-palette="${palette}"] [data-identity-swatch]`);
+      expect(hues).toHaveLength(IDENTITY_HUES.length);
     }
   });
 

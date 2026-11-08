@@ -12,9 +12,9 @@ import {
   statusMarkFor,
   typeLabel,
   typeMarkFor,
-  WORKSPACE_TONES,
   workspaceMark,
 } from '@/lib/symbols';
+import { IDENTITY_HUES } from '@/lib/design-tokens';
 
 function task(fields: Partial<LiveTask>): LiveTask {
   return {
@@ -227,28 +227,33 @@ describe("Codex's mark beside Claude's", () => {
 });
 
 describe('a workspace icon', () => {
-  /** The letter an icon shows, and the classes that colour it. */
+  const ONE = '0d1f3c6a-7b2e-4c59-8a10-3e5f7a9b1c20';
+  const TWO = '2f7e5a91-c4b3-4e06-9d28-71a3b5c0e6f4';
+
+  /** The letter an icon shows, and the colours of its fill and its letter. */
   function drawn(workspaceId: string, name: string) {
     const { container, unmount } = render(<WorkspaceIcon workspaceId={workspaceId} name={name} />);
-    const icon = container.querySelector('[data-workspace-icon]');
-    const seen = { letter: icon?.textContent, look: icon?.className };
+    const icon = container.querySelector<HTMLElement>('[data-workspace-icon]');
+    const seen = { letter: icon?.textContent, colours: [icon?.style.backgroundColor, icon?.style.color] };
     unmount();
     return seen;
   }
 
   it("shows each workspace's first letter, uppercase, and keeps its colour through a rename", () => {
-    const one = '0d1f3c6a-7b2e-4c59-8a10-3e5f7a9b1c20';
-    const two = '9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a';
-    const before = drawn(one, 'example');
+    const before = drawn(ONE, 'example');
     expect(before.letter).toBe('E');
-    expect(drawn(two, '  labs').letter).toBe('L');
-    const renamed = drawn(one, 'Acme');
+    expect(drawn(TWO, '  labs').letter).toBe('L');
+    const renamed = drawn(ONE, 'Acme');
     expect(renamed.letter).toBe('A');
-    expect(renamed.look).toBe(before.look);
+    expect(renamed.colours).toEqual(before.colours);
   });
 
-  it('colours workspaces by their ids, over every tone', () => {
+  it('colours workspaces by their ids, so different ids get different hues, over the whole identity palette', () => {
+    const [fill, ink] = drawn(ONE, 'Example').colours;
+    const other = drawn(TWO, 'Example').colours;
+    expect(other[0]).not.toBe(fill);
+    expect(other[1]).not.toBe(ink);
     const ids = Array.from({ length: 24 }, (_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`);
-    expect(new Set(ids.map((id) => workspaceMark(id, 'Example').tone))).toEqual(new Set(WORKSPACE_TONES));
+    expect(new Set(ids.map((id) => workspaceMark(id, 'Example').hue))).toEqual(new Set(IDENTITY_HUES));
   });
 });
