@@ -43,7 +43,7 @@ successfully when its prompt is answered no, and the Worker would then
 deploy against tables that lack the migrations. The redirection needs a
 POSIX shell, as on Linux, macOS or WSL; under Windows' `cmd.exe` the script
 stops before it runs wrangler. The Deploy to Cloudflare button's builds run it
-([README](../../README.md#deploy-your-own)). The migrations step stops when
+([Deploy and run Ntasks](../../docs/deploy.md#deploy-your-own)). The migrations step stops when
 the database does not exist yet. The button creates it before its first
 build; for a first deployment made without the button, create it once with
 `pnpm --filter @ntasks/api exec wrangler d1 create ntasks`.

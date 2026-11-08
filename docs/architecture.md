@@ -11,6 +11,41 @@ deployment. This page shows how the parts fit, the limits the design keeps
 to, and the rules every change keeps. Read [Concepts](concepts.md) first for
 the task model itself.
 
+## What is built
+
+Ntasks is in active development ahead of its first release.
+
+| Part | Today |
+|---|---|
+| Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
+| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects and Members pages, where an owner creates projects and invites people. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
+| Task model | The task id format, the vocabulary and the engine contract |
+| Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
+| Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
+| Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; where a closed task's change is (built, merged or live), which a repository's signals move on; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](api.md)) |
+| Sign-in | A new deployment registers its GitHub App on its setup page; people sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
+| Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](../tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
+
+Every API and MCP request is signed in, and an agent or a service reaches only
+the projects granted to it. A new deployment refuses every request until its
+sign-in is set up; [SECURITY.md](../SECURITY.md) has the details, including
+which credentials keep working after `AUTH_SECRET` changes.
+
+## At a glance
+
+<img src="images/how-ntasks-works.svg"
+  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
+
+Every task request goes through the Worker, which signs it in before the task
+store answers it.
+
+<img src="images/task-lifecycle.svg"
+  alt="Diagram of a task's life in five steps. 1: tasks A and B are filed, and A blocks B, so only A is in the list of ready work. 2: Agent 1 claims A; only one claim succeeds, and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with a commit as proof. 5: B is ready, and the list of ready work that Agent 2 reads shows it.">
+
+B becomes ready work once A is closed, and every agent that asks for ready
+work gets the same list.
+
 ## The parts
 
 ```mermaid

@@ -4,7 +4,7 @@ Ntasks keeps work as tasks that people and AI agents share. This page
 introduces its ideas in the order you meet them, from a single task to the
 rules that let many agents work on one graph at once.
 
-It describes the task model. The [README's status table](../README.md#status)
+It describes the task model. The [status table](architecture.md#what-is-built)
 shows which parts of it run today.
 
 ## Projects
