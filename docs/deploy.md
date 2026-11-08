@@ -36,7 +36,9 @@ These deploy a Worker named `ntasks` with a D1 database named `ntasks`. If
 your Cloudflare account already has a Worker or a D1 database by that name
 that is not this deployment, change `name` and `database_name` in
 `wrangler.jsonc` first, since `wrangler secret put` would set the secret on
-the existing Worker and the deploy would bind the existing database.
+the existing Worker and the deploy would bind the existing database. A
+`database_id` left in `wrangler.jsonc` by an earlier deployment wins over the
+name, so remove it too when you want a separate database.
 
 `wrangler secret put` asks for the secret and offers to create the Worker
 when it does not exist yet. The first `wrangler deploy` creates the D1
@@ -45,7 +47,8 @@ holds the tasks, and writes the database's id into `wrangler.jsonc` as
 `database_id`; the migrations step then finds the database by that id. The
 repository's `wrangler.jsonc` leaves the id out so it works in any account,
 so remove that `database_id` line before you commit anything in the file.
-To deploy on each push, connect
+To deploy on each push, commit any `name` and `database_name` you changed,
+without the `database_id`, to the branch you deploy from, then connect
 the Worker to the repository in the Cloudflare dashboard under Workers &
 Pages, the Worker, Settings, Builds, with the build and deploy commands
 above.
