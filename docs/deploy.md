@@ -53,6 +53,11 @@ the Worker to the repository in the Cloudflare dashboard under Workers &
 Pages, the Worker, Settings, Builds, with the build and deploy commands
 above.
 
+To update a deployment made from a checkout, bring the checkout to the latest
+`main` and run `pnpm install`, `pnpm run build` and `pnpm run deploy` from its
+root. `pnpm run deploy` applies any new D1 migrations, then deploys the
+Worker. A deployment connected to Builds updates on each push instead.
+
 When the deploy finishes, set up sign-in with GitHub on the deployment's
 setup page:
 
