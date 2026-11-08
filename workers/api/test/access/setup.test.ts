@@ -157,7 +157,8 @@ describe('a deployment with only AUTH_SECRET', () => {
       callback_urls: [`${ORIGIN}/api/auth/callback/github`],
       public: true,
     });
-    expect(manifest.default_permissions).toEqual({ emails: 'read' });
+    // GitHub's key for the account permission "Email addresses".
+    expect(manifest.default_permissions).toEqual({ email_addresses: 'read' });
     expect(browser.cookie(SETUP_COOKIE)).toBeDefined();
 
     const github = locationOf(await returnFromGitHub(browser, state, 5005));

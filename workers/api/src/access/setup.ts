@@ -36,7 +36,7 @@ export function manifestFor(origin: string): string {
     public: true,
     request_oauth_on_install: false,
     hook_attributes: { url: origin, active: false },
-    default_permissions: { emails: 'read' },
+    default_permissions: { email_addresses: 'read' },
   });
 }
 
