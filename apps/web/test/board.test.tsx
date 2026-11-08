@@ -54,6 +54,17 @@ describe('the board', () => {
     expect(unheld.querySelector('[data-row-helper], [data-row-activity]')).toBeNull();
   });
 
+  it('shows on a ready task’s row its estimate, or that it has none', async () => {
+    renderApp('/tasks');
+    const open = await group('Open');
+    const estimate = (section: HTMLElement, id: string) =>
+      section.querySelector(`[data-task-row="${id}"] [data-row-estimate]`)?.textContent ?? null;
+    expect(estimate(open, 'web-b2r6')).toContain('45m');
+    expect(estimate(open, 'web-t5w3')).toBe('No estimate');
+    // A task someone holds is past choosing, whatever its estimate.
+    expect(estimate(await group('In progress'), 'web-k3m9.2')).toBeNull();
+  });
+
   it('folds Done, and opens it on a press', async () => {
     renderApp('/tasks');
     const done = await group('Done');

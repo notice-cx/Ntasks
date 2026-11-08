@@ -188,8 +188,10 @@ sender reaches, and each task then names its project.
 `notes` and `design` are Markdown, at most 8,192 characters each, and
 `estimate_minutes` is a whole number of minutes from 0 to 525,600 (a year).
 `get_task` returns them as `notes`, `design` and `estimateMinutes`, and
-`list_tasks` returns `estimateMinutes`; like `description`, `notes` and
-`design` are left out of `list_tasks`.
+`list_tasks` returns `estimateMinutes` on each task that has one, beside
+`updatedAt`, when the task last changed, so a ready task's size and age show
+without reading it in full; like `description`, `notes` and `design` are left
+out of `list_tasks`.
 
 `for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` record the
 holder's work in hand ([concepts](concepts.md#claiming-a-task)). `for` is one

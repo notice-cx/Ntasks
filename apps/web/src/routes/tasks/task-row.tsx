@@ -9,6 +9,7 @@ import {
   Bot,
   Check,
   ChevronLeft,
+  Clock,
   Copy,
   Ellipsis,
   Hand,
@@ -38,7 +39,7 @@ import {
   verbReason,
 } from '@/hooks/useTasks';
 import { copyText } from '@/lib/clipboard';
-import { ageMs, calendarDay, formatAge } from '@/lib/format';
+import { ageMs, calendarDay, formatAge, formatMinutes } from '@/lib/format';
 import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '@/lib/symbols';
 import {
   actorLabel,
@@ -82,8 +83,8 @@ function RowPanel({ children }: { children: ReactNode }) {
 }
 
 /** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, when it
- * unparks, for a task someone holds the helper they work through and when they last wrote to it, and for a
- * closed task how it ended or where its change is. */
+ * unparks, for a ready task its estimate, for a task someone holds the helper they work through and when
+ * they last wrote to it, and for a closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
   const type = typeMarkFor(task.issueType, task.awaitType);
   const labels = task.labels.filter((label) => label !== 'human').slice(0, 2);
@@ -91,6 +92,8 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
   const until = mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs) : null;
+  // An epic's size is its children's, which its progress shows.
+  const sized = mark === 'open' && task.ready && task.issueType !== 'epic';
   const resolution = task.status === 'closed' && task.resolution && task.resolution !== 'done' ? task.resolution : null;
   const stage = task.status === 'closed' ? (task.delivery?.stage ?? null) : null;
   const held = task.assignee !== null && task.status !== 'closed';
@@ -131,6 +134,12 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
         <RowMeta>
           <Moon aria-hidden />
           Until {until}
+        </RowMeta>
+      ) : null}
+      {sized ? (
+        <RowMeta data-row-estimate="">
+          <Clock aria-hidden />
+          {task.estimateMinutes == null ? 'No estimate' : `Estimate ${formatMinutes(task.estimateMinutes)}`}
         </RowMeta>
       ) : null}
       {resolution ? <RowMeta>{RESOLUTION_LABELS[resolution]}</RowMeta> : null}
