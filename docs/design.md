@@ -273,11 +273,31 @@ its drawing, so Codex's mark is never drawn larger than Claude's;
 `apps/web/test/symbols.test.tsx` checks both. `live` adds an Accent dot for an actor
 active now. `AvatarGroup` overlaps avatars by 6 px, each ringed in Background.
 
+### Workspaces
+
+`WorkspaceIcon` draws a workspace: the first letter or digit of its name,
+uppercase and semibold, on a square with 5.5/20 corners, 20 px in the
+sidebar, 16 px in the workspace menu and 32 px on Settings. `workspaceMark`
+(`src/lib/symbols.ts`) picks its fill from a hash of the workspace's id, so
+a rename changes the letter and keeps the fill. Accent, amber, red and green
+keep their one meaning each, so the fills are four greys that stay apart in
+both themes, and about one pair of workspaces in four shares a fill:
+
+| Fill | Letter |
+|---|---|
+| Text | Background |
+| Text 2 | Background |
+| Text 3 | Background |
+| Avatar | Avatar text |
+
+The workspace's name always stands beside it, so it is hidden from screen
+readers.
+
 ### Logo and brand marks
 
-`NtasksLogo` is a white N on an Accent square with 5.5/20 corners: 20 px in
-the sidebar, 28 to 32 px on a page of its own. `GitHubMark` draws GitHub's
-mark in the text colour, for Sign in with GitHub. The brand paths live in
+`NtasksLogo` is a white N on an Accent square with 5.5/20 corners, 28 to 32 px
+on a page of its own, such as New workspace. `GitHubMark` draws GitHub's mark
+in the text colour, for Sign in with GitHub. The brand paths live in
 [`brand-marks.ts`](../apps/web/src/components/ui/brand-marks.ts) with their
 sources.
 
@@ -436,15 +456,16 @@ group that folds starts with a chevron and is a button with `aria-expanded`.
 ### The frame (`shell.tsx`)
 
 `AppShell` puts a 236 px `Sidebar` on Canvas beside the page on Background.
-The sidebar holds `SidebarHeader` (the logo, the workspace's name, and its
-search and new-task buttons), `NavItem`s (a 16 px icon, a name and a count;
-the current one on Hover), `NavSection`s with their headings (Projects,
-People), `ProjectBadge` (a project prefix's first letter in a ringed square)
-and `SidebarSpacer`, which pushes Projects, Members and Source code to the
-foot. `NavItem asChild` makes a router link the item. For a person in two or
-more workspaces, the name is a `WorkspaceButton`: the name and a 14 px
-`chevrons-up-down` in Text 3, Hover under the pointer and while its menu is
-open. Its menu lists the workspaces, the open one ticked.
+The sidebar holds `SidebarHeader` (the workspace's icon and name, and the
+search button), `NavItem`s (a 16 px icon, a name and a count; the current
+one on Hover), `NavSection`s with their headings (Projects, People),
+`ProjectBadge` (a project prefix's first letter in a ringed square) and
+`SidebarSpacer`, which pushes Projects, Members, Settings and Source code to
+the foot. `NavItem asChild` makes a router link the item. For a person in
+two or more workspaces, the name is a `WorkspaceButton`: the name and a
+14 px `chevrons-up-down` in Text 3, Hover under the pointer and while its
+menu is open. Its menu lists the workspaces, each with its icon and the open
+one ticked, then Settings under a divider.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions.
@@ -531,7 +552,7 @@ field is part of the address (`field.<key>=<value>`, as the API takes it),
 shows as a badge that clears it, and is dropped when another project is
 picked.
 
-### Projects, Members and the first workspace
+### Projects, Members, Settings and the first workspace
 
 Projects and Members are lists of `Row`s under a `TopBar` whose primary
 button is the owner's one action, with its key: New project (`N`) and Invite
@@ -549,6 +570,12 @@ for Members and, while any are pending, one for Invitations: a member's row is
 an `Avatar`, the name, the GitHub username, a role `Badge` and Remove, which
 asks again in the row before it removes; an invitation's row is the username,
 its role, its age and Revoke.
+
+Settings is one column under a `TopBar`: the workspace's 32 px icon beside
+one sentence in Text 2, then Name and ID. An owner's Name is a required
+`Field` with Save, the page's primary button, which stays disabled until the
+name changes; a refusal shows under the field. A member sees the name as
+words. ID is the id in `text-code` with a Copy ID `IconButton`.
 
 A sign-in in no workspace sees a page of its own on Canvas, outside the
 frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New

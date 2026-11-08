@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { LiveTask } from '@/api/types';
 import { Avatar, type AvatarSize } from '@/components/ui/avatar';
 import { BLOSSOM_PATH, BLOSSOM_VIEWBOX, CLAUDE_VIEWBOX } from '@/components/ui/brand-marks';
-import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
+import { PriorityMark, StatusMark, TypeMark, WorkspaceIcon } from '@/components/ui/symbols';
 import {
   avatarFace,
   initials,
@@ -12,6 +12,8 @@ import {
   statusMarkFor,
   typeLabel,
   typeMarkFor,
+  WORKSPACE_TONES,
+  workspaceMark,
 } from '@/lib/symbols';
 
 function task(fields: Partial<LiveTask>): LiveTask {
@@ -221,5 +223,32 @@ describe("Codex's mark beside Claude's", () => {
     expect(bounds.maxX).toBeLessThanOrEqual(x + width);
     expect(bounds.maxY).toBeLessThanOrEqual(y + height);
     expect(CLAUDE_VIEWBOX).toBe('0 0 24 24');
+  });
+});
+
+describe('a workspace icon', () => {
+  /** The letter an icon shows, and the classes that colour it. */
+  function drawn(workspaceId: string, name: string) {
+    const { container, unmount } = render(<WorkspaceIcon workspaceId={workspaceId} name={name} />);
+    const icon = container.querySelector('[data-workspace-icon]');
+    const seen = { letter: icon?.textContent, look: icon?.className };
+    unmount();
+    return seen;
+  }
+
+  it("shows each workspace's first letter, uppercase, and keeps its colour through a rename", () => {
+    const one = '0d1f3c6a-7b2e-4c59-8a10-3e5f7a9b1c20';
+    const two = '9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a';
+    const before = drawn(one, 'example');
+    expect(before.letter).toBe('E');
+    expect(drawn(two, '  labs').letter).toBe('L');
+    const renamed = drawn(one, 'Acme');
+    expect(renamed.letter).toBe('A');
+    expect(renamed.look).toBe(before.look);
+  });
+
+  it('colours workspaces by their ids, over every tone', () => {
+    const ids = Array.from({ length: 24 }, (_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`);
+    expect(new Set(ids.map((id) => workspaceMark(id, 'Example').tone))).toEqual(new Set(WORKSPACE_TONES));
   });
 });

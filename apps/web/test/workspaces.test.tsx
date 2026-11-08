@@ -173,6 +173,57 @@ describe('a member', () => {
   });
 });
 
+describe('the Settings page', () => {
+  it('lets an owner rename the workspace, and the sidebar and the switcher show the new name at once', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    const sidebar = await screen.findByRole('navigation', { name: 'Ntasks' });
+    fireEvent.click(await sidebarLink('Settings'));
+    const form = await screen.findByRole('form', { name: 'Rename' });
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: '  Acme  ' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+
+    const switcher = await within(sidebar).findByRole('button', { name: 'Acme' });
+    expect(sidebar.querySelector('[data-workspace-icon]')?.textContent).toBe('A');
+    expect(await api.workspaces()).toContainEqual(expect.objectContaining({ name: 'Acme', role: 'owner' }));
+    fireEvent.click(switcher);
+    expect(await screen.findByRole('menuitemradio', { name: 'Acme' })).toBeTruthy();
+  });
+
+  it('shows a member the name without a field, and copies the ID', async () => {
+    const [, labs] = fixtureWorkspaces(Date.now());
+    const api = createFixtureTasksApi({ workspaces: labs ? [labs] : [] });
+    const rename = vi.spyOn(api, 'renameWorkspace');
+    renderApp('/settings', api);
+    const name = await screen.findByRole('group', { name: 'Name' });
+    expect(within(name).getByText('Example Labs')).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'Rename' })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy ID' }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(labs?.workspaceId));
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it('opens from the workspace menu, and stays open when the workspace changes', async () => {
+    renderApp('/tasks');
+    fireEvent.click(await screen.findByRole('button', { name: 'Example' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Settings' }));
+    expect(await screen.findByRole('form', { name: 'Rename' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Example' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Example Labs' }));
+    const name = await screen.findByRole('group', { name: 'Name' });
+    expect(within(name).getByText('Example Labs')).toBeTruthy();
+  });
+});
+
 describe('a sign-in with no workspace', () => {
   it("creates the first one as a deployment admin, and lands on its Projects page's New project form", async () => {
     const api = createFixtureTasksApi({ workspaces: [], deploymentAdmin: true });

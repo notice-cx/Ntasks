@@ -16,7 +16,6 @@ import {
 } from 'react';
 import { cn } from '@/lib/utils';
 import { IconButton } from './button';
-import { NtasksLogo } from './symbols';
 
 interface SidebarState {
   open: boolean;
@@ -138,14 +137,14 @@ function SidebarOpener() {
 }
 
 /**
- * The sidebar's first line: the logo, the workspace's name, and its search
- * and new-task buttons. For a person in several workspaces the name is a
- * `WorkspaceButton` that opens the menu of the others.
+ * The sidebar's first line: the workspace's icon and name, and the search
+ * button. For a person in several workspaces the name is a `WorkspaceButton`
+ * that opens the menu of the others.
  */
-export function SidebarHeader({ name, children }: { name: ReactNode; children?: ReactNode }) {
+export function SidebarHeader({ icon, name, children }: { icon: ReactNode; name: ReactNode; children?: ReactNode }) {
   return (
     <div className="mb-2 flex h-9 items-center gap-2 ps-2 pe-1.5">
-      <NtasksLogo size={20} />
+      {icon}
       {typeof name === 'string' ? (
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{name}</span>
       ) : (

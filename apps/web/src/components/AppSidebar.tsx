@@ -1,9 +1,9 @@
-import { Folder, List, Pencil, Search, Target, Users } from 'lucide-react';
+import { Folder, List, Search, Settings, Target, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ui/avatar';
 import { Count } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/button';
-import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import {
   NavItem,
   NavSection,
@@ -13,12 +13,12 @@ import {
   SidebarSpacer,
   WorkspaceButton,
 } from '@/components/ui/shell';
-import { GitHubMark, StatusMark } from '@/components/ui/symbols';
+import { GitHubMark, StatusMark, WorkspaceIcon } from '@/components/ui/symbols';
 import { useBoard } from '@/hooks/useBoard';
-import { useAnswerHides, useCapabilities, writesAvailable } from '@/hooks/useTasks';
+import { useAnswerHides } from '@/hooks/useTasks';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { NO_FILTERS } from '@/lib/board-read';
-import { COMPOSE_STATE, SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
+import { SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 import { isAgentActor } from '@/lib/symbols';
 import { actorLabel, claimedModel, IN_PROGRESS, type BoardTask } from '@/lib/task-model';
 
@@ -49,9 +49,9 @@ export function peopleOf(tasks: readonly BoardTask[]): Person[] {
 }
 
 /** Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board. */
-const WORKSPACE_PAGES = new Set(['/projects', '/members']);
+const WORKSPACE_PAGES = new Set(['/projects', '/members', '/settings']);
 
-/** The open workspace's name, which opens the menu of the others. */
+/** The open workspace's name, which opens the menu of the others and its settings. */
 function WorkspaceSwitcher() {
   const { workspace, workspaces, switchTo } = useWorkspace();
   const navigate = useNavigate();
@@ -65,6 +65,7 @@ function WorkspaceSwitcher() {
         {workspaces.map((option) => (
           <MenuItem
             key={option.workspaceId}
+            icon={<WorkspaceIcon workspaceId={option.workspaceId} name={option.name} size={16} />}
             checked={option.workspaceId === workspace.workspaceId}
             onSelect={() => {
               if (option.workspaceId === workspace.workspaceId) return;
@@ -75,6 +76,10 @@ function WorkspaceSwitcher() {
             {option.name}
           </MenuItem>
         ))}
+        <MenuSeparator />
+        <MenuItem icon={<Settings aria-hidden />} onSelect={() => void navigate('/settings')}>
+          Settings
+        </MenuItem>
       </MenuContent>
     </Menu>
   );
@@ -83,15 +88,14 @@ function WorkspaceSwitcher() {
 /**
  * The app's navigation: the workspace, Waiting for you, Tasks and Focus, then
  * each project and each person or agent with open work, each a view of the
- * board, and at its foot the workspace's projects and members and the link
- * to the source code.
+ * board, and at its foot the workspace's projects, members and settings and
+ * the link to the source code.
  */
 export function AppSidebar() {
   const { workspace, workspaces } = useWorkspace();
   const owner = workspace.role === 'owner';
   const board = useBoard(NO_FILTERS);
   const hides = useAnswerHides();
-  const writable = writesAvailable(useCapabilities());
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
   const onBoard = pathname === '/tasks';
@@ -106,21 +110,16 @@ export function AppSidebar() {
 
   return (
     <Sidebar aria-label="Ntasks">
-      <SidebarHeader name={workspaces.length > 1 ? <WorkspaceSwitcher /> : workspace.name}>
+      <SidebarHeader
+        icon={<WorkspaceIcon workspaceId={workspace.workspaceId} name={workspace.name} />}
+        name={workspaces.length > 1 ? <WorkspaceSwitcher /> : workspace.name}
+      >
         <IconButton
           size="sm"
           label="Search"
           shortcut="/"
           icon={<Search aria-hidden />}
           onClick={() => void navigate(`/tasks${boardSearch}`, { state: { [SEARCH_STATE]: Date.now() } })}
-        />
-        <IconButton
-          size="sm"
-          label="New task"
-          shortcut="C"
-          icon={<Pencil aria-hidden />}
-          disabled={!writable}
-          onClick={() => void navigate(`/tasks${boardSearch}`, { state: { [COMPOSE_STATE]: true } })}
         />
       </SidebarHeader>
       <NavItem
@@ -184,6 +183,9 @@ export function AppSidebar() {
           <Link to="/members">Members</Link>
         </NavItem>
       ) : null}
+      <NavItem asChild icon={<Settings aria-hidden />} active={pathname === '/settings'}>
+        <Link to="/settings">Settings</Link>
+      </NavItem>
       <NavItem href={SOURCE_URL} icon={<GitHubMark size={16} />} data-source-link="">
         Source code
       </NavItem>

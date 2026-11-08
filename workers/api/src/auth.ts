@@ -21,7 +21,7 @@ export const SCOPES = Object.freeze({
    * a person's own act. Only a person signed in to the web app holds it; no
    * agent or service does, whatever it was granted. */
   decide: 'tasks:decide',
-  /** Create projects in the workspace: an owner's act. No agent or service holds it. */
+  /** Create and set up projects in the workspace, and rename it: an owner's act. No agent or service holds it. */
   manage: 'workspace:manage',
 });
 

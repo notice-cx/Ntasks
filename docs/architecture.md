@@ -18,7 +18,7 @@ Ntasks is in active development ahead of its first release.
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
-| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects and Members pages, where an owner creates projects and invites people. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
+| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects, Members and Settings pages, where an owner creates projects, invites people and renames the workspace. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
 | Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
@@ -110,13 +110,14 @@ workspace its `workspace` argument names.
 
 ## Workspaces
 
-A workspace has an id, a UUID, and a name. Its people belong to it as its
-**owner** or as a **member**: both read, write and decide there, and an owner
-also invites and removes its people, creates its projects, makes its service
-credentials, and backs it up and loads it. The deployment's admins, the
-GitHub account that ran the setup page and any in `OWNER_GITHUB_IDS`
-([Sign-in](sign-in.md#settings)), create workspaces, and each becomes the
-owner of the workspaces they create.
+A workspace has an id, a UUID, and a name. The name is only shown, and an
+owner can change it; the task store and every request name the workspace by
+its id. Its people belong to it as its **owner** or as a **member**: both
+read, write and decide there, and an owner also invites and removes its
+people, creates its projects, renames it, makes its service credentials, and
+backs it up and loads it. The deployment's admins, the GitHub account that ran
+the setup page and any in `OWNER_GITHUB_IDS` ([Sign-in](sign-in.md#settings)),
+create workspaces, and each becomes the owner of the workspaces they create.
 An owner invites people by their GitHub username, and an invited account
 becomes a member when it signs in. Only admins, members and invited accounts
 sign in; any other GitHub account is refused

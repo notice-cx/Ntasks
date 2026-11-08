@@ -1,8 +1,8 @@
 /**
- * The symbols: status, priority and type marks, the brand marks and the
- * Ntasks logo. src/lib/symbols.ts decides which one a task or a person gets;
- * this module only draws them. Each is an inline SVG coloured by tokens, so
- * it follows the theme.
+ * The symbols: status, priority and type marks, the brand marks, the Ntasks
+ * logo and a workspace's icon. src/lib/symbols.ts decides which one a task, a
+ * person or a workspace gets; this module only draws them. Each is coloured
+ * by tokens, so it follows the theme.
  */
 import {
   Bug,
@@ -23,6 +23,7 @@ import {
   priorityLabel,
   STATUS_MARK_LABELS,
   TYPE_MARK_LABELS,
+  workspaceMark,
   type StatusMark as StatusMarkKey,
   type TypeMark as TypeMarkKey,
 } from '@/lib/symbols';
@@ -256,5 +257,34 @@ export function NtasksLogo({ size = 20, className, ...props }: Omit<MarkProps, '
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/**
+ * A workspace's icon: the first letter of its name on the grey its id picks
+ * (`workspaceMark`), 20 px in the sidebar, 16 px in the workspace menu and
+ * 32 px on Settings. The name always stands beside it, so screen readers skip it.
+ */
+export function WorkspaceIcon({
+  workspaceId,
+  name,
+  size = 20,
+  className,
+}: {
+  workspaceId: string;
+  name: string;
+  size?: number;
+  className?: string;
+}) {
+  const { letter, tone } = workspaceMark(workspaceId, name);
+  return (
+    <span
+      aria-hidden
+      data-workspace-icon=""
+      className={cn('inline-grid shrink-0 place-items-center leading-none font-semibold', tone, className)}
+      style={{ width: size, height: size, borderRadius: size * 0.275, fontSize: size * 0.55 }}
+    >
+      {letter}
+    </span>
   );
 }

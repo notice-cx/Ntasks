@@ -78,12 +78,14 @@ import {
   TopBar,
   WorkspaceButton,
 } from '@/components/ui/shell';
-import { GitHubMark, NtasksLogo, PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
+import { GitHubMark, NtasksLogo, PriorityMark, StatusMark, TypeMark, WorkspaceIcon } from '@/components/ui/symbols';
 import { COLOUR_TOKENS, type ColourToken } from '@/lib/design-tokens';
 import {
   PRIORITY_LABELS,
   STATUS_MARK_LABELS,
   TYPE_MARK_LABELS,
+  WORKSPACE_TONES,
+  workspaceMark,
   type StatusMark as StatusMarkKey,
   type TypeMark as TypeMarkKey,
 } from '@/lib/symbols';
@@ -219,6 +221,13 @@ const WAITING: readonly {
   },
   { id: 'web-q8n5', title: 'Confirm the support address on the error page', priority: 2, age: '5d', answer: 'answer' },
 ];
+
+/** A workspace on each tone, so the gallery draws every one: the first id of the form `example-<n>` the tone picks. */
+const WORKSPACES = WORKSPACE_TONES.map((tone, index) => {
+  let n = 0;
+  while (workspaceMark(`example-${n}`, '').tone !== tone) n += 1;
+  return { workspaceId: `example-${n}`, name: ['Example', 'Example Labs', 'Research', 'Docs'][index] ?? 'Example' };
+});
 
 export default function DesignRoute() {
   const [theme, setTheme] = useState<Theme>('system');
@@ -372,6 +381,20 @@ export default function DesignRoute() {
                   <Avatar name="Example Owner" size={28} live decorative />
                   <span className="text-meta text-ink-3">Active now</span>
                 </div>
+              </div>
+            </Panel>
+            <Panel title="Workspaces">
+              <div className="flex flex-wrap items-end gap-x-5 gap-y-4">
+                {WORKSPACES.map((workspace) => (
+                  <div key={workspace.workspaceId} className="grid justify-items-center gap-2">
+                    <div className="flex items-end gap-2.5">
+                      {[16, 20, 32].map((size) => (
+                        <WorkspaceIcon key={size} {...workspace} size={size} />
+                      ))}
+                    </div>
+                    <span className="whitespace-nowrap text-meta text-ink-3">{workspace.name}</span>
+                  </div>
+                ))}
               </div>
             </Panel>
           </div>
@@ -859,9 +882,11 @@ function ShellSample() {
         className="min-h-0"
         sidebar={
           <Sidebar aria-label="Sample sidebar" className="static h-auto">
-            <SidebarHeader name={<WorkspaceButton>Example</WorkspaceButton>}>
+            <SidebarHeader
+              icon={<WorkspaceIcon workspaceId="example-0" name="Example" />}
+              name={<WorkspaceButton>Example</WorkspaceButton>}
+            >
               <IconButton size="sm" label="Search" shortcut="/" icon={<Search aria-hidden />} />
-              <IconButton size="sm" label="New task" shortcut="C" icon={<Pencil aria-hidden />} />
             </SidebarHeader>
             <NavItem
               href="#waiting"
@@ -904,6 +929,9 @@ function ShellSample() {
             </NavItem>
             <NavItem href="#members" icon={<Users aria-hidden />}>
               Members
+            </NavItem>
+            <NavItem href="#settings" icon={<Settings aria-hidden />}>
+              Settings
             </NavItem>
           </Sidebar>
         }
