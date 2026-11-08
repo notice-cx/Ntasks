@@ -1322,7 +1322,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Close a task with the reason it is done, citing evidence, and pass commit, pr or link as its proof. ' +
       `tasks closes up to ${MANY} with the same evidence, and with_children closes an epic's open tasks first; ` +
-      'a task nobody holds is recorded as yours. The answer lists unblocked: tasks these closes made ready. ' +
+      'The answer lists unblocked: tasks these closes made ready. ' +
       'When nothing shipped, pass the resolution that says why; the reason still cites the evidence. ' +
       'An approval the task waits on must first be answered or retired. A declined action must not happen.',
     inputSchema: schema(

@@ -501,6 +501,7 @@ describe('POST /api/tasks/:id/close', () => {
       closeReason: 'Done in a1b2c3d.',
       resolution: 'done',
       proof: 'none',
+      assignee: null,
     });
     expect(await send(target, 'POST', `/api/tasks/${id}/close`, body, headers)).toEqual(first);
     expect(await send(target, 'POST', `/api/tasks/${id}/close`, body)).toEqual({

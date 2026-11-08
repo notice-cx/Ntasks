@@ -327,8 +327,7 @@ too.
 - **A close** is refused when someone else holds the task, when an approval it
   waits on is still open, when it has children that are not closed, and when
   the task is a person's decision: an approval, or a task labelled `human`.
-  A task it depends on may still be open. A task nobody holds is recorded as
-  held by its closer, so it shows who did the work. A close as `done` keeps the task's
+  A task it depends on may still be open. A close as `done` keeps the task's
   card as it stood, with the commit hash its reason names, and `get_task`
   returns it as `cardShipped`. A close as `duplicate` links the two tasks as
   `related`.
@@ -365,7 +364,7 @@ one call too.
 - **Filing.** `claim: true` on `create_task`, or on an entry of
   `create_tasks`, files the task claimed by the sender: assigned to it and in
   progress. `done` files work already finished closed as done by the sender,
-  who is recorded as its holder: an object with `evidence`, the reason
+  held by nobody: an object with `evidence`, the reason
   `close_task` takes, and optionally `commit`, `pr` and `link`, as
   `close_task` takes them. A task is filed claimed or done, not both; one
   that opens an approval or is labelled `human` is not filed done. Either way

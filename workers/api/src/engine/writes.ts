@@ -170,13 +170,13 @@ function workIn(details: TaskWork): TaskWork {
 
 /**
  * How a new task starts: open; claimed by the actor, in progress; or closed as
- * done by the actor, who is recorded as its holder too, with its delivery at
- * built when the close names a commit or a pull request. The columns, and
- * the values its created event records.
+ * done by the actor, held by nobody, with its delivery at built when the close
+ * names a commit or a pull request. The columns, and the values its created
+ * event records.
  */
 function filedState(fields: check.CreateFields, actor: Actor, at: string) {
   const close = fields.close;
-  const held = fields.claim || close !== null;
+  const held = fields.claim;
   const columns: Row = held ? { assignee: actor.name, assignee_model: actor.model ?? null } : {};
   if (fields.claim) columns.started_at = at;
   let delivery: JsonObject | null = null;

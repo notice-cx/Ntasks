@@ -1999,6 +1999,19 @@ describe('close_task', () => {
     );
   });
 
+  it('leaves a task nobody held free to claim once it is reopened', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    await write(target, 'close_task', { task: id, reason: 'Shipped.', commit: '4f2a9c1' });
+    expect(await current(project, id)).toMatchObject({ status: 'closed', assignee: null });
+    await write(target, 'update_task', { task: id, status: 'open' });
+    const other = api({ principal: granted({ [project.id]: 'write' }, 'agent-other'), engine });
+    expect(await write(other, 'claim_task', { task: id })).toMatchObject({
+      status: 'in_progress',
+      assignee: 'agent-other',
+    });
+  });
+
   it('closes a duplicate, linking it to the task it duplicates', async () => {
     const project = await newProject(engine);
     const original = await task(project, { title: 'Original' });
@@ -2126,7 +2139,7 @@ describe('create_task with claim and done', () => {
     expect(batch.results[0]).toMatchObject({ status: 'in_progress', assignee: WRITER.name });
   });
 
-  it('files finished work closed as done, with its evidence and proof, held by the sender', async () => {
+  it('files finished work closed as done, with its evidence and proof, held by nobody', async () => {
     const project = await newProject(engine);
     const filed = await write<{ id: string; warnings?: string[] }>(target, 'create_task', {
       project: project.id,
@@ -2136,13 +2149,15 @@ describe('create_task with claim and done', () => {
     });
     expect(filed).toMatchObject({
       status: 'closed',
-      assignee: WRITER.name,
       resolution: 'done',
       delivery: { stage: 'built', commit: '4f2a9c1' },
       version: 1,
     });
     expect(filed).not.toHaveProperty('warnings');
-    expect((await current(project, filed.id)).close).toMatchObject({ reason: 'Fixed in 4f2a9c1.', by: WRITER.name });
+    expect(await current(project, filed.id)).toMatchObject({
+      assignee: null,
+      close: { reason: 'Fixed in 4f2a9c1.', by: WRITER.name },
+    });
     const history = await read<{ changes: { actions: string[] }[] }>(target, 'get_task_history', { task: filed.id });
     expect(history.changes.map((change) => change.actions)).toEqual([['created']]);
   });
@@ -2267,8 +2282,12 @@ describe('close_task on several tasks', () => {
     ]);
     expect(reply.unblocked).toEqual([{ id: waiting.id, title: 'Waits on A and B' }]);
     expect(await current(project, held.id)).toMatchObject({ status: 'in_progress' });
-    // A task nobody held is recorded as held by its closer.
-    expect(await current(project, a.id)).toMatchObject({ status: 'closed', assignee: WRITER.name });
+    // A close leaves who holds the task as it was; the close records who closed it.
+    expect(await current(project, a.id)).toMatchObject({
+      status: 'closed',
+      assignee: null,
+      close: { by: WRITER.name },
+    });
     // The same call sent again answers each close it made, and closes nothing twice.
     const again = await write<Closed>(target, 'close_task', args);
     expect(again.results.map((result) => result.replayed ?? null)).toEqual([true, null, true]);

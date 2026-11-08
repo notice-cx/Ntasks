@@ -139,7 +139,7 @@ Closing a task records how the work ended and the evidence for it, such as a
 commit or a URL. Most tasks close as **done**. A task can also close as
 `wont-do`, `duplicate` (naming the other task), `cant-reproduce`,
 `already-handled` or `no-longer-needed`, still with the evidence that decided
-it. A task nobody held is recorded as held by whoever closed it.
+it.
 
 Work closed as done shows its **proof**: the commit or pull request that holds
 the change, or a link to what shows it, such as a document. A task, bug,

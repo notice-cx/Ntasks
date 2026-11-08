@@ -661,8 +661,7 @@ export function proofWarning(taskId: string, takes: string): string {
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
- * linking a duplicate to the task it duplicates. A task nobody holds is
- * recorded as held by its closer, so it shows who did the work. */
+ * linking a duplicate to the task it duplicates. */
 export async function closeTask(
   context: WriteContext,
   projectId: string,
@@ -716,7 +715,6 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
-      ...(current.assignee === null ? { set: { assignee: actor.name } } : {}),
       close: {
         reason: closing.reason,
         resolution,

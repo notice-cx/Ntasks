@@ -123,7 +123,7 @@ export interface CreateTaskInput {
   readonly requestApproval?: { readonly reason: string };
   /** Files the task claimed by the actor: assigned to it and in progress. */
   readonly claim?: true;
-  /** Files the task closed as done by the actor, recorded as its holder too,
+  /** Files the task closed as done by the actor, held by nobody,
    * with what proves it, as a close records it. Not with `claim` or `requestApproval`. */
   readonly close?: {
     readonly reason: string;
