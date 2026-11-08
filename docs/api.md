@@ -525,9 +525,14 @@ one.
 
 An MCP write sent without `idempotency_key` is keyed by the SHA-256 of its
 workspace, its sender, the tool and its arguments with their keys sorted,
-`detail` left out. The same call sent again within seven days answers with
-the first result and `replayed: true` and writes nothing; a call meant to
-make the same change again names a new key.
+`detail` left out. Without a key, an identical call repeats the first answer
+only while the task is unchanged since that answer; once the task has
+changed, the call runs again. So a call interrupted and sent again writes
+once, and claiming, releasing and claiming a task again claims it twice. A
+comment leaves its task unchanged, so the same comment sent again with
+nothing changed between is answered with the first one. `create_task` and
+`create_tasks` have no task before their first answer, so the same call
+answers with the first result for 24 hours.
 
 `add_dependency`, `remove_dependency` and `request_human_approval` take no
 key, because asking again changes nothing.

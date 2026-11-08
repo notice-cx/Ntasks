@@ -135,7 +135,7 @@ export const IDEMPOTENCY = Object.freeze({
   pattern: IDEMPOTENCY_KEY.source,
   description:
     'Optional: a key you choose for this call. Retrying with the same key and arguments never repeats the change. ' +
-    'Without one, an identical call repeated returns the first result with replayed: true and writes once.',
+    'Without a key, an identical call repeats the first answer only while the task is unchanged since that answer; once the task has changed, the call runs again.',
 });
 /** How much of the task a write's reply shows. */
 export const DETAIL = Object.freeze({
@@ -415,19 +415,20 @@ function anchorsOf(entry: unknown): unknown[] {
  * The call's arguments as its retry record keeps them: all but the key, and
  * detail, which changes only how much the reply shows. A call without a key
  * of its own is keyed by its workspace, its sender, the tool and those
- * arguments, so the same call sent again is answered with the first one's
- * result and writes once.
+ * arguments, and that derived key answers the same call again only while the
+ * task is unchanged since its answer (Retry.derived), so an interrupted call
+ * writes once and a repeat after a change runs again.
  */
 export async function retryRequest(context: ToolContext, operation: string, args: Args): Promise<RetryRequest> {
   const request: Args = { ...args };
   delete request.idempotency_key;
   delete request.detail;
-  const key =
-    keyArg(args) ??
-    `auto:${await sha256(
-      canonical({ workspace: context.workspace.id, sender: context.principal.id, tool: operation, arguments: request }),
-    )}`;
-  return { operation, key, request };
+  const given = keyArg(args);
+  if (given !== undefined) return { operation, key: given, request };
+  const key = `auto:${await sha256(
+    canonical({ workspace: context.workspace.id, sender: context.principal.id, tool: operation, arguments: request }),
+  )}`;
+  return { operation, key, request, derived: true };
 }
 
 /** How specific each kind of link is. A task named in two kinds is linked
@@ -707,6 +708,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
             operation: 'create_tasks',
             key: await entryKey(retry.key, index),
             request: { project: projectId, task: entries[index] as unknown, model: model ?? null },
+            ...(retry.derived === true ? { derived: true } : {}),
           });
           filedIn = project.id;
           made.push({ index, task: result.task, replayed: result.replayed, gate: result.created[0] });

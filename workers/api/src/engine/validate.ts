@@ -113,6 +113,7 @@ export function retry(value: Retry | undefined): Retry | undefined {
   }
   text(value.principal, 'retry.principal', TASK_LIMITS.retryPrincipal, true);
   text(value.operation, 'retry.operation', 64, true);
+  if (value.derived !== undefined && typeof value.derived !== 'boolean') invalid('retry.derived must be true or false');
   return value;
 }
 

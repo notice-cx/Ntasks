@@ -273,16 +273,56 @@ describe('a write that names only what it needs', () => {
     for (const prefix of [project.prefix, other.prefix]) expect(unnamed).toContain(`prefix ${prefix}`);
   });
 
-  it('answers the same write sent again without a key with its first result, and writes it once', async () => {
+  it('answers the same new task sent again without a key with its first result for a day', async () => {
     const project = await newProject(engine);
     const args = { project: project.id, title: 'Once' };
+    const filed = async () => (await engine.listTasks(project.id, { limit: 10 })).tasks.length;
     const first = await write(target, 'create_task', args);
     expect(await write(target, 'create_task', args)).toEqual({ ...first, replayed: true });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(1);
+    expect(await filed()).toBe(1);
     // A key of the caller's own makes the same change again on purpose, and another sender's call is its own.
     await write(target, 'create_task', { ...args, idempotency_key: key() });
     await write(api({ principal: granted({ [project.id]: 'write' }, 'agent-o'), engine }), 'create_task', args);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(3);
+    expect(await filed()).toBe(3);
+    time.advance(24 * 60 + 1);
+    try {
+      expect(await write(target, 'create_task', args)).toMatchObject({ replayed: false });
+      expect(await filed()).toBe(4);
+    } finally {
+      time.advance(-(24 * 60 + 1));
+    }
+  });
+
+  it('runs the same write sent again without a key once the task has changed since its answer', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const claim = { task: id };
+    expect(await write(target, 'claim_task', claim)).toMatchObject({ replayed: false, version: 2 });
+    // Right after, nothing has changed: the same call answers with the first claim and writes nothing.
+    expect(await write(target, 'claim_task', claim)).toMatchObject({ replayed: true, version: 2 });
+    await write(target, 'update_task', { task: id, assignee: '', status: 'open' });
+    expect(await write(target, 'claim_task', claim)).toMatchObject({
+      replayed: false,
+      assignee: WRITER.name,
+      version: 4,
+    });
+
+    const close = { task: id, reason: 'Done in abc1234.' };
+    expect(await write(target, 'close_task', close)).toMatchObject({ status: 'closed', replayed: false });
+    await write(target, 'update_task', { task: id, status: 'open' });
+    expect(await write(target, 'close_task', close)).toMatchObject({ status: 'closed', replayed: false });
+
+    const renamed = await task(project, { title: 'X' });
+    for (const title of ['Y', 'X', 'Y']) await write(target, 'update_task', { task: renamed.id, title });
+    expect(await current(project, renamed.id)).toMatchObject({ title: 'Y', version: 4 });
+
+    // A comment leaves the task unchanged: the same one again is the first, until the task changes.
+    const say = { task: renamed.id, text: 'Same words.' };
+    const said = await write(target, 'comment_on_task', say);
+    expect(await write(target, 'comment_on_task', say)).toEqual({ ...said, replayed: true });
+    await write(target, 'update_task', { task: renamed.id, priority: 0 });
+    expect(await write(target, 'comment_on_task', say)).toMatchObject({ replayed: false });
+    expect(await engine.listComments(project.id, renamed.id)).toHaveLength(2);
   });
 
   it('names the task and the argument a refused write breaks, and says nothing was written', async () => {

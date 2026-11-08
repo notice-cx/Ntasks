@@ -57,6 +57,8 @@ export interface RetryRequest {
   readonly key: string;
   /** What the caller sent, without the key: a retry that sends anything else is refused. */
   readonly request: unknown;
+  /** The key was derived from the request, not chosen by the caller (Retry.derived). */
+  readonly derived?: boolean;
 }
 
 /** How many times a write reads its task again after another write changed it first. */
@@ -155,6 +157,7 @@ export async function retryOf(principal: Principal, retry: RetryRequest | undefi
     operation: retry.operation,
     key: retry.key,
     requestHash: await sha256(canonical(retry.request)),
+    ...(retry.derived === true ? { derived: true } : {}),
   };
 }
 

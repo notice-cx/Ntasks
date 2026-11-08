@@ -63,6 +63,13 @@ export interface Retry {
   readonly key: string;
   /** SHA-256 of the canonical request, as 64 lowercase hexadecimal characters. */
   readonly requestHash: string;
+  /**
+   * The key was derived from the request, not chosen by its caller. Its record
+   * answers only while the task stands at the version the write left it at,
+   * and a new task's record only for a day; after that the same request is a
+   * new write, whose record replaces the old one.
+   */
+  readonly derived?: boolean;
 }
 
 export interface CreateProjectInput {

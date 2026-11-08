@@ -187,6 +187,12 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.
+  A retry identity marked `derived` (a key the API derived from an MCP
+  call's arguments) also records the version the write left its task at.
+  Its record answers only while the task stands at that version, and a new
+  task's record only for 24 hours; after that the same request is a new
+  write, and its batch replaces the stale record. A key a caller chose keeps
+  rule 3 unchanged.
 - **Projects:** `listProjects`, `createProject`, which
   `POST /api/tasks/projects` ([API](api.md#writes)) calls, and
   `setProjectDeploys`; an import writes its projects' rows itself.
