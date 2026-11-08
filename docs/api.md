@@ -148,15 +148,15 @@ start of the task guide and its rules for writing a task.
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren` | `workspace`, `task`, and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, `status` and `version`, `replayed`, the approval it opened if any, `lint` when it finds something, and `warnings` when a link was left out | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `model`, `idempotency_key` and `detail` |
-| `create_tasks` | Each task filed, in order, with its `id`, `status`, `version` and `lint` when it finds something; `warnings` when a link was left out; the first task refused, if any, and how many were not tried | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
+| `create_task` | The new task's `id`, `status` and `version`, `replayed`, the approval it opened if any, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `model`, `idempotency_key` and `detail` |
+| `create_tasks` | Each task filed, in order, with its `id`, `status`, `version` and `lint` when it finds something; `warnings` when a link was left out or a text cites something a reader cannot check; the first task refused, if any, and how many were not tried | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
 | `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed` | `workspace`, `task`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
-| `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
+| `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `comment_on_task` | The `task` and the comment's `commentId`, and `replayed`; with `detail: "full"`, the whole comment | `workspace`, `task`, `text`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
 | `add_dependency` | The link | `workspace`, `task`, `depends_on`, and optionally `project`, `model` and `type`: `blocks` (the default), `related` or `discovered-from`. A `duplicates` or `supersedes` link is added with `create_task` or `update_task` |
 | `remove_dependency` | The link, removed | `workspace`, `task`, `depends_on`, and optionally `project` and `model` |
 | `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `task`, `reason` (at most 400 characters), and optionally `project` and `model` |
-| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, and `replayed` | `workspace`, `task`, `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `model`, `idempotency_key` and `detail` |
+| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, and `warnings` when the reason cites something a reader cannot check | `workspace`, `task`, `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `model`, `idempotency_key` and `detail` |
 | `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
@@ -188,8 +188,10 @@ sender reaches, and each task then names its project.
 `notes` and `design` are Markdown, at most 8,192 characters each, and
 `estimate_minutes` is a whole number of minutes from 0 to 525,600 (a year).
 `get_task` returns them as `notes`, `design` and `estimateMinutes`, and
-`list_tasks` returns `estimateMinutes`; like `description`, `notes` and
-`design` are left out of `list_tasks`.
+`list_tasks` returns `estimateMinutes` on each task that has one, beside
+`updatedAt`, when the task last changed, so a ready task's size and age show
+without reading it in full; like `description`, `notes` and `design` are left
+out of `list_tasks`.
 
 `for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` record the
 holder's work in hand ([concepts](concepts.md#claiming-a-task)). `for` is one
@@ -216,6 +218,16 @@ the more specific kind: `depends_on` or `blocks`, then `discovered_from`,
 `supersedes`, `duplicates` and `related`. The answer's `warnings` names each
 link left out. A task named in both `depends_on` and `blocks` is refused,
 since the two tasks would wait on each other.
+
+`warnings` also names each text that cites something its next reader cannot
+check: `description` and `acceptance` in `create_task`, each `create_tasks`
+entry (as `tasks[2].description`) and `update_task`, and `reason` in
+`close_task`. Two things are named: a path on one machine, under `/tmp`,
+`/private/tmp`, `/var/folders` or a home folder (`/Users/<name>`,
+`/home/<name>` or `~/`); and an exact count of tests that passed or failed,
+such as `123 passed` or `Tests: 5 failed`. Each warning says what to cite
+instead: a path in the repository, a commit or a link, or the command that
+runs the tests. The write lands either way.
 
 `external_links` and `add_external_links` are each an array of objects, and
 each object has a `url`, an http or https URL of at most 2,048 characters, a

@@ -397,10 +397,13 @@ parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
 ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
-`Until 11 Nov`, on a held task `For page-rebuild-2` and `Active 12m ago`,
-and on a closed task how a close where nothing shipped ended, or where its
-change is: Built, Merged or Live) and badges, `RowSpacer`, then `RowActions`, the assignee's
-`Avatar` and `RowAge` (34 px, right-aligned).
+`Until 11 Nov`, on a ready task that is not an epic `Estimate 1h 30m` or
+`No estimate` after a `clock` icon from 1024 px wide, where the title keeps
+room beside it, on a held task `For page-rebuild-2` and
+`Active 12m ago`, and on a closed task how a close where nothing shipped
+ended, or where its change is: Built, Merged or Live) and badges,
+`RowSpacer`, then `RowActions`, the assignee's `Avatar` and `RowAge` (34 px,
+right-aligned), how long since the task last changed.
 
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
