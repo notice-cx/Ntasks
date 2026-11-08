@@ -370,6 +370,21 @@ export async function createTask(
     project,
     links.map((link) => ({ taskId: link.taskId, type: ENGINE_LINKS[link.kind].type })),
   );
+  if (task.done !== undefined) {
+    // A close waits for the approvals the task waits on, so filing it closed does too.
+    const waitsOn = links.filter((link) => link.kind === 'depends_on').map((link) => link.taskId);
+    const gates = (await context.engine.getTasks(project.id, waitsOn))
+      .filter((other) => other.type === 'gate' && other.status !== 'closed')
+      .map((gate) => gate.id);
+    if (gates.length > 0) {
+      const named = listed(gates);
+      throw refused(
+        `refused: the new task waits on approval ${named}, which is still open, so it is not filed done. ` +
+          'Use reconcile_task on the gate with the owner’s scoped answer first, or file the task open.',
+        `It waits on approval ${named}, which is still open.`,
+      );
+    }
+  }
   const card = task.card === undefined ? undefined : recordedCard(task.card, context.principal.name, context.now());
   const due = card?.kill === undefined ? undefined : (card.kill as JsonObject).date;
   const metadata: JsonObject = {

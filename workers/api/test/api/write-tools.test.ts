@@ -2170,11 +2170,24 @@ describe('create_task with claim and done', () => {
     expect(await refused({ claim: true, done })).toMatch(/^invalid arguments: claim and done /u);
     expect(await refused({ done, approval: 'Approve it.' })).toMatch(/^invalid arguments: done and approval /u);
     expect(await refused({ done, labels: ['human'] })).toMatch(/^refused: /u);
+    const waiting = await task(project, { title: 'Waits on an approval' });
+    const { created } = await engine.writeTask(
+      project.id,
+      waiting.id,
+      { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } },
+      OWNER,
+    );
+    const gate = created[0]!.id;
+    const gated = await refused({ done, depends_on: [gate] });
+    expect(gated).toMatch(/^refused: /u);
+    expect(gated).toContain(gate);
     expect(await refused({ done: { evidence: 'Done.', link: 'not a url' } })).toMatch(
       /^invalid arguments: done\.link /u,
     );
     expect(await refused({ done: { evidence: 'Done.', when: 'today' } })).toMatch(/^invalid arguments: done /u);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
+      [waiting.id, gate].sort(),
+    );
   });
 
   it('names open tasks in its project whose titles share most of its words as possible duplicates', async () => {

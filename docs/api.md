@@ -367,7 +367,8 @@ one call too.
   held by nobody: an object with `evidence`, the reason
   `close_task` takes, and optionally `commit`, `pr` and `link`, as
   `close_task` takes them. A task is filed claimed or done, not both; one
-  that opens an approval or is labelled `human` is not filed done. Either way
+  that opens an approval, waits on an approval still open or is labelled
+  `human` is not filed done. Either way
   the task and its claim or close are one write, with one history event.
 - **Possible duplicates.** A new task's answer names `possibleDuplicates`
   when it finds some: up to three open tasks in its project whose titles
