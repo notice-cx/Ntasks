@@ -348,9 +348,9 @@ and hand-backs of the tasks waiting on an approval.
 
 | `action` | What it does |
 |---|---|
-| `answer` | Records the owner's answer. On an approval it approves it: the approval closes as `done`, records `permission: approved-scope-only`, and hands back the tasks labelled `human` waiting on it. On any other task it records the `option` the owner chose, if any, takes off the `human` label and returns the task to agents, unassigned; an agent then closes it with implementation evidence. |
-| `declined` | On an approval only: closes it as `wont-do` and tells each task waiting on it that the action must not happen. |
-| `owner_performed` | On an approval only: the owner did the action themselves. It closes the approval as `done` and grants nothing. |
+| `answer` | Records the owner's answer. On an approval it approves it: the approval closes as `done` and records `permission: approved-scope-only`. Each task waiting on it that is labelled `human`, is neither a decision nor an approval, and offers no options goes back to agents: open, unassigned, without the label, with a comment to keep within the approval. Other waiting tasks keep their labels. On any other task it records the `option` the owner chose, if any, takes off the `human` label and returns the task to agents, unassigned; an agent then closes it with implementation evidence. |
+| `declined` | On an approval only: closes it as `wont-do`, tells each task waiting on it that the action must not happen, and hands back the same waiting tasks as `answer`. |
+| `owner_performed` | On an approval only: the owner did the action themselves. On an open approval it closes it as `done` and hands back the same waiting tasks as `answer`; on a closed one it records the report. Either way it records `permission: none`. |
 | `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
 | `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
@@ -396,6 +396,17 @@ withdraws it, including after an agent relays on the closed approval that
 the owner did the action. Once the gate is opened again, its next answer is
 the one it stands on, and a relayed one can be disputed.
 
+An approval, relayed or direct, permits exactly the request of the proposal
+version it answered: its action, environment, scope and verification. It
+grants nothing beyond that request, and nothing to any other approval: a task
+that waits on several approvals stays held until each is approved. The
+permission lasts while the gate stays closed as `done` with `permission:
+approved-scope-only` in its record. A dispute withdraws it: the record's
+`permission` becomes `none`, the gate opens again, and the tasks waiting on it
+are told to stop. The owner's report that they did the action
+(`owner_performed`) records `permission: none`: it permits no agent to do the
+action.
+
 A refused owner answer names the argument at fault first, such as
 `refused: proposal_version: The proposal changed after the owner saw it; show it again.`,
 and ends as every refusal does, with `Nothing was written; retrying is safe.`
@@ -405,8 +416,8 @@ as `answer`, or null:
 
 | Field of `answer` | Holds |
 |---|---|
-| `option` | The option chosen: a letter on a task with choices, `approve` or `decline` on an approval, or null when the answer chose none |
-| `quote` | The owner's words, or null when a person's pick carried no note |
+| `option` | The option chosen: a letter on a task with choices, or null when the answer chose none. On an approval, `decline` for a refusal, and `approve` both for an approval and for the owner's report that they did the action. It names the latest answer, not a standing permission: a disputed approval keeps `approve` and has `disputedBy` set. Whether the approved action may proceed is shown by the gate, as above |
+| `quote` | The owner's words, or null when a person answered in the web app without words: a pick with no note, or an approval with no reason |
 | `source` | Where the owner said it, as the relaying sender named it; null for an answer made in the web app |
 | `recordedBy` | The person who answered in the web app, or the agent or service that relayed the answer |
 | `relayed` | `false` for a person's own answer in the web app, `true` for any other |
