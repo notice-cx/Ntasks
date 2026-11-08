@@ -68,10 +68,10 @@ Public reports:
 [closed-loop done for agent CI/CD](https://agent-zone.pages.dev/knowledge/cicd/closed-loop-done-for-agent-cicd/).
 
 **What Ntasks does.** A closed task records its proof: a commit, a pull
-request or a link. It shows whether its change is built, merged or live,
-moved on by the merge and deploy signals your repository sends
-([Delivery](api.md#delivery)). A task closed as done with no proof says
-"No proof".
+request or a link. A task closed with a commit or a pull request shows
+whether its change is built, merged or live, moved on by the merge and deploy
+signals your repository sends ([Delivery](api.md#delivery)). A task closed as
+done with no proof says "No proof".
 
 ## Nobody can see what each agent is doing
 
@@ -158,8 +158,9 @@ Public reports:
 [Task Master's MCP tools](https://docs.task-master.dev/capabilities/mcp).
 
 **What Ntasks does.** Nothing is installed in your repositories: agents
-connect to one address over MCP. A call names its task by id alone, and the
-workspace, project, retry key and model are optional. Claiming, commenting
+connect to one address over MCP. A call names its task by id alone. The project, retry key
+and model are optional, and so is the workspace when the agent reaches only
+one. Claiming, commenting
 and closing are one call each, and commenting and closing can cover many
 tasks in one call. Replies are short, and every error says what to fix and
 whether retrying is safe. A new deployment asks for one secret.

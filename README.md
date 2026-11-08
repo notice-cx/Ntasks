@@ -23,7 +23,7 @@ and 2026. The same problems came up again and again.
 | What goes wrong today | What Ntasks does |
 |---|---|
 | **Agents lose finished work between sessions.** After a new session or a context reset, they redo committed work and reopen settled decisions. | Each task keeps its live work: the branch, the pull request and the next step. An agent that connects is told what it holds and where it left off. |
-| **"Done" that isn't done.** Agents mark work complete without doing or checking it. | A closed task shows its proof and whether its change is built, merged or live. One closed without proof says "No proof". |
+| **"Done" that isn't done.** Agents mark work complete without doing or checking it. | A closed task shows its proof: a commit, a pull request or a link. A code change shows whether it is built, merged or live. One closed without proof says "No proof". |
 | **Nobody can see what each agent is doing.** With several agents running, you lose track of who works on what and which one needs you. | Every task shows who holds it, the helper agent doing the work, and its last activity. |
 | **Review becomes the bottleneck.** Agents finish faster than you can check and ship. | Waiting for you lists your decisions, the work waiting to merge and the work waiting to deploy, in one place. |
 | **Decisions given in chat get lost.** An approval in a conversation leaves no reliable record. | You answer with one button, on the exact proposal you saw. An agent that relays your answer records your words, and you can dispute it. |
@@ -58,9 +58,10 @@ branch, its pull request, its next step and when it last moved.
   <img src="docs/images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
 </picture>
 
-Closed work shows whether its change is built, merged or live, moved on by
-the merge and deploy signals your repository sends
-([Delivery](docs/api.md#delivery)). Work closed without proof says so.
+Work closed with a commit or a pull request shows whether its change is
+built, merged or live, moved on by the merge and deploy signals your
+repository sends ([Delivery](docs/api.md#delivery)). Work closed with no proof
+says so.
 
 ### Approve exactly what you saw
 
