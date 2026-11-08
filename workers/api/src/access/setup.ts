@@ -50,7 +50,12 @@ function setupCookie(origin: string, value: string, maxAge: number): string {
   return `${setupCookieName(origin)}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
-/** The Set-Cookie that ends this browser's setup: every answer to GitHub's return sends it, so a state works once. */
+/**
+ * The Set-Cookie that ends this browser's setup: every answer to GitHub's
+ * return sends it, so the browser cannot send the state again. The server
+ * keeps no record of used states; the stored-app write and GitHub's
+ * one-use code bound what a resent state can do.
+ */
 export function endSetupCookie(origin: string): string {
   return setupCookie(origin, '', 0);
 }
@@ -82,8 +87,8 @@ export async function startSetupState(
 /**
  * Whether GitHub's return carries an unexpired state this deployment signed
  * for this origin and for the value this browser's setup cookie holds. A
- * state from another browser, a changed one, or one used before, whose
- * cookie is gone, is refused.
+ * state from another browser, a changed one, or one sent again by a browser
+ * that deleted the cookie as told is refused.
  */
 export async function setupStateHolds(
   secret: string,

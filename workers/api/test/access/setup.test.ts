@@ -204,7 +204,7 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect(calls.conversions).toEqual([manifestCodeFor(5006)]);
   });
 
-  it('refuses a state from another browser, a forged one, a used one and an expired one, asking GitHub nothing', async () => {
+  it('refuses a state from another browser, a forged one, one sent again by its browser and an expired one, asking GitHub nothing', async () => {
     const bindings = onlyAuthSecret();
     const started = new Browser({ bindings });
     const { state } = await startSetup(started);
@@ -216,7 +216,7 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect((await returnFromGitHub(other, state, 5008)).status).toBe(400);
     const [expires, signature] = state.split('.');
     expect((await returnFromGitHub(started, `${Number(expires) + 3600}.${signature}`, 5008)).status).toBe(400);
-    // That answer ended this browser's setup, so its real state no longer works.
+    // That answer deleted this browser's setup cookie, so its real state no longer works here.
     expect((await returnFromGitHub(started, state, 5008)).status).toBe(400);
 
     const late = new Browser({ bindings });
