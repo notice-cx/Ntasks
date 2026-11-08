@@ -137,7 +137,8 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
         </RowMeta>
       ) : null}
       {sized ? (
-        <RowMeta data-row-estimate="">
+        // Below 1024 px the sidebar leaves the row too narrow for the title beside a badge, a checklist and this.
+        <RowMeta data-row-estimate="" className="max-lg:hidden">
           <Clock aria-hidden />
           {task.estimateMinutes == null ? 'No estimate' : `Estimate ${formatMinutes(task.estimateMinutes)}`}
         </RowMeta>
