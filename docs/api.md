@@ -8,9 +8,9 @@ The Worker answers under `/api` in two ways, both over the same task engine:
 - **The HTTP routes** under `/api/tasks` and `/api/changes` are for the web
   app.
 
-`/api/workspaces` lists the workspaces a sender reaches and creates one
-([below](#workspaces)). Two more serve a workspace's store as a whole:
-`/api/backup` hands it out for a backup
+`/api/workspaces` lists the workspaces a sender reaches, creates one and
+renames one ([below](#workspaces)). Two more serve a workspace's store as a
+whole: `/api/backup` hands it out for a backup
 ([below](#backing-up-the-whole-store)), and `/api/restore` loads an import or
 a backup into an empty store ([below](#loading-an-empty-store)).
 
@@ -45,7 +45,7 @@ may make: `tasks:read` to read and `tasks:write` to change tasks. A person
 signed in to the web app also holds `tasks:decide`, which a person's
 decisions need; no agent or service holds it, whatever it was granted. A
 workspace's owner also holds `tasks:backup`, `tasks:restore` and
-`workspace:manage`, which creating a project needs.
+`workspace:manage`, which creating a project and renaming the workspace need.
 
 | Answer | When |
 |---|---|
@@ -103,14 +103,17 @@ it was granted a project, and a service its credential's workspace.
 |---|---|---|
 | `GET /api/workspaces` | none | `{ workspaces }`: each workspace the sender reaches, ordered by name, with its `workspaceId`, `name` and the sender's `role`: `owner` or `member` for a person, `null` for an agent or a service |
 | `POST /api/workspaces` | `name`, one line of 1 to 128 characters, and optionally `workspaceId`, a lowercase UUID | `201` with `{ workspace: { workspaceId, name, role: "owner" } }`. Only a deployment admin may send it, and becomes the new workspace's owner; anyone else gets `403` with `admin_only`. A workspace that takes over a NoticeOS workspace's tasks can keep that workspace's id, so agent instructions that name it keep working. |
+| `PATCH /api/workspaces` | `workspaceId` and `name`, which `POST` checks the same way | `{ workspace }`, as `GET` lists it, with the new name. Only an owner of the workspace may send it; anyone else who reaches it gets `403` with `insufficient_scope`. The name is only shown: the task store, the `x-ntasks-workspace` header and the MCP tools' `workspace` argument name a workspace by its id, so a rename changes nothing else. |
 
 `POST /api/workspaces` refuses a bad `name` or `workspaceId` with `400` and
 `invalid_request`, and an id another workspace has with `409` and
-`workspace_exists`; each refusal names the body field in `field`. These two
-routes, like `GET /api/access/me`, do not read the `x-ntasks-workspace`
-header, so a client that sends a workspace the sender no longer reaches still
-gets its list. They are answered beside sign-in, so they count against its
-limit of about 30 requests a minute from one address
+`workspace_exists`; each refusal names the body field in `field`. `PATCH
+/api/workspaces` refuses a bad `name` the same way, and answers a
+`workspaceId` the sender does not reach, whether or not it exists, with `404`
+and `not_found`. These routes, like `GET /api/access/me`, do not read the
+`x-ntasks-workspace` header, so a client that sends a workspace the sender no
+longer reaches still gets its list. They are answered beside sign-in, so they
+count against its limit of about 30 requests a minute from one address
 ([Sign-in](sign-in.md#routes)).
 
 A workspace's owners manage its people with four routes in the request's

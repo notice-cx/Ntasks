@@ -315,6 +315,88 @@ describe('creating a workspace', () => {
   });
 });
 
+describe('renaming a workspace', () => {
+  // These routes count against sign-in's limit for each address, so each test
+  // signs its people in again from browsers of their own, and the world's
+  // browsers keep their budget for the tests after these.
+  const [ANA, BEN, CAI] = [1002, 1003, 1004];
+
+  /** A rename sent from a person's browser. */
+  const rename = (browser: Browser, json: Record<string, unknown>) => as(browser, 'PATCH', '/api/workspaces', { json });
+
+  it('shows the new name in the workspace list and to agents, and keeps the store it names', async () => {
+    const { one, three } = await world();
+    const cai = await person(CAI);
+    const reader = await service(cai, three.id, { name: 'rename-reader', backup: true });
+    expect(await rename(cai, { workspaceId: three.id, name: '  Three, renamed  ' })).toEqual({
+      status: 200,
+      body: { workspace: { workspaceId: three.id, name: 'Three, renamed', role: 'owner' } },
+    });
+    expect((await as(cai, 'GET', '/api/workspaces')).body).toEqual({
+      workspaces: [
+        { workspaceId: one.id, name: 'One', role: 'member' },
+        { workspaceId: three.id, name: 'Three, renamed', role: 'owner' },
+      ],
+    });
+    expect((await tool(reader, 'list_workspaces')).value?.workspaces).toEqual([
+      expect.objectContaining({ workspaceId: three.id, name: 'Three, renamed' }),
+    ]);
+    expect((await as(cai, 'GET', '/api/tasks/projects', { workspace: three.id })).status).toBe(200);
+  });
+
+  it("is an owner's act: a member, an agent and a service are refused, and nothing changes", async () => {
+    const { one, projectOne } = await world();
+    const [ana, cai] = [await person(ANA), await person(CAI)];
+    const before = await as(cai, 'GET', '/api/workspaces');
+    const refused = {
+      status: 403,
+      body: { error: 'insufficient_scope', detail: 'only an owner of this workspace may do this' },
+    };
+    expect(await rename(cai, { workspaceId: one.id, name: 'Taken over' })).toEqual(refused);
+    const { tokens } = await connectAgent(ana, [projectChoice(one.id, projectOne)]);
+    const writer = await service(ana, one.id, {
+      name: 'not-an-owner',
+      grants: [{ projectId: projectOne, access: 'write' }],
+    });
+    for (const token of [tokens.access_token, writer]) {
+      expect(
+        await withToken(token, 'PATCH', '/api/workspaces', { json: { workspaceId: one.id, name: 'Taken over' } }),
+      ).toEqual(refused);
+    }
+    expect(await as(cai, 'GET', '/api/workspaces')).toEqual(before);
+    expect((await as(ana, 'GET', '/api/workspaces')).body.workspaces).toEqual([
+      { workspaceId: one.id, name: 'One', role: 'owner' },
+    ]);
+  });
+
+  it('refuses each name that creating a workspace refuses, with the same answer, and changes nothing', async () => {
+    const { one } = await world();
+    const ana = await person(ANA);
+    for (const name of ['', '   ', 'Two\nlines', 'x'.repeat(129), 42, undefined]) {
+      const renamed = await rename(ana, { workspaceId: one.id, name });
+      expect(renamed).toMatchObject({ status: 400, body: { error: 'invalid_request', field: 'name' } });
+      expect(renamed).toEqual(await as(ana, 'POST', '/api/workspaces', { json: { name } }));
+    }
+    expect((await as(ana, 'GET', '/api/workspaces')).body.workspaces).toEqual([
+      { workspaceId: one.id, name: 'One', role: 'owner' },
+    ]);
+  });
+
+  it('answers a workspace the sender does not reach as one that does not exist', async () => {
+    const { two } = await world();
+    const [ana, ben] = [await person(ANA), await person(BEN)];
+    const elsewhere = await rename(ana, { workspaceId: two.id, name: 'Mine now' });
+    expect(elsewhere).toEqual({
+      status: 404,
+      body: { error: 'not_found', detail: 'no such workspace; GET /api/workspaces lists yours' },
+    });
+    expect(await rename(ana, { workspaceId: crypto.randomUUID(), name: 'Mine now' })).toEqual(elsewhere);
+    expect((await as(ben, 'GET', '/api/workspaces')).body).toEqual({
+      workspaces: [{ workspaceId: two.id, name: 'Two', role: 'owner' }],
+    });
+  });
+});
+
 describe('an agent', () => {
   it('reaches only the workspaces of the projects it was granted, over MCP and HTTP', async () => {
     const { cai, one, two, three, projectOne, projectTwo, taskTwo } = await world();

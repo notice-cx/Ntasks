@@ -7,6 +7,8 @@
  * here is in wrangler.jsonc's run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
+import { lacking } from '../api.ts';
+import { SCOPES } from '../auth.ts';
 import { json } from '../http/respond.ts';
 import { chooseWorkspace, WORKSPACE_HEADER, type WorkspaceReach } from '../workspaces.ts';
 import { createAuth, type Auth } from './auth.ts';
@@ -24,6 +26,7 @@ import {
   type AgentGrant,
   type ProjectSource,
   listServiceCredentials,
+  renameWorkspace,
   revokeAgent,
   revokeServiceCredential,
   setAgentGrants,
@@ -566,25 +569,29 @@ async function jsonBody(request: Request, what: string): Promise<Record<string, 
   return body as Record<string, unknown>;
 }
 
+/** The workspace as GET /api/workspaces lists it. */
+function listedWorkspace({ workspace, role }: WorkspaceReach): Record<string, unknown> {
+  return { workspaceId: workspace.id, name: workspace.name, role };
+}
+
+/** The refusal of a name that `workspaceNameOf` refuses, the same for creating and renaming. */
+function badWorkspaceName(): Response {
+  return json({ error: 'invalid_request', detail: 'name is one line of 1 to 128 characters', field: 'name' }, 400);
+}
+
 /**
  * GET /api/workspaces lists the workspaces the sender reaches. POST creates
  * one, named in the body, with the deployment admin who sends it as its
  * owner; the body may also give its id, a lowercase UUID, such as the id of
- * the NoticeOS workspace whose tasks it takes over.
+ * the NoticeOS workspace whose tasks it takes over. PATCH renames one.
  */
 async function workspacesApi(request: Request, env: AccessEnv): Promise<Response> {
   const verification = await verifyRequest(request, env);
   if (!verification.ok) return refusal(verification, env);
   const principal = verification.principal;
-  if (request.method === 'GET') {
-    const workspaces = reachesOf(principal).map(({ workspace, role }) => ({
-      workspaceId: workspace.id,
-      name: workspace.name,
-      role,
-    }));
-    return json({ workspaces }, 200);
-  }
-  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST' });
+  if (request.method === 'GET') return json({ workspaces: reachesOf(principal).map(listedWorkspace) }, 200);
+  if (request.method === 'PATCH') return await renameApi(request, env, principal);
+  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, PATCH' });
   if (principal.kind !== 'person' || !principal.admin) {
     return json({ error: 'admin_only', detail: 'only a deployment admin may create a workspace' }, 403);
   }
@@ -595,9 +602,7 @@ async function workspacesApi(request: Request, env: AccessEnv): Promise<Response
     return json({ error: 'invalid_request', detail: `unknown ${unknown.join(', ')}; send name and workspaceId` }, 400);
   }
   const name = workspaceNameOf(body.name);
-  if (name === null) {
-    return json({ error: 'invalid_request', detail: 'name is one line of 1 to 128 characters', field: 'name' }, 400);
-  }
+  if (name === null) return badWorkspaceName();
   const id = body.workspaceId === undefined ? crypto.randomUUID() : body.workspaceId;
   if (typeof id !== 'string' || !WORKSPACE_ID.test(id)) {
     return json({ error: 'invalid_request', detail: 'workspaceId is a lowercase UUID', field: 'workspaceId' }, 400);
@@ -606,6 +611,35 @@ async function workspacesApi(request: Request, env: AccessEnv): Promise<Response
     return json({ error: 'workspace_exists', detail: 'a workspace already has this id', field: 'workspaceId' }, 409);
   }
   return json({ workspace: { workspaceId: id, name, role: 'owner' } }, 201);
+}
+
+/**
+ * PATCH /api/workspaces renames the workspace the body names, for its owner.
+ * A workspace the sender does not reach answers as one that does not exist.
+ */
+async function renameApi(request: Request, env: AccessEnv, principal: Principal): Promise<Response> {
+  const body = await jsonBody(request, 'workspace');
+  if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+  const unknown = Object.keys(body).filter((key) => key !== 'workspaceId' && key !== 'name');
+  if (unknown.length > 0) {
+    return json({ error: 'invalid_request', detail: `unknown ${unknown.join(', ')}; send workspaceId and name` }, 400);
+  }
+  if (typeof body.workspaceId !== 'string') {
+    return json(
+      { error: 'invalid_request', detail: 'workspaceId names the workspace to rename', field: 'workspaceId' },
+      400,
+    );
+  }
+  const chosen = chooseWorkspace(reachesOf(principal), body.workspaceId);
+  if ('refused' in chosen) return chosen.refused;
+  if (!chosen.reach.scopes.includes(SCOPES.manage)) {
+    return json({ error: 'insufficient_scope', detail: lacking(SCOPES.manage) }, 403);
+  }
+  const name = workspaceNameOf(body.name);
+  if (name === null) return badWorkspaceName();
+  const workspace = { id: chosen.reach.workspace.id, name };
+  await renameWorkspace(env.DB, workspace);
+  return json({ workspace: listedWorkspace({ ...chosen.reach, workspace }) }, 200);
 }
 
 /**

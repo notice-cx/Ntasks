@@ -168,7 +168,7 @@ function scopeOf(routes: Routes, method: Method): string {
 }
 
 /** Why a sender without `scope` is refused, as a sentence a person can read. */
-function lacking(scope: string): string {
+export function lacking(scope: string): string {
   // A client that relays a person's click, such as another service's pages, shows this sentence as it is.
   if (scope === SCOPES.decide) return notAPerson().detail;
   if (scope === SCOPES.manage) return 'only an owner of this workspace may do this';

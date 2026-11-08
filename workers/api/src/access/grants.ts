@@ -72,6 +72,15 @@ export async function createWorkspace(db: D1Database, workspace: Workspace, user
   return true;
 }
 
+/**
+ * Renames a workspace. The name is only shown: its task store and every
+ * request name the workspace by its id, and each request reads the name
+ * from this row, so nothing else keeps a copy.
+ */
+export async function renameWorkspace(db: D1Database, workspace: Workspace): Promise<void> {
+  await db.prepare('UPDATE workspaces SET name = ? WHERE id = ?').bind(workspace.name, workspace.id).run();
+}
+
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
 
 /** Grants from untrusted input: each project once, with read or write. */
