@@ -94,9 +94,15 @@ const SHOTS: readonly Shot[] = [
         client: { name: 'Example Agent', uri: 'https://agent.example.com' },
         returnsTo: 'https://agent.example.com',
         access: 'write',
-        projects: [
-          { id: 'p-web', key: 'web', name: 'Example web app' },
-          { id: 'p-docs', key: 'docs', name: 'Example docs' },
+        workspaces: [
+          {
+            id: '0f6c2a52-6d1e-4c39-9a57-2f1b8e4d7a10',
+            name: 'Example',
+            projects: [
+              { id: 'p-web', key: 'web', name: 'Example web app' },
+              { id: 'p-docs', key: 'docs', name: 'Example docs' },
+            ],
+          },
         ],
         oauthQuery: 'client_id=example',
         error: null,

@@ -33,7 +33,7 @@ export interface WorkerPages {
     client: { name: string; uri: string | null };
     returnsTo: string;
     access: 'read' | 'write' | null;
-    projects: readonly { id: string; key: string; name: string }[];
+    workspaces: readonly { id: string; name: string; projects: readonly { id: string; key: string; name: string }[] }[];
     oauthQuery: string;
     error: string | null;
   }): Response;
