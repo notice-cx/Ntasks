@@ -825,15 +825,33 @@ async function taskOfPullRequest(context: ToolContext, args: Args, pr: string): 
   );
 }
 
-/** Every open task under `taskId`, deepest first, so each closes before its parent. */
-async function openUnder(context: ToolContext, projectId: string, taskId: string): Promise<string[]> {
-  const children = await context.engine.listBoard(projectId, {
-    statuses: OPEN_STATUSES,
-    parentId: taskId,
-    withoutExternalLinks: true,
-  });
+/**
+ * Every open task under `taskId`, deepest first, so each closes before its
+ * parent, in a project the sender may change: a project it cannot reach
+ * answers as one that does not exist, and shows none of its tasks. More than
+ * MANY is refused, so one call closes a bounded number.
+ */
+async function openUnder(context: ToolContext, args: Args, taskId: string): Promise<string[]> {
+  const project = await projectOf(context, await projectFor(context, args, taskId), 'write');
   const under: string[] = [];
-  for (const child of children) under.push(...(await openUnder(context, projectId, child.id)), child.id);
+  const walk = async (parentId: string): Promise<void> => {
+    const children = await context.engine.listBoard(project.id, {
+      statuses: OPEN_STATUSES,
+      parentId,
+      withoutExternalLinks: true,
+    });
+    for (const child of children) {
+      await walk(child.id);
+      under.push(child.id);
+      if (under.length > MANY)
+        refuse(
+          `refused: more than ${MANY} open tasks are under ${taskId}, more than one close_task closes; ` +
+            'close a task under it with with_children first.',
+          'state',
+        );
+    }
+  };
+  await walk(taskId);
   return under;
 }
 
@@ -1398,7 +1416,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       for (const id of ids) {
         if (withChildren) {
           try {
-            order.push(...(await openUnder(context, await projectFor(context, args, id), id)));
+            order.push(...(await openUnder(context, args, id)));
           } catch (error) {
             if (!(error instanceof Refused)) throw error;
             refusedFirst.push({ id, error: error.message });

@@ -2320,6 +2320,43 @@ describe('close_task on several tasks', () => {
     expect((await current(project, epic.id)).close).toMatchObject({ reason: 'Launched.', link });
     expect((await current(project, grandchild.id)).close).toMatchObject({ reason: 'Launched.', link });
   });
+
+  it('shows nothing under an epic in a project the sender cannot reach, and finds the tasks under one named by key', async () => {
+    const mine = await newProject(engine);
+    const theirs = await newProject(engine);
+    const hidden = await task(theirs, { title: 'Their epic', type: 'epic' });
+    const secret = await task(theirs, { title: 'Their child', parentId: hidden.id });
+    const sender = api({ principal: granted({ [mine.id]: 'write' }, 'agent-mine'), engine });
+    const reply = await write<Closed>(sender, 'close_task', {
+      project: theirs.id,
+      task: hidden.id,
+      with_children: true,
+      reason: 'Done.',
+    });
+    expect(reply.results).toEqual([{ id: hidden.id, error: missingProject(theirs.id) }]);
+    expect(JSON.stringify(reply)).not.toContain(secret.id);
+    expect((await current(theirs, secret.id)).status).toBe('open');
+
+    const epic = await task(mine, { title: 'My epic', type: 'epic' });
+    const child = await task(mine, { title: 'My child', parentId: epic.id });
+    const named = await write<Closed>(sender, 'close_task', {
+      project: mine.key,
+      task: epic.id,
+      with_children: true,
+      reason: 'Done.',
+      commit: '4f2a9c1',
+    });
+    expect(named.results.map((result) => result.id)).toEqual([child.id, epic.id]);
+  });
+
+  it('refuses an epic with more than 50 open tasks under it, closing none of them', async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Too big', type: 'epic' });
+    for (let index = 0; index < 51; index += 1) await task(project, { title: `Part ${index}`, parentId: epic.id });
+    const reply = await write<Closed>(target, 'close_task', { task: epic.id, with_children: true, reason: 'Done.' });
+    expect(reply.results).toEqual([{ id: epic.id, error: expect.stringMatching(/^refused: /u) }]);
+    expect((await engine.listBoard(project.id, { statuses: ['open'], parentId: epic.id })).length).toBe(51);
+  });
 });
 
 describe('proof of work closed as done', () => {
