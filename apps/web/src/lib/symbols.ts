@@ -4,6 +4,7 @@
  * return; docs/design.md lists every symbol and when it is used.
  */
 import type { LiveTask } from '@/api/types';
+import { IDENTITY_HUES, type IdentityHue } from './design-tokens';
 import { IN_PROGRESS, isGate, PARKED, PRIORITY_BANDS, priorityBand, waitsOnPerson, waitsOnTask } from './task-model';
 
 // --- Status -------------------------------------------------------------------
@@ -175,28 +176,16 @@ export function avatarMarkSize(avatarSize: number): number {
 // --- Workspaces -------------------------------------------------------------------
 
 /**
- * The fills a workspace's icon is drawn on, each with its letter's colour.
- * Accent, amber, red and green keep their one meaning each, so these are
- * greys, chosen to stay apart from one another in both themes.
- */
-export const WORKSPACE_TONES = [
-  'bg-ink text-background',
-  'bg-ink-2 text-background',
-  'bg-ink-3 text-background',
-  'bg-avatar text-avatar-ink',
-] as const;
-
-/**
  * A workspace's icon: the first letter or digit of its name, uppercase, on
- * the tone its id picks. The id never changes, so a rename changes the
- * letter and keeps the tone.
+ * the identity palette's hue its id picks. The id never changes, so a rename
+ * changes the letter and keeps the hue.
  */
-export function workspaceMark(workspaceId: string, name: string): { letter: string; tone: string } {
+export function workspaceMark(workspaceId: string, name: string): { letter: string; hue: IdentityHue } {
   const first = /[\p{L}\p{N}]/u.exec(name)?.[0] ?? Array.from(name.trim())[0] ?? '?';
   let hash = 0;
   for (let at = 0; at < workspaceId.length; at += 1) hash = Math.imul(hash, 31) + workspaceId.charCodeAt(at);
-  const tone = WORKSPACE_TONES[(hash >>> 0) % WORKSPACE_TONES.length] ?? WORKSPACE_TONES[0];
-  return { letter: Array.from(first.toUpperCase())[0] ?? '?', tone };
+  const hue = IDENTITY_HUES[(hash >>> 0) % IDENTITY_HUES.length] ?? IDENTITY_HUES[0];
+  return { letter: Array.from(first.toUpperCase())[0] ?? '?', hue };
 }
 
 // --- Keys -----------------------------------------------------------------------

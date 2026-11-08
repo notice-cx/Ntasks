@@ -15,6 +15,10 @@
 
   Amber (`wait`) means only "waiting for you" and red (`block`) means only
   Blocked; nothing else uses either.
+
+  The `identity-` colours are the identity palette, and only a workspace's
+  icon uses it. They have no Tailwind names: WorkspaceIcon reads them with
+  `var()`, so no other component can draw with them through a utility.
 */
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -44,6 +48,18 @@
   --avatar-ink: #33343c;
   --mark-bg: #ffffff;
   --blossom: #000000;
+  --identity-olive: #e5efca;
+  --identity-olive-ink: #4c5a01;
+  --identity-teal: #c5f5ee;
+  --identity-teal-ink: #046059;
+  --identity-cyan: #c8f2fe;
+  --identity-cyan-ink: #035c6f;
+  --identity-sky: #daecff;
+  --identity-sky-ink: #085491;
+  --identity-fuchsia: #f9dfff;
+  --identity-fuchsia-ink: #6f397b;
+  --identity-pink: #ffe0ed;
+  --identity-pink-ink: #81315c;
   --shadow-raise: 0 1px 2px rgb(15 15 30 / 0.06);
   --shadow-pop:
     0 0 0 1px rgb(15 15 30 / 0.06), 0 4px 12px rgb(15 15 30 / 0.08), 0 16px 32px -8px rgb(15 15 30 / 0.12);
@@ -73,6 +89,18 @@
   --avatar-ink: #e6e6ec;
   --mark-bg: #1b1c22;
   --blossom: #ffffff;
+  --identity-olive: #2f3710;
+  --identity-olive-ink: #ccde9a;
+  --identity-teal: #003c37;
+  --identity-teal-ink: #8ce8dd;
+  --identity-cyan: #033946;
+  --identity-cyan-ink: #8de3fc;
+  --identity-sky: #193550;
+  --identity-sky-ink: #b4d8ff;
+  --identity-fuchsia: #402846;
+  --identity-fuchsia-ink: #efc2f9;
+  --identity-pink: #492537;
+  --identity-pink-ink: #ffbfdc;
   --shadow-raise: 0 0 0 1px rgb(255 255 255 / 0.04);
   --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 24px rgb(0 0 0 / 0.5);
 }
