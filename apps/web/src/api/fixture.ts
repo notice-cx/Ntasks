@@ -38,6 +38,8 @@ const PREFIX = /^[a-z0-9]{1,16}$/u;
 /** GitHub's rule for a username: letters, digits and single hyphens between them, at most 39. */
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/u;
 const NAME_LIMIT = 80;
+/** A workspace's name, as the Worker's `workspaceNameOf` takes it: one line of 1 to 128 characters, trimmed. */
+const WORKSPACE_NAME_LIMIT = 128;
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
@@ -127,11 +129,11 @@ export function createFixtureTasksApi({
     return { workspaceId, name, role };
   }
 
-  /** A workspace's name as creating and renaming one take it, or the refusal of it. */
+  /** A workspace's name as creating and renaming one take it, or the Worker's refusal of it. */
   function workspaceName(name: string): string {
     const trimmed = name.trim();
-    if (trimmed === '' || trimmed.length > NAME_LIMIT)
-      throw new ApiError(`Name must be 1 to ${NAME_LIMIT} characters.`, 400, 'invalid_request', 'name');
+    if (trimmed === '' || trimmed.length > WORKSPACE_NAME_LIMIT || /[\u0000-\u001f\u007f]/u.test(trimmed))
+      throw new ApiError(`name is one line of 1 to ${WORKSPACE_NAME_LIMIT} characters`, 400, 'invalid_request', 'name');
     return trimmed;
   }
 
