@@ -287,13 +287,19 @@ async function setupPath(
 ): Promise<Response | null> {
   const starting = form?.get('action') === SETUP_ACTION;
   const returning = !form && url.searchParams.has('code') && url.searchParams.has('state');
-  if (!starting && !returning) return !form && signIn.state === 'setup' ? setupPage({ error: null }) : null;
-  // The setup binds sign-in to the origin it runs at, and its cookies and
-  // GitHub's callback must not travel in the clear.
+  const showing = !form && !returning && signIn.state === 'setup';
+  if (!starting && !returning && !showing) return null;
+  // The setup binds sign-in to the origin it runs at, and AUTH_SECRET, its
+  // cookie and GitHub's code must not travel in the clear: over http, other
+  // than locally, the page is never shown, and every step goes to https.
   const origin = originOf(url.origin);
   if (origin === null) {
-    return setupPage({ error: 'Setup runs only at an https address, or a local one.', status: 400 });
+    return new Response(null, {
+      status: 303,
+      headers: { location: `https://${url.host}${SIGN_IN_PAGE}`, 'cache-control': 'no-store' },
+    });
   }
+  if (showing) return setupPage({ error: null });
   if (returning) {
     const answer = await finishSetup(request, env, signIn, url, origin);
     answer.headers.append('set-cookie', endSetupCookie(origin));

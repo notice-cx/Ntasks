@@ -112,28 +112,38 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect(browser.cookie(SETUP_COOKIE)).toBeUndefined();
   });
 
-  it('refuses a setup posted from another site, or at an http address that is not local', async () => {
+  it('refuses a setup posted from another site', async () => {
     const browser = new Browser({ bindings: onlyAuthSecret() });
     const crossSite = await browser.fetch('/sign-in', {
       form: { action: 'setup', auth_secret: SECRET },
       origin: 'https://elsewhere.example.com',
     });
     expect(crossSite.status).toBe(403);
+    expect(browser.cookie(SETUP_COOKIE)).toBeUndefined();
+  });
 
-    const insecure = await handleAccess(
-      new Request('http://ntasks.example.com/sign-in', {
-        method: 'POST',
-        headers: {
-          origin: 'http://ntasks.example.com',
-          'content-type': 'application/x-www-form-urlencoded',
-          'cf-connecting-ip': freshAddress(),
-        },
-        body: new URLSearchParams({ action: 'setup', auth_secret: SECRET }).toString(),
-      }),
-      onlyAuthSecret(),
-    );
-    expect(insecure?.status).toBe(400);
-    expect(await insecure?.text()).not.toContain('name="manifest"');
+  it('never shows the setup page over http at an address that is not local, and sends each step to https', async () => {
+    const overHttp = (init: RequestInit = {}) =>
+      handleAccess(
+        new Request('http://ntasks.example.com/sign-in', {
+          ...init,
+          headers: { ...init.headers, origin: 'http://ntasks.example.com', 'cf-connecting-ip': freshAddress() },
+        }),
+        onlyAuthSecret(),
+      );
+
+    const page = await overHttp();
+    const posted = await overHttp({
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'setup', auth_secret: SECRET }).toString(),
+    });
+    for (const response of [page, posted]) {
+      expect(response?.status).toBe(303);
+      expect(response?.headers.get('location')).toBe('https://ntasks.example.com/sign-in');
+      expect(response?.headers.get('set-cookie')).toBeNull();
+      expect(await response?.text()).not.toContain('name="auth_secret"');
+    }
   });
 
   it('registers an app for this origin, stores it encrypted, and signs its owner in through it as admin', async () => {
