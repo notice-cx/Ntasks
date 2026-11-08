@@ -20,7 +20,12 @@ export interface SignInConfig {
   readonly secret: string;
   /** The GitHub app people sign in through. */
   readonly github: GitHubClient;
-  /** The GitHub user ids in OWNER_GITHUB_IDS, the numbers. They and the admins the setup page recorded always sign in and create workspaces. Logins can be renamed and reused, ids cannot. */
+  /**
+   * The deployment admins' GitHub user ids, the numbers: those in
+   * OWNER_GITHUB_IDS, and, when sign-in uses the stored app, the account
+   * that created it. They always sign in and create workspaces. Logins can
+   * be renamed and reused, ids cannot.
+   */
   readonly owners: ReadonlySet<string>;
 }
 
@@ -111,8 +116,13 @@ export function signInSecrets(env: SignInSecrets): Secrets | null {
   });
 }
 
-function configOf(secrets: Secrets, origin: string, github: GitHubClient): SignInConfig {
-  return Object.freeze({ origin, secure: isSecure(origin), secret: secrets.secret, github, owners: secrets.owners });
+function configOf(
+  secrets: Secrets,
+  origin: string,
+  github: GitHubClient,
+  owners: ReadonlySet<string> = secrets.owners,
+): SignInConfig {
+  return Object.freeze({ origin, secure: isSecure(origin), secret: secrets.secret, github, owners });
 }
 
 /** The key the stored app's credentials are encrypted under: derived from AUTH_SECRET, for this use alone. */
@@ -137,20 +147,25 @@ async function decryptCredentials(secret: string, credentials: string): Promise<
 
 /**
  * Where sign-in stands, with its settings when it is on. The secrets win
- * when they name a GitHub app; otherwise the stored app is read, which costs
- * one D1 query.
+ * entirely when they name a GitHub app: the stored app and the admin it
+ * recorded are not read. Otherwise the stored app is read, which costs one
+ * D1 query, and the account that created it is an admin.
  */
 export async function loadSignIn(env: SignInSecrets & { readonly DB: D1Database }): Promise<SignIn> {
   const secrets = signInSecrets(env);
   if (!secrets) return { state: 'off' };
   if (secrets.app) return { state: 'on', config: configOf(secrets, secrets.app.origin, secrets.app.github) };
-  const row = await env.DB.prepare('SELECT origin, credentials FROM access_github_app').first<{
+  const row = await env.DB.prepare('SELECT origin, credentials, admin_github_id FROM access_github_app').first<{
     origin: string;
     credentials: string;
+    admin_github_id: string;
   }>();
   const origin = originOf(row?.origin);
   const github = row && origin ? await decryptCredentials(secrets.secret, row.credentials) : null;
-  if (origin && github) return { state: 'on', config: configOf(secrets, origin, github) };
+  if (row && origin && github) {
+    const owners = new Set([...secrets.owners, row.admin_github_id]);
+    return { state: 'on', config: configOf(secrets, origin, github, owners) };
+  }
   return { state: 'setup', secrets, stale: row?.credentials ?? null };
 }
 

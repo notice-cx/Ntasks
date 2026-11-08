@@ -161,12 +161,13 @@ function sessionCookie(headers: Headers): SessionCookie | null {
 }
 
 /**
- * Whether the person is a deployment admin: the setup page recorded one of
- * their GitHub accounts (`recorded`, as the query read it), or one of them,
- * in a JSON array of ids, is in OWNER_GITHUB_IDS.
+ * Whether the person is a deployment admin: one of their GitHub accounts, in
+ * a JSON array of ids, is in OWNER_GITHUB_IDS, or, unless the secrets name a
+ * GitHub app and so win entirely, created the stored app (`recorded`, as the
+ * query read it).
  */
 function isAdmin(secrets: Secrets, recorded: number, githubIds: string | null): boolean {
-  if (recorded === 1) return true;
+  if (secrets.app === null && recorded === 1) return true;
   const ids = parseJson(githubIds);
   return Array.isArray(ids) && ids.some((id) => typeof id === 'string' && secrets.owners.has(id));
 }

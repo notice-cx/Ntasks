@@ -10,14 +10,7 @@
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
 import type { SignInConfig } from './config.ts';
-import {
-  acceptInvitations,
-  githubAccountOf,
-  isMember,
-  isRecordedAdmin,
-  mayJoin,
-  type GitHubAccount,
-} from './members.ts';
+import { acceptInvitations, githubAccountOf, isMember, mayJoin, type GitHubAccount } from './members.ts';
 import { NOT_INVITED } from './pages.ts';
 import {
   AGENT_ACCESS_PAGE,
@@ -35,17 +28,12 @@ import { CORE_TABLES, OAUTH_TABLES } from './tables.ts';
 /** Session cookies are named `<prefix>.session_token`, with `__Secure-` in front over https. */
 export const COOKIE_PREFIX = 'ntasks';
 
-/** Whether a GitHub account is a deployment admin: its id is in OWNER_GITHUB_IDS, or the setup page recorded it. */
-async function isAdmin(db: D1Database, config: SignInConfig, githubId: string): Promise<boolean> {
-  return config.owners.has(githubId) || (await isRecordedAdmin(db, githubId));
-}
-
 /**
  * Whether a GitHub account may sign in: it is a deployment admin, a member of
  * a workspace, or its login holds an open invitation.
  */
 async function mayTakePart(db: D1Database, config: SignInConfig, account: GitHubAccount): Promise<boolean> {
-  return (await isAdmin(db, config, account.id)) || (await mayJoin(db, account));
+  return config.owners.has(account.id) || (await mayJoin(db, account));
 }
 
 interface AuthOptions {
@@ -116,7 +104,7 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
             await acceptInvitations(db, session.userId, admitted.login);
             // The invitation that let the account in may have been revoked, or
             // run out, since validateUserInfo read it: then no session is made.
-            if (!(await isAdmin(db, config, admitted.id)) && !(await isMember(db, session.userId))) return false;
+            if (!config.owners.has(admitted.id) && !(await isMember(db, session.userId))) return false;
           },
         },
       },

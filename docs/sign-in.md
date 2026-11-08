@@ -63,8 +63,8 @@ deploy, or which three optional secrets name.
 | Secret | Holds |
 |---|---|
 | `AUTH_SECRET` | Required. A random value of at least 32 characters. It proves on the setup page that you made the deployment, signs session cookies and sign-in state, and encrypts the stored GitHub App credentials, stored GitHub tokens and agents' client secrets. Make one with `openssl rand -base64 32`. [Changing it](#changing-auth_secret) signs everyone out. |
-| `NTASKS_ORIGIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional, and set together or not at all: a GitHub OAuth app [registered by hand](#a-github-oauth-app-registered-by-hand), and the address it was registered for, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. When they are set, the setup page does not run, and they are used even when the setup page stored an app before. |
-| `OWNER_GITHUB_IDS` | Optional. GitHub user ids of more deployment admins, separated by commas, beside the account that ran the setup page. Admins create workspaces and may sign in without belonging to one. |
+| `NTASKS_ORIGIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional, and set together or not at all: a GitHub OAuth app [registered by hand](#a-github-oauth-app-registered-by-hand), and the address it was registered for, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. When they are set, they win entirely: the setup page does not run, and an app the setup page stored before, and the admin it recorded, are ignored, so `OWNER_GITHUB_IDS` alone names the admins. |
+| `OWNER_GITHUB_IDS` | Optional. GitHub user ids of deployment admins, separated by commas, beside the account that ran the setup page while sign-in uses the app it stored. Admins create workspaces and may sign in without belonging to one. |
 
 Sign-in is off when `AUTH_SECRET` is missing or shorter than 32 characters,
 when `OWNER_GITHUB_IDS` holds anything but ids, or when only some of the
@@ -135,7 +135,9 @@ neither in plain text. The conversion's private key and webhook secret are
 not stored. The admin the setup records is the app's owner, the GitHub
 account that created the app, by numeric id in the same row
 (`admin_github_id`). The setup records one admin, and the ids in
-`OWNER_GITHUB_IDS` are admins beside it.
+`OWNER_GITHUB_IDS` are admins beside it. The recorded admin is an admin
+only while sign-in uses the stored app, not on a deployment that sets the
+GitHub secrets.
 
 **A second run.** Once sign-in is set up, by the setup page or by the GitHub
 secrets, `/sign-in` shows the sign-in page, and both setup requests answer
@@ -158,7 +160,9 @@ service credentials keep working, and the admin the earlier setup recorded
 stays an admin. Running the setup again resets the recorded admin to the
 new app's owner, so an account that ran a setup with a leaked `AUTH_SECRET`
 is no longer an admin once you rotate the secret and run the setup
-yourself. Admins in `OWNER_GITHUB_IDS` stay admins.
+yourself. Admins in `OWNER_GITHUB_IDS` stay admins. Setting the three
+GitHub secrets instead also ends the recorded admin's access as an admin,
+since the stored app is then ignored.
 
 ### Moving to another address
 
@@ -244,7 +248,8 @@ refusal that `refusal()` turns into the answer.
 The deployment's origin is `NTASKS_ORIGIN` when the GitHub secrets are set,
 and otherwise the origin the setup page ran at, which the session and token
 queries read from `access_github_app` along with whether the setup page
-recorded the person as an admin. So picking the workspace takes no D1 query
+recorded the person as an admin, which counts only when the GitHub secrets
+are not set. So picking the workspace takes no D1 query
 beyond the one that signs the sender in; that query reads about two more
 rows for each of the sender's memberships or grants. A refused request on a
 deployment set up by the setup page reads the origin in one more query, for
@@ -302,8 +307,8 @@ x-ntasks-on-behalf-of: outcome-review-filer
 
 A GitHub account may sign in when one of these holds:
 
-- it is a deployment admin: the setup page recorded it, or its numeric id is
-  in `OWNER_GITHUB_IDS`;
+- it is a deployment admin: its numeric id is in `OWNER_GITHUB_IDS`, or,
+  while sign-in uses the app the setup page stored, it created that app;
 - it is already a member of a workspace;
 - its GitHub login holds an open invitation to a workspace: one nobody has
   accepted, no owner has revoked and that is less than 7 days old.
@@ -368,7 +373,7 @@ Each of these takes effect at the caller's next request.
 | An agent | `POST /api/access/agents/<client id>/revoke`, signed in as the person who approved it. Its project grants in every workspace and the person's consent are deleted, and its access and refresh tokens are marked revoked. |
 | A service | `POST /api/access/services/<credential id>/revoke`, signed in as the owner of the credential's workspace, naming that workspace when they belong to several. |
 | A person, from one workspace | `POST /api/access/members/<user id>/remove`, signed in as an owner of the workspace ([above](#members-and-invitations)). Their session and their agents stop reaching it. |
-| A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. When they are the admin the setup page recorded, [change `AUTH_SECRET`](#changing-auth_secret) and run the setup page again with another GitHub account. Their sessions and the agents they approved are refused. |
+| A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. When they are the admin the setup page recorded and sign-in uses the stored app, [change `AUTH_SECRET`](#changing-auth_secret) and run the setup page again with another GitHub account; on a deployment that sets the GitHub secrets, only `OWNER_GITHUB_IDS` names admins. Their sessions and the agents they approved are refused. |
 | One token, from the agent itself | `POST /api/auth/oauth2/revoke` ([RFC 7009](https://www.rfc-editor.org/rfc/rfc7009)). |
 
 ## Routes

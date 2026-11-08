@@ -11,6 +11,7 @@ const calls = standInForGitHub();
 const SECRET = 'test-only-auth-secret-0123456789abcdef';
 const ROTATED_SECRET = 'test-only-rotated-auth-secret-fedcba9876543210';
 const SETUP_COOKIE = '__Host-ntasks.setup';
+const SESSION_COOKIE = '__Secure-ntasks.session_token';
 
 /** A deployment that sets only AUTH_SECRET, as the Deploy to Cloudflare button makes one. */
 function onlyAuthSecret(secret = SECRET): Env {
@@ -279,5 +280,22 @@ describe('a deployment that sets the GitHub secrets', () => {
     expect(github.searchParams.get('client_id')).toBe('test-github-client-id');
     const setup = await browser.fetch('/sign-in', { form: { action: 'setup', auth_secret: SECRET } });
     expect(setup.status).toBe(409);
+  });
+
+  it('does not count the stored app’s admin as an admin', async () => {
+    const stored = new Browser({ bindings: onlyAuthSecret(), joinTestWorkspace: false });
+    const { state } = await startSetup(stored);
+    const github = locationOf(await returnFromGitHub(stored, state, 5014));
+    await stored.fetch(
+      `/api/auth/callback/github?code=${codeFor(5014)}&state=${encodeURIComponent(github.searchParams.get('state') ?? '')}`,
+    );
+    expect(await (await stored.me()).json()).toMatchObject({ deploymentAdmin: true });
+
+    // The same session, once the deployment sets the GitHub secrets, which name other admins.
+    const withSecrets = new Browser({ joinTestWorkspace: false });
+    withSecrets.setCookie(SESSION_COOKIE, stored.cookie(SESSION_COOKIE) ?? '');
+    expect((await withSecrets.me()).status).toBe(401);
+    const refused = await signIn(new Browser({ joinTestWorkspace: false }), 5014);
+    expect(refused.searchParams.get('error')).toBe('not_invited');
   });
 });
