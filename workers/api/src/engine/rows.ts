@@ -7,6 +7,7 @@ import type {
   ExternalLink,
   FieldType,
   FieldValue,
+  HeldTask,
   JsonObject,
   Project,
   Task,
@@ -68,6 +69,7 @@ export interface StoredTaskRow {
   readonly built_at: string | null;
   readonly merged_at: string | null;
   readonly live_at: string | null;
+  readonly close_link: string | null;
 }
 
 /** A `tasks` row as the engine's reads select it, with the columns they compute. */
@@ -217,6 +219,7 @@ export function toTask(row: TaskRow): Task {
             duplicateOf: row.duplicate_of,
             by: row.closed_by,
             model: row.closed_model,
+            link: row.close_link,
           }
         : null,
     delivery: deliveryOf(row),
@@ -303,6 +306,23 @@ export function toWork(row: WorkRow): WorkItem {
     closedAt: row.closed_at,
     closedBy: row.closed_by,
     closedModel: row.closed_model,
+  };
+}
+
+/** The columns of a `tasks` row a holder's list shows, with its last activity. */
+export type HeldRow = Pick<StoredTaskRow, 'id' | 'project_id' | 'title' | 'priority' | 'assignee_for' | 'work'> & {
+  readonly last_activity_at: string | null;
+};
+
+export function toHeld(row: HeldRow): HeldTask {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    priority: row.priority,
+    assigneeFor: row.assignee_for,
+    work: JSON.parse(row.work) as TaskWork,
+    lastActivityAt: row.last_activity_at,
   };
 }
 

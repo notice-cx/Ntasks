@@ -28,8 +28,12 @@ export function createWorker(options: WorkerOptions) {
         const sender = await signedIn(authenticator, request);
         if (!sender) return authenticator.challenge(request);
         if (pathname === MCP_PATH) {
-          return await serveTaskMcp(request, sender.workspaces, (reach, name, args) =>
-            workspaceStore(env, reach.workspace.id).callTool(name, args, scopedTo(sender, reach), reach.workspace),
+          return await serveTaskMcp(
+            request,
+            sender.workspaces,
+            (reach, name, args) =>
+              workspaceStore(env, reach.workspace.id).callTool(name, args, scopedTo(sender, reach), reach.workspace),
+            (reach) => workspaceStore(env, reach.workspace.id).heldTasks(scopedTo(sender, reach)),
           );
         }
         const chosen = chooseWorkspace(sender.workspaces, request.headers.get(WORKSPACE_HEADER));

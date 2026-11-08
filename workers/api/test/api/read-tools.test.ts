@@ -1,20 +1,23 @@
 // The MCP read tools, as an agent calls them: their results, the workspace
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
-import type { Project, TaskEngine } from '@ntasks/domain';
+import type { HeldTask, Project, TaskEngine } from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
 import {
   GUIDE_TOOLS,
+  INSTRUCTIONS_BUDGET,
   TASK_QUALITY,
   TASK_START,
   TASK_WORKFLOW,
+  taskInstructions,
   unofferedTools,
   WHATS_CHANGED,
 } from '../../src/mcp/guide.ts';
 import { MCP_TOOLS, taskServer } from '../../src/mcp/server.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
+import type { Principal } from '../../src/auth.ts';
 import {
   api,
   callTool,
@@ -104,8 +107,7 @@ describe('tools/list', () => {
       'claim_task',
       'update_task',
       'comment_on_task',
-      'add_dependency',
-      'remove_dependency',
+      'link_tasks',
       'request_human_approval',
       'close_task',
       'report_delivery',
@@ -461,6 +463,41 @@ describe('get_task', () => {
     );
   });
 
+  it('reads several tasks in one call, answering a missing one alone', async () => {
+    const missing = `${project.prefix}-none`;
+    const answer = await read<{ tasks: Record<string, unknown>[] }>(target, 'get_task', {
+      tasks: [ids.child, missing, ids.epic],
+    });
+    expect(answer.tasks).toEqual([
+      expect.objectContaining({ project: project.key, task: expect.objectContaining({ id: ids.child }) }),
+      { id: missing, error: expect.stringMatching(/^refused: /u) },
+      expect.objectContaining({ task: expect.objectContaining({ id: ids.epic }), openChildren: expect.any(Array) }),
+    ]);
+    expect(await refusal(target, 'get_task', { workspace: WORKSPACE.id, task: ids.child, tasks: [ids.epic] })).toMatch(
+      /^invalid arguments: task and tasks /u,
+    );
+  });
+
+  it('answers each task of a batch on its own when one read fails', async () => {
+    const failing = api({
+      engine,
+      now: time.now,
+      wrap: (inner) => ({
+        ...inner,
+        getTask: async (projectId, taskId) =>
+          taskId === ids.epic ? Promise.reject(new Error('storage fault')) : inner.getTask(projectId, taskId),
+      }),
+    });
+    const answer = await read<{ tasks: Record<string, unknown>[] }>(failing, 'get_task', {
+      tasks: [ids.child, ids.epic, ids.bug],
+    });
+    expect(answer.tasks).toEqual([
+      expect.objectContaining({ task: expect.objectContaining({ id: ids.child }) }),
+      { id: ids.epic, error: expect.stringMatching(/^unavailable: /u) },
+      expect.objectContaining({ task: expect.objectContaining({ id: ids.bug }) }),
+    ]);
+  });
+
   it('reads a task by its id alone, or in a project named by its key or prefix', async () => {
     for (const named of [{}, { project: project.key }, { project: project.prefix }]) {
       const answer = await read<{ project: string; task: { id: string } }>(target, 'get_task', {
@@ -558,5 +595,117 @@ describe('a sender granted some projects', () => {
     ).toBe(
       `refused: ${ids.elsewhere} is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
     );
+  });
+});
+
+describe('the instructions an agent reads when it connects', () => {
+  const connect = async (sender: TestApi): Promise<string> => {
+    const response = await sender.fetch(
+      new Request(`${ORIGIN}/api/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-06-18', capabilities: {} },
+        }),
+      }),
+    );
+    return ((await response.json()) as { result: { instructions: string } }).result.instructions;
+  };
+  const holder = (name: string): Principal => ({
+    id: `principal-${name}`,
+    name,
+    scopes: READER.scopes,
+    projects: 'all',
+  });
+  /** Files a task held by `name`, with its helper and work details, then moves the clock on. */
+  const held = async (where: Project, name: string, title: string, work: Record<string, string> = {}) => {
+    const { task } = await engine.createTask(where.id, { title }, OWNER);
+    await engine.writeTask(
+      where.id,
+      task.id,
+      {
+        expectedVersion: 1,
+        set: { assignee: name, status: 'in_progress', ...(Object.keys(work).length ? { work } : {}) },
+      },
+      { name },
+    );
+    time.advance(1);
+    return task.id;
+  };
+
+  it('add nothing for a sender who holds no task', async () => {
+    const instructions = await connect(api({ principal: holder('holds-nothing'), engine, now: time.now }));
+    expect(instructions).toBe(taskInstructions(MCP_TOOLS.map((tool) => tool.name)));
+  });
+
+  it('list each task the sender holds, most recently active first, with its helper, branch and next step, before the rules', async () => {
+    const own = await newProject(engine);
+    const first = await held(own, 'holds-two', 'Rebuild the home page', {
+      branch: 'agent/home',
+      next: 'Run the tests',
+    });
+    const second = await held(own, 'holds-two', 'Rebuild the pricing page');
+    const closed = await held(own, 'holds-two', 'Rebuild the about page');
+    await engine.writeTask(
+      own.id,
+      closed,
+      { expectedVersion: 2, close: { reason: 'Done.', resolution: 'done' } },
+      { name: 'holds-two' },
+    );
+    const instructions = await connect(api({ principal: holder('holds-two'), engine, now: time.now }));
+    const lines = instructions.split('\n').filter((line) => line.startsWith(`- ${own.prefix}-`));
+    expect(lines.map((line) => line.split(' ')[1])).toEqual([second, first]);
+    expect(lines[1]).toContain('agent/home');
+    expect(lines[1]).toContain('Run the tests');
+    expect(instructions.indexOf(first)).toBeLessThan(instructions.indexOf(TASK_QUALITY[0]!));
+  });
+
+  it('answer by the deadline with the tasks of the stores that answered, leaving out one that fails or hangs', async () => {
+    const reach = (id: string) => ({
+      workspace: { id, name: id },
+      role: null,
+      scopes: READER.scopes,
+      projects: 'all' as const,
+    });
+    const plain = taskInstructions(MCP_TOOLS.map((tool) => tool.name));
+    const run = async () => ({ ok: true as const, value: {} });
+    const hangs = () => new Promise<readonly HeldTask[]>(() => {});
+    const failing = taskServer([reach('w-1')], run, () => Promise.reject(new Error('store down')), 20);
+    expect(await failing.connecting!()).toBe(plain);
+    expect(await taskServer([reach('w-1')], run, hangs, 20).connecting!()).toBe(plain);
+    const answered: HeldTask = {
+      id: 'abc-1x2',
+      projectId: 'p-1',
+      title: 'Answered in time',
+      priority: 2,
+      assigneeFor: null,
+      work: {},
+      lastActivityAt: null,
+    };
+    const mixed = taskServer(
+      [reach('w-1'), reach('w-2')],
+      run,
+      (one) => (one.workspace.id === 'w-1' ? Promise.resolve([answered]) : hangs()),
+      20,
+    );
+    expect(await mixed.connecting!()).toContain(`- ${answered.id} ${answered.title}`);
+  });
+
+  it('list ten of twelve, then how many more and the call that lists them, within the budget', async () => {
+    const own = await newProject(engine);
+    const long = (word: string) => Array.from({ length: 60 }, () => word).join(' ');
+    for (let index = 0; index < 12; index += 1)
+      await held(own, 'holds-twelve', `${long('title')} ${index}`, { branch: long('b'), next: long('next') });
+    const instructions = await connect(api({ principal: holder('holds-twelve'), engine, now: time.now }));
+    const lines = instructions.split('\n');
+    const tasks = lines.filter((line) => line.startsWith(`- ${own.prefix}-`));
+    expect(tasks).toHaveLength(10);
+    const more = lines[lines.indexOf(tasks.at(-1)!) + 1]!;
+    expect(more).toMatch(/^2 more: /u);
+    expect(more).toContain('list_tasks');
+    expect(instructions.indexOf(more) + more.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
   });
 });

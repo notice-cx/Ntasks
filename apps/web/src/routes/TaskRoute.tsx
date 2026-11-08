@@ -396,6 +396,8 @@ function TaskPage({
               nowMs={nowMs}
               resolution={resolution}
               delivery={task.delivery ?? null}
+              link={task.closeLink ?? null}
+              proof={task.proof ?? null}
               duplicate={
                 task.duplicateOf ? (
                   <Link to={taskPath(task.duplicateOf)} className="nums text-accent-text no-underline hover:underline">

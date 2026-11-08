@@ -401,7 +401,8 @@ ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
 `No estimate` after a `clock` icon from 1024 px wide, where the title keeps
 room beside it, on a held task `For page-rebuild-2` and
 `Active 12m ago`, and on a closed task how a close where nothing shipped
-ended, or where its change is: Built, Merged or Live) and badges,
+ended, or where its change is: Built, Merged or Live, and `No proof` on work
+done without a commit, pull request or link) and badges,
 `RowSpacer`, then `RowActions`, the assignee's `Avatar` and `RowAge` (34 px,
 right-aligned), how long since the task last changed.
 
@@ -472,7 +473,8 @@ as.
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),
 how a closed task ended (with where its change is: Built, Merged or Live,
-its pull request as a link and its commit), the description, a decision's card or its recorded
+its pull request as a link and its commit, or the link that shows the work,
+or No proof), the description, a decision's card or its recorded
 choice, Done when as a checklist with its count, Design, Notes, Links, an
 epic's Tasks with their `Progress`, and Activity. A section's heading is
 `text-sm` semibold with its count in Text 3; an empty description, Done

@@ -81,6 +81,20 @@ export const TASKS: TaskRow[] = [
   { ...task, id: 'beta-g1', project_id: BETA, type: 'gate', await_type: 'human', title: 'Approve it' },
   {
     ...task,
+    id: 'beta-r1',
+    project_id: BETA,
+    title: 'Write the runbook',
+    status: 'closed',
+    version: 2,
+    updated_at: LATER,
+    closed_at: LATER,
+    close_reason: 'Published.',
+    resolution: 'done',
+    closed_by: 'agent-b',
+    close_link: 'https://docs.example.com/runbook',
+  },
+  {
+    ...task,
     id: 'beta-d1',
     project_id: BETA,
     status: 'deferred',
@@ -171,7 +185,7 @@ export const ROWS: BackupRows = {
       changes: JSON.stringify({ id: row.id, title: row.title }),
     })),
     {
-      seq: 7,
+      seq: TASKS.length + 1,
       task_id: 'acme-b2',
       project_id: ACME,
       version: 2,
@@ -182,7 +196,7 @@ export const ROWS: BackupRows = {
       changes: JSON.stringify({ status: 'closed' }),
     },
     {
-      seq: 8,
+      seq: TASKS.length + 2,
       task_id: 'acme-a1',
       project_id: ACME,
       version: 1,

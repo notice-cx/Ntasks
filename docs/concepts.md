@@ -72,6 +72,9 @@ of link record context without making anything wait:
 - **duplicates** points a task at an earlier task for the same work;
 - **supersedes** points a task at the task it replaces.
 
+Two tasks hold at most one link: setting another kind, or the same kind the
+other way round, replaces it.
+
 ## Ready work
 
 A task is **ready** when someone can start it now:
@@ -126,6 +129,10 @@ else because time passed, however old its last activity. To release a task
 that someone holds, first check that they stopped working on it, and keep the
 progress they recorded.
 
+When an agent connects, the instructions it reads list the open tasks it
+holds, with each one's helper, branch, next step and last activity, so a new
+session carries on the work in hand.
+
 ## Closing a task
 
 Closing a task records how the work ended and the evidence for it, such as a
@@ -133,6 +140,11 @@ commit or a URL. Most tasks close as **done**. A task can also close as
 `wont-do`, `duplicate` (naming the other task), `cant-reproduce`,
 `already-handled` or `no-longer-needed`, still with the evidence that decided
 it.
+
+Work closed as done shows its **proof**: the commit or pull request that holds
+the change, or a link to what shows it, such as a document. A task, bug,
+feature or chore closed as done with none of them shows **No proof**.
+Decisions, approvals and epics need none.
 
 A closed task can be reopened. Reopening keeps its history, including the
 first close and its evidence.

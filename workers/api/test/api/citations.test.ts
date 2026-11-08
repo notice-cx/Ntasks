@@ -41,14 +41,14 @@ describe('a write citing what its next reader cannot check', () => {
     expect(changed.warnings![0]).toContain('acceptance');
     expect((await engine.getTask(project.id, filed.id))!.acceptance).toBe('- [ ] Matches ~/Desktop/settings.png');
 
-    const batch = await write<{ created: Written[]; warnings?: string[] }>(target, 'create_tasks', {
+    const batch = await write<{ results: Written[]; warnings?: string[] }>(target, 'create_tasks', {
       project: project.id,
       tasks: [
         { title: 'First', description: 'WHERE: workers/api/src/views.ts' },
         { title: 'Second', acceptance: 'Screens in /Users/sam/shots/a.png' },
       ],
     });
-    expect(batch.created).toHaveLength(2);
+    expect(batch.results).toHaveLength(2);
     expect(batch.warnings).toHaveLength(1);
     expect(batch.warnings![0]).toContain('tasks[1].acceptance');
   });
@@ -59,6 +59,7 @@ describe('a write citing what its next reader cannot check', () => {
     const closed = await write<Written & { status: string }>(target, 'close_task', {
       task: task.id,
       reason: 'Landed in 4f2a9c1; 123 passed.',
+      commit: '4f2a9c1',
     });
     expect(closed.status).toBe('closed');
     expect(closed.warnings).toHaveLength(1);
@@ -77,6 +78,7 @@ describe('a write citing what its next reader cannot check', () => {
     const closed = await write<Written>(target, 'close_task', {
       task: filed.id,
       reason: 'Landed in 4f2a9c1; pnpm test passes.',
+      commit: '4f2a9c1',
     });
     expect(closed).not.toHaveProperty('warnings');
   });

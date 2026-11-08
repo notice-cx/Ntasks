@@ -173,6 +173,10 @@ export interface LiveTask {
   assigneeModel?: string | null;
   /** Where a closed task's change is; null when it has none. */
   delivery?: TaskDelivery | null;
+  /** The URL a close as done named to show the work, when the server sends it. */
+  closeLink?: string | null;
+  /** `none` for a task, bug, feature or chore closed as done with no commit, pull request or link. */
+  proof?: 'none' | null;
   /** The helper agent the assignee works through, shown as `claude for page-rebuild-2`, when the server sends it. */
   for?: string | null;
   /** What the assignee recorded about the work in hand, such as its branch and next step, when the server sends it. */

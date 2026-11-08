@@ -12,9 +12,10 @@
  * the task the call named, when the refusal does not name it, and whether
  * the change may have been written.
  */
-import { isTaskId } from '@ntasks/domain';
+import { isTaskId, type HeldTask } from '@ntasks/domain';
 import { listed, suggestion, unknownArguments, type Args } from '../args.ts';
-import { SCOPES } from '../auth.ts';
+import { reachable, SCOPES } from '../auth.ts';
+import type { Reader } from '../lookup.ts';
 import { json } from '../http/respond.ts';
 import { Refused } from '../refused.ts';
 import type { WorkspaceReach } from '../workspaces.ts';
@@ -168,6 +169,19 @@ export type ToolAnswer =
 /** Runs a task tool in one workspace's store; `args` no longer holds the workspace. */
 export type RunTool = (reach: WorkspaceReach, name: string, args: Record<string, unknown>) => Promise<ToolAnswer>;
 
+/** The open tasks the sender holds in one workspace's store (heldBy). */
+export type ReadHeld = (reach: WorkspaceReach) => Promise<readonly HeldTask[]>;
+
+/** How long a connecting client waits, in all, for the stores to say what its sender holds. */
+export const HELD_WAIT_MS = 1500;
+
+/** The open tasks a sender holds in the projects it reads, through one indexed read of the store. */
+export async function heldBy({ engine, principal }: Reader): Promise<readonly HeldTask[]> {
+  if (!principal.scopes.includes(SCOPES.read)) return [];
+  const reached = new Set(reachable(principal, await engine.listProjects()).map((project) => project.id));
+  return (await engine.listHeld(principal.name)).filter((task) => reached.has(task.projectId));
+}
+
 /** What the sender may do: the scopes this endpoint knows, of those it holds. */
 function accessOf(scopes: readonly string[]): string[] {
   return Object.values(SCOPES).filter((scope) => scopes.includes(scope));
@@ -179,11 +193,44 @@ function roleOf(reach: WorkspaceReach, access: readonly string[]): 'owner' | 'op
   return access.includes(SCOPES.write) ? 'operator' : 'viewer';
 }
 
-/** The endpoint's server for a sender who reaches `workspaces`, running each task tool through `run`. */
-export function taskServer(workspaces: readonly WorkspaceReach[], run: RunTool): McpServer {
+/** The endpoint's server for a sender who reaches `workspaces`, running each
+ * task tool through `run`, and telling a client that connects the tasks its
+ * sender holds, read through `held`. */
+export function taskServer(
+  workspaces: readonly WorkspaceReach[],
+  run: RunTool,
+  held: ReadHeld = async () => [],
+  wait = HELD_WAIT_MS,
+): McpServer {
   return Object.freeze({
     info: SERVER_INFO,
     instructions: taskInstructions(OFFERED),
+    async connecting() {
+      // The handshake answers by the deadline whatever the stores do: a store
+      // that fails or has not answered by then leaves its tasks out.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), wait);
+      });
+      const each = await Promise.all(
+        workspaces.map(async (reach) => {
+          const read = held(reach).then(
+            (tasks) => tasks.map((task) => ({ ...task, workspaceId: reach.workspace.id })),
+            () => {
+              console.error('held tasks unread');
+              return null;
+            },
+          );
+          return Promise.race([read, deadline]);
+        }),
+      );
+      clearTimeout(timer);
+      return taskInstructions(
+        OFFERED,
+        each.flatMap((tasks) => tasks ?? []),
+        workspaces.length > 1,
+      );
+    },
     tools: MCP_TOOLS,
     async call(name: string, args: Record<string, unknown>) {
       const refused = (message: string) => new McpToolError(refusalOf(message, false, args.task));
@@ -223,10 +270,11 @@ export async function serveTaskMcp(
   request: Request,
   workspaces: readonly WorkspaceReach[],
   run: RunTool,
+  held?: ReadHeld,
 ): Promise<Response> {
   if (new URL(request.url).search)
     return json({ error: 'invalid_request', detail: 'the MCP endpoint takes no query' }, 400);
-  return serveMcp(request, taskServer(workspaces, run), { maxBytes: MCP_BYTES });
+  return serveMcp(request, taskServer(workspaces, run, held), { maxBytes: MCP_BYTES });
 }
 
 /**

@@ -96,12 +96,12 @@ describe('values through the task tools', () => {
       fields: { severity: 'high', areas: ['api', 'web'], points: 3 },
       idempotency_key: key(),
     });
-    const batch = await write<{ created: { id: string }[] }>(target, 'create_tasks', {
+    const batch = await write<{ results: { id: string }[] }>(target, 'create_tasks', {
       project: project.id,
       tasks: [{ title: 'Write the docs', fields: { severity: 'low', areas: ['web'] } }],
       idempotency_key: key(),
     });
-    const docs = batch.created[0]!.id;
+    const docs = batch.results[0]!.id;
     const read1 = await read<{ task: { fields: unknown } }>(target, 'get_task', {
       project: project.id,
       task: filed.id,

@@ -28,7 +28,9 @@ import {
 // definition in scripts/hosted-task-mcp.mts at commit 09563bcc, with the
 // workspace argument its endpoint adds to every tool. reconcile_task is not
 // here: it records an answer as the option chosen on a proposal version, so
-// its arguments are Ntasks's own.
+// its arguments are Ntasks's own. add_dependency and remove_dependency are not
+// here either: link_tasks replaced them, setting or removing the one link
+// between two tasks.
 import NOTICEOS_TOOLS from '../fixtures/noticeos-task-tools.json';
 
 const time = clock('2026-11-06T12:00:00.000Z');
@@ -137,6 +139,7 @@ describe('tools/list', () => {
     expect(found.added).toEqual([
       'list_tasks.stage',
       'list_tasks.fields',
+      'get_task.tasks',
       'create_task.notes',
       'create_task.design',
       'create_task.estimate_minutes',
@@ -144,6 +147,8 @@ describe('tools/list', () => {
       'create_task.supersedes',
       'create_task.external_links',
       'create_task.fields',
+      'create_task.claim',
+      'create_task.done',
       'create_task.detail',
       'create_tasks.tasks.notes',
       'create_tasks.tasks.design',
@@ -152,6 +157,8 @@ describe('tools/list', () => {
       'create_tasks.tasks.supersedes',
       'create_tasks.tasks.external_links',
       'create_tasks.tasks.fields',
+      'create_tasks.tasks.claim',
+      'create_tasks.tasks.done',
       ...WORK_ARGS.map((name) => `claim_task.${name}`),
       'claim_task.detail',
       'update_task.notes',
@@ -164,14 +171,16 @@ describe('tools/list', () => {
       'update_task.remove_external_links',
       'update_task.model',
       'update_task.detail',
+      'comment_on_task.tasks',
       'comment_on_task.model',
       ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
       'comment_on_task.detail',
-      'add_dependency.model',
-      'remove_dependency.model',
       'request_human_approval.model',
+      'close_task.tasks',
       'close_task.commit',
       'close_task.pr',
+      'close_task.link',
+      'close_task.with_children',
       'close_task.detail',
     ]);
   });
@@ -184,8 +193,7 @@ describe('who may write', () => {
     ['claim_task', (project, id) => ({ project, task: id, idempotency_key: key() })],
     ['update_task', (project, id) => ({ project, task: id, priority: 1, idempotency_key: key() })],
     ['comment_on_task', (project, id) => ({ project, task: id, text: 'Hi.', idempotency_key: key() })],
-    ['add_dependency', (project, id) => ({ project, task: id, depends_on: `${id}x` })],
-    ['remove_dependency', (project, id) => ({ project, task: id, depends_on: `${id}x` })],
+    ['link_tasks', (project, id) => ({ project, task: id, to: `${id}x`, type: 'related' })],
     ['request_human_approval', (project, id) => ({ project, task: id, reason: 'Approve it.' })],
     ['close_task', (project, id) => ({ project, task: id, reason: 'Done.', idempotency_key: key() })],
   ];
@@ -208,11 +216,7 @@ describe('who may write', () => {
     const before = await current(project, id);
     const sender = api({ principal: granted({ [project.id]: 'read' }), engine });
     const forbidden = `refused: this call needs tasks:write in projectId ${project.id} (${project.name}), where you have tasks:read.`;
-    // create_tasks reports a refused task in its answer, as its first task refused.
-    expect(
-      await write(sender, 'create_tasks', { project: project.id, tasks: [{ title: 'New' }], idempotency_key: key() }),
-    ).toMatchObject({ created: [], failed: { index: 0, error: forbidden } });
-    for (const [name, args] of calls.filter(([name]) => name !== 'create_tasks')) {
+    for (const [name, args] of calls) {
       expect(await refusal(sender, name, { workspace: WORKSPACE.id, ...args(project.id, id) }), name).toBe(forbidden);
       expect(await refusal(sender, name, { workspace: WORKSPACE.id, ...args(other.id, id) }), name).toBe(
         missingProject(other.id),
@@ -249,13 +253,15 @@ describe('a write that names only what it needs', () => {
       commentId: (await engine.listComments(project.id, id))[0]!.id,
       replayed: false,
     });
-    const closed = await write(target, 'close_task', { task: id, reason: 'Shipped in abc1234.' });
+    const closed = await write(target, 'close_task', { task: id, reason: 'Shipped.', commit: 'abc1234' });
     expect(closed).toEqual({
       id,
       status: 'closed',
       resolution: 'done',
+      delivery: expect.objectContaining({ stage: 'built', commit: 'abc1234' }),
       version: (await current(project, id)).version,
       replayed: false,
+      unblocked: [],
     });
   });
 
@@ -310,18 +316,18 @@ describe('a write that names only what it needs', () => {
         { title: 'Child', parent: '#0' },
       ],
     };
-    type Batch = { created: { id: string; replayed: boolean }[] };
-    const filing = (batch: Batch) => batch.created.map(({ id, replayed }) => [id, replayed]);
+    type Batch = { results: { id: string; replayed: boolean }[] };
+    const filing = (batch: Batch) => batch.results.map(({ id, replayed }) => [id, replayed]);
     const first = await write<Batch>(target, 'create_tasks', args);
-    const [epic, child] = first.created.map((entry) => entry.id);
+    const [epic, child] = first.results.map((entry) => entry.id);
     expect(filing(await write<Batch>(target, 'create_tasks', args))).toEqual([
       [epic, true],
       [child, true],
     ]);
     await write(target, 'update_task', { task: child, priority: 0 });
     const again = await write<Batch>(target, 'create_tasks', args);
-    const [newEpic, newChild] = again.created.map((entry) => entry.id);
-    expect(again.created.map((entry) => entry.replayed)).toEqual([false, false]);
+    const [newEpic, newChild] = again.results.map((entry) => entry.id);
+    expect(again.results.map((entry) => entry.replayed)).toEqual([false, false]);
     // The whole batch is filed again, its #0 naming the new epic.
     expect([newEpic, newChild]).not.toContain(epic);
     expect(newChild).toBe(`${newEpic}.1`);
@@ -607,13 +613,13 @@ describe('create_task', () => {
     const stale = (names: string) =>
       `${names} arrived as text: your client's copy of the task tools predates this server (guide version ${guide}); reconnect this server to get the current tools`;
     const card = { valuePerMonth: 1, likelihood: 0.5, reviewMinutes: 1, daysToSignal: 1, measurability: 'cohort' };
-    const batch = await write<{ staleClient: string; created: { id: string }[] }>(target, 'create_tasks', {
+    const batch = await write<{ staleClient: string; results: { id: string }[] }>(target, 'create_tasks', {
       project: project.id,
       tasks: [{ title: 'Plain' }, { title: 'Carded', card: JSON.stringify(card) }],
       idempotency_key: key(),
     });
     expect(batch.staleClient).toBe(stale('tasks[1].card'));
-    expect((await current(project, batch.created[1]!.id)).metadata.noticeos_card).toMatchObject(card);
+    expect((await current(project, batch.results[1]!.id)).metadata.noticeos_card).toMatchObject(card);
 
     const chosen = await task(project, {
       title: 'Choices',
@@ -680,7 +686,7 @@ describe('a create whose blocked task keeps changing', () => {
         tasks: [{ title: 'Blocks it', blocks: [other.id] }],
         idempotency_key: key(),
       }),
-    ).toMatchObject({ created: [], failed: { index: 0, error: unavailable } });
+    ).toEqual({ results: [{ index: 0, error: unavailable }], retry: expect.any(String) });
   });
 });
 
@@ -697,14 +703,14 @@ describe('create_tasks', () => {
       model: 'model-x',
       idempotency_key: key(),
     };
-    const reply = await write<{ created: { id: string; replayed: boolean }[]; note?: string }>(
+    const reply = await write<{ results: { id: string; replayed: boolean }[]; note?: string }>(
       target,
       'create_tasks',
       args,
     );
-    const [epic, child, gated] = reply.created.map((entry) => entry.id);
+    const [epic, child, gated] = reply.results.map((entry) => entry.id);
     expect(reply).toMatchObject({
-      created: [
+      results: [
         { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['## Success Criteria'] } },
         { index: 1, id: `${epic}.1`, status: 'open', replayed: false },
         { index: 2, id: gated, replayed: false, approval: { status: 'open', reason: 'Approve it.' }, held: true },
@@ -713,62 +719,82 @@ describe('create_tasks', () => {
     });
     expect((await current(project, gated!)).dependencies.map((link) => link.taskId)).toContain(child);
 
-    const again = await write<{ created: { id: string; replayed: boolean }[] }>(target, 'create_tasks', args);
-    expect(again.created.map((entry) => [entry.id, entry.replayed])).toEqual(
-      reply.created.map((entry) => [entry.id, true]),
+    const again = await write<{ results: { id: string; replayed: boolean }[] }>(target, 'create_tasks', args);
+    expect(again.results.map((entry) => [entry.id, entry.replayed])).toEqual(
+      reply.results.map((entry) => [entry.id, true]),
     );
     expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
   });
 
-  it('stops at the first task refused, saying which, and files the rest on a retry', async () => {
+  it('files every task it can, refusing one alone, and lets #n name a later task of the call', async () => {
     const project = await newProject(engine);
+    const missing = `${project.prefix}-none`;
     const args = {
       project: project.id,
-      tasks: [{ title: 'First' }, { title: 'Second', parent: `${project.prefix}-none` }, { title: 'Third' }],
-      idempotency_key: key(),
+      tasks: [
+        { title: 'Child', parent: '#2' },
+        { title: 'Under a missing parent', parent: missing },
+        { title: 'Epic', type: 'epic' },
+        { title: 'Waits on the refused one', depends_on: ['#1'] },
+        { title: '' },
+        { title: 'Names no task of the call', blocks: ['#7'] },
+      ],
     };
-    const reply = await write<Record<string, unknown> & { created: { id: string }[] }>(target, 'create_tasks', args);
-    expect(reply).toMatchObject({
-      created: [{ index: 0, replayed: false }],
-      failed: {
-        index: 1,
-        error: `refused: ${project.prefix}-none is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
-      },
-      notAttempted: 1,
+    type Result = { index: number; id?: string; error?: string };
+    const reply = await write<{ results: Result[]; retry?: string }>(target, 'create_tasks', args);
+    const [child, orphan, epic, waits, empty, outside] = reply.results;
+    expect(epic).toMatchObject({ index: 2, status: 'open', replayed: false });
+    expect(child).toMatchObject({ index: 0, id: `${epic!.id}.1`, status: 'open' });
+    expect(orphan).toEqual({
+      index: 1,
+      error: `refused: ${missing} is not a task in projectId ${project.id} (${project.name}); list_tasks lists its tasks.`,
     });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(1);
+    expect(waits).toEqual({ index: 3, error: expect.stringContaining('#1') });
+    expect(empty).toEqual({ index: 4, error: 'invalid arguments: tasks[4].title (empty)' });
+    expect(outside).toEqual({
+      index: 5,
+      error: expect.stringMatching(/^invalid arguments: tasks\[5\]\.blocks\[0\] /u),
+    });
+    expect(reply.retry).toEqual(expect.any(String));
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
+      [epic!.id, child!.id].sort(),
+    );
+    // Sent again, the tasks filed answer as they were, and the refused ones are tried again.
+    const again = await write<{ results: Result[] }>(target, 'create_tasks', args);
+    expect(again.results.map((result) => result.id ?? null)).toEqual([child!.id, null, epic!.id, null, null, null]);
   });
 
-  it('files nothing when an entry breaks a rule, naming the entry and the argument by its path', async () => {
+  it('refuses the tasks that name each other in a loop, naming the loop, and files the rest', async () => {
     const project = await newProject(engine);
-    const refused = (tasks: unknown) =>
-      refusal(target, 'create_tasks', { workspace: WORKSPACE.id, project: project.id, tasks, idempotency_key: key() });
-    expect(await refused([{ title: 'Fine' }, { title: '' }])).toBe('invalid arguments: tasks[1].title (empty)');
-    expect(await refused([{ title: 'A', parent: '#0' }])).toBe(
-      "invalid arguments: tasks[0].parent (#0 is not an earlier task of this call: #n counts this call's tasks from zero, so tasks[0] may name none, as the first)",
-    );
-    expect(await refused([{ title: 'A' }, { title: 'B' }, { title: 'C', blocks: ['#1', '#2'] }])).toBe(
-      "invalid arguments: tasks[2].blocks[1] (#2 is not an earlier task of this call: #n counts this call's tasks from zero, so tasks[2] may name #0 to #1)",
-    );
-    expect(await refused([{ title: 'A', depends_on: ['Not An Id'] }])).toBe(
-      'invalid arguments: tasks[0].depends_on[0] (a task id such as abc-1x2)',
-    );
-    expect(await refused([{ title: 'A', model: 'x' }])).toBe('invalid arguments: unknown argument tasks[0].model');
-    expect(await refused([])).toBe('invalid arguments: tasks (1–25)');
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    const reply = await write<{ results: { index: number; id?: string; error?: string }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'A', depends_on: ['#1'] }, { title: 'B', parent: '#0' }, { title: 'C' }],
+    });
+    const [first, second, third] = reply.results;
+    for (const looped of [first, second]) {
+      expect(looped?.error).toMatch(/^refused: /u);
+      expect(looped?.error).toContain('#0');
+      expect(looped?.error).toContain('#1');
+    }
+    expect(third).toMatchObject({ index: 2, status: 'open' });
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id)).toEqual([third!.id]);
   });
 
-  it('reports a project it cannot reach as its first task refused', async () => {
-    const reply = await write<Record<string, unknown>>(target, 'create_tasks', {
-      project: 'missing',
-      tasks: [{ title: 'A' }, { title: 'B' }],
-      idempotency_key: key(),
-    });
-    expect(reply).toMatchObject({
-      created: [],
-      failed: { index: 0, error: missingProject('missing') },
-      notAttempted: 1,
-    });
+  it('refuses a call it cannot file any of, filing nothing', async () => {
+    const project = await newProject(engine);
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'create_tasks', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        idempotency_key: key(),
+        ...args,
+      });
+    expect(await refused({ tasks: [] })).toBe('invalid arguments: tasks (1–25)');
+    expect(await refused({ tasks: [{ title: 'A', model: 'x' }] })).toBe(
+      'invalid arguments: unknown argument tasks[0].model',
+    );
+    expect(await refused({ project: 'missing', tasks: [{ title: 'A' }] })).toBe(missingProject('missing'));
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
   });
 });
 
@@ -1358,12 +1384,12 @@ describe("a task's notes, design and estimate", () => {
       estimate_minutes: 90,
       idempotency_key: key(),
     });
-    const batch = await write<{ created: { id: string }[] }>(target, 'create_tasks', {
+    const batch = await write<{ results: { id: string }[] }>(target, 'create_tasks', {
       project: project.id,
       tasks: [{ title: 'Second', notes: 'Batch note.', estimate_minutes: 0 }],
       idempotency_key: key(),
     });
-    expect(await current(project, batch.created[0]!.id)).toMatchObject({
+    expect(await current(project, batch.results[0]!.id)).toMatchObject({
       notes: 'Batch note.',
       design: '',
       estimateMinutes: 0,
@@ -1396,7 +1422,7 @@ describe("a task's notes, design and estimate", () => {
     });
     expect((await current(project, filed.id)).estimateMinutes).toBeNull();
     const listed = await write<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
-    expect(listed.tasks.find((row) => row.id === batch.created[0]!.id)).toMatchObject({ estimateMinutes: 0 });
+    expect(listed.tasks.find((row) => row.id === batch.results[0]!.id)).toMatchObject({ estimateMinutes: 0 });
     expect(listed.tasks.find((row) => row.id === filed.id)).not.toHaveProperty('notes');
 
     const { changes } = await write<{ changes: (Snapshot & { revision: string })[] }>(target, 'get_task_history', {
@@ -1493,9 +1519,9 @@ describe('duplicates and supersedes links', () => {
     const ready = await write<{ tasks: { id: string }[] }>(target, 'list_tasks', { project: project.id, ready: true });
     expect(ready.tasks.map((row) => row.id).sort()).toEqual([first.id, old.id, filed.id, later.id].sort());
 
-    expect(
-      await write(target, 'remove_dependency', { project: project.id, task: later.id, depends_on: elsewhere.id }),
-    ).toMatchObject({ removed: true });
+    expect(await write(target, 'link_tasks', { task: later.id, to: elsewhere.id, remove: true })).toMatchObject({
+      removed: true,
+    });
     expect((await current(project, later.id)).dependencies.map((link) => link.taskId)).toEqual([filed.id]);
   });
 
@@ -1528,23 +1554,13 @@ describe('duplicates and supersedes links', () => {
     );
   });
 
-  it('refuse a link to the task itself, and a type add_dependency does not take', async () => {
+  it('refuse a link to the task itself', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
-    const kin = await task(project, { title: 'Kin' });
     const base = { workspace: WORKSPACE.id, project: project.id, task: id, idempotency_key: key() };
     expect(await refusal(target, 'update_task', { ...base, supersedes: [id] })).toBe(
       'invalid arguments: supersedes (another task than this one)',
     );
-    expect(
-      await refusal(target, 'add_dependency', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: id,
-        depends_on: kin.id,
-        type: 'duplicates',
-      }),
-    ).toBe('invalid arguments: type (one of blocks, related, discovered-from)');
     expect((await current(project, id)).dependencies).toEqual([]);
   });
 });
@@ -1696,79 +1712,100 @@ describe('comment_on_task', () => {
   });
 });
 
-describe('add_dependency and remove_dependency', () => {
-  it('records a dependency once, keeps its type, and removes it', async () => {
+describe('link_tasks', () => {
+  type Linked = Record<string, unknown>;
+  const links = async (project: Project, id: string) =>
+    (await current(project, id)).dependencies.map((link) => [link.taskId, link.type]);
+
+  it('sets the one link between two tasks, changing blocks to related in one call, and removes it', async () => {
     const project = await newProject(engine);
     const blocker = await task(project, { title: 'Blocker' });
     const { id } = await task(project, { title: 'Waits' });
-    const args = { project: project.id, task: id, depends_on: blocker.id };
-    expect(await write(target, 'add_dependency', args)).toEqual({ task: id, dependsOn: blocker.id, type: 'blocks' });
-    expect(await write(target, 'add_dependency', args)).toEqual({ task: id, dependsOn: blocker.id, type: 'blocks' });
+    const pair = { task: id, to: blocker.id };
+    expect(await write<Linked>(target, 'link_tasks', { ...pair, type: 'blocks' })).toEqual({ ...pair, type: 'blocks' });
     expect(await current(project, id)).toMatchObject({ ready: false, version: 2 });
-    expect(await refusal(target, 'add_dependency', { workspace: WORKSPACE.id, ...args, type: 'related' })).toBe(
-      `refused: ${id} already depends on ${blocker.id} as blocks, and a dependency keeps the type it was added with. To record it as related, remove_dependency first, then add it again.`,
-    );
-    expect(
-      await refusal(target, 'add_dependency', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: blocker.id,
-        depends_on: id,
-      }),
-    ).toBe(
-      `refused: ${id} already waits on ${blocker.id}, so ${blocker.id} cannot depend on it: the two would wait on each other in a loop.`,
-    );
-    expect(await write(target, 'remove_dependency', args)).toEqual({ task: id, dependsOn: blocker.id, removed: true });
-    expect(await write(target, 'remove_dependency', args)).toEqual({ task: id, dependsOn: blocker.id, removed: true });
-    expect(await current(project, id)).toMatchObject({ ready: true, dependencies: [], version: 3 });
+    // Asking again changes nothing.
+    await write(target, 'link_tasks', { ...pair, type: 'blocks' });
+    expect((await current(project, id)).version).toBe(2);
+
+    expect(await write<Linked>(target, 'link_tasks', { ...pair, type: 'related' })).toEqual({
+      ...pair,
+      type: 'related',
+      replaced: { ...pair, type: 'blocks' },
+    });
+    expect(await current(project, id)).toMatchObject({ ready: true, version: 3 });
+    expect(await links(project, id)).toEqual([[blocker.id, 'related']]);
+
+    // Set from the other task, the pair still holds one link, now that one's.
+    expect(await write<Linked>(target, 'link_tasks', { task: blocker.id, to: id, type: 'blocks' })).toMatchObject({
+      replaced: { ...pair, type: 'related' },
+    });
+    expect(await links(project, id)).toEqual([]);
+    expect(await links(project, blocker.id)).toEqual([[id, 'blocks']]);
+
+    expect(await write<Linked>(target, 'link_tasks', { ...pair, remove: true })).toEqual({ ...pair, removed: true });
+    expect(await links(project, blocker.id)).toEqual([]);
+    expect(await write<Linked>(target, 'link_tasks', { ...pair, remove: true })).toEqual({ ...pair, removed: true });
   });
 
-  it('links a related task in another project, but refuses a blocking one there', async () => {
+  it('refuses a loop of tasks waiting on each other, and a blocking link to another project', async () => {
     const project = await newProject(engine);
     const other = await newProject(engine);
-    const { id } = await task(project);
+    const [a, b, c] = [await task(project, { title: 'A' }), await task(project, { title: 'B' }), await task(project)];
+    await write(target, 'link_tasks', { task: a.id, to: b.id, type: 'blocks' });
+    await write(target, 'link_tasks', { task: b.id, to: c.id, type: 'blocks' });
+    expect(await refusal(target, 'link_tasks', { workspace: WORKSPACE.id, task: c.id, to: a.id, type: 'blocks' })).toBe(
+      `refused: ${a.id} already waits on ${c.id}, so ${c.id} cannot wait on it: the two would wait on each other in a loop.`,
+    );
+    expect(await links(project, c.id)).toEqual([]);
+
     const kin = await task(other);
-    await write(target, 'add_dependency', { project: project.id, task: id, depends_on: kin.id, type: 'related' });
-    expect((await current(project, id)).dependencies).toEqual([
-      { taskId: kin.id, type: 'related', title: 'A task', status: 'open' },
-    ]);
+    await write(target, 'link_tasks', { task: a.id, to: kin.id, type: 'related' });
+    expect(await links(project, a.id)).toEqual(
+      [
+        [b.id, 'blocks'],
+        [kin.id, 'related'],
+      ].sort(),
+    );
     expect(
-      await refusal(target, 'add_dependency', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: id,
-        depends_on: kin.id,
-      }),
+      await refusal(target, 'link_tasks', { workspace: WORKSPACE.id, task: c.id, to: kin.id, type: 'blocks' }),
     ).toBe(
       `refused: ${kin.id} is not in projectId ${project.id} (${project.name}), whose tasks start ${project.prefix}-; tasks with prefix ${other.prefix} are in projectId ${other.id} (${other.name}).`,
     );
   });
 
-  it("leaves a dependency on a person's decision for the person", async () => {
+  it("leaves a link to a person's decision for the person, and refuses what names no link", async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
+    const other = await task(project);
     const { created } = await engine.writeTask(
       project.id,
       id,
       { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } },
       OWNER,
     );
-    expect(
-      await refusal(target, 'remove_dependency', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: id,
-        depends_on: created[0]!.id,
-      }),
-    ).toMatch(new RegExp(`^refused: ${created[0]!.id} is a human request\\.`, 'u'));
-    expect(
-      await refusal(target, 'add_dependency', {
-        workspace: WORKSPACE.id,
-        project: project.id,
-        task: id,
-        depends_on: id,
-      }),
-    ).toBe('invalid arguments: depends_on (another task than this one)');
+    const gate = created[0]!.id;
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'link_tasks', { workspace: WORKSPACE.id, ...args });
+    expect(await refused({ task: id, to: gate, remove: true })).toMatch(
+      new RegExp(`^refused: ${gate} is a human request\\.`, 'u'),
+    );
+    expect(await refused({ task: id, to: gate, type: 'related' })).toMatch(/^refused: .* is a human request\./u);
+    expect(await links(project, id)).toEqual([[gate, 'blocks']]);
+    // A new link to a decision is added.
+    await write(target, 'link_tasks', { task: other.id, to: gate, type: 'related' });
+    expect(await links(project, other.id)).toEqual([[gate, 'related']]);
+
+    expect(await refused({ task: id, to: id, type: 'related' })).toBe(
+      'invalid arguments: to (another task than this one)',
+    );
+    expect(await refused({ task: id, to: other.id })).toMatch(/^invalid arguments: type /u);
+    expect(await refused({ task: id, to: other.id, type: 'related', remove: true })).toMatch(
+      /^invalid arguments: type /u,
+    );
+    expect(await refused({ task: id, to: other.id, type: 'depends' })).toBe(
+      'invalid arguments: type (one of blocks, related, discovered-from, duplicates, supersedes)',
+    );
   });
 });
 
@@ -1953,13 +1990,26 @@ describe('close_task', () => {
     expect((await current(project, id)).close).toMatchObject({ by: WRITER.name, model: 'model-x' });
 
     const again = await write<{ task: Record<string, unknown>; replayed: boolean }>(target, 'close_task', args);
-    expect(again).toEqual({ task: reply.task, replayed: true });
+    expect(again).toEqual({ ...reply, replayed: true });
     expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, ...args, reason: 'Other.' })).toMatch(
       /^conflict: /u,
     );
     expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, ...args, idempotency_key: key() })).toBe(
       `refused: ${id} is already closed; get_task shows its close reason.`,
     );
+  });
+
+  it('leaves a task nobody held free to claim once it is reopened', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    await write(target, 'close_task', { task: id, reason: 'Shipped.', commit: '4f2a9c1' });
+    expect(await current(project, id)).toMatchObject({ status: 'closed', assignee: null });
+    await write(target, 'update_task', { task: id, status: 'open' });
+    const other = api({ principal: granted({ [project.id]: 'write' }, 'agent-other'), engine });
+    expect(await write(other, 'claim_task', { task: id })).toMatchObject({
+      status: 'in_progress',
+      assignee: 'agent-other',
+    });
   });
 
   it('closes a duplicate, linking it to the task it duplicates', async () => {
@@ -2067,5 +2117,366 @@ describe('close_task', () => {
         idempotency_key: key(),
       }),
     ).toBe('invalid arguments: The write is not valid.');
+  });
+});
+
+describe('create_task with claim and done', () => {
+  it('files a task claimed by the sender, in progress, in one call', async () => {
+    const project = await newProject(engine);
+    const filed = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Start this now',
+      claim: true,
+      model: 'model-x',
+    });
+    expect(filed).toMatchObject({ status: 'in_progress', assignee: WRITER.name, version: 1, replayed: false });
+    expect(await current(project, filed.id)).toMatchObject({ assigneeModel: 'model-x', startedAt: time.now() });
+    // A batch entry takes it too.
+    const batch = await write<{ results: { id: string; status: string }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Start this as well', claim: true }],
+    });
+    expect(batch.results[0]).toMatchObject({ status: 'in_progress', assignee: WRITER.name });
+  });
+
+  it('files finished work closed as done, with its evidence and proof, held by nobody', async () => {
+    const project = await newProject(engine);
+    const filed = await write<{ id: string; warnings?: string[] }>(target, 'create_task', {
+      project: project.id,
+      title: 'Fixed the broken link',
+      type: 'bug',
+      done: { evidence: 'Fixed in 4f2a9c1.', commit: '4F2A9C1' },
+    });
+    expect(filed).toMatchObject({
+      status: 'closed',
+      resolution: 'done',
+      delivery: { stage: 'built', commit: '4f2a9c1' },
+      version: 1,
+    });
+    expect(filed).not.toHaveProperty('warnings');
+    expect(await current(project, filed.id)).toMatchObject({
+      assignee: null,
+      close: { reason: 'Fixed in 4f2a9c1.', by: WRITER.name },
+    });
+    const history = await read<{ changes: { actions: string[] }[] }>(target, 'get_task_history', { task: filed.id });
+    expect(history.changes.map((change) => change.actions)).toEqual([['created']]);
+  });
+
+  it('refuses a task filed both claimed and done, done while it waits on an approval, or done when a person closes it', async () => {
+    const project = await newProject(engine);
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'create_task', { workspace: WORKSPACE.id, project: project.id, title: 'T', ...args });
+    const done = { evidence: 'Done.' };
+    expect(await refused({ claim: true, done })).toMatch(/^invalid arguments: claim and done /u);
+    expect(await refused({ done, approval: 'Approve it.' })).toMatch(/^invalid arguments: done and approval /u);
+    expect(await refused({ done, labels: ['human'] })).toMatch(/^refused: /u);
+    const waiting = await task(project, { title: 'Waits on an approval' });
+    const { created } = await engine.writeTask(
+      project.id,
+      waiting.id,
+      { expectedVersion: 1, requestApproval: { reason: 'Approve it.' } },
+      OWNER,
+    );
+    const gate = created[0]!.id;
+    const gated = await refused({ done, depends_on: [gate] });
+    expect(gated).toMatch(/^refused: /u);
+    expect(gated).toContain(gate);
+    expect(await refused({ done: { evidence: 'Done.', link: 'not a url' } })).toMatch(
+      /^invalid arguments: done\.link /u,
+    );
+    expect(await refused({ done: { evidence: 'Done.', when: 'today' } })).toMatch(/^invalid arguments: done /u);
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
+      [waiting.id, gate].sort(),
+    );
+  });
+
+  it('names open tasks in its project whose titles share most of its words as possible duplicates', async () => {
+    const project = await newProject(engine);
+    const other = await newProject(engine);
+    const alike = await task(project, { title: 'Fix the login redirect loop on Safari' });
+    await task(project, { title: 'Write the pricing page' });
+    const closed = await task(project, { title: 'Fix the login redirect loop' });
+    await engine.writeTask(
+      project.id,
+      closed.id,
+      { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } },
+      OWNER,
+    );
+    await task(other, { title: 'Fix the login redirect loop on Safari' });
+    const filed = await write<{ id: string; possibleDuplicates?: unknown }>(target, 'create_task', {
+      project: project.id,
+      title: 'Login redirect loop on Safari',
+    });
+    expect(filed.possibleDuplicates).toEqual([{ id: alike.id, title: alike.title, status: 'open' }]);
+    const unlike = await write(target, 'create_task', { project: project.id, title: 'Rename the settings tab' });
+    expect(unlike).not.toHaveProperty('possibleDuplicates');
+    // A batch's tasks are not each other's duplicates; the task filed above is one, less alike.
+    const batch = await write<{ results: { possibleDuplicates?: { id: string }[] }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Safari login redirect loop fix' }, { title: 'Safari login redirect loop fix' }],
+    });
+    for (const result of batch.results)
+      expect(result.possibleDuplicates?.map((entry) => entry.id)).toEqual([alike.id, filed.id]);
+  });
+});
+
+describe('claim_task by pull request', () => {
+  it('claims the open task a pull request names, through its link or its holder’s work details, and refuses none or several', async () => {
+    const project = await newProject(engine);
+    const pull = (number: number) => `https://github.com/example/web/pull/${number}`;
+    const linked = await task(project, {
+      title: 'Linked',
+      externalLinks: [{ url: pull(7), title: 'The fix', kind: 'pull-request' }],
+    });
+    const claimed = await write(target, 'claim_task', { pr: 'https://github.com/Example/Web/pull/7/files' });
+    expect(claimed).toMatchObject({ id: linked.id, status: 'in_progress', assignee: WRITER.name });
+
+    // Another holder's work details name pull request 8: the task is found, and its claim refused for that holder.
+    const working = await task(project, { title: 'Working' });
+    await engine.writeTask(
+      project.id,
+      working.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress', work: { pr: pull(8) } } },
+      AGENT,
+    );
+    const refused = (pr: string) => refusal(target, 'claim_task', { workspace: WORKSPACE.id, pr });
+    expect(await refused(pull(8))).toBe(
+      `refused: ${working.id} is held by ${AGENT.name}. Choose another task, or reach ${AGENT.name} with comment_on_task.`,
+    );
+    expect(await refused(pull(99))).toMatch(/^refused: no open task names pull request /u);
+    const twins = [
+      await task(project, { title: 'One', externalLinks: [{ url: pull(9), title: 'PR', kind: 'pull-request' }] }),
+      await task(project, { title: 'Two', externalLinks: [{ url: pull(9), title: 'PR', kind: 'pull-request' }] }),
+    ];
+    const several = await refused(pull(9));
+    for (const twin of twins) expect(several).toContain(twin.id);
+    expect(await refusal(target, 'claim_task', { workspace: WORKSPACE.id })).toMatch(/^invalid arguments: task /u);
+  });
+});
+
+describe('close_task on several tasks', () => {
+  type Closed = { results: Record<string, unknown>[]; unblocked: { id: string; title: string }[] };
+
+  it('closes each with one evidence, refusing a held one alone, and lists the tasks they unblocked', async () => {
+    const project = await newProject(engine);
+    const [a, b] = [await task(project, { title: 'A' }), await task(project, { title: 'B' })];
+    const held = await task(project, { title: 'Held' });
+    await engine.writeTask(
+      project.id,
+      held.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+      AGENT,
+    );
+    const waiting = await task(project, {
+      title: 'Waits on A and B',
+      links: [
+        { direction: 'depends-on', taskId: a.id, type: 'blocks' },
+        { direction: 'depends-on', taskId: b.id, type: 'blocks' },
+      ],
+    });
+    await task(project, {
+      title: 'Waits on the held one',
+      links: [{ direction: 'depends-on', taskId: held.id, type: 'blocks' }],
+    });
+    const args = { tasks: [a.id, held.id, b.id], reason: 'Shipped in 4f2a9c1.', commit: '4f2a9c1' };
+    const reply = await write<Closed>(target, 'close_task', args);
+    const closed = (id: string) => ({
+      id,
+      status: 'closed',
+      resolution: 'done',
+      delivery: expect.objectContaining({ stage: 'built', commit: '4f2a9c1' }),
+      version: expect.any(Number),
+      replayed: false,
+    });
+    expect(reply.results).toEqual([
+      closed(a.id),
+      { id: held.id, error: expect.stringMatching(new RegExp(`^refused: ${held.id} is held by ${AGENT.name}`, 'u')) },
+      closed(b.id),
+    ]);
+    expect(reply.unblocked).toEqual([{ id: waiting.id, title: 'Waits on A and B' }]);
+    expect(await current(project, held.id)).toMatchObject({ status: 'in_progress' });
+    // A close leaves who holds the task as it was; the close records who closed it.
+    expect(await current(project, a.id)).toMatchObject({
+      status: 'closed',
+      assignee: null,
+      close: { by: WRITER.name },
+    });
+    // The same call sent again answers each close it made, and closes nothing twice.
+    const again = await write<Closed>(target, 'close_task', args);
+    expect(again.results.map((result) => result.replayed ?? null)).toEqual([true, null, true]);
+  });
+
+  it('closes an epic after every open task under it, with with_children', async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Launch', type: 'epic' });
+    const child = await task(project, { title: 'Page', parentId: epic.id });
+    const grandchild = await task(project, { title: 'Copy', parentId: child.id });
+    const done = await task(project, { title: 'Done already', parentId: epic.id });
+    await engine.writeTask(
+      project.id,
+      done.id,
+      { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } },
+      OWNER,
+    );
+    const link = 'https://docs.example.com/launch';
+    const reply = await write<Closed>(target, 'close_task', {
+      task: epic.id,
+      with_children: true,
+      reason: 'Launched.',
+      link,
+    });
+    expect(reply.results.map((result) => [result.id, result.status])).toEqual([
+      [grandchild.id, 'closed'],
+      [child.id, 'closed'],
+      [epic.id, 'closed'],
+    ]);
+    expect((await current(project, epic.id)).close).toMatchObject({ reason: 'Launched.', link });
+    expect((await current(project, grandchild.id)).close).toMatchObject({ reason: 'Launched.', link });
+  });
+
+  it('shows nothing under an epic in a project the sender cannot reach, and finds the tasks under one named by key', async () => {
+    const mine = await newProject(engine);
+    const theirs = await newProject(engine);
+    const hidden = await task(theirs, { title: 'Their epic', type: 'epic' });
+    const secret = await task(theirs, { title: 'Their child', parentId: hidden.id });
+    const sender = api({ principal: granted({ [mine.id]: 'write' }, 'agent-mine'), engine });
+    const reply = await write<Closed>(sender, 'close_task', {
+      project: theirs.id,
+      task: hidden.id,
+      with_children: true,
+      reason: 'Done.',
+    });
+    expect(reply.results).toEqual([{ id: hidden.id, error: missingProject(theirs.id) }]);
+    expect(JSON.stringify(reply)).not.toContain(secret.id);
+    expect((await current(theirs, secret.id)).status).toBe('open');
+
+    const epic = await task(mine, { title: 'My epic', type: 'epic' });
+    const child = await task(mine, { title: 'My child', parentId: epic.id });
+    const named = await write<Closed>(sender, 'close_task', {
+      project: mine.key,
+      task: epic.id,
+      with_children: true,
+      reason: 'Done.',
+      commit: '4f2a9c1',
+    });
+    expect(named.results.map((result) => result.id)).toEqual([child.id, epic.id]);
+  });
+
+  it('refuses a call that would close more than 50 tasks in all, writing nothing, and names how many', async () => {
+    const project = await newProject(engine);
+    const epics = [
+      await task(project, { title: 'First', type: 'epic' }),
+      await task(project, { title: 'Second', type: 'epic' }),
+    ];
+    for (const epic of epics)
+      for (let index = 0; index < 30; index += 1) await task(project, { title: `Part ${index}`, parentId: epic.id });
+    const idempotency_key = key();
+    const refused = await refusal(target, 'close_task', {
+      workspace: WORKSPACE.id,
+      tasks: epics.map((epic) => epic.id),
+      with_children: true,
+      reason: 'Done.',
+      idempotency_key,
+    });
+    expect(refused).toMatch(/^invalid arguments: tasks /u);
+    expect(refused).toContain('62');
+    const open = await engine.listBoard(project.id, { statuses: ['open'] });
+    expect(open).toHaveLength(62);
+    // Nothing was written, not even the key's record: the key still takes a smaller call.
+    await write(target, 'close_task', { tasks: [epics[0]!.id], with_children: true, reason: 'Done.', idempotency_key });
+    expect((await current(project, epics[0]!.id)).status).toBe('closed');
+  });
+
+  it('refuses a key sent again with other tasks, writing none of them (rule 3)', async () => {
+    const project = await newProject(engine);
+    const [a, b, c] = [await task(project, { title: 'A' }), await task(project, { title: 'B' }), await task(project)];
+    const idempotency_key = key();
+    const args = { tasks: [a.id, b.id], reason: 'Shipped.', commit: '4f2a9c1', idempotency_key };
+    await write(target, 'close_task', args);
+    const again = await write<Closed>(target, 'close_task', args);
+    expect(again.results.map((result) => result.replayed)).toEqual([true, true]);
+    expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, ...args, tasks: [c.id] })).toMatch(
+      /^conflict: /u,
+    );
+    expect((await current(project, c.id)).status).toBe('open');
+
+    const comment = { tasks: [a.id, b.id], text: 'Checked.', idempotency_key: key() };
+    await write(target, 'comment_on_task', comment);
+    expect(await refusal(target, 'comment_on_task', { workspace: WORKSPACE.id, ...comment, tasks: [c.id] })).toMatch(
+      /^conflict: /u,
+    );
+    expect(await engine.listComments(project.id, c.id)).toEqual([]);
+  });
+});
+
+describe('proof of work closed as done', () => {
+  it('shows proof none on a task done with no commit, pull request or link, and warns its closer', async () => {
+    const project = await newProject(engine);
+    const plain = await task(project, { title: 'Write the runbook' });
+    const reply = await write<{ warnings?: string[] }>(target, 'close_task', { task: plain.id, reason: 'Written.' });
+    expect(reply.warnings).toHaveLength(1);
+    expect(reply.warnings?.[0]).toContain(plain.id);
+    expect((await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: plain.id })).task.proof).toBe(
+      'none',
+    );
+    const listed = await read<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
+    expect(listed.tasks.find((row) => row.id === plain.id)?.proof).toBe('none');
+  });
+
+  it('counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics', async () => {
+    const project = await newProject(engine);
+    const link = 'https://docs.example.com/runbook';
+    const shown = async (id: string) =>
+      (await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: id })).task;
+
+    const linked = await task(project, { title: 'Linked' });
+    const reply = await write(target, 'close_task', { task: linked.id, reason: 'Published.', link });
+    expect(reply).not.toHaveProperty('warnings');
+    expect(await shown(linked.id)).toMatchObject({ closeLink: link });
+    expect(await shown(linked.id)).not.toHaveProperty('proof');
+
+    const worked = await task(project, { title: 'Worked' });
+    await write(target, 'claim_task', { task: worked.id, commit: '4f2a9c1' });
+    expect(await write(target, 'close_task', { task: worked.id, reason: 'Merged.' })).not.toHaveProperty('warnings');
+
+    for (const type of ['decision', 'epic'] as const) {
+      const exempt = await task(project, { title: type, type });
+      expect(await write(target, 'close_task', { task: exempt.id, reason: 'Done.' })).not.toHaveProperty('warnings');
+      expect(await shown(exempt.id)).not.toHaveProperty('proof');
+    }
+    const dropped = await task(project, { title: 'Dropped' });
+    await write(target, 'close_task', { task: dropped.id, reason: 'Not needed.', resolution: 'wont-do' });
+    expect(await shown(dropped.id)).not.toHaveProperty('proof');
+    expect(
+      await refusal(target, 'close_task', {
+        workspace: WORKSPACE.id,
+        task: dropped.id,
+        reason: 'x',
+        resolution: 'wont-do',
+        link,
+      }),
+    ).toMatch(/^invalid arguments: commit, pr and link /u);
+  });
+});
+
+describe('comment_on_task on several tasks', () => {
+  it('records the same comment once on each, refusing a missing task alone', async () => {
+    const project = await newProject(engine);
+    const [a, b] = [await task(project, { title: 'A' }), await task(project, { title: 'B' })];
+    const missing = `${project.prefix}-none`;
+    const args = { tasks: [a.id, missing, b.id], text: 'Checked with the full suite.' };
+    const reply = await write<{ results: Record<string, unknown>[] }>(target, 'comment_on_task', args);
+    expect(reply.results).toEqual([
+      { task: a.id, commentId: expect.any(String), replayed: false },
+      { task: missing, error: expect.stringMatching(/^refused: /u) },
+      { task: b.id, commentId: expect.any(String), replayed: false },
+    ]);
+    // Sent again, each comment answers as it was, and none is added twice.
+    const again = await write<{ results: Record<string, unknown>[] }>(target, 'comment_on_task', args);
+    expect(again.results.map((result) => result.replayed ?? null)).toEqual([true, null, true]);
+    for (const id of [a.id, b.id]) expect(await engine.listComments(project.id, id)).toHaveLength(1);
+    expect(
+      await refusal(target, 'comment_on_task', { workspace: WORKSPACE.id, task: a.id, tasks: [b.id], text: 'x' }),
+    ).toMatch(/^invalid arguments: task and tasks /u);
   });
 });

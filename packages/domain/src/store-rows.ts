@@ -75,6 +75,8 @@ export interface TaskRow {
   /** The helper its holder works through, and JSON text of its work details. Left out, null and '{}'. */
   readonly assignee_for?: string | null;
   readonly work?: string;
+  /** The URL a close as done names to show the work. Left out, null. */
+  readonly close_link?: string | null;
 }
 
 export interface LabelRow {
@@ -196,6 +198,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'delivery_stage',
     'assignee_for',
     'work',
+    'close_link',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],

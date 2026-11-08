@@ -134,6 +134,7 @@ describe("the Worker's task answers", () => {
           duplicateOf: null,
           by: 'Example Owner',
           model: 'example-model',
+          link: null,
         },
       }),
     ]);
@@ -153,6 +154,7 @@ describe("the Worker's task answers", () => {
       duplicateOf: null,
       by: 'agent-one',
       model: null,
+      link: null,
     } as const;
     const delivery = {
       stage: 'merged',
@@ -166,5 +168,24 @@ describe("the Worker's task answers", () => {
     const [answer] = overTheWire([task({ id: 'web-x2', title: 'Ship the form', status: 'closed', close, delivery })]);
     expect(answer?.delivery).toEqual(delivery);
     expect(answer ? [deliveryWait(answer, true), deliveryWait(answer, false)] : null).toEqual(['deploy', null]);
+  });
+
+  it('say which work closed as done shows no proof, and the link that proves the rest', () => {
+    const close = {
+      at: NOW,
+      reason: 'Done.',
+      resolution: 'done',
+      duplicateOf: null,
+      by: 'agent-one',
+      model: null,
+    } as const;
+    const link = 'https://docs.example.com/runbook';
+    const [unproven, linked, decided] = overTheWire([
+      task({ id: 'web-x3', title: 'Write the runbook', status: 'closed', close: { ...close, link: null } }),
+      task({ id: 'web-x4', title: 'Write the guide', status: 'closed', close: { ...close, link } }),
+      task({ id: 'web-x5', title: 'Pick a font', type: 'decision', status: 'closed', close: { ...close, link: null } }),
+    ]);
+    expect([unproven?.proof, linked?.proof, decided?.proof]).toEqual(['none', null, null]);
+    expect(linked?.closeLink).toBe(link);
   });
 });

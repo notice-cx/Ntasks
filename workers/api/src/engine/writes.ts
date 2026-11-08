@@ -168,6 +168,66 @@ function workIn(details: TaskWork): TaskWork {
   );
 }
 
+/**
+ * How a new task starts: open; claimed by the actor, in progress; or closed as
+ * done by the actor, held by nobody, with its delivery at built when the close
+ * names a commit or a pull request. The columns, and the values its created
+ * event records.
+ */
+function filedState(fields: check.CreateFields, actor: Actor, at: string) {
+  const close = fields.close;
+  const held = fields.claim;
+  const columns: Row = held ? { assignee: actor.name, assignee_model: actor.model ?? null } : {};
+  if (fields.claim) columns.started_at = at;
+  let delivery: JsonObject | null = null;
+  if (close !== null) {
+    Object.assign(columns, {
+      closed_at: at,
+      close_reason: close.reason,
+      resolution: 'done',
+      closed_by: actor.name,
+      closed_model: actor.model ?? null,
+      close_link: close.link,
+    });
+    if (close.commit !== null || close.pullRequest !== null) {
+      Object.assign(columns, {
+        delivery_stage: 'built',
+        delivery_commit: close.commit,
+        delivery_pull_request: close.pullRequest,
+        built_at: at,
+      });
+      delivery = deliveryJson({
+        stage: 'built',
+        commit: close.commit,
+        pullRequest: close.pullRequest,
+        mergeCommit: null,
+        builtAt: at,
+        mergedAt: null,
+        liveAt: null,
+      });
+    }
+  }
+  return {
+    status: close !== null ? 'closed' : fields.claim ? 'in_progress' : 'open',
+    columns,
+    assignee: held ? actor.name : null,
+    startedAt: fields.claim ? at : null,
+    close:
+      close === null
+        ? null
+        : {
+            at,
+            reason: close.reason,
+            resolution: 'done',
+            duplicateOf: null,
+            by: actor.name,
+            model: actor.model ?? null,
+            link: close.link,
+          },
+    delivery,
+  } as const;
+}
+
 export class Writes {
   readonly #db: Database;
   readonly #reads: Reads;
@@ -677,6 +737,7 @@ export class Writes {
         const checked = check.fieldValues(await this.#reads.listFields(projectId), fields.fields, false);
         for (const [key, value] of Object.entries(checked)) if (value !== null) values.set(key, value);
       }
+      const filed = filedState(fields, actor, at);
       const statements: Statement[] = [
         ...this.#staleReceipt(retry),
         this.#insert('tasks', {
@@ -684,7 +745,8 @@ export class Writes {
           project_id: projectId,
           parent_id: fields.parentId,
           type: fields.type,
-          status: 'open',
+          status: filed.status,
+          ...filed.columns,
           priority: fields.priority,
           title: fields.title,
           description: fields.description,
@@ -746,7 +808,7 @@ export class Writes {
           parentId: fields.parentId,
           type: fields.type,
           awaitType: null,
-          status: 'open',
+          status: filed.status,
           priority: fields.priority,
           title: fields.title,
           description: fields.description,
@@ -754,11 +816,11 @@ export class Writes {
           notes: fields.notes,
           design: fields.design,
           estimateMinutes: fields.estimateMinutes,
-          assignee: null,
-          assigneeModel: null,
+          assignee: filed.assignee,
+          assigneeModel: filed.assignee === null ? null : (actor.model ?? null),
           assigneeFor: null,
           work: {},
-          startedAt: null,
+          startedAt: filed.startedAt,
           deferUntil: fields.deferUntil,
           dueAt: fields.dueAt,
           choices: fields.choices,
@@ -768,7 +830,8 @@ export class Writes {
           dependencies: linkList(dependencies),
           externalLinks: externalList(new Map(fields.externalLinks.map((link) => [link.url, link]))),
           fields: fieldMap(values),
-          close: null,
+          close: filed.close,
+          ...(filed.delivery === null ? {} : { delivery: filed.delivery }),
           filedBy: actor.name,
           filedModel: actor.model ?? null,
         }),
@@ -954,6 +1017,7 @@ export class Writes {
       columns.duplicate_of = write.close.duplicateOf;
       columns.closed_by = actor.name;
       columns.closed_model = actor.model ?? null;
+      columns.close_link = write.close.link;
       changes.status = 'closed';
       changes.close = {
         at,
@@ -962,6 +1026,7 @@ export class Writes {
         duplicateOf: write.close.duplicateOf,
         by: actor.name,
         model: actor.model ?? null,
+        link: write.close.link,
       };
       const { commit, pullRequest } = write.close;
       if (commit !== null || pullRequest !== null) {
@@ -988,6 +1053,7 @@ export class Writes {
         'duplicate_of',
         'closed_by',
         'closed_model',
+        'close_link',
         ...DELIVERY_COLUMNS,
       ])
         columns[column] = null;

@@ -40,6 +40,9 @@ export interface McpTool {
 export interface McpServer {
   readonly info: Readonly<{ name: string; version: string }>;
   readonly instructions?: string;
+  /** The instructions an initialize answers with, read when a client
+   * connects, such as what its sender holds; `instructions` when left out. */
+  readonly connecting?: () => Promise<string>;
   readonly tools: readonly McpTool[];
   /** Runs a listed tool. Throw McpToolError for an answer the model should
    * read; anything else is a fault, and its message is never sent. */
@@ -387,11 +390,12 @@ async function legacy(request: Request, server: McpServer, message: McpMessage):
     const requested = message.params.protocolVersion;
     if (typeof requested !== 'string')
       return rpcError(id, MCP_ERRORS.invalidParams, 'initialize needs a protocolVersion');
+    const instructions = server.connecting ? await server.connecting() : server.instructions;
     return result({
       protocolVersion: MCP_LEGACY_VERSIONS.includes(requested) ? requested : MCP_LEGACY_VERSIONS[0],
       capabilities: { tools: {} },
       serverInfo: server.info,
-      ...(server.instructions ? { instructions: server.instructions } : {}),
+      ...(instructions ? { instructions } : {}),
     });
   }
   const header = request.headers.get('mcp-protocol-version');

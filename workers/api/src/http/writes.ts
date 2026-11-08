@@ -343,13 +343,16 @@ export async function createProjectRoute(context: WriteContext, url: URL, reques
 }
 
 /** POST /api/tasks/:id/close: closes a task with its reason, and with
- * `commit` or `pullRequest` records what shipped. */
+ * `commit`, `pullRequest` or `link` records what proves it. */
 export async function closeRoute(context: WriteContext, url: URL, request: Request, taskId: string): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'close_task', { task: taskId });
-  only(body, ['projectId', 'reason', 'resolution', 'duplicateOf', 'commit', 'pullRequest']);
+  only(body, ['projectId', 'reason', 'resolution', 'duplicateOf', 'commit', 'pullRequest', 'link']);
   const projectId = projectArg(body, 'projectId', 'http');
   const given = closingArgs(body, taskId, 'duplicateOf');
-  const closing = { ...given, ...shippedArgs(body, 'pullRequest', given.resolution) };
+  const closing = {
+    ...given,
+    ...shippedArgs(body, { commit: 'commit', pr: 'pullRequest', link: 'link' }, given.resolution),
+  };
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
   const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)]);
   return json({ task });

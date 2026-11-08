@@ -23,6 +23,7 @@ import type {
   ExternalLinkKind,
   FieldType,
   FieldValue,
+  HeldTask,
   Json,
   JsonObject,
   Project,
@@ -120,6 +121,16 @@ export interface CreateTaskInput {
   /** Opens an approval with the new task, in the same batch: a gate the new
    * task waits on until a person answers it. The gate is in the result's `created`. */
   readonly requestApproval?: { readonly reason: string };
+  /** Files the task claimed by the actor: assigned to it and in progress. */
+  readonly claim?: true;
+  /** Files the task closed as done by the actor, held by nobody,
+   * with what proves it, as a close records it. Not with `claim` or `requestApproval`. */
+  readonly close?: {
+    readonly reason: string;
+    readonly commit?: string;
+    readonly pullRequest?: string;
+    readonly link?: string;
+  };
 }
 
 /** Field changes. A key left out is unchanged; `null` clears the field. */
@@ -195,6 +206,8 @@ export interface TaskWrite {
     readonly commit?: string;
     /** An http or https URL. */
     readonly pullRequest?: string;
+    /** With done: an http or https URL that shows the work, such as a document or a dashboard. */
+    readonly link?: string;
   };
   /** Opens a closed task again. Its earlier close stays in its history (rule 6). */
   readonly reopen?: true;
@@ -397,6 +410,9 @@ export interface TaskEngine {
    * progress or blocked or that closed at or after `closedSince`, in one
    * statement whatever the number of projects. */
   listWork(projectIds: readonly string[], closedSince: string): Promise<readonly WorkItem[]>;
+  /** The open tasks `assignee` holds, in every project, most urgent first, in
+   * one statement through the assignee index: its cost follows the tasks held. */
+  listHeld(assignee: string): Promise<readonly HeldTask[]>;
   /** The earliest time after `time` at which any task stops being deferred,
    * or null when none will. Ready work can change then without any write,
    * since a deferred parent holds its children back even once it is closed,
