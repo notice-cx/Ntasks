@@ -30,16 +30,22 @@ pnpm --filter @ntasks/api exec wrangler login
 pnpm --filter @ntasks/api exec wrangler secret put AUTH_SECRET
 pnpm --filter @ntasks/api exec wrangler deploy
 pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --remote
-git checkout -- wrangler.jsonc
 ```
 
-`wrangler secret put` asks for the secret and offers to create the `ntasks`
-Worker when it does not exist yet. The first `wrangler deploy` creates the D1
-database named `ntasks`, or connects to one of that name, creates the Durable
-Object that holds the tasks, and writes the database's id into
-`wrangler.jsonc`; the migrations step then finds the database by that id.
-The repository's `wrangler.jsonc` leaves the id out so it works in any
-account, so the last command drops it again. To deploy on each push, connect
+These deploy a Worker named `ntasks` with a D1 database named `ntasks`. If
+your Cloudflare account already has a Worker or a D1 database by that name
+that is not this deployment, change `name` and `database_name` in
+`wrangler.jsonc` first, since `wrangler secret put` would set the secret on
+the existing Worker and the deploy would bind the existing database.
+
+`wrangler secret put` asks for the secret and offers to create the Worker
+when it does not exist yet. The first `wrangler deploy` creates the D1
+database, or connects to one of that name, creates the Durable Object that
+holds the tasks, and writes the database's id into `wrangler.jsonc` as
+`database_id`; the migrations step then finds the database by that id. The
+repository's `wrangler.jsonc` leaves the id out so it works in any account,
+so remove that `database_id` line before you commit anything in the file.
+To deploy on each push, connect
 the Worker to the repository in the Cloudflare dashboard under Workers &
 Pages, the Worker, Settings, Builds, with the build and deploy commands
 above.
