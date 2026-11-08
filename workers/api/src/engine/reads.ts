@@ -15,6 +15,7 @@ import {
   type ChangePage,
   type CustomField,
   type EpicProgress,
+  type HeldTask,
   type LabelPage,
   type LabelQuery,
   type Project,
@@ -33,6 +34,7 @@ import {
   toField,
   toEpic,
   toEvent,
+  toHeld,
   toProject,
   toTask,
   toWork,
@@ -40,6 +42,7 @@ import {
   type EpicRow,
   type EventRow,
   type FieldRow,
+  type HeldRow,
   type ProjectRow,
   type TaskRow,
   type WorkRow,
@@ -364,6 +367,20 @@ export class Reads {
       .bind(JSON.stringify([...new Set(projectIds)]), instant(closedSince, 'closedSince'))
       .all<WorkRow>();
     return results.map(toWork);
+  }
+
+  /** The open tasks one holder holds, through the assignee index: one entry
+   * per task held, and its last activity from task_events_by_actor. */
+  async listHeld(assignee: string): Promise<HeldTask[]> {
+    if (typeof assignee !== 'string' || assignee === '') invalid('assignee must be a name');
+    const { results } = await this.#db
+      .prepare(
+        `SELECT t.id, t.project_id, t.title, t.priority, t.assignee_for, t.work, ${LAST_ACTIVITY} AS last_activity_at
+         FROM tasks t INDEXED BY tasks_by_assignee WHERE t.assignee = ?1 AND t.status <> 'closed' ${ORDER}`,
+      )
+      .bind(assignee)
+      .all<HeldRow>();
+    return results.map(toHeld);
   }
 
   async findTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {

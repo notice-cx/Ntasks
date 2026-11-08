@@ -5,7 +5,15 @@
  * `type` and `parent` on an MCP task, and NoticeOS's own fields (card,
  * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
  */
-import type { CustomField, Json, JsonObject, Task, TaskComment, TaskEvent } from '@ntasks/domain';
+import {
+  lacksProof,
+  type CustomField,
+  type Json,
+  type JsonObject,
+  type Task,
+  type TaskComment,
+  type TaskEvent,
+} from '@ntasks/domain';
 import { NOTICEOS_METADATA as NOTICEOS, TASK_CHANGE_CLASSES } from './noticeos-fields.ts';
 
 const CHANGE_CLASSES: readonly string[] = TASK_CHANGE_CLASSES;
@@ -94,6 +102,10 @@ export function webTask(task: Task) {
     createdAt: task.createdAt,
     startedAt: task.startedAt,
     closeReason: task.close?.reason ?? null,
+    /** The URL a close as done named to show the work. */
+    closeLink: task.close?.link ?? null,
+    /** "none" for a task, bug, feature or chore closed as done with no commit, pull request or link. */
+    proof: lacksProof(task) ? ('none' as const) : null,
     awaitType: task.awaitType,
     choices: task.choices,
     choice: task.choice,
@@ -145,9 +157,11 @@ export function mcpTask(task: Task) {
     startedAt: task.startedAt,
     closedAt: web.closedAt,
     closeReason: web.closeReason,
+    closeLink: web.closeLink,
     resolution: web.resolution,
     duplicateOf: web.duplicateOf,
     ...(task.delivery === null ? {} : { delivery: task.delivery }),
+    ...(web.proof === null ? {} : { proof: web.proof }),
   };
 }
 
@@ -183,6 +197,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     resolution: full.resolution,
     duplicateOf: full.duplicateOf,
     delivery: full.delivery ?? null,
+    proof: full.proof ?? null,
   };
   return Object.fromEntries(
     Object.entries(row).filter(

@@ -7,7 +7,7 @@
  * workspace holds its own projects, members and invitations, and only an
  * owner manages them.
  */
-import { isExternalLinkKind, isTaskId, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
+import { isExternalLinkKind, isTaskId, PROVED_TYPES, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
 import { fieldMatches, httpUrl, isCalendarDate } from '@/lib/custom-fields';
 import { ApiError, type TasksApi } from './client';
 import {
@@ -226,6 +226,8 @@ export function createFixtureTasksApi({
     task.closeReason = reason;
     task.resolution = resolution;
     task.duplicateOf = resolution === 'duplicate' ? (duplicateOf ?? null) : null;
+    // The page closes without a commit, pull request or link, so work it closes as done has no proof.
+    task.proof = resolution === 'done' && (PROVED_TYPES as readonly string[]).includes(task.issueType) ? 'none' : null;
     task.metadata = { ...task.metadata, noticeos_closed_by: FIXTURE_ACTOR, noticeos_closed_at: at };
   }
 

@@ -191,6 +191,8 @@ export interface TaskClose {
   /** Null on a task imported without a recorded closer. */
   readonly by: string | null;
   readonly model: string | null;
+  /** A close as done may name a URL that shows the work, for work that left no commit or pull request. */
+  readonly link: string | null;
 }
 
 /** Where a closed task's change is, and when it got to each stage. */
@@ -301,6 +303,31 @@ export interface EpicProgress {
   readonly closedChildren: number;
   /** Open, with every child closed. */
   readonly eligibleForClose: boolean;
+}
+
+/** The types whose close as done shows what proves it: a commit, a pull
+ * request or a link. A decision, a gate and an epic close without one. */
+export const PROVED_TYPES = ['task', 'bug', 'feature', 'chore'] as const satisfies readonly TaskType[];
+
+/** A task of a type that shows proof, closed as done with no commit, pull request or link. */
+export function lacksProof(task: Pick<Task, 'type' | 'close' | 'delivery'>): boolean {
+  return (
+    task.close?.resolution === 'done' &&
+    (PROVED_TYPES as readonly TaskType[]).includes(task.type) &&
+    task.delivery === null &&
+    task.close.link === null
+  );
+}
+
+/** A task one holder holds, with what the holder recorded about the work in hand. */
+export interface HeldTask {
+  readonly id: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly priority: number;
+  readonly assigneeFor: string | null;
+  readonly work: TaskWork;
+  readonly lastActivityAt: string | null;
 }
 
 function isOneOf<T extends string>(values: readonly T[]) {

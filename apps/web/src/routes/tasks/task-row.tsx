@@ -135,6 +135,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
       ) : null}
       {resolution ? <RowMeta>{RESOLUTION_LABELS[resolution]}</RowMeta> : null}
       {stage ? <RowMeta data-delivery-stage={stage}>{stageLabel(stage)}</RowMeta> : null}
+      {task.status === 'closed' && task.proof === 'none' ? <RowMeta data-row-proof="none">No proof</RowMeta> : null}
       {helper ? (
         <RowMeta data-row-helper="">
           <Bot aria-hidden />

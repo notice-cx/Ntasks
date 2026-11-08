@@ -48,26 +48,42 @@ function commitOf(value: unknown, name: string): string {
   return commit;
 }
 
+/** The names a call gives the proof of a close as done. */
+export interface ProofNames {
+  readonly commit: string;
+  readonly pr: string;
+  readonly link: string;
+}
+
 /**
- * What a close as done records of what shipped: `commit`, and the pull
- * request under `prName`. Either starts the task's delivery at built; they
- * go with a close as done alone.
+ * What a close as done records of what proves it: a commit and a pull
+ * request, either of which starts the task's delivery at built, and a link,
+ * a URL that shows work neither shows. They go with a close as done alone.
  */
 export function shippedArgs(
   args: Args,
-  prName: string,
+  names: ProofNames,
   resolution: TaskResolution | undefined,
-): { readonly commit?: string; readonly pullRequest?: string } {
-  const commit = args.commit === undefined ? undefined : commitOf(args.commit, 'commit');
+): { readonly commit?: string; readonly pullRequest?: string; readonly link?: string } {
+  const commit = args[names.commit] === undefined ? undefined : commitOf(args[names.commit], names.commit);
   const pullRequest =
-    args[prName] === undefined
+    args[names.pr] === undefined
       ? undefined
-      : (pullRequestUrl(args[prName]) ?? refuse(`invalid arguments: ${prName} (the pull request's http or https URL)`));
-  if ((commit !== undefined || pullRequest !== undefined) && (resolution ?? 'done') !== 'done')
-    refuse(`invalid arguments: commit and ${prName} record what shipped, so they go with resolution done`);
+      : (pullRequestUrl(args[names.pr]) ??
+        refuse(`invalid arguments: ${names.pr} (the pull request's http or https URL)`));
+  const link =
+    args[names.link] === undefined
+      ? undefined
+      : (httpUrl(args[names.link]) ??
+        refuse(`invalid arguments: ${names.link} (an http or https URL that shows the work)`));
+  if ((commit !== undefined || pullRequest !== undefined || link !== undefined) && (resolution ?? 'done') !== 'done')
+    refuse(
+      `invalid arguments: ${names.commit}, ${names.pr} and ${names.link} show what shipped, so they go with resolution done`,
+    );
   return {
     ...(commit === undefined ? {} : { commit }),
     ...(pullRequest === undefined ? {} : { pullRequest }),
+    ...(link === undefined ? {} : { link }),
   };
 }
 

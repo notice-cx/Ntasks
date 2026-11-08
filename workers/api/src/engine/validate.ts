@@ -379,6 +379,9 @@ export interface CreateFields {
   readonly choices: JsonObject | null;
   readonly metadata: JsonObject;
   readonly requestApproval: { reason: string } | null;
+  readonly claim: boolean;
+  /** A close as done the task is filed with. */
+  readonly close: { reason: string; commit: string | null; pullRequest: string | null; link: string | null } | null;
 }
 
 export function createInput(input: CreateTaskInput): CreateFields {
@@ -412,7 +415,20 @@ export function createInput(input: CreateTaskInput): CreateFields {
     choices: input.choices === undefined ? null : jsonObject(input.choices, 'choices'),
     metadata: input.metadata === undefined ? {} : jsonObject(input.metadata, 'metadata'),
     requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
+    ...filedAs(input),
   };
+}
+
+/** Whether a new task is filed claimed or closed as done: at most one of
+ * them, and neither while it waits on the approval it opens. */
+function filedAs(input: CreateTaskInput): Pick<CreateFields, 'claim' | 'close'> {
+  if (input.claim !== undefined && input.claim !== true) invalid('claim must be true or left out');
+  const claim = input.claim === true;
+  if (input.close === undefined) return { claim, close: null };
+  if (claim) invalid('a new task is filed claimed or closed, not both');
+  if (input.requestApproval !== undefined) invalid('a new task that waits on an approval is not filed closed');
+  const { reason, commit, pullRequest, link } = closing({ ...input.close, resolution: 'done' });
+  return { claim, close: { reason, commit, pullRequest, link } };
 }
 
 /** One line of text: no line break, tab or control character, nor spaces around it. */
@@ -460,6 +476,7 @@ export interface CheckedWrite {
     duplicateOf: string | null;
     commit: string | null;
     pullRequest: string | null;
+    link: string | null;
   } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
@@ -587,8 +604,9 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
   const reason = text(value.reason, 'close.reason', TASK_LIMITS.reason, true);
   const commit = value.commit === undefined ? null : commitSha(value.commit, 'close.commit');
   const pullRequest = value.pullRequest === undefined ? null : externalUrl(value.pullRequest, 'close.pullRequest');
-  if ((commit !== null || pullRequest !== null) && value.resolution !== 'done')
-    invalid('close.commit and close.pullRequest record what shipped, so they close a task as done');
+  const link = value.link === undefined ? null : externalUrl(value.link, 'close.link');
+  if ((commit !== null || pullRequest !== null || link !== null) && value.resolution !== 'done')
+    invalid('close.commit, close.pullRequest and close.link show what shipped, so they close a task as done');
   if (value.resolution === 'duplicate') {
     return {
       reason,
@@ -596,10 +614,11 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
       duplicateOf: taskId(value.duplicateOf, 'close.duplicateOf'),
       commit,
       pullRequest,
+      link,
     };
   }
   if (value.duplicateOf !== undefined) invalid('close.duplicateOf is only for a close as duplicate');
-  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest };
+  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest, link };
 }
 
 /** A commit: 7 to 64 lowercase hexadecimal characters. */

@@ -120,11 +120,32 @@ function DeliveryLine({ delivery }: { delivery: TaskDelivery }) {
   );
 }
 
+/** What shows the work of a task closed as done without a commit or pull request: its link, or that it has none. */
+function ProofLine({ link }: { link: string | null }) {
+  return (
+    <p
+      className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2"
+      data-task-proof={link === null ? 'none' : 'link'}
+    >
+      {link === null ? (
+        <>
+          <span className="font-medium text-ink">No proof</span>
+          <span>Closed as done without a commit, pull request or link.</span>
+        </>
+      ) : (
+        <a href={link} target="_blank" rel="noreferrer" className="text-accent-text no-underline hover:underline">
+          {pullRequestName(link)}
+        </a>
+      )}
+    </p>
+  );
+}
+
 /**
  * How a closed task ended, under its title: Done, or the way a close where
- * nothing shipped ended, who closed it and when, where its change is, then
- * the evidence or note. Closing records what shipped, not a measured
- * outcome, so it is drawn in greys like any other fact.
+ * nothing shipped ended, who closed it and when, where its change is or what
+ * else shows it, then the evidence or note. Closing records what shipped, not
+ * a measured outcome, so it is drawn in greys like any other fact.
  */
 export function ClosedSummary({
   by,
@@ -133,6 +154,8 @@ export function ClosedSummary({
   resolution,
   duplicate,
   delivery,
+  link = null,
+  proof = null,
   children,
 }: {
   by: Actor | null;
@@ -141,6 +164,9 @@ export function ClosedSummary({
   resolution: TaskResolution;
   duplicate?: ReactNode;
   delivery?: TaskDelivery | null;
+  /** The URL the close named to show the work. */
+  link?: string | null;
+  proof?: 'none' | null;
   children?: ReactNode;
 }) {
   const label = RESOLUTION_LABELS[resolution];
@@ -160,6 +186,7 @@ export function ClosedSummary({
         <Byline by={by} at={at} nowMs={nowMs} />
       </div>
       {delivery ? <DeliveryLine delivery={delivery} /> : null}
+      {link !== null || proof === 'none' ? <ProofLine link={link} /> : null}
       {children}
     </section>
   );

@@ -5,7 +5,7 @@ import type { TaskEngine } from '@ntasks/domain';
 import { MCP_PATH, serveApi } from '../../src/api.ts';
 import { SCOPES, type Authenticator, type Principal, type ProjectAccess } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
-import { runTaskTool, serveTaskMcp } from '../../src/mcp/server.ts';
+import { heldBy, runTaskTool, serveTaskMcp } from '../../src/mcp/server.ts';
 import type { Meter } from '../../src/store/sqlite.ts';
 import { createWorker } from '../../src/worker.ts';
 import type { Sender, WorkspaceReach } from '../../src/workspaces.ts';
@@ -106,8 +106,12 @@ export function api(
     engine,
     fetch: (request) =>
       new URL(request.url).pathname === MCP_PATH
-        ? serveTaskMcp(request, senderOf(principal).workspaces, (reach, name, args) =>
-            runTaskTool({ engine: served, workspace: reach.workspace, principal, now }, name, args),
+        ? serveTaskMcp(
+            request,
+            senderOf(principal).workspaces,
+            (reach, name, args) =>
+              runTaskTool({ engine: served, workspace: reach.workspace, principal, now }, name, args),
+            async () => heldBy({ engine: served, principal }),
           )
         : serveApi(request, principal, {
             engine: served,

@@ -215,6 +215,7 @@ describe('an import into the task store', () => {
         delivery_stage: null,
         assignee_for: null,
         work: '{}',
+        close_link: null,
         ...row,
       })),
     };

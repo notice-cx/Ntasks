@@ -34,6 +34,7 @@ import {
   textArg,
   type Args,
 } from '../args.ts';
+import { Refused } from '../refused.ts';
 import { projectFor } from './project.ts';
 
 export interface ToolContext {
@@ -61,6 +62,17 @@ export const PROJECT = Object.freeze({
     "The projectId, key or prefix from list_projects. A call that names a task may leave it out: the task id's prefix names its project.",
 });
 export const TASK = Object.freeze({ type: 'string', description: 'The task id, such as abc-1x2.' });
+/** The most tasks one get_task, comment_on_task or close_task call names in `tasks`. */
+export const MANY = 50;
+/** Several task ids in place of `task`, for a call that acts on each. */
+export const TASKS = (verb: string) =>
+  Object.freeze({
+    type: 'array',
+    minItems: 1,
+    maxItems: MANY,
+    items: { type: 'string' },
+    description: `Up to ${MANY} task ids to ${verb}, in place of task. The answer has a result per task: one refused does not stop the rest.`,
+  });
 /** The most tasks one list_tasks call returns when it names no limit. */
 const PAGE = 50;
 
@@ -260,36 +272,31 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
   },
   {
     name: 'get_task',
-    description: 'Read one task with its comments.',
-    inputSchema: schema({ project: PROJECT, task: TASK }, ['task']),
+    description: `Read one task with its comments, or up to ${MANY} with tasks.`,
+    inputSchema: schema({ project: PROJECT, task: TASK, tasks: TASKS('read') }),
     annotations: READ,
     scope: 'tasks:read',
     async run(context, args) {
-      const { engine, now } = context;
-      const taskId = taskArg(args);
-      const project = await projectOf(context, await projectFor(context, args, taskId));
-      const [task, comments, links] = await Promise.all([
-        taskOf(context, project, taskId),
-        engine.listComments(project.id, taskId),
-        linksSeenBy(context),
-      ]);
-      // An epic's open children, with who works on each, so its holder sees the work under it in one read.
-      const children =
-        task.type === 'epic'
-          ? await engine.listBoard(project.id, {
-              statuses: OPEN_STATUSES,
-              parentId: task.id,
-              withoutExternalLinks: true,
-            })
-          : null;
-      return {
-        project: project.key,
-        readAt: now(),
-        task: mcpTask(links.task(task)),
-        ...(children === null ? {} : { openChildren: children.map(childView) }),
-        comments: comments.map(commentView),
-        proposal: proposalOf(task),
-      };
+      if (args.task !== undefined && args.tasks !== undefined)
+        refuse('invalid arguments: task and tasks (name one task with task, or several with tasks)');
+      if (args.tasks === undefined) return { ...(await oneTask(context, args, taskArg(args))), readAt: context.now() };
+      const value = args.tasks;
+      if (!Array.isArray(value) || value.length < 1 || value.length > MANY)
+        refuse(`invalid arguments: tasks (1–${MANY} task ids)`);
+      const ids = [
+        ...new Set(value.map((id: unknown, index) => taskArg({ [`tasks[${index}]`]: id }, `tasks[${index}]`))),
+      ];
+      const tasks = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            return await oneTask(context, args, id);
+          } catch (error) {
+            if (!(error instanceof Refused)) throw error;
+            return { id, error: error.message };
+          }
+        }),
+      );
+      return { readAt: context.now(), tasks };
     },
   },
   {
@@ -325,6 +332,33 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     },
   },
 ]);
+
+/** One task as get_task reads it: in full, with its comments, the proposal an
+ * answer is checked against and, for an epic, its open children with who works on each. */
+async function oneTask(context: ToolContext, args: Args, taskId: string) {
+  const { engine } = context;
+  const project = await projectOf(context, await projectFor(context, args, taskId));
+  const [task, comments, links] = await Promise.all([
+    taskOf(context, project, taskId),
+    engine.listComments(project.id, taskId),
+    linksSeenBy(context),
+  ]);
+  const children =
+    task.type === 'epic'
+      ? await engine.listBoard(project.id, {
+          statuses: OPEN_STATUSES,
+          parentId: task.id,
+          withoutExternalLinks: true,
+        })
+      : null;
+  return {
+    project: project.key,
+    task: mcpTask(links.task(task)),
+    ...(children === null ? {} : { openChildren: children.map(childView) }),
+    comments: comments.map(commentView),
+    proposal: proposalOf(task),
+  };
+}
 
 function optional<K extends string>(key: K, value: string | undefined): Partial<Record<K, string>> {
   return value === undefined ? {} : ({ [key]: value } as Record<K, string>);

@@ -8,6 +8,7 @@
  * one for a person.
  */
 import {
+  TASK_LIMITS,
   TaskRefused,
   type Actor,
   type CreateTaskInput,
@@ -308,6 +309,10 @@ export interface NewTask {
   readonly changeClass?: string;
   /** Where the task came from, such as a copied handoff. */
   readonly metadata?: JsonObject;
+  /** File it claimed by the sender. */
+  readonly claim?: true;
+  /** File it closed as done by the sender, with this evidence and what proves it. */
+  readonly done?: Omit<TaskClosing, 'resolution' | 'duplicateOf'>;
 }
 
 export interface Written {
@@ -325,6 +330,12 @@ export async function createTask(
 ): Promise<Written> {
   const project = await projectOf(context, projectId, 'write');
   const links = task.links ?? [];
+  if (task.done !== undefined && task.labels?.includes('human')) {
+    throw refused(
+      "refused: a task labelled human is a person's to close, so it is not filed done. File it open, or leave out the human label.",
+      "A task labelled human is a person's to close.",
+    );
+  }
   if (task.parent !== undefined) await tasksIn(context, project, [task.parent]);
   await linkTargets(
     context,
@@ -356,6 +367,8 @@ export async function createTask(
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
     ...(task.approval === undefined ? {} : { requestApproval: { reason: task.approval } }),
+    ...(task.claim === true ? { claim: true as const } : {}),
+    ...(task.done === undefined ? {} : { close: closeOf(task.done) }),
   };
   const retry = await retryOf(context.principal, retryRequest);
   try {
@@ -628,10 +641,28 @@ export interface TaskClosing {
    * left out comes from the task's work details (shippedWith). */
   readonly commit?: string;
   readonly pullRequest?: string;
+  /** With done: a URL that shows work no commit or pull request shows. */
+  readonly link?: string;
+}
+
+/** A close's evidence and proof, as the engine takes them. */
+function closeOf(closing: Omit<TaskClosing, 'resolution' | 'duplicateOf'>) {
+  return {
+    reason: closing.reason,
+    ...(closing.commit === undefined ? {} : { commit: closing.commit }),
+    ...(closing.pullRequest === undefined ? {} : { pullRequest: closing.pullRequest }),
+    ...(closing.link === undefined ? {} : { link: closing.link }),
+  };
+}
+
+/** The proof a task closed as done without any is told it takes. */
+export function proofWarning(taskId: string, takes: string): string {
+  return `${taskId} is done without proof; ${takes} takes commit, pr or link, a URL that shows the work.`;
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
- * linking a duplicate to the task it duplicates. */
+ * linking a duplicate to the task it duplicates. A task nobody holds is
+ * recorded as held by its closer, so it shows who did the work. */
 export async function closeTask(
   context: WriteContext,
   projectId: string,
@@ -685,11 +716,13 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
+      ...(current.assignee === null ? { set: { assignee: actor.name } } : {}),
       close: {
         reason: closing.reason,
         resolution,
         ...(duplicateOf === undefined ? {} : { duplicateOf }),
         ...(resolution === 'done' ? shippedWith(closing, current.work) : {}),
+        ...(resolution === 'done' && closing.link !== undefined ? { link: closing.link } : {}),
       },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
@@ -699,7 +732,40 @@ export async function closeTask(
   return { project, result };
 }
 
-// ─── Comments, dependencies and approvals ─────────────────────────────────────
+/**
+ * The tasks that waited on these, just closed, through a blocks link and are
+ * now ready, each once, most urgent first. A blocks link stays in its
+ * project, so each closed task's waiting tasks are read in its own project.
+ */
+export async function unblockedBy(
+  { engine }: Reader,
+  closed: readonly Task[],
+): Promise<{ readonly id: string; readonly title: string }[]> {
+  const done = new Set(closed.map((task) => task.id));
+  const waiting = new Map<string, Set<string>>();
+  for (const task of closed) {
+    for (const link of task.dependents) {
+      if (link.type !== 'blocks' || link.status === 'closed' || done.has(link.taskId)) continue;
+      const ids = waiting.get(task.projectId) ?? new Set<string>();
+      ids.add(link.taskId);
+      waiting.set(task.projectId, ids);
+    }
+  }
+  // One read holds at most a page of ids.
+  const reads = [...waiting].flatMap(([projectId, ids]) => {
+    const all = [...ids];
+    return Array.from({ length: Math.ceil(all.length / TASK_LIMITS.page) }, (_, page) =>
+      engine.getTasks(projectId, all.slice(page * TASK_LIMITS.page, (page + 1) * TASK_LIMITS.page)),
+    );
+  });
+  const read = await Promise.all(reads);
+  return read
+    .flat()
+    .filter((task) => task.ready)
+    .map((task) => ({ id: task.id, title: task.title }));
+}
+
+// ─── Comments, links and approvals ────────────────────────────────────────────
 
 /** The refusal a comment that records work details meets when the sender does not hold the open task. */
 function notHolding(task: Task, actor: Actor): Refused | null {
@@ -763,66 +829,101 @@ export async function commentOnTask(
   }
 }
 
-/** Records that a task depends on another. Asking again for a link that
- * stands changes nothing; a link keeps the type it was added with. */
-export async function addDependency(
+/** The link a pair of tasks has, read from one of them: its own onto the
+ * other, or the other's onto it. A pair holds one link. */
+function pairLinks(task: Task, other: string) {
+  return {
+    own: task.dependencies.find((link) => link.taskId === other),
+    theirs: task.dependents.find((link) => link.taskId === other),
+  };
+}
+
+/**
+ * Sets the one link between two tasks: `taskId` links to `to` as `type`, read
+ * as get_task lists it among the task's dependencies (blocks: the task waits
+ * on `to`). A link the pair has already, either way round, is replaced in the
+ * same write; with `type` null the pair's link is removed. Asking again
+ * changes nothing. A link to or from a person's decision changes only when
+ * the person decides; a new one may be added.
+ */
+export async function linkTasks(
   context: WriteContext,
   projectId: string,
   taskId: string,
-  dependsOn: string,
-  type: DependencyType,
+  to: string,
+  type: DependencyType | null,
   model?: string,
-): Promise<void> {
+): Promise<{
+  readonly replaced: { readonly task: string; readonly to: string; readonly type: DependencyType } | null;
+}> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
-  await linkTargets(context, project, [{ taskId: dependsOn, type }]);
+  const owner = type === null || ACROSS_PROJECTS.includes(type) ? ((await ownerOf(context, to)) ?? project) : project;
+  if (type !== null) await linkTargets(context, project, [{ taskId: to, type }]);
+  const other = await context.engine.getTask(owner.id, to);
+  if (other === null) await tasksIn(context, owner, [to]);
+  const actor = actorOf(context.principal, model);
+  const standing = pairLinks(task, to);
+  const replaced =
+    standing.own !== undefined
+      ? { task: taskId, to, type: standing.own.type }
+      : standing.theirs !== undefined
+        ? { task: to, to: taskId, type: standing.theirs.type }
+        : null;
+  const changes = type === null ? replaced !== null : standing.theirs !== undefined || standing.own?.type !== type;
+  if (!changes) return { replaced: null };
+  if (replaced !== null && (isDecision(task) || (other !== null && isDecision(other))))
+    throw decisionRefusal(isDecision(task) ? task.id : to);
   const loop = refused(
-    `refused: ${dependsOn} already waits on ${taskId}, so ${taskId} cannot depend on it: the two would wait on each other in a loop.`,
-    `${dependsOn} already waits on ${taskId}, so ${taskId} cannot depend on it.`,
+    `refused: ${to} already waits on ${taskId}, so ${taskId} cannot wait on it: the two would wait on each other in a loop.`,
+    `${to} already waits on ${taskId}, so ${taskId} cannot wait on it.`,
   );
+  // The other task's own link onto this one is removed in the same batch, so
+  // it must be in this project; a link across projects is changed from its own side.
+  if (standing.theirs !== undefined && owner.id !== project.id) {
+    throw refused(
+      `refused: ${to} links to ${taskId} as ${standing.theirs.type}, and ${to} is in another project; ` +
+        `change that link from its side: link_tasks with task ${to} and to ${taskId}.`,
+      `${to} links to ${taskId} from another project; change it there.`,
+    );
+  }
+  const writeOn = standing.theirs === undefined ? task : (other ?? task);
+  // The task holding the old link is written first, so its removal lands
+  // before the new link's loop check reads the links.
   await changing(
     context,
     project,
-    task,
-    actorOf(context.principal, model),
+    writeOn,
+    actor,
     undefined,
     async (current) => {
-      const standing = current.dependencies.find((link) => link.taskId === dependsOn);
-      if (standing?.type === type) return null;
-      if (standing !== undefined) {
-        throw refused(
-          `refused: ${taskId} already depends on ${dependsOn} as ${standing.type}, and a dependency keeps the type it was ` +
-            `added with. To record it as ${type}, remove_dependency first, then add it again.`,
-          `${taskId} already depends on ${dependsOn} as ${standing.type}.`,
-        );
+      const fresh = pairLinks(current, current.id === taskId ? to : taskId);
+      if (current.id === taskId) {
+        return type === null
+          ? fresh.own === undefined
+            ? null
+            : { expectedVersion: current.version, removeLinks: [to] }
+          : fresh.own?.type === type
+            ? null
+            : { expectedVersion: current.version, addLinks: [{ taskId: to, type }] };
       }
-      return { expectedVersion: current.version, addLinks: [{ taskId: dependsOn, type }] };
+      // Written on the other task: drop its link onto this one, and set or drop this one's.
+      const mine = await taskOf(context, project, taskId);
+      const own = pairLinks(mine, to).own;
+      const beside =
+        type !== null ? { addLinks: [{ taskId: to, type }] } : own === undefined ? null : { removeLinks: [to] };
+      if (fresh.own === undefined && beside === null) return null;
+      // Its link went meanwhile: a retry reads the pair again and writes this task alone.
+      if (fresh.own === undefined) throw unavailable(false);
+      return {
+        expectedVersion: current.version,
+        ...(fresh.own === undefined ? {} : { removeLinks: [taskId] }),
+        ...(beside === null ? {} : { others: [{ taskId, expectedVersion: mine.version, ...beside }] }),
+      };
     },
     loop,
   );
-}
-
-/** Removes a dependency. One on a person's decision stays until the person decides it. */
-export async function removeDependency(
-  context: WriteContext,
-  projectId: string,
-  taskId: string,
-  dependsOn: string,
-  model?: string,
-): Promise<void> {
-  const project = await projectOf(context, projectId, 'write');
-  const task = await taskOf(context, project, taskId);
-  if (isDecision(task)) throw decisionRefusal(task.id);
-  const owner = (await ownerOf(context, dependsOn)) ?? project;
-  const other = await context.engine.getTask(owner.id, dependsOn);
-  if (other !== null && isDecision(other)) throw decisionRefusal(other.id);
-  if (other === null && !task.dependencies.some((link) => link.taskId === dependsOn))
-    await tasksIn(context, project, [dependsOn]);
-  await changing(context, project, task, actorOf(context.principal, model), undefined, async (current) =>
-    current.dependencies.some((link) => link.taskId === dependsOn)
-      ? { expectedVersion: current.version, removeLinks: [dependsOn] }
-      : null,
-  );
+  return { replaced };
 }
 
 /** Opens an approval the task waits on, or returns the open one already

@@ -5,12 +5,12 @@
  * workspace's store with the sender scoped to it; the object answers it with
  * no network trip per query, and serves repeated reads from memory (cache.ts).
  */
-import type { BackupRows, BackupTable, Project, TaskEngine } from '@ntasks/domain';
+import type { BackupRows, BackupTable, HeldTask, Project, TaskEngine } from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
 import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
 import { createEngine } from '../engine/index.ts';
-import { runTaskTool, type ToolAnswer } from '../mcp/server.ts';
+import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { storeName, type Workspace } from '../workspaces.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
@@ -118,6 +118,12 @@ export class TaskStore extends DurableObject<Env> {
     workspace: Workspace,
   ): Promise<ToolAnswer> {
     return runTaskTool({ engine: this.tasks, workspace, principal, now: () => new Date().toISOString() }, name, args);
+  }
+
+  /** The open tasks `principal` holds in the projects it reads here, which
+   * the MCP endpoint lists when an agent connects. */
+  async heldTasks(principal: Principal): Promise<readonly HeldTask[]> {
+    return heldBy({ engine: this.tasks, principal });
   }
 
   /** Answers one HTTP API request, sent by `principal`, whom the Worker signed in and scoped to this store's workspace. */

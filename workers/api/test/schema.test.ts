@@ -432,6 +432,16 @@ describe('rules the database keeps whatever code writes to it', () => {
     ).rejects.toThrow(/CHECK constraint failed/u);
   });
 
+  it('keeps a close link only on a task closed as done, as an http or https URL', async () => {
+    const link = 'https://docs.example.com/runbook';
+    await expect(newTask({ ...CLOSED, close_link: link })).resolves.toBeDefined();
+    await expect(newTask({ close_link: link })).rejects.toThrow(/CHECK constraint failed/u);
+    await expect(newTask({ ...CLOSED, resolution: 'wont-do', close_link: link })).rejects.toThrow(
+      /CHECK constraint failed/u,
+    );
+    await expect(newTask({ ...CLOSED, close_link: 'ftp://example.com/x' })).rejects.toThrow(/CHECK constraint failed/u);
+  });
+
   it('refuses a name longer than 255 characters', async () => {
     await expect(newTask({ assignee: 'n'.repeat(256) })).rejects.toThrow(/CHECK constraint failed/u);
   });
