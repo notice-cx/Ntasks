@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PAGE_COLOURS, PAGE_FONT_FILES } from '../../src/access/page-look.ts';
-import { agentAccessPage, signInPage } from '../../src/access/pages.ts';
+import { agentAccessPage, setupPage, signInPage } from '../../src/access/pages.ts';
 
 const AGENT = {
   personName: 'Example Owner',
@@ -26,6 +26,20 @@ describe("the Worker's pages", () => {
     const used = html.match(/#[0-9a-f]{6}\b/giu) ?? [];
     expect(used.length).toBeGreaterThan(0);
     expect(used.filter((hex) => !tokens.has(hex.toLowerCase()))).toEqual([]);
+  });
+
+  it("let a browser send this origin with their own forms' posts, and no referrer to other sites", async () => {
+    // Under no-referrer a browser posts these forms with Origin: null, and the
+    // setup, sign-in and approval routes refuse a post whose Origin is not
+    // this deployment's.
+    for (const response of [
+      signInPage({ signedInAs: null, oauthQuery: null, error: null }),
+      setupPage({ error: null }),
+      agentAccessPage({ ...AGENT, access: 'write', workspaces: WORKSPACES }),
+    ]) {
+      expect(response.headers.get('referrer-policy')).toBe('same-origin');
+      expect(await response.text()).toContain('<meta name="referrer" content="same-origin">');
+    }
   });
 
   it('show an error in words after the alert icon, never in a colour of its own', async () => {
