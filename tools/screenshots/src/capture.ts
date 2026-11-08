@@ -5,26 +5,28 @@
  * Chromium in light and in dark, and writes them as WebP.
  *
  * Run it from the repository root with `pnpm screenshots`, or name the shots
- * to take: `pnpm screenshots design`. It needs Chrome or Chromium on this
- * machine; set CHROME_PATH to one that is not in a usual place. It drives the
- * browser over the Chrome DevTools Protocol with Node's own WebSocket, so it
- * adds no dependency, and CI never runs it.
+ * to take: `pnpm screenshots design`. `pnpm screenshots walkthroughs` records
+ * the animated walkthroughs instead (walkthroughs.ts). It needs Chrome or
+ * Chromium on this machine; set CHROME_PATH to one that is not in a usual
+ * place. It drives the browser over the Chrome DevTools Protocol with Node's
+ * own WebSocket, so it adds no dependency, and CI never runs it.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DevTools, navigate, until } from './devtools.ts';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const WEB = path.join(ROOT, 'apps/web');
-const OUT = path.join(ROOT, 'docs/images');
-const PORT = 5197;
-const ORIGIN = `http://127.0.0.1:${PORT}`;
-const WAIT_MS = 30_000;
+import {
+  drawWorkerPage,
+  ORIGIN,
+  OUT,
+  ROOT,
+  THEMES,
+  WAIT_MS,
+  withBrowser,
+  workerPages,
+  type Tab,
+  type Theme,
+  type WorkerPages,
+} from './browser.ts';
+import { navigate, until } from './devtools.ts';
 
 interface Shot {
   /** The file name, before `-light.webp` or `-dark.webp`. */
@@ -46,20 +48,6 @@ interface Shot {
    * server as they come from the Worker's static files.
    */
   workerPage?: (pages: WorkerPages) => Response;
-}
-
-/** The Worker's own pages (workers/api/src/access/pages.ts), as far as this script calls them. */
-interface WorkerPages {
-  signInPage(input: { signedInAs: string | null; oauthQuery: string | null; error: string | null }): Response;
-  agentAccessPage(input: {
-    personName: string;
-    client: { name: string; uri: string | null };
-    returnsTo: string;
-    access: 'read' | 'write' | null;
-    projects: readonly { id: string; key: string; name: string }[];
-    oauthQuery: string;
-    error: string | null;
-  }): Response;
 }
 
 // The desktop shots are 1100 pixels wide, so the README's 800-pixel pictures keep their text readable.
@@ -106,9 +94,15 @@ const SHOTS: readonly Shot[] = [
         client: { name: 'Example Agent', uri: 'https://agent.example.com' },
         returnsTo: 'https://agent.example.com',
         access: 'write',
-        projects: [
-          { id: 'p-web', key: 'web', name: 'Example web app' },
-          { id: 'p-docs', key: 'docs', name: 'Example docs' },
+        workspaces: [
+          {
+            id: '0f6c2a52-6d1e-4c39-9a57-2f1b8e4d7a10',
+            name: 'Example',
+            projects: [
+              { id: 'p-web', key: 'web', name: 'Example web app' },
+              { id: 'p-docs', key: 'docs', name: 'Example docs' },
+            ],
+          },
         ],
         oauthQuery: 'client_id=example',
         error: null,
@@ -125,123 +119,10 @@ const SHOTS: readonly Shot[] = [
     fullPage: true,
   },
 ];
-const THEMES = ['light', 'dark'] as const;
 /** WebP quality: small files with no visible loss in flat interface colours. */
 const QUALITY = 82;
 
-/** A Chrome or Chromium on this machine. */
-function findChrome(): string {
-  const named = process.env.CHROME_PATH;
-  if (named) return named;
-  const candidates = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    ...['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].flatMap((command) =>
-      (process.env.PATH ?? '').split(path.delimiter).map((folder) => path.join(folder, command)),
-    ),
-  ];
-  const found = candidates.find((candidate) => existsSync(candidate));
-  if (!found) throw new Error('No Chrome or Chromium found. Set CHROME_PATH to one.');
-  return found;
-}
-
-/** Stops a child process and resolves once it has exited, so nothing still writes to its files. */
-function stop(child: ChildProcess): Promise<void> {
-  // A process that never started (no pid) or has ended has nothing to wait for.
-  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  child.kill();
-  return exited;
-}
-
-/** The web app with its invented tasks, served by Vite. */
-async function startApp(): Promise<ChildProcess> {
-  const require = createRequire(path.join(WEB, 'package.json'));
-  const vitePackage = require.resolve('vite/package.json');
-  const viteBin = (JSON.parse(await readFile(vitePackage, 'utf8')) as { bin: { vite: string } }).bin.vite;
-  const app = spawn(
-    process.execPath,
-    [
-      path.join(path.dirname(vitePackage), viteBin),
-      '--mode',
-      'fixture',
-      '--host',
-      '127.0.0.1',
-      '--port',
-      String(PORT),
-      '--strictPort',
-    ],
-    { cwd: WEB, stdio: ['ignore', 'ignore', 'inherit'] },
-  );
-  // Vite exiting before it serves, as it does when the port is taken, ends the wait at once.
-  const exited = new Promise<never>((_, reject) => {
-    app.once('error', reject);
-    app.once('exit', (code) => reject(new Error(`Vite exited with ${code} before it served the app.`)));
-  });
-  // A later exit is the one stop() causes.
-  exited.catch(() => undefined);
-  try {
-    // Until Vite listens, a request is refused: that is "not yet", not a failure.
-    await Promise.race([
-      until('the web app', async (signal) => (await fetch(ORIGIN, { signal })).ok, {
-        waitMs: WAIT_MS,
-        retryFailures: true,
-      }),
-      exited,
-    ]);
-  } catch (error) {
-    await stop(app);
-    throw error;
-  }
-  return app;
-}
-
-/** A headless browser, and the address of its DevTools Protocol endpoint. */
-async function startChrome(profile: string): Promise<{ chrome: ChildProcess; endpoint: string }> {
-  const chrome = spawn(
-    findChrome(),
-    [
-      '--headless=new',
-      '--remote-debugging-port=0',
-      `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--hide-scrollbars',
-      '--force-color-profile=srgb',
-      'about:blank',
-    ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
-  );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const endpoint = await new Promise<string>((resolve, reject) => {
-      let said = '';
-      timer = setTimeout(
-        () => reject(new Error(`Chrome gave no DevTools address within ${WAIT_MS} ms:\n${said}`)),
-        WAIT_MS,
-      );
-      // A CHROME_PATH that names no program, or one that cannot run, fails here with the system's own error.
-      chrome.once('error', reject);
-      chrome.stderr?.on('data', (chunk: Buffer) => {
-        said += chunk.toString();
-        const match = /DevTools listening on (ws:\/\/\S+)/.exec(said);
-        if (match?.[1]) resolve(match[1]);
-      });
-      chrome.once('exit', (code) => reject(new Error(`Chrome exited with ${code}:\n${said}`)));
-    });
-    return { chrome, endpoint };
-  } catch (error) {
-    // Chrome may still be running, as when a policy turns off remote debugging.
-    await stop(chrome);
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function capture(devtools: DevTools, session: string, shot: Shot, theme: (typeof THEMES)[number]) {
-  const send = <T>(method: string, params: object = {}, signal?: AbortSignal) =>
-    devtools.send<T>(method, params, { sessionId: session, ...(signal ? { signal } : {}) });
+async function capture({ send }: Tab, shot: Shot, theme: Theme) {
   await send('Emulation.setDeviceMetricsOverride', {
     width: shot.width,
     height: shot.height,
@@ -257,16 +138,7 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   });
   // The readiness check below must read the new document, not the one the previous shot left.
   await navigate(send, `${ORIGIN}${shot.address}`, { waitMs: WAIT_MS });
-  if (shot.workerPage) {
-    const html = await shot.workerPage(await workerPages()).text();
-    const { frameTree } = await send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
-    await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html });
-    // The new document starts loading its fonts only once it lays out its text.
-    await send('Runtime.evaluate', {
-      expression: 'document.fonts.load(\'600 20px "Inter Variable"\')',
-      awaitPromise: true,
-    });
-  }
+  if (shot.workerPage) await drawWorkerPage(send, shot.workerPage(await workerPages()));
   const drawn = `document.querySelector(${JSON.stringify(shot.ready)}) !== null && document.querySelector('.skeleton') === null && document.fonts.status === 'loaded'`;
   // A failed request, as when Chrome exits, ends the wait at once.
   await until(
@@ -304,52 +176,35 @@ async function capture(devtools: DevTools, session: string, shot: Shot, theme: (
   return file;
 }
 
-/**
- * The Worker's page module, loaded by its address so that this script's
- * typecheck does not reach into the Worker's source. The module imports no
- * Worker runtime, so Node runs it as it is.
- */
-async function workerPages(): Promise<WorkerPages> {
-  return (await import(pathToFileURL(path.join(ROOT, 'workers/api/src/access/pages.ts')).href)) as WorkerPages;
-}
-
 /** The shots named on the command line, or every shot when none is named. */
 function chosenShots(names: readonly string[]): readonly Shot[] {
   if (names.length === 0) return SHOTS;
   const unknown = names.filter((name) => !SHOTS.some((shot) => shot.name === name));
   if (unknown.length > 0) {
-    throw new Error(`No shot named ${unknown.join(', ')}. The shots are ${SHOTS.map((shot) => shot.name).join(', ')}.`);
+    throw new Error(
+      `No shot named ${unknown.join(', ')}. The shots are ${SHOTS.map((shot) => shot.name).join(', ')}, and walkthroughs records the animations.`,
+    );
   }
   return SHOTS.filter((shot) => names.includes(shot.name));
 }
 
-async function main() {
-  const shots = chosenShots(process.argv.slice(2));
+async function main(names: readonly string[]) {
+  // `walkthroughs` first records the animated walkthroughs instead, all of them or the ones named after it.
+  if (names[0] === 'walkthroughs') {
+    const { recordWalkthroughs } = await import('./walkthroughs.ts');
+    await recordWalkthroughs(names.slice(1));
+    return;
+  }
+  const shots = chosenShots(names);
   await mkdir(OUT, { recursive: true });
-  const profile = await mkdtemp(path.join(tmpdir(), 'ntasks-screenshots-'));
-  const running: ChildProcess[] = [];
-  try {
-    running.push(await startApp());
-    const { chrome, endpoint } = await startChrome(profile);
-    running.push(chrome);
-    const devtools = await DevTools.connect(endpoint, { answerMs: WAIT_MS });
-    const { targetId } = await devtools.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
-    const { sessionId } = await devtools.send<{ sessionId: string }>('Target.attachToTarget', {
-      targetId,
-      flatten: true,
-    });
-    await devtools.send('Page.enable', {}, { sessionId });
+  await withBrowser(async (tab) => {
     for (const shot of shots) {
       for (const theme of THEMES) {
-        const file = await capture(devtools, sessionId, shot, theme);
+        const file = await capture(tab, shot, theme);
         console.log(path.relative(ROOT, file));
       }
     }
-    devtools.close();
-  } finally {
-    await Promise.all(running.map(stop));
-    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  }
+  });
 }
 
-await main();
+await main(process.argv.slice(2));

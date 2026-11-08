@@ -51,7 +51,7 @@ Every feature and every change to an existing one meets all five:
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, and the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, and the verifier |
-| `tools/screenshots/` | `pnpm screenshots`: the pictures and animated walkthroughs of the web app in the README and the docs, drawn from the fixture app by a local Chrome. CI never runs it |
+| `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)) |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
