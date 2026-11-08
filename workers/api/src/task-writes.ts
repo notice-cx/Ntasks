@@ -197,6 +197,19 @@ export async function recorded(
   }
 }
 
+/** Whether a derived key's record answers the same request now, is stale
+ * (the request runs again), or does not exist. */
+export async function retryStanding(
+  context: Reader,
+  project: Project,
+  request: RetryRequest,
+): Promise<'answers' | 'stale' | 'none'> {
+  const retry = (await retryOf(context.principal, request))!;
+  if ((await recorded(context, project, retry)) !== null) return 'answers';
+  // Read as a caller's own key, the record answers whether or not it is stale.
+  return (await recorded(context, project, { ...retry, derived: false })) === null ? 'none' : 'stale';
+}
+
 /**
  * Changes a task: `plan` reads the task as it stands and returns the write,
  * or null when it changes nothing, or throws the refusal its state calls for.

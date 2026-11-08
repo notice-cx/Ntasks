@@ -21,6 +21,7 @@ import {
   TASK_RESOLUTIONS,
   WORK_LIMITS,
   type DependencyType,
+  type Project,
   type Task,
   type TaskStatus,
 } from '@ntasks/domain';
@@ -81,6 +82,7 @@ import {
   lintView,
   removeDependency,
   requestApproval,
+  retryStanding,
   sha256,
   updateTask,
   type NewLink,
@@ -88,7 +90,7 @@ import {
   type RetryRequest,
   type TaskChange,
 } from '../task-writes.ts';
-import { linksSeenBy } from '../lookup.ts';
+import { linksSeenBy, projectOf } from '../lookup.ts';
 import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
 import { shippedArgs } from '../delivery.ts';
 import { projectFor, projectForNew } from './project.ts';
@@ -135,7 +137,7 @@ export const IDEMPOTENCY = Object.freeze({
   pattern: IDEMPOTENCY_KEY.source,
   description:
     'Optional: a key you choose for this call. Retrying with the same key and arguments never repeats the change. ' +
-    'Without a key, an identical call repeats the first answer only while the task is unchanged since that answer; once the task has changed, the call runs again.',
+    'Without a key, an identical call repeats the first answer only while every task that answer wrote is unchanged since; a create also stops repeating after 24 hours.',
 });
 /** How much of the task a write's reply shows. */
 export const DETAIL = Object.freeze({
@@ -415,9 +417,10 @@ function anchorsOf(entry: unknown): unknown[] {
  * The call's arguments as its retry record keeps them: all but the key, and
  * detail, which changes only how much the reply shows. A call without a key
  * of its own is keyed by its workspace, its sender, the tool and those
- * arguments, and that derived key answers the same call again only while the
- * task is unchanged since its answer (Retry.derived), so an interrupted call
- * writes once and a repeat after a change runs again.
+ * arguments, and that derived key answers the same call again only while
+ * every task its answer wrote is unchanged since, and a create's for a day
+ * (Retry.derived), so an interrupted call writes once and a repeat after a
+ * change runs again.
  */
 export async function retryRequest(context: ToolContext, operation: string, args: Args): Promise<RetryRequest> {
   const request: Args = { ...args };
@@ -528,9 +531,33 @@ function approvalOf(taskId: string, gate: Task) {
 }
 
 /** One create_tasks entry's own idempotency key: the call's key and the entry's
- * place, so a retried call replays each entry it already made. */
-async function entryKey(key: string, index: number): Promise<string> {
-  return `batch.${(await sha256(`noticeos-task-batch-v1:${key}`)).slice(0, 40)}.${index}`;
+ * place, so a retried call replays each entry it already made, and for a
+ * derived key the generation of the call's filing (batchGeneration). */
+async function entryKey(key: string, index: number, generation = 0): Promise<string> {
+  const call = generation === 0 ? key : `${key}:${generation}`;
+  return `batch.${(await sha256(`noticeos-task-batch-v1:${call}`)).slice(0, 40)}.${index}`;
+}
+
+/**
+ * The generation of a keyless create_tasks call's entry keys: the first whose
+ * records all still answer or were never made, entries filed in order. A call
+ * whose earlier filing has a task changed since runs again as a new
+ * generation, so the whole batch is filed again, never partly replayed.
+ */
+async function batchGeneration(
+  context: ToolContext,
+  project: Project,
+  entries: number,
+  entry: (generation: number, index: number) => Promise<RetryRequest>,
+): Promise<number> {
+  for (let generation = 0; ; generation += 1) {
+    const first = await retryStanding(context, project, await entry(generation, 0));
+    if (first === 'none') return generation;
+    let stale = first === 'stale';
+    for (let index = 1; !stale && index < entries; index += 1)
+      stale = (await retryStanding(context, project, await entry(generation, index))) === 'stale';
+    if (!stale) return generation;
+  }
 }
 
 /** A write's answer about a task: with detail "full" the whole task, as
@@ -691,6 +718,21 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       });
       const retry = await retryRequest(context, 'create_tasks', args);
       const projectId = await projectForNew(context, args, entries.flatMap(anchorsOf));
+      const entry = async (generation: number, index: number): Promise<RetryRequest> => ({
+        operation: 'create_tasks',
+        key: await entryKey(retry.key, index, generation),
+        request: { project: projectId, task: entries[index] as unknown, model: model ?? null },
+        ...(retry.derived === true ? { derived: true } : {}),
+      });
+      let generation = 0;
+      if (retry.derived === true) {
+        // A project the sender cannot write to is answered below, as the first task refused.
+        const project = await projectOf(context, projectId, 'write').catch((error: unknown) => {
+          if (error instanceof Refused) return null;
+          throw error;
+        });
+        if (project !== null) generation = await batchGeneration(context, project, entries.length, entry);
+      }
       const made: { index: number; task: Task; replayed: boolean; gate: Task | undefined }[] = [];
       let filedIn: string | null = null;
       const earlier = (id: string) => (id.startsWith('#') ? made[Number(id.slice(1))]!.task.id : id);
@@ -704,12 +746,13 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
             : { links: task.links.map((link) => ({ kind: link.kind, taskId: earlier(link.taskId) })) }),
         };
         try {
-          const { project, result } = await createTask(context, projectId, resolved, model, {
-            operation: 'create_tasks',
-            key: await entryKey(retry.key, index),
-            request: { project: projectId, task: entries[index] as unknown, model: model ?? null },
-            ...(retry.derived === true ? { derived: true } : {}),
-          });
+          const { project, result } = await createTask(
+            context,
+            projectId,
+            resolved,
+            model,
+            await entry(generation, index),
+          );
           filedIn = project.id;
           made.push({ index, task: result.task, replayed: result.replayed, gate: result.created[0] });
         } catch (error) {

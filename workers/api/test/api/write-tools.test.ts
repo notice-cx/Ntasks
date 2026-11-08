@@ -273,24 +273,62 @@ describe('a write that names only what it needs', () => {
     for (const prefix of [project.prefix, other.prefix]) expect(unnamed).toContain(`prefix ${prefix}`);
   });
 
-  it('answers the same new task sent again without a key with its first result for a day', async () => {
+  it('answers the same new task sent again without a key with its first result, while it is unchanged and for a day', async () => {
     const project = await newProject(engine);
     const args = { project: project.id, title: 'Once' };
     const filed = async () => (await engine.listTasks(project.id, { limit: 10 })).tasks.length;
-    const first = await write(target, 'create_task', args);
+    const first = await write<{ id: string }>(target, 'create_task', args);
     expect(await write(target, 'create_task', args)).toEqual({ ...first, replayed: true });
     expect(await filed()).toBe(1);
     // A key of the caller's own makes the same change again on purpose, and another sender's call is its own.
     await write(target, 'create_task', { ...args, idempotency_key: key() });
     await write(api({ principal: granted({ [project.id]: 'write' }, 'agent-o'), engine }), 'create_task', args);
     expect(await filed()).toBe(3);
+    // Once the task it filed has changed, the same call files another, which then answers it.
+    await write(target, 'update_task', { task: first.id, priority: 0 });
+    const second = await write<{ id: string }>(target, 'create_task', args);
+    expect(second).toMatchObject({ replayed: false });
+    expect(second.id).not.toBe(first.id);
+    expect(await write(target, 'create_task', args)).toEqual({ ...second, replayed: true });
+    expect(await filed()).toBe(4);
     time.advance(24 * 60 + 1);
     try {
       expect(await write(target, 'create_task', args)).toMatchObject({ replayed: false });
-      expect(await filed()).toBe(4);
+      expect(await filed()).toBe(5);
     } finally {
       time.advance(-(24 * 60 + 1));
     }
+  });
+
+  it('files a keyless batch again whole once a task it filed has changed', async () => {
+    const project = await newProject(engine);
+    const args = {
+      project: project.id,
+      tasks: [
+        { title: 'Epic', type: 'epic' },
+        { title: 'Child', parent: '#0' },
+      ],
+    };
+    type Batch = { created: { id: string; replayed: boolean }[] };
+    const filing = (batch: Batch) => batch.created.map(({ id, replayed }) => [id, replayed]);
+    const first = await write<Batch>(target, 'create_tasks', args);
+    const [epic, child] = first.created.map((entry) => entry.id);
+    expect(filing(await write<Batch>(target, 'create_tasks', args))).toEqual([
+      [epic, true],
+      [child, true],
+    ]);
+    await write(target, 'update_task', { task: child, priority: 0 });
+    const again = await write<Batch>(target, 'create_tasks', args);
+    const [newEpic, newChild] = again.created.map((entry) => entry.id);
+    expect(again.created.map((entry) => entry.replayed)).toEqual([false, false]);
+    // The whole batch is filed again, its #0 naming the new epic.
+    expect([newEpic, newChild]).not.toContain(epic);
+    expect(newChild).toBe(`${newEpic}.1`);
+    expect(filing(await write<Batch>(target, 'create_tasks', args))).toEqual([
+      [newEpic, true],
+      [newChild, true],
+    ]);
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
   });
 
   it('runs the same write sent again without a key once the task has changed since its answer', async () => {

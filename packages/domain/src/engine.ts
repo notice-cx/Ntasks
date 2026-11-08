@@ -65,9 +65,9 @@ export interface Retry {
   readonly requestHash: string;
   /**
    * The key was derived from the request, not chosen by its caller. Its record
-   * answers only while the task stands at the version the write left it at,
-   * and a new task's record only for a day; after that the same request is a
-   * new write, whose record replaces the old one.
+   * answers only while every task the write left stands at the version it was
+   * left at, and a record of new tasks also only for a day; after that the
+   * same request is a new write, whose record replaces the old one.
    */
   readonly derived?: boolean;
 }

@@ -446,6 +446,30 @@ describe('retries (rule 3)', () => {
     expect(await historyOf(tasks, project.id, task.id)).toHaveLength(3);
   });
 
+  it("reads back a derived key's record of a new task only while the task is unchanged, and for a day", async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const request = { title: 'Filed once' };
+    const derived = async () => ({
+      ...(await retryFor(`auto:${crypto.randomUUID()}`, request, 'create_task')),
+      derived: true,
+    });
+
+    const today = await derived();
+    await tasks.createTask(project.id, request, AGENT, today);
+    expect(await tasks.recordedWrite(project.id, today)).toMatchObject({ replayed: true });
+    time.advance(24 * 60 + 1);
+    expect(await tasks.recordedWrite(project.id, today)).toBeNull();
+    // Read as a caller's own key, the same record still answers for seven days.
+    expect(await tasks.recordedWrite(project.id, { ...today, derived: false })).toMatchObject({ replayed: true });
+
+    const changed = await derived();
+    const { task } = await tasks.createTask(project.id, request, AGENT, changed);
+    await tasks.writeTask(project.id, task.id, { expectedVersion: 1, set: { priority: 0 } }, OWNER);
+    expect(await tasks.recordedWrite(project.id, changed)).toBeNull();
+  });
+
   it('records the key of a write that changed nothing, without a new version or history', async () => {
     const tasks = engine();
     const project = await newProject(tasks);

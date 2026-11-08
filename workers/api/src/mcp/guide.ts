@@ -36,7 +36,7 @@ export const WHATS_CHANGED: readonly string[] = Object.freeze([
 
 /** How a session starts. */
 export const TASK_START =
-  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional. Without a key, an identical call repeats the first answer only while the task is unchanged since that answer; once the task has changed, the call runs again. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
+  "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key is optional. Without a key, an identical call repeats the first answer only while every task that answer wrote is unchanged since; a create also stops repeating after 24 hours. model is optional: the name of the model you run as, which a write records beside your name; the Agents page groups work by model, and missing or unrecognized models share Other. Use get_agent_stats for activity statistics without individual task details.";
 
 /** The order of task work, in the tools' own names. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
