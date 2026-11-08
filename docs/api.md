@@ -146,7 +146,9 @@ are and the `list_tasks` call that lists them; a sender who holds none gets no
 list. The list ends within the first 4,096 characters of the instructions,
 which Claude Code shows and cuts after, so the rules after it are what a
 client cuts first; `get_task_guide` returns them whole. It is read with one
-statement per workspace, through the store's index of holders.
+statement per workspace, through the store's index of holders. The handshake
+waits at most 1.5 seconds for those reads: a store that fails or has not
+answered by then leaves its tasks out, and the rest are listed.
 
 | Tool | What it returns | Arguments |
 |---|---|---|

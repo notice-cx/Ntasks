@@ -172,6 +172,9 @@ export type RunTool = (reach: WorkspaceReach, name: string, args: Record<string,
 /** The open tasks the sender holds in one workspace's store (heldBy). */
 export type ReadHeld = (reach: WorkspaceReach) => Promise<readonly HeldTask[]>;
 
+/** How long a connecting client waits, in all, for the stores to say what its sender holds. */
+export const HELD_WAIT_MS = 1500;
+
 /** The open tasks a sender holds in the projects it reads, through one indexed read of the store. */
 export async function heldBy({ engine, principal }: Reader): Promise<readonly HeldTask[]> {
   if (!principal.scopes.includes(SCOPES.read)) return [];
@@ -197,23 +200,36 @@ export function taskServer(
   workspaces: readonly WorkspaceReach[],
   run: RunTool,
   held: ReadHeld = async () => [],
+  wait = HELD_WAIT_MS,
 ): McpServer {
   return Object.freeze({
     info: SERVER_INFO,
     instructions: taskInstructions(OFFERED),
     async connecting() {
-      try {
-        const each = await Promise.all(
-          workspaces.map(async (reach) =>
-            (await held(reach)).map((task) => ({ ...task, workspaceId: reach.workspace.id })),
-          ),
-        );
-        return taskInstructions(OFFERED, each.flat(), workspaces.length > 1);
-      } catch {
-        // A store that cannot be read leaves the list out; the session starts anyway.
-        console.error('held tasks unread');
-        return taskInstructions(OFFERED);
-      }
+      // The handshake answers by the deadline whatever the stores do: a store
+      // that fails or has not answered by then leaves its tasks out.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), wait);
+      });
+      const each = await Promise.all(
+        workspaces.map(async (reach) => {
+          const read = held(reach).then(
+            (tasks) => tasks.map((task) => ({ ...task, workspaceId: reach.workspace.id })),
+            () => {
+              console.error('held tasks unread');
+              return null;
+            },
+          );
+          return Promise.race([read, deadline]);
+        }),
+      );
+      clearTimeout(timer);
+      return taskInstructions(
+        OFFERED,
+        each.flatMap((tasks) => tasks ?? []),
+        workspaces.length > 1,
+      );
     },
     tools: MCP_TOOLS,
     async call(name: string, args: Record<string, unknown>) {

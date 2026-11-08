@@ -1,7 +1,7 @@
 // The MCP read tools, as an agent calls them: their results, the workspace
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
-import type { Project, TaskEngine } from '@ntasks/domain';
+import type { HeldTask, Project, TaskEngine } from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
@@ -661,6 +661,37 @@ describe('the instructions an agent reads when it connects', () => {
     expect(lines[1]).toContain('agent/home');
     expect(lines[1]).toContain('Run the tests');
     expect(instructions.indexOf(first)).toBeLessThan(instructions.indexOf(TASK_QUALITY[0]!));
+  });
+
+  it('answer by the deadline with the tasks of the stores that answered, leaving out one that fails or hangs', async () => {
+    const reach = (id: string) => ({
+      workspace: { id, name: id },
+      role: null,
+      scopes: READER.scopes,
+      projects: 'all' as const,
+    });
+    const plain = taskInstructions(MCP_TOOLS.map((tool) => tool.name));
+    const run = async () => ({ ok: true as const, value: {} });
+    const hangs = () => new Promise<readonly HeldTask[]>(() => {});
+    const failing = taskServer([reach('w-1')], run, () => Promise.reject(new Error('store down')), 20);
+    expect(await failing.connecting!()).toBe(plain);
+    expect(await taskServer([reach('w-1')], run, hangs, 20).connecting!()).toBe(plain);
+    const answered: HeldTask = {
+      id: 'abc-1x2',
+      projectId: 'p-1',
+      title: 'Answered in time',
+      priority: 2,
+      assigneeFor: null,
+      work: {},
+      lastActivityAt: null,
+    };
+    const mixed = taskServer(
+      [reach('w-1'), reach('w-2')],
+      run,
+      (one) => (one.workspace.id === 'w-1' ? Promise.resolve([answered]) : hangs()),
+      20,
+    );
+    expect(await mixed.connecting!()).toContain(`- ${answered.id} ${answered.title}`);
   });
 
   it('list ten of twelve, then how many more and the call that lists them, within the budget', async () => {
