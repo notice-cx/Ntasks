@@ -158,8 +158,8 @@ describe('a deployment with only AUTH_SECRET', () => {
       callback_urls: [`${ORIGIN}/api/auth/callback/github`],
       public: true,
     });
-    // GitHub's key for the account permission "Email addresses".
-    expect(manifest.default_permissions).toEqual({ email_addresses: 'read' });
+    // GitHub refuses an account permission in a manifest's default_permissions.
+    expect(manifest).not.toHaveProperty('default_permissions');
     expect(browser.cookie(SETUP_COOKIE)).toBeDefined();
 
     const github = locationOf(await returnFromGitHub(browser, state, 5005));
@@ -183,6 +183,9 @@ describe('a deployment with only AUTH_SECRET', () => {
     expect(locationOf(back).pathname).toBe('/');
     expect(calls.tokenClients).toEqual([`${app.clientId}:${app.clientSecret}`]);
     expect(await (await browser.me()).json()).toMatchObject({ kind: 'person', deploymentAdmin: true });
+    // The app reads no private email, so the person is recorded under GitHub's no-reply address.
+    const people = await env.DB.prepare('SELECT email FROM auth_user').all<{ email: string }>();
+    expect(people.results.map((row) => row.email)).toEqual(['5005+person-5005@users.noreply.github.com']);
   });
 
   it('refuses to run again once sign-in exists, and keeps the stored app', async () => {

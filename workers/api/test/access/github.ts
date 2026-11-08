@@ -18,9 +18,15 @@ export function manifestCodeFor(ownerId: number): string {
   return `manifest-${ownerId}`;
 }
 
+/** How the client id of an app a manifest converts into starts. */
+const APP_CLIENT_PREFIX = 'Iv23-';
+
 /** The credentials of the app a manifest code converts into. */
 export function convertedApp(ownerId: number): { readonly clientId: string; readonly clientSecret: string } {
-  return { clientId: `Iv23-app-of-${ownerId}`, clientSecret: `app-secret-of-${ownerId}-0123456789abcdef` };
+  return {
+    clientId: `${APP_CLIENT_PREFIX}app-of-${ownerId}`,
+    clientSecret: `app-secret-of-${ownerId}-0123456789abcdef`,
+  };
 }
 
 /** What the Worker asked the stand-in, for the test that is running. */
@@ -49,19 +55,24 @@ function tokenClient(form: URLSearchParams, authorization: string | null): strin
 /** Answers GitHub's token, user, email and manifest endpoints for every test in the file. */
 export function standInForGitHub(): GitHubCalls {
   const calls = { tokenClients: [] as string[], conversions: [] as string[] };
+  const appTokens = new Set<string>();
   beforeEach(() => {
     calls.tokenClients.length = 0;
     calls.conversions.length = 0;
+    appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
       if (url.href === 'https://github.com/login/oauth/access_token') {
         const form = new URLSearchParams(await bodyText(init?.body));
-        calls.tokenClients.push(tokenClient(form, request.headers.get('authorization')));
+        const client = tokenClient(form, request.headers.get('authorization'));
+        calls.tokenClients.push(client);
         const code = form.get('code') ?? '';
         const user = /^github-user-(\d+(?:\.[A-Za-z0-9-]+)?)$/u.exec(code)?.[1];
         if (!user) return Response.json({ error: 'bad_verification_code' });
+        // A setup's GitHub App asks for no permission, so GitHub refuses its tokens the account's emails.
+        if (client.startsWith(APP_CLIENT_PREFIX)) appTokens.add(`stand-in-token-${user}`);
         return Response.json({
           access_token: `stand-in-token-${user}`,
           token_type: 'bearer',
@@ -104,6 +115,9 @@ export function standInForGitHub(): GitHubCalls {
       }
       if (url.href === 'https://api.github.com/user/emails') {
         if (!id) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const token = /^Bearer (.+)$/iu.exec(request.headers.get('authorization') ?? '')?.[1] ?? '';
+        if (appTokens.has(token))
+          return Response.json({ message: 'Resource not accessible by integration' }, { status: 403 });
         return Response.json([{ email: `person-${id}@example.com`, primary: true, verified: true }]);
       }
       return original(input, init);
