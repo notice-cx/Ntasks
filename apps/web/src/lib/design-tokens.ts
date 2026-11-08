@@ -39,3 +39,24 @@ export const MARK_TOKENS: readonly ColourToken[] = [
   { variable: '--mark-bg', name: 'Mark ground', role: "An agent's circle" },
   { variable: '--blossom', name: 'Blossom', role: "Codex's mark" },
 ];
+
+/** One hue of the identity palette: a tinted fill and the colour of the letter drawn on it. */
+export interface IdentityHue {
+  name: string;
+  fill: `--identity-${string}`;
+  ink: `--identity-${string}-ink`;
+}
+
+/**
+ * The identity palette, which only a workspace's icon uses. Its hues stay
+ * apart from Accent, amber, red and green, so none reads as a state, and
+ * test/design.test.tsx checks each letter against its fill for 4.5:1.
+ */
+export const IDENTITY_HUES = [
+  { name: 'Olive', fill: '--identity-olive', ink: '--identity-olive-ink' },
+  { name: 'Teal', fill: '--identity-teal', ink: '--identity-teal-ink' },
+  { name: 'Cyan', fill: '--identity-cyan', ink: '--identity-cyan-ink' },
+  { name: 'Sky', fill: '--identity-sky', ink: '--identity-sky-ink' },
+  { name: 'Fuchsia', fill: '--identity-fuchsia', ink: '--identity-fuchsia-ink' },
+  { name: 'Pink', fill: '--identity-pink', ink: '--identity-pink-ink' },
+] as const satisfies readonly IdentityHue[];

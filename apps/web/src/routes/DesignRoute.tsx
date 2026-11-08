@@ -79,12 +79,11 @@ import {
   WorkspaceButton,
 } from '@/components/ui/shell';
 import { GitHubMark, NtasksLogo, PriorityMark, StatusMark, TypeMark, WorkspaceIcon } from '@/components/ui/symbols';
-import { COLOUR_TOKENS, type ColourToken } from '@/lib/design-tokens';
+import { COLOUR_TOKENS, IDENTITY_HUES, type ColourToken, type IdentityHue } from '@/lib/design-tokens';
 import {
   PRIORITY_LABELS,
   STATUS_MARK_LABELS,
   TYPE_MARK_LABELS,
-  WORKSPACE_TONES,
   workspaceMark,
   type StatusMark as StatusMarkKey,
   type TypeMark as TypeMarkKey,
@@ -222,11 +221,14 @@ const WAITING: readonly {
   { id: 'web-q8n5', title: 'Confirm the support address on the error page', priority: 2, age: '5d', answer: 'answer' },
 ];
 
-/** A workspace on each tone, so the gallery draws every one: the first id of the form `example-<n>` the tone picks. */
-const WORKSPACES = WORKSPACE_TONES.map((tone, index) => {
+/** A workspace on each identity hue, so the gallery draws every one: the first id of the form `example-<n>` the hue picks. */
+const WORKSPACES = IDENTITY_HUES.map((hue, index) => {
   let n = 0;
-  while (workspaceMark(`example-${n}`, '').tone !== tone) n += 1;
-  return { workspaceId: `example-${n}`, name: ['Example', 'Example Labs', 'Research', 'Docs'][index] ?? 'Example' };
+  while (workspaceMark(`example-${n}`, '').hue !== hue) n += 1;
+  return {
+    workspaceId: `example-${n}`,
+    name: ['Example', 'Labs', 'Research', 'Docs', 'Design', 'Marketing'][index] ?? 'Example',
+  };
 });
 
 export default function DesignRoute() {
@@ -383,7 +385,7 @@ export default function DesignRoute() {
                 </div>
               </div>
             </Panel>
-            <Panel title="Workspaces">
+            <Panel title="Workspaces" className="col-span-2 max-lg:col-span-1">
               <div className="flex flex-wrap items-end gap-x-5 gap-y-4">
                 {WORKSPACES.map((workspace) => (
                   <div key={workspace.workspaceId} className="grid justify-items-center gap-2">
@@ -548,9 +550,13 @@ function Palette({ theme }: { theme: 'light' | 'dark' }) {
     const element = panel.current;
     if (!element) return;
     const style = getComputedStyle(element);
+    const variables = [
+      ...COLOUR_TOKENS.map((token) => token.variable),
+      ...IDENTITY_HUES.flatMap((hue) => [hue.fill, hue.ink]),
+    ];
     setValues(
       Object.fromEntries(
-        COLOUR_TOKENS.map((token) => [token.variable, style.getPropertyValue(token.variable).trim().toUpperCase()]),
+        variables.map((variable) => [variable, style.getPropertyValue(variable).trim().toUpperCase()]),
       ),
     );
   }, []);
@@ -566,6 +572,36 @@ function Palette({ theme }: { theme: 'light' | 'dark' }) {
           <Swatch key={token.variable} token={token} value={values[token.variable] ?? ''} />
         ))}
       </div>
+      <h4 className="m-0 mt-5 mb-3.5 border-t border-border pt-4 text-label font-semibold">
+        Identity <span className="font-medium text-ink-3">Workspace icons only</span>
+      </h4>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-3.5 max-sm:grid-cols-2">
+        {IDENTITY_HUES.map((hue) => (
+          <IdentitySwatch key={hue.fill} hue={hue} fill={values[hue.fill] ?? ''} ink={values[hue.ink] ?? ''} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A hue of the identity palette: its letter on its fill, as a workspace's icon draws them. */
+function IdentitySwatch({ hue, fill, ink }: { hue: IdentityHue; fill: string; ink: string }) {
+  return (
+    <div
+      className="grid grid-cols-[36px_1fr] items-center gap-x-2.5 gap-y-0.5"
+      title={`${hue.fill}, ${hue.ink}`}
+      data-identity-swatch={hue.fill}
+    >
+      <span
+        className="row-span-2 grid size-9 place-items-center rounded-md text-[19px] font-semibold"
+        style={{ backgroundColor: `var(${hue.fill})`, color: `var(${hue.ink})` }}
+      >
+        {hue.name[0]}
+      </span>
+      <b className="text-meta leading-4 font-semibold">{hue.name}</b>
+      <span className="nums text-[11.5px] leading-[15px] text-ink-3">
+        {fill} {ink}
+      </span>
     </div>
   );
 }

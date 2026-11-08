@@ -76,6 +76,22 @@ The marks have four tokens of their own:
 | `--mark-bg` | `#FFFFFF` | `#1B1C22` | An agent's circle |
 | `--blossom` | `#000000` | `#FFFFFF` | Codex's mark |
 
+The identity palette gives each workspace's icon a colour of its own, and
+nothing but a workspace's icon uses it. Its six hues stay apart from Accent,
+amber, red and green, so none reads as a state, and each letter is at least
+4.5:1 on its fill in both themes, which `apps/web/test/design.test.tsx`
+checks. These tokens have no Tailwind names: `WorkspaceIcon` reads them with
+`var()`, so no other component can draw with them through a utility.
+
+| Hue | Fill, letter | Light | Dark |
+|---|---|---|---|
+| Olive | `--identity-olive`, `--identity-olive-ink` | `#E5EFCA`, `#4C5A01` | `#2F3710`, `#CCDE9A` |
+| Teal | `--identity-teal`, `--identity-teal-ink` | `#C5F5EE`, `#046059` | `#003C37`, `#8CE8DD` |
+| Cyan | `--identity-cyan`, `--identity-cyan-ink` | `#C8F2FE`, `#035C6F` | `#033946`, `#8DE3FC` |
+| Sky | `--identity-sky`, `--identity-sky-ink` | `#DAECFF`, `#085491` | `#193550`, `#B4D8FF` |
+| Fuchsia | `--identity-fuchsia`, `--identity-fuchsia-ink` | `#F9DFFF`, `#6F397B` | `#402846`, `#EFC2F9` |
+| Pink | `--identity-pink`, `--identity-pink-ink` | `#FFE0ED`, `#81315C` | `#492537`, `#FFBFDC` |
+
 An error, such as a field the server refused or a request that failed, is
 not red: its words are in Text after a `circle-alert` icon, and a refused
 field is ringed in Text.
@@ -278,19 +294,10 @@ active now. `AvatarGroup` overlaps avatars by 6 px, each ringed in Background.
 `WorkspaceIcon` draws a workspace: the first letter or digit of its name,
 uppercase and semibold, on a square with 5.5/20 corners, 20 px in the
 sidebar, 16 px in the workspace menu and 32 px on Settings. `workspaceMark`
-(`src/lib/symbols.ts`) picks its fill from a hash of the workspace's id, so
-a rename changes the letter and keeps the fill. Accent, amber, red and green
-keep their one meaning each, so the fills are four greys that stay apart in
-both themes, and about one pair of workspaces in four shares a fill:
-
-| Fill | Letter |
-|---|---|
-| Text | Background |
-| Text 2 | Background |
-| Text 3 | Background |
-| Avatar | Avatar text |
-
-The workspace's name always stands beside it, so it is hidden from screen
+(`src/lib/symbols.ts`) picks its hue from the [identity palette](#colour)
+by a hash of the workspace's id, so a rename changes the letter and keeps
+the colour, and about one pair of workspaces in six shares a colour. The
+workspace's name always stands beside it, so it is hidden from screen
 readers.
 
 ### Logo and brand marks
