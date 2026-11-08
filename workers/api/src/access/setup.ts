@@ -21,10 +21,10 @@ const APP_NAME_LENGTH = 34;
  * The manifest of the app: this origin as its homepage, its OAuth callback
  * and the address GitHub returns the code to. It is public, because only a
  * public app can be authorized by GitHub accounts other than its owner's,
- * such as invited members. It asks for one permission, reading the account's
- * email addresses, which sign-in reads with the profile; no repository or
- * organization permission. Its webhook is off; GitHub requires an address
- * for one, so it names the origin.
+ * such as invited members. It asks for no permission: sign-in reads only the
+ * account's public profile, and a manifest's default_permissions takes no
+ * account permission such as email addresses. Its webhook is off; GitHub
+ * requires an address for one, so it names the origin.
  */
 export function manifestFor(origin: string): string {
   return JSON.stringify({
@@ -36,7 +36,6 @@ export function manifestFor(origin: string): string {
     public: true,
     request_oauth_on_install: false,
     hook_attributes: { url: origin, active: false },
-    default_permissions: { email_addresses: 'read' },
   });
 }
 

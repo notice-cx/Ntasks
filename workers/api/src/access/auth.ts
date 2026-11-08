@@ -114,7 +114,14 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
     account: { ...CORE_TABLES.account, accountLinking: { enabled: false }, encryptOAuthTokens: true },
     verification: CORE_TABLES.verification,
     socialProviders: {
-      github: { clientId: config.github.clientId, clientSecret: config.github.clientSecret },
+      github: {
+        clientId: config.github.clientId,
+        clientSecret: config.github.clientSecret,
+        // The sign-in app asks for no permission, so GitHub gives no private
+        // address; the library needs one, and Ntasks keys people by GitHub id.
+        mapProfileToUser: (profile) =>
+          profile.email ? {} : { email: `${profile.id}+${profile.login}@users.noreply.github.com` },
+      },
     },
     plugins: [
       oauthProvider({
