@@ -500,12 +500,24 @@ describe('POST /api/tasks/:id/close', () => {
       status: 'closed',
       closeReason: 'Done in a1b2c3d.',
       resolution: 'done',
+      proof: 'none',
     });
     expect(await send(target, 'POST', `/api/tasks/${id}/close`, body, headers)).toEqual(first);
     expect(await send(target, 'POST', `/api/tasks/${id}/close`, body)).toEqual({
       status: 409,
       body: { error: 'task_refused', detail: `${id} is already closed.` },
     });
+  });
+
+  it('records a link that shows the work as its proof', async () => {
+    const { id } = await task();
+    const link = 'https://docs.example.com/runbook';
+    const closed = await send(target, 'POST', `/api/tasks/${id}/close`, {
+      projectId: project.id,
+      reason: 'Done.',
+      link,
+    });
+    expect(closed.body.task).toMatchObject({ closeLink: link, proof: null });
   });
 
   it('closes a duplicate, and refuses a close the task state forbids', async () => {

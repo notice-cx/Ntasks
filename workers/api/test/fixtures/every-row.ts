@@ -185,7 +185,7 @@ export const ROWS: BackupRows = {
       changes: JSON.stringify({ id: row.id, title: row.title }),
     })),
     {
-      seq: 7,
+      seq: TASKS.length + 1,
       task_id: 'acme-b2',
       project_id: ACME,
       version: 2,
@@ -196,7 +196,7 @@ export const ROWS: BackupRows = {
       changes: JSON.stringify({ status: 'closed' }),
     },
     {
-      seq: 8,
+      seq: TASKS.length + 2,
       task_id: 'acme-a1',
       project_id: ACME,
       version: 1,
