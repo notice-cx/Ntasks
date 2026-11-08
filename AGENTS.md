@@ -143,8 +143,11 @@ deployed Worker or a remote database.
 ## Git
 
 Changes go through a branch and a GitHub pull request; never commit to or push
-`main` directly. Never amend a commit, and never force-push a branch someone
-else has. Stage only the intended changes. Commit messages and pull request
+`main` directly. Keep the repository's main checkout on `main`, and never
+switch it to another branch: make each change in its own
+[git worktree](https://git-scm.com/docs/git-worktree), then push its branch
+and open the pull request from there. Never amend a commit, and never
+force-push a branch someone else has. Stage only the intended changes. Commit messages and pull request
 titles follow [Conventional Commits](CONTRIBUTING.md#commit-messages-and-pull-request-titles);
 maintainer work carries its task id in a `Refs:` footer.
 
