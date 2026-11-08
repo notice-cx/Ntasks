@@ -21,6 +21,19 @@ No Cloudflare account is needed. Tests and `pnpm dev` run the Worker in
 [workerd](https://github.com/cloudflare/workerd), the open-source runtime that
 runs Workers on Cloudflare, with a local task store and a local D1 database.
 
+## Repository layout
+
+| Path | Holds |
+|---|---|
+| [`apps/web/`](apps/web/) | The web app, built with React and Vite |
+| [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
+| [`wrangler.jsonc`](wrangler.jsonc), [`.dev.vars.example`](.dev.vars.example) | The Worker's Cloudflare settings and the names of the secrets it requires, at the root because the Deploy to Cloudflare button reads them there |
+| [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
+| [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, that no `wrangler.jsonc` names a secret in `vars`, and that the Deploy to Cloudflare button asks for every secret the Worker requires |
+| [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
+| [`tools/screenshots/`](tools/screenshots/) | The command that makes the pictures and animated walkthroughs of the web app in the README and the docs |
+| [`docs/`](docs/) | Concepts, architecture and the design system |
+
 ## Commands
 
 Run these from the repository root.

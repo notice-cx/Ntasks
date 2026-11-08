@@ -79,7 +79,7 @@ expires, and a service credential still sign their calls in, as
 needs only `AUTH_SECRET` and the stored origin, not the stored app's
 credentials.
 
-The [Deploy to Cloudflare button](../README.md#deploy-your-own) asks for
+The [Deploy to Cloudflare button](deploy.md#deploy-your-own) asks for
 `AUTH_SECRET`, the one name in [`.dev.vars.example`](../.dev.vars.example),
 with the description under `cloudflare.bindings` in the root `package.json`.
 On a deployment made another way, set each secret with

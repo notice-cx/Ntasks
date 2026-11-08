@@ -1,243 +1,160 @@
 # Ntasks
 
-**A task hub for people and AI agents, on Cloudflare Workers.**
+**One task list for you and your AI agents.**
 
 [![CI](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 
-Ntasks is a task hub for people and AI agents working on the same projects.
-Work is a graph of tasks: each one records what to do, the proof that it is
-done, and the tasks it waits on. From that graph, Ntasks:
-
-- lists the work that can start now, the same for every agent;
-- gives each task to one agent at a time;
-- holds a task that needs a person's decision or approval until they answer;
-- records every change and who made it.
-
-Agents connect over [MCP](https://modelcontextprotocol.io); people use the web
-app. It runs as a single Cloudflare Worker with a SQLite-backed Durable Object
-for storage, and is designed to fit the free plan.
+Ntasks is a task hub that people and AI coding agents share. Agents take the
+work that is ready, record what they are doing and prove what they finished.
+You see who works on what, answer what needs you with one click, and know
+what has shipped. It runs on your own Cloudflare account.
 
 <img src="docs/images/what-ntasks-does.svg" width="100%"
   alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
 
-Agents keep working on ready tasks while a decision waits for you. The API
-takes your answer; the web app does not send it yet (see [Status](#status)).
+## Why Ntasks
 
-Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of OpenAI.
+We asked our own coding agents what slowed them down, interviewed developers
+about working with their agents, and read about 60 public reports from 2025
+and 2026. The same problems came up again and again.
+[Why Ntasks](docs/why-ntasks.md) lists each one with its sources.
 
-## The web app
-
-Screenshots from the web app's example data. Regenerate them with
-`pnpm screenshots` ([tools/screenshots](tools/screenshots/README.md)).
-
-**Tasks board.** Waiting for you, answered on each row, then every task by status.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
-</picture>
-
-**Task page.** Markdown text, Done when, activity and the task's facts.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/task-dark.webp">
-  <img src="docs/images/task-light.webp" width="800" alt="The page of the bug web-b2r6: its description with headings, lists and a code block, a Done when checklist, activity and a comment box, beside a panel of its status, priority, assignee, type, project, epic and labels.">
-</picture>
-
-**Focus.** The decisions waiting for you, one at a time.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/focus-dark.webp">
-  <img src="docs/images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
-</picture>
-
-**Phone.**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-dark.webp">
-  <img src="docs/images/phone-light.webp" width="320" alt="The Tasks board at phone width, with each waiting row's answer on a line under its title.">
-</picture>
-
-**Sign-in and agent approval.** Pages the Worker serves itself.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/sign-in-dark.webp">
-  <img src="docs/images/sign-in-light.webp" width="380" alt="The sign-in page: the Ntasks logo, Sign in to Ntasks and a Sign in with GitHub button.">
-</picture>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/agent-access-dark.webp">
-  <img src="docs/images/agent-access-light.webp" width="380" alt="The agent approval page: the agent's name and address, the access it asks for, the account, where the answer returns to, a project checklist, Deny and Allow.">
-</picture>
-
-## Status
-
-Ntasks is in active development ahead of its first release.
-
-| Part | Today |
+| What goes wrong today | What Ntasks does |
 |---|---|
-| Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
-| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects and Members pages, where an owner creates projects and invites people. It reads and writes through the Worker's routes; `pnpm --filter @ntasks/web dev` serves it with invented tasks instead |
-| Task model | The task id format, the vocabulary and the engine contract |
-| Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
-| Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
-| Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; where a closed task's change is (built, merged or live), which a repository's signals move on; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](docs/api.md)) |
-| Sign-in | A new deployment registers its GitHub App on its setup page; people sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
-| Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
+| **Agents lose finished work between sessions.** After a new session or a context reset, they redo committed work and reopen settled decisions. | Each task keeps its live work: the branch, the pull request and the next step. An agent that connects is told what it holds and where it left off. |
+| **"Done" that isn't done.** Agents mark work complete without doing or checking it. | A closed task shows its proof and whether its change is built, merged or live. One closed without proof says "No proof". |
+| **Nobody can see what each agent is doing.** With several agents running, you lose track of who works on what and which one needs you. | Every task shows who holds it, the helper agent doing the work, and its last activity. |
+| **Review becomes the bottleneck.** Agents finish faster than you can check and ship. | Waiting for you lists your decisions, the work waiting to merge and the work waiting to deploy, in one place. |
+| **Decisions given in chat get lost.** An approval in a conversation leaves no reliable record. | You answer with one button, on the exact proposal you saw. An agent that relays your answer records your words, and you can dispute it. |
+| **Task tools are heavy.** Trackers take hours to install and repair, and their bookkeeping fills the agent's context. | Nothing to install in your repositories. Agents claim, comment on and close work in one call each, with short replies. |
 
-Every API and MCP request is signed in, and an agent or a service reaches only
-the projects granted to it. A new deployment refuses every request until its
-sign-in is set up; [SECURITY.md](SECURITY.md) has the details, including
-which credentials keep working after `AUTH_SECRET` changes.
+## See it work
 
-## Architecture
+### Answer a decision
 
-<img src="docs/images/how-ntasks-works.svg"
-  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-decide-dark.webp">
+  <img src="docs/images/walkthrough-decide-light.webp" width="800" alt="The cursor picks an option on a decision in Waiting for you and answers it; the decision leaves the list and the task it held becomes ready.">
+</picture>
 
-Every task request goes through the Worker, which signs it in before the task
-store answers it.
+Pick an option and answer. The work your decision held becomes ready, and an
+agent takes it.
 
-<img src="docs/images/task-lifecycle.svg"
-  alt="Diagram of a task's life in five steps. 1: tasks A and B are filed, and A blocks B, so only A is in the list of ready work. 2: Agent 1 claims A; only one claim succeeds, and nothing is ready. 3: Agent 1 works on A and comments on it. 4: Agent 1 closes A with a commit as proof. 5: B is ready, and the list of ready work that Agent 2 reads shows it.">
+### See who works on what
 
-B becomes ready work once A is closed, and every agent that asks for ready
-work gets the same list.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-live-work-dark.webp">
+  <img src="docs/images/walkthrough-live-work-light.webp" width="800" alt="A held task's row shows its helper agent and last activity; the cursor opens it, and its page shows the holder, helper, branch, pull request and next step.">
+</picture>
 
-## Learn how it works
+Each task shows the agent that holds it, the helper doing the work, its
+branch, its pull request, its next step and when it last moved.
 
-- [Concepts](docs/concepts.md): projects, tasks, dependencies, ready work,
-  claims, decisions and approvals.
-- [Architecture](docs/architecture.md) shows how the Worker, the database and
-  the web app fit together, the free-plan limits the design keeps to, and the
-  rules every change keeps.
-- [The API](docs/api.md) lists the MCP tools and the HTTP routes, and what
-  each read costs.
-- [The task store](docs/task-store.md) describes the database tables, the
-  rules the database enforces and the engine contract, for contributors.
-- [Sign-in](docs/sign-in.md) describes who can call Ntasks, how each caller
-  signs in, the check made on every request, and how to set sign-in up.
-- [The design system](docs/design.md) lists the web app's colours, type,
-  symbols and components, and the rules for using them.
+### Know what shipped
 
-## Deploy your own
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-shipped-dark.webp">
+  <img src="docs/images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting to merge and to deploy; closed tasks show built, merged and live, and one closed without proof shows No proof.">
+</picture>
+
+Closed work shows whether its change is built, merged or live. Work closed
+without proof says so.
+
+### Approve exactly what you saw
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-approve-dark.webp">
+  <img src="docs/images/walkthrough-approve-light.webp" width="800" alt="An approval request shows its action, environment, scope and verification; the cursor approves it and the recorded answer appears, then a relayed answer shows its Dispute button.">
+</picture>
+
+An approval covers the action, environment and scope you read, and nothing
+beyond it. An answer an agent relays from a chat shows your words, and you
+can dispute it.
+
+### Set it up in one step
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-setup-dark.webp">
+  <img src="docs/images/walkthrough-setup-light.webp" width="800" alt="A new deployment's setup page: the cursor enters the secret and presses the button that creates the GitHub app for sign-in.">
+</picture>
+
+A new deployment asks for one secret. Its first page creates the GitHub app
+people sign in with.
+
+The web app works on a phone too. [The web app](docs/web-app.md) shows each
+page.
+
+## For agents
+
+Agents connect over [MCP](https://modelcontextprotocol.io). In Claude Code:
+
+```sh
+claude mcp add --transport http ntasks https://<your address>/api/mcp
+```
+
+The agent signs in, you choose the projects it may reach, and it works in a
+few calls. These are examples with invented ids:
+
+```text
+claim_task       { "task": "web-a1b2", "branch": "fix-sign-in", "next": "Write the failing test" }
+comment_on_task  { "task": "web-a1b2", "text": "Test written; the redirect drops the return address." }
+close_task       { "task": "web-a1b2", "pr": "https://github.com/example/web/pull/42" }
+```
+
+`get_task_guide` gives the agent the rest: filing work, linking tasks and
+asking you for a decision.
+
+## Get started
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
 
-The button copies this repository into your GitHub or GitLab account and
-deploys it to your Cloudflare account: one Worker, its D1 database and the
-Durable Object that holds the tasks. It asks for one secret, `AUTH_SECRET`:
-a random value of at least 32 characters. Make one with
-`openssl rand -base64 32`, and keep a copy for the setup page below.
+1. **Deploy.** The button deploys Ntasks to your Cloudflare account and asks
+   for one secret, `AUTH_SECRET`. Make one with `openssl rand -base64 32`.
+2. **Set up sign-in.** Open `/sign-in` at your new address, enter the secret
+   and choose **Create the GitHub App**.
+3. **Start working.** Create a workspace and a project, invite people by
+   GitHub username, and connect your agents.
 
-On Cloudflare's deploy page, the build command is `pnpm run build` and the
-deploy command is `pnpm run deploy`; set them if the page shows others. The
-build command builds the web app. The deploy command applies the D1
-migrations to the database, then deploys the Worker. Cloudflare runs both
-again for each push to your copy's `main` branch.
+[Deploy and run Ntasks](docs/deploy.md) has every step, and how to run it on
+your machine.
 
-When the deploy finishes, set up sign-in with GitHub on the deployment's
-setup page:
+## Learn more
 
-1. Open `/sign-in` at the Worker's address, such as
-   `https://ntasks.<your subdomain>.workers.dev/sign-in`. The Workers & Pages
-   page of the Cloudflare dashboard shows the address. Sign-in is bound to
-   the address the setup runs at, so use the one people will use.
-2. Enter `AUTH_SECRET` and choose **Create the GitHub App**.
-3. GitHub shows the app it will create under your GitHub account. Create it.
-4. GitHub returns to Ntasks and asks you to authorize the app. You are
-   signed in as the deployment's admin.
-
-[The setup page](docs/sign-in.md#the-setup-page) describes what each step
-checks, and [Settings](docs/sign-in.md#settings) the optional secrets that
-replace it with a GitHub OAuth app you register yourself.
-[How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects)
-describes the steps an MCP client takes.
-
-## Run it locally
-
-You need Node.js at the version in [`.node-version`](.node-version) and pnpm
-at the version in `package.json`'s `packageManager` field;
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up) shows how to install them. No
-Cloudflare account is needed: local runs and tests use a local database.
-
-```sh
-pnpm install
-pnpm dev
-```
-
-`pnpm dev` builds the web app and starts the Worker at
-[http://localhost:8787](http://localhost:8787). The health check at
-`/healthz` answers `{"ok":true}`.
-
-To check a change the way CI does:
-
-```sh
-pnpm lint
-pnpm format:check
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-## First run
-
-A new deployment, or `pnpm dev`, needs `AUTH_SECRET` first
-([Sign-in](docs/sign-in.md#settings)). Then:
-
-1. **Set up sign-in.** Open `/sign-in` at the deployment's address and run
-   the [setup page](docs/sign-in.md#the-setup-page). The GitHub account
-   that creates the app is the deployment's admin.
-2. **Create a workspace.** An admin who belongs to no workspace sees one
-   step, New workspace, and owns the workspace it creates. A workspace keeps
-   its own projects, tasks and members apart from every other.
-3. **Create a project.** The Projects page opens with New project: a name and
-   a prefix, the letters and digits that start every task id in the project
-   (`web` gives `web-a1b2`). On the Members page, an owner invites people by
-   GitHub username; each joins when they first sign in.
-4. **Connect an agent.** Add the MCP endpoint, `<address>/api/mcp`, to an MCP
-   client, such as Claude Code with
-   `claude mcp add --transport http ntasks https://ntasks.example.com/api/mcp`.
-   The client signs in with OAuth, and you allow it and choose its projects
-   on the approval page
-   ([How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects)).
-
-A person in two or more workspaces switches between them from the workspace
-name at the top of the sidebar.
-
-## Repository layout
-
-| Path | Holds |
-|---|---|
-| [`apps/web/`](apps/web/) | The web app, built with React and Vite |
-| [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
-| [`wrangler.jsonc`](wrangler.jsonc), [`.dev.vars.example`](.dev.vars.example) | The Worker's Cloudflare settings and the names of the secrets it requires, at the root because the Deploy to Cloudflare button reads them there |
-| [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
-| [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, that no `wrangler.jsonc` names a secret in `vars`, and that the Deploy to Cloudflare button asks for every secret the Worker requires |
-| [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
-| [`tools/screenshots/`](tools/screenshots/) | The command that makes this README's pictures of the web app and the design gallery's |
-| [`docs/`](docs/) | Concepts, architecture and the design system |
+- [Why Ntasks](docs/why-ntasks.md): the problems, with their sources.
+- [Concepts](docs/concepts.md): projects, tasks, dependencies, ready work,
+  claims, decisions and approvals.
+- [Deploy and run Ntasks](docs/deploy.md): deploying, the first run and local
+  development.
+- [The web app](docs/web-app.md): the pages people use.
+- [Architecture](docs/architecture.md): what is built, how the parts fit, the
+  free-plan limits and the rules every change keeps.
+- [The API](docs/api.md): the MCP tools and the HTTP routes.
+- [Sign-in](docs/sign-in.md): who can call Ntasks and how each caller signs
+  in.
+- [The task store](docs/task-store.md) and [the design system](docs/design.md),
+  for contributors.
 
 ## Where Ntasks comes from
 
 Ntasks started as the task hub inside
 [NoticeOS](https://github.com/notice-cx/NoticeOS), an app for running a
-portfolio of websites and software products, and became its own project so it
-can run in the cloud while NoticeOS runs on its owner's machine. Its task
-model follows [Beads](https://github.com/gastownhall/beads), a command-line
-issue tracker built for AI coding agents;
-[Concepts](docs/concepts.md#ntasks-and-beads) lists where Ntasks differs.
+portfolio of websites and software products. Its task model follows
+[Beads](https://github.com/gastownhall/beads), a command-line issue tracker
+for AI coding agents; [Concepts](docs/concepts.md#ntasks-and-beads) lists
+where Ntasks differs.
 
 ## Contribute
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the checks to run and the
-pull request process. Report vulnerabilities privately through
-[SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the checks to run, the
+repository layout and the pull request process. Report vulnerabilities
+privately through [SECURITY.md](SECURITY.md).
 
 ## License
 
 Copyright © 2026 Reindex Ventures LLC.
 
 [GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`).
-See [third-party notices](THIRD_PARTY_NOTICES.md) for the work Ntasks builds on.
+See [third-party notices](THIRD_PARTY_NOTICES.md) for the work Ntasks builds
+on. Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of
+OpenAI.
