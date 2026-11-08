@@ -178,6 +178,15 @@ then run the setup page at the new address; deleting the app also deletes
 the admin it recorded, and the new app's owner becomes the admin.
 Alternatively, set the three GitHub secrets for the new address.
 
+Agents stop working at the move, and each connects again at the new
+address's MCP endpoint, `<new address>/api/mcp`, to get new tokens. Deleting
+the app also deletes the origin that agents' access tokens are checked
+against, so until the setup runs at the new address an agent's call answers
+`503` with `sign_in_not_configured`. Once the deployment's origin is the new
+address, by the setup or by `NTASKS_ORIGIN`, an access token issued for the
+old address's MCP endpoint is refused with `401` and `error="invalid_token"`.
+Service credentials are not bound to an origin and keep working.
+
 ### A GitHub OAuth app registered by hand
 
 Instead of the setup page, a deployment may set `NTASKS_ORIGIN`,
