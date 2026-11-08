@@ -31,6 +31,7 @@ function page(title: string, body: string, scriptNonce?: string): Response {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>${escape(title)} · Ntasks</title>
 <style>${PAGE_STYLE}</style>
 </head>
@@ -48,8 +49,9 @@ ${body}
       'cache-control': 'no-store',
       // No script, no framing: another site cannot overlay the approval
       // buttons. form-action is left out because an approval redirects to the
-      // agent's own address. Fonts come from this origin's static files.
-      'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'${scriptNonce === undefined ? '' : `; script-src 'nonce-${scriptNonce}'`}`,
+      // agent's own address. Fonts and the favicon come from this origin's
+      // static files.
+      'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'${scriptNonce === undefined ? '' : `; script-src 'nonce-${scriptNonce}'`}`,
       'x-frame-options': 'DENY',
       // same-origin, not no-referrer: under no-referrer a browser sends
       // Origin: null with these pages' own form posts, and the routes refuse
