@@ -26,9 +26,11 @@ import {
   type TaskStatus,
   type TaskType,
   type TaskWrite,
+  type WorkDetail,
   type WriteResult,
 } from '@ntasks/domain';
-import { listed } from './args.ts';
+import { listed, type WorkArgs } from './args.ts';
+import { shippedWith } from './delivery.ts';
 import type { Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
@@ -350,8 +352,9 @@ export async function createTask(
 
 // ─── Changing a task ──────────────────────────────────────────────────────────
 
-export interface TaskChange {
-  /** Take the task: the sender becomes its assignee and it moves to in progress. */
+export interface TaskChange extends WorkArgs {
+  /** Take the task: the sender becomes its assignee and it moves to in progress.
+   * Its helper and work details, if given, are the claim's. */
   readonly claim?: true;
   /** On a closed task, any status opens it again. */
   readonly status?: Exclude<TaskStatus, 'closed'>;
@@ -497,6 +500,11 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
   } else {
     put('assignee', change.assignee, task.assignee);
   }
+  put('assigneeFor', change.assigneeFor, task.assigneeFor);
+  const work = Object.fromEntries(
+    Object.entries(change.work ?? {}).filter(([detail, value]) => !same(value, task.work[detail as WorkDetail])),
+  );
+  if (Object.keys(work).length > 0) set.work = work;
 
   const metadata: Record<string, JsonObject | string | null> = {};
   if (change.card === null && task.metadata[NOTICEOS_METADATA.card] !== undefined)
@@ -600,6 +608,10 @@ export interface TaskClosing {
   readonly resolution?: TaskResolution;
   /** With duplicate: the task this one duplicates, in the same project. */
   readonly duplicateOf?: string;
+  /** What shipped, with done: either starts the task's delivery at built. One
+   * left out comes from the task's work details (shippedWith). */
+  readonly commit?: string;
+  readonly pullRequest?: string;
 }
 
 /** Closes a task, keeping its card as it shipped when it closes as done, and
@@ -657,7 +669,12 @@ export async function closeTask(
       [...current.dependencies, ...current.dependents].some((link) => link.taskId === duplicateOf);
     return {
       expectedVersion: current.version,
-      close: { reason: closing.reason, resolution, ...(duplicateOf === undefined ? {} : { duplicateOf }) },
+      close: {
+        reason: closing.reason,
+        resolution,
+        ...(duplicateOf === undefined ? {} : { duplicateOf }),
+        ...(resolution === 'done' ? shippedWith(closing, current.work) : {}),
+      },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
       ...(duplicateOf === undefined || linked ? {} : { addLinks: [{ taskId: duplicateOf, type: 'related' as const }] }),
@@ -668,17 +685,54 @@ export async function closeTask(
 
 // ─── Comments, dependencies and approvals ─────────────────────────────────────
 
+/** The refusal a comment that records work details meets when the sender does not hold the open task. */
+function notHolding(task: Task, actor: Actor): Refused | null {
+  const id = task.id;
+  if (task.status === 'closed')
+    return refused(
+      `refused: ${id} is closed, so it has no work in hand to record. Send the comment without for and the work details.`,
+      `${id} is closed.`,
+    );
+  if (task.assignee === null)
+    return refused(
+      `refused: nobody holds ${id}, so it has no work in hand to record. Claim it with claim_task, passing these details.`,
+      `Nobody holds ${id}.`,
+    );
+  if (task.assignee !== actor.name)
+    return refused(
+      `refused: ${id} is held by ${task.assignee}, and only its holder records its work. Send the comment without for and the work details.`,
+      `${id} is held by ${task.assignee}, and only its holder records its work.`,
+    );
+  return null;
+}
+
+/** Adds a comment. With `update`, the holder also records its helper and
+ * work details, in the same change. */
 export async function commentOnTask(
   context: WriteContext,
   projectId: string,
   taskId: string,
   text: string,
   retryRequest?: RetryRequest,
+  update?: WorkArgs,
   model?: string,
 ): Promise<{ readonly project: Project; readonly comment: TaskComment; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
-  await taskOf(context, project, taskId);
+  const task = await taskOf(context, project, taskId);
   const retry = await retryOf(context.principal, retryRequest);
+  if (update !== undefined) {
+    const replay = await recorded(context, project, retry);
+    if (replay?.comment !== undefined) return { project, comment: replay.comment, replayed: true };
+    const actor = actorOf(context.principal, model);
+    const result = await changing(context, project, task, actor, retry, async (current) => {
+      const refusal = notHolding(current, actor);
+      if (refusal !== null) throw refusal;
+      // Details that change nothing leave the version as a plain comment does.
+      return { expectedVersion: current.version, set: update, comment: text };
+    });
+    if (result.comment === undefined) throw unavailable(retry !== undefined);
+    return { project, comment: result.comment, replayed: result.replayed };
+  }
   try {
     const { comment, replayed } = await context.engine.addComment(
       project.id,

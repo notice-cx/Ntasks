@@ -44,6 +44,33 @@ export const RESOLUTION_LABELS: Readonly<Record<TaskResolution, string>> = Objec
   'no-longer-needed': 'No longer needed',
 });
 
+/** Each stage of a closed task's delivery as the pages word it: built, merged, live. */
+const STAGE_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  built: 'Built',
+  merged: 'Merged',
+  live: 'Live',
+});
+
+/** A stage's word; one this build does not know is drawn as itself. */
+export function stageLabel(stage: string): string {
+  return STAGE_LABELS[stage] ?? stage;
+}
+
+/** What a closed task's change can wait for. */
+export type DeliveryWait = 'merge' | 'deploy';
+
+/**
+ * What a closed task's change waits for: a merge while it is built, and a
+ * deploy while it is merged in a project whose changes go live by one; null
+ * when it waits for nothing.
+ */
+export function deliveryWait(task: Pick<LiveTask, 'status' | 'delivery'>, deploys: boolean): DeliveryWait | null {
+  if (task.status !== 'closed') return null;
+  const stage = task.delivery?.stage;
+  if (stage === 'built') return 'merge';
+  return stage === 'merged' && deploys ? 'deploy' : null;
+}
+
 /** A close where nothing shipped. */
 export type NotDone = Exclude<TaskResolution, 'done'>;
 export const NOT_DONE: readonly NotDone[] = TASK_RESOLUTIONS.filter(

@@ -65,6 +65,12 @@ export function webTask(task: Task) {
     closedModel: task.close?.model ?? null,
     /** The model the assignee named when they claimed it. */
     assigneeModel: task.assigneeModel,
+    /** The helper agent the assignee works through: claude for page-rebuild-2. */
+    for: task.assigneeFor,
+    /** What the assignee recorded about the work in hand: session, worktree, branch, pr, commit and next. */
+    work: task.work,
+    /** When the assignee last changed or commented on the task. */
+    lastActivityAt: task.lastActivityAt,
     parent: task.parentId,
     deferUntil: task.deferUntil,
     dueAt: task.dueAt,
@@ -96,6 +102,8 @@ export function webTask(task: Task) {
     changeClass: changeClassOf(task.metadata),
     resolution: task.close?.resolution ?? null,
     duplicateOf: task.close?.duplicateOf ?? null,
+    /** Where a closed task's change is: built, merged or live; null when it has no delivery. */
+    delivery: task.delivery,
   };
 }
 
@@ -109,6 +117,9 @@ export function mcpTask(task: Task) {
     priority: task.priority,
     type: task.type,
     assignee: task.assignee,
+    for: task.assigneeFor,
+    work: task.work,
+    lastActivityAt: task.lastActivityAt,
     labels: task.labels,
     parent: task.parentId,
     ready: task.ready,
@@ -136,6 +147,7 @@ export function mcpTask(task: Task) {
     closeReason: web.closeReason,
     resolution: web.resolution,
     duplicateOf: web.duplicateOf,
+    ...(task.delivery === null ? {} : { delivery: task.delivery }),
   };
 }
 
@@ -151,6 +163,8 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     priority: full.priority,
     type: full.type,
     assignee: full.assignee,
+    for: full.for,
+    lastActivityAt: full.lastActivityAt,
     labels: full.labels,
     parent: full.parent,
     ready: full.ready,
@@ -168,6 +182,7 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     closedAt: full.closedAt,
     resolution: full.resolution,
     duplicateOf: full.duplicateOf,
+    delivery: full.delivery ?? null,
   };
   return Object.fromEntries(
     Object.entries(row).filter(
@@ -186,11 +201,23 @@ export type McpTaskField = keyof ReturnType<typeof mcpTask>;
  * the fields `named` lists as get_task shows them, and its version, which
  * goes up with each change. */
 export function writtenView(task: Task, named: readonly McpTaskField[]): Record<string, unknown> {
-  const full = mcpTask(task);
+  const full: Partial<Record<McpTaskField, unknown>> = mcpTask(task);
   return {
     id: task.id,
-    ...Object.fromEntries([...new Set(named)].map((field) => [field, full[field]])),
+    ...Object.fromEntries([...new Set(named)].map((field) => [field, full[field] ?? null])),
     version: task.version,
+  };
+}
+
+/** An epic's open child as get_task lists it: who holds it, for which helper, and when they last wrote to it. */
+export function childView(task: Task) {
+  return {
+    id: task.id,
+    title: titleOf(task),
+    status: task.status,
+    assignee: task.assignee,
+    for: task.assigneeFor,
+    lastActivityAt: task.lastActivityAt,
   };
 }
 
@@ -231,6 +258,8 @@ function snapshotView(state: Record<string, Json>) {
     priority: state.priority ?? null,
     type: state.type ?? null,
     assignee: state.assignee ?? null,
+    for: state.assigneeFor ?? null,
+    work: objectOrNull(state.work) ?? {},
     labels: state.labels ?? [],
     parent: state.parentId ?? null,
     description: state.description ?? '',
@@ -256,6 +285,7 @@ function snapshotView(state: Record<string, Json>) {
     closeReason: close?.reason ?? null,
     resolution: close?.resolution ?? null,
     duplicateOf: close?.duplicateOf ?? null,
+    delivery: objectOrNull(state.delivery),
   };
 }
 

@@ -105,9 +105,26 @@ To start a task, an agent or a person **claims** it: the task becomes
 agents claim the same task at the same moment, one gets it and the other is
 told it is taken.
 
+The holder can record the **work in hand** on the task, when it claims the
+task or comments on it:
+
+- **for**: the helper agent working under the holder, when the holder hands
+  the work to one that cannot reach Ntasks itself. The holder stays the one
+  who holds the task, and the task shows both, as `claude for page-rebuild-2`;
+- a link to or id of the agent **session** doing the work, its **worktree**,
+  its **branch**, its pull request (**pr**), the **commit** last tested, and
+  the **next** step.
+
+Each new value replaces the one before it. Releasing or closing the task
+clears them, and its history keeps every value they had.
+
+A task also shows its **last activity**: when its holder last changed or
+commented on it.
+
 A claim is a reservation, not a timer. Ntasks never gives a task to someone
-else because time passed. To release a task that someone holds, first check
-that they stopped working on it, and keep the progress they recorded.
+else because time passed, however old its last activity. To release a task
+that someone holds, first check that they stopped working on it, and keep the
+progress they recorded.
 
 ## Closing a task
 
@@ -119,6 +136,19 @@ it.
 
 A closed task can be reopened. Reopening keeps its history, including the
 first close and its evidence.
+
+## Where a change is
+
+A task closed as done with a commit or a pull request has a **delivery**,
+which says where its change is: **built** when it closes, **merged** once the
+change is merged, and **live** once a deploy ships it. The repository's
+automation, or the agent that merges or deploys, sends a signal naming the
+pull requests or commits that merged or went live, and the tasks that carry
+them move to that stage. A task only moves forward. A project whose changes
+do not go live by a deploy, such as a library, stops at merged; the
+project's owner says which kind it is. The web app's Waiting for you view
+lists built work, which waits for a merge, and merged work of a project that
+deploys, which waits for a deploy. [API](api.md#delivery) gives the rules.
 
 ## Decisions and approvals
 

@@ -108,6 +108,7 @@ describe('tools/list', () => {
       'remove_dependency',
       'request_human_approval',
       'close_task',
+      'report_delivery',
       'list_fields',
       'define_field',
       'retire_field',
@@ -239,13 +240,14 @@ describe('the workspace and scope of a call', () => {
 });
 
 describe('list_projects', () => {
-  it('lists each project with its id, key, name and prefix', async () => {
-    const { projects } = await read<{ projects: Record<string, string>[] }>(target, 'list_projects');
+  it('lists each project with its id, key, name, prefix and whether it deploys', async () => {
+    const { projects } = await read<{ projects: Record<string, unknown>[] }>(target, 'list_projects');
     expect(projects).toContainEqual({
       projectId: project.id,
       key: project.key,
       name: project.name,
       prefix: project.prefix,
+      deploys: false,
     });
   });
 });
@@ -377,6 +379,43 @@ describe('get_task', () => {
       { id: expect.any(String), author: OWNER.name, text: 'Half written.', createdAt: expect.any(String) },
     ]);
     expect(JSON.parse(answer.proposal)[0]).toBe(ids.child);
+  });
+
+  it("lists an epic's open children with who holds each, for which helper, and their last activity", async () => {
+    const own = await newProject(engine);
+    const epic = (await engine.createTask(own.id, { title: 'Rebuild the pages', type: 'epic' }, OWNER)).task;
+    const child = async (title: string) => (await engine.createTask(own.id, { title, parentId: epic.id }, OWNER)).task;
+    const held = await child('Rebuild the home page');
+    const waiting = await child('Rebuild the pricing page');
+    const done = await child('Rebuild the about page');
+    time.advance(3);
+    const claimedAt = time.now();
+    await engine.writeTask(
+      own.id,
+      held.id,
+      { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress', assigneeFor: 'page-rebuild-2' } },
+      AGENT,
+    );
+    await engine.writeTask(
+      own.id,
+      done.id,
+      { expectedVersion: 1, close: { reason: 'Merged.', resolution: 'done' } },
+      OWNER,
+    );
+
+    const answer = await read<{ openChildren: unknown[] }>(target, 'get_task', { project: own.id, task: epic.id });
+    expect(answer.openChildren).toEqual([
+      {
+        id: held.id,
+        title: held.title,
+        status: 'in_progress',
+        assignee: AGENT.name,
+        for: 'page-rebuild-2',
+        lastActivityAt: claimedAt,
+      },
+      { id: waiting.id, title: waiting.title, status: 'open', assignee: null, for: null, lastActivityAt: null },
+    ]);
+    expect(await read(target, 'get_task', { project: own.id, task: held.id })).not.toHaveProperty('openChildren');
   });
 
   it('marks a ready task labelled human as waiting on a person', async () => {

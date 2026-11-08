@@ -4,7 +4,9 @@
  * finished. A row that waits on you answers in place.
  */
 import {
+  Activity,
   ArrowUpRight,
+  Bot,
   Check,
   ChevronLeft,
   Copy,
@@ -36,7 +38,7 @@ import {
   verbReason,
 } from '@/hooks/useTasks';
 import { copyText } from '@/lib/clipboard';
-import { calendarDay } from '@/lib/format';
+import { ageMs, calendarDay, formatAge } from '@/lib/format';
 import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '@/lib/symbols';
 import {
   actorLabel,
@@ -46,6 +48,7 @@ import {
   isGate,
   NOT_DONE,
   RESOLUTION_LABELS,
+  stageLabel,
   waitingOn,
   type BoardTask,
   type NotDone,
@@ -78,7 +81,9 @@ function RowPanel({ children }: { children: ReactNode }) {
   );
 }
 
-/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, when it unparks. */
+/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, when it
+ * unparks, for a task someone holds the helper they work through and when they last wrote to it, and for a
+ * closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
   const type = typeMarkFor(task.issueType, task.awaitType);
   const labels = task.labels.filter((label) => label !== 'human').slice(0, 2);
@@ -87,6 +92,10 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
   const until = mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs) : null;
   const resolution = task.status === 'closed' && task.resolution && task.resolution !== 'done' ? task.resolution : null;
+  const stage = task.status === 'closed' ? (task.delivery?.stage ?? null) : null;
+  const held = task.assignee !== null && task.status !== 'closed';
+  const helper = held ? (task.for ?? null) : null;
+  const active = held && task.lastActivityAt ? formatAge(ageMs(context.nowMs, task.lastActivityAt)) : null;
   return (
     <>
       {type !== 'task' && type !== 'other' ? (
@@ -125,6 +134,19 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
         </RowMeta>
       ) : null}
       {resolution ? <RowMeta>{RESOLUTION_LABELS[resolution]}</RowMeta> : null}
+      {stage ? <RowMeta data-delivery-stage={stage}>{stageLabel(stage)}</RowMeta> : null}
+      {helper ? (
+        <RowMeta data-row-helper="">
+          <Bot aria-hidden />
+          For <span className="text-ink-2">{helper}</span>
+        </RowMeta>
+      ) : null}
+      {active ? (
+        <RowMeta data-row-activity="">
+          <Activity aria-hidden />
+          Active {active} ago
+        </RowMeta>
+      ) : null}
     </>
   );
 }

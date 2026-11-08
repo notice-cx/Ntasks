@@ -19,6 +19,7 @@ import {
   IDEMPOTENCY_KEY,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
+  WORK_LIMITS,
   type DependencyType,
   type Task,
   type TaskStatus,
@@ -48,8 +49,10 @@ import {
   textArg,
   typeArg,
   urlsArg,
+  workArgs,
   WRITABLE_TYPES,
   type Args,
+  type WorkArgs,
 } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import {
@@ -87,6 +90,7 @@ import {
 } from '../task-writes.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
+import { shippedArgs } from '../delivery.ts';
 import { projectFor, projectForNew } from './project.ts';
 import { PROJECT, schema, TASK, type TaskTool, type ToolContext } from './read-tools.ts';
 
@@ -139,6 +143,35 @@ export const DETAIL = Object.freeze({
   enum: ['full'],
   description:
     'full returns the whole task, as get_task shows it. Left out, the reply has the task id, its version and what changed.',
+});
+/** What a holder records about the work in hand, on a claim or a comment.
+ * Each is one line, and a newer value replaces the older. */
+const WORK = Object.freeze({
+  for: {
+    type: 'string',
+    maxLength: TASK_LIMITS.helper,
+    description:
+      'The name of the helper agent working under you, such as page-rebuild-2. You stay the holder, and the task shows both, as "claude for page-rebuild-2".',
+  },
+  session: {
+    type: 'string',
+    maxLength: WORK_LIMITS.session,
+    description: 'A link to, or the id of, the agent session doing the work.',
+  },
+  worktree: { type: 'string', maxLength: WORK_LIMITS.worktree, description: 'The worktree that holds the work.' },
+  branch: { type: 'string', maxLength: WORK_LIMITS.branch, description: 'The branch that holds the work.' },
+  pr: { type: 'string', maxLength: WORK_LIMITS.pr, description: "The pull request's URL." },
+  commit: {
+    type: 'string',
+    maxLength: WORK_LIMITS.commit,
+    description: 'The commit last tested, such as the one CI ran.',
+  },
+  next: {
+    type: 'string',
+    maxLength: WORK_LIMITS.next,
+    description:
+      'The next step, in one line. Each of these replaces the value before it, and closing or releasing the task clears them.',
+  },
 });
 const TASK_IDS = (description: string) => ({
   type: 'array',
@@ -513,6 +546,14 @@ async function written(
   return detail === 'full' ? { task: mcpTask(seen), replayed } : { ...writtenView(seen, named), replayed };
 }
 
+/** The fields of the task a claim's answer shows for the helper and work details it names. */
+function workShown(work: WorkArgs | undefined): McpTaskField[] {
+  return [
+    ...(work?.assigneeFor === undefined ? [] : ['for' as const]),
+    ...(work?.work === undefined ? [] : ['work' as const]),
+  ];
+}
+
 /** Lint's answer, when it names a missing section or gives advice. */
 function lintIfAny(view: Record<string, readonly string[]> | null): { lint?: Record<string, readonly string[]> } {
   return view !== null && Object.values(view).some((entries) => entries.length > 0) ? { lint: view } : {};
@@ -714,19 +755,21 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'claim_task',
     description: 'Assign an open task to yourself and start it. Fails if someone else holds it.',
-    inputSchema: schema({ project: PROJECT, task: TASK, model: MODEL, idempotency_key: IDEMPOTENCY, detail: DETAIL }, [
-      'task',
-    ]),
+    inputSchema: schema(
+      { project: PROJECT, task: TASK, model: MODEL, ...WORK, idempotency_key: IDEMPOTENCY, detail: DETAIL },
+      ['task'],
+    ),
     annotations: WRITE,
     scope: SCOPES.write,
     async run(context, args) {
       const taskId = taskArg(args);
       const model = modelArg(args);
+      const work = workArgs(args);
       const detail = detailArg(args);
       const retry = await retryRequest(context, 'claim_task', args);
       const projectId = await projectFor(context, args, taskId);
-      const { result } = await updateTask(context, projectId, taskId, { claim: true }, model, retry);
-      return written(context, detail, result.task, ['status', 'assignee'], result.replayed);
+      const { result } = await updateTask(context, projectId, taskId, { claim: true, ...work }, model, retry);
+      return written(context, detail, result.task, ['status', 'assignee', ...workShown(work)], result.replayed);
     },
   },
   {
@@ -870,6 +913,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         task: TASK,
         text: { type: 'string', maxLength: TASK_LIMITS.comment },
         model: MODEL,
+        ...WORK,
         idempotency_key: IDEMPOTENCY,
         detail: { ...DETAIL, description: 'full returns the whole comment. Left out, the reply has its id.' },
       },
@@ -881,10 +925,11 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const taskId = taskArg(args);
       const text = textArg(args, 'text', TASK_LIMITS.comment, true)!;
       const model = modelArg(args);
+      const work = workArgs(args);
       const detail = detailArg(args);
       const retry = await retryRequest(context, 'comment_on_task', args);
       const projectId = await projectFor(context, args, taskId);
-      const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, model);
+      const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, work, model);
       return detail === 'full'
         ? { comment: commentView(comment), replayed }
         : { task: taskId, commentId: comment.id, replayed };
@@ -993,6 +1038,16 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           description:
             'With resolution duplicate: the id of the task in this project it duplicates. The two are linked as related.',
         },
+        commit: {
+          type: 'string',
+          description:
+            "With done: the commit that holds the change; left out, the commit your work details name. The task's delivery starts at built, and report_delivery moves it to merged and live.",
+        },
+        pr: {
+          type: 'string',
+          description:
+            "With done: the pull request's URL; left out, the pr your work details name. The task's delivery starts at built, as with commit.",
+        },
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
         detail: DETAIL,
@@ -1004,12 +1059,19 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     async run(context, args) {
       const taskId = taskArg(args);
       const model = modelArg(args);
-      const closing = closingArgs(args, taskId, 'duplicate_of');
+      const given = closingArgs(args, taskId, 'duplicate_of');
+      const closing = { ...given, ...shippedArgs(args, 'pr', given.resolution) };
       const detail = detailArg(args);
       const retry = await retryRequest(context, 'close_task', args);
       const projectId = await projectFor(context, args, taskId);
       const { result } = await closeTask(context, projectId, taskId, closing, model, retry);
-      return written(context, detail, result.task, ['status', 'resolution'], result.replayed);
+      // A close that records where the change is shows its delivery too.
+      const shown: McpTaskField[] = [
+        'status',
+        'resolution',
+        ...(result.task.delivery === null ? [] : ['delivery' as const]),
+      ];
+      return written(context, detail, result.task, shown, result.replayed);
     },
   },
 ] satisfies TaskTool[]);

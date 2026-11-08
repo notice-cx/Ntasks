@@ -6,6 +6,7 @@
  * runs (server.ts).
  */
 import {
+  DELIVERY_STAGES,
   isTaskStatus,
   isTaskType,
   TASK_LIMITS,
@@ -19,10 +20,11 @@ import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import type { Workspace } from '../workspaces.ts';
-import { commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
-import { fieldFiltersOf } from '../task-writes.ts';
+import { childView, commentView, historyView, mcpSummary, mcpTask, proposalOf } from '../views.ts';
+import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
 import {
   booleanArg,
+  choiceArg,
   instantArg,
   integerArg,
   projectArg,
@@ -80,6 +82,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           key: project.key,
           name: project.name,
           prefix: project.prefix,
+          deploys: project.deploys,
         })),
       };
     },
@@ -103,6 +106,12 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           'Only tasks whose id, title, description, acceptance or labels hold every word of this, ignoring case.',
       },
       status: { type: 'array', items: { type: 'string', enum: TASK_STATUSES }, description: 'Only these statuses.' },
+      stage: {
+        type: 'string',
+        enum: DELIVERY_STAGES,
+        description:
+          "Only closed tasks whose change is at this stage: built (not merged yet), merged or live. Reads every one, whenever it closed, unless closed_days is given. The answer's stages counts the tasks at each stage.",
+      },
       ready: { type: 'boolean', description: 'Only tasks with nothing blocking them.' },
       assignee: {
         type: 'string',
@@ -146,21 +155,39 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     scope: 'tasks:read',
     async run(context, args) {
       const { engine, principal, now } = context;
-      const closedDays = integerArg(args, 'closed_days', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
+      const stage = choiceArg(args, 'stage', DELIVERY_STAGES);
+      // A stage reads every task at it, unless a close window is asked for.
+      const closedDays =
+        stage !== undefined && args.closed_days === undefined
+          ? null
+          : integerArg(args, 'closed_days', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
       const limit = integerArg(args, 'limit', 1, TASK_LIMITS.page, PAGE);
       const offset = integerArg(args, 'offset', 0, Number.MAX_SAFE_INTEGER, 0);
       const assignee = textArg(args, 'assignee', TASK_LIMITS.actor, false);
       if (assignee !== undefined && (/[\r\n\t]/u.test(assignee) || assignee.trim() !== assignee))
         refuse('invalid arguments: assignee (a name on one line, or "me")');
-      const statuses = args.status === undefined ? TASK_STATUSES : args.status;
+      const asked = args.status === undefined ? TASK_STATUSES : args.status;
       if (
-        !Array.isArray(statuses) ||
-        statuses.length < 1 ||
-        new Set(statuses).size !== statuses.length ||
-        statuses.some((status) => !isTaskStatus(status))
+        !Array.isArray(asked) ||
+        asked.length < 1 ||
+        new Set(asked).size !== asked.length ||
+        asked.some((status) => !isTaskStatus(status))
       ) {
         refuse('invalid arguments: status');
       }
+      if (stage !== undefined && !asked.includes('closed'))
+        refuse("invalid arguments: status (a stage is a closed task's: include closed, or leave status out)");
+      const statuses = stage === undefined ? asked : ['closed'];
+      // Closed tasks are counted by stage when the call asks for them by status or by stage.
+      const counted = stage !== undefined || (args.status !== undefined && asked.includes('closed'));
+      const stageCounts = (tasks: readonly Task[]) =>
+        counted
+          ? {
+              stages: Object.fromEntries(
+                DELIVERY_STAGES.map((name) => [name, tasks.filter((task) => task.delivery?.stage === name).length]),
+              ),
+            }
+          : {};
       const ready = booleanArg(args, 'ready');
       const query = textArg(args, 'query', 512, false, true);
       const filters = {
@@ -174,6 +201,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         ...optional('createdBefore', instantArg(args, 'created_before')),
         ...optional('updatedAfter', instantArg(args, 'updated_after')),
         ...optional('updatedBefore', instantArg(args, 'updated_before')),
+        ...(stage === undefined ? {} : { stages: [stage] }),
         // A page reads its own tasks' links after the board, not every matching task's.
         withoutExternalLinks: true as const,
       };
@@ -199,6 +227,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           readAt: found.readAt,
           closedSince: found.closedSince,
           total: found.tasks.length,
+          ...stageCounts(found.tasks),
           tasks: page.map(summary),
           nextOffset: nextOf(page.length, found.tasks.length),
         };
@@ -223,6 +252,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         readAt: found.readAt,
         closedSince: found.closedSince,
         total: found.tasks.length,
+        ...stageCounts(found.tasks),
         tasks: page.map((task) => ({ id: task.id, ...where.get(task.projectId), ...summary(task) })),
         nextOffset: nextOf(page.length, found.tasks.length),
       };
@@ -243,10 +273,20 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         engine.listComments(project.id, taskId),
         linksSeenBy(context),
       ]);
+      // An epic's open children, with who works on each, so its holder sees the work under it in one read.
+      const children =
+        task.type === 'epic'
+          ? await engine.listBoard(project.id, {
+              statuses: OPEN_STATUSES,
+              parentId: task.id,
+              withoutExternalLinks: true,
+            })
+          : null;
       return {
         project: project.key,
         readAt: now(),
         task: mcpTask(links.task(task)),
+        ...(children === null ? {} : { openChildren: children.map(childView) }),
         comments: comments.map(commentView),
         proposal: proposalOf(task),
       };

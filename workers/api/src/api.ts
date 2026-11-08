@@ -8,6 +8,7 @@
 import type { TaskEngine } from '@ntasks/domain';
 import { SCOPES, type Principal } from './auth.ts';
 import { backupRoute } from './http/backup.ts';
+import { deliveryRoute, projectSettingsRoute } from './http/delivery.ts';
 import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
@@ -79,12 +80,18 @@ type Routes = Readonly<{ GET?: Route; POST?: Route; PATCH?: Route; scope?: strin
 /** The routes by path, other than a task's own. */
 const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks': { GET: boardRoute, POST: createRoute },
-  '/api/tasks/projects': { GET: projects, POST: createProjectRoute, scope: { POST: SCOPES.manage } },
+  '/api/tasks/projects': {
+    GET: projects,
+    POST: createProjectRoute,
+    PATCH: projectSettingsRoute,
+    scope: { POST: SCOPES.manage, PATCH: SCOPES.manage },
+  },
   '/api/tasks/capabilities': { GET: capabilities },
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
+  '/api/delivery': { POST: deliveryRoute },
   '/api/backup': { GET: backupRoute, scope: SCOPES.backup },
   '/api/restore': { POST: loadBeginRoute, scope: SCOPES.restore },
   '/api/restore/rows': { POST: loadRowsRoute, scope: SCOPES.restore },

@@ -2,9 +2,12 @@ export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export {
   CHOICE_FIELD_TYPES,
+  COMMIT_SHA,
+  DELIVERY_STAGES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   FIELD_TYPES,
+  isDeliveryStage,
   isDependencyType,
   isExternalLinkKind,
   isFieldType,
@@ -17,9 +20,12 @@ export {
   TASK_RESOLUTIONS,
   TASK_STATUSES,
   TASK_TYPES,
+  WORK_DETAILS,
+  WORK_LIMITS,
 } from './task.ts';
 export type {
   CustomField,
+  DeliveryStage,
   DependencyType,
   EpicProgress,
   ExternalLink,
@@ -32,12 +38,15 @@ export type {
   Task,
   TaskClose,
   TaskComment,
+  TaskDelivery,
   TaskEvent,
   TaskEventKind,
   TaskLink,
   TaskResolution,
   TaskStatus,
   TaskType,
+  TaskWork,
+  WorkDetail,
 } from './task.ts';
 export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRefused } from './engine.ts';
 export type {
@@ -48,6 +57,8 @@ export type {
   CreateProjectInput,
   CreateTaskInput,
   DefineFieldInput,
+  DeliveryMove,
+  DeliverySignal,
   FieldResult,
   LabelPage,
   LabelQuery,
