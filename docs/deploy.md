@@ -97,11 +97,11 @@ A new deployment, or `pnpm dev`, needs `AUTH_SECRET` first
    a prefix, the letters and digits that start every task id in the project
    (`web` gives `web-a1b2`). On the Members page, an owner invites people by
    GitHub username; each joins when they first sign in.
-4. **Connect an agent.** Add the MCP endpoint, `<address>/api/mcp`, to an MCP
-   client, such as Claude Code with
-   `claude mcp add --transport http ntasks https://ntasks.example.com/api/mcp`.
-   The client signs in with OAuth, and you allow it and choose its projects
-   on the approval page
+4. **Connect an agent.** Run
+   `curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash`
+   on the agent's machine, or add the MCP endpoint, `<address>/api/mcp`, to
+   an MCP client by hand ([Connect an agent](agents.md)). The client signs in
+   with OAuth, and you allow it and choose its projects on the approval page
    ([How an AI agent connects](sign-in.md#how-an-ai-agent-connects)).
 
 A person in two or more workspaces switches between them from the workspace
