@@ -298,6 +298,20 @@ describe('list_tasks', () => {
     expect(idsOf(await listed({ created_after: '2028-02-29' }))).toEqual([]);
   });
 
+  it('gives each ready task when it last changed, and its estimate when it has one', async () => {
+    const sized = await newProject(engine);
+    const estimated = (await engine.createTask(sized.id, { title: 'Sized work', estimateMinutes: 90 }, AGENT)).task;
+    const unsized = (await engine.createTask(sized.id, { title: 'Unsized work' }, AGENT)).task;
+    const list = await read<Listed>(target, 'list_tasks', { project: sized.id, ready: true });
+    expect(list.tasks.find((task) => task.id === estimated.id)).toMatchObject({
+      estimateMinutes: 90,
+      updatedAt: estimated.updatedAt,
+    });
+    const row = list.tasks.find((task) => task.id === unsized.id)!;
+    expect(row).toMatchObject({ updatedAt: unsized.updatedAt });
+    expect(row).not.toHaveProperty('estimateMinutes');
+  });
+
   it('takes as many labels and words as its arguments allow', async () => {
     const labels = Array.from({ length: 200 }, (_, index) => `label-${index}`);
     expect(idsOf(await listed({ labels }))).toEqual([]);

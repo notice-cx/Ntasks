@@ -101,6 +101,7 @@ import { linksSeenBy, projectOf } from '../lookup.ts';
 import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
 import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
+import { citationWarnings, TASK_TEXT } from './citations.ts';
 import { projectFor, projectForNew } from './project.ts';
 import { MANY, PROJECT, schema, TASK, TASKS, type TaskTool, type ToolContext } from './read-tools.ts';
 
@@ -960,6 +961,7 @@ const UPDATE_TASK: TaskTool = Object.freeze({
     const warnings: string[] = [];
     const linked: Partial<Record<(typeof CHANGE_LINKS)[number], string[]>> = {};
     for (const link of oncePerTask(named, warnings)) (linked[link.kind] ??= []).push(link.taskId);
+    warnings.push(...citationWarnings(args, TASK_TEXT));
     const addExternalLinks = externalLinksArg(args, 'add_external_links', 1);
     const removeExternalLinks = urlsArg(args, 'remove_external_links');
     addsOrRemoves(addExternalLinks, removeExternalLinks, 'add_external_links and remove_external_links');
@@ -1048,6 +1050,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     async run(context, args) {
       const warnings: string[] = [];
       const task = creation(args, (path, value) => taskArg({ [path]: value }, path), warnings);
+      warnings.push(...newTaskCitations(args));
       const model = modelArg(args);
       const detail = detailArg(args);
       const retry = await retryRequest(context, 'create_task', args);
@@ -1103,6 +1106,13 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           return null;
         }
       });
+      warnings.push(
+        ...entries.flatMap((entry: unknown, index) =>
+          entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+            ? newTaskCitations(entry as Args, `tasks[${index}].`)
+            : [],
+        ),
+      );
       const { order, loops } = filingOrder(planned);
       const retry = await retryRequest(context, 'create_tasks', args);
       const project = await projectOf(context, await projectForNew(context, args, entries.flatMap(anchorsOf)), 'write');
@@ -1379,7 +1389,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         return {
           ...(await close(ids[0]!, await retryRequest(context, 'close_task', args))),
           unblocked: await unblockedBy(context, closed),
-          ...withWarnings(proofWarnings(closed, 'close_task')),
+          ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
         };
       }
       // An epic's open tasks close before it, deepest first; a task named twice closes once.
@@ -1408,11 +1418,22 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       return {
         results,
         unblocked: await unblockedBy(context, closed),
-        ...withWarnings(proofWarnings(closed, 'close_task')),
+        ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
       };
     },
   },
 ] satisfies TaskTool[]);
+
+/** The citation warnings of a new task's text, and of the evidence it is filed done with, as `at` names it. */
+function newTaskCitations(entry: Args, at = ''): string[] {
+  const done = entry.done;
+  return [
+    ...citationWarnings(entry, TASK_TEXT, at),
+    ...(done !== null && typeof done === 'object' && !Array.isArray(done)
+      ? citationWarnings(done as Args, ['evidence'], `${at}done.`)
+      : []),
+  ];
+}
 
 /** Warnings, when there are any. */
 function withWarnings(warnings: readonly string[]): { warnings?: readonly string[] } {
