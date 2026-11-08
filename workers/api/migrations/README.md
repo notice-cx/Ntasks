@@ -1,8 +1,9 @@
 # D1 migrations
 
 This folder holds the Worker's D1 schema as numbered SQL files. D1 keeps the
-data that is not tasks: sign-in's tables, and the workspaces with their
-members, invitations, agent grants and service credentials. Tasks live in
+data that is not tasks: sign-in's tables with the GitHub App the setup page
+registered, and the workspaces with their members, invitations, agent grants
+and service credentials. Tasks live in
 each workspace's task store, a Durable Object with its own schema in
 [`src/store/migrations`](../src/store/migrations).
 

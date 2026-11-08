@@ -83,12 +83,12 @@ Ntasks is in active development ahead of its first release.
 | Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
 | API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](docs/api.md)) |
-| Sign-in | People sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
+| Sign-in | A new deployment registers its GitHub App on its setup page; people sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it |
 | Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
 
 Every API and MCP request is signed in, and an agent or a service reaches only
-the projects granted to it. A deployment without its sign-in settings refuses
-every request. [SECURITY.md](SECURITY.md) has the details.
+the projects granted to it. A deployment refuses every request until its
+sign-in is set up. [SECURITY.md](SECURITY.md) has the details.
 
 ## Architecture
 
@@ -126,36 +126,33 @@ work gets the same list.
 
 The button copies this repository into your GitHub or GitLab account and
 deploys it to your Cloudflare account: one Worker, its D1 database and the
-Durable Object that holds the tasks. It asks for five secrets, so prepare
-them first:
+Durable Object that holds the tasks. It asks for one secret, `AUTH_SECRET`:
+a random value of at least 32 characters. Make one with
+`openssl rand -base64 32`, and keep a copy for the setup page below.
 
-1. **The Worker's address**, `NTASKS_ORIGIN`. A Worker on `workers.dev` is
-   reached at `https://<Worker name>.<your subdomain>.workers.dev`, and the
-   Workers & Pages page of the Cloudflare dashboard shows your subdomain.
-   With the Worker name the setup page suggests, `ntasks`, the address is
-   `https://ntasks.<your subdomain>.workers.dev`.
-2. **A GitHub OAuth app for that address**, which you sign in through. Follow
-   [Register the GitHub OAuth app](docs/sign-in.md#register-the-github-oauth-app).
-   Its client ID and a client secret are `GITHUB_CLIENT_ID` and
-   `GITHUB_CLIENT_SECRET`.
-3. **Your numeric GitHub user id**, `OWNER_GITHUB_IDS`.
-   `https://api.github.com/users/<your login>` shows it. Separate several ids
-   with commas.
-4. **A random value of at least 32 characters**, `AUTH_SECRET`. Make one
-   with `openssl rand -base64 32`.
+On Cloudflare's deploy page, the build command is `pnpm run build` and the
+deploy command is `pnpm run deploy`; set them if the page shows others. The
+build command builds the web app. The deploy command applies the D1
+migrations to the database, then deploys the Worker. Cloudflare runs both
+again for each push to your copy's `main` branch.
 
-On the setup page, the build command is `pnpm run build` and the deploy
-command is `pnpm run deploy`; set them if the page shows others. The build
-command builds the web app. The deploy command applies the D1 migrations to
-the database, then deploys the Worker. Cloudflare runs both again for each
-push to your copy's `main` branch. If you change the Worker's name, its
-address changes with it, and the OAuth app and `NTASKS_ORIGIN` must use the
-new one.
+When the deploy finishes, set up sign-in with GitHub on the deployment's
+setup page:
 
-When the deploy finishes, open the address and sign in with GitHub.
-[Sign-in](docs/sign-in.md#settings) describes each secret, and
-[How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects) the
-steps an MCP client takes.
+1. Open `/sign-in` at the Worker's address, such as
+   `https://ntasks.<your subdomain>.workers.dev/sign-in`. The Workers & Pages
+   page of the Cloudflare dashboard shows the address. Sign-in is bound to
+   the address the setup runs at, so use the one people will use.
+2. Enter `AUTH_SECRET` and choose **Create the GitHub App**.
+3. GitHub shows the app it will create under your GitHub account. Create it.
+4. GitHub returns to Ntasks and asks you to authorize the app. You are
+   signed in as the deployment's admin.
+
+[The setup page](docs/sign-in.md#the-setup-page) describes what each step
+checks, and [Settings](docs/sign-in.md#settings) the optional secrets that
+replace it with a GitHub OAuth app you register yourself.
+[How an AI agent connects](docs/sign-in.md#how-an-ai-agent-connects)
+describes the steps an MCP client takes.
 
 ## Run it locally
 
@@ -185,12 +182,12 @@ pnpm build
 
 ## First run
 
-A new deployment, or `pnpm dev`, needs its sign-in settings first
+A new deployment, or `pnpm dev`, needs `AUTH_SECRET` first
 ([Sign-in](docs/sign-in.md#settings)). Then:
 
-1. **Sign in.** Open the deployment's address and sign in with GitHub. The
-   GitHub accounts whose ids are in `OWNER_GITHUB_IDS` are the deployment's
-   admins.
+1. **Set up sign-in.** Open `/sign-in` at the deployment's address and run
+   the [setup page](docs/sign-in.md#the-setup-page). The GitHub account
+   that creates the app is the deployment's admin.
 2. **Create a workspace.** An admin who belongs to no workspace sees one
    step, New workspace, and owns the workspace it creates. A workspace keeps
    its own projects, tasks and members apart from every other.
