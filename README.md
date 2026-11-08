@@ -35,7 +35,7 @@ and 2026. The same problems came up again and again.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-decide-dark.webp">
-  <img src="docs/images/walkthrough-decide-light.webp" width="800" alt="The cursor picks an option on a decision in Waiting for you and answers it; the decision leaves the list and the task it held becomes ready.">
+  <img src="docs/images/walkthrough-decide-light.webp" width="800" alt="The cursor picks the recommended option of a decision in Waiting for you, the decision leaves the list, and the task that waited on it moves from Blocked to Open with its Claim button.">
 </picture>
 
 Pick an option and answer. The work your decision held becomes ready, and an
@@ -45,7 +45,7 @@ agent takes it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-live-work-dark.webp">
-  <img src="docs/images/walkthrough-live-work-light.webp" width="800" alt="A held task's row shows its helper agent and last activity; the cursor opens it, and its page shows the holder, helper, branch, pull request and next step.">
+  <img src="docs/images/walkthrough-live-work-light.webp" width="800" alt="A held task's row shows the helper its agent works for and its last activity; the cursor opens it, and the page shows the assignee, last activity, next step, branch and pull request.">
 </picture>
 
 Each task shows the agent that holds it, the helper doing the work, its
@@ -55,7 +55,7 @@ branch, its pull request, its next step and when it last moved.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-shipped-dark.webp">
-  <img src="docs/images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting to merge and to deploy; closed tasks show built, merged and live, and one closed without proof shows No proof.">
+  <img src="docs/images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
 </picture>
 
 Closed work shows whether its change is built, merged or live, moved on by
@@ -66,7 +66,7 @@ the merge and deploy signals your repository sends
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-approve-dark.webp">
-  <img src="docs/images/walkthrough-approve-light.webp" width="800" alt="An approval request shows its action, environment, scope and verification; the cursor approves it and the recorded answer appears, then a relayed answer shows its Dispute button.">
+  <img src="docs/images/walkthrough-approve-light.webp" width="800" alt="An approval names its action, environment, scope and verification; the cursor approves it and the task shows Done, Approved; then an approval Claude recorded for a person shows the person's words and a Dispute button.">
 </picture>
 
 An approval covers the action, environment and scope you read, and nothing
@@ -77,7 +77,7 @@ can dispute it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/walkthrough-setup-dark.webp">
-  <img src="docs/images/walkthrough-setup-light.webp" width="800" alt="A new deployment's setup page: the cursor enters the secret and presses the button that creates the GitHub app for sign-in.">
+  <img src="docs/images/walkthrough-setup-light.webp" width="800" alt="On a new deployment's setup page, the cursor types the AUTH_SECRET, which shows masked, and presses Create the GitHub App.">
 </picture>
 
 A new deployment asks for one secret. Its first page creates the GitHub app
