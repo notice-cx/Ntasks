@@ -62,6 +62,9 @@ export const PROJECT = Object.freeze({
     "The projectId, key or prefix from list_projects. A call that names a task may leave it out: the task id's prefix names its project.",
 });
 export const TASK = Object.freeze({ type: 'string', description: 'The task id, such as abc-1x2.' });
+/** The answer for a task of a batched get_task whose read failed for a reason no refusal names. */
+const UNREAD = 'unavailable: the task store did not answer this read; read the task again.';
+
 /** The most tasks one get_task, comment_on_task or close_task call names in `tasks`. */
 export const MANY = 50;
 /** Several task ids in place of `task`, for a call that acts on each. */
@@ -286,13 +289,16 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const ids = [
         ...new Set(value.map((id: unknown, index) => taskArg({ [`tasks[${index}]`]: id }, `tasks[${index}]`))),
       ];
+      // Each task is answered on its own: a read that fails leaves the others' answers.
       const tasks = await Promise.all(
         ids.map(async (id) => {
           try {
             return await oneTask(context, args, id);
           } catch (error) {
-            if (!(error instanceof Refused)) throw error;
-            return { id, error: error.message };
+            if (error instanceof Refused) return { id, error: error.message };
+            // A fault's message can carry storage internals: only the tool's name is logged.
+            console.error('get_task read failed');
+            return { id, error: UNREAD };
           }
         }),
       );

@@ -478,6 +478,26 @@ describe('get_task', () => {
     );
   });
 
+  it('answers each task of a batch on its own when one read fails', async () => {
+    const failing = api({
+      engine,
+      now: time.now,
+      wrap: (inner) => ({
+        ...inner,
+        getTask: async (projectId, taskId) =>
+          taskId === ids.epic ? Promise.reject(new Error('storage fault')) : inner.getTask(projectId, taskId),
+      }),
+    });
+    const answer = await read<{ tasks: Record<string, unknown>[] }>(failing, 'get_task', {
+      tasks: [ids.child, ids.epic, ids.bug],
+    });
+    expect(answer.tasks).toEqual([
+      expect.objectContaining({ task: expect.objectContaining({ id: ids.child }) }),
+      { id: ids.epic, error: expect.stringMatching(/^unavailable: /u) },
+      expect.objectContaining({ task: expect.objectContaining({ id: ids.bug }) }),
+    ]);
+  });
+
   it('reads a task by its id alone, or in a project named by its key or prefix', async () => {
     for (const named of [{}, { project: project.key }, { project: project.prefix }]) {
       const answer = await read<{ project: string; task: { id: string } }>(target, 'get_task', {
