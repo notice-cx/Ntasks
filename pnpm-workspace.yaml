@@ -13,3 +13,8 @@ allowBuilds:
   esbuild: true
   sharp: false
   workerd: true
+# eslint and typescript-eslint still depend on minimatch 10, whose releases
+# before 11.0.1 have a denial-of-service flaw in glob matching. Drop this
+# override once both ask for minimatch 11.0.1 or later.
+overrides:
+  minimatch: ^11.0.1
