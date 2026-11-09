@@ -1,0 +1,12 @@
+/* The page around the app. The app's stylesheet styles only its own root element. */
+:root {
+  color-scheme: light dark;
+}
+html,
+body,
+#root {
+  min-height: 100%;
+}
+body {
+  margin: 0;
+}

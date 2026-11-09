@@ -1,0 +1,14 @@
+{
+  // The declarations `pnpm build` ships (scripts/declarations.ts). The task
+  // model's source is compiled with the package's, since the build bundles it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "..",
+    // Resolved as a package, the task model would count as a library and get no declarations.
+    "paths": { "@ntasks/domain": ["../domain/src/index.ts"] }
+  },
+  "include": ["src"]
+}

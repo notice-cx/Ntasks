@@ -6,7 +6,7 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "types": ["node", "vite/client"],
-    "paths": { "@/*": ["../src/*"] }
+    "customConditions": ["ntasks-source"]
   },
-  "include": [".", "../src", "../vite.config.ts", "../vitest.config.ts", "../server-fonts.config.ts"]
+  "include": [".", "../src", "../vite.config.ts", "../vitest.config.ts"]
 }

@@ -20,7 +20,7 @@ describe("the Worker's pages", () => {
     const html = await response.text();
     for (const file of PAGE_FONT_FILES) expect(html).toContain(`url(${file})`);
     expect(response.headers.get('content-security-policy')).toContain("font-src 'self'");
-    // The pages' colours are the design system's tokens (apps/web/test/design.test.tsx ties them to the app's).
+    // The pages' colours are the design system's tokens (packages/ui/test/design.test.tsx ties them to the app's).
     expect(html).not.toContain('--alert');
     const tokens = new Set<string>(Object.values(PAGE_COLOURS).flat());
     const used = html.match(/#[0-9a-f]{6}\b/giu) ?? [];
