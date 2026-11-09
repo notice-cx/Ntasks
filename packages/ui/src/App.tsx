@@ -1,8 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useState, type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
 import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Toaster } from 'sonner';
 import { retryRead, type TasksApi } from './api/client';
 import type { TokenSource } from './api/connection';
 import { TasksApiProvider } from './api/context';
@@ -11,6 +10,7 @@ import { PageSkeleton } from './components/surface';
 import { WorkspaceGate } from './components/WorkspaceGate';
 import { Button } from './components/ui/button';
 import { EmptyState } from './components/ui/empty-state';
+import { AppToaster } from './components/ui/toaster';
 import { AppShell, TopBar } from './components/ui/shell';
 import { BoardsProvider } from './hooks/useBoard';
 import { useShortcut } from './hooks/useShortcut';
@@ -68,19 +68,7 @@ export function App({
                 </Route>
               </Route>
             </Routes>
-            <Toaster
-              position="bottom-right"
-              closeButton
-              // The toasts wear the page's own tokens, so they follow its theme.
-              style={
-                {
-                  '--normal-bg': 'var(--background)',
-                  '--normal-text': 'var(--ink)',
-                  '--normal-border': 'var(--border)',
-                } as CSSProperties
-              }
-              toastOptions={{ className: 'font-sans' }}
-            />
+            <AppToaster />
           </TasksApiProvider>
         </PathsProvider>
       </LucideProvider>

@@ -18,7 +18,7 @@
  * and a line `WHAT: …`, `WHY: …`, `WHERE: …`, `FIX: …` or `HOW: …` (the task
  * guide's labelled sections) leads with its label.
  */
-import { createContext, useContext, type ComponentProps, type ReactNode } from 'react';
+import { createContext, useContext, useRef, type ComponentProps, type ReactNode } from 'react';
 import Markdown, { type Components, type ExtraProps } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -41,6 +41,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { Check, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CopyButton } from '../../components/ui/copy-button';
 import { usePaths, type AppPaths } from '../../lib/paths';
 import { cn } from '../../lib/utils';
 import { TaskPrefixes } from './task-prefixes';
@@ -367,6 +368,31 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
  * outline (# is drawn at level 3), but at a size of its own above the text:
  * # 18 px, ## 16 px, the rest 15 px in semibold.
  */
+/**
+ * A code block, with a Copy button in its corner that copies the block's
+ * text as written, without the line break that ends every block. A pointer
+ * shows the button on hover; it shows always on a device with a touch screen.
+ */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const block = useRef<HTMLPreElement>(null);
+  return (
+    <div className="group/code relative">
+      <pre
+        ref={block}
+        className="m-0 overflow-x-auto rounded-lg bg-surface px-4 py-3.5 font-mono text-code text-ink inset-ring inset-ring-border"
+      >
+        {children}
+      </pre>
+      <CopyButton
+        label="Copy the code"
+        target={block}
+        text={() => (block.current?.textContent ?? '').replace(/\n$/, '')}
+        className="absolute top-2 right-2 bg-surface opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100 data-copied:opacity-100 any-pointer-coarse:opacity-100"
+      />
+    </div>
+  );
+}
+
 function heading(level: 3 | 4 | 5 | 6, size: string) {
   const Tag = `h${level}` as const;
   return function Heading({ children }: { children?: ReactNode }) {
@@ -404,11 +430,7 @@ const COMPONENTS: Components = {
       {children}
     </blockquote>
   ),
-  pre: ({ children }) => (
-    <pre className="m-0 overflow-x-auto rounded-lg bg-surface px-4 py-3.5 font-mono text-code text-ink inset-ring inset-ring-border">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   table: ({ children }) => (
     <div className="max-w-full overflow-x-auto">
       {/* Words in a cell stay whole, so a wide table scrolls in its box instead of breaking them. */}
