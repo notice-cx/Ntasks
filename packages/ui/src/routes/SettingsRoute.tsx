@@ -2,28 +2,32 @@ import { Copy } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { refusedField } from '../api/client';
-import type { ConnectedApp, Workspace } from '../api/types';
+import type { ConnectedApp, GitHubWebhook, Workspace } from '../api/types';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Button, IconButton } from '../components/ui/button';
-import { Field, FieldError, Input } from '../components/ui/field';
+import { Field, FieldError, Input, Textarea } from '../components/ui/field';
 import { Row, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
 import { TopBar } from '../components/ui/shell';
 import { WorkspaceIcon } from '../components/ui/symbols';
 import { useRetryKey } from '../hooks/useTasks';
 import {
   useApps,
+  useGitHubWebhook,
   useRegisterApp,
   useRemoveApp,
+  useRemoveGitHubWebhook,
   useRenameWorkspace,
   useRevokeApp,
+  useSaveGitHubWebhook,
   useWorkspace,
 } from '../hooks/useWorkspace';
 import { copyText } from '../lib/clipboard';
 
 /**
- * The open workspace's name and id, and its connected apps. An owner renames
- * it; anyone else reads the name. The name is only shown: the API and agents
- * name a workspace by its id, which never changes.
+ * The open workspace's name and id, its connected apps, and for an owner its
+ * GitHub webhook. An owner renames it; anyone else reads the name. The name
+ * is only shown: the API and agents name a workspace by its id, which never
+ * changes.
  */
 export default function SettingsRoute() {
   const { workspace } = useWorkspace();
@@ -52,6 +56,7 @@ export default function SettingsRoute() {
           />
         </Setting>
         <ConnectedApps owner={workspace.role === 'owner'} />
+        {workspace.role === 'owner' ? <GitHubWebhookSection /> : null}
       </div>
     </>
   );
@@ -251,6 +256,186 @@ function RegisterAppForm({ onDone }: { onDone: () => void }) {
         <Button type="button" variant="ghost" disabled={register.isPending} onClick={onDone}>
           Cancel
         </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The workspace's GitHub webhook, for its owners: the address GitHub sends
+ * to, the secret it signs each delivery with, and the deploy checks whose
+ * success means a change is live. With it, GitHub moves a closed task to
+ * Merged and Live without an agent reporting it.
+ */
+function GitHubWebhookSection() {
+  const github = useGitHubWebhook();
+  let body: ReactNode;
+  if (github.isError)
+    body = (
+      <ReadFailed
+        title="Couldn't load the GitHub webhook"
+        error={github.error}
+        retrying={github.isFetching}
+        onRetry={() => void github.refetch()}
+      />
+    );
+  else if (github.isPending) body = <PageSkeleton shape="page" />;
+  // A save gives the form the saved values to start from again.
+  else body = <GitHubWebhookForm key={github.data.updatedAt ?? 'none'} webhook={github.data} />;
+  return (
+    <section aria-label="GitHub" className="flex flex-col gap-3 pt-2">
+      <h2 className="m-0 text-label font-medium text-ink">GitHub</h2>
+      <p className="m-0 text-label text-ink-2">
+        GitHub moves a closed task to Merged when its pull request merges, and to Live when a deploy check passes.
+      </p>
+      {body}
+    </section>
+  );
+}
+
+/** A new webhook secret: 32 random bytes as base64url, 43 characters. */
+function newSecret(): string {
+  let binary = '';
+  for (const byte of crypto.getRandomValues(new Uint8Array(32))) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
+}
+
+/** The payload URL to copy into GitHub, the secret, and the deploy checks, one per line. A refusal shows under its field. */
+function GitHubWebhookForm({ webhook }: { webhook: GitHubWebhook }) {
+  const save = useSaveGitHubWebhook();
+  const remove = useRemoveGitHubWebhook();
+  const errorId = useId();
+  const [secret, setSecret] = useState('');
+  const [checks, setChecks] = useState(webhook.deployChecks.join('\n'));
+  const [confirming, setConfirming] = useState(false);
+  const deployChecks = checks
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name !== '');
+  const checksChanged = deployChecks.join('\n') !== webhook.deployChecks.join('\n');
+  const ready = !save.isPending && (secret !== '' || (webhook.secretSaved && checksChanged));
+  const refused = refusedField(save.error, ['secret', 'deployChecks'] as const);
+  const said = save.error?.message ?? null;
+  const edited = () => {
+    // The refusal was about what was sent; an edit makes it stale.
+    if (save.isError) save.reset();
+  };
+
+  return (
+    <form
+      className="flex flex-col gap-3"
+      aria-label="GitHub webhook"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready) return;
+        save.mutate(
+          { ...(secret === '' ? {} : { secret }), deployChecks },
+          { onSuccess: () => toast.success('Saved the GitHub webhook') },
+        );
+      }}
+    >
+      <Setting label="Payload URL">
+        <code className="min-w-0 truncate font-mono text-code text-ink">{webhook.url}</code>
+        <IconButton
+          size="sm"
+          label="Copy payload URL"
+          icon={<Copy aria-hidden />}
+          onClick={() => void copyText(webhook.url, 'the payload URL')}
+        />
+      </Setting>
+      <Field label="Secret" required={!webhook.secretSaved} error={refused === 'secret' ? said : null}>
+        <Input
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder={webhook.secretSaved ? 'Saved' : undefined}
+          value={secret}
+          disabled={save.isPending}
+          onChange={(event) => {
+            edited();
+            setSecret(event.target.value);
+          }}
+          end={
+            secret === '' ? undefined : (
+              <IconButton
+                size="sm"
+                label="Copy secret"
+                icon={<Copy aria-hidden />}
+                onClick={() => void copyText(secret, 'the secret')}
+              />
+            )
+          }
+        />
+      </Field>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={save.isPending}
+          onClick={() => {
+            edited();
+            setSecret(newSecret());
+          }}
+        >
+          Make a secret
+        </Button>
+        <p className="m-0 text-meta text-ink-2">
+          {webhook.secretSaved
+            ? 'A new secret replaces the saved one. Enter it in GitHub too.'
+            : "Enter the same secret in GitHub's webhook form."}
+        </p>
+      </div>
+      <Field label="Deploy checks" error={refused === 'deployChecks' ? said : null}>
+        <Textarea
+          rows={3}
+          spellCheck={false}
+          placeholder="Workers Builds: my-app"
+          value={checks}
+          disabled={save.isPending}
+          onChange={(event) => {
+            edited();
+            setChecks(event.target.value);
+          }}
+        />
+      </Field>
+      <p className="m-0 text-meta text-ink-2">
+        One per line: a check run or deployment environment whose success means the change is live.
+      </p>
+      {said !== null && refused === null ? <FieldError id={errorId}>{said}</FieldError> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" type="submit" disabled={!ready}>
+          {save.isPending ? 'Saving…' : 'Save'}
+        </Button>
+        {webhook.updatedAt !== null && !confirming ? (
+          <Button type="button" variant="ghost" onClick={() => setConfirming(true)}>
+            Remove
+          </Button>
+        ) : null}
+        {confirming ? (
+          <>
+            <span className="text-meta text-ink-2">GitHub's deliveries are refused after this.</span>
+            <Button type="button" variant="ghost" disabled={remove.isPending} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={remove.isPending}
+              data-confirm-remove=""
+              onClick={() =>
+                remove.mutate(undefined, {
+                  onSuccess: () => toast.success('Removed the GitHub webhook'),
+                  onError: (error) => {
+                    setConfirming(false);
+                    toast.error(error.message);
+                  },
+                })
+              }
+            >
+              {remove.isPending ? 'Removing…' : 'Remove'}
+            </Button>
+          </>
+        ) : null}
       </div>
     </form>
   );

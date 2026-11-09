@@ -23,7 +23,7 @@ Ntasks is in active development ahead of its first release.
 | Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
 | Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
 | Task engine | Reads and writes tasks, works out ready work, and makes writes safe to retry |
-| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; where a closed task's change is (built, merged or live), which a repository's signals move on; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](api.md)) |
+| API | The MCP endpoint's tools and the HTTP routes that read tasks and change them: filing, claiming, changing, commenting, closing, links, approval requests and each project's custom fields; where a closed task's change is (built, merged or live), which a repository's signals and GitHub's webhook move on; a person's answers, picks, dismissals, approvals and disputes; owner answers an agent records; and agent statistics ([the API](api.md)) |
 | Sign-in | A new deployment registers its GitHub App on its setup page; people sign in with GitHub, AI agents connect over OAuth 2.1, and services use revocable credentials of one workspace, each reaching only the projects granted to it; a person signs in through a workspace's connected app, such as another product's page, which then acts as them in that workspace |
 | Deploys and updates | The npm package [`ntasks`](../tools/cli/README.md) holds a release: the bundled Worker, the web app's build and the D1 migrations. `npx ntasks deploy` deploys it to a Cloudflare account with wrangler and updates the deployment there, finding the Worker by name and keeping the D1 database it is bound to. A version tag publishes the package |
 | Backups and loads | A workspace's owner, or a service credential made for backups, reads the workspace's whole store page by page; [`tools/migrate`](../tools/migrate/README.md#back-up-and-restore) writes it to one file, restores it into a local copy of the store, and loads an import or a backup into an empty deployed store |
@@ -65,7 +65,7 @@ flowchart LR
 
 | Part | Code | Built |
 |---|---|---|
-| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts), [`workspaces.ts`](../workers/api/src/workspaces.ts) | The health check at `/healthz`, sign-in and the MCP endpoint; signs each API request in, picks the workspace it reaches, and hands it to that workspace's task store with its sender |
+| Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts), [`workspaces.ts`](../workers/api/src/workspaces.ts) | The health check at `/healthz`, sign-in, the MCP endpoint and the GitHub receiver ([`github.ts`](../workers/api/src/github.ts)); signs each API request in, picks the workspace it reaches, and hands it to that workspace's task store with its sender |
 | Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds one workspace's tasks, applies its schema and answers repeated reads from memory |
 | Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
 | Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | The tables of sign-in and of workspaces, their members and invitations, in D1 ([Sign-in](sign-in.md#tables)) |
@@ -141,8 +141,9 @@ A request reaches one workspace:
 Ntasks is designed to be reachable from the internet, so authentication is its
 boundary. Every API and MCP request names who sends it, and the Worker checks
 which workspaces that sender reaches and what it may do in the project the
-request names. Only the health check and the sign-in steps themselves answer
-without it.
+request names. Only the health check, the sign-in steps themselves and the
+GitHub receiver answer without it; the receiver reads a delivery only when
+it is signed with the workspace's webhook secret.
 
 - **People** sign in in the browser with GitHub, as a deployment admin, a
   member of a workspace or an invited account, and reach the workspaces they
@@ -159,6 +160,9 @@ without it.
 - **Visitors** send no credential and read one workspace, the deployment's
   public workspace, when it has one, such as a product demo's; they change
   nothing ([Sign-in](sign-in.md#the-public-workspace)).
+- **GitHub** sends a workspace's webhook deliveries, each signed with the
+  secret its owner saved, and moves closed tasks to merged and live
+  ([API](api.md#from-a-github-webhook)).
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
 how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
@@ -195,7 +199,12 @@ store. When a daily limit is reached, operations of that kind fail until
 - lets clients ask for the changes since their last read, instead of
   reloading whole lists;
 - keeps CPU time per request low, because time spent waiting on the database
-  does not count but parsing and serializing large answers does.
+  does not count but parsing and serializing large answers does;
+- answers a GitHub delivery that moves nothing, such as a check that is not a
+  deploy check, after one D1 query that reads one row, without reaching the
+  task store. An organization's webhook sends two deliveries for each check
+  run of each repository, so it takes only the three events that can move a
+  task ([API](api.md#from-a-github-webhook)).
 
 ## Rules every change keeps
 

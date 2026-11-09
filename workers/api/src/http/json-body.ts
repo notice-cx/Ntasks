@@ -1,9 +1,11 @@
 /**
- * A JSON request body's text, bounded in bytes and in time: the one reader
- * the HTTP API and the MCP endpoint share. Only `application/json` is read,
- * because a browser can send a text/plain POST to another site without a
- * preflight, but never an application/json one. Any refusal throws
- * BoundedJsonRefused; the caller chooses the answer.
+ * A request body, bounded in bytes and in time: the one reader the HTTP API,
+ * the MCP endpoint and the GitHub receiver share. The API and the MCP
+ * endpoint read only `application/json`, because a browser can send a
+ * text/plain POST to another site without a preflight, but never an
+ * application/json one. The GitHub receiver reads the bytes whatever their
+ * type, since its signature, not its type, says who sent them. Any refusal
+ * throws BoundedJsonRefused; the caller chooses the answer.
  */
 export class BoundedJsonRefused extends Error {
   override name = 'BoundedJsonRefused';
@@ -25,8 +27,14 @@ export function jsonContentType(headers: Headers): boolean {
 }
 
 export async function readBoundedJsonText(request: Request, maxBytes: number): Promise<string> {
+  if (!jsonContentType(request.headers)) invalid();
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(await readBoundedBytes(request, maxBytes));
+}
+
+/** The body's bytes as the client sent them, of at most `maxBytes`, whatever its type. */
+export async function readBoundedBytes(request: Request, maxBytes: number): Promise<Uint8Array> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) invalid();
-  if (request.signal.aborted || request.bodyUsed || !request.body || !jsonContentType(request.headers)) invalid();
+  if (request.signal.aborted || request.bodyUsed || !request.body) invalid();
   const declared = request.headers.get('content-length');
   if (declared !== null && (!/^\d+$/u.test(declared) || Number(declared) > maxBytes)) invalid();
   const reader = request.body.getReader();
@@ -71,7 +79,7 @@ export async function readBoundedJsonText(request: Request, maxBytes: number): P
       joined.set(chunk, at);
       at += chunk.byteLength;
     }
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(joined);
+    return joined;
   } finally {
     cancel();
     try {
