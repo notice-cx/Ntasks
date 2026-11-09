@@ -1,7 +1,7 @@
 /**
  * The Tasks API answered from data held in the page: the package's
  * development server (`vite --mode fixture`), its tests and a host's run
- * against it, as `@ntasks/ui/fixture`. Every change
+ * against it, as `@notice-cx/ntasks-ui/fixture`. Every change
  * lives until the page reloads. It keeps the rules the pages rely on: one
  * claim wins, a closed task leaves ready work, a decision closes on its
  * answer, and a task waits while anything it depends on is open. Each

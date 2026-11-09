@@ -1,6 +1,6 @@
 # @ntasks/web
 
-The Ntasks web app: one page that renders [`@ntasks/ui`](../../packages/ui/README.md)
+The Ntasks web app: one page that renders [`@notice-cx/ntasks-ui`](../../packages/ui/README.md)
 on the Worker's own origin, signed in with the Worker's session cookie.
 `vite build` writes it to `dist/`, and Cloudflare serves that folder as the
 Ntasks Worker's static files: any page address with no file of its own
@@ -29,8 +29,8 @@ Run these from the repository root:
 ```sh
 pnpm dev                                      # the app served by the Worker, at http://localhost:8787
 pnpm --filter @ntasks/web test                # the addresses and the font copy
-pnpm --filter "@ntasks/web..." run build      # @ntasks/ui, then this page, to dist/
+pnpm --filter "@ntasks/web..." run build      # @notice-cx/ntasks-ui, then this page, to dist/
 ```
 
 The pages themselves, over invented tasks and without a running API, are
-`pnpm --filter @ntasks/ui dev`.
+`pnpm --filter @notice-cx/ntasks-ui dev`.

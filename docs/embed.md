@@ -1,6 +1,6 @@
 # Embed the web app
 
-The npm package [`@ntasks/ui`](../packages/ui/README.md) holds the web app's
+The npm package [`@notice-cx/ntasks-ui`](../packages/ui/README.md) holds the web app's
 pages as one React component, `NtasksApp`. Another site renders it inside one
 of its own pages: the board, a task's page, Focus, Live, Projects, Members and
 Settings appear under an address the site picks, and every read and write
@@ -31,8 +31,8 @@ on the Worker's origin.
    the package's stylesheet:
 
 ```tsx
-import { NtasksApp } from '@ntasks/ui';
-import '@ntasks/ui/styles.css';
+import { NtasksApp } from '@notice-cx/ntasks-ui';
+import '@notice-cx/ntasks-ui/styles.css';
 
 <Route
   path="/tasks/*"
@@ -50,9 +50,9 @@ The board is then at `/tasks` and a task at `/tasks/<id>`. The stylesheet
 applies only inside the app's root element, `[data-ntasks]`, so the host's
 page keeps its own styles. The package's README lists every prop, the
 addresses, the token source, the styles and the invented tasks a host's
-development server and tests can use ([`@ntasks/ui`](../packages/ui/README.md#use-it-in-a-page)).
+development server and tests can use ([`@notice-cx/ntasks-ui`](../packages/ui/README.md#use-it-in-a-page)).
 
 ## Releases
 
-`@ntasks/ui` is published to npm from this repository when the owner pushes
+`@notice-cx/ntasks-ui` is published to npm from this repository when the owner pushes
 a `ui-v<version>` tag ([Releasing](../packages/ui/README.md#releasing)).

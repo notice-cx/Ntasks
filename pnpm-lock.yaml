@@ -217,7 +217,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@ntasks/ui':
+      '@notice-cx/ntasks-ui':
         specifier: workspace:*
         version: link:../../packages/ui
       react:

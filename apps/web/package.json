@@ -2,7 +2,7 @@
   "name": "@ntasks/web",
   "version": "0.0.0",
   "private": true,
-  "description": "The Ntasks web app, served by the Ntasks Worker: a page that renders @ntasks/ui on the Worker's own origin.",
+  "description": "The Ntasks web app, served by the Ntasks Worker: a page that renders @notice-cx/ntasks-ui on the Worker's own origin.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ntasks/ui": "workspace:*",
+    "@notice-cx/ntasks-ui": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "7.18.5"

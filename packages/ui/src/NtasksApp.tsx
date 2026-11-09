@@ -29,7 +29,10 @@ export interface NtasksAppProps {
   basePath?: string;
   /** `system` (the default) follows the system's preference while the page is open. */
   theme?: Theme;
-  /** Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `@ntasks/ui/fixture`'s. */
+  /**
+   * Calls to read and write through in place of `apiOrigin` and
+   * `tokenSource`, such as `@notice-cx/ntasks-ui/fixture`'s.
+   */
   api?: TasksApi;
 }
 

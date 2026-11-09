@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
-  // The tests run @ntasks/ui's source, so they need no build of the package
+  // The tests run @notice-cx/ntasks-ui's source, so they need no build of the package
   // first; `vite build` takes the built package.
   resolve: { conditions: ['ntasks-source', ...defaultClientConditions] },
   test: {

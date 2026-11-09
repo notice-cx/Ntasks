@@ -39,4 +39,4 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
   specification of Ntasks's rules for shared work, which other task tools and
   agent harnesses can implement.
 - [Embed the web app](embed.md): rendering the web app's pages inside another
-  site's page with the npm package `@ntasks/ui`.
+  site's page with the npm package `@notice-cx/ntasks-ui`.

@@ -1,7 +1,7 @@
 # Design system
 
 The web app's tokens, symbols and components, and the rules for using them.
-The code is in three places in [`@ntasks/ui`](../packages/ui/README.md), the
+The code is in three places in [`@notice-cx/ntasks-ui`](../packages/ui/README.md), the
 package that holds the web app's pages:
 
 | Path | Holds |
@@ -12,7 +12,7 @@ package that holds the web app's pages:
 
 The gallery, the page `/design` of the web app, draws every token, symbol and
 component from that code. Open it at http://localhost:5173/design with
-`pnpm --filter @ntasks/ui dev`, or at http://localhost:8787/design with
+`pnpm --filter @notice-cx/ntasks-ui dev`, or at http://localhost:8787/design with
 `pnpm dev`. Its theme switch draws it in light or dark whatever the system
 prefers. `pnpm screenshots design` captures it in both themes
 ([tools/screenshots](../tools/screenshots/README.md)):

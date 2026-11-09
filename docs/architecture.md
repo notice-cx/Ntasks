@@ -18,7 +18,7 @@ Ntasks is in active development ahead of its first release.
 | Part | Today |
 |---|---|
 | Worker | Answers a health check at `/healthz` and the MCP endpoint, signs each API request in, and hands it to the task store of the workspace it reaches |
-| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects, Members and Settings pages, where an owner creates projects, invites people, renames the workspace and registers its connected apps. It reads and writes through the Worker's routes. The pages are the package [`@ntasks/ui`](../packages/ui/README.md), which another site renders in its own page with the signed-in person's token; `pnpm --filter @ntasks/ui dev` serves them with invented tasks instead |
+| Web app | The task pages: the board, a task's page, focus and the composer; a workspace switcher, and the Projects, Members and Settings pages, where an owner creates projects, invites people, renames the workspace and registers its connected apps. It reads and writes through the Worker's routes. The pages are the package [`@notice-cx/ntasks-ui`](../packages/ui/README.md), which another site renders in its own page with the signed-in person's token; `pnpm --filter @notice-cx/ntasks-ui dev` serves them with invented tasks instead |
 | Task model | The task id format, the vocabulary and the engine contract |
 | Workspaces | One deployment holds several workspaces, each with its own task store, people, agents and service credentials; a request reaches only its sender's workspaces |
 | Task store | One Durable Object for each workspace, which holds its tasks, applies its schema, enforces the database rules and answers repeated reads from memory |
@@ -72,7 +72,7 @@ flowchart LR
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
 | Task engine | [`workers/api/src/engine/`](../workers/api/src/engine/) | Every read and write of the engine contract, with retries and ready work |
 | Web app | [`apps/web/`](../apps/web/) | The page the Worker serves at its own origin, which renders the web app's pages with its session cookie |
-| Web app's pages | [`packages/ui/`](../packages/ui/) | The npm package `@ntasks/ui`: the task pages as one React component, reading and writing through the Worker's routes; `pnpm --filter @ntasks/ui dev` serves them with invented tasks |
+| Web app's pages | [`packages/ui/`](../packages/ui/) | The npm package `@notice-cx/ntasks-ui`: the task pages as one React component, reading and writing through the Worker's routes; `pnpm --filter @notice-cx/ntasks-ui dev` serves them with invented tasks |
 | API and MCP endpoint | [`workers/api/src/api.ts`](../workers/api/src/api.ts), [`mcp/`](../workers/api/src/mcp/), [`http/`](../workers/api/src/http/), [`task-writes.ts`](../workers/api/src/task-writes.ts), [`owner-answers.ts`](../workers/api/src/owner-answers.ts), [`agent-stats.ts`](../workers/api/src/agent-stats.ts) | The MCP tools and the HTTP routes that read and change tasks ([The API](api.md)), the rules of a person's decisions and of the owner answers agents record, and agent statistics |
 | Sign-in | [`workers/api/src/access/`](../workers/api/src/access/) | Sign-in with GitHub for people, OAuth 2.1 for AI agents and connected apps, service credentials, the workspace routes, and the token verifier every route calls ([Sign-in](sign-in.md)) |
 

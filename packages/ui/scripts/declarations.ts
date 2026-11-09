@@ -3,7 +3,7 @@
  * tsc writes them with the source's own import names; this rewrites the one
  * a host cannot resolve, `@ntasks/domain`, the task model the build bundles,
  * to the copy of its declarations in dist/types/domain. It drops the
- * stylesheet's import, which a host imports as `@ntasks/ui/styles.css`.
+ * stylesheet's import, which a host imports as `@notice-cx/ntasks-ui/styles.css`.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
