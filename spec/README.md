@@ -25,6 +25,7 @@ unclear, the draft asks a question instead of stating a rule.
 | [`open-questions.md`](open-questions.md) | Appendix B: the open questions |
 | [`schemas/`](schemas/) | A JSON Schema (draft 2020-12) for each object |
 | [`examples/`](examples/) | Sample objects for each schema: `examples/<schema>/` must validate, `examples/<schema>/invalid/` must not |
+| [`implementations.md`](implementations.md) | Each server that implements the protocol, and the levels it passes |
 | [`conformance/`](conformance/README.md) | The conformance suite: checks any server against each rule, by level, over MCP and HTTP, and runs against Ntasks in CI |
 | [`test/`](test/) | The tests that validate the samples, keep Appendix A true, and show that the conformance suite fails a server that breaks a rule |
 

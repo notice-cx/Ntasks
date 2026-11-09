@@ -69,6 +69,7 @@ result on each binding the target offers.
 | `warn` | A check of a SHOULD rule failed. It fails nothing |
 | `skip` | The target names no sender, project or binding the check needs, on at least one binding that offers the call |
 | `gap` | It failed, and the target lists it as a known gap |
+| `n/a` | A rule of a binding the target does not offer, such as HTTP-1 for a server with only MCP. It counts toward no level |
 
 On a binding, `-` means the binding offers no way to make the call the check
 tests, such as linking two tasks over HTTP, and `skipped` that it offers the
