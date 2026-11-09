@@ -196,6 +196,7 @@ export function commitLoad(
       // Checked when the transaction ends: rows arrive table by table, and a backup lists tasks by id.
       storage.sql.exec('PRAGMA defer_foreign_keys = ON');
       let rows = 0;
+      let read = 0;
       let written = 0;
       for (const name of BACKUP_TABLES) {
         const columns = backupColumns(name);
@@ -210,11 +211,13 @@ export function commitLoad(
         );
         cursor.toArray();
         rows += staged.get(name) ?? 0;
+        read += cursor.rowsRead;
         written += cursor.rowsWritten;
       }
       removeLoad(storage, load);
       if (meter) {
         meter.statements += BACKUP_TABLES.length;
+        meter.rowsRead += read;
         meter.rowsWritten += written;
       }
       return { ok: true, value: { rows, rowsWritten: written } } as const;

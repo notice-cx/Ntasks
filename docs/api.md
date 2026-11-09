@@ -922,6 +922,11 @@ The commit writes nothing unless every check passes:
 | `500` with `load_failed` | The store could not write the load for a reason other than its rows, named in `detail`. Nothing was written, and the load keeps waiting. |
 | `400` with `invalid_request` | A page names another table, holds no row or more than 500, or a row lacks a column, has one the table lacks, or holds a value that is not text, a number or null |
 
+The commit runs in one request, within the 30 seconds of CPU time Cloudflare
+gives a Durable Object request by default. A commit stopped at that limit
+answers `500` with `internal_error` and writes nothing; the load keeps
+waiting, to be aborted.
+
 A load does not stop others from writing: the commit finds any row written
 since the load began, and refuses. Cloudflare counts each index entry as a
 row written, so a load writes about three times as many rows as it holds: a

@@ -18,8 +18,9 @@ import { describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../src/auth.ts';
 import type { TaskStore } from '../src/store/index.ts';
 import { MIGRATIONS } from '../src/store/schema.ts';
+import { newMeter } from '../src/store/sqlite.ts';
 import { AGENT } from './engine/helpers.ts';
-import { ACME, ROWS } from './fixtures/every-row.ts';
+import { ACME, LATER, ROWS, task } from './fixtures/every-row.ts';
 
 const ORIGIN = 'https://ntasks.test';
 const MIGRATION_NAMES = MIGRATIONS.map((migration) => migration.name);
@@ -69,6 +70,15 @@ async function tablesOf(stub: DurableObjectStub<TaskStore>) {
   return tables;
 }
 
+async function backupOf(source: DurableObjectStub<TaskStore>): Promise<BackupFile> {
+  const { file } = await collectBackup(async (token) => {
+    const answer = await source.backupPage(token);
+    if (!answer.ok) throw new Error(answer.detail);
+    return answer.page;
+  });
+  return file;
+}
+
 /** A backup of a store holding a row of every kind, imported ones and ones the engine wrote. */
 async function backupOfEveryRow(): Promise<{ file: BackupFile; source: DurableObjectStub<TaskStore> }> {
   const source = freshStore();
@@ -87,12 +97,7 @@ async function backupOfEveryRow(): Promise<{ file: BackupFile; source: DurableOb
     );
     await instance.tasks.addComment(ACME, task.id, 'A comment the engine wrote.', AGENT);
   });
-  const { file } = await collectBackup(async (token) => {
-    const answer = await source.backupPage(token);
-    if (!answer.ok) throw new Error(answer.detail);
-    return answer.page;
-  });
-  return { file, source };
+  return { file: await backupOf(source), source };
 }
 
 async function stagedPages(stub: DurableObjectStub<TaskStore>): Promise<number> {
@@ -125,6 +130,47 @@ describe('a load into an empty store', () => {
       instance.tasks.listHistory(ACME, written.task.id, { limit: 1 }),
     );
     expect(history[0]?.seq).toBe(lastSeq + 1);
+  });
+
+  it('commits tasks that name a task loaded after them, reading rows in proportion to the load', async () => {
+    // The first task is a duplicate of the last, so its key waits for the whole table to arrive.
+    const count = 400;
+    const ids = Array.from({ length: count }, (_, index) => `acme-t${String(index + 1).padStart(3, '0')}`);
+    const source = freshStore();
+    await source.importRows({
+      projects: ROWS.projects.filter((project) => project.id === ACME),
+      tasks: ids.map((id, index) =>
+        index === 0
+          ? {
+              ...task,
+              id,
+              project_id: ACME,
+              title: 'Filed twice',
+              status: 'closed',
+              version: 2,
+              updated_at: LATER,
+              closed_at: LATER,
+              resolution: 'duplicate',
+              duplicate_of: ids.at(-1) ?? null,
+              closed_by: 'owner',
+            }
+          : { ...task, id, project_id: ACME, title: `Task ${index + 1}` },
+      ),
+      task_labels: [],
+      task_edges: [],
+      task_comments: [],
+      task_events: [],
+    });
+    const file = await backupOf(source);
+
+    const target = freshStore();
+    await runInDurableObject(target, (instance: TaskStore) => void Object.assign(instance.meter, newMeter()));
+    const result = await sendLoad(file.tables, file.migrations, poster(target));
+    expect(result.rows).toBe(count + 1);
+    expect(await tablesOf(target)).toEqual(await tablesOf(source));
+    // A few rows for each row loaded; looking the duplicate up by scanning the tasks would read about count² / 2.
+    const read = await runInDurableObject(target, (instance: TaskStore) => instance.meter.rowsRead);
+    expect(read).toBeLessThan(10 * count);
   });
 
   it('refuses a store that holds rows when the load begins, and when it commits', async () => {

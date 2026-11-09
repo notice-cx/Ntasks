@@ -4,9 +4,11 @@
  * history, they are append-only: a change to the schema is a new file.
  */
 import taskStore from './migrations/0001_task_store.sql';
+import tasksByDuplicateOf from './migrations/0002_tasks_by_duplicate_of.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
+  { name: '0002_tasks_by_duplicate_of', sql: tasksByDuplicateOf },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */
