@@ -44,6 +44,14 @@ export const RESOLUTION_LABELS: Readonly<Record<TaskResolution, string>> = Objec
   'no-longer-needed': 'No longer needed',
 });
 
+/** The close as done on a person's own call, as the Close menu names it. */
+export const ACCEPT_LABEL = 'Done, my call';
+
+/** A number of criteria waived, as the pages word it: 1 criterion, 2 criteria. */
+export function waivedCount(count: number): string {
+  return count === 1 ? '1 criterion' : `${count} criteria`;
+}
+
 /** Each stage of a closed task's delivery as the pages word it: built, merged, live. */
 const STAGE_LABELS: Readonly<Record<string, string>> = Object.freeze({
   built: 'Built',

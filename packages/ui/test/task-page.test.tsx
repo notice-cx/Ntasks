@@ -424,6 +424,90 @@ describe('a task page', () => {
     expect((screen.getByRole('textbox', { name: 'Comment' }) as HTMLTextAreaElement).value).toBe('');
   });
 
+  describe('Done, my call', () => {
+    it('closes as done on the person’s call, starting from the ticked boxes, and records the rest as waived', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks/web-b2r6', api);
+      fireEvent.click(await screen.findByRole('checkbox', { name: 'A new reset link opens the reset form' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.acceptance).toContain('- [x] A new reset link'));
+
+      fireEvent.click(await enabledButton('Close'));
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Done, my call' }));
+      const form = document.querySelector('[data-task-form="accept"]') as HTMLElement;
+      const box = (name: string) => within(form).getByRole('checkbox', { name }) as HTMLInputElement;
+      expect(box('A new reset link opens the reset form').checked).toBe(true);
+      expect(box('A test covers a link younger than an hour').checked).toBe(false);
+      fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'The old links expire anyway.' } });
+      fireEvent.click(within(form).getByRole('button', { name: 'Close, waiving 1 criterion' }));
+
+      await waitFor(() => expect(task(api, 'web-b2r6')?.status).toBe('closed'));
+      expect(task(api, 'web-b2r6')).toMatchObject({
+        resolution: 'done',
+        closeReason: 'The old links expire anyway.',
+        proof: null,
+        closeAcceptance: {
+          by: FIXTURE_ACTOR,
+          criteria: [
+            { text: 'A new reset link opens the reset form', met: true },
+            { text: 'A test covers a link younger than an hour', met: false },
+          ],
+        },
+      });
+      const closed = await screen.findByRole('region', { name: 'Closed as Done' });
+      expect(within(closed).getByText(/1 criterion waived/u)).toBeTruthy();
+      expect(
+        within(within(closed).getByRole('list', { name: 'Waived' })).getByText(
+          'A test covers a link younger than an hour',
+        ),
+      ).toBeTruthy();
+      expect(within(closed).getByText('The old links expire anyway.')).toBeTruthy();
+    });
+
+    it('is offered on a task waiting on the person', async () => {
+      const api = createFixtureTasksApi();
+      const asked = api.state.tasks.find((entry) => entry.labels.includes('human') && entry.issueType !== 'gate')!;
+      renderApp(`/tasks/${asked.id}`, api);
+      fireEvent.click(await enabledButton('Close as'));
+      expect(await screen.findByRole('menuitem', { name: 'Done, my call' })).toBeTruthy();
+    });
+
+    it('is not offered to a sign-in that may not accept', async () => {
+      const limited = {
+        ...createFixtureTasksApi(),
+        capabilities: async () => ({ live: true, writable: true, operations: ['close', 'update'], reason: null }),
+      };
+      renderApp('/tasks/web-b2r6', limited);
+      fireEvent.click(await enabledButton('Close'));
+      await screen.findByRole('menuitem', { name: 'Done' });
+      expect(screen.queryByRole('menuitem', { name: 'Done, my call' })).toBeNull();
+    });
+
+    it('shows an acceptance an agent relayed, from where and in the person’s words, and disputes it', async () => {
+      const api = createFixtureTasksApi();
+      Object.assign(task(api, 'web-b2r6')!, {
+        status: 'closed',
+        resolution: 'done',
+        closeReason: 'Accepted as done',
+        closedAt: '2026-11-06T12:00:00.000Z',
+        closedBy: 'agent:example',
+        closeAcceptance: {
+          by: 'Example Person',
+          relayed: { by: 'agent:example', source: 'claude-code:session/example-session', quote: 'Close it.' },
+          criteria: [{ text: 'A new reset link opens the reset form', met: true }],
+        },
+      } satisfies Partial<LiveTask>);
+      renderApp('/tasks/web-b2r6', api);
+
+      const closed = await screen.findByRole('region', { name: 'Closed as Done' });
+      expect(within(closed).getByText(/every criterion met/u)).toBeTruthy();
+      expect(within(closed).getByText('Close it.')).toBeTruthy();
+      expect(within(closed).getByText(/claude-code:session\/example-session/u)).toBeTruthy();
+      expect(within(closed).queryByText('Accepted as done')).toBeNull();
+      fireEvent.click(await enabledButton('Dispute', closed));
+      await waitFor(() => expect(task(api, 'web-b2r6')).toMatchObject({ status: 'open', closeAcceptance: null }));
+    });
+  });
+
   it('shows a closed task as closed, with how it ended', async () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();

@@ -404,8 +404,11 @@ no items is its footer alone.
 
 The Close menu (`src/components/CloseResolution.tsx`) is a button, Close or
 Close as, with a chevron: Done first where the task can be closed as
-done, then each close where nothing shipped, each with its glyph. A pick opens
-the form that finishes it under the task's title.
+done, then Done, my call for a person who may accept a task as done on their
+own call, then each close where nothing shipped, each with its glyph. A pick
+opens the form that finishes it under the task's title. Done, my call's form
+lists each criterion of Done when as a box, ticked to start with where its box
+on the page is ticked; its button names how many criteria the close waives.
 
 `popover.tsx` is the popover itself: Radix places it and handles focus,
 Escape and outside clicks. It renders on the document's body, or inside the

@@ -301,6 +301,28 @@ export function useCommentOnTask() {
   });
 }
 
+/** A person's close of a task as done on their own call, with the criteria they found met. */
+export function useAcceptTask() {
+  const api = useTasksApi();
+  const refresh = useTaskRefresh();
+  return useMutation({
+    mutationFn: ({
+      id,
+      project,
+      met,
+      reason,
+      proposalVersion,
+    }: {
+      id: string;
+      project: string;
+      met: readonly number[];
+      reason?: string;
+      proposalVersion: string | null;
+    }) => api.accept(id, project, met, { ...(reason === undefined ? {} : { reason }), proposalVersion }),
+    onSuccess: () => refresh(),
+  });
+}
+
 export function useDisputeTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();

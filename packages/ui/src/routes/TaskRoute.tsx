@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { TaskResolution } from '@ntasks/domain';
+import { ACCEPTED_REASON, type TaskResolution } from '@ntasks/domain';
 import { ApiError } from '../api/client';
 import type { LiveEpic, LiveTask, TaskActor, TaskChoiceKey, TaskComment, TaskProject } from '../api/types';
-import { CloseDoneForm, CloseMenu } from '../components/CloseResolution';
+import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Progress } from '../components/ui/badge';
@@ -123,6 +123,7 @@ export function TaskRoute() {
           fetchedAt={detail.dataUpdatedAt || null}
           comments={detail.data.comments}
           actors={detail.data.actors}
+          shown={detail.data.proposalVersion ?? task.proposalVersion ?? null}
           parent={parent}
           parentTitle={parentTitle}
           epic={epics.find((epic) => epic.id === task.id) ?? null}
@@ -181,7 +182,7 @@ export function TaskRoute() {
 }
 
 /** The panel under the title where an action that needs words is finished. */
-type Panel = { kind: 'close-done' } | { kind: 'answer' } | null;
+type Panel = { kind: 'close-done' } | { kind: 'accept' } | { kind: 'answer' } | null;
 
 /** The task's Markdown fields, each read and edited in place. */
 type TextField = 'description' | 'acceptance' | 'design' | 'notes';
@@ -193,6 +194,7 @@ function TaskPage({
   fetchedAt,
   comments,
   actors,
+  shown,
   parent,
   parentTitle,
   epic,
@@ -207,6 +209,8 @@ function TaskPage({
   fetchedAt: number | null;
   comments: TaskComment[];
   actors: readonly TaskActor[] | undefined;
+  /** The proposal version the task's read returned, which an acceptance names. */
+  shown: string | null;
   parent: LiveEpic | null;
   parentTitle: string | null;
   /** This task's own progress, when it is an epic. */
@@ -256,6 +260,9 @@ function TaskPage({
   const disputeReason = reasonFor(operationAvailable(capabilities, 'dispute'));
   const claimable = task.status === 'open' && task.assignee === null;
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
+  const acceptOffered = !isGate(task) && operationAvailable(capabilities, 'accept');
+  // A person's acceptance that an agent recorded for them, which they can withdraw.
+  const acceptanceDisputable = closed && task.closeAcceptance?.relayed !== undefined;
 
   function pickClose(resolution: TaskResolution) {
     if (resolution === 'done') {
@@ -293,6 +300,14 @@ function TaskPage({
       variant={variant}
       disabledReason={closeReason}
       onPick={pickClose}
+      {...(acceptOffered
+        ? {
+            onAccept: () => {
+              closeAs.cancel();
+              setPanel({ kind: 'accept' });
+            },
+          }
+        : {})}
     />
   );
 
@@ -345,6 +360,14 @@ function TaskPage({
     closeAs.box ??
     (panel?.kind === 'close-done' ? (
       <CloseDoneForm id={task.id} project={key} multiline onDone={() => setPanel(null)} />
+    ) : panel?.kind === 'accept' ? (
+      <AcceptForm
+        id={task.id}
+        project={key}
+        acceptance={task.acceptance}
+        proposalVersion={shown}
+        onDone={() => setPanel(null)}
+      />
     ) : panel?.kind === 'answer' && ask === 'answer' ? (
       <AnswerForm
         id={task.id}
@@ -361,7 +384,18 @@ function TaskPage({
     : false;
   const resolution: TaskResolution = task.resolution ?? 'done';
   const closer = closeAttribution(task);
-  const closeWords = closeNote(task.closeReason, resolution, task.duplicateOf ?? null);
+  // A person's acceptance with no reason of their own closes with the API's words for it, which its line already says.
+  const closeWords =
+    task.closeAcceptance && task.closeReason === ACCEPTED_REASON
+      ? null
+      : closeNote(task.closeReason, resolution, task.duplicateOf ?? null);
+  const acceptance = task.closeAcceptance
+    ? {
+        acceptance: task.closeAcceptance,
+        person: actorOf(task.closeAcceptance.by, null, actors).name,
+        relayer: task.closeAcceptance.relayed ? actorOf(task.closeAcceptance.relayed.by, null, actors).name : null,
+      }
+    : null;
   const writable = (field: string) => !closed && fieldAvailable(capabilities, field);
 
   return (
@@ -401,6 +435,7 @@ function TaskPage({
               delivery={task.delivery ?? null}
               link={task.closeLink ?? null}
               proof={task.proof ?? null}
+              acceptance={acceptance}
               duplicate={
                 task.duplicateOf ? (
                   <Link
@@ -413,6 +448,9 @@ function TaskPage({
               }
             >
               {closeWords ? <MarkdownText source={closeWords} /> : null}
+              {acceptanceDisputable ? (
+                <DisputeAction id={task.id} project={key} disabledReason={disputeReason} />
+              ) : null}
             </ClosedSummary>
           ) : null}
           {task.answer?.relayed ? (
@@ -526,7 +564,7 @@ function ClaimAction({ id, project, disabledReason }: { id: string; project: str
   );
 }
 
-/** Withdraws an approval an agent relayed: the approval opens again and the tasks waiting on it are told to stop. */
+/** Withdraws an approval, or an acceptance as done, that an agent relayed: it opens again and the tasks waiting on it are told. */
 function DisputeAction({
   id,
   project,
@@ -1180,6 +1218,16 @@ function Activity({
       const resolution = task.resolution ?? 'done';
       const how = resolution === 'done' ? '' : ` as ${RESOLUTION_LABELS[resolution]}`;
       const who = closer ? actorOf(closer.by, closer.model, actors) : null;
+      const accepted = task.closeAcceptance ?? null;
+      // A close an agent relayed names the person whose acceptance it records.
+      const person =
+        accepted && accepted.by !== closer?.by ? (
+          <>
+            , accepted as done by <b>{actorOf(accepted.by, null, actors).name}</b>
+          </>
+        ) : accepted ? (
+          ' as done on their own call'
+        ) : null;
       out.push({
         id: 'closed',
         at: task.closedAt,
@@ -1189,6 +1237,7 @@ function Activity({
         label: who ? (
           <>
             <b>{who.name}</b> closed this{how}
+            {person}
           </>
         ) : (
           `Closed${how}`
