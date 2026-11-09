@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { ChevronRight, GitPullRequest, Minus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
 import type { TaskAcceptance, TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '../../api/types';
 import { Avatar } from '../../components/ui/avatar';
+import { CopyButton } from '../../components/ui/copy-button';
 import { OptionList } from '../../components/ui/choice';
 import { ProjectBadge } from '../../components/ui/shell';
 import { StatusMark } from '../../components/ui/symbols';
@@ -21,8 +22,8 @@ export interface Actor {
 
 /**
  * The task's place, as the top bar's title: its project, its epic when it
- * has one, then its id. A phone hides the project's name beside its badge,
- * so the link carries the name.
+ * has one, then its id, with a button that copies the id. A phone hides the
+ * project's name beside its badge, so the link carries the name.
  */
 export function TaskPath({
   id,
@@ -34,6 +35,7 @@ export function TaskPath({
   parent: { id: string; title: string | null } | null;
 }) {
   const paths = usePaths();
+  const here = useRef<HTMLSpanElement>(null);
   const crumb = 'flex min-w-0 items-center gap-1.5 text-ink-3 no-underline hover:text-ink';
   return (
     <nav aria-label="Path" className="flex min-w-0 items-center gap-1.5 text-label font-medium text-ink-3">
@@ -54,9 +56,10 @@ export function TaskPath({
           <ChevronRight aria-hidden size={14} className="shrink-0" />
         </>
       ) : null}
-      <span className="nums whitespace-nowrap text-ink-2" aria-current="page">
+      <span ref={here} className="nums whitespace-nowrap text-ink-2" aria-current="page">
         {id}
       </span>
+      <CopyButton label="Copy the task id" target={here} text={() => id} className="-my-1 -ms-1" />
     </nav>
   );
 }
