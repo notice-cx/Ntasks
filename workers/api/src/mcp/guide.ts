@@ -6,7 +6,8 @@
  *
  * NoticeOS's task tools served this text before Ntasks did, and agents that
  * work for NoticeOS's owner follow it; a change to it is a change to how they
- * work.
+ * work. Rules only one installation uses, such as how NoticeOS ranks cards or
+ * keeps change classes, belong in that installation's own instructions.
  */
 import type { HeldTask } from '@ntasks/domain';
 import { shortHash } from '../short-hash.ts';
@@ -18,8 +19,6 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
   '- description: plain labelled lines, unwrapped: WHAT, WHY with the numbers, WHERE as pointers that resolve in a repo (file paths, commits, doc sections), FIX. A bug also has a "## Steps to Reproduce" section.',
   '- acceptance: the proof that completes it, provable the day the work lands. Never "watch for N days": close on today\'s proof and name where a recurrence would show.',
   '- Implementation evidence cites the repo, commits and tests, never a session summary or temporary file. An existing owner answer cites its task comment or explicitly linked conversation, with the exact proposal and scope.',
-  "- Work meant to change money carries a card: the predicted change in USD a month, how likely it pays off, the operator's review minutes and your build minutes, the days until the ledger shows it, how it is measured, and the state and date to give up on it; the board ranks tasks by their cards, and a task without one is listed, not ranked.",
-  '- change_class names the kind of change a task makes, one of content-data, copy, template, feature and infra, which the autonomy ladder and the likelihood priors are kept by.',
   "- Work only a person can do (a decision, a credential, an admin step) carries the human label and is written for that person: the ask as the description's first line, technical notes last. When the person picks between options, pass them as choices: a question and two to six options keyed a, b, c… in order, each a one-line label with an optional detail, exactly one marked recommended. The web app shows one button per option. A step that must wait for approval uses request_human_approval.",
   '- Too big for one working session: an epic with session-sized children. Three or more related tasks share an epic. depends_on only for a real blocking edge; related for the rest. Work waiting on a date is deferred with the reason.',
   '- Found work, including debt (two copies of one rule, a hardcoded value with a canonical source, half-done work), is a task, never a TODO comment, a list in a doc or a memory note. Claim before you build; close with the commit, pull request or link that proves it.',
@@ -49,7 +48,7 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '5. Finish: close_task with the evidence and its proof: commit, pr or link. tasks closes several, with_children an epic and its open tasks; unblocked lists what is ready next. create_task with done files work already finished. After a merge or a deploy, report_delivery.',
   '6. Found work: create_task, or create_tasks for several, where #n names another task of the call. link_tasks sets or removes the one link between two tasks; update_task changes any other field.',
   '7. A step only a person can do: label the task human, with choices when they pick one option; request_human_approval when work must wait for approval. When the owner answers you in conversation, reconcile_task records it, relayed by you: action answer (declined or owner_performed on an approval), proposal_version from get_task, quote (their exact words), source (such as claude-code:session/<session id>) and the option they chose. An approved request’s waiting tasks go back to agents within its scope; a declined action must not happen; an answered task goes back to ready work, to claim and close with the implementation commit. A stale proposal_version means show the owner the task again.',
-  '8. Without an owner answer, reconcile_task with proposal_version, an explanation and evidence retires a request (completed, obsolete, superseded or duplicate), takes the human label off routine work, or releases a task whose holder stopped (release, with holder, inactive: true, activity_check and progress; age alone never proves it). Retiring an approval grants no permission. Never run bd, bv or br in a project folder: these tools are the task interface.',
+  '8. Without an owner answer, reconcile_task with proposal_version, an explanation and evidence retires a request (completed, obsolete, superseded or duplicate), takes the human label off routine work, or releases a task whose holder stopped (release, with holder, inactive: true, activity_check and progress; age alone never proves it). Retiring an approval grants no permission.',
 ]);
 
 export const TASK_GUIDE_TOOL = 'get_task_guide';
