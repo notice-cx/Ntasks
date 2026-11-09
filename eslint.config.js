@@ -83,8 +83,10 @@ export default [
     },
   },
   {
-    // Tokens and ids come from Web Crypto. The web app is not Worker code.
+    // Tokens and ids come from Web Crypto. The web app and its pages
+    // (packages/ui) are not Worker code.
     files: ['workers/**/*.ts', 'packages/**/*.ts'],
+    ignores: ['packages/ui/**'],
     rules: {
       'no-restricted-properties': [
         'error',
@@ -101,6 +103,7 @@ export default [
     // that one request writes is read by the next. Tests keep fixtures in
     // module-level variables and are not listed.
     files: ['workers/*/src/**/*.ts', 'packages/*/src/**/*.ts'],
+    ignores: ['packages/ui/**'],
     rules: {
       'no-restricted-syntax': [
         'error',

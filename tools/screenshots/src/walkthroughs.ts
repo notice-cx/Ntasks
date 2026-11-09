@@ -143,7 +143,7 @@ const WALKTHROUGHS: readonly Walkthrough[] = [
   {
     // Waiting for you lists the work waiting for a merge and a deploy; the Done view shows each stage and a close with no proof.
     name: 'shipped',
-    address: '/projects',
+    address: '/tasks/projects',
     // The docs project goes live by a deploy, so its merged work waits for one.
     prepare: async ({ send }, recorder) => {
       const box = `document.querySelector('[data-project-deploys="docs"] input')`;

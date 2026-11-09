@@ -1,7 +1,7 @@
 # @ntasks/screenshots
 
 Makes the pictures of the web app, in light and dark, from its invented
-example tasks (`apps/web/src/api/fixture-data.ts`): the still pictures in the
+example tasks (`packages/ui/src/api/fixture-data.ts`): the still pictures in the
 repository's README, [The web app](../../docs/web-app.md) and
 [the design system](../../docs/design.md), and the animated walkthroughs of
 its features in [The web app](../../docs/web-app.md#walkthroughs).
