@@ -142,6 +142,12 @@ and requests to a deployed Worker. Prepare and verify the change locally first, 
 the exact command, its target and its effect. Tests and CI never reach a
 deployed Worker or a remote database.
 
+One exception: the task tools of the `ntasks` MCP server a maintainer
+connected for task work ([Open work](#open-work)) need no further approval to
+read and change that maintainer's tasks. Any other request to that deployment,
+such as an API call by hand, a backup, a load or a credential change, still
+needs it.
+
 ## Git
 
 Changes go through a branch and a GitHub pull request; never commit to or push
