@@ -36,10 +36,15 @@ const meter = newMeter();
 const db = storeDatabase();
 let target: TestApi;
 let big: { id: string; prefix: string };
+/** Every seeded project, in the order of SIZES. */
+const seeded: { id: string; prefix: string }[] = [];
 
-/** Fills one project with `total` tasks, of which the first `active` are not closed. */
-async function seed(projectId: string, prefix: string, total: number, active: number): Promise<void> {
-  const numbers = 'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?3)';
+/** Fills one project with `total` tasks, of which the first `active` are not
+ * closed. From `first`, it adds tasks `first` to `total` to a project seeded before. */
+async function seed(projectId: string, prefix: string, total: number, active: number, first = 1): Promise<void> {
+  // A bound number arrives as a real; the cast writes ids such as t1, not t1.0.
+  const numbers = 'WITH RECURSIVE n(i) AS (SELECT CAST(?7 AS INTEGER) UNION ALL SELECT i + 1 FROM n WHERE i < ?3)';
+  const added = 'CAST(substr(id, length(?2) + 3) AS INTEGER) >= ?7';
   const id = (expression: string) => `?2 || '-t' || (${expression})`;
   const statements = [
     `${numbers}
@@ -69,13 +74,17 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
      INSERT INTO task_external_links (task_id, url, title, kind, created_at)
      SELECT ${id('i')}, 'https://example.com/' || ?2 || '/pull/' || i, 'Seeded change ' || i, 'pull-request', ?5
      FROM n WHERE i % 4 = 2`,
-    `INSERT INTO custom_fields (project_id, key, name, type, options, created_at) VALUES
-       (?1, 'severity', 'Severity', 'single-choice', '["low","medium","high"]', ?5),
-       (?1, 'points', 'Points', 'number', NULL, ?5)`,
+    ...(first === 1
+      ? [
+          `INSERT INTO custom_fields (project_id, key, name, type, options, created_at) VALUES
+             (?1, 'severity', 'Severity', 'single-choice', '["low","medium","high"]', ?5),
+             (?1, 'points', 'Points', 'number', NULL, ?5)`,
+        ]
+      : []),
     `UPDATE tasks SET version = version + 1, field_values = json_object(
        'severity', CASE CAST(substr(id, length(?2) + 3) AS INTEGER) % 3 WHEN 0 THEN 'low' WHEN 1 THEN 'medium' ELSE 'high' END,
        'points', CAST(substr(id, length(?2) + 3) AS INTEGER) % 8)
-     WHERE project_id = ?1`,
+     WHERE project_id = ?1 AND ${added}`,
     // One in ten of these is built, waiting for its merge; the rest are live.
     `UPDATE tasks SET version = version + 1,
        delivery_stage = CASE WHEN CAST(substr(id, length(?2) + 3) AS INTEGER) % 40 = 2 THEN 'built' ELSE 'live' END,
@@ -84,7 +93,7 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
          % 4294967296) || lower(hex(?2)),
        built_at = closed_at,
        live_at = CASE WHEN CAST(substr(id, length(?2) + 3) AS INTEGER) % 40 = 2 THEN NULL ELSE closed_at END
-     WHERE project_id = ?1 AND status = 'closed' AND CAST(substr(id, length(?2) + 3) AS INTEGER) % 4 = 2`,
+     WHERE project_id = ?1 AND status = 'closed' AND CAST(substr(id, length(?2) + 3) AS INTEGER) % 4 = 2 AND ${added}`,
     `${numbers}
      INSERT INTO task_labels (task_id, label)
      SELECT ${id('i')}, 'area-' || (i % 7) FROM n UNION ALL SELECT ${id('i')}, 'seo' FROM n WHERE i % 5 = 0`,
@@ -95,7 +104,7 @@ async function seed(projectId: string, prefix: string, total: number, active: nu
      INSERT INTO task_events (task_id, project_id, version, kind, actor, at, changes)
      SELECT ${id('i')}, ?1, 1, 'created', 'seed', ?5, json_object('title', 'Seeded task ' || i) FROM n`,
   ];
-  const values = [projectId, prefix, total, active, NOW, RECENTLY_CLOSED];
+  const values = [projectId, prefix, total, active, NOW, RECENTLY_CLOSED, first];
   for (const sql of statements) {
     // SQLite takes exactly as many values as the statement's highest ?N.
     const used = Math.max(...Array.from(sql.matchAll(/\?(\d)/gu), (match) => Number(match[1])));
@@ -122,14 +131,15 @@ beforeAll(async () => {
       prefix,
     });
     await seed(project.id, prefix, total, active);
+    seeded.push({ id: project.id, prefix });
     for (const i of TRIAGED) {
       await db
         .prepare('INSERT INTO task_labels (task_id, label) VALUES (?1, ?2)')
         .bind(`${prefix}-t${i}`, TRIAGE)
         .run();
     }
-    if (index === 0) big = { id: project.id, prefix };
   }
+  big = seeded[0]!;
   target = api({ now: () => NOW, meter });
 }, 60_000);
 
@@ -273,6 +283,57 @@ describe('the cost of each read', () => {
     const cost = await costOf(() => get(target, `/api/tasks/agent-stats?project=${big.id}`));
     expect(cost.rowsRead).toBeLessThan(total / 20);
   });
+
+  // After the cases that measure the store as seeded, since this one adds to its history.
+  it('reads the same rows with ten times the closed history: the board and the lists follow open work and the closed window', async () => {
+    const reads: Record<string, () => Promise<unknown>> = {
+      // The board's position in the change feed moves with the history added.
+      'HTTP board, largest project': async () => {
+        const { lastSeq: _, ...board } = (await get(target, `/api/tasks?project=${big.id}`)).body;
+        return board;
+      },
+      'list_tasks, every project': () => read(target, 'list_tasks', {}),
+      'list_tasks ready, every project': () => read(target, 'list_tasks', { ready: true }),
+      'list_tasks search, every project': () => read(target, 'list_tasks', { query: 'seeded indexing' }),
+      'list_tasks, largest project': () => read(target, 'list_tasks', { project: big.id }),
+    };
+    const measure = async () => {
+      const measured: Record<string, { cost: Meter; answer: unknown }> = {};
+      for (const [name, work] of Object.entries(reads)) {
+        let answer: unknown;
+        const cost = await costOf(async () => {
+          answer = await work();
+        });
+        measured[name] = { cost, answer };
+      }
+      return measured;
+    };
+    const closed = async () =>
+      (await db.prepare("SELECT count(*) AS n FROM tasks WHERE status = 'closed'").first<{ n: number }>())!.n;
+
+    const base = await measure();
+    const history = await closed();
+    for (const [index, [total, active]] of SIZES.entries()) {
+      const { id, prefix } = seeded[index]!;
+      await seed(id, prefix, active + 10 * (total - active), active, total + 1);
+    }
+    expect(await closed()).toBe(10 * history);
+    const older = await measure();
+    console.log(JSON.stringify(Object.fromEntries(Object.entries(older).map(([name, { cost }]) => [name, cost]))));
+
+    for (const [name, { cost, answer }] of Object.entries(older)) {
+      expect(answer, name).toEqual(base[name]!.answer);
+      expect(cost.rowsRead, name).toBeLessThanOrEqual(base[name]!.cost.rowsRead * 1.05);
+    }
+    // A task closed a year ago is still read by its id.
+    const [, active] = SIZES[0];
+    const yearAgo = new Date(Date.parse(NOW) - 365 * 86_400_000).toISOString();
+    const old = await read<{ task: Record<string, unknown> }>(target, 'get_task', {
+      project: big.id,
+      task: `${big.prefix}-t${active + 365}`,
+    });
+    expect(old.task).toMatchObject({ status: 'closed', closedAt: yearAgo });
+  }, 60_000);
 
   // Last, since its project would change what the reads of every project above cost.
   it("reads the external links of a page's tasks only, however many the other matching tasks hold", async () => {
