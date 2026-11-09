@@ -2,7 +2,7 @@
   "name": "@ntasks/spec",
   "version": "0.0.0",
   "private": true,
-  "description": "The draft open contract for work that people and AI agents share: its text, JSON Schemas and sample objects.",
+  "description": "The Shared Work Protocol, a draft open contract for work that people and AI agents share: its text, JSON Schemas and sample objects.",
   "license": "CC-BY-4.0 AND Apache-2.0",
   "type": "module",
   "scripts": {

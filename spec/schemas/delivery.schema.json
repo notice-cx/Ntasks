@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/delivery.schema.json",
   "title": "Delivery",
-  "description": "Where the change of a task closed as done has reached: built when the task closed with a commit or a pull request, merged once a signal says the change merged, live once a signal says a deploy shipped it. A task only moves forward. Section 3.8 of the contract.",
+  "description": "Where the change of a task closed as done has reached: built when the task closed with a commit or a pull request, merged once a signal says the change merged, live once a signal says a deploy shipped it. A task only moves forward. Section 3.8 of the protocol.",
   "$defs": {
     "commit": {
       "description": "A commit's name: 7 to 64 lowercase hexadecimal characters. Two commits match when one starts with the other.",

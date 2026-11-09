@@ -1,7 +1,7 @@
 /**
  * The schemas compile, every sample in examples/<schema>/ validates against
  * its schema, and every sample in examples/<schema>/invalid/ does not. A
- * schema without a valid sample fails, so each object the contract names is
+ * schema without a valid sample fails, so each object the protocol names is
  * shown at least once.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';

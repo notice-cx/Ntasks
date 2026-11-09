@@ -1,6 +1,6 @@
 /**
  * Appendix A stays true: every Ntasks test it names still exists under that
- * name, and every rule the contract defines appears in it, with a test or as
+ * name, and every rule the protocol defines appears in it, with a test or as
  * a gap. A renamed test or a new rule fails here instead of leaving the
  * appendix stale.
  */
@@ -23,10 +23,10 @@ const citations = [...proved.matchAll(/^\| ([A-Z]+-\d+) \| `([^`]+)` › "([^"]+
   name: match[3]!,
 }));
 
-/** Every rule a part of the contract defines, as `**ID.**` or `**ID. Title.**`. */
+/** Every rule a part of the protocol defines, as `**ID.**` or `**ID. Title.**`. */
 const defined = [
   ...new Set(
-    ['contract.md', 'mcp-profile.md', 'http-binding.md'].flatMap((file) =>
+    ['protocol.md', 'mcp-profile.md', 'http-binding.md'].flatMap((file) =>
       [...read(file).matchAll(/\*\*([A-Z]+-\d+)\./gu)].map((match) => match[1]!),
     ),
   ),
@@ -48,13 +48,13 @@ describe('the test appendix', () => {
     ).toBe(true);
   });
 
-  it('lists every rule the contract defines, with a test or as a gap', () => {
+  it('lists every rule the protocol defines, with a test or as a gap', () => {
     const listed = new Set([...citations.map((citation) => citation.rule), ...gaps.match(/[A-Z]+-\d+/gu)!]);
     expect(defined.length).toBeGreaterThan(0);
     expect(defined.filter((rule) => !listed.has(rule))).toEqual([]);
   });
 
-  it('cites only rules the contract defines', () => {
+  it('cites only rules the protocol defines', () => {
     const known = new Set(defined);
     expect(citations.map((citation) => citation.rule).filter((rule) => !known.has(rule))).toEqual([]);
   });

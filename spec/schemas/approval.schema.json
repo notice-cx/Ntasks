@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/approval.schema.json",
   "title": "Approval",
-  "description": "An approval is a task of type gate that holds the tasks waiting on it out of ready work until a person approves the action it names. Its description is the request: the exact action, with its environment, scope and verification. A task waits on it through a blocks link. Section 3.7 of the contract.",
+  "description": "An approval is a task of type gate that holds the tasks waiting on it out of ready work until a person approves the action it names. Its description is the request: the exact action, with its environment, scope and verification. A task waits on it through a blocks link. Section 3.7 of the protocol.",
   "allOf": [{ "$ref": "task.schema.json" }],
   "type": "object",
   "properties": {

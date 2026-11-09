@@ -3,7 +3,7 @@ packages:
   - "workers/*"
   - "packages/*"
   - "tools/*"
-  # The open contract's draft stands alone, so it can move to a home of its own.
+  # The Shared Work Protocol's draft stands alone, so it can move to a home of its own.
   - "spec"
 # Installing is an explicit step; running a script never reinstalls.
 verifyDepsBeforeRun: error

@@ -1,10 +1,10 @@
 # 12. The HTTP binding
 
-Part of [the contract](contract.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
 
 The HTTP binding is the set of JSON routes through which the server's own
 interface and other programs reach a server. Each route below is one that
-Ntasks serves today, mapped to the contract's operations and conformance
+Ntasks serves today, mapped to the protocol's operations and conformance
 levels. Ntasks's [API reference](../docs/api.md#the-http-routes) gives
 every parameter, body and answer in full. The route paths and the
 `x-ntasks-` header names are Ntasks's own
@@ -16,11 +16,11 @@ every parameter, body and answer in full. The route paths and the
 |---|---|
 | Sign-in | A person's browser session, an agent's OAuth access token, or a service credential, as `Authorization: Bearer …` for the last two. A request with none gets `401` with a bearer challenge |
 | Workspace | `x-ntasks-workspace: <workspace id>`; a sender that reaches one workspace may leave it out |
-| A service acting for an agent | `x-ntasks-on-behalf-of: <agent name>`; the change is recorded as `service:<name>/<agent>` ([3.1](contract.md#31-actor-and-provenance)) |
-| Retries | `Idempotency-Key: <key>` on any write, a person's decisions included ([INV-3](contract.md#inv-3)) |
+| A service acting for an agent | `x-ntasks-on-behalf-of: <agent name>`; the change is recorded as `service:<name>/<agent>` ([3.1](protocol.md#31-actor-and-provenance)) |
+| Retries | `Idempotency-Key: <key>` on any write, a person's decisions included ([INV-3](protocol.md#inv-3)) |
 | Bodies | One JSON object, sent as `application/json`, of at most 32 KB, with no key twice and no query. A browser may send a write only from the server's own origin |
 | Answers | JSON, with `cache-control: no-store` |
-| Query parameters | A read refuses one it does not take, or one given twice ([EXT-3](contract.md#ext-3)) |
+| Query parameters | A read refuses one it does not take, or one given twice ([EXT-3](protocol.md#ext-3)) |
 
 ## 12.2 Routes by level
 
@@ -49,7 +49,7 @@ tools only ([OQ-23](open-questions.md#oq-23)).
 ### Human decisions and approvals
 
 Only a person signed in to the server's own interface may call these
-routes ([AUTH-1](contract.md#auth-1)). Any other sender gets `403` with
+routes ([AUTH-1](protocol.md#auth-1)). Any other sender gets `403` with
 `insufficient_scope`, and nothing changes. Each takes an optional
 `proposalVersion`, the version the person's page showed: when the proposal
 changed since, the answer is refused with `409`, `task_refused` and
@@ -67,7 +67,7 @@ changed since, the answer is refused with `409`, `task_refused` and
 
 Each answers `{ task }`, the task as the decision left it, and records the
 person as the answer's `recordedBy`, with `relayed: false`
-([3.6](contract.md#36-decisions)).
+([3.6](protocol.md#36-decisions)).
 
 ### Delivery
 
@@ -91,7 +91,7 @@ A task read answers its `for`, `work` and `lastActivityAt`. Recording work
 details on a comment, claiming by pull request and the held-task list are
 MCP only.
 
-### Outside the contract
+### Outside the protocol
 
 `GET /api/tasks/agent-stats`, the custom-field routes `GET /api/fields`,
 `POST /api/fields` and `POST /api/fields/:key/retire`, the workspace and
@@ -113,7 +113,7 @@ read, with `field` naming the body field at fault when there is one.
 | `401` | Nobody is signed in |
 | `403` `insufficient_scope` | The sender lacks the scope the route needs, such as a decision from an agent or a service |
 | `403` `forbidden` | The sender may read the project but not change it, or a write comes from another site's page |
-| `404` `not_found` | The workspace, the project or a task does not exist, or the sender does not reach it ([AUTH-10](contract.md#auth-10)) |
+| `404` `not_found` | The workspace, the project or a task does not exist, or the sender does not reach it ([AUTH-10](protocol.md#auth-10)) |
 | `409` `task_refused` | The task's state refuses the write, such as a close of a task someone else holds |
 | `409` `idempotency_conflict` | The `Idempotency-Key` was first used for a different write |
-| `503` `unavailable` | The task kept changing while the write was made; nothing was written ([INV-4](contract.md#inv-4)) |
+| `503` `unavailable` | The task kept changing while the write was made; nothing was written ([INV-4](protocol.md#inv-4)) |

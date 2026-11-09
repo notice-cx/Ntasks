@@ -35,6 +35,6 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 
 ## For other tools
 
-- [The open contract](open-contract.md): a draft specification of Ntasks's
-  rules for shared work, which other task tools and agent harnesses can
-  implement.
+- [The Shared Work Protocol](shared-work-protocol.md): a draft
+  specification of Ntasks's rules for shared work, which other task tools and
+  agent harnesses can implement.

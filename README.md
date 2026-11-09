@@ -100,9 +100,9 @@ describes.
   [the API](docs/api.md), [sign-in](docs/sign-in.md),
   [the task store](docs/task-store.md) and
   [the design system](docs/design.md).
-- [The open contract](spec/README.md): a draft specification of Ntasks's
-  rules for shared work, which other task tools and agent harnesses can
-  implement.
+- [The Shared Work Protocol](spec/README.md): a draft specification of
+  Ntasks's rules for shared work, which other task tools and agent harnesses
+  can implement.
 
 ## Contributing
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/link.schema.json",
   "title": "Links",
-  "description": "A link from one task to another, and a link from a task to a page outside the server. Section 3.5 of the contract.",
+  "description": "A link from one task to another, and a link from a task to a page outside the server. Section 3.5 of the protocol.",
   "$defs": {
     "taskId": {
       "description": "A project's prefix, a hyphen and a key of lowercase letters and digits, then one .n per level of child task, such as web-a1b2.3.",

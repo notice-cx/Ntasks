@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/claim.schema.json",
   "title": "Claim and work in hand",
-  "description": "Who holds a task and what the holder recorded about the work in hand. A claim makes the task in_progress and names its holder; only one claim on a task succeeds. Each work detail replaces the one before it, and releasing or closing the task clears them; history keeps every value. Section 3.3 of the contract.",
+  "description": "Who holds a task and what the holder recorded about the work in hand. A claim makes the task in_progress and names its holder; only one claim on a task succeeds. Each work detail replaces the one before it, and releasing or closing the task clears them; history keeps every value. Section 3.3 of the protocol.",
   "$defs": {
     "workDetails": {
       "description": "Only the details the holder recorded. A server keeps these six; a reader ignores any other.",

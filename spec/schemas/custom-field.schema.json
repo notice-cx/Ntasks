@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/custom-field.schema.json",
   "title": "Custom field",
-  "description": "A fact a project's own work tracks, which its tasks carry a value of. A key names one field for good: a project never defines a key twice, retired or not. A retired field takes no new values; the values tasks carry stay. Section 8.2 of the contract.",
+  "description": "A fact a project's own work tracks, which its tasks carry a value of. A key names one field for good: a project never defines a key twice, retired or not. A retired field takes no new values; the values tasks carry stay. Section 8.2 of the protocol.",
   "type": "object",
   "properties": {
     "key": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },

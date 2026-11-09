@@ -1,13 +1,13 @@
 # Appendix A. Each rule and the Ntasks test that proves it
 
-Part of [the contract](contract.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
 
 Each row names a test in the Ntasks repository that exercises the rule
 today, by its file and its name. These tests run inside Ntasks against its
 own engine; the conformance suite will check the same rules against any
 server from outside. [`test/appendix.test.ts`](test/appendix.test.ts)
 fails when a test named here no longer exists, or when a rule of the
-contract appears in neither table.
+protocol appears in neither table.
 
 ## Rules with a test
 

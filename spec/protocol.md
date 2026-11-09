@@ -1,13 +1,14 @@
-# Shared work between people and AI agents
+# The Shared Work Protocol
 
-**An open contract. Working title. Draft, v0, 2026-11-09.**
+**An open contract for shared work between people and AI agents. Draft,
+v0, 2026-11-09.**
 
-This document defines a shared record of work that people and AI agents
-read and write together: tasks, who holds each one, the decisions and
-approvals only a person can give, the proof that work is done, and where a
-finished change has reached. Any task tool, agent harness or adapter can
-implement it. [Ntasks](https://github.com/notice-cx/Ntasks) is its
-reference implementation.
+The Shared Work Protocol defines a record of work that people and AI
+agents read and write together: tasks, who holds each one, the decisions
+and approvals only a person can give, the proof that work is done, and
+where a finished change has reached. Any task tool, agent harness or
+adapter can implement it. [Ntasks](https://github.com/notice-cx/Ntasks) is
+its reference implementation.
 
 ## Status of this document
 
@@ -19,8 +20,9 @@ reference implementation.
 - Where Ntasks's behavior is unclear, looks accidental or has no test, the
   draft records an open question (`OQ-n`, listed in
   [open-questions.md](open-questions.md)) instead of a rule.
-- The name is a working title. The owner of the Ntasks project chooses the
-  contract's own name, separate from the product's.
+- The protocol's name is its own, separate from Ntasks's, so another tool
+  can say it implements the Shared Work Protocol without naming Ntasks.
+  The name is always written in full.
 - The text is licensed [CC BY 4.0](LICENSE-CC-BY-4.0); the schemas, samples
   and tests are licensed [Apache-2.0](LICENSE-APACHE-2.0). Ntasks's code
   stays AGPL-3.0.
@@ -48,7 +50,7 @@ People increasingly run several AI agents against one body of work: coding
 agents in a few terminals, a review bot, a scheduled job. They share a task
 list, and four failures recur:
 
-| Failure | What this contract does about it |
+| Failure | What this protocol does about it |
 |---|---|
 | An agent says work is done and nothing shows it. | A close as done carries its proof: a commit, a pull request or a link. A task closed as done without one is shown as having no proof ([INV-7](#inv-7)). A commit or pull request then moves through built, merged and live as the repository reports it ([STATE-12](#state-12)). |
 | An agent approves its own action, or stretches a person's earlier yes. | Only a person answers a decision or grants an approval ([AUTH-1](#auth-1)). An answer an agent passes on is recorded as relayed, pinned to the exact text the person saw, and can be disputed ([AUTH-3](#auth-3), [AUTH-5](#auth-5)). An approval covers its own request and nothing else, and retiring one grants nothing ([AUTH-6](#auth-6), [AUTH-7](#auth-7)). |
@@ -87,10 +89,10 @@ Both are projects of the Linux Foundation's Agentic AI Foundation.
 
 An MCP task or an A2A task belongs to one request between one client and
 one server, or between two agents, and ends with that request. This
-contract's task is a record that many people and agents share over weeks:
+protocol's task is a record that many people and agents share over weeks:
 anyone with access can find it, at most one of them holds it at a time, a
 person may have to decide on it, and it keeps its history after it closes.
-The contract does not replace either protocol. Its [MCP tool
+The protocol does not replace either protocol. Its [MCP tool
 profile](mcp-profile.md) is a set of MCP tools, so any MCP client can use it;
 an agent that runs work over MCP Tasks or A2A can record that work here.
 
@@ -109,7 +111,7 @@ Each normative rule has an id, such as `INV-1`, which the
 
 | Term | Meaning |
 |---|---|
-| Server | A system that implements this contract and keeps the record. |
+| Server | A system that implements this protocol and keeps the record. |
 | Client | Any program that reads or writes the record through a binding: an agent, the server's own interface, a service. |
 | Binding | A way to reach a server: the [MCP tool profile](mcp-profile.md) or the [HTTP binding](http-binding.md). |
 | Sender | The signed-in identity a request comes from. |
@@ -699,8 +701,8 @@ MUST NOT add values to them. A system that needs more kinds records them in
 labels, custom fields or metadata.
 
 Ntasks also returns facts from NoticeOS, the system it started in, beside
-the contract's: a task's `card`, `cardShipped` and `changeClass`. They are
-Ntasks's extensions, not part of this contract
+the protocol's: a task's `card`, `cardShipped` and `changeClass`. They are
+Ntasks's extensions, not part of this protocol
 ([OQ-20](open-questions.md#oq-20)).
 
 ## 9. Versioning
@@ -719,10 +721,10 @@ an argument, a field or an operation needs a new major version. Ntasks keeps
 this rule for its MCP tools today: a test compares their schemas with a
 fixture and fails when an argument disappears.
 
-The contract's version is separate from the MCP protocol revision a server
+The protocol's version is separate from the MCP protocol revision a server
 speaks, and from the version of a server's own rules text, such as the
 version of the task guide Ntasks serves. How a server announces the
-contract version it implements is [OQ-18](open-questions.md#oq-18).
+protocol version it implements is [OQ-18](open-questions.md#oq-18).
 
 ## 10. Security considerations
 
