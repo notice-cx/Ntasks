@@ -54,10 +54,10 @@ export default defineConfig({
     const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
     const url = `${SITE_ORIGIN}${DOCS_BASE}${path}`;
     return [
-      ['link', { rel: 'canonical', href: `${SITE_ORIGIN}${DOCS_BASE}${path}` }],
+      ['link', { rel: 'canonical', href: url }],
       ['meta', { property: 'og:title', content: pageData.title || 'Ntasks docs' }],
       ['meta', { property: 'og:description', content: pageData.description }],
-      ['meta', { property: 'og:url', content: `${SITE_ORIGIN}${DOCS_BASE}${path}` }],
+      ['meta', { property: 'og:url', content: url }],
       ['meta', { name: 'twitter:title', content: pageData.title || 'Ntasks docs' }],
       ['meta', { name: 'twitter:description', content: pageData.description }],
       docsSchema(pageData.title || 'Ntasks docs', pageData.description, url),

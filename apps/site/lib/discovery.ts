@@ -40,6 +40,7 @@ export const landingSchema = jsonLd({
   ],
 });
 
+/** Docs reference the landing page's graph so crawlers see one website and product. */
 export function docsSchema(title: string, description: string, url: string): HeadConfig {
   const items = [
     { '@type': 'ListItem', position: 1, name: 'Ntasks', item: `${SITE_ORIGIN}/` },
