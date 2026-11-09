@@ -4,7 +4,7 @@ import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed } from '@/api/fixture-data';
 import { renderApp } from './render';
 
-const COMMANDS = 'pnpm install --frozen-lockfile\npnpm --filter @ntasks/ui run build';
+const COMMANDS = 'pnpm install --frozen-lockfile\npnpm --filter @notice-cx/ntasks-ui run build';
 
 /** The task web-b2r6, whose description holds one bash block. */
 function openTask() {

@@ -1,6 +1,6 @@
 name: Release UI package
 
-# Pushing a tag such as ui-v0.2.0 publishes the npm package @ntasks/ui, built
+# Pushing a tag such as ui-v0.2.0 publishes the npm package @notice-cx/ntasks-ui, built
 # from packages/ui. The tag must name the version in packages/ui/package.json,
 # on a commit of main (packages/ui/README.md, "Releasing").
 on:
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @ntasks/ui to npm
+    name: Publish @notice-cx/ntasks-ui to npm
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The repository's settings can require an approval for this environment,
@@ -59,7 +59,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm --filter @ntasks/ui run check:host
+      - run: pnpm --filter @notice-cx/ntasks-ui run check:host
       # pnpm packs the package as the host check installed it; npm publishes
       # that tarball with its provenance statement. npm signs in through the
       # trusted publisher when the package has one, and otherwise with the
@@ -68,6 +68,6 @@ jobs:
         working-directory: packages/ui
         run: |
           pnpm pack --pack-destination "$RUNNER_TEMP/ui-package"
-          npm publish "$RUNNER_TEMP"/ui-package/ntasks-ui-*.tgz --access public --provenance
+          npm publish "$RUNNER_TEMP"/ui-package/notice-cx-ntasks-ui-*.tgz --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

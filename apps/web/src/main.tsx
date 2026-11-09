@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import '@ntasks/ui/styles.css';
+import '@notice-cx/ntasks-ui/styles.css';
 import { Shell } from './shell';
 import './shell.css';
 
