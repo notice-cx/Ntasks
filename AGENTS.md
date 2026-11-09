@@ -51,6 +51,7 @@ Every feature and every change to an existing one meets all five:
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires, and the tests of `install.sh`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, the seed of invented tasks, the provision of a deployment nobody signs in to, and the verifier |
+| `tools/cli/` | The npm package `ntasks`, published as `ntasks` from `tools/cli/dist`: the command `npx ntasks deploy`, which deploys the release the package holds to a Cloudflare account and updates it, and the build that bundles the Worker, the web app and the D1 migrations into the package. Its tests run the command against a stand-in for wrangler. The Release workflow publishes it from a version tag ([its README](tools/cli/README.md)) |
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)) |
@@ -73,6 +74,7 @@ shellcheck install.sh  # the agent setup script
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
 pnpm build         # the web app, then `wrangler deploy --dry-run`
+pnpm run package   # after the build: the npm package ntasks in tools/cli/dist, checked
 pnpm dev           # the Worker and the web app at http://localhost:8787
 ```
 
@@ -138,9 +140,12 @@ Anything that reaches Cloudflare's servers or a deployed Ntasks, reads
 included: `wrangler deploy` without `--dry-run`, any `wrangler d1` command
 with `--remote`, `wrangler secret put`, `wrangler login`, `pnpm run deploy`
 (it runs `wrangler d1 migrations apply --remote`, then `wrangler deploy`),
-and requests to a deployed Worker. Prepare and verify the change locally first, then ask with
-the exact command, its target and its effect. Tests and CI never reach a
-deployed Worker or a remote database.
+the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
+`--dry-run` included, since it reads the account, and requests to a deployed
+Worker. Publishing to npm is the owner's step too: `npm publish`, and pushing
+a `v*` tag, which runs the Release workflow. Prepare and verify the change
+locally first, then ask with the exact command, its target and its effect.
+Tests and CI never reach a deployed Worker, a remote database or npm.
 
 One exception: the task tools of the `ntasks` MCP server a maintainer
 connected for task work ([Open work](#open-work)) need no further approval to

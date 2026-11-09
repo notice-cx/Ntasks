@@ -32,6 +32,7 @@ runs Workers on Cloudflare, with a local task store and a local D1 database.
 | [`tools/lint/`](tools/lint/) | The tests that `pnpm lint` reports the mistakes it exists to catch, that no `wrangler.jsonc` names a secret in `vars`, that the Deploy to Cloudflare button asks for every secret the Worker requires, and that `install.sh` sets agents up |
 | [`install.sh`](install.sh), [`skills/ntasks/`](skills/ntasks/) | The command that connects AI agents to Ntasks and installs the Ntasks skill, and the skill ([Connect an agent](docs/agents.md)) |
 | [`tools/migrate/`](tools/migrate/) | The commands that move a Beads task hub into the task store, and back a task store up and restore it, with a verifier |
+| [`tools/cli/`](tools/cli/) | The npm package `ntasks` and its command, `npx ntasks deploy`, which deploys a release to a Cloudflare account and updates it, with the build that makes the package and the Release workflow's notes |
 | [`tools/screenshots/`](tools/screenshots/) | The command that makes the pictures and animated walkthroughs of the web app in the README and the docs |
 | [`docs/`](docs/) | Concepts, architecture and the design system |
 
@@ -47,9 +48,10 @@ Run these from the repository root.
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
 | `pnpm test` | Runs every workspace's tests. They include tests that `pnpm lint` reports what it should, a check that no `vars` setting in a `wrangler.jsonc` is named like a secret, and a check that the Deploy to Cloudflare button asks for every secret the Worker requires |
 | `pnpm build` | Builds the web app, then checks that the Worker would deploy, without deploying it |
+| `pnpm run package` | After `pnpm build`, builds the npm package `ntasks` in `tools/cli/dist`, then checks the files `npm pack` would publish and that wrangler accepts the package's deploy configuration. It needs `npm` and `pnpm` on the `PATH` |
 
 CI runs `pnpm lint`, `pnpm format:check`, `shellcheck install.sh`,
-`pnpm typecheck`, `pnpm test` and `pnpm build` on every pull request
+`pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm run package` on every pull request
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). To run one
 workspace's command, name it with `--filter`:
 
