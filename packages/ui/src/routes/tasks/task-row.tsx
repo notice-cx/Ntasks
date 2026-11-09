@@ -40,7 +40,13 @@ import {
 } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
 import { ageMs, calendarDay, formatAge, formatMinutes } from '../../lib/format';
-import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '../../lib/symbols';
+import {
+  isAgentActor,
+  statusMarkFor,
+  TYPE_MARK_LABELS,
+  typeMarkFor,
+  type StatusMark as StatusMarkKey,
+} from '../../lib/symbols';
 import {
   actorLabel,
   askVerb,
@@ -103,7 +109,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
     <>
       {type !== 'task' && type !== 'other' ? (
         <Badge icon={<TypeMark type={type} size={12} label={null} />} className="max-sm:hidden">
-          {type.charAt(0).toUpperCase() + type.slice(1)}
+          {TYPE_MARK_LABELS[type]}
         </Badge>
       ) : null}
       {labels.map((label) => (

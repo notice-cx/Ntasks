@@ -106,6 +106,8 @@ function StepItem({
   onMark: (marking: StepMarking, after?: () => void) => void;
 }) {
   const [form, setForm] = useState<'note' | 'stuck' | null>(null);
+  // Unique in the page: several requests' steps can be open at once on the board.
+  const textId = useId();
   const done = step.done !== null;
   const state = done ? 'done' : step.stuck !== null ? 'stuck' : 'todo';
   const by = (mark: StepMark) => {
@@ -119,7 +121,7 @@ function StepItem({
         role="checkbox"
         aria-checked={done}
         aria-label={`Step ${place}`}
-        aria-describedby={`step-${place}-text`}
+        aria-describedby={textId}
         disabled={!markable || pending}
         title={disabledReason ?? undefined}
         onClick={() => onMark({ step: place, done: !done })}
@@ -137,7 +139,7 @@ function StepItem({
         </span>
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div id={`step-${place}-text`} className="flex items-baseline gap-2">
+        <div id={textId} className="flex items-baseline gap-2">
           <span className="nums text-meta text-ink-3">{place}.</span>
           <MarkdownText source={step.text} className={cn('text-sm', done ? 'text-ink-2' : 'text-ink')} />
         </div>
