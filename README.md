@@ -55,7 +55,7 @@ whatever needs you.
 Ntasks runs on your own Cloudflare account, within
 [the free plan](docs/architecture.md#the-free-plan-budget).
 
-1. **Deploy.** On a machine with Node.js, run:
+1. **Deploy.** On a machine with Node.js 22 or later, run:
 
    ```sh
    npx ntasks deploy
