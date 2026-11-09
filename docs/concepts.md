@@ -130,6 +130,11 @@ clears them; its history keeps every value they had.
 </picture>
 
 - **Last activity** is when the holder last changed or commented on the task.
+- **The Live page** groups the tasks in progress by last activity: **Active**
+  within the last hour, **Quiet** until the time chosen under Stalled after
+  (1 day unless the reader chooses another), and **Stalled** from then on, or
+  when nothing is recorded. Stalled is shown, never stored: the task stays in
+  progress and its holder keeps it.
 - **A claim does not expire.** Ntasks never gives a task to someone else
   because time passed, however old its last activity. Before you release a
   task someone holds, check that they stopped working on it, and keep the

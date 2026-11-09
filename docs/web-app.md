@@ -28,6 +28,14 @@ from the web app's invented example data. Regenerate the pictures with
   <img src="images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
 </picture>
 
+**Live.** Every task in progress, grouped by when its holder last changed or
+commented on it: Active, Quiet and Stalled.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
+  <img src="images/live-light.webp" width="800" alt="The Live page: 1 active, 1 quiet and 1 stalled at the top beside Stalled after 1 day, then the Active, Quiet and Stalled groups, each row with its task's next step, pull request or branch, helper, holder and how long since the holder's last change.">
+</picture>
+
 **Phone.**
 
 <picture>

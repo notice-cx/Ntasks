@@ -1,4 +1,4 @@
-import { Folder, List, Search, Settings, Target, Users } from 'lucide-react';
+import { Activity, Folder, List, Search, Settings, Target, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ui/avatar';
 import { Count } from '@/components/ui/badge';
@@ -15,12 +15,14 @@ import {
 } from '@/components/ui/shell';
 import { GitHubMark, StatusMark, WorkspaceIcon } from '@/components/ui/symbols';
 import { useBoard } from '@/hooks/useBoard';
+import { useNow } from '@/hooks/useNow';
 import { useAnswerHides } from '@/hooks/useTasks';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { NO_FILTERS } from '@/lib/board-read';
+import { activeNow } from '@/lib/live';
 import { SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 import { isAgentActor } from '@/lib/symbols';
-import { actorLabel, claimedModel, IN_PROGRESS, type BoardTask } from '@/lib/task-model';
+import { actorLabel, claimedModel, type BoardTask } from '@/lib/task-model';
 
 /** The people and agents shown under People, at most this many. */
 const PEOPLE = 6;
@@ -32,8 +34,8 @@ interface Person {
   live: boolean;
 }
 
-/** Who holds open work: everyone with a task not closed, those working now first. */
-export function peopleOf(tasks: readonly BoardTask[]): Person[] {
+/** Who holds open work: everyone with a task not closed, those working on one now first. */
+export function peopleOf(tasks: readonly BoardTask[], nowMs: number): Person[] {
   const people = new Map<string, Person>();
   for (const task of tasks) {
     if (!task.assignee || task.status === 'closed') continue;
@@ -42,14 +44,14 @@ export function peopleOf(tasks: readonly BoardTask[]): Person[] {
       actor: task.assignee,
       name: known?.name ?? actorLabel(task.assignee, task.actors),
       model: known?.model ?? claimedModel(task),
-      live: (known?.live ?? false) || task.status === IN_PROGRESS,
+      live: (known?.live ?? false) || activeNow(task, nowMs),
     });
   }
   return [...people.values()].sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
 }
 
 /** Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board. */
-const WORKSPACE_PAGES = new Set(['/projects', '/members', '/settings']);
+const WORKSPACE_PAGES = new Set(['/live', '/projects', '/members', '/settings']);
 
 /** The open workspace's name, which opens the menu of the others and its settings. */
 function WorkspaceSwitcher() {
@@ -86,7 +88,7 @@ function WorkspaceSwitcher() {
 }
 
 /**
- * The app's navigation: the workspace, Waiting for you, Tasks and Focus, then
+ * The app's navigation: the workspace, Waiting for you, Tasks, Live and Focus, then
  * each project and each person or agent with open work, each a view of the
  * board, and at its foot the workspace's projects, members and settings and
  * the link to the source code.
@@ -105,7 +107,9 @@ export function AppSidebar() {
     board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
   const waiting = board.inbox.filter((task) => !hides(task.id, fetchedAt(task))).length;
   const open = (tasks: readonly BoardTask[]) => tasks.filter((task) => task.status !== 'closed').length;
-  const people = peopleOf(board.allTasks).slice(0, PEOPLE);
+  const now = useNow();
+  const people = peopleOf(board.allTasks, now).slice(0, PEOPLE);
+  const active = board.allTasks.filter((task) => activeNow(task, now)).length;
   const boardSearch = onBoard ? search : '';
 
   return (
@@ -132,6 +136,14 @@ export function AppSidebar() {
       </NavItem>
       <NavItem asChild icon={<List aria-hidden />} count={open(board.allTasks)} active={onBoard && !narrowed}>
         <Link to="/tasks">Tasks</Link>
+      </NavItem>
+      <NavItem
+        asChild
+        icon={<Activity aria-hidden />}
+        count={active > 0 ? active : undefined}
+        active={pathname === '/live'}
+      >
+        <Link to="/live">Live</Link>
       </NavItem>
       <NavItem asChild icon={<Target aria-hidden />} active={pathname === '/tasks/focus'}>
         <Link to="/tasks/focus">Focus</Link>

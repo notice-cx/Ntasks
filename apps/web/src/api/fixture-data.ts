@@ -287,6 +287,15 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       labels: ['copy'],
       ready: true,
     }),
+    base('web', 'web-w6n2', 'Measure how long the sign-in page takes to load', {
+      status: 'in_progress',
+      assignee: CLAUDE,
+      work: { branch: 'claude/sign-in-timing', next: 'Compare the load on a slow phone' },
+      lastActivityAt: at(3 * DAY),
+      startedAt: at(4 * DAY),
+      updatedAt: at(3 * DAY),
+      metadata: { noticeos_claimed_model: MODELS[CLAUDE] },
+    }),
     base('web', 'web-p9c4', 'Review how the fonts load', {
       priority: 3,
       status: 'deferred',
@@ -318,6 +327,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     base('docs', 'docs-n6j1', 'Explain approvals on the concepts page', {
       status: 'in_progress',
       assignee: FIXTURE_ACTOR,
+      lastActivityAt: at(5 * HOUR),
       startedAt: at(1 * DAY),
       updatedAt: at(5 * HOUR),
     }),

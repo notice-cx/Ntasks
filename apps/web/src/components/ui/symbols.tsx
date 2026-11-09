@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { ReactElement, SVGProps } from 'react';
+import { ACTIVITY_LABELS, type Activity } from '@/lib/live';
 import { priorityBand } from '@/lib/task-model';
 import {
   priorityBars,
@@ -98,6 +99,46 @@ export function StatusMark({
       {...a11y(label === undefined ? STATUS_MARK_LABELS[status] : label)}
     >
       {STATUS_SHAPES[status](muted && status === 'done')}
+    </svg>
+  );
+}
+
+// --- Activity: how recently a held task's holder worked on it -----------------
+
+/** Active is a filled Accent disc in a faint ring; Quiet is the In progress mark; Stalled is that mark in Text 3. */
+const ACTIVITY_SHAPES: Readonly<Record<Activity, ReactElement>> = {
+  active: (
+    <>
+      <circle cx="7" cy="7" r="6.1" fill="none" className="stroke-accent" strokeOpacity=".35" strokeWidth="1.5" />
+      <circle cx="7" cy="7" r="3.6" className="fill-accent" />
+    </>
+  ),
+  quiet: STATUS_SHAPES['in-progress'](false),
+  stalled: (
+    <>
+      <circle cx="7" cy="7" r="5.25" fill="none" className="stroke-ink-3" strokeWidth="1.5" />
+      <path d="M7 3.75a3.25 3.25 0 0 1 0 6.5z" className="fill-ink-3" />
+    </>
+  ),
+};
+
+/** How recently the holder of a task in progress worked on it (src/lib/live.ts). */
+export function ActivityMark({
+  activity,
+  size = 14,
+  label,
+  className,
+}: Labelled & { activity: Activity; size?: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      width={size}
+      height={size}
+      className={cn('block shrink-0', className)}
+      data-activity-mark={activity}
+      {...a11y(label === undefined ? ACTIVITY_LABELS[activity] : label)}
+    >
+      {ACTIVITY_SHAPES[activity]}
     </svg>
   );
 }
