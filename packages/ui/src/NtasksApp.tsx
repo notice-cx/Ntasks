@@ -22,8 +22,9 @@ export interface NtasksAppProps {
    */
   tokenSource?: TokenSource;
   /**
-   * The address of the board; every other page is under it. `/tasks` (the
-   * default) puts the board at `/tasks` and a task at `/tasks/<id>`.
+   * The address of the board, below the site's root; every other page is
+   * under it. `/tasks` (the default) puts the board at `/tasks` and a task at
+   * `/tasks/<id>`.
    */
   basePath?: string;
   /** `system` (the default) follows the system's preference while the page is open. */
@@ -70,7 +71,7 @@ function Placed({ apiOrigin, tokenSource, basePath = '/tasks', theme = 'system',
   if (inHostRoute) return app;
   return (
     <Routes>
-      <Route path={paths.board === '/' ? '/*' : `${paths.board}/*`} element={app} />
+      <Route path={`${paths.board}/*`} element={app} />
     </Routes>
   );
 }

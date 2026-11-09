@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import manifest from './package.json' with { type: 'json' };
 import { scopeStyles } from './scope-styles.config.ts';
+import { serverFonts } from './server-fonts.config.ts';
 
 // The host installs these, so the build leaves them out and imports them by name.
 const external = [...Object.keys(manifest.dependencies), ...Object.keys(manifest.peerDependencies)];
@@ -34,7 +35,8 @@ function importFonts(): Plugin {
  * each page loads when it is first opened, and one stylesheet. `vite --mode fixture` serves dev/, the app over invented tasks.
  */
 export default defineConfig({
-  plugins: [react(), tailwindcss(), importFonts()],
+  // The development server also serves the fonts the Worker's own pages load; only apps/web's build copies them.
+  plugins: [react(), tailwindcss(), importFonts(), { ...serverFonts(), apply: 'serve' }],
   css: { postcss: { plugins: [scopeStyles()] } },
   build: {
     lib: {

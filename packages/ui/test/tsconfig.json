@@ -8,5 +8,5 @@
     "types": ["node", "vite/client"],
     "paths": { "@/*": ["../src/*"] }
   },
-  "include": [".", "../src", "../dev", "../vite.config.ts", "../vitest.config.ts", "../scope-styles.config.ts"]
+  "include": [".", "../src", "../dev", "../vite.config.ts", "../vitest.config.ts", "../scope-styles.config.ts", "../server-fonts.config.ts"]
 }

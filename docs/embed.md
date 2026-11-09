@@ -19,9 +19,11 @@ on the Worker's origin.
    included, only from the origin of the app's registered redirect address
    ([Calls from the app's page](sign-in.md#calls-from-the-apps-page)).
 2. **Checks the version.** `GET /api/version` on the Ntasks answers
-   `{ version, oldest }` before anyone signs in. When `version` is lower than
-   the package's `API_VERSION`, the Ntasks lacks something the pages read and
-   needs an update ([Versions](api.md#versions)).
+   `{ version, oldest }` before anyone signs in. The pages work when
+   `oldest <= API_VERSION <= version`, with the package's `API_VERSION`. A
+   lower `version` means the Ntasks lacks something the pages read and needs
+   an update; a higher `oldest` means it no longer answers this version of the
+   package, which needs an update ([Versions](api.md#versions)).
 3. **Renders the app** at the route `<basePath>/*` of its React Router, with
    the package's stylesheet:
 
