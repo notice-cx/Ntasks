@@ -136,6 +136,7 @@ describe("the Worker's task answers", () => {
           by: 'Example Owner',
           model: 'example-model',
           link: null,
+          acceptance: null,
         },
       }),
     ]);
@@ -156,6 +157,7 @@ describe("the Worker's task answers", () => {
       by: 'agent-one',
       model: null,
       link: null,
+      acceptance: null,
     } as const;
     const delivery = {
       stage: 'merged',
@@ -179,6 +181,7 @@ describe("the Worker's task answers", () => {
       duplicateOf: null,
       by: 'agent-one',
       model: null,
+      acceptance: null,
     } as const;
     const link = 'https://docs.example.com/runbook';
     const [unproven, linked, decided] = overTheWire([

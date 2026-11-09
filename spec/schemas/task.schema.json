@@ -82,6 +82,10 @@
       "enum": ["done", "wont-do", "duplicate", "cant-reproduce", "already-handled", "no-longer-needed", null]
     },
     "duplicateOf": { "oneOf": [{ "$ref": "link.schema.json#/$defs/taskId" }, { "type": "null" }] },
+    "closeAcceptance": {
+      "description": "A person's acceptance of the task as done on their own call (section 3.10).",
+      "oneOf": [{ "$ref": "acceptance.schema.json" }, { "type": "null" }]
+    },
     "delivery": { "$ref": "delivery.schema.json" },
     "proof": {
       "description": "none on a task, bug, feature or chore closed as done with no commit, pull request or link.",
@@ -108,6 +112,7 @@
           "resolution": { "type": "null" },
           "closeReason": { "type": "null" },
           "closeLink": { "type": "null" },
+          "closeAcceptance": { "type": "null" },
           "duplicateOf": { "type": "null" },
           "proof": { "type": "null" }
         },
@@ -115,11 +120,12 @@
       }
     },
     {
-      "description": "Only a task closed as done carries a delivery, a close link or proof none.",
+      "description": "Only a task closed as done carries a delivery, a close link, an acceptance or proof none.",
       "if": {
         "anyOf": [
           { "required": ["delivery"] },
           { "properties": { "closeLink": { "type": "string" } }, "required": ["closeLink"] },
+          { "properties": { "closeAcceptance": { "type": "object" } }, "required": ["closeAcceptance"] },
           { "properties": { "proof": { "const": "none" } }, "required": ["proof"] }
         ]
       },
@@ -131,10 +137,16 @@
       "then": {
         "properties": {
           "type": { "enum": ["task", "bug", "feature", "chore"] },
-          "closeLink": { "type": "null" }
+          "closeLink": { "type": "null" },
+          "closeAcceptance": { "type": "null" }
         },
         "not": { "required": ["delivery"] }
       }
+    },
+    {
+      "description": "A person's acceptance is what shows the task done, so it never sits beside a close link or a delivery.",
+      "if": { "properties": { "closeAcceptance": { "type": "object" } }, "required": ["closeAcceptance"] },
+      "then": { "properties": { "closeLink": { "type": "null" } }, "not": { "required": ["delivery"] } }
     },
     {
       "description": "A close as duplicate names the task it duplicates; no other close does.",

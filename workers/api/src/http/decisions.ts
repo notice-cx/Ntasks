@@ -1,8 +1,9 @@
 /**
  * The HTTP routes of a person's decisions: answering a task that waits on
  * them, picking one of its options, declining it, approving an approval,
- * ticking the steps of a request that they do steps, and disputing an
- * approval an agent recorded for them. Each route and body has
+ * ticking the steps of a request that they do steps, accepting a task as done
+ * on their own call, and disputing an approval or an acceptance an agent
+ * recorded for them. Each route and body has
  * the shape NoticeOS's Tasks API took (scripts/hosted-task-http.mts there),
  * and an answer may also name the `proposalVersion` the person's page showed.
  * owner-answers.ts holds the rules, and each decision is one write. Only a
@@ -10,10 +11,21 @@
  * Also the agent statistics read, GET /api/tasks/agent-stats.
  */
 import { TASK_LIMITS, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import { booleanArg, choiceArg, only, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
+import {
+  booleanArg,
+  choiceArg,
+  criteriaMetArg,
+  only,
+  projectArg,
+  refuse,
+  taskArg,
+  textArg,
+  type Args,
+} from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { TASK_CHOICE_KEYS, TASK_CHOICE_LIMITS } from '../noticeos-fields.ts';
 import {
+  accept,
   ANSWERED,
   approve,
   choose,
@@ -110,7 +122,34 @@ export async function dismissRoute(
   return decided(context, await dismiss(context, projectId, taskId, dismissal, retry(body), shownOf(body)));
 }
 
-/** POST /api/tasks/:id/dispute: a person withdrawing an approval an agent recorded for them. */
+/** POST /api/tasks/:id/accept: a person accepting a task as done on their own
+ * call, naming the criteria they found met; the rest are recorded as waived.
+ * It names the proposal version the page showed, so the criteria recorded are
+ * the ones the person read. */
+export async function acceptRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  taskId: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'accept', { task: taskId });
+  only(body, ['projectId', 'met', 'reason', 'proposalVersion']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  const met = criteriaMetArg(body, 'met');
+  const reason = textArg(body, 'reason', TASK_LIMITS.reason, false);
+  const shown = shownOf(body);
+  if (shown === undefined)
+    throw new HttpRefused(
+      400,
+      'invalid_request',
+      'proposalVersion is required: the one the task read returned, so the criteria recorded are the ones the person read',
+      'proposalVersion',
+    );
+  const accepting = { met, ...(reason === undefined ? {} : { reason }) };
+  return decided(context, await accept(context, projectId, taskId, accepting, retry(body), shown));
+}
+
+/** POST /api/tasks/:id/dispute: a person withdrawing an approval or an acceptance an agent recorded for them. */
 export async function disputeRoute(
   context: WriteContext,
   url: URL,
