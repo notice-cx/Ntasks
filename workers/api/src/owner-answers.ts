@@ -8,8 +8,11 @@
  * waiting on it land together or not at all.
  */
 import {
+  ACCEPTED_REASON,
+  criteriaOf,
   markedStep,
   TASK_LIMITS,
+  type AcceptedCriterion,
   type Json,
   type JsonObject,
   type Project,
@@ -52,6 +55,7 @@ export const MAINTENANCE_ACTIONS = Object.freeze([
   'answer',
   'declined',
   'owner_performed',
+  'accepted',
   'completed',
   'obsolete',
   'superseded',
@@ -63,7 +67,7 @@ export type MaintenanceAction = (typeof MAINTENANCE_ACTIONS)[number];
 
 /** The actions that record an answer the owner gave; the others maintain a request with evidence. */
 function isOwnerAnswer(action: MaintenanceAction): boolean {
-  return action === 'answer' || action === 'declined' || action === 'owner_performed';
+  return action === 'answer' || action === 'declined' || action === 'owner_performed' || action === 'accepted';
 }
 
 /**
@@ -81,6 +85,8 @@ export interface TaskMaintenance {
   readonly model?: string;
   /** The option the owner chose, on a task with choices; absent when they chose none. */
   readonly option?: TaskChoiceKey;
+  /** With accepted: the task's criteria the owner found met, by place from 1; the rest are waived. */
+  readonly met?: readonly number[];
   /** The owner's exact words, recorded as given. */
   readonly quote?: string;
   /** Where the owner said it, such as the conversation. */
@@ -615,6 +621,71 @@ export function dismissalWrite(
   return draft.write();
 }
 
+/** The criteria a person found met, by place from 1, and the reason they give, when they accept a task as done. */
+export interface Accepting {
+  readonly met: readonly number[];
+  readonly reason?: string;
+}
+
+/** The task's criteria with those at the places `met` names found met and the
+ * rest waived; refused when it names a place the task has no criterion at.
+ * `field` is the argument that named them. */
+function acceptedCriteria(task: Task, met: readonly number[], field: string): AcceptedCriterion[] {
+  const criteria = criteriaOf(task.acceptance);
+  const outside = met.find((place) => place > criteria.length);
+  if (outside !== undefined) {
+    const has =
+      criteria.length === 0
+        ? `${task.id} has no criteria in its acceptance; send []`
+        : `${task.id} has criteria 1 to ${criteria.length}: ${criteria.map(({ text }, index) => `${index + 1}. ${text}`).join(' ')}`;
+    throw new Refused(
+      'invalid',
+      `invalid arguments: ${field} (${has})`,
+      criteria.length === 0 ? `${task.id} has no criteria.` : `${task.id} has criteria 1 to ${criteria.length}.`,
+      field,
+    );
+  }
+  const found = new Set(met);
+  return criteria.map(({ text }, index) => ({ text, met: found.has(index + 1) }));
+}
+
+/** A request to a person, which a person approves or does, and no one accepts as done. */
+function requestRefusal(task: Task): Refused {
+  return new Refused(
+    'state',
+    `refused: ${task.id} is a request to a person, which they ${task.steps === null ? 'approve' : 'do step by step'}; it is not accepted as done.`,
+    `${task.id} is a request to you: ${task.steps === null ? 'approve it' : 'tick its steps'} instead.`,
+  );
+}
+
+/**
+ * A person accepting a task as done on their own call: it closes as done
+ * with them as its closer, recording each of its criteria as met or waived,
+ * whoever holds it. An approval or a child it waits on that is still open
+ * refuses it, as it refuses any decision's close.
+ */
+export function acceptanceWrite(
+  task: Task,
+  accepting: Accepting,
+  around: Surroundings,
+  deciding: Deciding,
+): TaskWrite | null {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  if (task.type === 'gate') throw requestRefusal(task);
+  decisionClose(task, around);
+  const draft = new Draft(task);
+  draft.close = {
+    reason: accepting.reason ?? ACCEPTED_REASON,
+    resolution: 'done',
+    acceptance: {
+      by: deciding.actor,
+      ...(deciding.app === undefined ? {} : { app: deciding.app }),
+      criteria: acceptedCriteria(task, accepting.met, 'met'),
+    },
+  };
+  return draft.write();
+}
+
 /**
  * A person approving an approval: the gate closes as done, the tasks waiting
  * on it are free of it, and those labelled human go back to agents as after
@@ -698,6 +769,7 @@ export function disputeWrite(
   at: string,
   app?: string,
 ): TaskWrite | null {
+  if (task.type !== 'gate') return acceptanceDisputeWrite(task, around, actor, at, app);
   const previous = maintenanceOf(task);
   // The approval the gate stands on is its latest record, past any owner's
   // report recorded after the gate closed (`follows`), which completes that
@@ -754,6 +826,50 @@ export function disputeWrite(
   return draft.write();
 }
 
+/**
+ * A person disputing an acceptance an agent relayed for them: the task opens
+ * again, its close stays in its history, and the tasks waiting on it are told
+ * to wait until it closes again. An answer relayed from the disputed source
+ * is refused from then on. A person's own acceptance is not disputed: they
+ * reopen the task.
+ */
+function acceptanceDisputeWrite(
+  task: Task,
+  around: Surroundings,
+  actor: string,
+  at: string,
+  app?: string,
+): TaskWrite | null {
+  const previous = maintenanceOf(task);
+  const acceptance = task.close?.acceptance ?? null;
+  const relayed = acceptance?.relayed;
+  if (relayed === undefined) {
+    // The dispute opened the task again, so a second one finds it open.
+    if (previous?.action === 'accepted' && isRecord(previous.disputed) && task.status !== 'closed') return null;
+    if (acceptance !== null)
+      refuse(
+        `${task.id} was accepted directly by ${acceptance.by}; a dispute withdraws only an acceptance an agent relayed.`,
+      );
+    refuse(`dispute requires an approval, or an acceptance of ${task.id} as done, that an agent relayed.`);
+  }
+  const draft = new Draft(task);
+  // The relay's record, which an answer relayed later checks for a disputed source.
+  const record: JsonObject =
+    previous?.action === 'accepted'
+      ? previous
+      : { action: 'accepted', taskId: task.id, by: relayed.by, source: relayed.source, events: withPrevious(previous) };
+  draft.metadata[MAINTENANCE] = {
+    ...record,
+    disputed: { by: actor, ...(app === undefined ? {} : { app }), at, agent: relayed.by, sources: [relayed.source] },
+  };
+  draft.comment = `Owner disputed the acceptance of ${task.id} as done, relayed by ${relayed.by}. It is open again; it is done when its criteria are met, or when the owner accepts it themselves.\nDisputed source: ${relayed.source}`;
+  draft.reopen = true;
+  for (const dependent of waiting(around))
+    draft.other(dependent).comment =
+      `Owner disputed the acceptance of ${task.id} as done, relayed by ${relayed.by}. It is open again; wait until it closes.`;
+  return draft.write();
+}
+
 // ─── An owner answer an agent relays, and maintenance ─────────────────────────
 
 /** The checks of a disposition's arguments together, before any read. */
@@ -764,6 +880,11 @@ export function checkMaintenance(op: TaskMaintenance): void {
       refuseAnswer('source', 'Required: where the owner said it, such as the conversation or a comment.');
     if (op.option !== undefined && op.action !== 'answer')
       refuseAnswer('option', `Only action answer takes an option; ${op.action} takes none.`);
+    if (op.action === 'accepted' && op.met === undefined)
+      refuseAnswer(
+        'met',
+        'Required: the numbers of the criteria the owner found met, counting each line or list item of the task’s acceptance from 1; [] when they found none met.',
+      );
   } else {
     for (const [field, value] of [
       ['explanation', op.explanation],
@@ -794,6 +915,7 @@ export function checkMaintenance(op: TaskMaintenance): void {
   } else if ([op.holder, op.inactive, op.activityCheck, op.progress].some((value) => value !== undefined)) {
     refuse('holder, inactive, activityCheck and progress require action release.');
   }
+  if (op.met !== undefined && op.action !== 'accepted') refuse('met requires action accepted.');
   if (op.action === 'duplicate') {
     if (op.duplicateOf === undefined || op.duplicateOf === op.taskId)
       refuse('duplicateOf must identify another open task retaining the complete request.');
@@ -812,6 +934,8 @@ export interface MaintenanceInput extends Surroundings {
   /** The owner a relayed answer names as giving it, as a pick's chooser and an
    * owner-performed action's performer: the person the sender acts for, else the sender. */
   readonly owner: string;
+  /** The person the sender acts for; null for a sender that acts for nobody, as a service does. */
+  readonly person: string | null;
   readonly at: string;
 }
 
@@ -819,17 +943,19 @@ export interface MaintenanceInput extends Surroundings {
 function answerNote(op: TaskMaintenance, task: Task, actor: string): string {
   const label = offeredOf(task)?.options.find((entry) => entry.key === op.option)?.label;
   const what =
-    task.type === 'gate'
-      ? op.action === 'declined'
-        ? 'declined'
-        : op.action === 'owner_performed'
-          ? task.steps === null
-            ? 'approved, and done by the owner'
-            : 'the steps were done by the owner'
-          : 'approved'
-      : op.option === undefined
-        ? null
-        : `chose (${op.option}) ${label ?? ''}`.trim();
+    op.action === 'accepted'
+      ? 'accepted it as done'
+      : task.type === 'gate'
+        ? op.action === 'declined'
+          ? 'declined'
+          : op.action === 'owner_performed'
+            ? task.steps === null
+              ? 'approved, and done by the owner'
+              : 'the steps were done by the owner'
+            : 'approved'
+        : op.option === undefined
+          ? null
+          : `chose (${op.option}) ${label ?? ''}`.trim();
   return (
     `Owner answer relayed by ${actor}${what === null ? '' : `: ${what}`}.` +
     `\nQuote: ${op.quote}\nSource: ${op.source}\nProposal version: ${op.proposalVersion}` +
@@ -885,6 +1011,11 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       'action',
       `owner_performed is for an approval, and ${task.id} is not one; send action answer, or completed with evidence.`,
     );
+  if (op.action === 'accepted' && gate)
+    return refuseAnswer(
+      'action',
+      `accepted closes a task as done, and ${task.id} is a request to the owner; send answer, owner_performed or declined.`,
+    );
   if (op.action === 'answer' && task.steps !== null)
     return refuseAnswer(
       'action',
@@ -935,7 +1066,25 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
   const draft = new Draft(task);
   /** The owner answer's own effect on the task, applied after the dependents'. */
   let answer: (() => void) | null = null;
-  if (ownerAnswer) {
+  if (op.action === 'accepted') {
+    // Only a person accepts a task over its criteria, so a sender acting for nobody has no acceptance to relay.
+    if (input.person === null)
+      return refuseAnswer(
+        'action',
+        `accepted records the acceptance of the person you act for, and you act for nobody; the person closes ${task.id} with Done, my call in the web app.`,
+      );
+    if (!closed) {
+      decisionClose(task, input, 'task');
+      const acceptance = {
+        by: input.person,
+        relayed: { by: actor, source: op.source!, quote: op.quote! },
+        criteria: acceptedCriteria(task, op.met!, 'met'),
+      };
+      answer = () => {
+        draft.close = { reason: op.explanation ?? ACCEPTED_REASON, resolution: 'done', acceptance };
+      };
+    }
+  } else if (ownerAnswer) {
     if (!isDecision(task) && !same && !(gate && approved))
       return refuseAnswer(
         'task',
@@ -1165,8 +1314,8 @@ async function decide(
 export function notAPerson(): Refused {
   return new Refused(
     'forbidden',
-    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step or disputes an approval. Record an existing owner answer with reconcile_task.',
-    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step or disputes an approval. Answer it in the Ntasks web app.',
+    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Record an existing owner answer with reconcile_task.',
+    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Answer it in the Ntasks web app.',
   );
 }
 
@@ -1259,6 +1408,25 @@ export function markStep(
   );
 }
 
+/** A person accepting a task as done on their own call (acceptanceWrite). */
+export function accept(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  accepting: Accepting,
+  retry?: RetryRequest,
+  shown?: string,
+): Promise<Written> {
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, around, deciding) => acceptanceWrite(task, accepting, around, deciding),
+    retry,
+    shown,
+  );
+}
+
 export function dispute(
   context: WriteContext,
   projectId: string,
@@ -1307,6 +1475,7 @@ export async function reconcileTask(
       ...(duplicate === null ? {} : { duplicate }),
       actor: actor.name,
       owner: context.principal.person ?? actor.name,
+      person: context.principal.person ?? null,
       at: context.now(),
     });
   });

@@ -1,0 +1,7 @@
+{
+  "by": "Avery Example",
+  "criteria": [
+    { "text": "Contributions are live on the site.", "met": true },
+    { "text": "An accountant confirms the tax treatment.", "met": false }
+  ]
+}

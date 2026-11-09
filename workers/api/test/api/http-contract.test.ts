@@ -245,6 +245,27 @@ async function drive(): Promise<readonly Sample[]> {
   await step(done, { step: 2, done: true });
   await step(done, { step: 1, done: true });
 
+  // Tasks accepted as done on a person's own call: in the web app, relayed by an agent, and through a connected app.
+  const criteria = '- Contributions are live.\n- An accountant confirms the tax treatment.';
+  const acceptable = async (title: string) =>
+    (await tool(owner, 'create_task', { project: projectId, title, acceptance: criteria })).id as string;
+  const shownOn = async (id: string) => (await tool(owner, 'get_task', { task: id })).proposalVersion as string;
+  const contributions = await acceptable('Take contributions');
+  await as(
+    'POST /api/tasks/:id/accept',
+    task(contributions, '/accept'),
+    inProject({ met: [1], reason: 'I accept the tax risk.', proposalVersion: await shownOn(contributions) }),
+  );
+  const donations = await acceptable('Take donations');
+  await tool(owner, 'reconcile_task', {
+    task: donations,
+    action: 'accepted',
+    met: [1, 2],
+    proposal_version: await shownOn(donations),
+    quote: 'Close it, both are done.',
+    source: 'comment:example',
+  });
+
   await as('GET /api/tasks/projects', '/api/tasks/projects');
   await as('GET /api/tasks/capabilities', '/api/tasks/capabilities');
   await as('GET /api/tasks', `/api/tasks?project=${projectId}`);
@@ -254,7 +275,7 @@ async function drive(): Promise<readonly Sample[]> {
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
-  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done])
+  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done, donations])
     await as('GET /api/tasks/:id', `${task(id)}?project=${projectId}`);
   for (const id of [post, checked])
     await as('GET /api/tasks/:id/history', `${task(id, '/history')}?project=${projectId}`);
@@ -348,6 +369,17 @@ async function drive(): Promise<readonly Sample[]> {
     });
     await keep(samples, 'POST /api/gates/:id/steps', `/api/gates/${ticked}/steps`, fromTower);
   }
+  const grants = await acceptable('Take grants');
+  const acceptedInApp = await call(task(grants, '/accept'), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${appToken}`,
+      'content-type': 'application/json',
+      [WORKSPACE_HEADER]: TEST_WORKSPACE.id,
+    },
+    body: JSON.stringify(inProject({ met: [], proposalVersion: await shownOn(grants) })),
+  });
+  await keep(samples, 'POST /api/tasks/:id/accept', task(grants, '/accept'), acceptedInApp);
   await as('GET /api/access/apps', '/api/access/apps');
   await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
   await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});

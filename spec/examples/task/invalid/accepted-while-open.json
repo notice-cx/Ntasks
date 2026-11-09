@@ -1,0 +1,50 @@
+{
+  "priority": 2,
+  "labels": [],
+  "parent": null,
+  "description": "",
+  "acceptance": "- Contributions are live on the site.\n- An accountant confirms the tax treatment.",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": false,
+  "assignee": null,
+  "for": null,
+  "work": {},
+  "lastActivityAt": null,
+  "choices": null,
+  "choice": null,
+  "answer": null,
+  "deferUntil": null,
+  "dependencies": [],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T09:00:00.000Z",
+  "startedAt": null,
+  "closedAt": null,
+  "closeReason": null,
+  "closeLink": null,
+  "resolution": null,
+  "duplicateOf": null,
+  "id": "web-k3m5",
+  "title": "Take contributions on the site",
+  "status": "open",
+  "type": "feature",
+  "closeAcceptance": {
+    "by": "Avery Example",
+    "criteria": [
+      {
+        "text": "Contributions are live on the site.",
+        "met": true
+      },
+      {
+        "text": "An accountant confirms the tax treatment.",
+        "met": false
+      }
+    ]
+  }
+}

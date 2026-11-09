@@ -1,0 +1,12 @@
+{
+  "by": "Avery Example",
+  "relayed": {
+    "by": "agent:Claude Code",
+    "source": "https://chat.example.com/c/42",
+    "quote": "Close it. I accept the tax risk."
+  },
+  "criteria": [
+    { "text": "Contributions are live on the site.", "met": true },
+    { "text": "An accountant confirms the tax treatment.", "met": false }
+  ]
+}

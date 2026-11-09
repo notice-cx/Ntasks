@@ -224,6 +224,7 @@ function filedState(fields: check.CreateFields, actor: Actor, at: string) {
             by: actor.name,
             model: actor.model ?? null,
             link: close.link,
+            acceptance: null,
           },
     delivery,
   } as const;
@@ -1063,6 +1064,8 @@ export class Writes {
       columns.closed_by = actor.name;
       columns.closed_model = actor.model ?? null;
       columns.close_link = write.close.link;
+      const { acceptance } = write.close;
+      columns.close_acceptance = acceptance === null ? null : JSON.stringify(acceptance);
       changes.status = 'closed';
       changes.close = {
         at,
@@ -1072,6 +1075,7 @@ export class Writes {
         by: actor.name,
         model: actor.model ?? null,
         link: write.close.link,
+        acceptance: acceptance as unknown as JsonObject | null,
       };
       const { commit, pullRequest } = write.close;
       if (commit !== null || pullRequest !== null) {
@@ -1099,6 +1103,7 @@ export class Writes {
         'closed_by',
         'closed_model',
         'close_link',
+        'close_acceptance',
         ...DELIVERY_COLUMNS,
       ])
         columns[column] = null;

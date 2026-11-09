@@ -1,7 +1,8 @@
 // A task store holding a row of every kind: two projects, tasks of every type
 // and state with a child whose parent's id sorts after its own, every link
 // type, an external link, labels, comments, history, custom fields, a held
-// task's work details, a request's steps and a retry record. The backup and load tests share it.
+// task's work details, a request's steps, a person's acceptance and a retry
+// record. The backup and load tests share it.
 import type { BackupRows, TaskRow } from '@ntasks/domain';
 
 export const ACME = 'a1111111-0000-4000-8000-00000000000a';
@@ -116,6 +117,27 @@ export const TASKS: TaskRow[] = [
     resolution: 'done',
     closed_by: 'agent-b',
     close_link: 'https://docs.example.com/runbook',
+  },
+  {
+    ...task,
+    id: 'beta-r2',
+    project_id: BETA,
+    title: 'Take contributions',
+    acceptance: '- Contributions are live.\n- An accountant confirms the tax treatment.',
+    status: 'closed',
+    version: 2,
+    updated_at: LATER,
+    closed_at: LATER,
+    close_reason: 'I accept the tax risk.',
+    resolution: 'done',
+    closed_by: 'owner',
+    close_acceptance: JSON.stringify({
+      by: 'owner',
+      criteria: [
+        { text: 'Contributions are live.', met: true },
+        { text: 'An accountant confirms the tax treatment.', met: false },
+      ],
+    }),
   },
   {
     ...task,
