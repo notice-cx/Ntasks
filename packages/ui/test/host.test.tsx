@@ -132,6 +132,8 @@ describe("the app's addresses", () => {
 describe("the host's apiOrigin", () => {
   it('is read as an origin, and an address that is none is refused by name', () => {
     expect(originOf('https://tasks.example.com/')).toBe('https://tasks.example.com');
-    expect(() => originOf('tasks.example.com')).toThrow(/apiOrigin must be an origin/);
+    for (const wrong of ['tasks.example.com', 'data:text/plain,x', 'file:///tasks']) {
+      expect(() => originOf(wrong), wrong).toThrow(/apiOrigin must be an origin/);
+    }
   });
 });
