@@ -31,8 +31,8 @@ export const PAGE_SHADOWS = {
 /**
  * The font files the pages load, at addresses that never change: the web
  * app's build copies each from its pinned @fontsource package
- * (apps/web/server-fonts.config.ts). Latin only; other scripts fall back to the
- * system's sans serif.
+ * (packages/ui/server-fonts.config.ts). Latin only; other scripts fall back
+ * to the system's sans serif.
  */
 export const PAGE_FONT_FILES = ['/fonts/inter-latin-opsz-normal.woff2'] as const;
 

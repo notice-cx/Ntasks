@@ -34,7 +34,7 @@ const person: TokenSource = {
 |---|---|---|
 | `apiOrigin` | the page's own origin | The Ntasks the pages read and write, such as `https://tasks.example.com` |
 | `tokenSource` | `sessionCookie(apiOrigin)` | How each request says who is asking ([Signing in](#signing-in)) |
-| `basePath` | `/tasks` | The board's address; every other page is under it ([Addresses](#addresses)) |
+| `basePath` | `/tasks` | The board's address, below the site's root; every other page is under it ([Addresses](#addresses)) |
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
 
@@ -262,7 +262,7 @@ Run these from the repository root:
 
 ```sh
 pnpm --filter @ntasks/ui dev           # the pages over invented tasks, at http://localhost:5173, with the gallery at /design
-pnpm --filter @ntasks/ui test          # the pages' tests, the copy tests and the host page's tests
+pnpm --filter @ntasks/ui test          # everything under test/: the pages, the copy rules and a host page over the source
 pnpm --filter @ntasks/ui build         # dist/: index.js, fixture.js, ntasks-ui.css and types/
 pnpm --filter @ntasks/ui check:host    # after the build: the packed package in an empty Vite and React project
 ```

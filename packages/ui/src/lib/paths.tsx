@@ -20,15 +20,20 @@ export interface AppPaths {
   isAppPage(pathname: string): boolean;
 }
 
-/** `/tasks`, `tasks/` and `/tasks/` all name `/tasks`; an empty path or `/` names the site's root. */
+/**
+ * `/tasks`, `tasks/` and `/tasks/` all name `/tasks`. The site's root is
+ * refused: there a task's address, such as `/web-b2r6`, would look like the
+ * site's own, such as `/sign-in`, and a link could not tell them apart.
+ */
 export function normalBasePath(basePath: string): string {
   const trimmed = basePath.replace(/^\/+|\/+$/g, '');
-  return trimmed === '' ? '/' : `/${trimmed}`;
+  if (trimmed === '') throw new Error('basePath names a path below the root, such as /tasks.');
+  return `/${trimmed}`;
 }
 
 export function appPaths(basePath: string): AppPaths {
   const board = normalBasePath(basePath);
-  const under = (rest: string) => (board === '/' ? `/${rest}` : `${board}/${rest}`);
+  const under = (rest: string) => `${board}/${rest}`;
   return {
     board,
     focus: under('focus'),
@@ -37,7 +42,7 @@ export function appPaths(basePath: string): AppPaths {
     members: under('members'),
     settings: under('settings'),
     task: (id) => under(encodeURIComponent(id)),
-    isAppPage: (pathname) => board === '/' || pathname === board || pathname.startsWith(`${board}/`),
+    isAppPage: (pathname) => pathname === board || pathname.startsWith(`${board}/`),
   };
 }
 

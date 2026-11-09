@@ -149,17 +149,35 @@ describe('the people in the sidebar', () => {
 });
 
 describe('a page key', () => {
+  const event = { key: 'c', altKey: false, ctrlKey: false, metaKey: false, defaultPrevented: false };
+
   it('is left to a dialog, a menu or a list of options that has focus', () => {
-    const event = { key: 'c', altKey: false, ctrlKey: false, metaKey: false, defaultPrevented: false };
+    const root = document.createElement('div');
+    root.setAttribute('data-ntasks', '');
+    document.body.append(root);
     for (const role of ['dialog', 'menu', 'listbox']) {
       const holder = document.createElement('div');
       holder.setAttribute('role', role);
       const button = document.createElement('button');
       holder.append(button);
-      document.body.append(holder);
+      root.append(holder);
       expect(isShortcut({ ...event, target: button }, 'c'), role).toBe(false);
       holder.remove();
     }
     expect(isShortcut({ ...event, target: document.body }, 'c')).toBe(true);
+    root.remove();
+  });
+
+  it("is the host page's own while one of its controls, outside the app's root, has focus", () => {
+    const root = document.createElement('div');
+    root.setAttribute('data-ntasks', '');
+    const inside = document.createElement('button');
+    root.append(inside);
+    const host = document.createElement('button');
+    document.body.append(root, host);
+    expect(isShortcut({ ...event, target: inside }, 'c')).toBe(true);
+    expect(isShortcut({ ...event, target: host }, 'c')).toBe(false);
+    root.remove();
+    host.remove();
   });
 });

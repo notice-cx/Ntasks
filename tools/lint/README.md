@@ -11,10 +11,15 @@ repository root, run by `pnpm lint`. It reports:
   `void` or given a `.catch()`
   (`@typescript-eslint/no-floating-promises`), and a promise used where the
   code expects no promise (`@typescript-eslint/no-misused-promises`);
-- in `workers/*/src` and `packages/*/src`, a module-level `let` or `var`, a
-  module-level collection that starts empty, and a comparison operator applied
-  to a variable or property named like a secret (`no-restricted-syntax`);
-- `Math.random` in `workers/` and `packages/` (`no-restricted-properties`).
+- in `workers/*/src` and `packages/*/src`, except `packages/ui`, a
+  module-level `let` or `var`, a module-level collection that starts empty,
+  and a comparison operator applied to a variable or property named like a
+  secret (`no-restricted-syntax`);
+- `Math.random` in `workers/` and `packages/`, except `packages/ui`
+  (`no-restricted-properties`).
+
+`packages/ui` holds the web app's pages, which run in a browser, not in the
+Worker.
 
 | File | Holds |
 |---|---|

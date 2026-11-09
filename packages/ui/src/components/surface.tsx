@@ -67,7 +67,7 @@ export function SignIn() {
           <a href={signIn}>{label}</a>
         </Button>
       ) : (
-        <Button variant="primary" type="button" onClick={signIn}>
+        <Button variant="primary" type="button" onClick={() => signIn()}>
           {label}
         </Button>
       )}

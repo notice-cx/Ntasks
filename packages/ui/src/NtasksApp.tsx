@@ -1,9 +1,9 @@
 import { LucideProvider } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { BrowserRouter, Route, Routes, useInRouterContext, useParams } from 'react-router-dom';
 import { App } from './App';
 import type { TasksApi } from './api/client';
-import { connect, sessionCookie, type TokenSource } from './api/connection';
+import { connect, originOf, sessionCookie, type TokenSource } from './api/connection';
 import { ThemeScope } from './components/ui/popover';
 import { appPaths } from './lib/paths';
 import { useResolvedTheme, type Theme } from './lib/theme';
@@ -22,8 +22,9 @@ export interface NtasksAppProps {
    */
   tokenSource?: TokenSource;
   /**
-   * The address of the board; every other page is under it. `/tasks` (the
-   * default) puts the board at `/tasks` and a task at `/tasks/<id>`.
+   * The address of the board, below the site's root; every other page is
+   * under it. `/tasks` (the default) puts the board at `/tasks` and a task at
+   * `/tasks/<id>`.
    */
   basePath?: string;
   /** `system` (the default) follows the system's preference while the page is open. */
@@ -47,14 +48,16 @@ export function NtasksApp(props: NtasksAppProps) {
   );
 }
 
-function Placed({ apiOrigin, tokenSource, basePath = '/tasks', theme = 'system', api }: NtasksAppProps) {
+function Placed({ apiOrigin: given, tokenSource, basePath = '/tasks', theme = 'system', api }: NtasksAppProps) {
   const paths = useMemo(() => appPaths(basePath), [basePath]);
+  const apiOrigin = given === undefined ? undefined : originOf(given);
   const current = tokenSource ?? sessionCookie(apiOrigin);
   // The source is read when each request is sent, so a host may pass a new
   // object on every render without the calls, and the workspace they are
-  // made in, starting again.
+  // made in, starting again. A layout effect updates it before the pages'
+  // own effects send their requests.
   const source = useRef(current);
-  useEffect(() => {
+  useLayoutEffect(() => {
     source.current = current;
   });
   const calls = useMemo(() => api ?? connect(apiOrigin, () => source.current), [api, apiOrigin]);
@@ -70,7 +73,7 @@ function Placed({ apiOrigin, tokenSource, basePath = '/tasks', theme = 'system',
   if (inHostRoute) return app;
   return (
     <Routes>
-      <Route path={paths.board === '/' ? '/*' : `${paths.board}/*`} element={app} />
+      <Route path={`${paths.board}/*`} element={app} />
     </Routes>
   );
 }

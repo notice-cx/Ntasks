@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createFixtureTasksApi } from '../src/fixture';
 import { NtasksApp, type TokenSource } from '../src/index';
+import { originOf } from '../src/api/connection';
 import { appPaths } from '../src/lib/paths';
 
 const NTASKS = 'https://tasks.example.com';
@@ -113,7 +114,7 @@ describe('a host page', () => {
 });
 
 describe("the app's addresses", () => {
-  it('put every page under the base path, however it is written', () => {
+  it('put every page under the base path, however it is written, and never at the site root', () => {
     for (const base of ['/tasks', 'tasks', '/tasks/']) {
       const paths = appPaths(base);
       expect([paths.board, paths.task('web-a1'), paths.focus, paths.settings]).toEqual([
@@ -123,7 +124,16 @@ describe("the app's addresses", () => {
         '/tasks/settings',
       ]);
     }
-    const root = appPaths('/');
-    expect([root.board, root.task('web-a1'), root.live]).toEqual(['/', '/web-a1', '/live']);
+    expect(appPaths('/tasks').isAppPage('/sign-in')).toBe(false);
+    for (const root of ['/', '']) expect(() => appPaths(root)).toThrow(/below the root/);
+  });
+});
+
+describe("the host's apiOrigin", () => {
+  it('is read as an origin, and an address that is none is refused by name', () => {
+    expect(originOf('https://tasks.example.com/')).toBe('https://tasks.example.com');
+    for (const wrong of ['tasks.example.com', 'data:text/plain,x', 'file:///tasks']) {
+      expect(() => originOf(wrong), wrong).toThrow(/apiOrigin must be an origin/);
+    }
   });
 });

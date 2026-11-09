@@ -15,13 +15,18 @@ on the Worker's origin.
    the host's page, which receives their access token
    ([Connected apps](sign-in.md#connected-apps)). The host passes the token
    to the pages; it never vouches for the person with a credential of its
-   own. The Ntasks answers the host's page, `/api/version` and its writes
-   included, only from the origin of the app's registered redirect address
-   ([Calls from the app's page](sign-in.md#calls-from-the-apps-page)).
+   own. A browser lets the host's page read the Ntasks's answers,
+   `/api/version` included, and send writes only from the origin of an
+   enabled connected app's redirect address
+   ([Calls from the app's page](sign-in.md#calls-from-the-apps-page)). That
+   rule binds browsers, not the token: the token works from anywhere, so the
+   host keeps it as it keeps any credential.
 2. **Checks the version.** `GET /api/version` on the Ntasks answers
-   `{ version, oldest }` before anyone signs in. When `version` is lower than
-   the package's `API_VERSION`, the Ntasks lacks something the pages read and
-   needs an update ([Versions](api.md#versions)).
+   `{ version, oldest }` before anyone signs in. The pages work when
+   `oldest <= API_VERSION <= version`, with the package's `API_VERSION`. A
+   lower `version` means the Ntasks lacks something the pages read and needs
+   an update; a higher `oldest` means it no longer answers this version of the
+   package, which needs an update ([Versions](api.md#versions)).
 3. **Renders the app** at the route `<basePath>/*` of its React Router, with
    the package's stylesheet:
 
