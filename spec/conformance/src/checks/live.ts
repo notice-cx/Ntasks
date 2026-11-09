@@ -5,6 +5,27 @@ import { actorOf, file, taskOf } from './steps.ts';
 
 export const live: readonly Check[] = [
   {
+    id: 'state-16-stalled-is-shown-and-frees-nothing',
+    rule: 'STATE-16',
+    level: 'live',
+    title:
+      'A task in progress whose holder has recorded nothing is stalled and listed as stalled, a freshly claimed one is not, and neither changes',
+    async run(context) {
+      const api = context.api();
+      const holder = await actorOf(context, 'otherAgent');
+      const quiet = await file(context);
+      answered(await api.update(quiet, { assignee: holder, status: 'in_progress' }), `giving ${quiet} to ${holder}`);
+      const fresh = await file(context);
+      answered(await api.claim(fresh), `claiming ${fresh}`);
+      const [stalled, busy] = [await taskOf(api, quiet), await taskOf(api, fresh)];
+      same([stalled.stalled, busy.stalled ?? false], [true, false], `${quiet} and ${fresh} marked stalled`);
+      const listed = answered(await api.stalled(), 'listing stalled tasks');
+      expect(listed.includes(quiet), `the stalled tasks leave out ${quiet}`);
+      expect(!listed.includes(fresh), `the stalled tasks list ${fresh}, whose holder just claimed it`);
+      same([stalled.status, stalled.assignee], ['in_progress', holder], `${quiet} after it read as stalled`);
+    },
+  },
+  {
     id: 'state-13-work-details-from-the-holder',
     rule: 'STATE-13',
     level: 'live',

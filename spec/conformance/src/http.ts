@@ -161,6 +161,12 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
       map(send('GET', '/tasks', { query: { project: project ?? target.projects.main } }), (value) =>
         (value.tasks as { id: string; ready?: boolean }[]).filter((task) => task.ready === true).map((task) => task.id),
       ),
+    stalled: (project) =>
+      map(send('GET', '/tasks', { query: { project: project ?? target.projects.main } }), (value) =>
+        (value.tasks as { id: string; stalled?: boolean }[])
+          .filter((task) => task.stalled === true)
+          .map((task) => task.id),
+      ),
     claim: (task, options = {}) =>
       map(
         send('PATCH', `/tasks/${encodeURIComponent(task)}`, {
@@ -257,7 +263,9 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
                         `/gates/${id}/steps`,
                         { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
                       ]
-                    : [`/tasks/${id}/dispute`, {}];
+                    : decision.kind === 'release'
+                      ? [`/tasks/${id}/release`, {}]
+                      : [`/tasks/${id}/dispute`, {}];
       return map(send('POST', path, { body: { projectId: project, ...body }, ...options }), (value) =>
         taskOf(value.task as Record<string, unknown>),
       );
