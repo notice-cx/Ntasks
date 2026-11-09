@@ -4,8 +4,8 @@ Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
 
 Each row names a test in the Ntasks repository that exercises the rule
 today, by its file and its name. These tests run inside Ntasks against its
-own engine; the conformance suite will check the same rules against any
-server from outside. [`test/appendix.test.ts`](test/appendix.test.ts)
+own engine; the [conformance suite](conformance/README.md) checks the same
+rules against any server from outside, Ntasks included. [`test/appendix.test.ts`](test/appendix.test.ts)
 fails when a test named here no longer exists, or when a rule of the
 protocol appears in neither table.
 
@@ -105,8 +105,9 @@ protocol appears in neither table.
 
 ## Rules with no test, or part of one
 
-Each of these is a gap in Ntasks's tests today. The conformance suite is
-expected to cover them.
+Each of these is a gap in Ntasks's own tests today. The conformance suite
+checks most of them from outside; `pnpm --filter @ntasks/spec run
+conformance -- --list` lists its checks by rule.
 
 | Rule | What no test covers |
 |---|---|

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/conformance/target.schema.json",
+  "title": "Conformance target",
+  "description": "The server the Shared Work Protocol's conformance suite checks: its address, the levels it claims, its bindings, the projects the checks write in and the senders they act as. Every sender is the set of HTTP headers that signs its requests in.",
+  "type": "object",
+  "properties": {
+    "$schema": { "description": "The schema an editor checks the file against.", "type": "string" },
+    "url": {
+      "description": "The server's origin, such as http://127.0.0.1:8787.",
+      "type": "string",
+      "pattern": "^https?://[^/]+$"
+    },
+    "levels": {
+      "description": "The conformance levels the server claims. The suite runs the checks of these levels.",
+      "type": "array",
+      "items": { "enum": ["core", "human", "delivery", "live"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "bindings": {
+      "description": "Each binding the server offers, with the path it answers at.",
+      "type": "object",
+      "properties": {
+        "mcp": { "$ref": "#/$defs/binding" },
+        "http": { "$ref": "#/$defs/binding" }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "workspace": {
+      "description": "The workspace every sender works in, for a server where a sender reaches several.",
+      "type": "string",
+      "minLength": 1
+    },
+    "projects": {
+      "type": "object",
+      "properties": {
+        "main": {
+          "description": "A project the agents and the service may change and the person may decide in. The checks fill it with tasks.",
+          "type": "string",
+          "minLength": 1
+        },
+        "readOnly": {
+          "description": "A project the agents may read and not change.",
+          "type": "string",
+          "minLength": 1
+        },
+        "hidden": {
+          "description": "A project the agents cannot reach and the person can.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["main"],
+      "additionalProperties": false
+    },
+    "senders": {
+      "type": "object",
+      "properties": {
+        "agent": { "$ref": "#/$defs/sender", "description": "An agent that may change the main project." },
+        "otherAgent": { "$ref": "#/$defs/sender", "description": "A second agent, with the same grants." },
+        "service": { "$ref": "#/$defs/sender", "description": "A service that may change the main project." },
+        "person": {
+          "$ref": "#/$defs/sender",
+          "description": "A person signed in to the server's own interface, who may decide in the main project."
+        }
+      },
+      "required": ["agent", "otherAgent"],
+      "additionalProperties": false
+    },
+    "repository": {
+      "description": "The repository a delivery signal names, as owner/name. example/conformance when left out.",
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "knownGaps": {
+      "description": "Checks the server is known to fail, each with the reason, such as the task that tracks the gap: by check id, or as <check id>@<binding>. A listed check that fails is reported as a gap; one that passes fails the run, so the list stays true.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    }
+  },
+  "required": ["url", "levels", "bindings", "projects", "senders"],
+  "additionalProperties": false,
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "properties": { "path": { "type": "string", "pattern": "^/" } },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    "sender": {
+      "type": "object",
+      "properties": {
+        "headers": {
+          "description": "The headers that sign the sender's requests in, such as authorization, or a session cookie and origin.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["headers"],
+      "additionalProperties": false
+    }
+  }
+}

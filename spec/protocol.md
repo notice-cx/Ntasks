@@ -107,7 +107,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
 when, they appear in all capitals, as shown here.
 
 Each normative rule has an id, such as `INV-1`, which the
-[test appendix](tests.md) and the future conformance suite cite.
+[test appendix](tests.md) and the [conformance suite](conformance/README.md)
+cite.
 
 | Term | Meaning |
 |---|---|
@@ -660,8 +661,8 @@ keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that
 offers custom fields. The levels are independent above
 Core: a server MAY claim Core and Delivery without Human decisions and
 approvals. How a server states the levels it claims is
-[OQ-18](open-questions.md#oq-18). Ntasks implements all four; the
-conformance suite will check that claim.
+[OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
+[conformance suite](conformance/README.md) checks that claim.
 
 ## 8. Extensions
 

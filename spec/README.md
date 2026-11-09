@@ -25,7 +25,8 @@ unclear, the draft asks a question instead of stating a rule.
 | [`open-questions.md`](open-questions.md) | Appendix B: the open questions |
 | [`schemas/`](schemas/) | A JSON Schema (draft 2020-12) for each object |
 | [`examples/`](examples/) | Sample objects for each schema: `examples/<schema>/` must validate, `examples/<schema>/invalid/` must not |
-| [`test/`](test/) | The tests that validate the samples and keep Appendix A true |
+| [`conformance/`](conformance/README.md) | The conformance suite: checks any server against each rule, by level, over MCP and HTTP, and runs against Ntasks in CI |
+| [`test/`](test/) | The tests that validate the samples, keep Appendix A true, and show that the conformance suite fails a server that breaks a rule |
 
 Start with sections 1 and 3 of [`protocol.md`](protocol.md), then the
 [MCP tool profile](mcp-profile.md).
@@ -41,7 +42,17 @@ pnpm --filter @ntasks/spec test
 [`test/schemas.test.ts`](test/schemas.test.ts) compiles every schema and
 checks each sample against it. [`test/appendix.test.ts`](test/appendix.test.ts)
 fails when a test Appendix A names no longer exists, or when a rule of the
-protocol is missing from it.
+protocol is missing from it. [`test/conformance.test.ts`](test/conformance.test.ts)
+runs the conformance suite through a server that breaks one rule at a time,
+and fails unless exactly that rule's checks fail.
+
+To check a server, or this repository's Worker run locally, follow
+[`conformance/README.md`](conformance/README.md):
+
+```sh
+pnpm --filter @ntasks/spec run conformance -- --target target.json
+pnpm --filter @ntasks/spec run conformance:ntasks
+```
 
 ## Licenses
 
@@ -51,7 +62,7 @@ projects can adopt it:
 | Paths | License |
 |---|---|
 | The text: `README.md`, `protocol.md`, `mcp-profile.md`, `http-binding.md`, `tests.md`, `open-questions.md` | [Creative Commons Attribution 4.0 International](LICENSE-CC-BY-4.0) (`CC-BY-4.0`) |
-| The schemas, samples and tests: `schemas/`, `examples/`, `test/`, `package.json`, `tsconfig.json` | [Apache License 2.0](LICENSE-APACHE-2.0) (`Apache-2.0`) |
+| The schemas, samples, tests and conformance suite: `schemas/`, `examples/`, `test/`, `conformance/`, `package.json`, `tsconfig.json` | [Apache License 2.0](LICENSE-APACHE-2.0) (`Apache-2.0`) |
 
 The rest of this repository, Ntasks itself, stays under the
 [GNU Affero General Public License, version 3](../LICENSE).

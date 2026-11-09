@@ -1,0 +1,27 @@
+{
+  "$schema": "./target.schema.json",
+  "url": "https://ntasks.example.com",
+  "levels": ["core", "human", "delivery", "live"],
+  "bindings": {
+    "mcp": { "path": "/api/mcp" },
+    "http": { "path": "/api" }
+  },
+  "workspace": "b2222222-0000-4000-8000-000000000002",
+  "projects": {
+    "main": "a1111111-0000-4000-8000-000000000001",
+    "readOnly": "a1111111-0000-4000-8000-000000000002",
+    "hidden": "a1111111-0000-4000-8000-000000000003"
+  },
+  "senders": {
+    "agent": { "headers": { "authorization": "Bearer <agent A's access token>" } },
+    "otherAgent": { "headers": { "authorization": "Bearer <agent B's access token>" } },
+    "service": { "headers": { "authorization": "Bearer <a service credential>" } },
+    "person": {
+      "headers": {
+        "cookie": "<the person's session cookie>",
+        "origin": "https://ntasks.example.com"
+      }
+    }
+  },
+  "repository": "example/conformance"
+}

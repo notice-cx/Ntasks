@@ -1,0 +1,136 @@
+/**
+ * The conformance suite stays true to the protocol: each check names a rule
+ * the protocol defines, at that rule's anchor, and every rule a level lists
+ * has a check. Run through the deliberately broken server, each defect fails
+ * exactly the checks of the rule it breaks and passes every other, so each
+ * check is shown to tell a server that keeps its rule from one that does not.
+ * Each run starts its own local Ntasks Worker; nothing here reaches a
+ * deployed one.
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { DEFECTS, startBrokenServer, type Defect } from '../conformance/fixtures/broken.ts';
+import { KNOWN_GAPS, startLocalNtasks } from '../conformance/ntasks/local.ts';
+import { sectionOf } from '../conformance/src/check.ts';
+import { checks } from '../conformance/src/checks/index.ts';
+import { runSuite } from '../conformance/src/suite.ts';
+import { checkTarget, LEVELS, type Level } from '../conformance/src/target.ts';
+
+const SPEC = fileURLToPath(new URL('..', import.meta.url));
+const read = (name: string): string => readFileSync(join(SPEC, name), 'utf8');
+
+/** The checks each defect must fail, and no others. */
+const FAILS: Readonly<Record<Defect, readonly string[]>> = {
+  'two-claims-win': ['inv-1-one-claim-wins'],
+  'retries-repeat': ['inv-3-retry-answers-once', 'inv-3-key-reuse-refused'],
+  'stale-answers-accepted': ['auth-3-stale-proposal-refused'],
+  'agents-decide': ['auth-1-only-a-person-answers'],
+  'relays-unmarked': ['auth-3-relayed-answer-recorded-as-relayed'],
+  'disputes-refused': ['auth-5-dispute-reopens-a-relayed-approval'],
+  'proof-dropped': [
+    'inv-7-done-carries-proof',
+    'inv-9-reopen-keeps-earlier-close',
+    'state-12-built-merged-live',
+    'state-12-commit-prefix-matches',
+    'state-12-pull-request-matches',
+    'state-12-reopen-clears-delivery',
+  ],
+  'models-dropped': ['inv-12-history-names-actor-and-model'],
+  'held-tasks-hidden': [
+    'inv-10-held-tasks-on-connect',
+    'inv-10-most-recently-active-first',
+    'mcp-1-held-tasks-lead-the-instructions',
+  ],
+};
+
+/** The rules each level lists in section 7's table, with ranges such as `STATE-1 to STATE-9` spelled out. */
+function rulesOfLevels(): Map<Level, string[]> {
+  const names: Readonly<Record<string, Level>> = {
+    Core: 'core',
+    'Human decisions and approvals': 'human',
+    Delivery: 'delivery',
+    'Live work': 'live',
+  };
+  const levels = new Map<Level, string[]>();
+  for (const match of read('protocol.md').matchAll(/^\| \*\*([^*]+)\*\* \| [^|]+ \| ([^|]+) \|/gmu)) {
+    const level = names[match[1]!];
+    if (level === undefined) continue;
+    const rules = match[2]!.split(',').flatMap((part) => {
+      const range = /^([A-Z]+)-(\d+) to [A-Z]+-(\d+)$/u.exec(part.trim());
+      if (!range) return [part.trim()];
+      return Array.from(
+        { length: Number(range[3]) - Number(range[2]) + 1 },
+        (_, i) => `${range[1]}-${Number(range[2]) + i}`,
+      );
+    });
+    levels.set(level, rules);
+  }
+  return levels;
+}
+
+describe('the conformance checks', () => {
+  it('each have an id of their own that starts with the rule they test', () => {
+    const ids = checks.map((check) => check.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(
+      checks.filter((check) => !check.id.startsWith(`${check.rule.toLowerCase()}-`)).map((check) => check.id),
+    ).toEqual([]);
+  });
+
+  it("each name a rule the protocol defines, at an anchor in that rule's section", () => {
+    const missing = checks.filter((check) => {
+      const [file, anchor] = sectionOf(check.rule).split('#') as [string, string];
+      return !read(file).includes(`<a id="${anchor}"></a>`);
+    });
+    expect(missing.map((check) => `${check.id}: ${sectionOf(check.rule)}`)).toEqual([]);
+  });
+
+  it('cover every rule each conformance level lists, at that level', () => {
+    const levels = rulesOfLevels();
+    expect([...levels.keys()]).toEqual([...LEVELS]);
+    const uncovered = [...levels].flatMap(([level, rules]) =>
+      rules
+        .filter((rule) => !checks.some((check) => check.rule === rule && check.level === level))
+        .map((rule) => `${level} ${rule}`),
+    );
+    expect(uncovered).toEqual([]);
+  });
+
+  it('read a target file that follows target.schema.json, and refuse one that does not', () => {
+    const example = JSON.parse(read('conformance/target.example.json')) as Record<string, unknown>;
+    expect(checkTarget(example).projects.main).toBe('a1111111-0000-4000-8000-000000000001');
+    expect(() => checkTarget({ ...example, levels: ['core', 'everything'] })).toThrow(/levels/u);
+    expect(() => checkTarget({ ...example, senders: { agent: { headers: {} } } })).toThrow(/otherAgent/u);
+  });
+
+  it("list as Ntasks's known gaps only checks that exist", () => {
+    const ids = new Set(checks.map((check) => check.id));
+    expect(Object.keys(KNOWN_GAPS).filter((key) => !ids.has(key.split('@')[0]!))).toEqual([]);
+  });
+});
+
+describe.concurrent('the suite against a server that breaks one rule', () => {
+  it.each((Object.entries(DEFECTS) as [Defect, string][]).map(([defect, breaks]) => ({ defect, breaks })))(
+    'fails exactly the checks of the rule broken by a server that $breaks',
+    async ({ defect }) => {
+      const local = await startLocalNtasks();
+      try {
+        const broken = await startBrokenServer(local.target, defect);
+        try {
+          const report = await runSuite(broken.target, { knownGaps: KNOWN_GAPS });
+          const failed = report.results
+            .filter((result) => !['passed', 'known-gap'].includes(result.status))
+            .map((result) => result.id);
+          expect(failed.sort()).toEqual([...FAILS[defect]].sort());
+        } finally {
+          await broken.close();
+        }
+      } finally {
+        await local.close();
+      }
+    },
+    240_000,
+  );
+});

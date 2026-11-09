@@ -1,0 +1,518 @@
+/**
+ * The checks of the Human decisions and approvals level. A person's own
+ * answers go through the HTTP binding, the server's own interface; an
+ * answer over MCP is relayed whoever sends it (mcp-profile.md 11.3), so a
+ * check of approving or answering exercises the person on HTTP and a relay
+ * on MCP.
+ */
+import { NotOffered, type Outcome, type Relay } from '../api.ts';
+import { answered, expect, refused, same, snapshot, unchanged, type Check, type Context } from '../check.ts';
+import { actorOf, file, linksTo, taskOf } from './steps.ts';
+
+const CHOICES = {
+  question: 'Which page ships first?',
+  options: [
+    { key: 'a', label: 'The sign-in page', recommended: true },
+    { key: 'b', label: 'The billing page' },
+  ],
+} as const;
+
+let sources = 0;
+/** Where a person said something, as a relaying sender names it: unique, so a dispute of one never touches another. */
+const source = () => `conformance:conversation/${Date.now()}-${(sources += 1)}`;
+
+async function proposalOf(context: Context, task: string): Promise<string> {
+  const read = answered(await context.setup().read(task), `reading ${task}`);
+  expect(typeof read.proposalVersion === 'string', `${task}'s read answers no proposal version`);
+  return read.proposalVersion;
+}
+
+/** A task and the approval it waits on, asked through the setup binding. */
+async function withApproval(context: Context, labels: readonly string[] = []): Promise<{ task: string; gate: string }> {
+  const task = await file(context, { labels });
+  const asked = answered(
+    await context.setup().requestApproval(task, `Deploy ${task} to staging.example.com`),
+    `asking for ${task}'s approval`,
+  );
+  return { task, gate: asked.approval };
+}
+
+/** A person's answer relayed through the setup binding. */
+async function relayApproval(context: Context, gate: string, from = source()): Promise<void> {
+  answered(
+    await context.setup().relay(gate, {
+      action: 'answer',
+      proposalVersion: await proposalOf(context, gate),
+      quote: 'Yes, deploy it.',
+      source: from,
+    }),
+    `relaying the approval of ${gate}`,
+  );
+}
+
+/** Approves through the binding under test: the person over HTTP, a relayed answer over MCP. */
+async function approveUnderTest(context: Context, gate: string): Promise<Outcome<unknown>> {
+  if (context.binding === 'http') return asPerson(context).decide(gate, { kind: 'approve' });
+  return context.api().relay(gate, {
+    action: 'answer',
+    proposalVersion: await proposalOf(context, gate),
+    quote: 'Approved.',
+    source: source(),
+  });
+}
+
+function asPerson(context: Context) {
+  if (!context.target.senders.person)
+    throw new NotOffered(context.binding, 'decide as a person: the target names no person');
+  return context.api('person');
+}
+
+async function decision(context: Context, labels: readonly string[] = ['human']): Promise<string> {
+  return file(context, { type: 'decision', labels, choices: CHOICES });
+}
+
+export const human: readonly Check[] = [
+  {
+    id: 'state-10-approval-asked-once',
+    rule: 'STATE-10',
+    level: 'human',
+    title: 'Asking again for the same approval while it is open returns the open one, so a person is asked once',
+    async run(context) {
+      const task = await file(context);
+      const request = `Deploy ${task} to staging.example.com`;
+      const first = answered(await context.api().requestApproval(task, request), 'asking for an approval');
+      same(first.created, true, 'the first request opened an approval');
+      const second = answered(await context.api().requestApproval(task, request), 'asking again');
+      same(second.created, false, 'the same request asked again opened an approval');
+      same(second.approval, first.approval, 'the approval the same request answers');
+      const gate = await taskOf(context.api(), first.approval);
+      same(gate.type, 'gate', `${first.approval}'s type`);
+      same(linksTo(await taskOf(context.api(), task), first.approval), ['blocks'], `${task}'s link to its approval`);
+    },
+  },
+  {
+    id: 'state-3-open-approval-holds',
+    rule: 'STATE-3',
+    level: 'human',
+    title: 'A task that waits on an open approval is not ready, and an approval is never ready work',
+    async run(context) {
+      const { task, gate } = await withApproval(context);
+      const api = context.api();
+      same((await taskOf(api, task)).ready, false, `${task}'s readiness while ${gate} is open`);
+      const ready = answered(await api.ready(), 'listing ready work');
+      expect(!ready.includes(task), `${task} is listed as ready work while ${gate} is open`);
+      expect(!ready.includes(gate), `the approval ${gate} is listed as ready work`);
+      same((await taskOf(api, gate)).ready ?? false, false, `${gate}'s readiness`);
+    },
+  },
+  {
+    id: 'state-10-approval-hands-back-a-human-task',
+    rule: 'STATE-10',
+    level: 'human',
+    title: 'An approved approval closes as done, and a waiting task labelled human goes back to agents with a comment',
+    async run(context) {
+      const { task, gate } = await withApproval(context, ['human']);
+      const comments = answered(await context.setup().read(task), 'reading').comments.length;
+      answered(await approveUnderTest(context, gate), `approving ${gate}`);
+      const approval = await taskOf(context.api(), gate);
+      same([approval.status, approval.resolution], ['closed', 'done'], `${gate}'s status and resolution`);
+      const read = answered(await context.api().read(task), `reading ${task}`);
+      same(read.task.status, 'open', `${task}'s status after the approval`);
+      same(read.task.assignee ?? null, null, `${task}'s holder after the approval`);
+      expect(!(read.task.labels ?? []).includes('human'), `${task} still carries the human label`);
+      expect(read.comments.length > comments, `${task} got no comment to keep within the approval`);
+    },
+  },
+  {
+    id: 'state-10-relayed-decline',
+    rule: 'STATE-10',
+    level: 'human',
+    title:
+      "A person's refusal, relayed, closes the approval as wont-do and tells each waiting task the action must not happen",
+    async run(context) {
+      const { task, gate } = await withApproval(context);
+      const comments = answered(await context.setup().read(task), 'reading').comments.length;
+      answered(
+        await context.api().relay(gate, {
+          action: 'declined',
+          proposalVersion: await proposalOf(context, gate),
+          quote: 'No, not this week.',
+          source: source(),
+        }),
+        `relaying the refusal of ${gate}`,
+      );
+      const approval = await taskOf(context.api(), gate);
+      same([approval.status, approval.resolution], ['closed', 'wont-do'], `${gate}'s status and resolution`);
+      expect(
+        answered(await context.api().read(task), 'reading').comments.length > comments,
+        `${task} was not told that the action must not happen`,
+      );
+    },
+  },
+  {
+    id: 'state-10-closed-approval-takes-only-the-report',
+    rule: 'STATE-10',
+    level: 'human',
+    title: "A closed approval takes no further answer but the person's report that they did the action",
+    async run(context) {
+      const { gate } = await withApproval(context);
+      await relayApproval(context, gate);
+      const api = context.api();
+      const before = await snapshot(api, gate);
+      const proposalVersion = await proposalOf(context, gate);
+      for (const action of ['answer', 'declined'] as const)
+        refused(
+          await api.relay(gate, { action, proposalVersion, quote: 'Changed my mind.', source: source() }),
+          `relaying ${action} on the closed approval ${gate}`,
+        );
+      await unchanged(api, gate, before, 'the refused answers');
+      answered(
+        await api.relay(gate, {
+          action: 'owner_performed',
+          proposalVersion,
+          quote: 'I deployed it myself.',
+          source: source(),
+        }),
+        "relaying the person's report that they did it",
+      );
+    },
+  },
+  {
+    id: 'state-7-human-requests-close-only-by-answer',
+    rule: 'STATE-7',
+    level: 'human',
+    title: 'A close is refused on a task waiting on an open approval, on an approval and on a task labelled human',
+    async run(context) {
+      const api = context.api();
+      const { task, gate } = await withApproval(context);
+      const labelled = await file(context, { labels: ['human'] });
+      for (const [id, what] of [
+        [task, `closing ${task}, which waits on the open approval ${gate}`],
+        [gate, `an agent closing the approval ${gate}`],
+        [labelled, `an agent closing ${labelled}, which is labelled human`],
+      ] as const) {
+        const before = await snapshot(api, id);
+        refused(await api.close(id, { reason: 'Done', link: 'https://example.com/done' }), what);
+        await unchanged(api, id, before, what);
+      }
+    },
+  },
+  {
+    id: 'state-11-pick-closes-the-decision',
+    rule: 'STATE-11',
+    level: 'human',
+    title:
+      "A person's pick closes the decision as done with the reason Chose (<key>) <label>, and a second pick is refused",
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const id = await decision(context);
+      answered(await person.decide(id, { kind: 'choose', option: 'b' }), 'the person picking (b)');
+      const task = await taskOf(context.api(), id);
+      same([task.status, task.resolution], ['closed', 'done'], `${id}'s status and resolution`);
+      same(task.closeReason, 'Chose (b) The billing page', `${id}'s close reason`);
+      same(task.choice?.option, 'b', `${id}'s recorded pick`);
+      const before = await snapshot(context.api(), id);
+      refused(await person.decide(id, { kind: 'choose', option: 'a' }), 'a second pick');
+      await unchanged(context.api(), id, before, 'the refused second pick');
+    },
+  },
+  {
+    id: 'state-11-answer-in-words',
+    rule: 'STATE-11',
+    level: 'human',
+    title: 'An answer in words closes a decision as done, and hands any other task labelled human back to agents',
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const id = await decision(context);
+      answered(await person.decide(id, { kind: 'respond', response: 'Neither yet; ask me Friday.' }), 'answering');
+      const closed = await taskOf(context.api(), id);
+      same([closed.status, closed.resolution], ['closed', 'done'], `${id}'s status and resolution`);
+      const other = await file(context, { labels: ['human'] });
+      answered(await person.decide(other, { kind: 'respond', response: 'Use the staging keys.' }), 'answering');
+      const handed = await taskOf(context.api(), other);
+      same(handed.status, 'open', `${other}'s status after the answer`);
+      same(handed.assignee ?? null, null, `${other}'s holder after the answer`);
+      expect(!(handed.labels ?? []).includes('human'), `${other} still carries the human label`);
+    },
+  },
+  {
+    id: 'state-11-dismissal',
+    rule: 'STATE-11',
+    level: 'human',
+    title: 'A person may dismiss a task labelled human, closing it with a resolution other than done',
+    senders: ['person'],
+    async run(context) {
+      const id = await file(context, { labels: ['human'] });
+      answered(await asPerson(context).decide(id, { kind: 'dismiss', reason: 'Not needed' }), 'dismissing');
+      const task = await taskOf(context.api(), id);
+      same(task.status, 'closed', `${id}'s status`);
+      expect(task.resolution !== 'done', `${id} closed as done on a dismissal`);
+    },
+  },
+  {
+    id: 'auth-1-only-a-person-answers',
+    rule: 'AUTH-1',
+    level: 'human',
+    title: 'A direct answer, approval or dispute from an agent or a service is refused and changes nothing',
+    senders: ['service'],
+    async run(context) {
+      const id = await decision(context);
+      const { gate } = await withApproval(context);
+      const relayed = await withApproval(context);
+      await relayApproval(context, relayed.gate);
+      for (const role of ['agent', 'service'] as const) {
+        const api = context.api(role);
+        for (const [task, decide] of [
+          [id, { kind: 'choose', option: 'a' }],
+          [id, { kind: 'respond', response: 'The sign-in page.' }],
+          [id, { kind: 'dismiss' }],
+          [gate, { kind: 'approve' }],
+          [relayed.gate, { kind: 'dispute' }],
+        ] as const) {
+          const before = await snapshot(context.setup(), task);
+          refused(await api.decide(task, decide), `the ${role} sending a person's ${decide.kind}`);
+          await unchanged(context.setup(), task, before, `the ${role}'s refused ${decide.kind}`);
+        }
+      }
+    },
+  },
+  {
+    id: 'auth-3-relayed-answer-recorded-as-relayed',
+    rule: 'AUTH-3',
+    level: 'human',
+    title:
+      'A relayed answer is recorded as relayed, by the sender, with the quote, source and proposal version it names',
+    senders: ['service'],
+    async run(context) {
+      for (const role of ['agent', 'service'] as const) {
+        const id = await decision(context);
+        const relay = {
+          action: 'answer',
+          option: 'a',
+          proposalVersion: await proposalOf(context, id),
+          quote: 'Ship the sign-in page first.',
+          source: source(),
+        } as const;
+        answered(await context.api(role).relay(id, relay), `the ${role} relaying an answer`);
+        const answer = (await taskOf(context.api(), id)).answer;
+        same(answer?.relayed, true, `${id}'s answer, relayed by the ${role}, is recorded as relayed`);
+        same(
+          [answer?.option, answer?.quote, answer?.source, answer?.proposalVersion],
+          [relay.option, relay.quote, relay.source, relay.proposalVersion],
+          `${id}'s recorded option, quote, source and proposal version`,
+        );
+        const sender = await actorOf(context, role);
+        same(answer?.recordedBy, sender, `who ${id}'s answer names as having recorded it`);
+      }
+    },
+  },
+  {
+    id: 'auth-3-relay-needs-quote-and-source',
+    rule: 'AUTH-3',
+    level: 'human',
+    title: "A relayed answer that leaves out the person's words or where they said them is refused",
+    async run(context) {
+      const id = await decision(context);
+      const proposalVersion = await proposalOf(context, id);
+      const api = context.api();
+      const before = await snapshot(api, id);
+      const full: Relay = {
+        action: 'answer',
+        option: 'a',
+        proposalVersion,
+        quote: 'The sign-in page.',
+        source: source(),
+      };
+      for (const left of ['quote', 'source'] as const) {
+        const { [left]: _left, ...relay } = full;
+        refused(await api.relay(id, relay), `a relayed answer with no ${left}`);
+      }
+      await unchanged(api, id, before, 'the refused relays');
+    },
+  },
+  {
+    id: 'auth-3-stale-proposal-refused',
+    rule: 'AUTH-3',
+    level: 'human',
+    title: 'An answer naming a proposal version older than the task is refused, so an edited task cannot borrow it',
+    async run(context) {
+      const id = await decision(context);
+      const old = await proposalOf(context, id);
+      answered(
+        await context.setup().update(id, { description: 'The question changed after the person read it.' }),
+        'editing',
+      );
+      const api = context.binding === 'http' ? asPerson(context) : context.api();
+      const before = await snapshot(context.api(), id);
+      const outcome =
+        context.binding === 'http'
+          ? await api.decide(id, { kind: 'choose', option: 'a', proposalVersion: old })
+          : await api.relay(id, { action: 'answer', option: 'a', proposalVersion: old, quote: 'A.', source: source() });
+      refused(outcome, 'an answer to the proposal as it stood before the edit');
+      await unchanged(context.api(), id, before, 'the refused answer');
+    },
+  },
+  {
+    id: 'auth-4-quote-recorded-as-given',
+    rule: 'AUTH-4',
+    level: 'human',
+    title: 'The option recorded is the one the sender names, and the quote is kept as given, whatever it says',
+    async run(context) {
+      const id = await decision(context);
+      const quote = 'maybe? (a) sounds fine too';
+      answered(
+        await context.api().relay(id, {
+          action: 'answer',
+          option: 'b',
+          proposalVersion: await proposalOf(context, id),
+          quote,
+          source: source(),
+        }),
+        'relaying an answer',
+      );
+      const answer = (await taskOf(context.api(), id)).answer;
+      same([answer?.option, answer?.quote], ['b', quote], `${id}'s recorded option and quote`);
+    },
+  },
+  {
+    id: 'auth-5-dispute-reopens-a-relayed-approval',
+    rule: 'AUTH-5',
+    level: 'human',
+    title:
+      'Disputing a relayed approval opens it again, tells the waiting task, refuses the same source, and changes nothing a second time',
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const { task, gate } = await withApproval(context);
+      const from = source();
+      await relayApproval(context, gate, from);
+      const comments = answered(await context.setup().read(task), 'reading').comments.length;
+      answered(await person.decide(gate, { kind: 'dispute' }), `disputing ${gate}`);
+      const disputed = await taskOf(context.api(), gate);
+      same(disputed.status, 'open', `${gate}'s status after the dispute`);
+      expect(typeof disputed.answer?.disputedBy === 'string', `${gate}'s answer does not name who disputed it`);
+      const told = answered(await context.api().read(task), 'reading');
+      expect(told.comments.length > comments, `${task} was not told to stop`);
+      refused(
+        await context.setup().relay(gate, {
+          action: 'answer',
+          proposalVersion: await proposalOf(context, gate),
+          quote: 'Yes, deploy it.',
+          source: from,
+        }),
+        'an answer relayed again from the disputed source',
+      );
+      const before = await snapshot(context.api(), task);
+      await person.decide(gate, { kind: 'dispute' });
+      await unchanged(context.api(), task, before, 'the second dispute');
+    },
+  },
+  {
+    id: 'auth-5-direct-approval-not-disputable',
+    rule: 'AUTH-5',
+    level: 'human',
+    title: "A person's own direct approval cannot be disputed",
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const { gate } = await withApproval(context);
+      answered(await person.decide(gate, { kind: 'approve' }), `approving ${gate}`);
+      const before = await snapshot(context.api(), gate);
+      refused(await person.decide(gate, { kind: 'dispute' }), `disputing the direct approval of ${gate}`);
+      await unchanged(context.api(), gate, before, 'the refused dispute');
+    },
+  },
+  {
+    id: 'auth-6-each-approval-held-separately',
+    rule: 'AUTH-6',
+    level: 'human',
+    title: 'A task that waits on two approvals stays held until each is approved',
+    async run(context) {
+      const task = await file(context);
+      const gates: string[] = [];
+      for (const where of ['staging.example.com', 'app.example.com'])
+        gates.push(
+          answered(await context.setup().requestApproval(task, `Deploy ${task} to ${where}`), 'asking').approval,
+        );
+      answered(await approveUnderTest(context, gates[0]!), `approving ${gates[0]}`);
+      same((await taskOf(context.api(), task)).ready, false, `${task}'s readiness with ${gates[1]} still open`);
+      answered(await approveUnderTest(context, gates[1]!), `approving ${gates[1]}`);
+      same((await taskOf(context.api(), task)).ready, true, `${task}'s readiness once both are approved`);
+    },
+  },
+  {
+    id: 'auth-7-retiring-grants-nothing',
+    rule: 'AUTH-7',
+    level: 'human',
+    title:
+      'A retired approval records no permission and its waiting task is told; nothing completes an approval or a decision from evidence',
+    async run(context) {
+      const api = context.api();
+      const retired = await withApproval(context);
+      const comments = answered(await context.setup().read(retired.task), 'reading').comments.length;
+      answered(
+        await api.relay(retired.gate, {
+          action: 'obsolete',
+          proposalVersion: await proposalOf(context, retired.gate),
+          explanation: 'The deploy moved to another task.',
+          evidence: 'https://example.com/plan',
+        }),
+        `retiring ${retired.gate}`,
+      );
+      const gate = await taskOf(api, retired.gate);
+      same(gate.status, 'closed', `${retired.gate}'s status after it was retired`);
+      expect(gate.resolution !== 'done', `${retired.gate} was retired as done`);
+      expect(
+        answered(await api.read(retired.task), 'reading').comments.length > comments,
+        `${retired.task} was not told that the action must not happen without a new approval`,
+      );
+      const open = await withApproval(context);
+      const id = await decision(context);
+      for (const task of [open.gate, id]) {
+        const before = await snapshot(api, task);
+        refused(
+          await api.relay(task, {
+            action: 'completed',
+            proposalVersion: await proposalOf(context, task),
+            explanation: 'The work shipped.',
+            evidence: 'https://example.com/pull/7',
+          }),
+          `completing ${task} from implementation evidence`,
+        );
+        await unchanged(api, task, before, `the refused completion of ${task}`);
+      }
+    },
+  },
+  {
+    id: 'auth-8-agents-keep-human-requests',
+    rule: 'AUTH-8',
+    level: 'human',
+    title: "An agent cannot take the human label off a human request, nor replace a task's choices once a person chose",
+    async run(context) {
+      const api = context.api();
+      const labelled = await file(context, { labels: ['human'] });
+      const before = await snapshot(api, labelled);
+      refused(await api.update(labelled, { removeLabels: ['human'] }), `taking the human label off ${labelled}`);
+      await unchanged(api, labelled, before, 'the refused label change');
+      const chosen = await file(context, { labels: ['human'], choices: CHOICES });
+      answered(
+        await context.setup().relay(chosen, {
+          action: 'answer',
+          option: 'a',
+          proposalVersion: await proposalOf(context, chosen),
+          quote: 'The sign-in page.',
+          source: source(),
+        }),
+        'relaying the pick',
+      );
+      const picked = await snapshot(api, chosen);
+      refused(
+        await api.update(chosen, { choices: { ...CHOICES, question: 'Which page ships last?' } }),
+        `replacing ${chosen}'s choices after the person chose`,
+      );
+      await unchanged(api, chosen, picked, 'the refused choices');
+    },
+  },
+];
