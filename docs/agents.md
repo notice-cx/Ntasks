@@ -185,6 +185,17 @@ left), findings and decisions. The guide and the skill tell agents never to
 keep it in a separate notes file or a tool's own notes, and to leave only a
 pointer to the task when another tool asks for a note.
 
+A fact that several tasks of an epic need goes on the epic, pinned, and each
+of those tasks then shows it when an agent reads or claims it:
+
+```text
+comment_on_task  { "task": "web-a1b2", "text": "Migration 0007 is taken by web-a1b2.3; the next one is 0008.", "pin": true }
+```
+
+`get_task` and `claim_task` on a child such as `web-a1b2.4` then answer
+`parent`, with the epic's pinned comments and its most recently closed
+tasks, each with its close reason and proof.
+
 `get_task_guide` gives the agent the rest: filing work, linking tasks,
 asking a person for a decision, an approval or steps to do, and the rules for
 [writing a task](concepts.md#writing-a-task). [The MCP endpoint](api.md#the-mcp-endpoint)

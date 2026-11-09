@@ -14,7 +14,10 @@ from the web app's invented example data. Regenerate the pictures with
   <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
 </picture>
 
-**Task page.** Markdown text, Done when, activity and the task's facts.
+**Task page.** Markdown text, Done when, activity and the task's facts. A
+task in an epic also shows From the epic: the comments pinned on the epic
+for its tasks, and the epic's most recently closed tasks with their close
+reasons. A pinned comment is marked Pinned among its own task's comments.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/task-dark.webp">

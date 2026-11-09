@@ -124,6 +124,8 @@ export interface CommentRow {
   readonly author: string;
   readonly text: string;
   readonly created_at: string;
+  /** 1 when the comment is pinned. Left out, 0. */
+  readonly pinned?: number;
 }
 
 export interface EventRow {
@@ -220,7 +222,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'retired_at',
     'retired_by',
   ],
-  task_comments: ['id', 'task_id', 'author', 'text', 'created_at'],
+  task_comments: ['id', 'task_id', 'author', 'text', 'created_at', 'pinned'],
   task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
 });
 

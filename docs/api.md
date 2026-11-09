@@ -177,13 +177,13 @@ answered by then leaves its tasks out, and the rest are listed.
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset` and `fields` (with `project`) |
-| `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`. With `tasks`, `tasks`: the same for each, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
+| `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
-| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed` | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `idempotency_key` and `detail` |
+| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
-| `comment_on_task` | The `task` and the comment's `commentId`, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
+| `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
 | `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
 | `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
@@ -242,6 +242,31 @@ returns `openChildren`: each child that is not closed, with its `id`,
 `duplicates` names earlier tasks for the same work, and `supersedes` the
 tasks this one replaces. `get_task` lists them among `dependencies`, with
 those types.
+
+### What a parent holds for its tasks
+
+A comment with `pin: true` is pinned on its task: on an epic, a fact the
+epic's tasks need ([concepts](concepts.md#epics)). `unpin` names up to 32
+pinned comments of the same task to unpin, such as the facts the new comment
+corrects; a comment that is not pinned on the task is refused, and the call
+then adds nothing. Pinning and unpinning leave the task's version as a plain
+comment does, and its history records them in the comment's `commented`
+change as `pinned: true` and `unpinned`, the ids. Every comment `get_task`
+returns says whether it is `pinned`.
+
+`get_task` of one task with a parent, `claim_task` and `GET /api/tasks/:id`
+answer `parent`:
+
+| Field | Holds |
+|---|---|
+| `id`, `title`, `type`, `status` | The parent |
+| `pinned` | Its 10 newest pinned comments, newest first, each with `id`, `author`, `text` and `createdAt` |
+| `pinnedTotal` | How many comments are pinned on it |
+| `closedSiblings` | Its 5 most recently closed other children, most recently closed first, each with `id`, `title`, `resolution`, `closedAt`, `closedBy`, `closeReason`, and its proof: `commit`, `pullRequest` and `closeLink`, null when it has none |
+| `closedSiblingsTotal` | How many of its other children are closed |
+
+`get_task` of the parent shows every comment, and `list_tasks` with `parent`
+and `status: ["closed"]` lists every closed child.
 
 A task links to another task once. A task named in two link arguments of
 one `create_task`, `create_tasks` entry or `update_task` is linked once, as
@@ -755,7 +780,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 4.
+field can hold is added. This is version 5.
 
 | Version | Added |
 |---|---|
@@ -763,6 +788,7 @@ field can hold is added. This is version 4.
 | 2 | [Connected apps](sign-in.md#connected-apps) |
 | 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
+| 5 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
 
 | Where | What it holds |
 |---|---|
@@ -846,7 +872,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
 | `GET /api/tasks/search` | `q`, 1 to 512 characters, and optionally `limit` (1 to 200, default 100) | `{ readAt, closedSince, total, tasks }`: the tasks of every project the sender reaches whose id, title, description, acceptance or labels hold every word of `q`, ignoring case, among the open ones and those closed in the last 7 days, most urgent first, as `list_tasks` searches with `query`. When `q` is a task id whose prefix names a project the sender reaches, that task comes first, closed at any time. Each task carries `project`, its project's key; `total` counts every match, and `tasks` holds the first `limit`. |
-| `GET /api/tasks/:id` | `project` | The task, its comments, its `proposal` and its `proposalVersion`, as `get_task` returns them ([recording an owner answer](#recording-an-owner-answer)) |
+| `GET /api/tasks/:id` | `project` | The task, its comments, its `proposal` and its `proposalVersion`, as `get_task` returns them ([recording an owner answer](#recording-an-owner-answer)), and `parent`: what its parent holds for it, or null when it has none ([above](#what-a-parent-holds-for-its-tasks)) |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
@@ -865,7 +891,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 |---|---|---|
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
 | `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
-| `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
+| `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
@@ -1101,6 +1127,10 @@ task's labels, its links to other tasks and its external links in the same
 query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
+  what its parent holds for it is one statement more, which reads the
+  parent's pinned comments, the 5 closed children it shows and one index
+  entry for each other closed child, never the parent's other comments or
+  its open children;
 - a list or a board reads about ten rows for each task it returns;
 - `list_tasks` and `GET /api/tasks/search` read the external links of the
   tasks on the page they return, in one statement after the board, and no

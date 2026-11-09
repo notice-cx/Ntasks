@@ -60,6 +60,25 @@ describe('a task page', () => {
     );
   });
 
+  it("shows the facts its epic pinned for its tasks, and what the epic's closed tasks left", async () => {
+    renderApp('/tasks/web-k3m9.2');
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    const fromEpic = await screen.findByRole('region', { name: 'From the epic' });
+    const pinned = fromEpic.querySelector('[data-parent-pinned]') as HTMLElement;
+    expect(within(pinned).getByText(/change them there/u)).toBeTruthy();
+    const closed = fromEpic.querySelector('[data-parent-closed]') as HTMLElement;
+    expect(closed.querySelector('[data-closed-sibling="web-k3m9.1"]')?.textContent).toContain(
+      'the form renders its fields and errors',
+    );
+  });
+
+  it('marks a pinned comment among the comments of the task it is pinned on', async () => {
+    renderApp('/tasks/web-k3m9');
+    await screen.findByRole('heading', { level: 1, name: 'Ship the new sign-in page' });
+    await waitFor(() => expect(document.querySelector('[data-comment-pinned]')?.textContent).toBe('Pinned'));
+    expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
+  });
+
   it('shows a fact it may not change as words, not as a control', async () => {
     renderApp('/tasks/web-b2r6');
     await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });

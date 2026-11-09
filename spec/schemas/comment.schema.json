@@ -2,13 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/comment.schema.json",
   "title": "Comment",
-  "description": "A note or piece of evidence added to a task while the work moves. A comment is never edited or deleted. Section 3.4 of the protocol.",
+  "description": "A note or piece of evidence added to a task while the work moves. A comment is never edited or deleted; the one change it takes is being unpinned. Section 3.4 of the protocol.",
   "type": "object",
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "author": { "$ref": "actor.schema.json" },
     "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
-    "createdAt": { "type": "string", "format": "date-time" }
+    "createdAt": { "type": "string", "format": "date-time" },
+    "pinned": {
+      "type": "boolean",
+      "description": "Pinned when it was added, as a fact later work needs, and not unpinned since. A server at the Live work level answers it on every comment. Section 3.4 of the protocol."
+    }
   },
   "required": ["id", "author", "text", "createdAt"]
 }

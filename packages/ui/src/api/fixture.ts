@@ -14,6 +14,7 @@ import {
   isExternalLinkKind,
   isTaskId,
   markedStep,
+  PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
   TASK_LIMITS,
   type TaskResolution,
@@ -35,6 +36,7 @@ import type {
   FieldFilters,
   LiveEpic,
   LiveTask,
+  ParentContext,
   TaskChange,
   TaskComment,
   TaskEdit,
@@ -244,6 +246,39 @@ export function createFixtureTasksApi({
     if (!closing) task.lastActivityAt = null;
   }
 
+  /** What the task's parent holds for it, as the Worker answers it (PARENT_CONTEXT_LIMITS). */
+  function parentContext(task: FixtureTask): ParentContext | null {
+    const parent = task.parent === null ? undefined : state.tasks.find((row) => row.id === task.parent);
+    if (parent === undefined) return null;
+    const pinned = (state.comments.get(parent.id) ?? [])
+      .filter((comment) => comment.pinned === true)
+      .toReversed()
+      .map(({ id, author, text, createdAt }) => ({ id, author, text, createdAt }));
+    const closed = state.tasks
+      .filter((row) => row.parent === parent.id && row.id !== task.id && row.status === 'closed')
+      .toSorted((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''));
+    return {
+      id: parent.id,
+      title: parent.title,
+      type: parent.issueType,
+      status: parent.status,
+      pinned: pinned.slice(0, PARENT_CONTEXT_LIMITS.pinned),
+      pinnedTotal: pinned.length,
+      closedSiblings: closed.slice(0, PARENT_CONTEXT_LIMITS.closedSiblings).map((row) => ({
+        id: row.id,
+        title: row.title,
+        resolution: row.resolution ?? 'done',
+        closedAt: row.closedAt ?? '',
+        closedBy: row.closedBy ?? null,
+        closeReason: row.closeReason ?? null,
+        commit: row.delivery?.commit ?? null,
+        pullRequest: row.delivery?.pullRequest ?? null,
+        closeLink: row.closeLink ?? null,
+      })),
+      closedSiblingsTotal: closed.length,
+    };
+  }
+
   function addComment(task: FixtureTask, text: string): void {
     const list = state.comments.get(task.id) ?? [];
     const comment: TaskComment = {
@@ -251,6 +286,7 @@ export function createFixtureTasksApi({
       author: FIXTURE_ACTOR,
       text,
       createdAt: touch(task),
+      pinned: false,
     };
     state.comments.set(task.id, [...list, comment]);
   }
@@ -479,9 +515,10 @@ export function createFixtureTasksApi({
         repo: '',
         readAt: new Date(now()).toISOString(),
         task: withLinks(task),
-        comments: state.comments.get(id) ?? [],
+        comments: (state.comments.get(id) ?? []).map((comment) => ({ ...comment, pinned: comment.pinned === true })),
         actors: FIXTURE_ACTORS,
         proposalVersion: task.proposalVersion ?? null,
+        parent: parentContext(task),
       });
     },
     async search(text) {

@@ -176,3 +176,42 @@ test('a store that holds tasks takes an acceptance only on a task closed as done
   assert.throws(() => set('web-b2', '{"by":"owner"}'), /CHECK constraint/u, 'no criteria');
   db.close();
 });
+
+test('a store that holds comments keeps each unpinned, and lets a comment only be unpinned', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0005_parent_context.sql');
+  assert.ok(index > 0, 'the pinned comments migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+
+  migrated(db, FILES.slice(index));
+
+  const held = db.prepare('SELECT id, pinned FROM task_comments').all();
+  assert.deepEqual(
+    held.map((row) => [row.id, row.pinned]),
+    [['c1', 0]],
+    'the comment it held is unpinned',
+  );
+  insert(db, 'task_comments', {
+    id: 'c2',
+    task_id: 'web-a1',
+    author: 'agent-a',
+    text: 'Every page shares the header.',
+    created_at: LATER,
+    pinned: 1,
+  });
+  const update = (sql: string) => () => db.prepare(`UPDATE task_comments SET ${sql} WHERE id = 'c2'`).run();
+  assert.throws(update("text = 'Edited.'"), /comments are never edited/u, 'its text');
+  assert.throws(update("author = 'agent-b'"), /comments are never edited/u, 'its author');
+  update('pinned = 0')();
+  assert.throws(update('pinned = 1'), /comments are never edited/u, 'pinned again');
+  assert.throws(() => db.prepare("DELETE FROM task_comments WHERE id = 'c2'").run(), /never deleted/u);
+  assert.throws(
+    () =>
+      insert(db, 'task_comments', { id: 'c3', task_id: 'web-a1', author: 'a', text: 'b', created_at: AT, pinned: 2 }),
+    /CHECK constraint/u,
+    'a pin is 0 or 1',
+  );
+  db.close();
+});

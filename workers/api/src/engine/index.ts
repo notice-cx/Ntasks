@@ -36,6 +36,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     listEpics: (projectId) => reads.listEpics(projectId),
     nextDeferralAfter: (time) => reads.nextDeferralAfter(time),
     listComments: (projectId, taskId) => reads.listComments(projectId, taskId),
+    parentContext: (projectId, taskId) => reads.parentContext(projectId, taskId),
     listHistory: (projectId, taskId, options) => reads.listHistory(projectId, taskId, options.limit, options.beforeSeq),
     latestChange: () => reads.latestChange(),
     listChanges: (query) => reads.listChanges(query.after, query.limit, query.projectId),
@@ -53,7 +54,8 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
       writes.recordUnchanged(projectId, taskId, expectedVersion, retry),
     createTask: (projectId, input, actor, retry) => writes.createTask(projectId, input, actor, retry),
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
-    addComment: (projectId, taskId, text, actor, retry) => writes.addComment(projectId, taskId, text, actor, retry),
+    addComment: (projectId, taskId, text, actor, retry, pins) =>
+      writes.addComment(projectId, taskId, text, actor, retry, pins),
     reportDelivery: (projectIds, signal, actor) => writes.reportDelivery(projectIds, signal, actor),
   };
 }

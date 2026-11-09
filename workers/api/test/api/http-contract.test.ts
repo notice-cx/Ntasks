@@ -124,11 +124,12 @@ async function drive(): Promise<readonly Sample[]> {
   const date = await create({ title: 'Pick the date', parent: epic, labels: ['copy'], dueAt: '2026-11-20' });
   const advert = await create({
     title: 'Buy an advert',
+    parent: epic,
     card: { valuePerMonth: 40, likelihood: 0.2, reviewMinutes: 5, daysToSignal: 7, measurability: 'unmeasured' },
   });
   const again = await create({ title: 'Write the launch post again' });
   const later = await create({ title: 'Plan the follow-up' });
-  const linked = await create({ title: 'Write the notes' });
+  const linked = await create({ title: 'Write the notes', parent: epic });
   const unproved = await create({ title: 'Tidy the folder' });
   const decision = await create({ title: 'Ship on Monday?', type: 'decision', labels: ['human'] });
   const declined = await create({ title: 'Translate the post', labels: ['human'] });
@@ -152,6 +153,17 @@ async function drive(): Promise<readonly Sample[]> {
     }),
   );
   await as('POST /api/tasks/:id/comments', task(post, '/comments'), inProject({ text: 'Draft ready.' }));
+  // Pinned on the epic, a fact shows on each of its tasks; the second corrects the first, which it unpins.
+  const { comment: wrong } = (await as(
+    'POST /api/tasks/:id/comments',
+    task(epic, '/comments'),
+    inProject({ text: 'Launch is on 19 November.', pin: true }),
+  )) as { comment: { id: string } };
+  await as(
+    'POST /api/tasks/:id/comments',
+    task(epic, '/comments'),
+    inProject({ text: 'Launch is on 20 November.', pin: true, unpin: [wrong.id] }),
+  );
   await as('POST /api/tasks/:id/close', task(date, '/close'), inProject({ reason: 'Chosen.', commit: 'a1b2c3d4e5f6' }));
   for (const stage of ['merged', 'live'])
     await as('POST /api/delivery', '/api/delivery', { repository: 'example/launch', stage, commits: ['a1b2c3d4e5f6'] });

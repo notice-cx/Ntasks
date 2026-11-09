@@ -20,6 +20,7 @@ export {
   isTaskStatus,
   isTaskType,
   lacksProof,
+  PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
   TASK_EVENT_KINDS,
   TASK_LIMITS,
@@ -32,6 +33,7 @@ export {
 } from './task.ts';
 export type {
   AcceptedCriterion,
+  ClosedSibling,
   CustomField,
   DeliveryStage,
   DependencyType,
@@ -43,6 +45,7 @@ export type {
   HeldTask,
   Json,
   JsonObject,
+  ParentContext,
   Project,
   StepMark,
   Task,
@@ -67,6 +70,7 @@ export type {
   ApprovalRequest,
   BoardQuery,
   ChangePage,
+  CommentPins,
   CommentResult,
   CreateProjectInput,
   CreateTaskInput,

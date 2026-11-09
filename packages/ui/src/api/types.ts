@@ -272,6 +272,33 @@ export interface TaskComment {
   author: string;
   text: string;
   createdAt: string | null;
+  /** Pinned as a fact later work needs; a server before API version 5 leaves it out. */
+  pinned?: boolean;
+}
+
+/** One of the parent's other children that closed: how it ended, why, and what proves it. */
+export interface ClosedSibling {
+  id: string;
+  title: string;
+  resolution: TaskResolution;
+  closedAt: string;
+  closedBy: string | null;
+  closeReason: string | null;
+  commit: string | null;
+  pullRequest: string | null;
+  closeLink: string | null;
+}
+
+/** What a task's parent holds for it: its newest pinned comments and most recently closed other children, with the totals. */
+export interface ParentContext {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  pinned: Omit<TaskComment, 'pinned'>[];
+  pinnedTotal: number;
+  closedSiblings: ClosedSibling[];
+  closedSiblingsTotal: number;
 }
 
 /** One task and its comments: the task page's read. */
@@ -285,6 +312,8 @@ export interface LiveTaskDetail {
   comments: TaskComment[];
   /** The version of the task's proposal, whatever it waits on, when the server sends it: an acceptance names it. */
   proposalVersion?: string | null;
+  /** What its parent holds for it; null when it has none, and left out by a server before API version 5. */
+  parent?: ParentContext | null;
 }
 
 /** What creating a task answers with. */

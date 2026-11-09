@@ -51,6 +51,10 @@ protocol appears in neither table.
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "closes with its own reason when the person gives none, and with no criteria on a task that has none" |
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "refuses a criterion the task lacks, an unread or stale proposal, a closed task, a request and a task waiting on one, writing nothing" |
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "is cleared by a reopen, whose history keeps it" |
+| STATE-17 | `workers/api/test/api/write-tools.test.ts` › "pins a comment, and unpins earlier pinned comments of the same task, leaving its version" |
+| STATE-17 | `workers/api/test/api/read-tools.test.ts` › "shows a task its epic's pinned comments and what its closed siblings left, newest first and capped" |
+| STATE-17 | `workers/api/test/api/write-tools.test.ts` › "answers a claim on a task in an epic with the epic's pinned comments and its closed tasks' closes" |
+| STATE-17 | `workers/api/test/schema.test.ts` › "lets a pinned comment be unpinned, and never pins an unpinned one again" |
 | AUTH-1 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "keeps an agent named after the owner apart from the owner" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "marks an owner whose own name starts like an agent’s, so the two never meet" |
@@ -91,6 +95,7 @@ protocol appears in neither table.
 | INV-6 | `workers/api/test/schema.test.ts` › "never deletes a task" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never edits or deletes history" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never edits or deletes a comment" |
+| INV-6 | `workers/api/test/schema.test.ts` › "lets a pinned comment be unpinned, and never pins an unpinned one again" |
 | INV-6 | `workers/api/test/schema.test.ts` › "keeps a task in its project" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "shows proof none on a task done with no commit, pull request or link, and warns its closer" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics" |

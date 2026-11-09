@@ -387,6 +387,18 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
 
   const comments = new Map<string, TaskComment[]>([
     [
+      'web-k3m9',
+      [
+        {
+          id: 'c3',
+          author: CLAUDE,
+          text: 'Both steps of the form import their fields from `src/pages/sign-in/fields.ts`; change them there.',
+          createdAt: at(2 * DAY),
+          pinned: true,
+        },
+      ],
+    ],
+    [
       'web-k3m9.2',
       [
         {

@@ -20,6 +20,7 @@ import {
   type ActionRequest,
   type Actor,
   type ApprovalRequest,
+  type CommentPins,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -563,6 +564,8 @@ export interface CheckedWrite {
   } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
+  /** How the comment changes the task's pinned comments; null when it changes none. */
+  readonly pins: CheckedPins | null;
   /** Changes to other tasks in the same batch, each checked as a write of its own. */
   readonly others: readonly { readonly taskId: string; readonly write: CheckedWrite }[];
 }
@@ -576,7 +579,12 @@ function otherWrites(value: unknown): CheckedWrite['others'] {
   const checked = value.map((entry: unknown, index) => {
     if (entry === null || typeof entry !== 'object') invalid(`others[${index}] must be an object`);
     const { taskId: id, ...change } = entry as TaskWrite & { readonly taskId?: unknown };
-    if (change.requestApproval !== undefined || change.requestAction !== undefined || change.others !== undefined)
+    if (
+      change.requestApproval !== undefined ||
+      change.requestAction !== undefined ||
+      change.others !== undefined ||
+      (change as TaskWrite).pins !== undefined
+    )
       invalid(`others[${index}] changes another task's fields, links or comments, and opens no request`);
     return { taskId: taskId(id, `others[${index}].taskId`), write: write(change) };
   });
@@ -666,8 +674,10 @@ export function write(input: TaskWrite): CheckedWrite {
     close,
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),
+    pins: pins(input.pins),
     others: otherWrites(input.others),
   };
+  if (checked.pins !== null && checked.comment === null) invalid('pins changes pinned comments with a comment');
   const empty =
     Object.keys(set).length === 0 &&
     checked.addLabels.length === 0 &&
@@ -685,6 +695,28 @@ export function write(input: TaskWrite): CheckedWrite {
     checked.comment === null;
   if (empty) invalid('the write changes nothing');
   return checked;
+}
+
+/** A new comment's pins: whether it is pinned, and the pinned comments it unpins, each once. */
+export interface CheckedPins {
+  readonly pin: boolean;
+  readonly unpin: readonly string[];
+}
+
+/** Checks how a new comment changes pinned comments; null when it changes none. */
+export function pins(value: CommentPins | undefined): CheckedPins | null {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid('pins must be an object');
+  const extra = Object.keys(value).filter((key) => key !== 'pin' && key !== 'unpin');
+  if (extra.length > 0) invalid(`pins takes pin and unpin, not ${extra.join(', ')}`);
+  const pin: unknown = value.pin;
+  if (pin !== undefined && pin !== true) invalid('pins.pin must be true, or left out');
+  const unpin: unknown = value.unpin ?? [];
+  if (!Array.isArray(unpin) || unpin.length > TASK_LIMITS.unpin)
+    invalid(`pins.unpin must be a list of at most ${TASK_LIMITS.unpin} comment ids`);
+  const ids = unpin.map((id: unknown, index) => line(id, `pins.unpin[${index}]`, 64));
+  if (pin !== true && ids.length === 0) return null;
+  return { pin: pin === true, unpin: [...new Set(ids)] };
 }
 
 function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWrite['close']> {
