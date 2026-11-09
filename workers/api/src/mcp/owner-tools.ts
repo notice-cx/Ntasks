@@ -129,9 +129,9 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
     const { result } = await reconcileTask(context, projectId, operation, retry);
     const task = await seen(context, result.task);
     return detail === 'full'
-      ? { task: mcpTask(task), replayed: result.replayed }
+      ? { task: mcpTask(task, context.now()), replayed: result.replayed }
       : {
-          ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman', 'answer']),
+          ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman', 'answer'], context.now()),
           replayed: result.replayed,
         };
   },

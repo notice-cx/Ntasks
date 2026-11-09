@@ -32,7 +32,7 @@ import { writeOf } from './writes.ts';
 
 /** The answer to a decision: the task as it stands after it. */
 async function decided(context: WriteContext, written: Written): Promise<Response> {
-  const [task] = await webTasks([await seen(context, written.result.task)]);
+  const [task] = await webTasks([await seen(context, written.result.task)], context.now());
   return json({ task });
 }
 

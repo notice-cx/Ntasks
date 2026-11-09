@@ -7,6 +7,7 @@
  */
 import {
   DELIVERY_STAGES,
+  isStalled,
   isTaskStatus,
   isTaskType,
   TASK_LIMITS,
@@ -128,6 +129,11 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           "Only closed tasks whose change is at this stage: built (not merged yet), merged or live. Reads every one, whenever it closed, unless closed_days is given. The answer's stages counts the tasks at each stage.",
       },
       ready: { type: 'boolean', description: 'Only tasks with nothing blocking them.' },
+      stalled: {
+        type: 'boolean',
+        description:
+          'true: only tasks in progress whose holder has done nothing on them for a day, or ever: work to pick up again, or to propose freeing.',
+      },
       assignee: {
         type: 'string',
         maxLength: TASK_LIMITS.actor,
@@ -204,6 +210,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
             }
           : {};
       const ready = booleanArg(args, 'ready');
+      const stalledOnly = booleanArg(args, 'stalled') === true;
       const query = textArg(args, 'query', 512, false, true);
       const filters = {
         ...(query === undefined ? {} : { words: query.toLowerCase().split(/\s+/u).filter(Boolean) }),
@@ -223,7 +230,10 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       if (filters.types?.some((type) => !isTaskType(type))) refuse('invalid arguments: type');
       const nextOf = (shown: number, total: number) => (offset + shown < total ? offset + shown : null);
       const links = await linksSeenBy(context);
-      const summary = (task: Task) => mcpSummary(links.task(task));
+      const readAt = now();
+      const summary = (task: Task) => mcpSummary(links.task(task), readAt);
+      // Stalled depends on the time of the read, so it narrows the board after it is read, never in the cached read.
+      const kept = (tasks: readonly Task[]) => (stalledOnly ? tasks.filter((task) => isStalled(task, readAt)) : tasks);
       if (args.project !== undefined) {
         const project = await projectOf(context, projectArg(args));
         const fields =
@@ -235,7 +245,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           closedDays,
           fields === undefined ? filters : { ...filters, fields },
           now,
-        );
+        ).then((read) => ({ ...read, tasks: kept(read.tasks) }));
         const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
         return {
           project: project.key,
@@ -255,7 +265,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         board(engine, null, statuses as TaskStatus[], closedDays, filters, now),
       ]);
       const reached = new Set(reachable(principal, projects).map((project) => project.id));
-      const found = { ...everything, tasks: everything.tasks.filter((task) => reached.has(task.projectId)) };
+      const found = { ...everything, tasks: kept(everything.tasks.filter((task) => reached.has(task.projectId))) };
       const where = new Map(
         projects.map((project) => [
           project.id,
@@ -359,7 +369,7 @@ async function oneTask(context: ToolContext, args: Args, taskId: string) {
       : null;
   return {
     project: project.key,
-    task: mcpTask(links.task(task)),
+    task: mcpTask(links.task(task), context.now()),
     ...(children === null ? {} : { openChildren: children.map(childView) }),
     comments: comments.map(commentView),
     proposal: proposalOf(task),

@@ -103,7 +103,7 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
     repo: '',
     readAt: now(),
     label,
-    tasks: await webTasks(page.tasks.map(links.task)),
+    tasks: await webTasks(page.tasks.map(links.task), context.now()),
     next: page.next,
   });
 }
@@ -175,7 +175,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     repo: '',
     readAt: found.readAt,
     closedSince: found.closedSince,
-    tasks: await webTasks(found.tasks.map(links.task)),
+    tasks: await webTasks(found.tasks.map(links.task), context.now()),
     epics: epics?.map(epicView) ?? null,
     actors: [],
     lastSeq,
@@ -217,7 +217,7 @@ export async function searchRoute(context: ReadContext, url: URL): Promise<Respo
     ...(task ? [task] : []),
     ...(await withExternalLinks(engine, matched.slice(0, task ? limit - 1 : limit))),
   ];
-  const views = await webTasks(page.map(links.task));
+  const views = await webTasks(page.map(links.task), context.now());
   return json({
     readAt: found.readAt,
     closedSince: found.closedSince,
@@ -273,7 +273,7 @@ export async function taskRoute(context: ReadContext, url: URL, taskId: string):
     engine.listComments(project.id, taskId),
     linksSeenBy(context),
   ]);
-  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)]), proposalVersionOf(task)]);
+  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)], now()), proposalVersionOf(task)]);
   return json({
     project: project.key,
     prefix: project.prefix,

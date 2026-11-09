@@ -237,7 +237,7 @@ export async function updateRoute(
   oneDueDate(change.dueAt, change.card);
   addsOrRemoves(change.addExternalLinks, change.removeExternalLinks, 'addExternalLinks and removeExternalLinks');
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
-  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)]);
+  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
   return json({ task });
 }
 
@@ -355,6 +355,6 @@ export async function closeRoute(context: WriteContext, url: URL, request: Reque
     ...shippedArgs(body, { commit: 'commit', pr: 'pullRequest', link: 'link' }, given.resolution),
   };
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
-  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)]);
+  const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
   return json({ task });
 }
