@@ -13,6 +13,7 @@
  *   node tools/migrate/src/cli.ts verify --from <backup.json> --store <file.sqlite>
  *   node tools/migrate/src/cli.ts seed --from <seed.json> --check
  *   node tools/migrate/src/cli.ts seed --from <seed.json> --out <backup.json>
+ *   node tools/migrate/src/cli.ts provision --from <request.json> --out <provision.json>
  */
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -36,6 +37,7 @@ import { isJsonObject } from './json.ts';
 import { checkReadable, copyAsBackup, loadIntoStore, verifyLoaded } from './load.ts';
 import { openLocalStore, storeMigrations, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
+import { planProvision } from './provision.ts';
 import { planSeed } from './seed.ts';
 import { verify, verifyBackup, verifySeed, type Difference } from './verify.ts';
 
@@ -67,7 +69,8 @@ const USAGE = `Usage:
   cli.ts load --api <https://address> --token-file <file> --from <export.json | backup.json>
   cli.ts verify --from <backup.json> --store <file.sqlite>
   cli.ts seed --from <seed.json> --check
-  cli.ts seed --from <seed.json> --out <backup.json>`;
+  cli.ts seed --from <seed.json> --out <backup.json>
+  cli.ts provision --from <request.json> --out <provision.json>`;
 
 class UsageError extends Error {}
 
@@ -427,6 +430,30 @@ async function runSeed(values: Record<string, string | boolean | undefined>, io:
   }
 }
 
+/**
+ * Writes the statements that provision a new, empty D1 database, and the
+ * tokens of the credentials they make, into one file only its owner reads.
+ */
+async function runProvision(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
+  const out = option(values, 'out');
+  if (existsSync(out)) {
+    io.err(`Refused: ${out} already exists. The provision never writes over a file.`);
+    return 1;
+  }
+  const { file, refusals } = planProvision(JSON.parse(await readFile(option(values, 'from'), 'utf8')) as unknown);
+  if (file === null) {
+    printRefusals(refusals, io);
+    return 1;
+  }
+  // The file holds the credentials' tokens: private to its owner, and never written over.
+  await writeFile(out, `${JSON.stringify(file)}\n`, { mode: 0o600, flag: 'wx' });
+  io.out(
+    `Wrote ${out}: ${count(file.statements.length)} statements for an empty D1 database, making workspace ${file.workspaceId} ` +
+      `and the credentials ${Object.keys(file.tokens).join(', ')}. It holds their tokens: keep it private.`,
+  );
+  return 0;
+}
+
 export async function main(
   argv: readonly string[],
   io: Io,
@@ -455,6 +482,7 @@ export async function main(
     if (command === 'restore') return await runRestore(values, io);
     if (command === 'load') return await runLoad(values, io, network);
     if (command === 'seed') return await runSeed(values, io);
+    if (command === 'provision') return await runProvision(values, io);
     throw new UsageError(command === undefined ? 'Name a command.' : `Unknown command ${command}.`);
   } catch (error) {
     if (error instanceof UsageError || (error as { code?: string }).code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {

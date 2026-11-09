@@ -4,8 +4,9 @@ Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
 Dolt into the Ntasks task store, with its full history, backs a task store
 up and restores it ([below](#back-up-and-restore)), loads an import or a
 backup into an empty deployed store ([below](#load-into-the-deployed-store)),
-and turns a seed of invented tasks into a backup that loads
-([below](#seed-a-store)). **Dolt** is the
+turns a seed of invented tasks into a backup that loads
+([below](#seed-a-store)), and provisions a deployment nobody signs in to
+([below](#provision-a-deployment-nobody-signs-in-to)). **Dolt** is the
 versioned SQL database Beads stores tasks in. The **task store** is the
 Durable Object that holds Ntasks' tasks in its own SQLite database
 ([The task store](../../docs/task-store.md)). Three commands move a hub:
@@ -414,6 +415,54 @@ The seed is refused whole, with every reason, when any field is missing, of
 the wrong kind or not listed above, when a link, a parent or a prefix names
 something the seed does not hold, when a change changes nothing or comes
 before the one before it, or when tasks wait on each other in a loop.
+
+## Provision a deployment nobody signs in to
+
+`provision` writes what a new, empty D1 database needs for a deployment that
+no person signs in to, such as one a product demo runs inside its own stack:
+the statements that create the sign-in schema from
+[`workers/api/migrations`](../../workers/api/migrations/), one workspace with
+an owner of record, and service credentials of that workspace, with each
+credential's token.
+
+```sh
+node tools/migrate/src/cli.ts provision --from request.json --out provision.json
+```
+
+```json
+{
+  "format": "ntasks-provision-request-v1",
+  "workspace": { "id": "b2222222-0000-4000-8000-000000000002", "name": "Demo" },
+  "owner": { "name": "Mara" },
+  "credentials": [
+    { "name": "seed", "backup": true, "restore": true },
+    { "name": "activity", "grants": [{ "projectId": "a1111111-0000-4000-8000-000000000001", "access": "write" }] }
+  ]
+}
+```
+
+A credential takes the choices `POST /api/access/services` takes
+([Sign-in](../../docs/sign-in.md#routes)): `grants`, each a project id with
+`read` or `write`, and `backup` and `restore`. One with no grants needs
+`backup` or `restore`. A grant may name a project the store does not hold
+yet, such as one a seed loads afterwards.
+
+The file, `ntasks-provision-v1`, holds `statements`, each `{ "sql", "values" }`,
+to run in order as one batch on the empty database through its D1 binding,
+and `tokens`, each credential's bearer token by its name. It is readable only
+by its owner and never written over: keep it private. The statements also
+record each migration in `d1_migrations`, as `wrangler d1 migrations apply`
+does, so a later `migrations apply` adds only newer files. The owner of
+record has no GitHub account, so nobody signs in as them.
+
+Sign-in must be on for the credentials to sign in: give the Worker
+`AUTH_SECRET`, and `NTASKS_ORIGIN`, `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` ([Settings](../../docs/sign-in.md#settings)). With
+`PUBLIC_WORKSPACE_ID` naming the workspace, visitors read it with no
+credential ([The public workspace](../../docs/sign-in.md#the-public-workspace)).
+Then load a seed into its store with `seed` and `load`, through a credential
+made with `backup` and `restore`. `workers/api/test/node/provision.ts` runs
+these steps against the Worker.
 
 ## Tests
 
