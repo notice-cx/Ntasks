@@ -67,7 +67,7 @@ a task again therefore claims it twice.
 | Contract operation | Tool | Notes |
 |---|---|---|
 | Ask a person to choose | `create_task`, `update_task` with `choices` and the `human` label | Exactly one option `recommended` |
-| Ask for an approval | `request_human_approval`, or `create_task` with `approval` | Answers the approval and `created`; the same request again returns the open one ([STATE-10](protocol.md#state-10)) |
+| Ask for an approval | `request_human_approval`, or `create_task` with `approval` | `title` and `description`, or `reason` alone, whose first line becomes the title. Answers the approval and `created`; the same request again returns the open one ([STATE-10](protocol.md#state-10)) |
 | Record a relayed answer | `reconcile_task`, action `answer`, `declined` or `owner_performed` | `proposal_version`, `quote`, `source`, and `option` on a task with choices ([AUTH-3](protocol.md#auth-3)) |
 | Retire a request with evidence | `reconcile_task`, action `completed`, `obsolete`, `superseded` or `duplicate` | `explanation` and `evidence`, and `duplicate_of` for a duplicate ([AUTH-7](protocol.md#auth-7)) |
 | Take the `human` label off routine work | `reconcile_task`, action `routine` | `explanation` and `evidence` ([AUTH-8](protocol.md#auth-8)) |
@@ -105,7 +105,7 @@ the protocol defines none of them.
 | `get_agent_stats` | Counts of agents' work by model |
 | `list_fields`, `define_field`, `retire_field` | Custom fields ([EXT-2](protocol.md#ext-2)), which the protocol describes but no level requires |
 | `card`, `change_class` arguments | Facts NoticeOS ranks tasks by ([EXT-4](protocol.md#ext-4)) |
-| `lint`, `possibleDuplicates`, `warnings` in answers | Advice on a write: sections a task lacks, open tasks with similar titles, texts that cite what a reader cannot check |
+| `lint`, `possibleDuplicates`, `warnings` in answers | Advice on a write: sections a task lacks, a title over 70 characters or holding a command, a file path or a commit hash, open tasks with similar titles, texts that cite what a reader cannot check |
 
 ## 11.4 Refusals
 
@@ -138,7 +138,8 @@ own.
 | `description`, `acceptance`, `notes`, `design` | 8,192 characters each |
 | A comment | 4,096 characters |
 | A close's `reason` | 2,048 characters |
-| An approval's request | 400 characters |
+| An approval's `title` | 70 characters |
+| An approval's `description` | 2,048 characters; `reason`, 400 |
 | `labels` | 32, each 128 characters |
 | `external_links` | 32; a URL 2,048 characters, a title 512 |
 | `choices` | 2 to 6 options; question 400, label 120, detail 600 characters; a pick's note 2,000 |

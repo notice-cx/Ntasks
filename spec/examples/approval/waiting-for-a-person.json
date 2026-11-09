@@ -2,7 +2,7 @@
   "priority": 2,
   "labels": [],
   "parent": null,
-  "description": "Deploy web-c3d4 to production (app.example.com): pnpm run deploy. Scope: this one deploy. Verification: GET /healthz answers 200.",
+  "description": "Deploy web-c3d4 to production at app.example.com, once.\n\n## What happens\n\n```bash\npnpm run deploy\n```\n\n## Impact\n\n- No downtime; deploying the previous release undoes it.\n\n## How we'll check\n\n- `GET /healthz` answers `200`.\n\nIf you say no, web-c3d4 stays unreleased.",
   "acceptance": "",
   "notes": "",
   "design": "",
