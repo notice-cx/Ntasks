@@ -84,12 +84,15 @@ expires, and a service credential still sign their calls in, as
 needs only `AUTH_SECRET` and the stored origin, not the stored app's
 credentials.
 
-The [Deploy to Cloudflare button](deploy.md#deploy-your-own) asks for
+[`npx ntasks deploy`](deploy.md#deploy-your-own) makes `AUTH_SECRET` on a
+first deploy, sets it with the Worker and prints it. The
+[Deploy to Cloudflare button](deploy.md#deploy-with-the-button) asks for
 `AUTH_SECRET`, the one name in [`.dev.vars.example`](../.dev.vars.example),
 with the description under `cloudflare.bindings` in the root `package.json`.
-On a deployment made another way, set each secret with
-`wrangler secret put <NAME>` from the repository root. `wrangler deploy`
-refuses a Worker that lacks `AUTH_SECRET`. For `pnpm dev`, copy
+To set any other secret, run `npx wrangler secret put <NAME> --name <Worker>`,
+or `wrangler secret put <NAME>` from a checkout's root, which finds the Worker
+in `wrangler.jsonc`. `wrangler deploy` refuses a Worker that lacks
+`AUTH_SECRET`. For `pnpm dev`, copy
 `.dev.vars.example` to `.dev.vars` at the repository root, which git
 ignores, fill in `AUTH_SECRET`, and run the setup page at
 `http://localhost:8787/sign-in`. GitHub accepts `http://localhost`
@@ -180,7 +183,12 @@ The stored app is bound to the origin the setup ran at. To serve sign-in at
 another address, such as a custom domain, delete the stored app with
 `pnpm --filter @ntasks/api exec wrangler d1 execute DB --remote --command "DELETE FROM access_github_app"`,
 then run the setup page at the new address; deleting the app also deletes
-the admin it recorded, and the new app's owner becomes the admin.
+the admin it recorded, and the new app's owner becomes the admin. On a
+deployment made with `npx ntasks deploy`, which has no checkout, name the D1
+database the Worker is bound to, which `npx ntasks deploy --dry-run` shows:
+`npx wrangler d1 execute <database> --remote --command "DELETE FROM access_github_app"`,
+with `CLOUDFLARE_ACCOUNT_ID` set to the account's id when your login reaches
+several.
 Alternatively, set the three GitHub secrets for the new address.
 
 Agents stop working at the move, and each connects again at the new

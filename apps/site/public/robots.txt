@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ntasks.notice.cx/docs/sitemap.xml
