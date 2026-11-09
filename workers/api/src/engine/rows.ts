@@ -11,6 +11,7 @@ import type {
   JsonObject,
   Project,
   Task,
+  TaskAcceptance,
   TaskComment,
   TaskDelivery,
   TaskEvent,
@@ -73,6 +74,8 @@ export interface StoredTaskRow {
   readonly close_link: string | null;
   /** A request's steps, as a JSON array, on a gate that asks a person to do steps. */
   readonly steps: string | null;
+  /** A person's acceptance of the task as done on their own call, as a JSON object. */
+  readonly close_acceptance: string | null;
 }
 
 /** A `tasks` row as the engine's reads select it, with the columns they compute. */
@@ -224,6 +227,7 @@ export function toTask(row: TaskRow): Task {
             by: row.closed_by,
             model: row.closed_model,
             link: row.close_link,
+            acceptance: row.close_acceptance === null ? null : (JSON.parse(row.close_acceptance) as TaskAcceptance),
           }
         : null,
     delivery: deliveryOf(row),

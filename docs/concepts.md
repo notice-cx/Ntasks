@@ -202,6 +202,22 @@ the change, or a link to what shows it, such as a document. A task, bug,
 feature or chore closed as done with none of them shows **No proof**.
 Decisions, approvals and epics need none.
 
+### Done on a person's call
+
+A person can close a task as done on their own judgement, even when some of
+its acceptance is unmet or no longer matters. Each line or list item of the
+task's acceptance is one **criterion**. The person ticks the criteria that are
+met; the rest are recorded as **waived**, with the person's reason if they
+give one. The task shows who accepted it and how many criteria they waived,
+and its history keeps the record. A person's acceptance counts as the task's
+proof.
+
+Only a person accepts a task this way. An agent's close as done names its
+proof, and never waives a criterion. An agent may record a person's
+acceptance given elsewhere, as it records an answer
+([Who can answer](#who-can-answer)), and the person can dispute it: the task
+opens again, and the tasks waiting on it are told to wait.
+
 A closed task can be reopened. Reopening keeps its history, including the
 first close and its evidence.
 
@@ -275,8 +291,9 @@ An **answer** records:
 ### Who can answer
 
 Only a person signed in to the web app answers a decision, approves an
-approval or ticks a step directly. An agent or a service cannot, whatever
-projects it was granted. Each tick records the person and the time.
+approval, ticks a step or accepts a task as done on their own call directly.
+An agent or a service cannot, whatever projects it was granted. Each tick
+records the person and the time.
 
 An agent may record an answer a person gave it somewhere else, such as in a
 chat. It names the option, the quote, where it was said and the proposal
@@ -285,7 +302,8 @@ agent, and refuses it when the proposal has changed since that version, so a
 task edited after the person answered cannot borrow the answer.
 
 The person can dispute a relayed approval: the approval opens again, and the
-tasks waiting on it are told to stop until a new approval.
+tasks waiting on it are told to stop until a new approval. A relayed
+acceptance of a task as done can be disputed the same way.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-approve-dark.webp">

@@ -79,6 +79,8 @@ export interface TaskRow {
   readonly close_link?: string | null;
   /** JSON text: a request's steps, on a gate that asks a person to do steps. Left out, null. */
   readonly steps?: string | null;
+  /** JSON text: a person's acceptance of the task as done on their own call (TaskAcceptance). Left out, null. */
+  readonly close_acceptance?: string | null;
 }
 
 export interface LabelRow {
@@ -202,6 +204,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'work',
     'close_link',
     'steps',
+    'close_acceptance',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],

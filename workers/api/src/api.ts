@@ -12,6 +12,7 @@ import { deliveryRoute, projectSettingsRoute } from './http/delivery.ts';
 import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
+  acceptRoute,
   agentStatsRoute,
   chooseRoute,
   dismissRoute,
@@ -134,6 +135,8 @@ function routesOf(pathname: string): Routes | null {
       return { POST: (context, url, request) => dismissRoute(context, url, request, taskId), scope: SCOPES.decide };
     case 'dispute':
       return { POST: (context, url, request) => disputeRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'accept':
+      return { POST: (context, url, request) => acceptRoute(context, url, request, taskId), scope: SCOPES.decide };
     default:
       return {
         GET: (context, url) => taskRoute(context, url, taskId),

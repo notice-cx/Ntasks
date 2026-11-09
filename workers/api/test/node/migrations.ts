@@ -141,3 +141,38 @@ test('a store that holds tasks and approvals takes steps only on a gate', () => 
   assert.throws(() => set('web-g1', '[]'), /CHECK constraint/u);
   db.close();
 });
+
+test('a store that holds tasks takes an acceptance only on a task closed as done without a link', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0004_close_acceptance.sql');
+  assert.ok(index > 0, 'the acceptance migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  insert(db, 'tasks', {
+    id: 'web-c3',
+    project_id: 'p1',
+    type: 'task',
+    status: 'closed',
+    priority: 2,
+    title: 'Publish the runbook',
+    created_at: AT,
+    updated_at: AT,
+    closed_at: LATER,
+    resolution: 'done',
+    close_link: 'https://docs.example.com/runbook',
+  });
+
+  migrated(db, FILES.slice(index));
+
+  const rows = db.prepare('SELECT id, close_acceptance FROM tasks ORDER BY id').all();
+  assert.ok(rows.length > 0 && rows.every((row) => row.close_acceptance === null), 'no task it held is accepted');
+  const accepted = JSON.stringify({ by: 'owner', criteria: [{ text: 'Merged.', met: false }] });
+  const set = (id: string, value: string) =>
+    db.prepare('UPDATE tasks SET close_acceptance = ?, version = version + 1 WHERE id = ?').run(value, id);
+  set('web-b2', accepted);
+  assert.throws(() => set('web-a1.1', accepted), /CHECK constraint/u, 'an open task');
+  assert.throws(() => set('web-c3', accepted), /CHECK constraint/u, 'a close with a link');
+  assert.throws(() => set('web-b2', '{"by":"owner"}'), /CHECK constraint/u, 'no criteria');
+  db.close();
+});

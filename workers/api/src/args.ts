@@ -161,6 +161,22 @@ export function booleanArg(args: Args, name: string): boolean | undefined {
   return value;
 }
 
+/** The criteria a person found met, by their places in the task's criteria
+ * from 1, in order: distinct whole numbers, and an empty list when none is. */
+export function criteriaMetArg(args: Args, name: string): number[] {
+  const value: unknown = args[name];
+  if (
+    !Array.isArray(value) ||
+    value.length > TASK_LIMITS.acceptance ||
+    value.some((place) => !Number.isInteger(place) || (place as number) < 1) ||
+    new Set(value).size !== value.length
+  )
+    refuse(
+      `invalid arguments: ${name} (the numbers of the criteria that are met, counting from 1, each once; [] when none is)`,
+    );
+  return (value as number[]).toSorted((a, b) => a - b);
+}
+
 /** A list of short strings, such as labels or types. */
 export function stringsArg(args: Args, name: string): readonly string[] | undefined {
   const value = args[name];

@@ -28,6 +28,7 @@ import type {
   JsonObject,
   Project,
   Task,
+  TaskAcceptance,
   TaskComment,
   TaskEvent,
   TaskResolution,
@@ -238,6 +239,10 @@ export interface TaskWrite {
     readonly pullRequest?: string;
     /** With done: an http or https URL that shows the work, such as a document or a dashboard. */
     readonly link?: string;
+    /** With done, and with no commit, pull request or link: a person's
+     * acceptance of the task as done on their own call. The API layer decides
+     * that the sender may record it; only a person's decision does. */
+    readonly acceptance?: TaskAcceptance;
   };
   /** Opens a closed task again. Its earlier close stays in its history (rule 6). */
   readonly reopen?: true;

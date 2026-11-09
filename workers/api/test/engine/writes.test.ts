@@ -188,6 +188,7 @@ describe('closing and reopening', () => {
       by: 'agent-a',
       model: 'model-a',
       link: null,
+      acceptance: null,
     });
     expect(closed.ready).toBe(false);
   });

@@ -2,7 +2,9 @@ export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
 export type { StepMarking } from './steps.ts';
+export { criteriaOf } from './criteria.ts';
 export {
+  ACCEPTED_REASON,
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
   DELIVERY_STAGES,
@@ -28,6 +30,7 @@ export {
   WORK_LIMITS,
 } from './task.ts';
 export type {
+  AcceptedCriterion,
   CustomField,
   DeliveryStage,
   DependencyType,
@@ -42,6 +45,7 @@ export type {
   Project,
   StepMark,
   Task,
+  TaskAcceptance,
   TaskClose,
   TaskComment,
   TaskDelivery,

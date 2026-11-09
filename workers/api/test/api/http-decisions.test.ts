@@ -1,6 +1,6 @@
 // The HTTP routes of a person's decisions, in the shapes NoticeOS's Tasks API
 // took: answering, picking, dismissing, approving, ticking the steps of a
-// request to do steps, and disputing, who may send
+// request to do steps, accepting a task as done, and disputing, who may send
 // them, how a retry is answered, and what each refusal says. The rules of a
 // pick and an answer are ported from NoticeOS's
 // scripts/hosted-task-command.test.mjs (choiceSteps and answerSteps).
@@ -84,6 +84,8 @@ describe('who may decide', () => {
     const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
     const gate = created[0]!;
     const steps = (await doRequest()).gate;
+    const { task: work } = await engine.createTask(project.id, { title: 'Ship it', acceptance: '- Shipped.' }, OWNER);
+    const shown = '0123456789abcdef0123456789abcdef';
     const service: Principal = { ...WRITER, id: 'service:x/tower', name: 'service:noticeos/tower' };
     for (const sender of [WRITER, service]) {
       const as = api({ principal: sender, now: time.now, engine });
@@ -95,17 +97,19 @@ describe('who may decide', () => {
         [`/api/gates/${gate.id}/resolve`, {}],
         [`/api/gates/${steps}/steps`, { step: 1, done: true }],
         [`/api/gates/${steps}/steps`, { step: 2, stuck: 'Stopped here.' }],
+        [`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown }],
       ] as const) {
         expect(await post(path, body, {}, as), path).toEqual({
           status: 403,
           body: {
             error: 'insufficient_scope',
             detail:
-              'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step or disputes an approval. Answer it in the Ntasks web app.',
+              'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Answer it in the Ntasks web app.',
           },
         });
       }
     }
+    expect(await current(work.id)).toMatchObject({ status: 'open', close: null, version: 1 });
     expect(await current(asked.id)).toMatchObject({ status: 'open', choice: null, version: 1 });
     expect((await current(gate.id)).status).toBe('open');
     expect(await current(steps)).toMatchObject({ status: 'open', version: 1 });
@@ -124,6 +128,7 @@ describe('who may decide', () => {
       'choose',
       'dispute',
       'step',
+      'accept',
     ]);
     const writer = api({ principal: WRITER, now: time.now, engine });
     expect((await get(writer, '/api/tasks/capabilities')).body.operations).toEqual([
@@ -506,7 +511,114 @@ describe('POST /api/gates/:id/steps', () => {
   });
 });
 
+describe('POST /api/tasks/:id/accept', () => {
+  const CRITERIA =
+    '- Contributions are live.\n- An accountant confirms the tax\n  treatment.\n- The docs say how to give.';
+  const shownOn = async (id: string) =>
+    (await get(target, `/api/tasks/${id}?project=${project.id}`)).body.proposalVersion as string;
+  const accept = async (id: string, body: Record<string, unknown>) =>
+    post(`/api/tasks/${id}/accept`, { proposalVersion: await shownOn(id), ...body });
+
+  it('closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason', async () => {
+    const { task: work } = await engine.createTask(
+      project.id,
+      { title: 'Take contributions', acceptance: CRITERIA, claim: true },
+      AGENT,
+    );
+
+    const accepted = await accept(work.id, { met: [3, 1], reason: 'I accept the tax risk.' });
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.task).toMatchObject({
+      status: 'closed',
+      resolution: 'done',
+      closedBy: 'Person',
+      closeReason: 'I accept the tax risk.',
+      proof: null,
+      closeAcceptance: {
+        by: 'Person',
+        criteria: [
+          { text: 'Contributions are live.', met: true },
+          { text: 'An accountant confirms the tax treatment.', met: false },
+          { text: 'The docs say how to give.', met: true },
+        ],
+      },
+    });
+    const { closeAcceptance } = accepted.body.task as { closeAcceptance: Record<string, unknown> };
+    expect(closeAcceptance).not.toHaveProperty('relayed');
+    const [closed] = await engine.listHistory(project.id, work.id, { limit: 1 });
+    expect(closed).toMatchObject({
+      kind: 'closed',
+      actor: 'Person',
+      changes: { close: { resolution: 'done', acceptance: closeAcceptance } },
+    });
+  });
+
+  it('closes with its own reason when the person gives none, and with no criteria on a task that has none', async () => {
+    const { task: work } = await engine.createTask(project.id, { title: 'Tidy the page' }, OWNER);
+    const accepted = await accept(work.id, { met: [] });
+    expect(accepted.body.task).toMatchObject({
+      closeReason: 'Accepted as done',
+      closeAcceptance: { by: 'Person', criteria: [] },
+    });
+  });
+
+  it('is cleared by a reopen, whose history keeps it', async () => {
+    const { task: work } = await engine.createTask(project.id, { title: 'Ship it', acceptance: '- Shipped.' }, OWNER);
+    await accept(work.id, { met: [] });
+    const reopened = await send(target, 'PATCH', `/api/tasks/${work.id}`, { projectId: project.id, status: 'open' });
+    expect(reopened.body.task).toMatchObject({ status: 'open', closeAcceptance: null, resolution: null });
+    const history = await engine.listHistory(project.id, work.id, { limit: 2 });
+    expect(history.map((event) => event.kind)).toEqual(['reopened', 'closed']);
+    expect(history[1]!.changes.close).toMatchObject({ acceptance: { criteria: [{ text: 'Shipped.', met: false }] } });
+  });
+
+  it('refuses a criterion the task lacks, an unread or stale proposal, a closed task, a request and a task waiting on one, writing nothing', async () => {
+    const { task: work } = await engine.createTask(project.id, { title: 'Ship it', acceptance: CRITERIA }, OWNER);
+    const shown = await shownOn(work.id);
+    expect(await accept(work.id, { met: [4] })).toMatchObject({
+      status: 400,
+      body: { error: 'invalid_request', field: 'met' },
+    });
+    for (const met of [[0], [1, 1], '1'])
+      expect(await accept(work.id, { met }), JSON.stringify(met)).toMatchObject({ status: 400 });
+    expect(await post(`/api/tasks/${work.id}/accept`, { met: [] })).toMatchObject({
+      status: 400,
+      body: { field: 'proposalVersion' },
+    });
+    await engine.writeTask(
+      project.id,
+      work.id,
+      { expectedVersion: 1, set: { acceptance: '- Something else.' } },
+      OWNER,
+    );
+    expect(await post(`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown })).toMatchObject({
+      status: 409,
+      body: { field: 'proposalVersion' },
+    });
+    expect(await current(work.id)).toMatchObject({ status: 'open', close: null, version: 2 });
+
+    const { task: done } = await engine.createTask(project.id, { title: 'Done', close: { reason: 'Shipped' } }, OWNER);
+    const { task: waiting, created } = await task({ requestApproval: { reason: 'Deploy once' } });
+    for (const id of [done.id, created[0]!.id, waiting.id])
+      expect(await accept(id, { met: [] }), id).toMatchObject({ status: 409, body: { error: 'task_refused' } });
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', close: null });
+    expect(await current(created[0]!.id)).toMatchObject({ status: 'open', close: null });
+  });
+});
+
 describe('POST /api/tasks/:id/dispute', () => {
+  it('needs an approval or an acceptance an agent recorded', async () => {
+    const { task: work } = await engine.createTask(project.id, { title: 'Ship it' }, OWNER);
+    const shown = (await get(target, `/api/tasks/${work.id}?project=${project.id}`)).body.proposalVersion as string;
+    await post(`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown });
+    expect(await post(`/api/tasks/${work.id}/dispute`, {})).toMatchObject({
+      status: 409,
+      body: { error: 'task_refused' },
+    });
+    expect((await current(work.id)).status).toBe('closed');
+  });
+
   it('needs an approval an agent recorded', async () => {
     const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
     await post(`/api/gates/${created[0]!.id}/resolve`, {});

@@ -215,6 +215,33 @@ export interface TaskStep {
   readonly stuck: (StepMark & { readonly reason: string }) | null;
 }
 
+/** One of a task's "done when" criteria as a person accepted the task: its text, and whether they found it met. */
+export interface AcceptedCriterion {
+  readonly text: string;
+  /** False when the person waived it: they accepted the task as done without it. */
+  readonly met: boolean;
+}
+
+/**
+ * A person's acceptance of a task as done on their own call: they judged it
+ * done, waiving any of its criteria they found unmet or no longer relevant.
+ * Only a person accepts a task; an agent passing on their acceptance is
+ * recorded in `relayed`, and the person can dispute it.
+ */
+export interface TaskAcceptance {
+  /** The person who accepted it. */
+  readonly by: string;
+  /** The client id of the connected app they accepted it through; absent in their own session and when relayed. */
+  readonly app?: string;
+  /** Who passed the acceptance on for the person, where they gave it, and their words; absent when they accepted it themselves. */
+  readonly relayed?: { readonly by: string; readonly source: string; readonly quote: string };
+  /** The task's criteria when it was accepted (criteriaOf), in order: none when its acceptance was empty. */
+  readonly criteria: readonly AcceptedCriterion[];
+}
+
+/** The reason a person's acceptance closes a task with when they give none of their own. */
+export const ACCEPTED_REASON = 'Accepted as done';
+
 /** How the task's current close ended. Earlier closes are in its history. */
 export interface TaskClose {
   readonly at: string;
@@ -227,6 +254,8 @@ export interface TaskClose {
   readonly model: string | null;
   /** A close as done may name a URL that shows the work, for work that left no commit or pull request. */
   readonly link: string | null;
+  /** A close as done on a person's own call; null on every other close. */
+  readonly acceptance: TaskAcceptance | null;
 }
 
 /** Where a closed task's change is, and when it got to each stage. */
@@ -342,16 +371,18 @@ export interface EpicProgress {
 }
 
 /** The types whose close as done shows what proves it: a commit, a pull
- * request or a link. A decision, a gate and an epic close without one. */
+ * request, a link or a person's acceptance. A decision, a gate and an epic
+ * close without one. */
 export const PROVED_TYPES = ['task', 'bug', 'feature', 'chore'] as const satisfies readonly TaskType[];
 
-/** A task of a type that shows proof, closed as done with no commit, pull request or link. */
+/** A task of a type that shows proof, closed as done with no commit, pull request, link or person's acceptance. */
 export function lacksProof(task: Pick<Task, 'type' | 'close' | 'delivery'>): boolean {
   return (
     task.close?.resolution === 'done' &&
     (PROVED_TYPES as readonly TaskType[]).includes(task.type) &&
     task.delivery === null &&
-    task.close.link === null
+    task.close.link === null &&
+    task.close.acceptance === null
   );
 }
 
