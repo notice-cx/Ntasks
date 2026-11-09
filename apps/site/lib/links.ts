@@ -58,10 +58,21 @@ function served(distDir: string, path: string): string | undefined {
 function markdownHeadings(markdown: string): Set<string> {
   const seen = new Map<string, number>();
   const slugs = new Set<string>();
-  let fenced = false;
+  // The open code block's fence. As in CommonMark, only a run of the same
+  // character, at least as long, with nothing after it, closes the block.
+  let fence: { char: string; length: number } | undefined;
   for (const line of markdown.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-    const heading = fenced ? null : /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    const run = marker?.[1] ?? '';
+    if (marker && !fence) {
+      fence = { char: run.charAt(0), length: run.length };
+      continue;
+    }
+    if (marker && fence && run.charAt(0) === fence.char && run.length >= fence.length && !marker[2]?.trim()) {
+      fence = undefined;
+      continue;
+    }
+    const heading = fence ? null : /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
     if (!heading?.[1]) continue;
     const text = heading[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*]/g, '');
     const slug = githubSlug(text);

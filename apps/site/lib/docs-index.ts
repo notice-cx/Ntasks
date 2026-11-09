@@ -32,7 +32,8 @@ export function pageSummary(markdown: string): string | undefined {
     .slice(start, end === -1 ? undefined : end)
     .join(' ')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[`*_]/g, '')
+    // Emphasis marks go; an underscore inside a name such as AUTH_SECRET stays.
+    .replace(/[`*]|(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
   return text || undefined;

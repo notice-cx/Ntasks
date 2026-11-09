@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { docsSidebar, readIndex, UNLISTED_GROUP } from '../lib/docs-index.ts';
+import { docsSidebar, pageSummary, readIndex, UNLISTED_GROUP } from '../lib/docs-index.ts';
 
 test('the sidebar lists the pages docs/index.md lists, in its order, and then any page it does not', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'ntasks-site-'));
@@ -54,5 +54,14 @@ test('the sidebar lists the pages docs/index.md lists, in its order, and then an
   assert.equal(
     readIndex(`## A\n\n- [Concepts](concepts.md): projects, tasks\n  and claims.\n`)[0]?.files[0]?.description,
     'projects, tasks and claims.',
+  );
+});
+
+test("a page's description is its first paragraph as plain text, with names such as AUTH_SECRET intact", () => {
+  assert.equal(
+    pageSummary(
+      '# Deploy\n\nSet `AUTH_SECRET`, then call **get_task_guide** _first_ ([guide](guide.md)).\n\n## Next\n',
+    ),
+    'Set AUTH_SECRET, then call get_task_guide first (guide).',
   );
 });

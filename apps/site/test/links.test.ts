@@ -14,7 +14,10 @@ test('the link check reports each missing page, heading, image and repository fi
   };
   const github = 'https://github.com/example/repo';
 
-  write('repo/README.md', '# Repo\n\n## Set up\n\n```sh\n# not a heading\n```\n');
+  write(
+    'repo/README.md',
+    '# Repo\n\n## Set up\n\n```sh\n# not a heading\n```\n\n````md\n```sh\n# still not a heading\n```\n````\n\n## After the example\n',
+  );
   write('repo/src/index.ts', '');
   write('dist/assets/board.webp', '');
   write('dist/docs/index.html', '<h1 id="docs">Docs</h1>');
@@ -33,6 +36,8 @@ test('the link check reports each missing page, heading, image and repository fi
       `<a href="${github}/blob/main/README.md#set-up">ok</a>`,
       `<a href="${github}/tree/main/src/">ok</a>`,
       `<a href="${github}/blob/main/README.md#not-a-heading">no such heading</a>`,
+      `<a href="${github}/blob/main/README.md#still-not-a-heading">no such heading</a>`,
+      `<a href="${github}/blob/main/README.md#after-the-example">ok</a>`,
       `<a href="${github}/blob/main/missing.md">no such file</a>`,
       '<a href="https://example.com/elsewhere">not checked</a>',
       '<a href="mailto:someone@example.com">not checked</a>',
@@ -53,6 +58,7 @@ test('the link check reports each missing page, heading, image and repository fi
       '/docs/agents#set-up',
       '/docs/missing',
       `${github}/blob/main/README.md#not-a-heading`,
+      `${github}/blob/main/README.md#still-not-a-heading`,
       `${github}/blob/main/missing.md`,
       '/assets/missing.webp',
     ],
