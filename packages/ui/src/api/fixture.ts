@@ -8,7 +8,14 @@
  * workspace holds its own projects, members and invitations, and only an
  * owner manages them.
  */
-import { isExternalLinkKind, isTaskId, PROVED_TYPES, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
+import {
+  isExternalLinkKind,
+  isTaskId,
+  markedStep,
+  PROVED_TYPES,
+  TASK_LIMITS,
+  type TaskResolution,
+} from '@ntasks/domain';
 import { fieldMatches, httpUrl, isCalendarDate } from '../lib/custom-fields';
 import { ApiError, type TasksApi } from './client';
 import {
@@ -650,8 +657,26 @@ export function createFixtureTasksApi({
       reach();
       once(options?.idempotencyKey, ['resolve', id, key, reason ?? null], () => {
         const task = find(id, key);
-        if (task.issueType !== 'gate') throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
+        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
+          throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
         close(task, reason ? `Approved: ${reason}` : 'Approved');
+      });
+    },
+    async markStep(id, key, marking, options) {
+      reach();
+      once(options?.idempotencyKey, ['step', id, key, marking], () => {
+        const task = find(id, key);
+        const steps = task.steps ?? null;
+        if (steps === null) throw new ApiError(`${id} has no steps to tick.`, 409, 'task_refused');
+        if (task.status === 'closed') throw new ApiError(`${id} is already closed.`, 409, 'task_refused');
+        const step = steps[marking.step - 1];
+        if (step === undefined)
+          throw new ApiError(`${id} has steps 1 to ${steps.length}.`, 400, 'invalid_request', 'step');
+        const next = markedStep(step, marking, { by: FIXTURE_ACTOR, at: new Date(now()).toISOString() });
+        if (next === step) return;
+        task.steps = steps.map((entry, index) => (index === marking.step - 1 ? next : entry));
+        if (task.steps.every((entry) => entry.done !== null)) close(task, 'Every step done');
+        else touch(task);
       });
     },
     async createProject({ name, prefix }, options) {

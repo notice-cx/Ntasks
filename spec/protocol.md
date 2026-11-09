@@ -53,7 +53,7 @@ list, and four failures recur:
 | Failure | What this protocol does about it |
 |---|---|
 | An agent says work is done and nothing shows it. | A close as done carries its proof: a commit, a pull request or a link. A task closed as done without one is shown as having no proof ([INV-7](#inv-7)). A commit or pull request then moves through built, merged and live as the repository reports it ([STATE-12](#state-12)). |
-| An agent approves its own action, or stretches a person's earlier yes. | Only a person answers a decision, grants an approval or ticks a step ([AUTH-1](#auth-1)). An answer an agent passes on is recorded as relayed, pinned to the exact text the person saw, and can be disputed ([AUTH-3](#auth-3), [AUTH-5](#auth-5)). An approval covers its own request and nothing else, and retiring one grants nothing ([AUTH-6](#auth-6), [AUTH-7](#auth-7)). |
+| An agent approves its own action, or stretches a person's earlier yes. | Only a person answers a decision, grants an approval, ticks a step or accepts a task as done over criteria it does not meet ([AUTH-1](#auth-1), [AUTH-11](#auth-11)). An answer an agent passes on is recorded as relayed, pinned to the exact text the person saw, and can be disputed ([AUTH-3](#auth-3), [AUTH-5](#auth-5)). An approval covers its own request and nothing else, and retiring one grants nothing ([AUTH-6](#auth-6), [AUTH-7](#auth-7)). |
 | A new session loses what the last one was doing. | A claim records the holder's branch, pull request, session and next step, and a connecting agent is told the tasks it holds ([INV-10](#inv-10)). |
 | Two agents do the same work. | One claim wins ([INV-1](#inv-1)), a claim never expires by time ([INV-2](#inv-2)), and the server works out which tasks are ready, so every agent asking gets the same answer ([INV-8](#inv-8)). |
 
@@ -131,7 +131,9 @@ cite.
 | Work in hand | What the holder records while working: its helper agent, session, worktree, branch, pull request, last tested commit and next step ([3.3](#33-claim-and-work-in-hand)). |
 | Last activity | When the holder last changed or commented on the task. |
 | Close | Ending a task with a **resolution** and a reason. |
-| Proof | What shows work closed as done: a commit, a pull request or a link. |
+| Criterion | One line or list item of a task's `acceptance`, which says what shows the task done ([3.10](#310-acceptance-as-done)). |
+| Acceptance as done | A person closing a task as done on their own call, recording each criterion as met or **waived** ([3.10](#310-acceptance-as-done)). |
+| Proof | What shows work closed as done: a commit, a pull request, a link or a person's acceptance as done. |
 | Delivery | Where a done task's change is: built, merged or live ([3.8](#38-delivery)). |
 | Signal | A message from a repository's automation, or an agent, that named pull requests or commits merged or went live. |
 | Human request | A task only a person can answer: an approval, a request to do steps, or a task labelled `human`. |
@@ -140,7 +142,7 @@ cite.
 | Request to do steps | A task of type `gate` with `steps` that holds the tasks waiting on it until a person ticks every step: steps only that person can do ([3.7](#37-approval)). |
 | Proposal | The text a person answers: a task's id, title, description, acceptance, type and choices, and a request's steps without their marks. Its **proposal version** is a hash of it. |
 | Answer | A person's recorded decision on a human request: **direct** when the person made it in the server's own interface, **relayed** when another sender records what the person said elsewhere. |
-| Dispute | A person withdrawing an approval that was relayed for them. |
+| Dispute | A person withdrawing an approval, or an acceptance as done, that was relayed for them. |
 | Idempotency key | A name a caller gives one change, so that sending it again does not repeat it. |
 | Refusal | A write the server turns down. Nothing of it is stored. |
 
@@ -197,7 +199,7 @@ Schemas: [`task`](schemas/task.schema.json),
 | `choices`, `choice`, `answer` | A decision's options, the pick and the recorded answer ([3.6](#36-decisions)) |
 | `deferUntil` | The time it is hidden from ready work until |
 | `fields`, `metadata` | Custom field values and other systems' facts ([8](#8-extensions)) |
-| `closedAt`, `closeReason`, `resolution`, `duplicateOf`, `closeLink` | Its close: when, why, how it ended (`done`, `wont-do`, `duplicate`, `cant-reproduce`, `already-handled` or `no-longer-needed`), the task it duplicates, and the link that shows work done |
+| `closedAt`, `closeReason`, `resolution`, `duplicateOf`, `closeLink`, `closeAcceptance` | Its close: when, why, how it ended (`done`, `wont-do`, `duplicate`, `cant-reproduce`, `already-handled` or `no-longer-needed`), the task it duplicates, the link that shows work done, and a person's acceptance as done ([3.10](#310-acceptance-as-done)) |
 | `delivery`, `proof` | Where its change is ([3.8](#38-delivery)); `none` when it closed as done without proof |
 | `version` | Raised by exactly one with every change ([INV-4](#inv-4)) |
 | `createdAt`, `updatedAt`, `startedAt` | When it was filed, last changed and first claimed |
@@ -350,6 +352,36 @@ order of every change in the workspace (`revision`), what it did
 `commented`), and each field it set with its old and new values. A server
 MAY also return each version of the task whole.
 
+### 3.10 Acceptance as done
+
+Schema: [`acceptance`](schemas/acceptance.schema.json).
+
+A task's **criteria** are read from its `acceptance`, in order, numbered
+from 1:
+
+- each list item, with its marker (`-`, `*`, `+`, `1.` or `1)`) and any
+  task-list box (`[ ]` or `[x]`) taken off;
+- each other line that is not blank and not a Markdown heading;
+- an indented line that is not a list item continues the criterion before
+  it, as a list item wrapped over two lines does.
+
+`acceptance` stays free Markdown; the criteria are a reading of it
+([OQ-24](open-questions.md#oq-24)).
+
+A person MAY close a task as done on their own call: they judge it done,
+although some of its criteria are unmet or no longer matter. The task's
+`closeAcceptance` records that close:
+
+| Field | Holds |
+|---|---|
+| `by` | The person who accepted it |
+| `app` | The connected app they accepted it through, when they used one |
+| `relayed` | When another sender passed the acceptance on: who (`by`), where the person gave it (`source`) and their exact words (`quote`) |
+| `criteria` | Each criterion's `text`, and `met`: `true` when the person found it met, `false` when they waived it |
+
+A task accepted as done has proof ([INV-7](#inv-7)). A reopen clears its
+acceptance, and its history keeps it ([STATE-8](#state-8)).
+
 ## 4. The state machine
 
 ### 4.1 Status
@@ -434,6 +466,18 @@ its history keeps them ([INV-9](#inv-9)).
 
 **STATE-9.** <a id="state-9"></a>An epic MAY close once every child is
 closed, and a server SHOULD list the epics that can.
+
+**STATE-15.** <a id="state-15"></a>An acceptance as done
+([3.10](#310-acceptance-as-done)) MUST name the criteria the person found
+met, by number, and the proposal version shown to them. A server MUST
+record every other criterion as waived, MUST refuse a number the task has
+no criterion at, and MUST refuse the acceptance when the proposal changed
+since. It closes the task as `done` with the person's reason, and carries
+no commit, pull request or link. A server MUST refuse it on a closed task,
+an approval, a request to do steps, a task that waits on an open approval
+and a task with children that are not closed. Unlike other closes
+([STATE-7](#state-7)), it is not refused because someone else holds the
+task.
 
 ### 4.5 Approvals
 
@@ -603,6 +647,22 @@ stopped working and how, and recording the progress the holder left. A task
 in progress becomes open; a blocked or deferred one keeps its status. The
 age of the last activity alone MUST NOT be accepted as that evidence.
 
+**AUTH-11.** <a id="auth-11"></a>Only a person MAY accept a task as done
+over its criteria ([3.10](#310-acceptance-as-done)). A server MUST refuse an
+acceptance sent directly by an agent or a service, whatever it was granted,
+and MUST change nothing. A close as done by an agent or a service MUST NOT
+record a criterion as waived; it names its proof instead
+([INV-7](#inv-7)). A sender that acts for a person MAY relay an acceptance
+that person gave elsewhere, as [AUTH-3](#auth-3) relays an answer: with the
+person's exact words, where they gave them, the proposal version shown to
+them and the criteria they found met. A server MUST record it with the
+person as `by` and the sender in `relayed`, and MUST refuse a relay from a
+sender that acts for no person, such as a service. A person MAY dispute an acceptance relayed for
+them: the dispute MUST open the task again, keep the close in its history,
+tell each task waiting on it, and make the server refuse an answer relayed
+from the disputed source. Disputing it again changes nothing. A person's
+own acceptance MUST NOT be disputable; they reopen the task instead.
+
 **AUTH-10.** <a id="auth-10"></a>A sender reaches only the projects it was
 granted, each for reading or for writing too. A server MUST answer a
 project or a task the sender cannot reach exactly as one that does not
@@ -657,7 +717,8 @@ bug, feature or chore as `done` SHOULD name its proof: a commit, a pull
 request, or a link to what shows the work. A server MUST record the proof
 with the close, and MUST mark a task, bug, feature or chore closed as done
 with none of them as having no proof (`proof: "none"`), counting a commit or
-pull request in the holder's work details as proof. Decisions, approvals and
+pull request in the holder's work details, and a person's acceptance as done
+([3.10](#310-acceptance-as-done)), as proof. Decisions, approvals and
 epics close without proof ([OQ-8](open-questions.md#oq-8)).
 
 **INV-8. The server decides readiness.** <a id="inv-8"></a>Readiness,
@@ -689,7 +750,7 @@ the ones above it in this table.
 | Level | Objects | Rules | Operations |
 |---|---|---|---|
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
-| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps | STATE-10, STATE-11, STATE-14, AUTH-1, AUTH-3 to AUTH-8 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute and marks on a step; record a relayed answer; retire a request with evidence |
+| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step and acceptance as done; record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12 | Close with a commit or pull request; send a signal |
 | **Live work** | Work in hand | STATE-13, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request |
 

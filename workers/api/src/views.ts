@@ -165,6 +165,8 @@ export function webTask(task: Task) {
     closeReason: task.close?.reason ?? null,
     /** The URL a close as done named to show the work. */
     closeLink: task.close?.link ?? null,
+    /** On a task a person accepted as done on their own call: who, who relayed it for them, and each criterion met or waived. */
+    closeAcceptance: task.close?.acceptance ?? null,
     /** "none" for a task, bug, feature or chore closed as done with no commit, pull request or link. */
     proof: lacksProof(task) ? ('none' as const) : null,
     awaitType: task.awaitType,
@@ -236,6 +238,7 @@ export function mcpTask(task: Task) {
     closedAt: web.closedAt,
     closeReason: web.closeReason,
     closeLink: web.closeLink,
+    closeAcceptance: web.closeAcceptance,
     resolution: web.resolution,
     duplicateOf: web.duplicateOf,
     ...(task.delivery === null ? {} : { delivery: task.delivery }),
@@ -377,6 +380,7 @@ function snapshotView(state: Record<string, Json>) {
     startedAt: state.startedAt ?? null,
     closedAt: close?.at ?? null,
     closeReason: close?.reason ?? null,
+    closeAcceptance: objectOrNull(close?.acceptance),
     resolution: close?.resolution ?? null,
     duplicateOf: close?.duplicateOf ?? null,
     delivery: objectOrNull(state.delivery),

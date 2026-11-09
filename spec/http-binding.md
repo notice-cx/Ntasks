@@ -49,10 +49,11 @@ tools only ([OQ-23](open-questions.md#oq-23)).
 ### Human decisions and approvals
 
 Only a person signed in to the server's own interface may call these
-routes ([AUTH-1](protocol.md#auth-1)). Any other sender gets `403` with
-`insufficient_scope`, and nothing changes. Each takes an optional
-`proposalVersion`, the version the person's page showed: when the proposal
-changed since, the answer is refused with `409`, `task_refused` and
+routes ([AUTH-1](protocol.md#auth-1), [AUTH-11](protocol.md#auth-11)). Any
+other sender gets `403` with `insufficient_scope`, and nothing changes. Each
+takes `proposalVersion`, the version the person's page showed, which an
+acceptance requires and the others may leave out: when the proposal changed
+since, the answer is refused with `409`, `task_refused` and
 `field: "proposalVersion"`, and nothing is written.
 
 #### A person's decisions
@@ -64,7 +65,8 @@ changed since, the answer is refused with `409`, `task_refused` and
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
 | Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
-| Dispute a relayed approval | `POST /api/tasks/:id/dispute` | `projectId` |
+| Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |
+| Dispute a relayed approval or acceptance | `POST /api/tasks/:id/dispute` | `projectId` |
 
 Each answers `{ task }`, the task as the decision left it. An answer, a
 pick and an approval record the person as the answer's `recordedBy`, with

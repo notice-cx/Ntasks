@@ -35,6 +35,7 @@ import {
   type NewTaskStep,
   type Retry,
   type StepMark,
+  type TaskAcceptance,
   type TaskFieldChanges,
   type TaskResolution,
   type TaskStep,
@@ -558,6 +559,7 @@ export interface CheckedWrite {
     commit: string | null;
     pullRequest: string | null;
     link: string | null;
+    acceptance: TaskAcceptance | null;
   } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
@@ -693,6 +695,11 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
   const link = value.link === undefined ? null : externalUrl(value.link, 'close.link');
   if ((commit !== null || pullRequest !== null || link !== null) && value.resolution !== 'done')
     invalid('close.commit, close.pullRequest and close.link show what shipped, so they close a task as done');
+  const acceptance = value.acceptance === undefined ? null : accepted(value.acceptance);
+  if (acceptance !== null && value.resolution !== 'done')
+    invalid('close.acceptance accepts a task as done, so it closes a task as done');
+  if (acceptance !== null && (commit !== null || pullRequest !== null || link !== null))
+    invalid('close.acceptance is what shows the task done, so it takes no commit, pullRequest or link');
   if (value.resolution === 'duplicate') {
     return {
       reason,
@@ -701,10 +708,48 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
       commit,
       pullRequest,
       link,
+      acceptance,
     };
   }
   if (value.duplicateOf !== undefined) invalid('close.duplicateOf is only for a close as duplicate');
-  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest, link };
+  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest, link, acceptance };
+}
+
+/** A person's acceptance of a task as done, as a close records it. Each
+ * criterion is text of the task's acceptance, so a task's whole acceptance
+ * bounds how many it has. */
+function accepted(value: unknown): TaskAcceptance {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    invalid('close.acceptance must be an object');
+  const given = value as Partial<TaskAcceptance> & Record<string, unknown>;
+  const criteria: unknown = given.criteria;
+  if (!Array.isArray(criteria) || criteria.length > TASK_LIMITS.acceptance)
+    invalid(`close.acceptance.criteria must be a list of at most ${TASK_LIMITS.acceptance} criteria`);
+  const relayed: unknown = given.relayed;
+  if (relayed !== undefined && (relayed === null || typeof relayed !== 'object' || Array.isArray(relayed)))
+    invalid('close.acceptance.relayed must be an object');
+  const relay = relayed as Record<string, unknown> | undefined;
+  return {
+    by: text(given.by, 'close.acceptance.by', TASK_LIMITS.actor, true),
+    ...(given.app === undefined ? {} : { app: text(given.app, 'close.acceptance.app', TASK_LIMITS.actor, true) }),
+    ...(relay === undefined
+      ? {}
+      : {
+          relayed: {
+            by: text(relay.by, 'close.acceptance.relayed.by', TASK_LIMITS.actor, true),
+            source: text(relay.source, 'close.acceptance.relayed.source', TASK_LIMITS.reason, true),
+            quote: text(relay.quote, 'close.acceptance.relayed.quote', TASK_LIMITS.comment, true),
+          },
+        }),
+    criteria: criteria.map((criterion: unknown, index) => {
+      const field = `close.acceptance.criteria[${index}]`;
+      if (criterion === null || typeof criterion !== 'object' || Array.isArray(criterion))
+        invalid(`${field} must be an object`);
+      const { text: words, met } = criterion as Record<string, unknown>;
+      if (typeof met !== 'boolean') invalid(`${field}.met must be true or false`);
+      return { text: text(words, `${field}.text`, TASK_LIMITS.acceptance, true), met };
+    }),
+  };
 }
 
 /** A commit: 7 to 64 lowercase hexadecimal characters. */

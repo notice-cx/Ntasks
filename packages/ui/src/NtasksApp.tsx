@@ -5,6 +5,7 @@ import { App } from './App';
 import type { TasksApi } from './api/client';
 import { connect, originOf, sessionCookie, type TokenSource } from './api/connection';
 import { ThemeScope } from './components/ui/popover';
+import { AppToaster } from './components/ui/toaster';
 import { appPaths } from './lib/paths';
 import { useResolvedTheme, type Theme } from './lib/theme';
 
@@ -102,6 +103,8 @@ export function DesignGallery({ theme = 'system' }: { theme?: Theme }) {
         <Suspense fallback={null}>
           <DesignRoute />
         </Suspense>
+        {/* The gallery's Copy buttons say a failed copy in a toast. */}
+        <AppToaster />
       </LucideProvider>
     </Root>
   );

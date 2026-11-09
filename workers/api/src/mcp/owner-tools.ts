@@ -5,7 +5,17 @@
  * there). owner-answers.ts and agent-stats.ts hold their rules.
  */
 import { TASK_LIMITS } from '@ntasks/domain';
-import { choiceArg, detailArg, modelArg, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
+import {
+  choiceArg,
+  criteriaMetArg,
+  detailArg,
+  modelArg,
+  projectArg,
+  refuse,
+  taskArg,
+  textArg,
+  type Args,
+} from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { SCOPES } from '../auth.ts';
 import { TASK_CHOICE_KEYS } from '../noticeos-fields.ts';
@@ -36,6 +46,7 @@ function maintenanceOf(args: Args): TaskMaintenance {
     evidence: textArg(args, 'evidence', 800, false),
     model: modelArg(args),
     option: choiceArg(args, 'option', TASK_CHOICE_KEYS),
+    met: args.met === undefined ? undefined : criteriaMetArg(args, 'met'),
     quote: textArg(args, 'quote', 1000, false),
     source: textArg(args, 'source', 512, false),
     duplicateOf: args.duplicate_of === undefined ? undefined : taskArg(args, 'duplicate_of'),
@@ -52,6 +63,7 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
     'Record an answer the owner gave you in conversation, or maintain a human request with evidence. Read get_task first. ' +
     'An answer: action answer (declined or owner_performed on an approval), proposal_version (the proposalVersion get_task returned for the proposal you showed the owner), quote (their exact words), source (where they said it) and, on a task with choices, the option they chose. ' +
     'Nothing reads the quote: name the option yourself. It is recorded as relayed by you; the owner can dispute a relayed approval, which reopens it. A refusal names the argument at fault. ' +
+    'When the owner calls a task done although some of its criteria are unmet: action accepted, with met, the criteria they found met; it closes as done, accepted by them over the rest, and they can dispute it. Only the owner waives a criterion. ' +
     'Maintenance, with explanation and evidence: completed, obsolete, superseded or duplicate (with duplicate_of) retires a request; routine takes off the human label; release frees an assignment whose holder stopped. ' +
     'Retirement grants no permission; production reads/writes, spending, messages, destructive actions and material commitments still require explicit action-specific approval.',
   inputSchema: schema(
@@ -71,16 +83,22 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
         description:
           'For answer on a task with choices: the option the owner chose. Leave it out when their answer chose none. An approval takes none.',
       },
+      met: {
+        type: 'array',
+        items: { type: 'integer', minimum: 1 },
+        description:
+          'For accepted: the numbers of the criteria the owner found met, counting each line or list item of acceptance from 1; [] when none is. The rest are recorded as waived.',
+      },
       quote: {
         type: 'string',
         maxLength: 1000,
-        description: 'For answer, declined or owner_performed: the owner’s exact words, recorded as given.',
+        description: 'For answer, declined, owner_performed or accepted: the owner’s exact words, recorded as given.',
       },
       source: {
         type: 'string',
         maxLength: 512,
         description:
-          'For answer, declined or owner_performed: where the owner said it, such as a conversation URL, claude-code:session/<session id> or comment:<id>.',
+          'For answer, declined, owner_performed or accepted: where the owner said it, such as a conversation URL, claude-code:session/<session id> or comment:<id>.',
       },
       explanation: {
         type: 'string',
@@ -131,7 +149,14 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
     return detail === 'full'
       ? { task: mcpTask(task), replayed: result.replayed }
       : {
-          ...writtenView(task, ['status', 'assignee', 'resolution', 'awaitingHuman', 'answer']),
+          ...writtenView(task, [
+            'status',
+            'assignee',
+            'resolution',
+            'awaitingHuman',
+            'answer',
+            ...(task.close?.acceptance ? (['closeAcceptance'] as const) : []),
+          ]),
           replayed: result.replayed,
         };
   },

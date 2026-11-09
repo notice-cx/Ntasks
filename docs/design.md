@@ -27,8 +27,9 @@ prefers. `pnpm screenshots design` captures it in both themes
 - Body text is 14 px. A list row is one line, 36 px tall.
 - Greys order the text: Text for titles and values, Text 2 for body and
   labels, Text 3 for ids, ages and other facts.
-- Accent, an indigo, marks the one primary action in a view, the focused
-  control, the selected item and work in progress. Nothing else is indigo.
+- Accent, the Notice blue that [notice.cx](https://www.notice.cx) uses,
+  marks the one primary action in a view, the focused control, the selected
+  item and work in progress. Nothing else is that blue.
 - Amber means only Waiting for you. Red means only Blocked. Green means only
   Done. No other state, warning or error uses these colours.
 - Every action has a key, and the control shows it in a `Kbd`.
@@ -60,10 +61,10 @@ a hex value.
 | Text | `--ink` | `#17171C` | `#EDEDF1` | Titles, values |
 | Text 2 | `--ink-2` | `#474852` | `#B3B5BF` | Body, labels |
 | Text 3 | `--ink-3` | `#696B76` | `#8A8D98` | Ids, ages, counts, placeholders, icons in controls |
-| Accent | `--accent` | `#5552D4` | `#5E5CE6` | Primary buttons, focus, in progress |
+| Accent | `--accent` | `#2745D4` | `#4565EF` | Primary buttons, focus, in progress |
 | On accent | `--on-accent` | `#FFFFFF` | `#FFFFFF` | Text and icons on Accent |
-| Accent text | `--accent-text` | `#4B48C9` | `#9D9BFF` | Links, task ids in text, code keywords |
-| Accent soft | `--accent-soft` | `#EFEFFC` | `#1F1F3A` | The selected option, the focus halo of a field |
+| Accent text | `--accent-text` | `#2745D4` | `#B0B9FF` | Links, task ids in text, code keywords |
+| Accent soft | `--accent-soft` | `#EEF0FF` | `#1C2347` | The selected option, the focus halo of a field |
 | Waiting for you | `--wait` | `#B57100` | `#F0B13C` | The Waiting for you mark |
 | Waiting text | `--wait-text` | `#8A5300` | `#F3C062` | Amber words: the Waiting for you heading and count |
 | Waiting soft | `--wait-soft` | `#FDF5E6` | `#221C10` | The Waiting for you group's background |
@@ -231,7 +232,7 @@ for a task, testing these in order:
 | Dashed grey circle | Parked | it is set aside until a date (stored status `deferred`) |
 | Amber ring with a dot | Waiting for you | a person must answer it: an approval or a request to do steps, or a ready task labelled `human` that nobody has answered (see [decisions, approvals and steps to do](concepts.md#decisions-approvals-and-steps-to-do)) |
 | Red disc with a bar | Blocked | its stored status is `blocked`, or it is open and depends on a task that is not closed |
-| Indigo ring, half filled | In progress | someone has claimed it |
+| Blue ring, half filled | In progress | someone has claimed it |
 | Grey ring | Open | none of the above, including a status the app does not know |
 
 A list groups its rows in the order Waiting for you, In progress, Open,
@@ -245,8 +246,8 @@ task's last activity, when its holder last changed or commented on it:
 
 | Mark | Name | A task in progress shows it when |
 |---|---|---|
-| Indigo disc in a faint indigo ring | Active | its holder wrote to it within the last hour |
-| Indigo ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than the Stalled after time |
+| Blue disc in a faint blue ring | Active | its holder wrote to it within the last hour |
+| Blue ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than the Stalled after time |
 | Grey ring, half filled | Stalled | its holder has not written to it for the Stalled after time or more, or nothing is recorded |
 
 The marks differ in fill and lightness as well as colour, so they read apart
@@ -356,6 +357,16 @@ button's look.
 `IconButton` is square, `ghost` by default, and requires `label`: it is the
 accessible name and the tooltip, with the key appended when `shortcut` is
 set.
+
+### CopyButton (`copy-button.tsx`)
+
+A small `ghost` button with the Copy icon that copies a text. `label`, such
+as "Copy the code", is its accessible name and its tooltip, and stays its
+name. After a copy it shows a check and Copied for two seconds, and a status
+region beside it says Copied for a screen reader. Where the browser cannot copy, it selects the text instead and a
+toast says to copy it with the keyboard. Every code block in task text has
+one in its top-right corner, shown on hover, on keyboard focus and always on
+a device with a touch screen. A task page's path ends with one that copies the task's id.
 
 ### Kbd (`kbd.tsx`)
 

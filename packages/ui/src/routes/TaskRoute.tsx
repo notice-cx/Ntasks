@@ -68,6 +68,7 @@ import { cn } from '../lib/utils';
 import { AnswerForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
+import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
@@ -242,16 +243,19 @@ function TaskPage({
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
   const scope = { id: task.id, title: task.title, project: key, proposalVersion: task.proposalVersion ?? null };
   const reasonFor = (available: boolean) => verbReason(capabilities, available, UNAVAILABLE);
-  const askReason = reasonFor(operationAvailable(capabilities, ask === 'approve' ? 'resolve' : 'respond'));
+  const askReason = reasonFor(
+    operationAvailable(capabilities, ask === 'approve' ? 'resolve' : ask === 'do' ? 'step' : 'respond'),
+  );
+  const steps = task.steps ?? null;
   const chooseReason = reasonFor(operationAvailable(capabilities, 'choose'));
   const closeReason = reasonFor(operationAvailable(capabilities, closeOperation(task)));
   const claimReason = reasonFor(fieldAvailable(capabilities, 'claim'));
-  // An approval an agent relayed closed this gate, and nobody has disputed it yet.
+  // An approval, or a report that the steps are done, an agent relayed closed this gate, and nobody has disputed it yet.
   const disputable =
     isGate(task) &&
     closed &&
     task.answer?.relayed === true &&
-    task.answer.option === 'approve' &&
+    (task.answer.option === 'approve' || task.answer.option === 'done') &&
     task.answer.disputedBy === null;
   const disputeReason = reasonFor(operationAvailable(capabilities, 'dispute'));
   const claimable = task.status === 'open' && task.assignee === null;
@@ -296,6 +300,7 @@ function TaskPage({
     />
   );
 
+  // A request to do steps is answered by its steps, under the description, so it offers no button here.
   let actions: ReactNode = null;
   if (ask === 'approve') {
     actions = (
@@ -310,7 +315,7 @@ function TaskPage({
         Approve
       </Button>
     );
-  } else if (ask !== null) {
+  } else if (ask !== null && ask !== 'do') {
     actions = (
       <>
         {closeMenu('Close as', false, 'secondary')}
@@ -332,7 +337,7 @@ function TaskPage({
         ) : null}
       </>
     );
-  } else if (!closed && !answered) {
+  } else if (ask === null && !closed && !answered) {
     actions = (
       <>
         {closeMenu('Close', doneOffered, claimable ? 'secondary' : 'primary')}
@@ -448,7 +453,18 @@ function TaskPage({
             editing={editing}
             onEditing={setEditing}
             decision={
-              choices ? (
+              steps !== null ? (
+                <StepList
+                  id={task.id}
+                  project={key}
+                  steps={steps}
+                  proposalVersion={task.proposalVersion ?? null}
+                  open={ask === 'do'}
+                  disabledReason={askReason}
+                  actors={actors}
+                  nowMs={nowMs}
+                />
+              ) : choices ? (
                 <section aria-label="Decision" className="flex flex-col gap-3" data-task-decision="">
                   <h2 className="m-0 text-sm font-semibold text-ink">{choices.question}</h2>
                   <DecisionAnswer

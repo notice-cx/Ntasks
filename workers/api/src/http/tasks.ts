@@ -323,12 +323,14 @@ export async function changesRoute(context: ReadContext, url: URL): Promise<Resp
 
 /** What a path under /api/tasks/:id names: its history, its comments, its
  * close, or a person's answer, pick, dismissal or dispute. */
-export type TaskPart = 'history' | 'comments' | 'close' | 'respond' | 'choose' | 'dismiss' | 'dispute';
+export type TaskPart = 'history' | 'comments' | 'close' | 'respond' | 'choose' | 'dismiss' | 'dispute' | 'accept';
 
 /** The task id in /api/tasks/:id and the part of the task a path under it
  * names, or null for another path. */
 export function taskPath(pathname: string): { readonly taskId: string; readonly part: TaskPart | null } | null {
-  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close|respond|choose|dismiss|dispute))?$/u.exec(pathname);
+  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close|respond|choose|dismiss|dispute|accept))?$/u.exec(
+    pathname,
+  );
   if (!match || !isTaskId(match[1])) return null;
   return { taskId: match[1]!, part: (match[2] as TaskPart | undefined) ?? null };
 }

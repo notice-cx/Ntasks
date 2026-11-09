@@ -15,7 +15,7 @@ export const PAGE_COLOURS = {
   ink: ['#17171c', '#ededf1'],
   'ink-2': ['#474852', '#b3b5bf'],
   'ink-3': ['#696b76', '#8a8d98'],
-  accent: ['#5552d4', '#5e5ce6'],
+  accent: ['#2745d4', '#4565ef'],
   'on-accent': ['#ffffff', '#ffffff'],
 } as const satisfies Record<string, readonly [string, string]>;
 

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/acceptance.schema.json",
+  "title": "Acceptance as done",
+  "description": "A person's close of a task as done on their own call: the person who accepted it, the connected app they used or the sender that relayed it for them, and each of the task's criteria, read from its acceptance in order, as met or waived. Only a person accepts a task, and only an acceptance relayed for them can be disputed. Section 3.10 of the protocol.",
+  "type": "object",
+  "properties": {
+    "by": {
+      "description": "The person who accepted the task.",
+      "allOf": [{ "$ref": "actor.schema.json" }, { "not": { "pattern": "^(agent|service|visitor):" } }]
+    },
+    "app": {
+      "description": "The client id of the connected app the person accepted it through.",
+      "type": "string",
+      "minLength": 1
+    },
+    "relayed": {
+      "description": "The sender that passed the person's acceptance on, where the person gave it, and their exact words.",
+      "type": "object",
+      "properties": {
+        "by": { "$ref": "actor.schema.json" },
+        "source": { "type": "string", "pattern": "\\S" },
+        "quote": { "type": "string", "pattern": "\\S" }
+      },
+      "required": ["by", "source", "quote"]
+    },
+    "criteria": {
+      "description": "The task's criteria when it was accepted, in order; empty when its acceptance has none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "met": { "description": "false when the person waived it.", "type": "boolean" }
+        },
+        "required": ["text", "met"]
+      }
+    }
+  },
+  "required": ["by", "criteria"],
+  "not": {
+    "description": "A relayed acceptance came through the relaying sender, not through a connected app of the person's.",
+    "required": ["app", "relayed"]
+  }
+}

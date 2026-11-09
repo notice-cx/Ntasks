@@ -20,6 +20,7 @@ import { askVerb, isGate, type BoardTask, type InboxAsk } from '../lib/task-mode
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
+import { StepList } from './tasks/step-list';
 import { MarkdownText } from './tasks/task-markdown';
 
 const UNAVAILABLE = 'This sign-in cannot answer it.';
@@ -29,6 +30,7 @@ const ASK_WORDS: Readonly<Record<InboxAsk, string>> = {
   approve: 'Your approval',
   answer: 'Your answer',
   choose: 'Your choice',
+  do: 'Your steps',
 };
 
 function returnPath(state: unknown, board: string): string {
@@ -148,8 +150,8 @@ export function FocusRoute() {
 
 /**
  * One decision on a card: whose turn it is and how long it has waited, the
- * title, the text, then its answer: options with their keys, an Approve, or
- * a box for words, beside Not now. Letters pick an option, Enter answers or
+ * title, the text, then its answer: options with their keys, the steps to
+ * tick, an Approve, or a box for words, beside Not now. Letters pick an option, Enter answers or
  * approves, and → passes it over.
  */
 function FocusDecision({
@@ -177,8 +179,9 @@ function FocusDecision({
   const [text, setText] = useState('');
   const ask = askVerb(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
-  const allowed =
-    writable && operationAvailable(capabilities, choices ? 'choose' : isGate(task) ? 'resolve' : 'respond');
+  const steps = ask === 'do' ? (task.steps ?? null) : null;
+  const operation = choices ? 'choose' : steps ? 'step' : isGate(task) ? 'resolve' : 'respond';
+  const allowed = writable && operationAvailable(capabilities, operation);
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
   const waited = ageMs(nowMs, task.createdAt ?? task.updatedAt);
   const scope = {
@@ -286,6 +289,19 @@ function FocusDecision({
                 disabledReason={reason}
                 footer={notNow}
               />
+            </div>
+          ) : steps ? (
+            <div className="flex flex-col gap-4" data-focus-steps="">
+              <StepList
+                id={task.id}
+                project={task.project}
+                steps={steps}
+                proposalVersion={task.proposalVersion ?? null}
+                open
+                disabledReason={reason}
+                nowMs={nowMs}
+              />
+              <div className="flex items-center justify-end gap-2">{notNow}</div>
             </div>
           ) : ask === 'approve' ? (
             <div className="flex items-center justify-end gap-2">

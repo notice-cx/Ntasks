@@ -58,6 +58,7 @@ interface McpTask {
   readonly awaitingHuman: boolean;
   readonly resolution: string | null;
   readonly closeReason: string | null;
+  readonly closeAcceptance: Record<string, unknown> | null;
   readonly choice: { option: string; by: string } | null;
   readonly answer: Record<string, unknown> | null;
   readonly metadata: { noticeos_maintenance?: Record<string, unknown> & { events?: Record<string, unknown>[] } };
@@ -855,6 +856,119 @@ describe('requests to do steps', () => {
     });
     expect(ticked.body.task).toMatchObject({ status: 'closed', closedBy: OWNER });
     expect((await current(project, update.id)).ready).toBe(true);
+  });
+});
+
+describe('acceptances an agent relays', () => {
+  const CRITERIA = '- Contributions are live.\n- An accountant confirms the tax treatment.';
+  const accepted = {
+    action: 'accepted',
+    met: [1],
+    quote: 'Close it. I accept the tax risk.',
+    source: 'claude-code:session/synthetic-session',
+  };
+
+  /** A task with CRITERIA, and a task waiting on it through a blocks link. */
+  async function accepting() {
+    const project = await newProject(engine);
+    const { task: work } = await make(project, 'Take contributions', { acceptance: CRITERIA });
+    const { task: launch } = await make(project, 'Announce contributions', {
+      links: [{ direction: 'depends-on', taskId: work.id, type: 'blocks' }],
+    });
+    return { project, work, launch };
+  }
+
+  it('closes the task as done, accepted by the owner and relayed by the agent, each criterion met or waived', async () => {
+    const { project, work, launch } = await accepting();
+
+    const done = await answered(project, work.id, accepted);
+
+    expect(done).toMatchObject({
+      status: 'closed',
+      resolution: 'done',
+      closeReason: 'Accepted as done',
+      closeAcceptance: {
+        by: OWNER,
+        relayed: { by: AGENT.name, source: accepted.source, quote: accepted.quote },
+        criteria: [
+          { text: 'Contributions are live.', met: true },
+          { text: 'An accountant confirms the tax treatment.', met: false },
+        ],
+      },
+      metadata: {
+        noticeos_maintenance: {
+          action: 'accepted',
+          met: [1],
+          verification: 'agent-recorded',
+          answerMode: 'relayed',
+          permission: 'none',
+        },
+      },
+    });
+    expect((await comments(project, work.id)).at(-1)).toMatchObject({ author: AGENT.name });
+    expect((await current(project, launch.id)).ready).toBe(true);
+  });
+
+  it('refuses it without met, with a criterion the task lacks, on a request to the owner and on a closed task, writing nothing', async () => {
+    const { project, work } = await accepting();
+    const { project: gates, gate } = await relayGate();
+    const { met: _met, ...withoutMet } = accepted;
+    expect(await refusedWith(project, work.id, withoutMet)).toMatch(/^refused: met: /u);
+    expect(await refusedWith(project, work.id, { ...accepted, met: [3] })).toMatch(/^invalid arguments: met /u);
+    expect(await refusedWith(project, work.id, { ...accepted, met: [1], action: 'answer' })).toMatch(/\bmet\b/u);
+    expect(await current(project, work.id)).toMatchObject({ status: 'open', version: 1, metadata: {} });
+    expect(await refusedWith(gates, gate.id, accepted)).toMatch(/^refused: action: /u);
+
+    await answered(project, work.id, accepted);
+    const closed = await current(project, work.id);
+    expect(await refusedWith(project, work.id, { ...accepted, source: 'comment:other' })).toMatch(/^refused: task: /u);
+    expect(await current(project, work.id)).toEqual(closed);
+  });
+
+  it('refuses one from a sender that acts for no person, such as a service, writing nothing', async () => {
+    const service: Principal = Object.freeze({
+      id: 'service:credential-1/relay-agent',
+      name: 'service:installation/relay-agent',
+      scopes: [SCOPES.read, SCOPES.write],
+      projects: 'all',
+    });
+    const as = api({ principal: service, now: time.now, engine });
+    const { project, work } = await accepting();
+    const refused = await reconcile(project, work.id, accepted, as);
+    expect(refused.refused).toMatch(/^refused: action: /u);
+    expect(await current(project, work.id)).toMatchObject({ status: 'open', version: 1, metadata: {} });
+  });
+
+  it('opens the task again on the owner’s dispute, tells the waiting task, and refuses the disputed source', async () => {
+    const { project, work, launch } = await accepting();
+    await answered(project, work.id, accepted);
+    time.advance(5);
+
+    const disputed = await send(person, 'POST', `/api/tasks/${work.id}/dispute`, { projectId: project.id });
+
+    expect(disputed.status).toBe(200);
+    expect(disputed.body.task).toMatchObject({ status: 'open', resolution: null, closeAcceptance: null });
+    expect((await current(project, work.id)).metadata.noticeos_maintenance).toMatchObject({
+      action: 'accepted',
+      disputed: { by: OWNER, agent: AGENT.name, sources: [accepted.source] },
+    });
+    expect((await current(project, launch.id)).ready).toBe(false);
+    expect(await comments(project, launch.id)).toHaveLength(1);
+    const history = await engine.listHistory(project.id, work.id, { limit: 10 });
+    expect(history.map((event) => event.kind).filter((kind) => kind !== 'commented')).toEqual([
+      'reopened',
+      'closed',
+      'created',
+    ]);
+    expect(await refusedWith(project, work.id, accepted)).toMatch(/^refused: source: /u);
+    // A second dispute changes nothing.
+    const again = await send(person, 'POST', `/api/tasks/${work.id}/dispute`, { projectId: project.id });
+    expect(again.status).toBe(200);
+    expect(await comments(project, launch.id)).toHaveLength(1);
+    // The owner can still accept it, in their own words from another source, or in the web app.
+    expect(await answered(project, work.id, { ...accepted, source: 'comment:later' })).toMatchObject({
+      status: 'closed',
+    });
   });
 });
 
