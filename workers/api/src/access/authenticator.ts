@@ -10,6 +10,7 @@ import { json } from '../http/respond.ts';
 import { byName, type Sender, type WorkspaceReach, type WorkspaceRole } from '../workspaces.ts';
 import { actorOf, personOf, type Principal, type ServicePrincipal } from './principal.ts';
 import { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
+import { visitorOf, type PublicWorkspaceEnv } from './visitor.ts';
 
 /**
  * The header a service sends to name the agent a request is for, such as one
@@ -59,7 +60,8 @@ function grantScopes(projects: ReadonlyMap<string, ProjectAccess>): string[] {
  * Every workspace the principal reaches, with what it may do there: a person
  * the workspaces they belong to, by their role; an agent the workspaces where
  * its person granted it projects; a service its credential's one workspace,
- * with the backup and restore scopes when its owner made it with each.
+ * with the backup and restore scopes when its owner made it with each; a
+ * visitor the public workspace, to read every project there.
  */
 export function reachesOf(principal: Principal): WorkspaceReach[] {
   const reaches: WorkspaceReach[] =
@@ -77,18 +79,20 @@ export function reachesOf(principal: Principal): WorkspaceReach[] {
             scopes: grantScopes(projects),
             projects,
           }))
-        : [
-            {
-              workspace: principal.workspace,
-              role: null,
-              scopes: [
-                ...grantScopes(principal.projects),
-                ...(principal.backup ? [BACKUP] : []),
-                ...(principal.restore ? [RESTORE] : []),
-              ],
-              projects: principal.projects,
-            },
-          ];
+        : principal.kind === 'service'
+          ? [
+              {
+                workspace: principal.workspace,
+                role: null,
+                scopes: [
+                  ...grantScopes(principal.projects),
+                  ...(principal.backup ? [BACKUP] : []),
+                  ...(principal.restore ? [RESTORE] : []),
+                ],
+                projects: principal.projects,
+              },
+            ]
+          : [{ workspace: principal.workspace, role: null, scopes: [READ], projects: 'all' }];
   return reaches.sort(byName);
 }
 
@@ -117,7 +121,7 @@ function actingFor(principal: ServicePrincipal, agent: string): ServicePrincipal
 }
 
 /** The authenticator for these bindings. It keeps no request's data but the reason it refused that request. */
-export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
+export function signInAuthenticator(env: VerifierEnv & PublicWorkspaceEnv): SignInAuthenticator {
   // Why authenticate refused each request, for challenge to answer with: an
   // invalid token, a cross-site change or sign-in being off each answer
   // differently. Keyed by the request object, and weakly, so one request's
@@ -126,11 +130,13 @@ export function signInAuthenticator(env: VerifierEnv): SignInAuthenticator {
   return Object.freeze({
     async authenticate(request: Request): Promise<SignedIn | null> {
       const verification = await verifyRequest(request, env);
-      if (!verification.ok) {
+      const visitor =
+        !verification.ok && verification.reason === 'unauthenticated' ? await visitorOf(request, env) : null;
+      if (!verification.ok && !visitor) {
         refusals.set(request, verification);
         return null;
       }
-      let principal = verification.principal;
+      let principal: Principal = verification.ok ? verification.principal : visitor!;
       const agent = request.headers.get(ON_BEHALF_OF_HEADER);
       if (principal.kind === 'service' && agent !== null) {
         const acting = actingFor(principal, agent);

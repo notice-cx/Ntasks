@@ -16,7 +16,9 @@ maintainers agree a fix or a disclosure plan with you.
 
 Ntasks is designed to be reachable from the internet. Every API and MCP
 request is signed in and checked against what its sender may do; only the
-health check and the sign-in steps answer without it. The web app's files
+health check and the sign-in steps answer without it. A deployment that sets
+`PUBLIC_WORKSPACE_ID` lets anyone read that one workspace without signing in,
+and change nothing there ([the public workspace](docs/sign-in.md#the-public-workspace)). The web app's files
 are public and hold no task data. [Sign-in](docs/sign-in.md) describes who
 can sign in and what each caller reaches.
 

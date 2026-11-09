@@ -31,6 +31,7 @@ sign-in library, with its OAuth provider plugin, on the Worker's D1 database.
 | **A person**, in a browser | Signs in with GitHub on `/sign-in`. The GitHub account must be a deployment admin (the account that ran the [setup page](#the-setup-page), or one whose numeric id is in `OWNER_GITHUB_IDS`), a member of a workspace, or invited to one ([below](#members-and-invitations)). | Each workspace they belong to, as its owner or a member. In it, every project, to read and change tasks (`tasks:read`, `tasks:write`), and a person's decisions (`tasks:decide`). An owner also holds the backup of the workspace's store (`tasks:backup`), a load into its empty store (`tasks:restore`), and creating its projects and renaming it (`workspace:manage`). Only a person's own browser session counts as their decision. |
 | **An AI agent**, such as an MCP client | OAuth 2.1, the sign-in method of [MCP's authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization). A person approves the agent on `/agent-access` and chooses its projects among those of their workspaces. | The projects the person chose, to read (`tasks:read`) or to read and change (`tasks:write`) tasks, in each workspace the person still belongs to. |
 | **A service**, such as a NoticeOS installation | A service credential a workspace's owner made, sent as a bearer token. | Its credential's one workspace: the projects named in the credential's grants, each to read or to read and change. A credential made with the backup choice also reads the workspace's whole store through the backup route (`tasks:backup`, [API](api.md#backing-up-the-whole-store)), and one made with the restore choice may load rows into that store while it is empty (`tasks:restore`, [API](api.md#loading-an-empty-store)); either needs no grants. |
+| **A visitor**, such as a product demo's page or a visitor's agent | No credential. The request names the deployment's public workspace in the `x-ntasks-workspace` header ([below](#the-public-workspace)). | Only the public workspace: every project there, to read (`tasks:read`). Every change is refused. |
 
 GitHub user ids are numbers, such as `1001`, shown at
 `https://api.github.com/users/<login>`. Ntasks allowlists the id, not the
@@ -65,6 +66,7 @@ deploy, or which three optional secrets name.
 | `AUTH_SECRET` | Required. A random value of at least 32 characters. It proves on the setup page that you made the deployment, signs session cookies and sign-in state, and encrypts the stored GitHub App credentials, stored GitHub tokens and agents' client secrets. Make one with `openssl rand -base64 32`. [Changing it](#changing-auth_secret) signs everyone out. |
 | `NTASKS_ORIGIN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional, and set together or not at all: a GitHub OAuth app [registered by hand](#a-github-oauth-app-registered-by-hand), and the address it was registered for, such as `https://ntasks.example.com`, with no path or trailing slash. `https` is required, except `http://localhost` and `http://127.0.0.1` for local runs. When they are set, they win entirely: the setup page does not run, and an app the setup page stored before, and the admin it recorded, are ignored, so `OWNER_GITHUB_IDS` alone names the admins. |
 | `OWNER_GITHUB_IDS` | Optional. GitHub user ids of deployment admins, separated by commas, beside the account that ran the setup page while sign-in uses the app it stored. Admins create workspaces and may sign in without belonging to one. |
+| `PUBLIC_WORKSPACE_ID` | Optional. The id of the one workspace anyone may read without signing in, such as a product demo's ([below](#the-public-workspace)). A value that is not a lowercase workspace id turns the public workspace off; it never turns sign-in off. |
 
 Sign-in is off when `AUTH_SECRET` is missing or shorter than 32 characters,
 when `OWNER_GITHUB_IDS` holds anything but ids, or when only some of the
@@ -258,6 +260,7 @@ refusal that `refusal()` turns into the answer.
 | A session cookie | The signature, an unexpired session, and that the person is still a deployment admin or a member of a workspace. The same query reads the person's memberships, with each workspace's name. A change (`POST` and other methods that are not reads) must also come from the deployment's origin, shown by its `Origin` header, so another site cannot submit a form with the person's cookie. |
 | An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still a deployment admin or a member of a workspace, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. |
 | A service credential | That it exists and is not revoked, and that its secret matches the stored hash, compared in constant time. The same query reads its workspace's name. |
+| No credential, and the public workspace's id in the `x-ntasks-workspace` header | That `PUBLIC_WORKSPACE_ID` names that workspace and the workspace exists. The query reads its name. |
 
 The deployment's origin is `NTASKS_ORIGIN` when the GitHub secrets are set,
 and otherwise the origin the setup page ran at, which the session and token
@@ -274,7 +277,7 @@ sign-in routes do. A refused request gets:
 
 | Reason | Answer |
 |---|---|
-| No credential | `401` with a bearer challenge |
+| No credential, and no header naming the public workspace | `401` with a bearer challenge |
 | A malformed, unknown, expired or revoked credential | `401` with `error="invalid_token"` in the challenge |
 | A cookie-signed change from another site | `403` with `{"error":"cross_site_request"}` |
 | Sign-in is off | `503` with `{"error":"sign_in_not_configured"}` and a `detail` sentence ([Settings](#settings)) |
@@ -289,6 +292,40 @@ that name itself starts with `agent:`, `service:` or `person:`. An agent
 chooses its own name when it registers and could choose a person's, so an
 actor that starts with `agent:` is always an agent and one that starts with
 `service:` always a service.
+
+## The public workspace
+
+A deployment may let anyone read one of its workspaces without signing in,
+such as a product demo's: `PUBLIC_WORKSPACE_ID` names it
+([Settings](#settings)), and is set like the other optional secrets, with
+`wrangler secret put PUBLIC_WORKSPACE_ID`. A request that carries no
+credential at all and names that workspace in the `x-ntasks-workspace`
+header is signed in as a **visitor**:
+
+- It reaches only the public workspace, and every project there, with
+  `tasks:read` alone. `list_workspaces` lists the workspace with the role
+  `viewer`.
+- Every change is refused: `403` with `insufficient_scope` on an HTTP route,
+  and a `refused: this call needs tasks:write …` sentence from an MCP tool.
+  So are the backup and restore routes and a person's decisions.
+- Its actor is `visitor:anyone`, and its retry principal `visitor`; neither
+  is ever recorded, since a visitor changes nothing.
+- A request with a credential that does not sign in is refused as before,
+  never read as a visitor's. So is a request with no credential that names
+  another workspace, or none, so an MCP client that connects without the
+  header is still told where to sign in.
+
+The public workspace's owner and members, and its service credentials, read
+and change it as in any other workspace. An MCP client reads it as a visitor
+when it sends the header, such as Claude Code with
+`claude mcp add --transport http --header "x-ntasks-workspace: <workspace id>" demo-tasks https://ntasks.example.com/api/mcp`.
+
+Each visitor request costs one Worker request, one D1 query and one request
+to the workspace's task store, against the limits in
+[Architecture](architecture.md#the-free-plan-budget), and nothing limits
+how often anyone sends one. A demo that shows the public workspace's tasks
+on its own pages reads them on a schedule and serves its copy, rather than
+reading them for each page view.
 
 ## A service acting for its agents
 
