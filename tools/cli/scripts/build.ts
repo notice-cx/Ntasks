@@ -189,7 +189,7 @@ async function checkDeployConfig(): Promise<void> {
   try {
     const config = await writeDeployConfig(
       release,
-      { name: 'ntasks', databaseId: '00000000-0000-4000-8000-000000000000' },
+      { name: 'ntasks', database: 'ntasks', databaseId: '00000000-0000-4000-8000-000000000000' },
       folder,
     );
     wrangler(['deploy', '--dry-run', '--config', config, '--outdir', path.join(folder, 'out')], folder);

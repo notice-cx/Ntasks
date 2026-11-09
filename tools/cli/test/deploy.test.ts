@@ -16,7 +16,7 @@ function deployedAccount(): FakeAccountState {
         accountId: EXAMPLE_ACCOUNT.id,
         name: 'ntasks',
         secrets: { AUTH_SECRET: 'secret-set-by-the-first-deploy-0000000000' },
-        versions: [{ id: 'version-1', tag: 'v0.1.0', message: 'Ntasks 0.1.0' }],
+        versions: [{ id: 'version-1', tag: 'v0.1.0', message: 'Ntasks 0.1.0', databaseId: 'db-1' }],
         deployed: 'version-1',
       },
     ],
@@ -107,14 +107,38 @@ test('a login that reaches several accounts deploys only to the account --accoun
   );
 });
 
-test('a Worker of that name with no database of that name is left alone', async () => {
+test('an update keeps the database the Worker is bound to when another database has its name', async () => {
   const account = deployedAccount();
-  account.databases = [];
+  account.databases = [
+    { accountId: EXAMPLE_ACCOUNT.id, uuid: 'db-bound', name: 'ntasks-data', applied: [FIRST] },
+    { accountId: EXAMPLE_ACCOUNT.id, uuid: 'db-decoy', name: 'ntasks', applied: null },
+  ];
+  account.workers[0]!.versions[0]!.databaseId = 'db-bound';
 
-  const run = await runCli(['deploy'], await release('0.2.0', [FIRST]), account);
+  const run = await runCli(['deploy'], await release('0.2.0', [FIRST, SECOND]), account);
 
-  assert.equal(run.code, 1);
-  assert.deepEqual(writes(run.after), []);
+  assert.equal(run.code, 0, run.err);
+  const applied = Object.fromEntries(run.after.databases.map((database) => [database.uuid, database.applied]));
+  assert.deepEqual(applied, { 'db-bound': [FIRST, SECOND], 'db-decoy': null });
+  const [worker] = run.after.workers;
+  assert.equal(worker?.versions.find((version) => version.id === worker.deployed)?.databaseId, 'db-bound');
+});
+
+test('a Worker of that name that is not an Ntasks deployment is left alone', async () => {
+  const unbound = deployedAccount();
+  unbound.workers[0]!.versions[0]!.databaseId = null;
+  const boundElsewhere = deployedAccount();
+  boundElsewhere.workers[0]!.versions[0]!.databaseId = 'db-in-another-account';
+  const undeployedWithoutDatabase = deployedAccount();
+  undeployedWithoutDatabase.workers[0]!.deployed = null;
+  undeployedWithoutDatabase.databases = [];
+
+  for (const [label, account] of Object.entries({ unbound, boundElsewhere, undeployedWithoutDatabase })) {
+    const run = await runCli(['deploy'], await release('0.2.0', [FIRST]), account);
+
+    assert.equal(run.code, 1, label);
+    assert.deepEqual(writes(run.after), [], label);
+  }
 });
 
 test('a first deploy that stops after Cloudflare created the Worker shows the AUTH_SECRET it set', async () => {

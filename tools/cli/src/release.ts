@@ -37,9 +37,10 @@ export interface Release {
   readonly migrations: readonly string[];
 }
 
-/** What a deploy targets: the Worker's name, which the D1 database shares, and the database once it exists. */
+/** What a deploy targets: the Worker's name, and the D1 database it binds, by name and id. */
 export interface Target {
   readonly name: string;
+  readonly database: string;
   readonly databaseId: string;
 }
 
@@ -106,7 +107,7 @@ export function deployConfig(release: Release, target: Target): PackagedConfig {
     d1_databases: [
       {
         ...database,
-        database_name: target.name,
+        database_name: target.database,
         database_id: target.databaseId,
         migrations_dir: path.resolve(dir, database.migrations_dir),
       },

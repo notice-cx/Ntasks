@@ -25,8 +25,9 @@ The first run:
    the `AUTH_SECRET` it printed and choose **Create the GitHub App**. Keep a
    copy of `AUTH_SECRET`; the command shows it only on this run.
 
-A later run finds the Worker and its database in the account by name, applies
-the D1 migrations the database lacks, deploys the new release and prints the
+A later run finds the Worker in the account by name and keeps the D1 database
+the Worker is bound to, applies the D1 migrations that database lacks,
+deploys the new release and prints the
 release before and after. The Worker's secrets stay as they are. Each
 workspace's task store applies its own migrations when it next starts.
 
@@ -47,8 +48,9 @@ Worker's Deployments page.
 `npx ntasks@<version> deploy` deploys that release in place of the latest.
 
 A run stops without changing anything when the login reaches several accounts
-and none is chosen, or when the account has a Worker of that name but no D1
-database of that name, since that Worker is not an Ntasks deployment.
+and none is chosen, or when the account's Worker of that name is not an Ntasks
+deployment: it has no D1 binding `DB`, or no deployed version and no D1
+database of its name.
 
 ## Build and release
 

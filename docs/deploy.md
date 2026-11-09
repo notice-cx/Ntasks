@@ -30,13 +30,15 @@ app and the D1 migrations, and deploys them with wrangler. The first run:
 | `--account <id or name>` | Chooses the Cloudflare account when your login reaches several. |
 
 The command stops without changing anything when your login reaches several
-accounts and none is chosen, and when the account has a Worker of that name
-but no D1 database of that name.
+accounts and none is chosen, and when the account's Worker of that name is
+not an Ntasks deployment: it has no D1 binding `DB`, or no deployed version
+and no D1 database of its name.
 
 ### Update
 
-Run `npx ntasks deploy` again. It finds the Worker and its database in the
-account by name, applies the D1 migrations the database lacks, deploys the
+Run `npx ntasks deploy` again. It finds the Worker in the account by name
+and keeps the D1 database the Worker is bound to, applies the D1 migrations
+that database lacks, deploys the
 latest release and prints the release before and after. The Worker's
 secrets stay as they are, and each workspace's task store applies its own
 migrations when it next starts. `npx ntasks@<version> deploy` deploys that
@@ -45,8 +47,8 @@ runs: each deploy tags the Worker's version with its release, such as
 `v0.1.0`, and the next run reads the tag.
 
 A deployment made with the button or from a checkout can move to
-`npx ntasks deploy` when its Worker and its D1 database share a name; the
-first run shows its current release as unknown. A Worker connected to a
+`npx ntasks deploy`, with `--name` set to its Worker's name when that is not
+`ntasks`; the first run shows its current release as unknown. A Worker connected to a
 repository still deploys that repository on each push, so disconnect it in
 the Cloudflare dashboard under Workers & Pages, the Worker, Settings,
 Builds.

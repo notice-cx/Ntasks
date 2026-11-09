@@ -42,8 +42,20 @@ interface Database {
   readonly name: string;
 }
 
-/** The Worker as Cloudflare shows it: absent, or present with the release its current version was deployed from, when that release is known. */
-type WorkerState = { readonly exists: false } | { readonly exists: true; readonly release: string | undefined };
+/**
+ * The Worker as Cloudflare shows it: absent, or present. A present Worker
+ * with a current version has that version's release, when its tag names
+ * one, and the id of the D1 database its binding names, when it has one.
+ */
+type WorkerState =
+  | { readonly exists: false }
+  | { readonly exists: true; readonly current: false }
+  | {
+      readonly exists: true;
+      readonly current: true;
+      readonly release: string | undefined;
+      readonly databaseId: string | undefined;
+    };
 
 /** The table wrangler records applied D1 migrations in. */
 const MIGRATIONS_TABLE = 'd1_migrations';
@@ -146,22 +158,22 @@ function chooseAccount(accounts: readonly Account[], wanted: string | undefined,
   );
 }
 
-async function findDatabase(wrangler: Wrangler, name: string): Promise<Database | undefined> {
+async function listDatabases(wrangler: Wrangler): Promise<Database[]> {
   const listed = await wrangler.json(['d1', 'list', '--json']);
-  if (!Array.isArray(listed)) return undefined;
-  return listed.find(
+  if (!Array.isArray(listed)) return [];
+  return listed.filter(
     (database): database is Database =>
-      isRecord(database) && database['name'] === name && typeof database['uuid'] === 'string',
+      isRecord(database) && typeof database['name'] === 'string' && typeof database['uuid'] === 'string',
   );
 }
 
-async function findWorker(wrangler: Wrangler, name: string): Promise<WorkerState> {
+async function findWorker(wrangler: Wrangler, name: string, binding: string): Promise<WorkerState> {
   const args = ['deployments', 'status', '--name', name, '--json'];
   const output = await wrangler.capture(args);
   const text = output.stdout + output.stderr;
   if (output.code !== 0) {
     if (text.includes(WORKER_NOT_FOUND)) return { exists: false };
-    if (text.includes('has no deployments')) return { exists: true, release: undefined };
+    if (text.includes('has no deployments')) return { exists: true, current: false };
     throw new WranglerError(args, output);
   }
   const deployment = parseJson(output.stdout);
@@ -170,10 +182,56 @@ async function findWorker(wrangler: Wrangler, name: string): Promise<WorkerState
   const [current] = versions
     .filter((version): version is { version_id: string; percentage: number } => isRecord(version))
     .sort((a, b) => b.percentage - a.percentage);
-  if (!current) return { exists: true, release: undefined };
+  if (!current) return { exists: true, current: false };
   const version = await wrangler.json(['versions', 'view', current.version_id, '--name', name, '--json']);
   const annotations = isRecord(version) && isRecord(version['annotations']) ? version['annotations'] : {};
-  return { exists: true, release: releaseOfTag(annotations['workers/tag']) };
+  const resources = isRecord(version) && isRecord(version['resources']) ? version['resources'] : {};
+  const bindings = Array.isArray(resources['bindings']) ? (resources['bindings'] as unknown[]) : [];
+  // Cloudflare lists a D1 binding as { name, type: 'd1', id }.
+  const database = bindings.find(
+    (entry): entry is { id: string } =>
+      isRecord(entry) && entry['type'] === 'd1' && entry['name'] === binding && typeof entry['id'] === 'string',
+  );
+  return {
+    exists: true,
+    current: true,
+    release: releaseOfTag(annotations['workers/tag']),
+    databaseId: database?.id,
+  };
+}
+
+/**
+ * The database a deploy uses. A deployed Worker keeps its data in the
+ * database its binding names, whatever that database is called, so the
+ * deploy keeps that one; otherwise it uses the database of the Worker's name,
+ * if there is one.
+ */
+function chooseDatabase(
+  databases: readonly Database[],
+  worker: WorkerState,
+  name: string,
+  binding: string,
+): Database | undefined {
+  const byName = databases.find((database) => database.name === name);
+  if (!worker.exists) return byName;
+  if (!worker.current) {
+    if (byName) return byName;
+    throw new Stop(
+      `The account has a Worker named ${name} but no D1 database of that name, so that Worker is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
+    );
+  }
+  if (worker.databaseId === undefined) {
+    throw new Stop(
+      `The Worker ${name} has no D1 binding named ${binding}, so it is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
+    );
+  }
+  const bound = databases.find((database) => database.uuid === worker.databaseId);
+  if (!bound) {
+    throw new Stop(
+      `The Worker ${name} is bound to the D1 database ${worker.databaseId}, which the account does not list. Nothing was changed.`,
+    );
+  }
+  return bound;
 }
 
 async function appliedMigrations(wrangler: Wrangler, binding: string, configFile: string): Promise<string[]> {
@@ -243,24 +301,19 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
   const account = chooseAccount(await signIn(context), request.account, context.accountFromEnv);
   const wrangler = context.wrangler.withEnv({ CLOUDFLARE_ACCOUNT_ID: account.id });
 
-  const database = await findDatabase(wrangler, name);
-  const worker = await findWorker(wrangler, name);
-  if (worker.exists && !database) {
-    throw new Stop(
-      `The account has a Worker named ${name} but no D1 database of that name, so that Worker is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
-    );
-  }
+  const worker = await findWorker(wrangler, name, binding);
+  const database = chooseDatabase(await listDatabases(wrangler), worker, name, binding);
   const applied = database
     ? await appliedMigrations(
         wrangler,
         binding,
-        await writeDeployConfig(release, { name, databaseId: database.uuid }, workDir),
+        await writeDeployConfig(release, { name, database: database.name, databaseId: database.uuid }, workDir),
       )
     : [];
   const pending = release.migrations.filter((migration) => !applied.includes(migration));
 
   const where = `the Worker ${name} on the Cloudflare account ${account.name}`;
-  const from = worker.exists ? worker.release : undefined;
+  const from = worker.exists && worker.current ? worker.release : undefined;
   if (!worker.exists) {
     io.out(`Deploy Ntasks ${version} as a new Worker, ${name}, on the Cloudflare account ${account.name}.`);
   } else if (from === version) io.out(`Deploy Ntasks ${version} again to ${where}.`);
@@ -274,6 +327,7 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
   }
   io.out('');
   if (!database) io.out(`- Create the D1 database ${name}.`);
+  else if (database.name !== name) io.out(`- Keep the D1 database the Worker is bound to, ${database.name}.`);
   io.out(
     pending.length === 0
       ? '- The D1 database has every migration of this release.'
@@ -290,15 +344,20 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
     return;
   }
 
-  let databaseId = database?.uuid;
-  if (databaseId === undefined) {
+  let target = database;
+  if (target === undefined) {
     io.out(`Creating the D1 database ${name}…`);
     await wrangler.run(['d1', 'create', name]);
-    databaseId = (await findDatabase(wrangler, name))?.uuid;
-    if (databaseId === undefined)
+    target = (await listDatabases(wrangler)).find((listed) => listed.name === name);
+    if (target === undefined) {
       throw new Stop(`wrangler created the D1 database ${name}, but the account does not list it.`);
+    }
   }
-  const configFile = await writeDeployConfig(release, { name, databaseId }, workDir);
+  const configFile = await writeDeployConfig(
+    release,
+    { name, database: target.name, databaseId: target.uuid },
+    workDir,
+  );
   if (pending.length > 0) {
     io.out(`Applying ${plural(pending.length, 'D1 migration', 'D1 migrations')}…`);
     await wrangler.run(['d1', 'migrations', 'apply', binding, '--remote', '--config', configFile]);
@@ -330,7 +389,7 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
     // updates that Worker and never shows the secret, so show it now. When
     // the account cannot be read, the Worker may exist, so show it too.
     if (secret !== undefined) {
-      const created = await findWorker(wrangler, name).then(
+      const created = await findWorker(wrangler, name, binding).then(
         (state) => (state.exists ? 'yes' : 'no'),
         () => 'unknown',
       );

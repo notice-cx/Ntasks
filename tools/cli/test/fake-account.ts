@@ -16,7 +16,8 @@ export interface FakeAccountState {
     accountId: string;
     name: string;
     secrets: Record<string, string>;
-    versions: { id: string; tag: string | null; message: string | null }[];
+    /** databaseId: the D1 database the version's DB binding names, or null for none. */
+    versions: { id: string; tag: string | null; message: string | null; databaseId: string | null }[];
     deployed: string | null;
   }[];
   /** The deploy creates the Worker's version, then stops, as when the account has no workers.dev subdomain. */
