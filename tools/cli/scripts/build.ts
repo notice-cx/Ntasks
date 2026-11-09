@@ -6,7 +6,9 @@
  * package: the files `npm pack` would publish, and a `wrangler deploy
  * --dry-run` of the configuration and bundle the command deploys.
  *
- * `pnpm build` at the repository root runs it after the web app's build.
+ * `pnpm run package` at the repository root runs it, after `pnpm build` has
+ * built the web app. It is not part of `pnpm build`, which deployments built
+ * from a copy of the repository run.
  */
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
 import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -197,7 +199,7 @@ async function checkDeployConfig(): Promise<void> {
 }
 
 if (!existsSync(path.join(webBuild, 'index.html'))) {
-  throw new Error(`${webBuild} has no web app build; run \`pnpm build\` from the repository root`);
+  throw new Error(`${webBuild} has no web app build; run \`pnpm build\` from the repository root first`);
 }
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist);

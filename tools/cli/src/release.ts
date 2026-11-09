@@ -71,7 +71,7 @@ export async function readRelease(dir: string): Promise<Release> {
     config = JSON.parse(await readFile(path.join(dir, CONFIG_FILE), 'utf8'));
   } catch {
     throw new IncompleteRelease(
-      `${dir} holds no built Ntasks release. In a checkout of the Ntasks repository, \`pnpm build\` builds one in tools/cli/dist.`,
+      `${dir} holds no built Ntasks release. In a checkout of the Ntasks repository, \`pnpm build\` then \`pnpm run package\` build one in tools/cli/dist.`,
     );
   }
   if (!isRecord(manifest) || typeof manifest['version'] !== 'string' || !isPackagedConfig(config)) {

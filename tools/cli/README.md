@@ -54,8 +54,9 @@ database of that name, since that Worker is not an Ntasks deployment.
 
 This package is built from [`tools/cli`](https://github.com/notice-cx/Ntasks/tree/main/tools/cli)
 in the Ntasks repository. From the repository root, `pnpm build` builds the
-web app, then this package in `tools/cli/dist`: `scripts/build.ts` bundles
-the Worker with wrangler from the root `wrangler.jsonc`, copies the web app's
+web app, then `pnpm run package` builds this package in `tools/cli/dist`:
+`scripts/build.ts` bundles the Worker with wrangler from the root
+`wrangler.jsonc`, copies the web app's
 build and the D1 migrations, compiles `src` and writes the package's
 `wrangler.json`, `package.json` and `THIRD_PARTY_LICENSES.md`. It then checks
 the files `npm pack` would publish, and runs `wrangler deploy --dry-run` on the

@@ -73,7 +73,8 @@ pnpm format:check  # Prettier; `pnpm format` rewrites the files it would change
 shellcheck install.sh  # the agent setup script
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
-pnpm build         # the web app, `wrangler deploy --dry-run`, then the npm package in tools/cli/dist
+pnpm build         # the web app, then `wrangler deploy --dry-run`
+pnpm run package   # after the build: the npm package ntasks in tools/cli/dist, checked
 pnpm dev           # the Worker and the web app at http://localhost:8787
 ```
 

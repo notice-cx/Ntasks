@@ -8,14 +8,12 @@
   "scripts": {
     "typecheck": "tsc",
     "test": "node --test \"test/*.test.ts\"",
-    "build": "node scripts/build.ts"
+    "package": "node scripts/build.ts"
   },
   "dependencies": {
     "wrangler": "4.158.0"
   },
   "devDependencies": {
-    "@ntasks/api": "workspace:*",
-    "@ntasks/web": "workspace:*",
     "@types/node": "26.6.6",
     "typescript": "6.0.3"
   }
