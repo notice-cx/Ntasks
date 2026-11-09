@@ -53,7 +53,8 @@ Every feature and every change to an existing one meets all five:
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, and the verifier |
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
-| `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)) |
+| `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)). `docs/index.md` lists the pages in the order the website's sidebar shows them |
+| `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build; no merge or CI run deploys it ([apps/site/README.md](apps/site/README.md)) |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
 named `@ntasks/<name>`, and follows an existing workspace's `package.json` and
@@ -73,6 +74,7 @@ shellcheck install.sh  # the agent setup script
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
 pnpm build         # the web app, then `wrangler deploy --dry-run`
+pnpm site:build    # the website, then a check of every link and heading in it
 pnpm dev           # the Worker and the web app at http://localhost:8787
 ```
 

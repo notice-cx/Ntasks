@@ -47,9 +47,11 @@ Run these from the repository root.
 | `pnpm typecheck` | Checks every workspace's TypeScript, and that the Worker's generated types match its `wrangler.jsonc` |
 | `pnpm test` | Runs every workspace's tests. They include tests that `pnpm lint` reports what it should, a check that no `vars` setting in a `wrangler.jsonc` is named like a secret, and a check that the Deploy to Cloudflare button asks for every secret the Worker requires |
 | `pnpm build` | Builds the web app, then checks that the Worker would deploy, without deploying it |
+| `pnpm site:build` | Builds the website, the landing page and the docs in `docs/`, into `apps/site/dist/`, then checks that every link, heading and image in it resolves. `pnpm site:dev` serves the docs while you edit them |
 
 CI runs `pnpm lint`, `pnpm format:check`, `shellcheck install.sh`,
-`pnpm typecheck`, `pnpm test` and `pnpm build` on every pull request
+`pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm site:build` on every
+pull request
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). To run one
 workspace's command, name it with `--filter`:
 
