@@ -73,6 +73,21 @@ describe('the tokens', () => {
     }
   });
 
+  it('draws text on Accent, and Accent text on Background, at 4.5:1 or more, in both themes', () => {
+    for (const [theme, css] of [
+      ['light', rule(':root,\n.light')],
+      ['dark', rule('.dark')],
+    ] as const) {
+      for (const [ink, fill] of [
+        ['on-accent', 'accent'],
+        ['accent-text', 'background'],
+      ] as const) {
+        const [one, two] = [value(css, ink) ?? '', value(css, fill) ?? ''];
+        expect(contrast(one, two), `${ink} on ${fill} in ${theme}: ${one} on ${two}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   it('gives every listed colour a Tailwind name', () => {
     for (const { variable } of [...COLOUR_TOKENS, ...MARK_TOKENS]) {
       expect(CSS).toContain(`--color-${variable.slice(2)}: var(${variable});`);
