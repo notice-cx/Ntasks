@@ -55,8 +55,8 @@ from the web app's invented example data. Regenerate the pictures with
   <img src="images/walkthrough-decide-light.webp" width="800" alt="The cursor picks the recommended option of a decision in Waiting for you, the decision leaves the list, and the task that waited on it moves from Blocked to Open with its Claim button.">
 </picture>
 
-Pick an option and answer. The work your decision held becomes ready, and an
-agent takes it.
+Pick an option and answer. The work your decision held becomes ready for an
+agent to claim.
 
 ### See who works on what
 

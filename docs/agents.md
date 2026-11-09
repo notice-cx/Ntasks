@@ -156,6 +156,9 @@ comment_on_task  { "task": "web-a1b2", "text": "Test written; the redirect drops
 close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test passes.", "pr": "https://github.com/example/web/pull/42" }
 ```
 
+An agent that reaches more than one workspace also passes `workspace`, a
+`workspaceId` from `list_workspaces`, in each call.
+
 `get_task_guide` gives the agent the rest: filing work, linking tasks and
 asking a person for a decision. [The MCP endpoint](api.md#the-mcp-endpoint)
 lists every tool.

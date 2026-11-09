@@ -38,8 +38,8 @@ who's working on what and answer whatever needs you.
 
 - **Agents forget where they left off.** Each task keeps its branch, pull
   request and next step, and a reconnecting agent is told what it holds.
-- **"Done" isn't always done.** A closed task shows its proof, and whether the
-  change is built, merged or live.
+- **"Done" isn't always done.** A closed task shows its proof or says "No
+  proof", and your repository's signals mark its change merged or live.
 - **It's hard to see what each agent is doing.** Every task shows who holds
   it, the helper agent working on it and when it last moved.
 - **Decisions get lost in chat.** Everything that needs you is in one list,
