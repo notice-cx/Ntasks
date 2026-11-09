@@ -51,6 +51,7 @@ import type { TaskChoiceKey, TaskChoices } from '../api/types';
 import { Avatar, AvatarGroup, type AvatarSize } from '../components/ui/avatar';
 import { Badge, Count, Progress } from '../components/ui/badge';
 import { Button, IconButton } from '../components/ui/button';
+import { CopyButton } from '../components/ui/copy-button';
 import { Segmented, Tabs, type ChoiceOption } from '../components/ui/choice';
 import { EmptyState } from '../components/ui/empty-state';
 import { Field, Input, Select } from '../components/ui/field';
@@ -666,6 +667,7 @@ function SymbolCell({ name, children }: { name: string; children: ReactNode }) {
 }
 
 function ButtonsPanel() {
+  const id = useRef<HTMLSpanElement>(null);
   return (
     <Panel title="Buttons">
       <div className="flex flex-wrap items-center gap-2.5">
@@ -698,6 +700,12 @@ function ButtonsPanel() {
           Disabled
         </Button>
         <IconButton size="sm" label="More" icon={<Ellipsis aria-hidden />} />
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 text-label font-medium">
+        <span ref={id} className="nums text-ink-2">
+          web-k3m9
+        </span>
+        <CopyButton label="Copy the task id" target={id} text={() => 'web-k3m9'} className="-my-1 -ms-1" />
       </div>
     </Panel>
   );

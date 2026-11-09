@@ -357,6 +357,16 @@ button's look.
 accessible name and the tooltip, with the key appended when `shortcut` is
 set.
 
+### CopyButton (`copy-button.tsx`)
+
+A small `ghost` button with the Copy icon that copies a text. `label`, such
+as "Copy the code", is its accessible name and its tooltip. After a copy it
+shows a check and Copied for two seconds, and a screen reader reads that
+change. Where the browser cannot copy, it selects the text instead and a
+toast says to copy it with the keyboard. Every code block in task text has
+one in its top-right corner, shown on hover, on keyboard focus and always on
+a touch screen. A task page's path ends with one that copies the task's id.
+
 ### Kbd (`kbd.tsx`)
 
 A key: 18 px tall, 11 px text in Text 3, a Border strong ring, 4 px corners.
