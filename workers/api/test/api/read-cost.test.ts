@@ -179,6 +179,7 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'list_tasks ready, every project': { statements: 3, rowsRead: 10_000 },
   'list_tasks, every project': { statements: 4, rowsRead: 16_000 },
   'list_tasks search, every project': { statements: 4, rowsRead: 22_000 },
+  'HTTP search, every project': { statements: 4, rowsRead: 22_000 },
   'list_tasks, largest project': { statements: 4, rowsRead: 6_000 },
   'list_tasks by a field, largest project': { statements: 5, rowsRead: 4_000 },
   'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
@@ -206,6 +207,7 @@ describe('the cost of each read', () => {
       'list_tasks ready, every project': () => read(target, 'list_tasks', { ready: true }),
       'list_tasks, every project': () => read(target, 'list_tasks', {}),
       'list_tasks search, every project': () => read(target, 'list_tasks', { query: 'seeded indexing' }),
+      'HTTP search, every project': () => get(target, '/api/tasks/search?q=seeded%20indexing'),
       'list_tasks, largest project': () => read(target, 'list_tasks', { project: big.id }),
       'list_tasks by a field, largest project': () =>
         read(target, 'list_tasks', { project: big.id, fields: { severity: 'high' } }),
@@ -295,6 +297,7 @@ describe('the cost of each read', () => {
       'list_tasks, every project': () => read(target, 'list_tasks', {}),
       'list_tasks ready, every project': () => read(target, 'list_tasks', { ready: true }),
       'list_tasks search, every project': () => read(target, 'list_tasks', { query: 'seeded indexing' }),
+      'HTTP search, every project': () => get(target, '/api/tasks/search?q=seeded%20indexing'),
       'list_tasks, largest project': () => read(target, 'list_tasks', { project: big.id }),
     };
     const measure = async () => {

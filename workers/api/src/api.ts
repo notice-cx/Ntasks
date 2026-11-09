@@ -27,6 +27,7 @@ import {
   gatePath,
   historyRoute,
   projects,
+  searchRoute,
   taskPath,
   taskRoute,
   type ReadContext,
@@ -87,6 +88,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
     scope: { POST: SCOPES.manage, PATCH: SCOPES.manage },
   },
   '/api/tasks/capabilities': { GET: capabilities },
+  '/api/tasks/search': { GET: searchRoute },
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
   '/api/changes': { GET: changesRoute },

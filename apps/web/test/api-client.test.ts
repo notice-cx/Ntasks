@@ -78,6 +78,16 @@ describe('the HTTP Tasks API client', () => {
     ]);
   });
 
+  it('searches every project in one read, and refuses an answer without its tasks', async () => {
+    const { api, sent } = server(() => Response.json({ readAt: '2026-11-06T12:00:00.000Z', total: 0, tasks: [] }));
+    expect(await api.search('docs-a1b2 claim')).toEqual({ readAt: '2026-11-06T12:00:00.000Z', total: 0, tasks: [] });
+    expect(sent.map((request) => `${request.method} ${request.url}`)).toEqual([
+      'GET /api/tasks/search?q=docs-a1b2+claim',
+    ]);
+    const { api: broken } = server(() => Response.json({ total: 0 }));
+    expect(await broken.search('claim').catch((failure: unknown) => failure)).toBeInstanceOf(UnreadableAnswer);
+  });
+
   it('asks the change feed for the changes after a sequence number', async () => {
     const { api, sent } = server(() =>
       Response.json({ events: [{ seq: 8, projectId: 'p-web', taskId: 'web-a1' }], lastSeq: 8 }),
