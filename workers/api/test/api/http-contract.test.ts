@@ -12,7 +12,7 @@ import { Browser, call, connectAgent, meWithToken } from '../access/client.ts';
 import { standInForGitHub } from '../access/github.ts';
 import RECORD from '../fixtures/http-api.json';
 import { TEST_WORKSPACE } from '../store.ts';
-import { compare, expand, merge, observe, withoutValue, type ContractVersion, type Observed } from './contract.ts';
+import { compare, expand, merge, observe, observed, withoutValue, type ContractVersion } from './contract.ts';
 
 standInForGitHub();
 
@@ -285,13 +285,13 @@ async function differences() {
   for (const sample of await answers()) byRoute.set(sample.route, [...(byRoute.get(sample.route) ?? []), sample]);
   return [...new Set([...Object.keys(CONTRACT.routes), ...byRoute.keys()])].map((route) => {
     const contract = expand(CONTRACT.routes[route] ?? {}, CONTRACT.shapes);
-    const observed: Observed = new Map();
-    for (const sample of byRoute.get(route) ?? []) observe(sample.body, contract, observed);
+    const held = observed();
+    for (const sample of byRoute.get(route) ?? []) observe(sample.body, contract, held);
     return {
       route,
       sent: byRoute.has(route),
       recorded: route in CONTRACT.routes,
-      ...compare(route, contract, observed),
+      ...compare(route, contract, held),
     };
   });
 }
@@ -345,10 +345,10 @@ describe('the contract', () => {
       { tasks: 'array', 'tasks[]': '@task' },
       { task: { id: 'string', assignee: 'null|string' } },
     );
-    const against = (answer: unknown) => {
-      const observed: Observed = new Map();
-      observe(answer, contract, observed);
-      return compare('GET /x', contract, observed);
+    const against = (...answers: unknown[]) => {
+      const seen = observed();
+      for (const answer of answers) observe(answer, contract, seen);
+      return compare('GET /x', contract, seen);
     };
     const kept = against({
       tasks: [
@@ -369,6 +369,10 @@ describe('the contract', () => {
     ]);
     expect(against({ tasks: [{ id: 'a', assignee: 'agent-a' }, { id: 'b' }] }).retyped).toEqual([
       'GET /x tasks[].assignee (shape task): answered as absent|string, recorded as null|string',
+    ]);
+    // One answer leaving a field out is found though another answer of the route holds it.
+    expect(against({ tasks: [{ id: 'a', assignee: 'agent-a' }] }, { tasks: [{ assignee: null }] }).retyped).toEqual([
+      'GET /x tasks[].id (shape task): answered as absent|string, recorded as string',
     ]);
     const unassigned = against({ tasks: [{ id: 'a', assignee: null }] });
     expect(withoutValue([unassigned])).toEqual(['shape task assignee']);

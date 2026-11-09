@@ -36,8 +36,18 @@ interface Field {
 /** Every path of a route, with the shared shapes it names written out. */
 export type RouteContract = ReadonlyMap<string, Field>;
 
-/** The types a path was seen with, over every answer of a route. */
-export type Observed = Map<string, Set<ValueType>>;
+/** What every answer of a route held: the types each path was seen with,
+ * and the keys of each object seen at each path, which show the keys some
+ * objects leave out. */
+export interface Observed {
+  readonly types: Map<string, Set<ValueType>>;
+  readonly keys: Map<string, Set<string>[]>;
+}
+
+/** Nothing observed yet, for one route. */
+export function observed(): Observed {
+  return { types: new Map(), keys: new Map() };
+}
 
 const join = (at: string, key: string) => (at === '' ? key : `${at}.${key}`);
 
@@ -102,20 +112,14 @@ function typeOf(value: unknown): ValueType {
   throw new Error(`an answer holds a ${typeof value}`);
 }
 
-/** Adds the types of `answer`'s fields to `observed`. A key some objects at a
- * path hold and others leave out is `absent` in those. A path the contract
- * records as `map` is not looked into. */
-export function observe(answer: unknown, contract: RouteContract, observed: Observed): void {
-  const seen = (path: string, type: ValueType) => {
-    if (!observed.has(path)) observed.set(path, new Set());
-    observed.get(path)!.add(type);
-  };
-  // The keys of every object seen at each path, to find the ones some leave out.
-  const keys = new Map<string, Set<string>[]>();
+/** Adds the types of `answer`'s fields, and the keys of its objects, to
+ * `into`. A path the contract records as `map` is not looked into. */
+export function observe(answer: unknown, contract: RouteContract, into: Observed): void {
+  const { types, keys } = into;
   const walk = (value: unknown, at: string) => {
     let type = typeOf(value);
     if (type === 'object' && contract.get(at)?.types.has('map')) type = 'map';
-    if (at !== '') seen(at, type);
+    if (at !== '') typed(types, at, type);
     if (type === 'array') for (const entry of value as unknown[]) walk(entry, `${at}[]`);
     if (type !== 'object') return;
     const entries = Object.entries(value as Record<string, unknown>);
@@ -124,10 +128,21 @@ export function observe(answer: unknown, contract: RouteContract, observed: Obse
     for (const [key, entry] of entries) walk(entry, join(at, key));
   };
   walk(answer, '');
+}
+
+function typed(types: Map<string, Set<ValueType>>, path: string, type: ValueType): void {
+  if (!types.has(path)) types.set(path, new Set());
+  types.get(path)!.add(type);
+}
+
+/** Each path's types over every answer, with `absent` where some objects at its place hold the key and others leave it out. */
+function typesOf({ types, keys }: Observed): ReadonlyMap<string, ReadonlySet<ValueType>> {
+  const all = new Map([...types].map(([path, seen]) => [path, new Set(seen)]));
   for (const [at, objects] of keys) {
     const every = new Set(objects.flatMap((object) => [...object]));
-    for (const key of every) if (objects.some((object) => !object.has(key))) seen(join(at, key), 'absent');
+    for (const key of every) if (objects.some((object) => !object.has(key))) typed(all, join(at, key), 'absent');
   }
+  return all;
 }
 
 export interface Differences {
@@ -152,7 +167,8 @@ function parentOf(path: string): string {
 const VALUELESS: ReadonlySet<ValueType> = new Set(['absent', 'null']);
 
 /** How one route's answers differ from its contract. */
-export function compare(route: string, contract: RouteContract, observed: Observed): Differences {
+export function compare(route: string, contract: RouteContract, answers: Observed): Differences {
+  const observed = typesOf(answers);
   const removed: string[] = [];
   const retyped: string[] = [];
   const unrecorded: string[] = [];
