@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ntasks social card</title>
+    <link rel="stylesheet" href="../src/tokens.css" />
+    <style>
+      @font-face {
+        font-family: 'Inter Variable';
+        src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-opsz-normal.woff2');
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: 'Stack Sans Notch Variable';
+        src: url('../node_modules/@fontsource-variable/stack-sans-notch/files/stack-sans-notch-latin-wght-normal.woff2');
+        font-weight: 100 900;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+      body {
+        background: var(--background);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 38px 56px 0;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-family: var(--font-wordmark);
+        font-size: 34px;
+        font-weight: 550;
+      }
+      .brand svg {
+        width: 32px;
+        height: 32px;
+      }
+      .address {
+        font-size: 19px;
+        color: var(--ink-2);
+      }
+      h1 {
+        position: relative;
+        z-index: 1;
+        margin: 26px 56px 0;
+        font-size: 64px;
+        font-weight: 550;
+        line-height: 1.07;
+        letter-spacing: -0.05em;
+      }
+      h1 span {
+        color: var(--ink-2);
+      }
+      .photo {
+        position: absolute;
+        top: 264px;
+        left: 0;
+        width: 1200px;
+        height: 366px;
+        object-fit: cover;
+        object-position: center 64%;
+      }
+      @media (min-height: 1000px) {
+        header {
+          padding: 56px 64px 0;
+        }
+        .brand {
+          font-size: 44px;
+        }
+        .brand svg {
+          width: 40px;
+          height: 40px;
+        }
+        .address {
+          font-size: 22px;
+        }
+        h1 {
+          margin: 56px 64px 0;
+          font-size: 82px;
+        }
+        .photo {
+          top: 420px;
+          width: 100%;
+          height: calc(100vh - 420px);
+          object-position: center;
+        }
+      }
+      @media (min-height: 1500px) {
+        header {
+          padding: 128px 80px 0;
+        }
+        .brand {
+          font-size: 52px;
+        }
+        .brand svg {
+          width: 48px;
+          height: 48px;
+        }
+        .address {
+          position: absolute;
+          left: 80px;
+          bottom: 128px;
+          font-size: 30px;
+        }
+        h1 {
+          margin: 130px 80px 0;
+          font-size: 112px;
+        }
+        .photo {
+          top: 930px;
+          height: 720px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><!--mark-->Ntasks</div>
+      <div class="address">ntasks.notice.cx</div>
+    </header>
+    <h1><span>One task list for you</span><br />and your AI agents.</h1>
+    <img class="photo" src="../src/images/work-in-order.webp" alt="" />
+  </body>
+</html>
