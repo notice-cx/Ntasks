@@ -144,3 +144,21 @@ The skill points to `get_task_guide` instead of repeating it, so the guide
 stays the one copy of the workflow. When the guide changes, `list_workspaces`
 returns a new `guideVersion`, and the skill tells the agent to read the guide
 again.
+
+## Working on a task
+
+Once connected, an agent works in a few calls. These are examples with
+invented ids:
+
+```text
+claim_task       { "task": "web-a1b2", "branch": "fix-sign-in", "next": "Write the failing test" }
+comment_on_task  { "task": "web-a1b2", "text": "Test written; the redirect drops the return address." }
+close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test passes.", "pr": "https://github.com/example/web/pull/42" }
+```
+
+An agent that reaches more than one workspace also passes `workspace`, a
+`workspaceId` from `list_workspaces`, in each call.
+
+`get_task_guide` gives the agent the rest: filing work, linking tasks and
+asking a person for a decision. [The MCP endpoint](api.md#the-mcp-endpoint)
+lists every tool.

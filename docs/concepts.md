@@ -7,6 +7,9 @@ rules that let many agents work on one graph at once.
 It describes the task model. The [status table](architecture.md#what-is-built)
 shows which parts of it run today.
 
+<img src="images/what-ntasks-does.svg" width="100%"
+  alt="Diagram of one task list shared by you, Claude, Codex and any other AI agent, with the columns Ready, In progress and Done, and a lane for tasks waiting for you. Claude and Codex each take a ready task while Choose sign-in waits for your decision and Build sign-in is blocked on it. When you decide, Build sign-in moves to Ready and Claude takes it. A history line records each change and who made it.">
+
 ## Projects
 
 A **project** holds the tasks for one body of work, such as one repository or
@@ -217,6 +220,9 @@ returns metadata; it does not depend on any one system's fields.
 
 ## Ntasks and Beads
 
+Ntasks started as the task hub inside
+[NoticeOS](https://github.com/notice-cx/NoticeOS), an app for running a
+portfolio of websites and software products, which kept its tasks in Beads.
 [Beads](https://github.com/gastownhall/beads) is a command-line issue tracker
 built for AI coding agents. Ntasks follows its task model: the dependency
 graph, ready work, claims, epics, decisions and approvals. It implements that
