@@ -660,6 +660,29 @@ export const core: readonly Check[] = [
     },
   },
   {
+    id: 'inv-11-both-tasks-show-the-link',
+    rule: 'INV-11',
+    level: 'core',
+    title:
+      'A read of either task shows their link: the task that holds it among its dependencies, the other among its dependents',
+    async run(context) {
+      const api = context.api();
+      const first = await file(context);
+      const later = await file(context);
+      answered(await api.link(later, first, 'merges-after'), `linking ${later} to merge after ${first}`);
+      same(linksTo(await taskOf(api, later), first), ['merges-after'], `${later}'s dependencies`);
+      const other = await taskOf(api, first);
+      if (other.dependents === undefined) throw new Error(`a read of ${first} answers no dependents`);
+      same(
+        other.dependents.filter((link) => link.id === later).map((link) => link.type),
+        ['merges-after'],
+        `${first}'s dependents`,
+      );
+      const ready = answered(await api.ready(), 'listing ready work');
+      expect(ready.includes(first) && ready.includes(later), 'a merges-after link held a task out of ready work');
+    },
+  },
+  {
     id: 'inv-11-no-waiting-loops',
     rule: 'INV-11',
     level: 'core',

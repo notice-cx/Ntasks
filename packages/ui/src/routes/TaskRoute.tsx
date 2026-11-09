@@ -914,6 +914,7 @@ const LINK_WORDS: Readonly<Record<string, string>> = {
   'discovered-from': 'Found during',
   duplicates: 'Duplicates',
   supersedes: 'Replaces',
+  'merges-after': 'Merges after',
 };
 
 /** An external link's words, by its kind. */
@@ -940,6 +941,9 @@ export function linkGroups(
   for (const other of siblings) {
     if (other.dependencies.some((edge) => isBlockingLink(edge.type) && edge.id === task.id))
       add('Holds back', { kind: 'task', id: other.id, title: other.title, status: other.status });
+    // The other end of a merges-after link: that task's pull request lands after this one's.
+    if (other.dependencies.some((edge) => edge.type === 'merges-after' && edge.id === task.id))
+      add('Merges before', { kind: 'task', id: other.id, title: other.title, status: other.status });
   }
   for (const link of task.externalLinks ?? []) {
     add(EXTERNAL_WORDS[link.kind ?? ''] ?? 'Link', {

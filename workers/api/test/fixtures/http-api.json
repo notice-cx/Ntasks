@@ -558,5 +558,21 @@
         "parent.closedSiblingsTotal": "number"
       }
     }
+  },
+  {
+    "version": 6,
+    "shapes": {
+      "task": {
+        "dependents": "array",
+        "dependents[]": "object",
+        "dependents[].id": "string",
+        "dependents[].type": "string",
+        "dependents[].title": "string",
+        "dependents[].status": "string",
+        "work.touches": "absent|array",
+        "work.touches[]": "string"
+      }
+    },
+    "routes": {}
   }
 ]

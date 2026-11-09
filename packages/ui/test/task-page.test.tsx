@@ -55,6 +55,7 @@ describe('a task page', () => {
     expect(fact('Last activity').textContent).toContain('12m');
     expect(fact('Next step').textContent).toContain('Announce the password error to screen readers');
     expect(fact('Branch').textContent).toContain('codex/sign-in-a11y');
+    expect(fact('Touches').textContent).toContain('src/pages/sign-in/fields.ts');
     expect(within(fact('Pull request')).getByRole('link').getAttribute('href')).toBe(
       'https://github.example.com/example/web/pull/42',
     );
@@ -620,5 +621,25 @@ describe("a task's links", () => {
       'Document',
     ]);
     expect(groups[1]?.rows).toEqual([{ kind: 'task', id: 'web-h1', title: 'Task web-h1', status: 'open' }]);
+  });
+
+  it('names the order two pull requests merge in, from either task', () => {
+    const later = linkGroups(
+      {
+        id: 'web-m2',
+        dependencies: [{ id: 'web-m1', type: 'merges-after', title: 'First change', status: 'in_progress' }],
+        externalLinks: [],
+      },
+      [],
+    );
+    expect(later).toEqual([
+      { label: 'Merges after', rows: [{ kind: 'task', id: 'web-m1', title: 'First change', status: 'in_progress' }] },
+    ]);
+    const first = linkGroups({ id: 'web-m1', dependencies: [], externalLinks: [] }, [
+      other('web-m2', [{ id: 'web-m1', type: 'merges-after', title: null, status: null }]),
+    ]);
+    expect(first).toEqual([
+      { label: 'Merges before', rows: [{ kind: 'task', id: 'web-m2', title: 'Task web-m2', status: 'open' }] },
+    ]);
   });
 });

@@ -157,6 +157,13 @@ export function webTask(task: Task) {
       title: link.title,
       status: link.status,
     })),
+    /** The tasks that link to this one, each with its link's type: those it holds back, those that merge after it, and so on. */
+    dependents: task.dependents.map((link) => ({
+      id: link.taskId,
+      type: link.type,
+      title: link.title,
+      status: link.status,
+    })),
     externalLinks: task.externalLinks.map(({ url, title, kind }) => ({ url, title, kind })),
     fields: task.fields,
     comments: task.commentCount,
@@ -229,6 +236,7 @@ export function mcpTask(task: Task) {
     changeClass: web.changeClass,
     deferUntil: task.deferUntil,
     dependencies: web.dependencies,
+    dependents: web.dependents,
     externalLinks: web.externalLinks,
     fields: task.fields,
     commentCount: task.commentCount,

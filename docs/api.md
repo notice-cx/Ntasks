@@ -181,9 +181,9 @@ answered by then leaves its tasks out, and the rest are listed.
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
-| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `idempotency_key` and `detail` |
+| `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)); with `touches`, `overlaps` when other work in progress changes the same ([below](#work-that-changes-the-same-files)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
-| `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
+| `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, `overlaps` as `claim_task` answers it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
 | `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
@@ -224,9 +224,11 @@ sender reaches, and each task then names its project.
 without reading it in full; like `description`, `notes` and `design` are left
 out of `list_tasks`.
 
-`for`, `session`, `worktree`, `branch`, `pr`, `commit` and `next` record the
-holder's work in hand ([concepts](concepts.md#claiming-a-task)). `for` is one
-line of at most 64 characters; `pr` is an http or https URL; the others are
+`for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next` and
+`touches` record the holder's work in hand
+([concepts](concepts.md#claiming-a-task)). `for` is one line of at most 64
+characters; `pr` is an http or https URL; `touches` is a list of at most 16
+lines of at most 200 characters each, and `[]` takes it off; the others are
 one line each, `branch` at most 255 characters, `commit` 128 and the rest
 512. Each replaces the value the task has. On `comment_on_task` only the
 task's holder may send them, and only while the task is open; details that
@@ -241,7 +243,28 @@ returns `openChildren`: each child that is not closed, with its `id`,
 
 `duplicates` names earlier tasks for the same work, and `supersedes` the
 tasks this one replaces. `get_task` lists them among `dependencies`, with
-those types.
+those types, and lists the links other tasks hold onto this one among
+`dependents`.
+
+### Work that changes the same files
+
+`touches` names the files or other things the work changes: a path, a
+folder, a migration number or a table. When a claim or a comment records
+`touches`, its answer lists in `overlaps` each other task of the project that
+is in progress or blocked, held by someone, whose `touches` meet these. Two
+entries meet when they are the same path, or one is a folder holding the
+other; a leading `./` and a trailing `/` are ignored. Each overlap has:
+
+| Field | Holds |
+|---|---|
+| `id`, `title`, `assignee`, `status` | The other task |
+| `pr` | Its pull request, from its holder's work details, or null |
+| `touches` | Its entries that meet this task's |
+| `mergeOrder` | `after` when this task merges after it, `before` when it merges after this task, null while no `merges-after` link says |
+
+An overlap is advice: the claim or comment is never refused because of it.
+The holders agree which pull request lands first and record it with
+`link_tasks` type `merges-after` ([below](#linking-two-tasks)).
 
 ### What a parent holds for its tasks
 
@@ -384,7 +407,7 @@ too.
   from its holder.
 - **A link** between two tasks is one: `link_tasks` replaces the kind or the
   direction it has, and asking for the link it has changes nothing. A
-  `related`, `duplicates` or `supersedes` link may name a task in another
+  `related`, `duplicates`, `supersedes` or `merges-after` link may name a task in another
   project the sender reaches; every other link stays inside the project. A
   link that would make tasks wait on each other in a loop is refused. A link
   to or from a person's decision changes and goes only when the person
@@ -503,7 +526,8 @@ records the acceptance in the close, and a reopen clears it.
 ## Linking two tasks
 
 Two tasks hold at most one link. `link_tasks` sets it: `task` links to `to`
-as `type`, read as `get_task` lists it among the task's `dependencies`:
+as `type`, read as `get_task` lists it among the task's `dependencies`, and
+among `to`'s `dependents`:
 
 | `type` | `task` … `to` |
 |---|---|
@@ -512,6 +536,7 @@ as `type`, read as `get_task` lists it among the task's `dependencies`:
 | `discovered-from` | was found from the work of |
 | `duplicates` | is the same work as, filed later |
 | `supersedes` | replaces |
+| `merges-after` | merges after: `task`'s pull request lands only once `to`'s has. Both stay ready |
 
 A link the pair already has, either way round, is replaced in the same write,
 so changing `blocks` to `related` is one call. `remove: true` removes the
@@ -780,7 +805,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 5.
+field can hold is added. This is version 6.
 
 | Version | Added |
 |---|---|
@@ -789,6 +814,7 @@ field can hold is added. This is version 5.
 | 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 5 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
+| 6 | `dependents` on a task, `touches` among its `work`, and the link type `merges-after` ([above](#linking-two-tasks)) |
 
 | Where | What it holds |
 |---|---|

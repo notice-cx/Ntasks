@@ -8,6 +8,7 @@ import tasksByDuplicateOf from './migrations/0002_tasks_by_duplicate_of.sql';
 import gateSteps from './migrations/0003_gate_steps.sql';
 import closeAcceptance from './migrations/0004_close_acceptance.sql';
 import parentContext from './migrations/0005_parent_context.sql';
+import mergeOrder from './migrations/0006_merge_order.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
@@ -15,6 +16,7 @@ export const MIGRATIONS: readonly { readonly name: string; readonly sql: string 
   { name: '0003_gate_steps', sql: gateSteps },
   { name: '0004_close_acceptance', sql: closeAcceptance },
   { name: '0005_parent_context', sql: parentContext },
+  { name: '0006_merge_order', sql: mergeOrder },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */

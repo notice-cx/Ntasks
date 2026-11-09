@@ -581,6 +581,17 @@ function WorkFacts({ task, nowMs }: { task: LiveTask; nowMs: number }) {
       {line('Commit', work.commit)}
       {line('Worktree', work.worktree)}
       {line('Session', work.session, true)}
+      {work.touches && work.touches.length > 0 ? (
+        <Fact label="Touches" valueText={work.touches.join(', ')} wrap>
+          <ul className="m-0 flex list-none flex-col p-0" data-work-touches="">
+            {work.touches.map((entry) => (
+              <li key={entry} className="nums [overflow-wrap:anywhere]">
+                {entry}
+              </li>
+            ))}
+          </ul>
+        </Fact>
+      ) : null}
     </>
   );
 }

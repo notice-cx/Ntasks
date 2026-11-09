@@ -1,0 +1,11 @@
+{
+  "assignee": "agent:Claude Code",
+  "for": null,
+  "work": {
+    "branch": "split-sign-in",
+    "pr": "https://example.com/web/pull/91",
+    "next": "Rebase after web-a1b2.2 merges",
+    "touches": ["scripts/bundle-baseline.json", "src/pages/sign-in"]
+  },
+  "lastActivityAt": "2026-11-02T11:05:00.000Z"
+}

@@ -3,6 +3,7 @@ export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
 export type { StepMarking } from './steps.ts';
 export { criteriaOf } from './criteria.ts';
+export { overlappingTouches } from './touches.ts';
 export type { Criterion } from './criteria.ts';
 export {
   ACCEPTED_REASON,
@@ -28,6 +29,7 @@ export {
   TASK_RESOLUTIONS,
   TASK_STATUSES,
   TASK_TYPES,
+  TOUCHES_LIMITS,
   WORK_DETAILS,
   WORK_LIMITS,
 } from './task.ts';

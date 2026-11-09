@@ -5,7 +5,7 @@
   "description": "Who holds a task and what the holder recorded about the work in hand. A claim makes the task in_progress and names its holder; only one claim on a task succeeds. Each work detail replaces the one before it, and releasing or closing the task clears them; history keeps every value. Section 3.3 of the protocol.",
   "$defs": {
     "workDetails": {
-      "description": "Only the details the holder recorded. A server keeps these six; a reader ignores any other.",
+      "description": "Only the details the holder recorded. A server keeps these seven; a reader ignores any other.",
       "type": "object",
       "properties": {
         "session": { "description": "A link to, or the id of, the agent session doing the work.", "type": "string", "maxLength": 512 },
@@ -13,7 +13,13 @@
         "branch": { "type": "string", "maxLength": 255 },
         "pr": { "description": "The pull request's URL.", "type": "string", "format": "uri", "pattern": "^https?://", "maxLength": 2048 },
         "commit": { "description": "The commit last tested.", "type": "string", "maxLength": 128 },
-        "next": { "description": "The next step, in one line.", "type": "string", "maxLength": 512 }
+        "next": { "description": "The next step, in one line.", "type": "string", "maxLength": 512 },
+        "touches": {
+          "description": "The files or other things the work changes, such as a path, a folder or a migration number. A claim that records them answers the other held tasks whose touches meet them (STATE-18).",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
       }
     }
   },

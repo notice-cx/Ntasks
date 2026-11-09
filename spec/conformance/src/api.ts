@@ -81,8 +81,10 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly answer?: Answer | null;
   readonly choice?: Readonly<Record<string, unknown>> | null;
   readonly dependencies?: readonly { readonly id: string; readonly type: string }[];
+  /** The links other tasks hold onto this one, each naming the task that holds it. */
+  readonly dependents?: readonly { readonly id: string; readonly type: string }[];
   readonly for?: string | null;
-  readonly work?: Readonly<Record<string, string>> | null;
+  readonly work?: Readonly<Record<string, string | readonly string[]>> | null;
   readonly metadata?: Readonly<Record<string, unknown>> | null;
   readonly createdAt?: string;
   readonly duplicateOf?: string | null;
@@ -146,6 +148,13 @@ export interface ClosedSibling {
   readonly closeLink: string | null;
 }
 
+/** Another held task whose touches meet the ones a claim recorded. */
+export interface Overlap {
+  readonly id: string;
+  readonly touches: readonly string[];
+  readonly mergeOrder: 'after' | 'before' | null;
+}
+
 /** What a task's parent holds for it: its pinned comments and its closed children, with the totals. */
 export interface ParentContext {
   readonly id: string;
@@ -189,6 +198,8 @@ export interface Written {
   readonly commentId?: string;
   /** A claim's answer of the task's parent context, when the binding answers one. */
   readonly parent?: ParentContext | null;
+  /** The other held tasks whose touches meet the ones this write recorded, when the binding answers them. */
+  readonly overlaps?: readonly Overlap[];
   readonly raw: unknown;
 }
 
@@ -199,7 +210,7 @@ export interface WriteOptions {
 
 export type WorkDetails = Partial<
   Readonly<Record<'session' | 'worktree' | 'branch' | 'pr' | 'commit' | 'next', string>>
->;
+> & { readonly touches?: readonly string[] };
 
 export interface Choices {
   readonly question: string;
@@ -247,7 +258,7 @@ export interface Close {
   readonly link?: string;
 }
 
-export type LinkType = 'blocks' | 'related' | 'discovered-from' | 'duplicates' | 'supersedes';
+export type LinkType = 'blocks' | 'related' | 'discovered-from' | 'duplicates' | 'supersedes' | 'merges-after';
 
 /** An answer or a request's maintenance, relayed by a sender other than the person. */
 export interface Relay {

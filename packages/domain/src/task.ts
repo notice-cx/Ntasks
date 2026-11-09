@@ -19,9 +19,17 @@ export type TaskType = (typeof TASK_TYPES)[number];
  * `blocks` keeps the dependent task out of ready work; the others only record
  * a link. A link reads from the task that has it to the other one: web-2
  * `duplicates` web-1, the same work filed again; web-3 `supersedes` web-1,
- * the work that replaces it.
+ * the work that replaces it; web-4 `merges-after` web-1, its pull request
+ * lands only once web-1's has, though both can be worked on at once.
  */
-export const DEPENDENCY_TYPES = ['blocks', 'related', 'discovered-from', 'duplicates', 'supersedes'] as const;
+export const DEPENDENCY_TYPES = [
+  'blocks',
+  'related',
+  'discovered-from',
+  'duplicates',
+  'supersedes',
+  'merges-after',
+] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];
 
 /** What a page outside Ntasks that a task links to is. */
@@ -73,8 +81,12 @@ export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
  */
 export const WORK_DETAILS = ['session', 'worktree', 'branch', 'pr', 'commit', 'next'] as const;
 export type WorkDetail = (typeof WORK_DETAILS)[number];
-/** A task's work details: only those its holder recorded. */
-export type TaskWork = Readonly<Partial<Record<WorkDetail, string>>>;
+/** A task's work details: only those its holder recorded. `touches` lists the
+ * files or other resources the work changes, such as a path or a migration
+ * number, so work in progress that changes the same one can be told apart. */
+export type TaskWork = Readonly<Partial<Record<WorkDetail, string>>> & { readonly touches?: readonly string[] };
+/** The most entries a task's `touches` holds, and the characters of each, one line. */
+export const TOUCHES_LIMITS = Object.freeze({ entries: 16, entry: 200 });
 /** The most characters a new write takes in each work detail, each one line. `pr` is an http or https URL. */
 export const WORK_LIMITS: Readonly<Record<WorkDetail, number>> = Object.freeze({
   session: 512,

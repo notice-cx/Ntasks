@@ -1044,6 +1044,78 @@ describe('claim_task', () => {
     expect(await write(target, 'claim_task', { task: alone.id })).not.toHaveProperty('parent');
   });
 
+  it('lists the other work in progress that touches the same files, never refusing the claim', async () => {
+    const project = await newProject(engine);
+    const elsewhere = await newProject(engine);
+    const holding = async (where: Project, title: string, touches: string[], status: 'in_progress' | 'blocked') => {
+      const held = await task(where, { title });
+      await engine.writeTask(
+        where.id,
+        held.id,
+        {
+          expectedVersion: 1,
+          set: { assignee: AGENT.name, status, work: { pr: 'https://example.com/pull/7', touches } },
+        },
+        AGENT,
+      );
+      return held;
+    };
+    const baseline = await holding(project, 'Shrink the bundle', ['scripts/bundle-baseline.json'], 'in_progress');
+    const migrations = await holding(project, 'Add a column', ['workers/api/src/store/migrations'], 'blocked');
+    await holding(project, 'Rename the header', ['src/header.tsx'], 'in_progress');
+    await holding(elsewhere, 'Same file in another repository', ['scripts/bundle-baseline.json'], 'in_progress');
+    const { id } = await task(project, { title: 'Split the sign-in page' });
+    const touches = ['./scripts/bundle-baseline.json', 'workers/api/src/store/migrations/0007_sign_in.sql'];
+
+    const claimed = await write<{ overlaps: { id: string }[] }>(target, 'claim_task', { task: id, touches });
+    expect(claimed).toMatchObject({ id, status: 'in_progress', assignee: WRITER.name });
+    // Both were filed at the same moment, so either may come first; the check reads them in a fixed order.
+    expect(claimed.overlaps.toSorted((a, b) => (a.id === baseline.id ? -1 : b.id === baseline.id ? 1 : 0))).toEqual([
+      {
+        id: baseline.id,
+        title: 'Shrink the bundle',
+        assignee: AGENT.name,
+        status: 'in_progress',
+        pr: 'https://example.com/pull/7',
+        touches: ['scripts/bundle-baseline.json'],
+        mergeOrder: null,
+      },
+      {
+        id: migrations.id,
+        title: 'Add a column',
+        assignee: AGENT.name,
+        status: 'blocked',
+        pr: 'https://example.com/pull/7',
+        touches: ['workers/api/src/store/migrations'],
+        mergeOrder: null,
+      },
+    ]);
+    expect((await current(project, id)).work.touches).toEqual(touches);
+
+    // Once the order is recorded, the answer says which way it goes.
+    await write(target, 'link_tasks', { task: id, to: baseline.id, type: 'merges-after' });
+    const noted = await write<{ overlaps: { id: string; mergeOrder: string | null }[] }>(target, 'comment_on_task', {
+      task: id,
+      text: 'The baseline changes after the bundle work lands.',
+      touches: ['scripts/bundle-baseline.json'],
+    });
+    expect(noted.overlaps.map(({ id: other, mergeOrder }) => [other, mergeOrder])).toEqual([[baseline.id, 'after']]);
+    expect((await current(project, id)).work.touches).toEqual(['scripts/bundle-baseline.json']);
+
+    // A claim with nothing in common, or with no touches, answers no overlaps; [] takes the list off.
+    const plain = await task(project, { title: 'Write the release notes' });
+    expect(await write(target, 'claim_task', { task: plain.id, touches: ['docs/releases.md'] })).not.toHaveProperty(
+      'overlaps',
+    );
+    expect(await write(target, 'comment_on_task', { task: id, text: 'Moved on.', touches: [] })).not.toHaveProperty(
+      'overlaps',
+    );
+    expect((await current(project, id)).work).not.toHaveProperty('touches');
+    expect(await refusal(target, 'claim_task', { workspace: WORKSPACE.id, task: plain.id, touches: ['a\nb'] })).toBe(
+      'invalid arguments: touches[0] (one line of 1 to 200 characters)',
+    );
+  });
+
   it('answers a retry with the same claim, and refuses the key for a different claim', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
@@ -2050,6 +2122,30 @@ describe('link_tasks', () => {
   const links = async (project: Project, id: string) =>
     (await current(project, id)).dependencies.map((link) => [link.taskId, link.type]);
 
+  it('records which pull request merges first, on both tasks, holding neither out of ready work', async () => {
+    const project = await newProject(engine);
+    const first = await task(project, { title: 'Add the shared header' });
+    const later = await task(project, { title: 'Use the shared header on the pricing page' });
+    expect(await write<Linked>(target, 'link_tasks', { task: later.id, to: first.id, type: 'merges-after' })).toEqual({
+      task: later.id,
+      to: first.id,
+      type: 'merges-after',
+    });
+    const shown = async (id: string) =>
+      (await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: id })).task;
+    const linked = { type: 'merges-after', status: 'open' };
+    expect(await shown(later.id)).toMatchObject({
+      ready: true,
+      dependencies: [{ id: first.id, title: first.title, ...linked }],
+      dependents: [],
+    });
+    expect(await shown(first.id)).toMatchObject({
+      ready: true,
+      dependencies: [],
+      dependents: [{ id: later.id, title: later.title, ...linked }],
+    });
+  });
+
   it('sets the one link between two tasks, changing blocks to related in one call, and removes it', async () => {
     const project = await newProject(engine);
     const blocker = await task(project, { title: 'Blocker' });
@@ -2137,7 +2233,7 @@ describe('link_tasks', () => {
       /^invalid arguments: type /u,
     );
     expect(await refused({ task: id, to: other.id, type: 'depends' })).toBe(
-      'invalid arguments: type (one of blocks, related, discovered-from, duplicates, supersedes)',
+      'invalid arguments: type (one of blocks, related, discovered-from, duplicates, supersedes, merges-after)',
     );
   });
 });

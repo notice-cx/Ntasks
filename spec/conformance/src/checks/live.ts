@@ -220,4 +220,41 @@ export const live: readonly Check[] = [
       same(after.version, before.version + 1, `${epic}'s version after pinning and unpinning`);
     },
   },
+  {
+    id: 'state-18-overlaps-on-claim',
+    rule: 'STATE-18',
+    level: 'live',
+    title:
+      'A claim that records touches is never refused for an overlap, and answers the other held tasks whose touches meet them',
+    async run(context) {
+      if (context.binding !== 'mcp') throw new NotOffered(context.binding, "answer a claim's overlaps");
+      const shared = `conformance/${context.unique('shared')}`;
+      const first = await file(context, {}, 'otherAgent');
+      answered(
+        await context.setup('otherAgent').claim(first, { work: { touches: [`${shared}/baseline.json`] } }),
+        `another agent claiming ${first}`,
+      );
+      const api = context.api();
+      const later = await file(context);
+      const claimed = answered(await api.claim(later, { work: { touches: [`./${shared}/`] } }), `claiming ${later}`);
+      same(claimed.status ?? 'in_progress', 'in_progress', `${later}'s status after a claim that overlaps`);
+      same(
+        (claimed.overlaps ?? [])
+          .filter((overlap) => overlap.id === first)
+          .map((overlap) => [overlap.touches, overlap.mergeOrder]),
+        [[[`${shared}/baseline.json`], null]],
+        `the overlaps ${later}'s claim answers`,
+      );
+      answered(await api.link(later, first, 'merges-after'), `linking ${later} to merge after ${first}`);
+      const noted = answered(
+        await api.comment(later, 'Waiting for the other change to land.', { work: { touches: [shared] } }),
+        `commenting on ${later} with touches`,
+      );
+      same(
+        (noted.overlaps ?? []).filter((overlap) => overlap.id === first).map((overlap) => overlap.mergeOrder),
+        ['after'],
+        `the merge order ${later}'s comment answers`,
+      );
+    },
+  },
 ];

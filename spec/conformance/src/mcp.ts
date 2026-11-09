@@ -8,6 +8,7 @@ import {
   type Api,
   type HistoryEvent,
   type Outcome,
+  type Overlap,
   type ParentContext,
   type Project,
   type Refusal,
@@ -68,6 +69,7 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
     ...('assignee' in value ? { assignee: value.assignee as string | null } : {}),
     ...(typeof value.commentId === 'string' ? { commentId: value.commentId } : {}),
     ...('parent' in value ? { parent: (value.parent ?? null) as ParentContext | null } : {}),
+    ...(Array.isArray(value.overlaps) ? { overlaps: value.overlaps as Overlap[] } : {}),
     raw: value,
   });
 
@@ -75,7 +77,7 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
     idempotency_key: options.key,
     model: options.model,
   });
-  const work = (options: { work?: Record<string, string | undefined>; for?: string } = {}) => ({
+  const work = (options: { work?: Record<string, string | readonly string[] | undefined>; for?: string } = {}) => ({
     ...(options.work ?? {}),
     for: options.for,
   });
