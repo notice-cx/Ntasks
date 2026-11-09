@@ -33,6 +33,11 @@ test('the link check reports each missing page, heading, image and repository fi
       '<a href="/docs/agents#set-up">no such heading</a>',
       '<a href="/docs/missing">no such page</a>',
       '<img src="/assets/board.webp"><img src="/assets/missing.webp">',
+      '<meta property="og:image" content="https://site.example.com/assets/board.webp">',
+      '<meta property="og:image" content="https://site.example.com/missing-social.png">',
+      '<meta content="/missing-twitter.png" name="twitter:image">',
+      '<link rel="icon" href="/missing-favicon.ico">',
+      '<link href="/missing-apple.png" rel="apple-touch-icon">',
       `<a href="${github}/blob/main/README.md#set-up">ok</a>`,
       `<a href="${github}/tree/main/src/">ok</a>`,
       `<a href="${github}/blob/main/README.md#not-a-heading">no such heading</a>`,
@@ -62,6 +67,10 @@ test('the link check reports each missing page, heading, image and repository fi
       `${github}/blob/main/README.md#still-not-a-heading`,
       `${github}/blob/main/missing.md`,
       '/assets/missing.webp',
+      'https://site.example.com/missing-social.png',
+      '/missing-twitter.png',
+      '/missing-favicon.ico',
+      '/missing-apple.png',
     ],
   );
 });

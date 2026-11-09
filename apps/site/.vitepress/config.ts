@@ -4,6 +4,8 @@ import { defineConfig } from 'vitepress';
 import { docsSidebar, pageSummary } from '../lib/docs-index.ts';
 import { docsMarkdownOptions } from '../lib/markdown.ts';
 import { BRANCH, DESCRIPTION, DOCS_BASE, REPOSITORY, SITE_ORIGIN } from '../lib/site.ts';
+import { iconHead, socialHead } from '../lib/social.ts';
+import { docsSchema } from '../lib/discovery.ts';
 
 // The docs: the repository's docs/ folder, rendered in place and served
 // under /docs/ beside the landing page, which vite.config.ts builds into the
@@ -30,11 +32,10 @@ export default defineConfig({
   },
   head: [
     // The landing page's build writes the icons at these paths.
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
-    ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' }],
-    ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
+    ...iconHead,
     ['meta', { property: 'og:site_name', content: 'Ntasks' }],
     ['meta', { property: 'og:type', content: 'website' }],
+    ...socialHead,
   ],
   transformPageData(pageData) {
     const source = readFileSync(`${docsDir}${pageData.relativePath}`, 'utf8');
@@ -49,12 +50,17 @@ export default defineConfig({
     }
   },
   transformHead({ pageData }) {
+    if (pageData.isNotFound) return [['meta', { name: 'robots', content: 'noindex' }]];
     const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
+    const url = `${SITE_ORIGIN}${DOCS_BASE}${path}`;
     return [
       ['link', { rel: 'canonical', href: `${SITE_ORIGIN}${DOCS_BASE}${path}` }],
       ['meta', { property: 'og:title', content: pageData.title || 'Ntasks docs' }],
       ['meta', { property: 'og:description', content: pageData.description }],
       ['meta', { property: 'og:url', content: `${SITE_ORIGIN}${DOCS_BASE}${path}` }],
+      ['meta', { name: 'twitter:title', content: pageData.title || 'Ntasks docs' }],
+      ['meta', { name: 'twitter:description', content: pageData.description }],
+      docsSchema(pageData.title || 'Ntasks docs', pageData.description, url),
     ];
   },
   vite: {

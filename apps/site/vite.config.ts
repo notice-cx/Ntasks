@@ -4,6 +4,8 @@ import { defineConfig, type Plugin } from 'vite';
 import { docsList } from './lib/landing-docs.ts';
 import { inlineMark } from './lib/mark.ts';
 import { DOCS_BASE } from './lib/site.ts';
+import { headHtml, iconHead, socialHead } from './lib/social.ts';
+import { landingSchema, llmsText } from './lib/discovery.ts';
 
 // The landing page, index.html, and the site's 404 page, built into dist/.
 // VitePress then builds the docs into dist/docs/ (.vitepress/config.ts).
@@ -16,7 +18,6 @@ const FIXED = {
   'favicon.svg': 'apps/web/public/brand/notice-icon.svg',
   'favicon-32.png': 'apps/web/public/brand/notice-icon-32.png',
   'apple-touch-icon.png': 'apps/web/public/brand/notice-icon-180.png',
-  'social.webp': 'docs/images/hero-light.webp',
 };
 
 function landing(): Plugin {
@@ -26,9 +27,12 @@ function landing(): Plugin {
       const mark = inlineMark(read('apps/web/public/brand/notice-icon.svg').toString(), 'mark');
       return html
         .replaceAll('<!--mark-->', mark)
+        .replace('<!--social-head-->', headHtml([...socialHead, landingSchema]))
+        .replace('<!--icons-->', headHtml(iconHead))
         .replace('<!--docs-->', docsList(read('docs/index.md').toString(), DOCS_BASE));
     },
     generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'llms.txt', source: llmsText(read('docs/index.md').toString()) });
       for (const [fileName, source] of Object.entries(FIXED)) {
         this.emitFile({ type: 'asset', fileName, source: read(source) });
       }
