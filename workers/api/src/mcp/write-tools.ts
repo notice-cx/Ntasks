@@ -234,7 +234,7 @@ const CARD = Object.freeze({
   additionalProperties: false,
   required: ['valuePerMonth', 'likelihood', 'reviewMinutes', 'daysToSignal', 'measurability'],
   description:
-    'What the work is worth, for work meant to change money. The Tower ranks tasks by it; a task without one is listed, not ranked. ' +
+    'What the work is worth, for work meant to change money. NoticeOS ranks tasks by it; a task without one is listed, not ranked. ' +
     'The server records who wrote it and when.',
   properties: {
     valuePerMonth: {
@@ -351,7 +351,7 @@ const FIELDS = Object.freeze({
 const CHANGE_CLASS = Object.freeze({
   type: 'string',
   enum: TASK_CHANGE_CLASSES,
-  description: 'The kind of change the task makes. The autonomy ladder and the likelihood priors are kept by it.',
+  description: "The kind of change the task makes. NoticeOS's autonomy ladder and likelihood priors are kept by it.",
 });
 /** A new task's fields, for create_task and each entry of create_tasks. */
 const NEW_TASK = Object.freeze({
