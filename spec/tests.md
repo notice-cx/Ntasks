@@ -28,6 +28,7 @@ protocol appears in neither table.
 | STATE-8 | `workers/api/test/api/delivery.test.ts` › "is cleared by a reopen and kept in history, and a close without a commit or pull request has none" |
 | STATE-9 | `workers/api/test/engine/ready.test.ts` › "lists open epics with their children, eligible to close once every child is" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval once, returning the open one when asked the same again" |
+| STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |
 | STATE-10 | `workers/api/test/api/owner-answers.test.ts` › "refuses any relayed answer on a closed approval but the owner’s report, so a person’s approval stays as given" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "closes a decision on the pick, past an open blocker and another holder" |
