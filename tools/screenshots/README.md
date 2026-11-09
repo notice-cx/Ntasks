@@ -1,9 +1,10 @@
 # @ntasks/screenshots
 
-Makes the pictures of the web app in the repository's README and in
+Makes the pictures of the web app, in light and dark, from its invented
+example tasks (`apps/web/src/api/fixture-data.ts`): the still pictures in the
+repository's README, [The web app](../../docs/web-app.md) and
 [the design system](../../docs/design.md), and the animated walkthroughs of
-its features, in light and dark, from the web app's invented example tasks
-(`apps/web/src/api/fixture-data.ts`).
+its features in [The web app](../../docs/web-app.md#walkthroughs).
 
 ```sh
 pnpm screenshots          # every still picture
@@ -24,7 +25,7 @@ It writes WebP files to `docs/images/`:
 | `design-light.webp`, `design-dark.webp` | The design gallery at `/design`, 1440 pixels wide and as tall as the page |
 
 The desktop pictures are 1100 pixels wide so that their text stays readable
-at the 800 pixels the README shows them. They are drawn at 1.5 times their
+at the 800 pixels the README and the docs show them. They are drawn at 1.5 times their
 size, and the phone pictures at twice, so their text stays sharp on a
 high-density screen.
 

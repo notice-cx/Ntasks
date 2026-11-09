@@ -1,6 +1,6 @@
 /**
- * Captures the screenshots of the web app in docs/images/: the README's
- * pictures and the design gallery. It serves the app with its invented tasks
+ * Captures the screenshots of the web app in docs/images/: the pictures in
+ * the README and docs/web-app.md, and the design gallery. It serves the app with its invented tasks
  * (Vite's fixture mode, no API), draws each page in a headless Chrome or
  * Chromium in light and in dark, and writes them as WebP.
  *
@@ -35,7 +35,7 @@ interface Shot {
   address: string;
   width: number;
   height: number;
-  /** Image pixels per page pixel. The README shows a desktop shot 800 pixels wide and the phone shot 320, so 1.5
+  /** Image pixels per page pixel. The docs show a desktop shot 800 pixels wide and the phone shot 320, so 1.5
    * and 2 keep their text sharp on a high-density screen without making the files larger than that needs. */
   scale: number;
   /** An element that is on the page once it has drawn what the shot shows. */
