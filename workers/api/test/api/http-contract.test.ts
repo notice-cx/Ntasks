@@ -8,7 +8,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { API_VERSION, API_VERSION_HEADER, OLDEST_API_VERSION } from '../../src/version.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
-import { Browser, call, connectAgent, meWithToken } from '../access/client.ts';
+import { Browser, call, connectAgent, connectApp, meWithToken } from '../access/client.ts';
 import { standInForGitHub } from '../access/github.ts';
 import RECORD from '../fixtures/http-api.json';
 import { TEST_WORKSPACE } from '../store.ts';
@@ -16,7 +16,9 @@ import { compare, expand, merge, observe, observed, withoutValue, type ContractV
 
 standInForGitHub();
 
-const CONTRACT = merge(RECORD as readonly ContractVersion[]);
+// TypeScript reads each version of the JSON as its own type, which stops
+// overlapping ContractVersion once two versions record different fields.
+const CONTRACT = merge(RECORD as unknown as readonly ContractVersion[]);
 
 /** One answer a route gave. */
 interface Sample {
@@ -272,6 +274,45 @@ async function drive(): Promise<readonly Sample[]> {
   const backups = (await service({ name: 'Backups', backup: true })).service as { id: string };
   await as('POST /api/access/services/:id/revoke', `/api/access/services/${backups.id}/revoke`, {});
   await as('GET /api/access/services', '/api/access/services');
+
+  // A connected app: the owner registers it, signs in through it and picks an option with its token.
+  const registered = (
+    await as('POST /api/access/apps', '/api/access/apps', {
+      name: 'Example Tower',
+      redirectUris: ['https://tower.example.com/tasks/signed-in'],
+    })
+  ).app as { clientId: string };
+  const app = { clientId: registered.clientId, redirect: 'https://tower.example.com/tasks/signed-in' };
+  const { access_token: appToken } = await connectApp(owner, app);
+  await keep(samples, 'GET /api/access/me', '/api/access/me', await meWithToken(appToken));
+  const picked = (
+    await tool(owner, 'create_task', {
+      project: projectId,
+      title: 'Pick the image',
+      labels: ['human'],
+      choices: {
+        question: 'Which image?',
+        options: [
+          { key: 'a', label: 'The photo', recommended: true },
+          { key: 'b', label: 'The drawing' },
+        ],
+      },
+    })
+  ).id as string;
+  const fromApp = await call(task(picked, '/choose'), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${appToken}`,
+      'content-type': 'application/json',
+      [WORKSPACE_HEADER]: TEST_WORKSPACE.id,
+    },
+    body: JSON.stringify(inProject({ option: 'b', note: 'Clearer.' })),
+  });
+  await keep(samples, 'POST /api/tasks/:id/choose', task(picked, '/choose'), fromApp);
+  await as('GET /api/tasks/:id', `${task(picked)}?project=${projectId}`);
+  await as('GET /api/access/apps', '/api/access/apps');
+  await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
+  await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});
   return samples;
 }
 

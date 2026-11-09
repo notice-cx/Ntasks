@@ -1,8 +1,9 @@
 /**
  * Every sign-in path the Worker answers: OAuth discovery, the Better Auth
- * routes MCP clients and browsers use, the setup, sign-in and agent approval
- * pages, a person's routes for listing and revoking their agents, an owner's
- * routes for a workspace's members, invitations and service credentials, and
+ * routes MCP clients and browsers use, the setup, sign-in and approval
+ * pages, a person's routes for listing and revoking their agents and
+ * connected apps, an owner's routes for a workspace's members, invitations,
+ * service credentials and connected apps, and
  * the workspace routes, which read and write D1 beside sign-in. Every path
  * here is in wrangler.jsonc's run_worker_first.
  */
@@ -34,8 +35,10 @@ import {
   workspaceNameOf,
 } from './grants.ts';
 import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
+import { appRegistrationOf, clientOf, isAppOf, listApps, markApp, removeApp } from './apps.ts';
 import {
   agentAccessPage,
+  appAccessPage,
   AUTH_SECRET_FIELD,
   expiredPage,
   manifestPage,
@@ -45,10 +48,12 @@ import {
   signInPage,
   type WorkspaceProjects,
 } from './pages.ts';
-import type { PersonPrincipal, Principal } from './principal.ts';
+import { ownSession, type PersonPrincipal, type Principal } from './principal.ts';
 import {
   AGENT_ACCESS_PAGE,
+  APP_SCOPES,
   AUTH_BASE_PATH,
+  OFFLINE_ACCESS,
   AUTHORIZATION_SERVER_METADATA_PATHS,
   PROTECTED_RESOURCE_METADATA_PATH,
   PUBLIC_AUTH_ROUTES,
@@ -269,9 +274,10 @@ async function signedQuery(query: string, config: SignInConfig): Promise<string 
   return (await verifyOAuthQueryParams(query, config.secret)) ? query : null;
 }
 
-/** The person, when a browser session signed the request in; null for an agent, a service or a refusal. */
+/** The person, when their own browser session signed the request in; null for
+ * a connected app, an agent, a service or a refusal. */
 function personOf(verification: Verification): PersonPrincipal | null {
-  return verification.ok && verification.principal.kind === 'person' ? verification.principal : null;
+  return verification.ok && ownSession(verification.principal) ? verification.principal : null;
 }
 
 /** A form post from one of this Worker's pages must come from this origin. */
@@ -446,7 +452,16 @@ async function signInGet(request: Request, env: AccessEnv, config: SignInConfig,
   const oauthQuery = await signedQuery(query, config);
   if (new URLSearchParams(query).has('sig') && oauthQuery === null) return expiredPage();
   const person = personOf(await verifyRequest(request, env));
-  return signInPage({ signedInAs: person?.name ?? null, oauthQuery, error: url.searchParams.get('error') });
+  // A connected app's name is its owner's choice, so the page names it; an
+  // agent names itself, and the approval page shows where it returns to.
+  const client =
+    oauthQuery === null ? null : await clientOf(env.DB, new URLSearchParams(oauthQuery).get('client_id') ?? '');
+  return signInPage({
+    signedInAs: person?.name ?? null,
+    oauthQuery,
+    error: url.searchParams.get('error'),
+    app: client?.app ? client.name : null,
+  });
 }
 
 /** The sign-in page's buttons, from this origin only: Sign in with GitHub, or Sign out. */
@@ -489,13 +504,8 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
     });
   const params = new URLSearchParams(oauthQuery);
   const clientId = params.get('client_id') ?? '';
-  const client = await env.DB.prepare(
-    'SELECT name, uri FROM auth_oauth_client WHERE client_id = ? AND coalesce(disabled, 0) = 0',
-  )
-    .bind(clientId)
-    .first<{ name: string | null; uri: string | null }>();
+  const client = await clientOf(env.DB, clientId);
   if (!client) return expiredPage();
-  const access = scopeAccess((params.get('scope') ?? '').split(' '));
   let returnsTo: string;
   try {
     // A native app's own scheme, such as myapp://callback, has no web origin.
@@ -504,6 +514,29 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   } catch {
     return expiredPage();
   }
+  const scopes = (params.get('scope') ?? '').split(' ');
+  if (client.app) {
+    const { workspaceId, workspaceName } = client.app;
+    const member = person.memberships.some(({ workspace }) => workspace.id === workspaceId);
+    const words = appAccessWords(scopes);
+    const show = (error: string | null) =>
+      appAccessPage({
+        personName: person.name,
+        app: { name: client.name ?? clientId, uri: client.uri },
+        workspaceName: workspaceName ?? workspaceId,
+        access: words,
+        member,
+        returnsTo,
+        oauthQuery,
+        error,
+      });
+    if (!form) return show(null);
+    const decision = form.get('decision');
+    if (decision !== 'allow' && decision !== 'deny') return show('Choose Allow or Deny.');
+    if (decision === 'allow' && (!member || words === null)) return show(null);
+    return answerConsent(request, env, config, oauthQuery, decision === 'allow');
+  }
+  const access = scopeAccess(scopes);
   // One store read for each workspace the person belongs to.
   const workspaces: WorkspaceProjects[] = await Promise.all(
     reachesOf(person).map(async ({ workspace }) => ({
@@ -542,15 +575,38 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   } else if (form.get('decision') !== 'deny') {
     return show('Choose Allow or Deny.');
   }
+  return answerConsent(request, env, config, oauthQuery, form.get('decision') === 'allow');
+}
+
+/** Records the person's Allow or Deny with the library, and sends the browser back to the client. */
+async function answerConsent(
+  request: Request,
+  env: AccessEnv,
+  config: SignInConfig,
+  oauthQuery: string,
+  accept: boolean,
+): Promise<Response> {
   // Built only once it is used: building starts database reads that must
   // finish before the response does.
   const response = await callLibrary(createAuth(env.DB, config), config, request, `${AUTH_BASE_PATH}/oauth2/consent`, {
-    accept: form.get('decision') === 'allow',
+    accept,
     oauth_query: oauthQuery,
   });
   const location = await nextUrl(response);
   if (location === null) return expiredPage();
   return redirectWithCookies(location, response);
+}
+
+/** What a connected app's scopes let it do as the person, in words; null when they let it do nothing with tasks. */
+function appAccessWords(scopes: readonly string[]): string | null {
+  const tasks = scopeAccess(scopes);
+  const parts = [
+    ...(tasks === 'write' ? ['Read and change tasks'] : tasks === 'read' ? ['Read tasks'] : []),
+    ...(scopes.includes(SCOPES.decide) ? ['answer decisions and approve approvals'] : []),
+  ];
+  if (parts.length === 0) return null;
+  const words = parts.join(', ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** A JSON object body, of at most BODY_BYTES, or the sentence that refuses it; `what` names it. */
@@ -592,7 +648,7 @@ async function workspacesApi(request: Request, env: AccessEnv): Promise<Response
   if (request.method === 'GET') return json({ workspaces: reachesOf(principal).map(listedWorkspace) }, 200);
   if (request.method === 'PATCH') return await renameApi(request, env, principal);
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, POST, PATCH' });
-  if (principal.kind !== 'person' || !principal.admin) {
+  if (!ownSession(principal) || !principal.admin) {
     return json({ error: 'admin_only', detail: 'only a deployment admin may create a workspace' }, 403);
   }
   const body = await jsonBody(request, 'workspace');
@@ -665,12 +721,14 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
     return json(describe(principal), 200);
   }
-  // Managing access is a person's own act, never an agent's or a service's.
-  if (principal.kind !== 'person') {
+  // Managing access is a person's own act in their own browser, never an
+  // agent's, a service's or a connected app's.
+  if (!ownSession(principal)) {
     return json(
       {
         error: 'owner_only',
-        detail: 'only a person signed in in their browser may manage access, not an agent or a service',
+        detail:
+          'only a person signed in in their browser may manage access, not an agent, a service or a connected app',
       },
       403,
     );
@@ -679,10 +737,14 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     return json({ agents: await listAgents(env.DB, principal.userId) }, 200);
   const agent = /^\/agents\/([A-Za-z0-9_-]{1,255})\/revoke$/u.exec(path);
   if (agent?.[1] && request.method === 'POST') {
-    if (!(await revokeAgent(env.DB, principal.userId, agent[1])))
+    // A connected app is revoked from its workspace's list of apps.
+    const client = await clientOf(env.DB, agent[1]);
+    if (client?.app || !(await revokeAgent(env.DB, principal.userId, agent[1])))
       throw new AccessRefused('not_found', 'no such connected agent');
     return json({ revoked: true }, 200);
   }
+  const apps = await appsApi(request, env, principal, path);
+  if (apps) return apps;
   const members = await membersApi(request, env, principal, path);
   if (members) return members;
   const service = /^\/services\/([0-9a-f-]{36})\/revoke$/u.exec(path);
@@ -709,6 +771,78 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
     createdBy: principal.userId,
   });
   return json({ service: created }, 201);
+}
+
+/**
+ * The connected-app routes of the request's workspace: GET /apps lists its
+ * apps for any member, each with whether they signed in to it, and POST
+ * /apps/<client id>/revoke ends their own sign-in to one. An owner registers
+ * an app with POST /apps and removes one for everyone with POST
+ * /apps/<client id>/remove. Null for any other path.
+ */
+async function appsApi(
+  request: Request,
+  env: AccessEnv,
+  principal: PersonPrincipal,
+  path: string,
+): Promise<Response | null> {
+  const post = request.method === 'POST';
+  const list = path === '/apps' && request.method === 'GET';
+  const register = path === '/apps' && post;
+  const action = post ? /^\/apps\/([A-Za-z0-9_-]{1,255})\/(revoke|remove)$/u.exec(path) : null;
+  if (!list && !register && !action) return null;
+  const chosen = chooseWorkspace(reachesOf(principal), request.headers.get(WORKSPACE_HEADER));
+  if ('refused' in chosen) return chosen.refused;
+  const workspaceId = chosen.reach.workspace.id;
+  if (list) return json({ apps: await listApps(env.DB, workspaceId, principal.userId) }, 200);
+  const clientId = action?.[1] ?? '';
+  if (action?.[2] === 'revoke') {
+    const revoked =
+      (await isAppOf(env.DB, workspaceId, clientId)) && (await revokeAgent(env.DB, principal.userId, clientId));
+    if (!revoked) return json({ error: 'not_found', detail: 'you are not signed in to such an app here' }, 404);
+    return json({ revoked: true }, 200);
+  }
+  if (chosen.reach.role !== 'owner') {
+    return json({ error: 'owner_only', detail: 'only an owner of this workspace may manage its apps' }, 403);
+  }
+  if (action) {
+    if (!(await removeApp(env.DB, workspaceId, clientId))) {
+      return json({ error: 'not_found', detail: 'this workspace has no such app' }, 404);
+    }
+    return json({ removed: true }, 200);
+  }
+  const body = await jsonBody(request, 'app');
+  if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+  const app = appRegistrationOf(body);
+  if ('detail' in app) return json({ error: 'invalid_request', ...app }, 400);
+  const signIn = await loadSignIn(env);
+  if (signIn.state !== 'on') return notConfigured(env);
+  // The library creates the client as the owner's own, with the token
+  // settings every client shares; it never takes a reference id from a
+  // request, so marking it as this workspace's app is Ntasks's own write.
+  const created: unknown = await createAuth(env.DB, signIn.config).api.adminCreateOAuthClient({
+    headers: request.headers,
+    body: {
+      client_name: app.name,
+      redirect_uris: [...app.redirectUris],
+      application_type: app.applicationType,
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      scope: [...APP_SCOPES, OFFLINE_ACCESS].join(' '),
+      require_pkce: true,
+      skip_consent: false,
+    },
+  });
+  const newId = isRecord(created) && typeof created.client_id === 'string' ? created.client_id : null;
+  if (newId === null) return json({ error: 'internal_error' }, 500);
+  await markApp(env.DB, newId, workspaceId);
+  const [listed] = (await listApps(env.DB, workspaceId, principal.userId)).filter((entry) => entry.clientId === newId);
+  return json({ app: listed }, 201);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -789,7 +923,8 @@ async function membersApi(
  * What GET /api/access/me answers: the sender's kind and name, whether it is
  * a deployment admin, and its projects: `all` for a person, who reaches every
  * project of their workspaces, or each project an agent or a service was
- * granted, with its workspace.
+ * granted, with its workspace. Through a connected app, `app` names the app,
+ * its one workspace and the scopes the person holds there through it.
  */
 function describe(principal: Principal): Record<string, unknown> {
   const deploymentAdmin = principal.kind === 'person' && principal.admin;
@@ -801,5 +936,18 @@ function describe(principal: Principal): Record<string, unknown> {
             ? []
             : [...granted].map(([projectId, access]) => ({ workspaceId: workspace.id, projectId, access })),
         );
-  return { kind: principal.kind, name: principal.name, deploymentAdmin, projects };
+  const through = principal.kind === 'person' ? principal.app : undefined;
+  const [reach] = through === undefined ? [] : reachesOf(principal);
+  const app =
+    through === undefined || reach === undefined
+      ? {}
+      : {
+          app: {
+            clientId: through.clientId,
+            name: through.name,
+            workspaceId: reach.workspace.id,
+            scopes: reach.scopes,
+          },
+        };
+  return { kind: principal.kind, name: principal.name, deploymentAdmin, projects, ...app };
 }

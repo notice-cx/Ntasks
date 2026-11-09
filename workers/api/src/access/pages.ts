@@ -1,6 +1,6 @@
 /**
  * The pages the Worker serves itself: setting sign-in up, signing in,
- * approving an AI agent, and a link that expired. They are plain HTML forms
+ * approving an AI agent or a connected app, and a link that expired. They are plain HTML forms
  * with no script, so they work before the web app loads and hold nothing an
  * agent could read; the one exception is the step that sends the setup's
  * manifest to GitHub, which submits its own form with one inline script and
@@ -13,7 +13,7 @@ import type { ProjectAccess } from './principal.ts';
 
 /** The owner's sign-in page. It is also the OAuth login page. */
 export const SIGN_IN_PAGE = '/sign-in';
-/** The page where a person approves or denies an agent and picks its projects. */
+/** The page where a person approves or denies an agent and picks its projects, or allows or denies a connected app. */
 export const AGENT_ACCESS_PAGE = '/agent-access';
 
 /** AGPL-3.0 section 13: people who use Ntasks over a network can get its source. */
@@ -84,12 +84,14 @@ function signInError(code: string | null): string | null {
 
 /**
  * The sign-in page: who is signed in, with Sign out, or the Sign in with
- * GitHub button, which carries an agent's signed OAuth query when there is one.
+ * GitHub button, which carries an agent's or a connected app's signed OAuth
+ * query when there is one. `app` names the connected app that asks.
  */
 export function signInPage(input: {
   readonly signedInAs: string | null;
   readonly oauthQuery: string | null;
   readonly error: string | null;
+  readonly app?: string | null;
 }): Response {
   const error = alert(signInError(input.error));
   if (input.signedInAs !== null && input.oauthQuery === null) {
@@ -104,7 +106,12 @@ ${error}
 </form>`,
     );
   }
-  const agent = input.oauthQuery === null ? '' : '<p class="sub">An agent asks to connect</p>';
+  const agent =
+    input.oauthQuery === null
+      ? ''
+      : input.app
+        ? `<p class="sub">${escape(input.app)} asks you to sign in</p>`
+        : '<p class="sub">An agent asks to connect</p>';
   const query =
     input.oauthQuery === null ? '' : `<input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">`;
   return page(
@@ -256,6 +263,49 @@ ${projects}
 <div class="actions">
 <button type="submit" name="decision" value="deny" class="button secondary">Deny</button>
 ${choosing ? '<button type="submit" name="decision" value="allow" class="button primary">Allow</button>' : ''}
+</div>
+</form>`,
+  );
+}
+
+/**
+ * The page where a person allows or denies a connected app: which app, the
+ * workspace it acts in as them, what it may do there, and where the answer
+ * goes. Allow is left out when the person is not a member of the app's
+ * workspace or the app asked for no access to tasks.
+ */
+export function appAccessPage(input: {
+  readonly personName: string;
+  readonly app: { readonly name: string; readonly uri: string | null };
+  readonly workspaceName: string;
+  /** What the app's scopes let it do, in words, or null when they let it do nothing with tasks. */
+  readonly access: string | null;
+  /** Whether the person is a member of the app's workspace. */
+  readonly member: boolean;
+  readonly returnsTo: string;
+  readonly oauthQuery: string;
+  readonly error: string | null;
+}): Response {
+  const from = input.app.uri ? ` <span class="quiet">${escape(input.app.uri)}</span>` : '';
+  const error = input.member ? input.error : `You are not a member of ${input.workspaceName}.`;
+  const allowing = input.member && input.access !== null;
+  return page(
+    'Allow an app',
+    `<h1>Allow ${escape(input.app.name)} to act as you?</h1>
+<p class="sub">It works in ${escape(input.workspaceName)} under your name: its changes and decisions are recorded as yours.</p>
+${alert(error)}
+<dl>
+<dt>App</dt><dd>${escape(input.app.name)}${from}</dd>
+<dt>Workspace</dt><dd>${escape(input.workspaceName)}</dd>
+<dt>Access</dt><dd>${input.access === null ? '<span class="quiet">None</span>' : escape(input.access)}</dd>
+<dt>Account</dt><dd>${escape(input.personName)}</dd>
+<dt>Returns to</dt><dd>${escape(input.returnsTo)}</dd>
+</dl>
+<form method="post" action="${AGENT_ACCESS_PAGE}">
+<input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">
+<div class="actions">
+<button type="submit" name="decision" value="deny" class="button secondary">Deny</button>
+${allowing ? '<button type="submit" name="decision" value="allow" class="button primary">Allow</button>' : ''}
 </div>
 </form>`,
   );

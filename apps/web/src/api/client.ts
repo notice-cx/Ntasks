@@ -22,9 +22,11 @@ import type {
   Account,
   ChangesPage,
   CloseOptions,
+  ConnectedApp,
   FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
+  NewApp,
   NewInvitation,
   NewProject,
   NewTask,
@@ -122,6 +124,14 @@ export interface TasksApi {
   invite(input: NewInvitation, options?: WriteOptions): Promise<void>;
   revokeInvitation(invitationId: string, options?: WriteOptions): Promise<void>;
   removeMember(userId: string, options?: WriteOptions): Promise<void>;
+  /** The workspace's connected apps, each with whether the person signed in to it. */
+  apps(signal?: AbortSignal): Promise<ConnectedApp[]>;
+  /** Register an app that acts as whoever signs in to it; only the workspace's owners may. */
+  registerApp(input: NewApp, options?: WriteOptions): Promise<ConnectedApp>;
+  /** End the person's own sign-in to an app: its tokens stop working at once. */
+  revokeApp(clientId: string): Promise<void>;
+  /** Remove an app for everyone; only the workspace's owners may. */
+  removeApp(clientId: string): Promise<void>;
 }
 
 /** The calls made in one workspace. */
@@ -346,6 +356,26 @@ function readMembers(payload: unknown): WorkspaceMembers {
   };
 }
 
+function readApp(row: unknown, unreadable: string): ConnectedApp {
+  if (!isRecord(row) || typeof row.clientId !== 'string' || typeof row.name !== 'string')
+    throw new UnreadableAnswer(unreadable);
+  return {
+    clientId: row.clientId,
+    name: row.name,
+    redirectUris: Array.isArray(row.redirectUris)
+      ? row.redirectUris.filter((uri): uri is string => typeof uri === 'string')
+      : [],
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : null,
+    connectedAt: typeof row.connectedAt === 'string' ? row.connectedAt : null,
+  };
+}
+
+function readApps(payload: unknown): ConnectedApp[] {
+  const unreadable = 'The app list could not be read.';
+  if (!isRecord(payload) || !Array.isArray(payload.apps)) throw new UnreadableAnswer(unreadable);
+  return payload.apps.map((row: unknown) => readApp(row, unreadable));
+}
+
 /** Waits for `promise`, or stops waiting when `signal` aborts. The promise
  * itself runs on, so a cancelled caller never fails its other waiters. */
 function until<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -469,6 +499,10 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     invite: (input, options) => scope().invite(input, options),
     revokeInvitation: (invitationId, options) => scope().revokeInvitation(invitationId, options),
     removeMember: (userId, options) => scope().removeMember(userId, options),
+    apps: (signal) => scope().apps(signal),
+    registerApp: (input, options) => scope().registerApp(input, options),
+    revokeApp: (clientId) => scope().revokeApp(clientId),
+    removeApp: (clientId) => scope().removeApp(clientId),
   };
 }
 
@@ -661,6 +695,21 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     async removeMember(userId, options) {
       const path = `/api/access/members/${encodeURIComponent(userId)}/remove`;
       await write('POST', path, {}, 'The member', options);
+    },
+    async apps(signal) {
+      return readApps(await read<unknown>('/api/access/apps', 'The app list', signal));
+    },
+    async registerApp({ name, redirectUris }, options) {
+      const response = await write('POST', '/api/access/apps', { name, redirectUris }, 'The app', options);
+      const unreadable = 'The app was registered, but the answer could not be read.';
+      const answer = await answerJson(response, unreadable);
+      return readApp(isRecord(answer) ? answer.app : null, unreadable);
+    },
+    async revokeApp(clientId) {
+      await write('POST', `/api/access/apps/${encodeURIComponent(clientId)}/revoke`, {}, 'The app');
+    },
+    async removeApp(clientId) {
+      await write('POST', `/api/access/apps/${encodeURIComponent(clientId)}/remove`, {}, 'The app');
     },
   };
 }

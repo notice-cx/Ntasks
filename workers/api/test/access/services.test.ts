@@ -213,7 +213,7 @@ describe('a service credential', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
       error: 'owner_only',
-      detail: 'only a person signed in in their browser may manage access, not an agent or a service',
+      detail: 'only a person signed in in their browser may manage access, not an agent, a service or a connected app',
     });
   });
 });
