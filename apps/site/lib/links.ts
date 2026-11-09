@@ -58,13 +58,15 @@ function served(distDir: string, path: string): string | undefined {
 function markdownHeadings(markdown: string): Set<string> {
   const seen = new Map<string, number>();
   const slugs = new Set<string>();
-  // The open code block's fence. As in CommonMark, only a run of the same
+  // The open code block's fence. As in CommonMark, a backtick fence whose
+  // info string holds a backtick opens nothing, and only a run of the same
   // character, at least as long, with nothing after it, closes the block.
   let fence: { char: string; length: number } | undefined;
   for (const line of markdown.split('\n')) {
     const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     const run = marker?.[1] ?? '';
-    if (marker && !fence) {
+    const opens = marker && !(run.startsWith('`') && marker[2]?.includes('`'));
+    if (opens && !fence) {
       fence = { char: run.charAt(0), length: run.length };
       continue;
     }

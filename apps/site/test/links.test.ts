@@ -16,7 +16,7 @@ test('the link check reports each missing page, heading, image and repository fi
 
   write(
     'repo/README.md',
-    '# Repo\n\n## Set up\n\n```sh\n# not a heading\n```\n\n````md\n```sh\n# still not a heading\n```\n````\n\n## After the example\n',
+    '# Repo\n\n## Set up\n\n```sh\n# not a heading\n```\n\n````md\n```sh\n# still not a heading\n```\n````\n\n## After the example\n\n```js`not a fence\n\n## Under a line that opens nothing\n',
   );
   write('repo/src/index.ts', '');
   write('dist/assets/board.webp', '');
@@ -38,6 +38,7 @@ test('the link check reports each missing page, heading, image and repository fi
       `<a href="${github}/blob/main/README.md#not-a-heading">no such heading</a>`,
       `<a href="${github}/blob/main/README.md#still-not-a-heading">no such heading</a>`,
       `<a href="${github}/blob/main/README.md#after-the-example">ok</a>`,
+      `<a href="${github}/blob/main/README.md#under-a-line-that-opens-nothing">ok</a>`,
       `<a href="${github}/blob/main/missing.md">no such file</a>`,
       '<a href="https://example.com/elsewhere">not checked</a>',
       '<a href="mailto:someone@example.com">not checked</a>',
