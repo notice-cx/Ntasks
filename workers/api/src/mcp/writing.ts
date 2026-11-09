@@ -167,7 +167,8 @@ export function namesPlaceToAct(description: string): boolean {
 
 /**
  * Advice on an ask to a person, an approval or a task labelled human, that
- * names no place to act. A task with choices has one: a button per option.
+ * names no place to act. A task with choices has one, a button per option,
+ * and so does a request to do steps: a tick per step.
  */
 export function placeAdvice(task: {
   readonly id: string;
@@ -175,9 +176,10 @@ export function placeAdvice(task: {
   readonly labels: readonly string[];
   readonly description: string;
   readonly choices: unknown;
+  readonly steps?: readonly unknown[] | null;
 }): readonly string[] {
   const asks = task.type === 'gate' || task.labels.includes('human');
-  if (!asks || task.choices || namesPlaceToAct(task.description)) return [];
+  if (!asks || task.choices || (task.steps?.length ?? 0) > 0 || namesPlaceToAct(task.description)) return [];
   return [
     task.type === 'gate'
       ? `description: it names no place to act; say where the person answers, such as "press Approve on this task" (its page in Ntasks is /tasks/${task.id}), with a link to what the approval covers.`

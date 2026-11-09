@@ -10,6 +10,7 @@
 import {
   TASK_LIMITS,
   TaskRefused,
+  type ActionRequest,
   type Actor,
   type ApprovalRequest,
   type CreateTaskInput,
@@ -735,6 +736,13 @@ export async function closeTask(
       );
     }
     const gates = await openGates(context, project, current);
+    if (gates.length > 0 && gates.every((gate) => gate.steps !== null)) {
+      const named = listed(gates.map((gate) => gate.id));
+      throw refused(
+        `refused: ${id} waits on ${named}, steps a person is asked to do, which are still open. ${id} is ready again once they tick the last step; record their report that they did them with reconcile_task action owner_performed.`,
+        `${id} waits on ${named}. Tick each step first.`,
+      );
+    }
     if (gates.length > 0) {
       const named = listed(gates.map((gate) => gate.id));
       throw refused(
@@ -995,6 +1003,53 @@ export async function requestApproval(
         project.id,
         task.id,
         { expectedVersion: task.version, requestApproval: request },
+        actor,
+      );
+      return { gate: created[0]!, created: true };
+    } catch (error) {
+      if (!(error instanceof TaskRefused) || error.refusal !== 'version_conflict') throw fromEngine(error);
+      task = await taskOf(context, project, task.id);
+    }
+  }
+  throw unavailable(false);
+}
+
+/** Whether an open gate already asks for these steps: the same title and the same steps in order. */
+function asksForSteps(gate: Task, request: ActionRequest): boolean {
+  const steps = gate.steps;
+  return (
+    steps !== null &&
+    gate.title === request.title &&
+    steps.length === request.steps.length &&
+    steps.every(
+      (step, index) =>
+        step.text === request.steps[index]!.text && step.command === (request.steps[index]!.command ?? null),
+    )
+  );
+}
+
+/** Opens a request that a person do steps, which the task waits on until
+ * they tick every one, or returns the open one already asking for the same
+ * steps, so a repeated request never asks a person twice. */
+export async function requestAction(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  request: ActionRequest,
+  model?: string,
+): Promise<{ readonly gate: Task; readonly created: boolean }> {
+  const project = await projectOf(context, projectId, 'write');
+  let task = await taskOf(context, project, taskId);
+  const actor = actorOf(context.principal, model);
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    if (task.status === 'closed') throw closedRefusal(task.id);
+    const open = (await openGates(context, project, task)).find((gate) => asksForSteps(gate, request));
+    if (open !== undefined) return { gate: open, created: false };
+    try {
+      const { created } = await context.engine.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: task.version, requestAction: request },
         actor,
       );
       return { gate: created[0]!, created: true };

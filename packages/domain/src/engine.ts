@@ -32,6 +32,7 @@ import type {
   TaskEvent,
   TaskResolution,
   TaskStatus,
+  TaskStep,
   TaskType,
   TaskWork,
 } from './task.ts';
@@ -95,6 +96,20 @@ export interface NewTaskLink {
 export interface ApprovalRequest {
   readonly reason: string;
   readonly title?: string;
+}
+
+/** A step of a new request that a person do steps: its text, and the command it runs when it runs one. */
+export interface NewTaskStep {
+  readonly text: string;
+  readonly command?: string;
+}
+
+/** A request that a person do steps, to open: the gate's title, its context
+ * in Markdown as its description, and its steps in order. */
+export interface ActionRequest {
+  readonly title: string;
+  readonly context: string;
+  readonly steps: readonly NewTaskStep[];
 }
 
 /** A link to a page outside Ntasks, as a write gives it. */
@@ -171,6 +186,9 @@ export interface TaskFieldChanges {
   readonly choices?: JsonObject | null;
   /** A person's pick of one of the task's choices. */
   readonly choice?: JsonObject | null;
+  /** A person's marks on a request's steps, as the whole list. Only a gate
+   * that asks for steps has them, and each step keeps its text and command. */
+  readonly steps?: readonly TaskStep[];
 }
 
 /**
@@ -203,6 +221,10 @@ export interface TaskWrite {
   /** Opens an approval: a gate task that this task waits on until a person
    * answers it. The new gate's id is in the result's `created`. */
   readonly requestApproval?: ApprovalRequest;
+  /** Opens a request that a person do steps: a gate this task waits on until
+   * they tick every step. Not with `requestApproval`. The new gate's id is in
+   * the result's `created`. */
+  readonly requestAction?: ActionRequest;
   /** Closes the task, recording the actor as the closer. Refused on a task
    * that is already closed. A close as done with a commit or a pull request
    * URL starts the task's delivery at built. */
@@ -232,7 +254,7 @@ export interface TaskWrite {
  * `version_conflict` when the task moved since. One that only adds a comment
  * leaves the task's version as it is, as `addComment` does.
  */
-export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'others'> {
+export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'requestAction' | 'others'> {
   readonly taskId: string;
 }
 

@@ -333,8 +333,8 @@ export function taskPath(pathname: string): { readonly taskId: string; readonly 
   return { taskId: match[1]!, part: (match[2] as TaskPart | undefined) ?? null };
 }
 
-/** The gate id in /api/gates/:id/resolve, or null for another path. */
-export function gatePath(pathname: string): string | null {
-  const match = /^\/api\/gates\/([^/]+)\/resolve$/u.exec(pathname);
-  return match && isTaskId(match[1]) ? match[1]! : null;
+/** The gate id and route in /api/gates/:id/resolve or /api/gates/:id/steps, or null for another path. */
+export function gatePath(pathname: string): { readonly gateId: string; readonly part: 'resolve' | 'steps' } | null {
+  const match = /^\/api\/gates\/([^/]+)\/(resolve|steps)$/u.exec(pathname);
+  return match && isTaskId(match[1]) ? { gateId: match[1]!, part: match[2] as 'resolve' | 'steps' } : null;
 }

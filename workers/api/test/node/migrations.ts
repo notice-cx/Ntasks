@@ -109,3 +109,35 @@ test('every later migration applies to a store that holds rows, and keeps them',
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
   db.close();
 });
+
+test('a store that holds tasks and approvals takes steps only on a gate', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0003_gate_steps.sql');
+  assert.ok(index > 0, 'the steps migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  insert(db, 'tasks', {
+    id: 'web-g1',
+    project_id: 'p1',
+    type: 'gate',
+    await_type: 'human',
+    status: 'open',
+    priority: 2,
+    title: 'Approve the deploy',
+    created_at: AT,
+    updated_at: AT,
+  });
+
+  migrated(db, FILES.slice(index));
+
+  const steps = db.prepare('SELECT id, steps FROM tasks ORDER BY id').all();
+  assert.ok(steps.length > 0 && steps.every((row) => row.steps === null), 'every task it held has no steps');
+  const asked = JSON.stringify([{ text: 'Run it.', command: null, done: null, note: null, stuck: null }]);
+  const set = (id: string, value: string) =>
+    db.prepare('UPDATE tasks SET steps = ?, version = version + 1 WHERE id = ?').run(value, id);
+  set('web-g1', asked);
+  assert.throws(() => set('web-b2', asked), /CHECK constraint/u);
+  assert.throws(() => set('web-g1', '[]'), /CHECK constraint/u);
+  db.close();
+});

@@ -53,7 +53,7 @@ list, and four failures recur:
 | Failure | What this protocol does about it |
 |---|---|
 | An agent says work is done and nothing shows it. | A close as done carries its proof: a commit, a pull request or a link. A task closed as done without one is shown as having no proof ([INV-7](#inv-7)). A commit or pull request then moves through built, merged and live as the repository reports it ([STATE-12](#state-12)). |
-| An agent approves its own action, or stretches a person's earlier yes. | Only a person answers a decision or grants an approval ([AUTH-1](#auth-1)). An answer an agent passes on is recorded as relayed, pinned to the exact text the person saw, and can be disputed ([AUTH-3](#auth-3), [AUTH-5](#auth-5)). An approval covers its own request and nothing else, and retiring one grants nothing ([AUTH-6](#auth-6), [AUTH-7](#auth-7)). |
+| An agent approves its own action, or stretches a person's earlier yes. | Only a person answers a decision, grants an approval or ticks a step ([AUTH-1](#auth-1)). An answer an agent passes on is recorded as relayed, pinned to the exact text the person saw, and can be disputed ([AUTH-3](#auth-3), [AUTH-5](#auth-5)). An approval covers its own request and nothing else, and retiring one grants nothing ([AUTH-6](#auth-6), [AUTH-7](#auth-7)). |
 | A new session loses what the last one was doing. | A claim records the holder's branch, pull request, session and next step, and a connecting agent is told the tasks it holds ([INV-10](#inv-10)). |
 | Two agents do the same work. | One claim wins ([INV-1](#inv-1)), a claim never expires by time ([INV-2](#inv-2)), and the server works out which tasks are ready, so every agent asking gets the same answer ([INV-8](#inv-8)). |
 
@@ -133,10 +133,11 @@ Each normative rule has an id, such as `INV-1`, which the
 | Proof | What shows work closed as done: a commit, a pull request or a link. |
 | Delivery | Where a done task's change is: built, merged or live ([3.8](#38-delivery)). |
 | Signal | A message from a repository's automation, or an agent, that named pull requests or commits merged or went live. |
-| Human request | A task only a person can answer: an approval, or a task labelled `human`. |
+| Human request | A task only a person can answer: an approval, a request to do steps, or a task labelled `human`. |
 | Decision | A task that asks a person to choose between options. |
 | Approval | A task of type `gate` that holds the tasks waiting on it until a person approves the action it names ([3.7](#37-approval)). |
-| Proposal | The text a person answers: a task's id, title, description, acceptance, type and choices. Its **proposal version** is a hash of it. |
+| Request to do steps | A task of type `gate` with `steps` that holds the tasks waiting on it until a person ticks every step: steps only that person can do ([3.7](#37-approval)). |
+| Proposal | The text a person answers: a task's id, title, description, acceptance, type and choices, and a request's steps without their marks. Its **proposal version** is a hash of it. |
 | Answer | A person's recorded decision on a human request: **direct** when the person made it in the server's own interface, **relayed** when another sender records what the person said elsewhere. |
 | Dispute | A person withdrawing an approval that was relayed for them. |
 | Idempotency key | A name a caller gives one change, so that sending it again does not repeat it. |
@@ -182,7 +183,7 @@ Schemas: [`task`](schemas/task.schema.json),
 |---|---|
 | `id` | The project's prefix, a hyphen and a key of lowercase letters and digits; a child adds `.n` to its parent's id, as `web-a1b2.3` ([OQ-13](open-questions.md#oq-13)) |
 | `title` | The outcome, or for a person the ask, in plain words starting with a verb. It SHOULD be at most 70 characters and hold no commands, file paths, commit hashes or steps |
-| `description`, `acceptance`, `notes`, `design` | What to do, why and where; what proves it done, as a short checklist of observable facts; what those working on it record; how it is to be built. Markdown. A description SHOULD open with one sentence that says what and why, or for a person the ask and the exact place to act, followed by only the sections that apply: `## Why`, `## Where` and `## Fix` for work; `## Your steps`, `## Why this needs you`, `## What it changes` and `## How we'll confirm` for steps a person does; `## Why this needs you`, `## What the agent will do`, `## What it changes`, `## How we'll confirm` and `## If you decline` for an approval. Headings SHOULD say who acts. Each command, query or snippet a person might run or paste SHOULD be in its own fenced block with a language tag |
+| `description`, `acceptance`, `notes`, `design` | What to do, why and where; what proves it done, as a short checklist of observable facts; what those working on it record; how it is to be built. Markdown. A description SHOULD open with one sentence that says what and why, or for a person the ask and the exact place to act, followed by only the sections that apply: `## Why`, `## Where` and `## Fix` for work; `## What it changes` and `## How we'll confirm` for a request to do steps, whose steps are kept apart from it; `## Why this needs you`, `## What the agent will do`, `## What it changes`, `## How we'll confirm` and `## If you decline` for an approval. Headings SHOULD say who acts. Each command, query or snippet a person might run or paste SHOULD be in its own fenced block with a language tag |
 | `type` | `task`, `bug`, `feature`, `chore`, `epic`, `decision` or `gate` |
 | `status` | `open`, `in_progress`, `blocked`, `deferred` or `closed` ([4.1](#41-status)) |
 | `priority` | `0`, the most urgent, to `4` |
@@ -283,7 +284,7 @@ recorded on the task:
 
 | Field | Holds |
 |---|---|
-| `option` | A letter on a task with choices; `approve` or `decline` on an approval; null when the answer chose none |
+| `option` | A letter on a task with choices; `approve` or `decline` on an approval; `done` or `decline` on a request to do steps; null when the answer chose none |
 | `quote` | The person's exact words, recorded as given; null for a direct answer made without words |
 | `source` | Where the person said it, as the relaying sender named it, such as a conversation URL; null for a direct answer |
 | `recordedBy` | The person who answered directly, or the sender that relayed the answer |
@@ -309,6 +310,16 @@ The permission an approval grants is recorded with its answer
 ([OQ-9](open-questions.md#oq-9)): `approved-scope-only` while it stands,
 `none` once disputed, declined, retired, or reported as done by the person
 themselves.
+
+A **request to do steps** is a gate with `steps` (schema:
+[`do-request`](schemas/do-request.schema.json)). It asks a person to do steps
+only they can do, such as running a command on their own machine. Its title
+names what the person gets done, and SHOULD be at most 70 characters. Its
+description says what doing the steps changes and how the result will be
+confirmed. Each step holds its text, the exact command it runs in a field of
+its own or null, and what the person recorded on it: who ticked it and when,
+a note, and where they stopped and why. The task that asked for it waits on
+it through a `blocks` link, as on an approval, and it grants no permission.
 
 ### 3.8 Delivery
 
@@ -462,6 +473,27 @@ After an approval closes, the only further answer it takes is the person's
 report that they did the action themselves, and only while the approval it
 follows still stands and still covers the request as written.
 
+**STATE-14.** <a id="state-14"></a>A request to do steps:
+
+- opens when a task asks for one. Asking again with the same title and
+  steps while it is open MUST return the open request rather than open a
+  second one;
+- records each tick, note and stuck mark with the person who made it and
+  the time ([AUTH-1](#auth-1)). A person MAY tick the steps in any order,
+  and MAY untick one while the request is open. A tick clears the step's
+  stuck mark, and a stuck mark clears its tick. A stuck mark tells each
+  waiting task which step stopped the person and why;
+- closes as `done` when its last step is ticked, with that person as its
+  closer. Each waiting task is told to check the result, and each labelled
+  `human` that is neither a decision nor a gate and offers no options goes
+  back to agents: open, unassigned, without the label;
+- keeps each step's text and command as the request was filed: a server
+  MUST refuse a change to them;
+- takes no approval and no option: a server MUST refuse one;
+- closes as `done` on the person's relayed report that they did the steps,
+  leaving the steps unticked, and as `wont-do` on a relayed refusal; a
+  relayed report MAY be disputed, which opens it again ([AUTH-5](#auth-5)).
+
 ### 4.6 Decisions and other human requests
 
 **STATE-11.** <a id="state-11"></a>When a person picks an option of a
@@ -507,7 +539,8 @@ was granted.
 
 **AUTH-1.** <a id="auth-1"></a>Only a person MAY answer a human request
 directly: pick an option, answer in words, dismiss a task labelled
-`human`, approve an approval, or dispute a relayed approval. A server MUST
+`human`, approve an approval, tick, note or mark as stuck a step of a
+request to do steps, or dispute a relayed approval. A server MUST
 refuse a direct answer from an agent or a service, whatever projects or
 scopes it was granted, and MUST change nothing
 ([OQ-15](open-questions.md#oq-15), [OQ-21](open-questions.md#oq-21)).
@@ -655,7 +688,7 @@ the ones above it in this table.
 | Level | Objects | Rules | Operations |
 |---|---|---|---|
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
-| **Human decisions and approvals** | Choices, pick, answer, approval | STATE-10, STATE-11, AUTH-1, AUTH-3 to AUTH-8 | Ask for an approval; a person's pick, answer, dismissal, approval and dispute; record a relayed answer; retire a request with evidence |
+| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps | STATE-10, STATE-11, STATE-14, AUTH-1, AUTH-3 to AUTH-8 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute and marks on a step; record a relayed answer; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12 | Close with a commit or pull request; send a signal |
 | **Live work** | Work in hand | STATE-13, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request |
 

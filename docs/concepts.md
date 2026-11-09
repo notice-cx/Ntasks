@@ -56,8 +56,9 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
   for a person the ask. Then only the sections that apply:
   - work: `## Why`, `## Where` and `## Fix`, and for a bug
     `## Steps to Reproduce`;
-  - steps a person does: `## Your steps`, `## Why this needs you`,
-    `## What it changes` and `## How we'll confirm`;
+  - steps a person does, asked with `request_human_action`: its context
+    has `## What it changes` and `## How we'll confirm`, and the steps go in
+    `steps`;
   - an approval, where an agent acts once the person allows it:
     `## Why this needs you`, `## What the agent will do`,
     `## What it changes`, `## How we'll confirm` and `## If you decline`.
@@ -82,10 +83,9 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
 - **Approval.** The title is the action to approve, and the description has
   the approval's sections, with the exact commands under
   `## What the agent will do`.
-- **An ask to a person**, an approval or a task labelled `human`, says in
-  plain words what is waiting, why it is theirs to decide, and the exact
-  place to act: the button on the task's page in Ntasks, a link, or the
-  command to run. Internal terms such as store migration or gate stay out of
+- **An ask to a person**, to decide, approve or do, says in plain words what
+  is waiting, why it is theirs to decide, and the exact place to act: the
+  button on the task's page in Ntasks, a link, or the command to run. Internal terms such as store migration or gate stay out of
   it. For example, an approval titled "Approve merging Ntasks PR #88: Do
   checklists, one new database column" opens with "You: press Approve on this
   task to let the agent merge" and the pull request's link, where its first
@@ -99,7 +99,8 @@ Creating or changing a task answers with advice when:
 - its description writes a command inline, has a fenced block with no
   language tag, or has a `$` prompt in a block;
 - its description's first line repeats the title;
-- it asks a person and names no place to act.
+- it asks a person and names no place to act, where a task with choices or
+  steps to tick has one.
 
 Nothing is refused for it.
 
@@ -244,9 +245,9 @@ merge, and merged work of a project that deploys, which waits for a deploy.
   <img src="images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
 </picture>
 
-## Decisions and approvals
+## Decisions, approvals and steps to do
 
-Some steps only a person can take. Ntasks has two kinds:
+Some steps only a person can take. Ntasks asks a person in three ways:
 
 - A **decision** asks a person to choose between options. Each option has a
   short label, and at most one is marked as recommended. The person's choice
@@ -255,6 +256,14 @@ Some steps only a person can take. Ntasks has two kinds:
   as a deployment. Its title names the action, and its description says what
   the agent will do and what it changes ([writing a task](#writing-a-task)). While the
   approval is pending, the task is not ready, so no agent starts it.
+- A **request to do steps** holds a task until a person does steps only they
+  can do, such as running a command on their own machine. Its steps are an
+  ordered list, each with its text and the command it runs, shown as a block
+  to copy, and its context says what doing them changes and how the agent
+  will confirm the result. The person ticks each step, in any order, and can
+  leave a note on one or say where they are stuck. When every step is
+  ticked, the task is ready again, and the agent checks the result before it
+  continues.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-decide-dark.webp">
@@ -264,14 +273,16 @@ Some steps only a person can take. Ntasks has two kinds:
 ### What a person answers
 
 A task's **proposal** is what a person answers: its title, description,
-acceptance, type and options. For an approval, that is the exact action it
-asks for, with its environment, scope and verification. The **proposal
+acceptance, type and options, and a request's steps. For an approval, that
+is the exact action it asks for, with its environment, scope and
+verification. The **proposal
 version** is a short hash of the proposal, so it changes whenever the
 proposal does.
 
 An **answer** records:
 
-- the option the person chose, or for an approval, approve or decline;
+- the option the person chose; for an approval, approve or decline; for a
+  request to do steps, done or decline;
 - the person's exact words, as a quote. Ntasks never reads the quote to
   decide what it means: a quote such as "maybe" is kept as given;
 - where they said it, and who recorded it;
@@ -279,9 +290,9 @@ An **answer** records:
 
 ### Who can answer
 
-Only a person signed in to the web app answers a decision or approves an
-approval directly. An agent or a service cannot, whatever projects it was
-granted.
+Only a person signed in to the web app answers a decision, approves an
+approval or ticks a step directly. An agent or a service cannot, whatever
+projects it was granted. Each tick records the person and the time.
 
 An agent may record an answer a person gave it somewhere else, such as in a
 chat. It names the option, the quote, where it was said and the proposal
