@@ -637,7 +637,7 @@ function acceptedCriteria(task: Task, met: readonly number[], field: string): Ac
     const has =
       criteria.length === 0
         ? `${task.id} has no criteria in its acceptance; send []`
-        : `${task.id} has criteria 1 to ${criteria.length}: ${criteria.map((text, index) => `${index + 1}. ${text}`).join(' ')}`;
+        : `${task.id} has criteria 1 to ${criteria.length}: ${criteria.map(({ text }, index) => `${index + 1}. ${text}`).join(' ')}`;
     throw new Refused(
       'invalid',
       `invalid arguments: ${field} (${has})`,
@@ -646,7 +646,7 @@ function acceptedCriteria(task: Task, met: readonly number[], field: string): Ac
     );
   }
   const found = new Set(met);
-  return criteria.map((text, index) => ({ text, met: found.has(index + 1) }));
+  return criteria.map(({ text }, index) => ({ text, met: found.has(index + 1) }));
 }
 
 /** A request to a person, which a person approves or does, and no one accepts as done. */

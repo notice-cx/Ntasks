@@ -3,6 +3,7 @@ export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
 export type { StepMarking } from './steps.ts';
 export { criteriaOf } from './criteria.ts';
+export type { Criterion } from './criteria.ts';
 export {
   ACCEPTED_REASON,
   CHOICE_FIELD_TYPES,
