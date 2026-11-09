@@ -268,6 +268,37 @@ describe('closing and reopening', () => {
       'invalid',
     );
   });
+
+  it('records an acceptance only on a close as done with nothing else to prove it, and only a whole one, writing nothing else', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Accept me', acceptance: '- Shipped.' }, OWNER);
+    const acceptance = { by: 'Owner', criteria: [{ text: 'Shipped.', met: false }] };
+    const closing = (close: Record<string, unknown>) =>
+      tasks.writeTask(
+        project.id,
+        task.id,
+        { expectedVersion: 1, close: { reason: 'My call.', resolution: 'done', acceptance, ...close } as never },
+        OWNER,
+      );
+
+    for (const close of [
+      { resolution: 'wont-do' },
+      { commit: 'abc1234' },
+      { pullRequest: 'https://example.com/pull/1' },
+      { link: 'https://docs.example.com/runbook' },
+      { acceptance: { by: 'Owner' } },
+      { acceptance: { by: 'Owner', criteria: [{ text: 'Shipped.' }] } },
+      { acceptance: { by: '', criteria: [] } },
+      { acceptance: { by: 'Owner', relayed: { by: 'agent-a', quote: 'Close it.' }, criteria: [] } },
+    ])
+      await expectRefusal(closing(close), 'invalid');
+    expect(await tasks.getTask(project.id, task.id)).toMatchObject({ status: 'open', close: null, version: 1 });
+
+    const { task: closed } = await closing({});
+    expect(closed.close).toMatchObject({ resolution: 'done', link: null, acceptance });
+    expect(closed.delivery).toBeNull();
+  });
 });
 
 describe('history (rule 4)', () => {

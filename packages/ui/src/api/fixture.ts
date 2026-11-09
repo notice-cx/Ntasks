@@ -9,6 +9,8 @@
  * owner manages them.
  */
 import {
+  ACCEPTED_REASON,
+  criteriaOf,
   isExternalLinkKind,
   isTaskId,
   markedStep,
@@ -267,6 +269,7 @@ export function createFixtureTasksApi({
     task.duplicateOf = resolution === 'duplicate' ? (duplicateOf ?? null) : null;
     // The page closes without a commit, pull request or link, so work it closes as done has no proof.
     task.proof = resolution === 'done' && (PROVED_TYPES as readonly string[]).includes(task.issueType) ? 'none' : null;
+    task.closeAcceptance = null;
     task.metadata = { ...task.metadata, noticeos_closed_by: FIXTURE_ACTOR, noticeos_closed_at: at };
   }
 
@@ -478,6 +481,7 @@ export function createFixtureTasksApi({
         task: withLinks(task),
         comments: state.comments.get(id) ?? [],
         actors: FIXTURE_ACTORS,
+        proposalVersion: task.proposalVersion ?? null,
       });
     },
     async search(text) {
@@ -642,15 +646,35 @@ export function createFixtureTasksApi({
         close(task, reason ? `Dismissed: ${reason}` : 'Dismissed', resolution, duplicateOf);
       });
     },
+    async accept(id, key, met, { reason, idempotencyKey } = {}) {
+      reach();
+      once(idempotencyKey, ['accept', id, key, [...met], reason ?? null], () => {
+        const task = find(id, key);
+        if (task.issueType === 'gate')
+          throw new ApiError(`${id} is a request to you: approve it instead.`, 409, 'task_refused');
+        const criteria = criteriaOf(task.acceptance);
+        if (met.some((place) => place < 1 || place > criteria.length))
+          throw new ApiError(`${id} has criteria 1 to ${criteria.length}.`, 400, 'invalid_request', 'met');
+        close(task, reason ?? ACCEPTED_REASON);
+        task.proof = null;
+        task.closeAcceptance = {
+          by: FIXTURE_ACTOR,
+          criteria: criteria.map(({ text }, index) => ({ text, met: met.includes(index + 1) })),
+        };
+      });
+    },
     async dispute(id, key) {
       reach();
       const task = find(id, key);
-      if (task.issueType !== 'gate' || task.status !== 'closed')
-        throw new ApiError(`Task ${id} is not an answered approval.`, 409, 'task_refused');
+      const relayedAcceptance = task.closeAcceptance?.relayed !== undefined;
+      if ((task.issueType !== 'gate' && !relayedAcceptance) || task.status !== 'closed')
+        throw new ApiError(`Task ${id} is not an answer an agent recorded.`, 409, 'task_refused');
       task.status = 'open';
       task.closedAt = null;
       task.closeReason = null;
       task.resolution = null;
+      task.closeAcceptance = null;
+      task.proof = null;
       touch(task);
     },
     async resolveGate(id, key, reason, options) {
