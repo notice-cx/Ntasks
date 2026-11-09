@@ -24,8 +24,9 @@
 </p>
 
 Ntasks is a task list that people and AI coding agents share. Your agents
-pick up work, report progress and close each task with proof, while you see
-who's working on what and answer whatever needs you.
+pick up work, report progress and close tasks, recording proof such as a
+commit or pull request, while you see who's working on what and answer
+whatever needs you.
 
 <p align="center">
   <picture>
