@@ -1,6 +1,6 @@
 /**
- * What the screenshots and the walkthroughs both start: the web app with its
- * invented tasks, served by Vite in fixture mode, and a headless Chrome or
+ * What the screenshots and the walkthroughs both start: the web app's pages
+ * over invented tasks, served by the UI package's Vite server in fixture mode, and a headless Chrome or
  * Chromium driven over the Chrome DevTools Protocol, plus the Worker's own
  * pages, which they draw in place of the app's document.
  */
@@ -15,7 +15,7 @@ import { DevTools, until, type PageSend } from './devtools.ts';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 export const OUT = path.join(ROOT, 'docs/images');
-const WEB = path.join(ROOT, 'apps/web');
+const UI = path.join(ROOT, 'packages/ui');
 const PORT = 5197;
 export const ORIGIN = `http://127.0.0.1:${PORT}`;
 export const WAIT_MS = 30_000;
@@ -90,9 +90,9 @@ function stop(child: ChildProcess): Promise<void> {
   return exited;
 }
 
-/** The web app with its invented tasks, served by Vite. */
+/** The web app's pages over invented tasks, served by the UI package's Vite server. */
 async function startApp(): Promise<ChildProcess> {
-  const require = createRequire(path.join(WEB, 'package.json'));
+  const require = createRequire(path.join(UI, 'package.json'));
   const vitePackage = require.resolve('vite/package.json');
   const viteBin = (JSON.parse(await readFile(vitePackage, 'utf8')) as { bin: { vite: string } }).bin.vite;
   const app = spawn(
@@ -107,7 +107,7 @@ async function startApp(): Promise<ChildProcess> {
       String(PORT),
       '--strictPort',
     ],
-    { cwd: WEB, stdio: ['ignore', 'ignore', 'inherit'] },
+    { cwd: UI, stdio: ['ignore', 'ignore', 'inherit'] },
   );
   // Vite exiting before it serves, as it does when the port is taken, ends the wait at once.
   const exited = new Promise<never>((_, reject) => {
