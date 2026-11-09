@@ -114,7 +114,10 @@ or a backup loads into an empty store in one transaction: through
 `store_load_pages` until the commit inserts them all with one statement per
 table. Either way the store checks foreign keys when the transaction ends,
 since a backup lists tasks by id and a parent's id can sort after its
-child's.
+child's. While a row waits for a task loaded after it, SQLite looks up each
+new task's id in every column that names a task. Each of those columns has an
+index, `tasks_by_duplicate_of` among them, so a commit reads a few rows for
+each row it writes rather than the whole table for each task.
 
 ## Rules the database enforces
 
