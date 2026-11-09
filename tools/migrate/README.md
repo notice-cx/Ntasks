@@ -2,8 +2,10 @@
 
 Moves a [Beads](https://github.com/gastownhall/beads) task hub that runs on
 Dolt into the Ntasks task store, with its full history, backs a task store
-up and restores it ([below](#back-up-and-restore)), and loads an import or a
-backup into an empty deployed store ([below](#load-into-the-deployed-store)). **Dolt** is the
+up and restores it ([below](#back-up-and-restore)), loads an import or a
+backup into an empty deployed store ([below](#load-into-the-deployed-store)),
+and turns a seed of invented tasks into a backup that loads
+([below](#seed-a-store)). **Dolt** is the
 versioned SQL database Beads stores tasks in. The **task store** is the
 Durable Object that holds Ntasks' tasks in its own SQLite database
 ([The task store](../../docs/task-store.md)). Three commands move a hub:
@@ -347,6 +349,71 @@ The last step of moving a hub to Ntasks, once nothing writes to the hub:
 
 A load refused at its commit writes nothing; `load` aborts it, and the store
 stays empty, ready for another try.
+
+## Seed a store
+
+`seed` turns a seed file into a backup file, which `load` puts into an empty
+deployed store and `restore` into a local store copy. A **seed** lists
+projects and tasks written by hand or by another program, such as a product
+demo's invented tasks, each task with the dated changes it went through. Its
+tasks read as if they had been filed, claimed, commented on and closed
+through the API: each has a history that rebuilds it, with who made each
+change and the model they named.
+
+```sh
+node tools/migrate/src/cli.ts seed --from seed.json --check
+node tools/migrate/src/cli.ts seed --from seed.json --out backup.json
+```
+
+`--check` prints every refusal, or what the seed holds and what loading it
+costs against the free plan's limits, and writes nothing. `--out` also loads
+the seed into a local copy of the store in memory, checks there that every
+row is the one planned and that each task's history rebuilds it, and writes
+the backup file, readable only by its owner and never over an existing file.
+The file is a backup of this checkout's store, so load it into a store that
+runs the same version of Ntasks.
+
+```json
+{
+  "format": "ntasks-seed-v1",
+  "projects": [
+    { "id": "a1111111-0000-4000-8000-000000000001", "key": "recipes.example.com", "name": "Recipes", "prefix": "rcp", "createdAt": "2026-09-01T00:00:00.000Z" }
+  ],
+  "tasks": [
+    {
+      "id": "rcp-a1b2",
+      "title": "Shrink the recipe card images",
+      "labels": ["perf"],
+      "createdAt": "2026-09-02T10:00:00.000Z",
+      "createdBy": "Mara",
+      "changes": [
+        { "at": "2026-09-03T10:00:00.000Z", "by": "claude", "model": "Opus 5.5", "status": "in_progress", "assignee": "claude" },
+        { "at": "2026-09-04T10:00:00.000Z", "by": "claude", "model": "Opus 5.5", "status": "closed", "close": { "reason": "Shipped in 1a2b3c4." } }
+      ],
+      "comments": [{ "author": "codex", "text": "Checked.", "at": "2026-09-04T09:00:00.000Z" }]
+    }
+  ]
+}
+```
+
+Times are UTC with milliseconds, as above.
+
+| Field | Meaning |
+|---|---|
+| `projects[]` | `id`, a lowercase UUID; `key` and `name`, 1 to 128 characters; `prefix`, 1 to 32 lowercase letters and digits; `createdAt`; and optionally `deploys`, `true` when the project's changes go live by a deploy |
+| `tasks[].id` | A task id whose prefix is its project's: the task goes into that project. `project` may name the project's id or prefix as well |
+| `tasks[].title`, `.description`, `.acceptance`, `.notes`, `.design`, `.priority` (0 to 4, 2 when left out) | As the API takes them |
+| `tasks[].type` | One of Ntasks's task types; `task` when left out. A `gate` with `"awaitsPerson": true` waits on a person's approval |
+| `tasks[].parent`, `.links` | The parent's id, and links as `{ "type", "to" }`, with Ntasks's link types; each names a task in the seed |
+| `tasks[].labels`, `.metadata`, `.choices`, `.dueAt` | Labels, the metadata object, a decision's choices object, and the due time |
+| `tasks[].createdAt`, `.createdBy`, `.createdModel` | When it was filed, by whom, and the model they named |
+| `tasks[].changes[]` | Oldest first, each at or after the one before: `at`, `by`, optionally `model`, and what it changes: `status`, `assignee` (or `null`), `priority`, `deferUntil` (or `null`) and `metadata`, which replaces the task's. A change to `closed` takes `close`: `{ "reason", "resolution" }`, `done` when the resolution is left out; its `by` and `model` are the closer's. A change to another status from `closed` reopens the task. An assignee set by the change's own `by` is a claim, and keeps the change's `model` as the assignee's |
+| `tasks[].comments[]` | Oldest first: `author`, `text` and `at`, no earlier than the task's creation |
+
+The seed is refused whole, with every reason, when any field is missing, of
+the wrong kind or not listed above, when a link, a parent or a prefix names
+something the seed does not hold, when a change changes nothing or comes
+before the one before it, or when tasks wait on each other in a loop.
 
 ## Tests
 
