@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createFixtureTasksApi } from '../src/fixture';
 import { NtasksApp, type TokenSource } from '../src/index';
+import { originOf } from '../src/api/connection';
 import { appPaths } from '../src/lib/paths';
 
 const NTASKS = 'https://tasks.example.com';
@@ -125,5 +126,12 @@ describe("the app's addresses", () => {
     }
     expect(appPaths('/tasks').isAppPage('/sign-in')).toBe(false);
     for (const root of ['/', '']) expect(() => appPaths(root)).toThrow(/below the root/);
+  });
+});
+
+describe("the host's apiOrigin", () => {
+  it('is read as an origin, and an address that is none is refused by name', () => {
+    expect(originOf('https://tasks.example.com/')).toBe('https://tasks.example.com');
+    expect(() => originOf('tasks.example.com')).toThrow(/apiOrigin must be an origin/);
   });
 });

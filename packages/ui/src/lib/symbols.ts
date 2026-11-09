@@ -190,9 +190,15 @@ export function workspaceMark(workspaceId: string, name: string): { letter: stri
 
 // --- Keys -----------------------------------------------------------------------
 
-/** Whether a key press belongs to a text field the person is typing in, or to a dialog, menu or list that takes its own keys, so a page's single-key shortcuts leave it alone. */
-export function typingIn(target: EventTarget | null): boolean {
+/**
+ * Whether a key press belongs to something that takes its own keys, so the
+ * app's single-key shortcuts leave it alone: a text field the person is
+ * typing in, a dialog, menu or list, or a control on the page around the
+ * app, outside its root element. A press with nothing focused is the app's.
+ */
+export function takesOwnKeys(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (target !== target.ownerDocument.body && !target.closest('[data-ntasks]')) return true;
   if (target.isContentEditable) return true;
   // A dialog, a menu and a list of options take their own keys.
   if (target.closest('[role="dialog"], [role="menu"], [role="listbox"]')) return true;
@@ -212,6 +218,7 @@ export function isShortcut(
   event: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'defaultPrevented' | 'target'>,
   key: string,
 ): boolean {
-  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) return false;
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || takesOwnKeys(event.target))
+    return false;
   return key.length === 1 ? event.key.toLowerCase() === key.toLowerCase() : event.key === key;
 }

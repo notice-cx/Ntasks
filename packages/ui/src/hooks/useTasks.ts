@@ -408,7 +408,7 @@ export function useInboxAnswer(): (answer: InboxAnswer) => void {
         onUndo: () => toast.dismiss(toastId),
       });
     },
-    [api, queue, refresh, navigate],
+    [api, queue, refresh, navigate, paths],
   );
 }
 

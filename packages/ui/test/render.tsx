@@ -8,7 +8,10 @@ import { appPaths } from '@/lib/paths';
 import { createFixtureTasksApi } from '@/api/fixture';
 import type { TasksApi } from '@/api/client';
 
-/** The app under `/tasks`, as the web app serves it, at `path`, over a fresh fixture API unless one is given. */
+/**
+ * The app under `/tasks`, as the web app serves it, inside its root element,
+ * at `path`, over a fresh fixture API unless one is given.
+ */
 export function renderApp(
   path: string,
   api: TasksApi = createFixtureTasksApi(),
@@ -17,7 +20,14 @@ export function renderApp(
   const view = render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/tasks/*" element={<App api={api} paths={appPaths('/tasks')} queryClient={queryClient} />} />
+        <Route
+          path="/tasks/*"
+          element={
+            <div data-ntasks="">
+              <App api={api} paths={appPaths('/tasks')} queryClient={queryClient} />
+            </div>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   );

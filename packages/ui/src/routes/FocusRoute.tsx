@@ -15,7 +15,7 @@ import { useNow } from '../hooks/useNow';
 import { operationAvailable, useAnswerHides, useCapabilities, useInboxAnswer, verbReason } from '../hooks/useTasks';
 import { NO_FILTERS } from '../lib/board-read';
 import { ageMs, formatAge, formatInt } from '../lib/format';
-import { typingIn } from '../lib/symbols';
+import { takesOwnKeys } from '../lib/symbols';
 import { askVerb, isGate, type BoardTask, type InboxAsk } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
@@ -213,7 +213,8 @@ function FocusDecision({
   keys.current = { choose, approve, onSkip, ask, option, options: choices ? cardOptions(choices) : [] };
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || takesOwnKeys(event.target))
+        return;
       const live = keys.current;
       if (event.key === 'ArrowRight') {
         event.preventDefault();
