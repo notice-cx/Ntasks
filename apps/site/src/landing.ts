@@ -54,23 +54,29 @@ for (const button of document.querySelectorAll('[data-theme-switch]')) {
 }
 
 const copiedStatus = document.querySelector('[data-copied-status]');
+
+async function copy(button: HTMLButtonElement): Promise<void> {
+  try {
+    // navigator.clipboard is missing outside a secure context, such as a
+    // preview served over plain http; reading writeText then throws too.
+    await navigator.clipboard.writeText(button.dataset.copy ?? '');
+  } catch {
+    // Select the command instead, so a copy shortcut takes it.
+    const code = button.closest('.command')?.querySelector('code');
+    if (code) getSelection()?.selectAllChildren(code);
+    if (copiedStatus) copiedStatus.textContent = 'Copying failed. The command is selected; copy it with your keyboard.';
+    return;
+  }
+  button.classList.add('copied');
+  if (copiedStatus) copiedStatus.textContent = 'Copied';
+  setTimeout(() => {
+    button.classList.remove('copied');
+    if (copiedStatus) copiedStatus.textContent = '';
+  }, 2000);
+}
+
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
-  button.addEventListener('click', () => {
-    const text = button.dataset.copy ?? '';
-    navigator.clipboard.writeText(text).then(
-      () => {
-        button.classList.add('copied');
-        if (copiedStatus) copiedStatus.textContent = 'Copied';
-        setTimeout(() => {
-          button.classList.remove('copied');
-          if (copiedStatus) copiedStatus.textContent = '';
-        }, 2000);
-      },
-      () => {
-        // The clipboard refused; the command stays selectable on the page.
-      },
-    );
-  });
+  button.addEventListener('click', () => void copy(button));
 }
 
 // The walkthrough tabs, as the ARIA tabs pattern describes: arrow keys,
