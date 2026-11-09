@@ -20,6 +20,7 @@ const places: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['packages/domain/src/fixture.ts', [MODULE_STATE_AND_SECRETS, RANDOM]],
   ['workers/api/test/fixture.ts', [RANDOM]],
   ['apps/web/src/fixture.ts', []],
+  ['packages/ui/src/fixture.ts', []],
 ];
 
 const source = await readFile(fixture, 'utf8');

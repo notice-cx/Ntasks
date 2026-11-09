@@ -524,12 +524,16 @@ function stepsWithMarks(value: unknown): TaskStep[] {
     const field = `steps[${index}]`;
     if (step === null || typeof step !== 'object' || Array.isArray(step)) invalid(`${field} must be an object`);
     const given = step as Record<string, unknown>;
+    const done = stepMark(given.done, `${field}.done`) as StepMark | null;
+    const stuck = stepMark(given.stuck, `${field}.stuck`, 'reason') as TaskStep['stuck'];
+    // A step is to do, done or stuck: a tick clears a stuck mark and a stuck mark a tick.
+    if (done !== null && stuck !== null) invalid(`${field} is done or stuck, not both`);
     return {
       text: text(given.text, `${field}.text`, TASK_LIMITS.stepText, true),
       command: given.command === null ? null : text(given.command, `${field}.command`, TASK_LIMITS.stepCommand, true),
-      done: stepMark(given.done, `${field}.done`) as StepMark | null,
+      done,
       note: stepMark(given.note, `${field}.note`, 'text') as TaskStep['note'],
-      stuck: stepMark(given.stuck, `${field}.stuck`, 'reason') as TaskStep['stuck'],
+      stuck,
     };
   });
 }

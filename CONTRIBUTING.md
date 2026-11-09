@@ -25,7 +25,8 @@ runs Workers on Cloudflare, with a local task store and a local D1 database.
 
 | Path | Holds |
 |---|---|
-| [`apps/web/`](apps/web/) | The web app, built with React and Vite |
+| [`apps/web/`](apps/web/) | The web app: the page the Worker serves, which renders `@ntasks/ui` |
+| [`packages/ui/`](packages/ui/) | The web app's pages, published as the npm package `@ntasks/ui`, built with React, Vite and Tailwind CSS |
 | [`workers/api/`](workers/api/) | The Worker, its database migrations and its tests |
 | [`wrangler.jsonc`](wrangler.jsonc), [`.dev.vars.example`](.dev.vars.example) | The Worker's Cloudflare settings and the names of the secrets it requires, at the root because the Deploy to Cloudflare button reads them there |
 | [`packages/domain/`](packages/domain/) | The task model, shared by the Worker, the web app and clients |
