@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type FormEvent } from 'react';
+import { useState, type ComponentType, type FormEvent } from 'react';
 import { Check, CheckCheck, ChevronDown, CircleSlash, Copy, SearchX, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { criteriaOf, isTaskId, type TaskResolution } from '@ntasks/domain';
@@ -259,7 +259,11 @@ export function AcceptForm({
   proposalVersion: string | null;
   onDone: () => void;
 }) {
-  const criteria = useMemo(() => criteriaOf(acceptance), [acceptance]);
+  // The criteria and the proposal version as the form opened: the ticks are
+  // places in these criteria, so a task edited since is refused by the server
+  // rather than recorded against criteria the person never saw.
+  const [shown] = useState(() => ({ criteria: criteriaOf(acceptance), proposalVersion }));
+  const { criteria } = shown;
   const [met, setMet] = useState<ReadonlySet<number>>(
     () => new Set(criteria.flatMap((criterion, index) => (criterion.ticked ? [index + 1] : []))),
   );
@@ -285,7 +289,7 @@ export function AcceptForm({
         project,
         met: [...met].sort((a, b) => a - b),
         ...(words === '' ? {} : { reason: words }),
-        proposalVersion,
+        proposalVersion: shown.proposalVersion,
       });
     } catch (error) {
       toast.error(error instanceof Error && error.message !== '' ? error.message : `Could not close ${id}`);
