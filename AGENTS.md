@@ -158,11 +158,12 @@ maintainer work carries its task id in a `Refs:` footer.
 Public contributors use GitHub issues and pull requests, as
 [CONTRIBUTING.md](CONTRIBUTING.md) describes, and need nothing below.
 
-The maintainers track this repository's open work in their NoticeOS task hub,
-never in TODO comments, docs or notes. Until the hub has a project for this
-repository, its work is filed in the hub's Notice project. An agent working
-for a maintainer, connected to that hub, follows these rules:
+The maintainers track this repository's open work in their own Ntasks
+deployment, never in TODO comments, docs or notes. Until it has a project for
+this repository, its work is filed in the Notice project, whose task ids start
+with `ro`. An agent working for a maintainer, connected to that deployment,
+follows these rules:
 
-- Tasks and asset data come from the `noticeos` MCP server. Call `get_task_guide` before task work: it returns the workflow and the rules for filing, claiming and closing a task.
-- Never run `bd`, `bv` or `br` in this repository: the MCP tools are the task interface.
+- Tasks come from the `ntasks` MCP server ([Connect an agent](docs/agents.md)). Call `get_task_guide` before task work: it returns the workflow and the rules for filing, claiming and closing a task.
+- Never run `bd`, `bv` or `br`, and never use task tools on the `noticeos` MCP server: the `ntasks` tools are the task interface.
 - Work only a person can do carries the `human` label; a step that must wait for approval uses `request_human_approval`.
