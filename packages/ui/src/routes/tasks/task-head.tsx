@@ -1,15 +1,15 @@
 import { useRef, type ReactNode } from 'react';
-import { ChevronRight, GitPullRequest } from 'lucide-react';
+import { ChevronRight, GitPullRequest, Minus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
-import type { TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '../../api/types';
+import type { TaskAcceptance, TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '../../api/types';
 import { Avatar } from '../../components/ui/avatar';
 import { CopyButton } from '../../components/ui/copy-button';
 import { OptionList } from '../../components/ui/choice';
 import { ProjectBadge } from '../../components/ui/shell';
 import { StatusMark } from '../../components/ui/symbols';
 import { ageMs, formatAge } from '../../lib/format';
-import { choiceName, RESOLUTION_LABELS, stageLabel } from '../../lib/task-model';
+import { choiceName, RESOLUTION_LABELS, stageLabel, waivedCount } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { cardOptions } from './decision-card';
 
@@ -145,6 +145,62 @@ function ProofLine({ link }: { link: string | null }) {
   );
 }
 
+/** A person's acceptance of a task as done, with the names its record gives drawn as the page names them. */
+export interface AcceptanceShown {
+  readonly acceptance: TaskAcceptance;
+  /** The person who accepted it. */
+  readonly person: string;
+  /** The agent or service that relayed it, when one did. */
+  readonly relayer: string | null;
+}
+
+/**
+ * A close as done on a person's own call: who accepted it and how many
+ * criteria they waived, who relayed it and from where with the person's
+ * words, then each criterion they waived.
+ */
+function AcceptanceLines({ shown }: { shown: AcceptanceShown }) {
+  const { acceptance, person, relayer } = shown;
+  const waived = acceptance.criteria.filter((criterion) => !criterion.met);
+  const counted =
+    acceptance.criteria.length === 0
+      ? ''
+      : waived.length === 0
+        ? ' · every criterion met'
+        : ` · ${waivedCount(waived.length)} waived`;
+  return (
+    <>
+      <p
+        className="m-0 text-label text-ink-2 [overflow-wrap:anywhere]"
+        data-task-acceptance={acceptance.relayed ? 'relayed' : 'direct'}
+      >
+        Accepted by <span className="font-medium text-ink">{person}</span>
+        {counted}
+      </p>
+      {acceptance.relayed ? (
+        <>
+          <p className="m-0 text-meta text-ink-3 [overflow-wrap:anywhere]">
+            Relayed by {relayer ?? acceptance.relayed.by} from {acceptance.relayed.source}
+          </p>
+          <blockquote className="m-0 border-s-2 border-border-strong ps-3 text-body whitespace-pre-line text-ink-2">
+            {acceptance.relayed.quote}
+          </blockquote>
+        </>
+      ) : null}
+      {waived.length > 0 ? (
+        <ul aria-label="Waived" className="m-0 flex list-none flex-col gap-1 p-0 text-label text-ink-2">
+          {waived.map((criterion, index) => (
+            <li key={index} className="flex items-start gap-1.5 [overflow-wrap:anywhere]">
+              <Minus aria-hidden size={14} className="mt-[3px] shrink-0 text-ink-3" />
+              {criterion.text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
 /**
  * How a closed task ended, under its title: Done, or the way a close where
  * nothing shipped ended, who closed it and when, where its change is or what
@@ -160,6 +216,7 @@ export function ClosedSummary({
   delivery,
   link = null,
   proof = null,
+  acceptance = null,
   children,
 }: {
   by: Actor | null;
@@ -171,6 +228,8 @@ export function ClosedSummary({
   /** The URL the close named to show the work. */
   link?: string | null;
   proof?: 'none' | null;
+  /** A person's acceptance of it as done on their own call. */
+  acceptance?: AcceptanceShown | null;
   children?: ReactNode;
 }) {
   const label = RESOLUTION_LABELS[resolution];
@@ -191,6 +250,7 @@ export function ClosedSummary({
       </div>
       {delivery ? <DeliveryLine delivery={delivery} /> : null}
       {link !== null || proof === 'none' ? <ProofLine link={link} /> : null}
+      {acceptance ? <AcceptanceLines shown={acceptance} /> : null}
       {children}
     </section>
   );

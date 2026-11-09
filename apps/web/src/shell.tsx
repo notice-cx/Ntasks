@@ -1,4 +1,4 @@
-import { DesignGallery, NtasksApp } from '@ntasks/ui';
+import { DesignGallery, NtasksApp } from '@notice-cx/ntasks-ui';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 /** Pages that once had addresses outside /tasks; a link to an old address still opens its page. */

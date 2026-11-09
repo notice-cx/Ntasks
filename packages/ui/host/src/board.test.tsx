@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { expect, it } from 'vitest';
-import { NtasksApp } from '@ntasks/ui';
-import { createFixtureTasksApi } from '@ntasks/ui/fixture';
+import { NtasksApp } from '@notice-cx/ntasks-ui';
+import { createFixtureTasksApi } from '@notice-cx/ntasks-ui/fixture';
 
 // jsdom has no layout or media queries, which the app's menus and theme ask for.
 globalThis.ResizeObserver ??= class {

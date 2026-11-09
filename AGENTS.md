@@ -47,8 +47,8 @@ Every feature and every change to an existing one meets all five:
 |---|---|
 | `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
 | `wrangler.jsonc`, `.dev.vars.example` | The Worker's Cloudflare settings and the names of the secrets it requires, with their descriptions under `cloudflare.bindings` in the root `package.json`. They sit at the root because the Deploy to Cloudflare button reads them there; wrangler commands run in `workers/api` find them, and `.dev.vars` for local runs goes beside them |
-| `apps/web/` | The web app: the page that renders `@ntasks/ui` on the Worker's own origin. Its build in `dist/` is the Worker's static assets |
-| `packages/ui/` | The npm package `@ntasks/ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. The Release UI package workflow publishes it from a `ui-v*` tag ([its README](packages/ui/README.md)) |
+| `apps/web/` | The web app: the page that renders `@notice-cx/ntasks-ui` on the Worker's own origin. Its build in `dist/` is the Worker's static assets |
+| `packages/ui/` | The npm package `@notice-cx/ntasks-ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. The Release UI package workflow publishes it from a `ui-v*` tag ([its README](packages/ui/README.md)) |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires, and the tests of `install.sh`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, the seed of invented tasks, the provision of a deployment nobody signs in to, and the verifier |
@@ -62,7 +62,8 @@ Every feature and every change to an existing one meets all five:
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, or
 is `spec/`, which stands alone so it can move to a home of its own; it is
 named `@ntasks/<name>`, and follows an existing workspace's `package.json` and
-`tsconfig.json`. A workspace with code has a `typecheck` script, and one with
+`tsconfig.json`. A workspace published to npm takes its published name instead,
+under the owner's npm organization: `packages/ui` is `@notice-cx/ntasks-ui`. A workspace with code has a `typecheck` script, and one with
 tests a `test` script, so the root commands reach it.
 
 ## Commands

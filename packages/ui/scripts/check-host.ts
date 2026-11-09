@@ -1,5 +1,5 @@
 /**
- * `pnpm --filter @ntasks/ui run check:host`, after `pnpm build`: packs the
+ * `pnpm --filter @notice-cx/ntasks-ui run check:host`, after `pnpm build`: packs the
  * package as npm would publish it and installs the tarball, from the file and
  * not a registry, into an empty Vite and React project made from host/. The
  * project then typechecks against the package's declarations, builds with
@@ -58,7 +58,7 @@ try {
         name: 'ntasks-ui-host',
         private: true,
         type: 'module',
-        dependencies: { '@ntasks/ui': `file:../${tarball}`, ...pinned(RUNTIME) },
+        dependencies: { '@notice-cx/ntasks-ui': `file:../${tarball}`, ...pinned(RUNTIME) },
         devDependencies: pinned(TOOLS),
       },
       null,

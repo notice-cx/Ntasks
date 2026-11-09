@@ -116,6 +116,18 @@ export interface TaskDelivery {
   liveAt: string | null;
 }
 
+/** A person's acceptance of a task as done on their own call, as its close records it. */
+export interface TaskAcceptance {
+  /** The person who accepted it. */
+  by: string;
+  /** The client id of the connected app they accepted it through. */
+  app?: string;
+  /** The agent or service that recorded it for them, where they said it, and their words. */
+  relayed?: { by: string; source: string; quote: string };
+  /** Each criterion of the task's Done when, in order: met, or waived when false. */
+  criteria: { text: string; met: boolean }[];
+}
+
 /** One task, as a board row and a task page read it. */
 export interface LiveTask {
   id: string;
@@ -183,6 +195,8 @@ export interface LiveTask {
   closeLink?: string | null;
   /** `none` for a task, bug, feature or chore closed as done with no commit, pull request or link. */
   proof?: 'none' | null;
+  /** On a task a person accepted as done on their own call, when the server sends it. */
+  closeAcceptance?: TaskAcceptance | null;
   /** The helper agent the assignee works through, shown as `claude for page-rebuild-2`, when the server sends it. */
   for?: string | null;
   /** What the assignee recorded about the work in hand, such as its branch and next step, when the server sends it. */
@@ -271,6 +285,8 @@ export interface LiveTaskDetail {
   readAt: string;
   task: LiveTask;
   comments: TaskComment[];
+  /** The version of the task's proposal, whatever it waits on, when the server sends it: an acceptance names it. */
+  proposalVersion?: string | null;
 }
 
 /** What creating a task answers with. */

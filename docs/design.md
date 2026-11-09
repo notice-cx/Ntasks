@@ -1,7 +1,7 @@
 # Design system
 
 The web app's tokens, symbols and components, and the rules for using them.
-The code is in three places in [`@ntasks/ui`](../packages/ui/README.md), the
+The code is in three places in [`@notice-cx/ntasks-ui`](../packages/ui/README.md), the
 package that holds the web app's pages:
 
 | Path | Holds |
@@ -12,7 +12,7 @@ package that holds the web app's pages:
 
 The gallery, the page `/design` of the web app, draws every token, symbol and
 component from that code. Open it at http://localhost:5173/design with
-`pnpm --filter @ntasks/ui dev`, or at http://localhost:8787/design with
+`pnpm --filter @notice-cx/ntasks-ui dev`, or at http://localhost:8787/design with
 `pnpm dev`. Its theme switch draws it in light or dark whatever the system
 prefers. `pnpm screenshots design` captures it in both themes
 ([tools/screenshots](../tools/screenshots/README.md)):
@@ -415,8 +415,11 @@ no items is its footer alone.
 
 The Close menu (`src/components/CloseResolution.tsx`) is a button, Close or
 Close as, with a chevron: Done first where the task can be closed as
-done, then each close where nothing shipped, each with its glyph. A pick opens
-the form that finishes it under the task's title.
+done, then Done, my call for a person who may accept a task as done on their
+own call, then each close where nothing shipped, each with its glyph. A pick
+opens the form that finishes it under the task's title. Done, my call's form
+lists each criterion of Done when as a box, ticked to start with where its box
+on the page is ticked; its button names how many criteria the close waives.
 
 `popover.tsx` is the popover itself: Radix places it and handles focus,
 Escape and outside clicks. It renders on the document's body, or inside the

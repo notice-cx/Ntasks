@@ -111,7 +111,15 @@ export interface TasksApi {
     reason?: string,
     options?: CloseOptions & WriteOptions & AnswerOptions,
   ): Promise<void>;
-  /** Reopen an approval whose recorded answer the person disputes. */
+  /** Close a task as done on the person's own call: `met` names the criteria of its Done when that are met,
+   * by place from 1, and the rest are recorded as waived. It needs the proposal version the page showed. */
+  accept(
+    id: string,
+    project: string,
+    met: readonly number[],
+    options?: { reason?: string } & WriteOptions & AnswerOptions,
+  ): Promise<void>;
+  /** Reopen an approval, or a task accepted as done, whose answer an agent recorded and the person disputes. */
   dispute(id: string, project: string): Promise<void>;
   /** Free a task someone holds, on the person's own call: nobody holds it then, and a comment keeps where it stopped. */
   release(id: string, project: string): Promise<void>;
@@ -496,6 +504,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     respond: (id, project, response, options) => scope().respond(id, project, response, options),
     choose: (id, project, option, note, options) => scope().choose(id, project, option, note, options),
     dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
+    accept: (id, project, met, options) => scope().accept(id, project, met, options),
     dispute: (id, project) => scope().dispute(id, project),
     release: (id, project) => scope().release(id, project),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
@@ -667,6 +676,15 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
           ...ended(resolution, 'wont-do', duplicateOf),
           ...shownIn(sending),
         },
+        sending,
+      );
+    },
+    async accept(id, project, met, { reason, ...sending } = {}) {
+      await act(
+        id,
+        project,
+        'accept',
+        { met, ...(reason === undefined ? {} : { reason }), ...shownIn(sending) },
         sending,
       );
     },

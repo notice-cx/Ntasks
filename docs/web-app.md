@@ -90,6 +90,13 @@ built, merged or live, moved on by the merge and deploy signals your
 repository sends ([Delivery](api.md#delivery)). Work closed with no proof
 says so.
 
+**Done, my call** in the Close menu closes a task as done on your own
+judgement. Its form lists each line of Done when as a box: you tick the
+criteria that are met, and the rest are recorded as waived, with your reason.
+The task then shows who accepted it and what they waived. Only a person can
+close a task this way; an agent that records your acceptance from a chat is
+shown as having relayed it, and you can dispute it.
+
 ### Approve exactly what you saw
 
 <picture>

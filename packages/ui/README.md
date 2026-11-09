@@ -1,4 +1,4 @@
-# @ntasks/ui
+# @notice-cx/ntasks-ui
 
 The Ntasks web app as a React component: the board, a task's page, Focus,
 Live, Projects, Members and Settings. The Ntasks Worker serves it as its own
@@ -9,15 +9,15 @@ in.
 ## Use it in a page
 
 ```sh
-npm install @ntasks/ui react react-dom react-router-dom
+npm install @notice-cx/ntasks-ui react react-dom react-router-dom
 ```
 
 React 19 and React Router 7 are peer dependencies: the app uses the host's
 copies, so it shares the host's router.
 
 ```tsx
-import { NtasksApp, type TokenSource } from '@ntasks/ui';
-import '@ntasks/ui/styles.css';
+import { NtasksApp, type TokenSource } from '@notice-cx/ntasks-ui';
+import '@notice-cx/ntasks-ui/styles.css';
 
 const person: TokenSource = {
   token: () => tokens.current(), // the signed-in person's access token, or null
@@ -105,7 +105,7 @@ longer answers this package's version.
 
 ### Styles
 
-Import `@ntasks/ui/styles.css` once. Every rule in it applies only inside the
+Import `@notice-cx/ntasks-ui/styles.css` once. Every rule in it applies only inside the
 app's root element, `<div data-ntasks>`: the design system's tokens
 ([Design system](../../docs/design.md)), Tailwind's reset and the utilities
 the pages use. The host's page keeps its own styles, and the app keeps its
@@ -133,13 +133,13 @@ resolve a CSS `@import` of a package, as Vite and webpack's `css-loader` do.
 
 ### Invented tasks
 
-`@ntasks/ui/fixture` holds `createFixtureTasksApi()`: the calls answered from
+`@notice-cx/ntasks-ui/fixture` holds `createFixtureTasksApi()`: the calls answered from
 invented tasks held in the page, in two workspaces, Example and Example Labs.
 Every change lasts until the page reloads. Pass it as `api` in a development
 server or a test:
 
 ```tsx
-import { createFixtureTasksApi } from '@ntasks/ui/fixture';
+import { createFixtureTasksApi } from '@notice-cx/ntasks-ui/fixture';
 
 <NtasksApp api={createFixtureTasksApi()} basePath="/tasks" />;
 ```
@@ -151,9 +151,9 @@ development build.
 
 | Import | Names |
 |---|---|
-| `@ntasks/ui` | `NtasksApp` and `NtasksAppProps`; `DesignGallery`, the design system's gallery, which needs no router and no sign-in; `TokenSource` and `sessionCookie`; `API_VERSION`; the types `TasksApi` and `Theme` |
-| `@ntasks/ui/fixture` | `createFixtureTasksApi` and `FixtureOptions` |
-| `@ntasks/ui/styles.css` | The stylesheet |
+| `@notice-cx/ntasks-ui` | `NtasksApp` and `NtasksAppProps`; `DesignGallery`, the design system's gallery, which needs no router and no sign-in; `TokenSource` and `sessionCookie`; `API_VERSION`; the types `TasksApi` and `Theme` |
+| `@notice-cx/ntasks-ui/fixture` | `createFixtureTasksApi` and `FixtureOptions` |
+| `@notice-cx/ntasks-ui/styles.css` | The stylesheet |
 
 The type declarations are written for TypeScript's `bundler` module
 resolution, Vite's default.
@@ -251,7 +251,7 @@ when a change landed in that project; a poll that finds nothing costs almost
 no database reads. `test/worker-contract.test.ts` feeds the Worker's own task
 answers through the board, so the two cannot drift apart unnoticed.
 
-`src/api/fixture.ts` is `@ntasks/ui/fixture`'s source. In Example the
+`src/api/fixture.ts` is `@notice-cx/ntasks-ui/fixture`'s source. In Example the
 sign-in is an owner, and in Example Labs a member. The development server and
 the tests use it, so the pages can be built and checked without a running
 API.
@@ -261,10 +261,10 @@ API.
 Run these from the repository root:
 
 ```sh
-pnpm --filter @ntasks/ui dev           # the pages over invented tasks, at http://localhost:5173, with the gallery at /design
-pnpm --filter @ntasks/ui test          # everything under test/: the pages, the copy rules and a host page over the source
-pnpm --filter @ntasks/ui build         # dist/: index.js, fixture.js, ntasks-ui.css and types/
-pnpm --filter @ntasks/ui check:host    # after the build: the packed package in an empty Vite and React project
+pnpm --filter @notice-cx/ntasks-ui dev           # the pages over invented tasks, at http://localhost:5173, with the gallery at /design
+pnpm --filter @notice-cx/ntasks-ui test          # everything under test/: the pages, the copy rules and a host page over the source
+pnpm --filter @notice-cx/ntasks-ui build         # dist/: index.js, fixture.js, ntasks-ui.css and types/
+pnpm --filter @notice-cx/ntasks-ui check:host    # after the build: the packed package in an empty Vite and React project
 ```
 
 `vite.config.ts` builds the package in Vite's library mode: one module per
@@ -285,15 +285,21 @@ manifest.
 
 ## Releasing
 
-The package publishes to npm, at https://registry.npmjs.org, as `@ntasks/ui`.
+The package publishes to npm, at https://registry.npmjs.org, as
+`@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
 Pushing a tag `ui-v<version>` on a commit of `main`, such as `ui-v0.1.0`
 for the version in `package.json`, runs the Release UI package workflow
 (`.github/workflows/release-ui.yml`): it runs every check, the host check,
-then `npm publish --provenance` of the tarball `pnpm pack` writes. The first
-publish needs the `ntasks` organization on npm, which holds the `@ntasks`
-scope, and npm's trusted publisher for this repository or the `NPM_TOKEN`
-secret, as the `ntasks` command's release does. Pushing the tag is the
-owner's step ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
+then `npm publish --provenance` of the tarball `pnpm pack` writes. It signs
+in to npm with npm's trusted publisher for this repository when the package
+has one, and otherwise with the `NPM_TOKEN` secret, as the `ntasks`
+command's release does; the token must be allowed to publish to `notice-cx`.
+A trusted publisher must allow `npm publish` as well as `npm stage publish`:
+npm sets a new one to allow staging only, and the workflow publishes
+directly.
+Pushing the tag needs the owner's approval, and the `npm` environment holds
+the run until the owner approves it
+([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
 
 ## License
 

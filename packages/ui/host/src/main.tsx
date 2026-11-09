@@ -1,9 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import { NtasksApp } from '@ntasks/ui';
-import { createFixtureTasksApi } from '@ntasks/ui/fixture';
-import '@ntasks/ui/styles.css';
+import { NtasksApp } from '@notice-cx/ntasks-ui';
+import { createFixtureTasksApi } from '@notice-cx/ntasks-ui/fixture';
+import '@notice-cx/ntasks-ui/styles.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('index.html has no #root element.');
