@@ -22,6 +22,7 @@ import {
   type FixtureWorkspace,
 } from './fixture-data';
 import type {
+  ConnectedApp,
   FieldFilters,
   LiveEpic,
   LiveTask,
@@ -39,6 +40,23 @@ const PREFIX = /^[a-z0-9]{1,16}$/u;
 /** GitHub's rule for a username: letters, digits and single hyphens between them, at most 39. */
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/u;
 const NAME_LIMIT = 80;
+/** A connected app's name, as the Worker takes it. */
+const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
+
+/** A redirect address the Worker takes: https on a public host, or http on this machine, with a path. */
+function redirectAddress(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    return (
+      value.startsWith(`${url.origin}/`) &&
+      !value.includes('#') &&
+      ((url.protocol === 'https:' && !local) || (url.protocol === 'http:' && local))
+    );
+  } catch {
+    return false;
+  }
+}
 /** A workspace's name, as the Worker's `workspaceNameOf` takes it: one line of 1 to 128 characters, trimmed. */
 const WORKSPACE_NAME_LIMIT = 128;
 
@@ -690,6 +708,52 @@ export function createFixtureTasksApi({
       if (member.role === 'owner' && workspace.members.filter((row) => row.role === 'owner').length === 1)
         throw new ApiError('A workspace keeps at least one owner.', 409, 'last_owner');
       workspace.members.splice(workspace.members.indexOf(member), 1);
+    },
+    async apps() {
+      return copy(reach().apps ?? []);
+    },
+    async registerApp({ name, redirectUris }, options) {
+      const workspace = owned();
+      return once(options?.idempotencyKey, ['app', workspace.workspaceId, name, redirectUris], () => {
+        const trimmed = name.trim();
+        if (!APP_NAME.test(trimmed))
+          throw new ApiError(
+            'Name is 1 to 64 letters, digits, spaces, dots, dashes or underscores.',
+            400,
+            'invalid_request',
+            'name',
+          );
+        if (redirectUris.length === 0 || !redirectUris.every(redirectAddress))
+          throw new ApiError(
+            'Use an https address with a path, such as https://app.example.com/callback.',
+            400,
+            'invalid_request',
+            'redirectUris',
+          );
+        made += 1;
+        const app: ConnectedApp = {
+          clientId: `c-fixture-${made}`,
+          name: trimmed,
+          redirectUris: [...redirectUris],
+          createdAt: new Date(now()).toISOString(),
+          connectedAt: null,
+        };
+        workspace.apps = [app, ...(workspace.apps ?? [])];
+        return copy(app);
+      });
+    },
+    async revokeApp(clientId) {
+      const app = (reach().apps ?? []).find((row) => row.clientId === clientId);
+      if (!app || app.connectedAt === null)
+        throw new ApiError('You are not signed in to such an app here.', 404, 'not_found');
+      app.connectedAt = null;
+    },
+    async removeApp(clientId) {
+      const workspace = owned();
+      const apps = workspace.apps ?? [];
+      if (!apps.some((row) => row.clientId === clientId))
+        throw new ApiError('This workspace has no such app.', 404, 'not_found');
+      workspace.apps = apps.filter((row) => row.clientId !== clientId);
     },
   };
 }

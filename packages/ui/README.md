@@ -82,13 +82,16 @@ called.
 The default, `sessionCookie(apiOrigin)`, sends no token: the browser sends
 the Ntasks session cookie to the Ntasks origin, and Sign in opens
 `<apiOrigin>/sign-in`. Only a page served from the Ntasks origin has that
-cookie. A host on another origin signs the person in to Ntasks and gets their
-token as an OAuth client of that Ntasks ([Sign-in](../../docs/sign-in.md)).
+cookie. A host on another origin is a connected app of that Ntasks: an owner
+registers it, and the person signs in to the Ntasks from the host's page and
+the host gets their token
+([Connected apps](../../docs/sign-in.md#connected-apps)).
 
 Every request goes to `apiOrigin` with `credentials: 'same-origin'`, so the
 browser sends no cookie to another origin. Besides `authorization` it sends
-`content-type`, `idempotency-key` on writes and `x-ntasks-workspace`, so the
-Ntasks must allow those headers from the host's origin.
+`content-type`, `idempotency-key` on writes and `x-ntasks-workspace`, which
+an Ntasks allows from the origin of a connected app's redirect address
+([Calls from the app's page](../../docs/sign-in.md#calls-from-the-apps-page)).
 
 ### The API version
 
@@ -165,7 +168,7 @@ resolution, Vite's default.
 | `/tasks/live` | Every task in progress, grouped by its holder's last activity: Active (changed or commented on within the hour), Quiet (until the Stalled after choice: 4 hours, 1 day, 3 days or 1 week, kept in this browser) and Stalled (after it, or with nothing recorded, the five most recent first and the rest under Show more). Each row shows the next step, the pull request or else the branch, the helper, the holder and how long since their last change. Stalled changes nothing on the task (`src/lib/live.ts`). |
 | `/tasks/projects` | The workspace's projects, each with its prefix and open tasks. An owner creates one with New project (`N`): Name and Prefix, both required. |
 | `/tasks/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else sees neither. |
-| `/tasks/settings` | The workspace's icon, name and ID, with Copy ID. An owner edits the name and saves it; anyone else reads it. |
+| `/tasks/settings` | The workspace's icon, name and ID, with Copy ID, and its connected apps. An owner edits the name and saves it, registers an app, copies its client ID and removes it; anyone else reads the name and revokes their own sign-in to an app. |
 
 Every page opens in a workspace (`src/components/WorkspaceGate.tsx`): the
 one chosen last in this browser, kept in local storage, else the first

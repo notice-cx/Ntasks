@@ -7,6 +7,7 @@
  * holder rename.
  */
 import type { WorkspaceRole } from '../workspaces.ts';
+import { appReference } from './protocol.ts';
 
 export interface Member {
   readonly userId: string;
@@ -263,14 +264,29 @@ export async function removeMember(
       )
       .bind(workspaceId, userId, now),
     // An agent left with no grant anywhere loses its approval too, so asking
-    // again shows the approval page instead of a token that reaches nothing.
+    // again shows the approval page instead of a token that reaches nothing,
+    // and so does each of this workspace's connected apps. A connected app
+    // holds no grants, so another workspace's app is named and kept.
     db
       .prepare(
         `DELETE FROM auth_oauth_consent WHERE user_id = ?2
            AND client_id NOT IN (SELECT client_id FROM access_agent_grants WHERE user_id = ?2)
+           AND client_id NOT IN (SELECT client_id FROM auth_oauth_client
+             WHERE substr(reference_id, 1, length(?3)) = ?3 AND reference_id <> ?3 || ?1)
            AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
       )
-      .bind(workspaceId, userId),
+      .bind(workspaceId, userId, appReference('')),
+    // Their tokens for this workspace's apps go too, so allowing an app again
+    // after they rejoin starts from the scopes they allow then.
+    ...['auth_oauth_access_token', 'auth_oauth_refresh_token'].map((table) =>
+      db
+        .prepare(
+          `UPDATE ${table} SET revoked = ?3 WHERE user_id = ?2 AND revoked IS NULL
+             AND client_id IN (SELECT client_id FROM auth_oauth_client WHERE reference_id = ?4 || ?1)
+             AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE workspace_id = ?1 AND user_id = ?2)`,
+        )
+        .bind(workspaceId, userId, now, appReference('')),
+    ),
   ]);
   if ((removed?.meta.changes ?? 0) > 0) return 'removed';
   const still = await db

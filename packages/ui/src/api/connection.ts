@@ -6,7 +6,7 @@ import { createHttpTasksApi, SIGN_IN_PATH, type TasksApi } from './client';
  * `GET /api/version` (docs/api.md, "Versions"); one whose version is lower
  * lacks something these pages read.
  */
-export const API_VERSION = 1;
+export const API_VERSION = 2;
 
 /** How the pages' requests say who is asking. */
 export interface TokenSource {

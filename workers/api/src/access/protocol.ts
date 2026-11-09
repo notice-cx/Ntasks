@@ -7,6 +7,7 @@
  * authorization server.
  */
 import { MCP_PATH } from '../api.ts';
+import { SCOPES } from '../auth.ts';
 import type { ProjectAccess } from './principal.ts';
 
 /** Better Auth's routes live under this path; the OAuth issuer is the origin plus it. */
@@ -33,8 +34,39 @@ export const AGENT_SCOPES: Readonly<Record<string, ProjectAccess>> = Object.free
   'tasks:read': 'read',
   'tasks:write': 'write',
 });
+/**
+ * The scopes a connected app may ask for: an agent's, and a person's
+ * decisions. A connected app acts as the person who signs in to it, so its
+ * token may carry `tasks:decide`; a client that registered itself never
+ * holds that scope (auth.ts), and an agent's token never decides whatever it
+ * carries (verify.ts).
+ */
+export const APP_SCOPES: readonly string[] = Object.freeze([...Object.keys(AGENT_SCOPES), SCOPES.decide]);
 /** Asked for by clients that want a refresh token. It allows nothing by itself. */
 export const OFFLINE_ACCESS = 'offline_access';
+
+/**
+ * A connected app's OAuth client carries `ntasks-app:<workspace id>` as its
+ * reference id. Only Ntasks writes the column: the library never takes it
+ * from a registration request, so a client that registered itself cannot
+ * claim to be a connected app.
+ */
+const APP_REFERENCE = 'ntasks-app:';
+
+/** The reference id of a connected app of this workspace. */
+export function appReference(workspaceId: string): string {
+  return APP_REFERENCE + workspaceId;
+}
+
+/** The workspace a client's reference id makes it a connected app of, or null for any other client. */
+export function appWorkspaceOf(reference: string | null): string | null {
+  return reference?.startsWith(APP_REFERENCE) ? reference.slice(APP_REFERENCE.length) : null;
+}
+
+/** An SQL condition that holds for a client that is not a connected app, given its reference id column. */
+export function notAnApp(column: string): string {
+  return `(${column} IS NULL OR substr(${column}, 1, ${APP_REFERENCE.length}) <> '${APP_REFERENCE}')`;
+}
 export const AGENT_ACCESS_TOKEN_SECONDS = 3600;
 export const AGENT_REFRESH_TOKEN_SECONDS = 30 * 86_400;
 

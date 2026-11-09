@@ -14,6 +14,7 @@ sign-in sits and what a workspace is.
 | The setup page's manifest, state and code exchange | [`workers/api/src/access/setup.ts`](../workers/api/src/access/setup.ts) |
 | The setup, sign-in, agent approval and expired-link pages, and their look | [`workers/api/src/access/pages.ts`](../workers/api/src/access/pages.ts), [`page-look.ts`](../workers/api/src/access/page-look.ts) |
 | The token verifier | [`workers/api/src/access/verify.ts`](../workers/api/src/access/verify.ts) |
+| Connected apps, and calls from their pages | [`workers/api/src/access/apps.ts`](../workers/api/src/access/apps.ts), [`cross-origin.ts`](../workers/api/src/access/cross-origin.ts) |
 | What a caller may do | [`workers/api/src/access/principal.ts`](../workers/api/src/access/principal.ts) |
 | Members and invitations | [`workers/api/src/access/members.ts`](../workers/api/src/access/members.ts) |
 | Scopes, paths and discovery documents | [`workers/api/src/access/protocol.ts`](../workers/api/src/access/protocol.ts) |
@@ -28,7 +29,8 @@ sign-in library, with its OAuth provider plugin, on the Worker's D1 database.
 
 | Caller | How it signs in | What it reaches |
 |---|---|---|
-| **A person**, in a browser | Signs in with GitHub on `/sign-in`. The GitHub account must be a deployment admin (the account that ran the [setup page](#the-setup-page), or one whose numeric id is in `OWNER_GITHUB_IDS`), a member of a workspace, or invited to one ([below](#members-and-invitations)). | Each workspace they belong to, as its owner or a member. In it, every project, to read and change tasks (`tasks:read`, `tasks:write`), and a person's decisions (`tasks:decide`). An owner also holds the backup of the workspace's store (`tasks:backup`), a load into its empty store (`tasks:restore`), and creating its projects and renaming it (`workspace:manage`). Only a person's own browser session counts as their decision. |
+| **A person**, in a browser | Signs in with GitHub on `/sign-in`. The GitHub account must be a deployment admin (the account that ran the [setup page](#the-setup-page), or one whose numeric id is in `OWNER_GITHUB_IDS`), a member of a workspace, or invited to one ([below](#members-and-invitations)). | Each workspace they belong to, as its owner or a member. In it, every project, to read and change tasks (`tasks:read`, `tasks:write`), and a person's decisions (`tasks:decide`). An owner also holds the backup of the workspace's store (`tasks:backup`), a load into its empty store (`tasks:restore`), and creating its projects and renaming it (`workspace:manage`). A decision counts as the person's own only when it comes from their browser session, or from a connected app they allowed `tasks:decide` ([below](#connected-apps)). |
+| **A person, through a connected app**, such as another product's page that shows a workspace's tasks | OAuth 2.1 with PKCE, through an app an owner of the workspace registered ([below](#connected-apps)). The person signs in on `/sign-in` and allows the app on `/agent-access`. | The person, in the app's one workspace alone: what their role there allows, bounded by the scopes the app's token carries, `tasks:read`, `tasks:write` and `tasks:decide`. Never a backup, a load, managing the workspace or managing access. |
 | **An AI agent**, such as an MCP client | OAuth 2.1, the sign-in method of [MCP's authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization). A person approves the agent on `/agent-access` and chooses its projects among those of their workspaces. | The projects the person chose, to read (`tasks:read`) or to read and change (`tasks:write`) tasks, in each workspace the person still belongs to. |
 | **A service**, such as a NoticeOS installation | A service credential a workspace's owner made, sent as a bearer token. | Its credential's one workspace: the projects named in the credential's grants, each to read or to read and change. A credential made with the backup choice also reads the workspace's whole store through the backup route (`tasks:backup`, [API](api.md#backing-up-the-whole-store)), and one made with the restore choice may load rows into that store while it is empty (`tasks:restore`, [API](api.md#loading-an-empty-store)); either needs no grants. |
 | **A visitor**, such as a product demo's page or a visitor's agent | No credential. The request names the deployment's public workspace in the `x-ntasks-workspace` header ([below](#the-public-workspace)). | Only the public workspace: every project there, to read (`tasks:read`). Every change is refused. |
@@ -47,9 +49,10 @@ the only one it reaches.
 
 An agent or a service may pass on an answer a person gave it, such as a
 choice in a decision, but that is a relayed answer, not the person's own
-decision. `mayDecide(principal)` is true only for a person's browser
-session, so the API can record the two apart: only that session holds
-`tasks:decide`, which the decision routes need, and an agent records an
+decision. `mayDecide(principal)` is true only for a person: in their browser
+session, or through a connected app they allowed `tasks:decide`. So the API
+can record the two apart: only a person holds `tasks:decide`, which the
+decision routes need, and an agent records an
 answer it holds with `reconcile_task` ([API](api.md#recording-an-owner-answer)),
 which records it as relayed by that agent or service. An agent's sign-in also
 names the person who approved it, so a pick the agent relays names that
@@ -245,6 +248,146 @@ The Worker is both the authorization server and the only resource server,
 and every call reads the database to see revocations and grants, so a
 signed token would save no database read.
 
+## Connected apps
+
+A connected app is another product's page, such as a dashboard that shows a
+workspace's tasks, that a person signs in to Ntasks through. Its token acts
+as that person, so a decision made in the app is the person's own and is
+recorded under their name. An agent's token never is. The app never holds a
+service credential for this: a service credential acts as the service, and
+never decides.
+
+| | A connected app | An AI agent |
+|---|---|---|
+| Who registers it | An owner of one workspace, in the web app or with `POST /api/access/apps` | The agent itself, at `POST /api/auth/oauth2/register` |
+| What its token is | The person who signed in, in the app's workspace | The agent, acting for the person who approved it |
+| Where it reaches | Every project of the app's workspace, while the person is a member there | The projects the person chose, in each of their workspaces |
+| Scopes it may hold | `tasks:read`, `tasks:write`, `tasks:decide` | `tasks:read`, `tasks:write` |
+| What the history records | The person's name; a decision also records the app's client id | `agent:<name>` |
+
+### Registering an app
+
+An owner of the workspace registers the app in the web app, under Settings,
+Connected apps, with **Register app**, or with
+`POST /api/access/apps`, naming the workspace in the `x-ntasks-workspace`
+header when they belong to several:
+
+```json
+{ "name": "Example Tower", "redirectUris": ["https://tower.example.com/tasks/signed-in"] }
+```
+
+- `name` is 1 to 64 letters, digits, spaces, dots, dashes or underscores.
+  The approval page shows it to each person who signs in.
+- `redirectUris` lists 1 to 10 addresses the browser returns to after
+  sign-in. Each is an `https` address on a host other than `localhost`,
+  `127.0.0.1` or `[::1]`, or an `http` one on one of those three for an app
+  that runs on the same machine, without a fragment. It starts with its
+  origin written as a browser writes one: the scheme and host in lowercase,
+  and no port when it is the scheme's default, so
+  `https://app.example.com:443/callback` is refused. The path follows, in the
+  case the app uses. `https` on those three hosts is refused. The origins of
+  these addresses are where the app's page runs, and the only origins whose
+  pages may read the API's answers ([below](#calls-from-the-apps-page)).
+- The answer is `201` with `{ app }`, as `GET /api/access/apps` lists it. Its
+  `clientId` is what the app sends as `client_id`. The app is a public client
+  with no secret, and must use PKCE (S256).
+
+The OAuth provider stores the app as an OAuth client, and Ntasks then marks
+it as the workspace's app in the client's `reference_id`
+(`ntasks-app:<workspace id>`). The library never takes that column from a
+registration request, so a client that registers itself is always an agent,
+and its registration is refused if it asks for `tasks:decide`.
+
+### Signing a person in
+
+The app runs the authorization code flow with PKCE against the endpoints the
+[authorization server metadata](#routes) lists:
+
+1. It sends the person's browser to `/api/auth/oauth2/authorize` with its
+   `client_id`, one of its `redirect_uri`s, `response_type=code`, a `state`,
+   the PKCE `code_challenge` with `code_challenge_method=S256`,
+   `resource=<origin>/api/mcp`, and the `scope` it needs, such as
+   `tasks:read tasks:write tasks:decide offline_access`.
+2. A person who is not signed in to Ntasks signs in on `/sign-in` first; the
+   page names the app.
+3. On `/agent-access` the person sees the app's name, its workspace, what it
+   may do there and where the browser returns to, and allows or denies it.
+   Only a member of the app's workspace may allow it. Once the person allowed
+   these scopes, a later sign-in skips the page.
+4. The browser returns to the app's address with `code` and `state`. The
+   app's page exchanges the code at `POST /api/auth/oauth2/token` with
+   `grant_type=authorization_code`, `client_id`, `code`, `redirect_uri`,
+   `code_verifier` and `resource`. The answer holds an access token, which
+   lasts one hour, and, with `offline_access`, a refresh token, which lasts
+   30 days.
+5. The page calls the API with `Authorization: Bearer <access token>`.
+
+`GET /api/access/me` with the token answers `kind: "person"`, the person's
+`name`, `projects: "all"`, `deploymentAdmin: false` and `app`, with the app's
+`clientId`, `name`, `workspaceId` and the `scopes` the person holds there
+through it.
+
+### What the token may do
+
+- It is the person: its writes record the person's name as the actor, as
+  their browser session does, and its retry principal is theirs.
+- It reaches the app's workspace alone. A request naming another workspace,
+  even one the person belongs to, is answered as if that workspace did not
+  exist. Once the person is no longer a member of the app's workspace, the
+  token is refused.
+- Its scopes are those of the person's role in the workspace that the token
+  carries: `tasks:read`, `tasks:write`, which includes reading, and
+  `tasks:decide`. An owner's backup, load and `workspace:manage` stay with
+  their own browser session.
+- It never manages access: the `/api/access/` routes that list, make or
+  revoke answer `403` with `owner_only`, and so does registering an app. It
+  never creates a workspace either, and never approves an agent.
+- A pick, an answer, an approval or a dispute made with it records the
+  person in `by` and the app's client id in `app`, in the task's `choice`,
+  its recorded `answer` and the history's change of each
+  ([API](api.md#a-persons-decisions)). A dismissal records the person as the
+  task's closer.
+
+### Calls from the app's page
+
+Every path under `/api`, the token endpoint included, answers a page whose
+origin is the origin of an enabled app's redirect address:
+
+- A preflight (`OPTIONS` with `Access-Control-Request-Method`) answers `204`
+  with `Access-Control-Allow-Origin` set to the page's origin, the methods
+  `GET`, `POST` and `PATCH`, and the headers `authorization`,
+  `content-type`, `x-ntasks-workspace` and `idempotency-key`. From any other
+  origin it answers `403` with `{"error":"origin_not_allowed"}`.
+- Other answers to such a page carry `Access-Control-Allow-Origin` and expose
+  `www-authenticate`, `retry-after` and `x-ntasks-api-version`
+  ([API](api.md#versions)).
+- No answer carries `Access-Control-Allow-Credentials`, so a browser lets the
+  page read only what it asked for with its bearer token, never an answer to
+  a request signed with the person's session cookie. A cookie-signed change
+  from the app's page is still refused as from another site.
+- A change that carries a bearer token from any other origin answers `403`
+  with `{"error":"origin_not_allowed"}`, so a page whose app was removed
+  writes nothing even while a browser keeps its earlier preflight. An origin
+  stays allowed while any enabled app has a redirect address there.
+- A request from the deployment's own origin, or with no `Origin` header,
+  such as an agent's, is answered as before.
+
+Checking the origin costs one D1 query on each call that names another
+origin.
+
+### Revoking and removing
+
+- **A person** ends their own sign-in to an app in the web app, under
+  Settings, Connected apps, with **Revoke**, or with
+  `POST /api/access/apps/<client id>/revoke`. Their consent goes, and the
+  app's access and refresh tokens for them are marked revoked: the next call
+  with either is refused.
+- **An owner** removes an app for everyone with **Remove**, or
+  `POST /api/access/apps/<client id>/remove`. The client is disabled, every
+  person's consent and token for it go, and its origin no longer reads the
+  API's answers, unless another enabled app has a redirect address at the
+  same origin.
+
 ## Checking every request
 
 The Worker signs every API and MCP request in with `signInAuthenticator(env)`
@@ -266,7 +409,7 @@ refusal that `refusal()` turns into the answer.
 | The request carries | The verifier checks, in one D1 query |
 |---|---|
 | A session cookie | The signature, an unexpired session, and that the person is still a deployment admin or a member of a workspace. The same query reads the person's memberships, with each workspace's name. A change (`POST` and other methods that are not reads) must also come from the deployment's origin, shown by its `Origin` header, so another site cannot submit a form with the person's cookie. |
-| An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still a deployment admin or a member of a workspace, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. |
+| An OAuth access token | That it is unexpired and unrevoked, its client is enabled, the person's consent still exists, the person is still a deployment admin or a member of a workspace, and it was issued for the MCP endpoint. Its projects are the person's grants, by workspace, lowered to read when the token has only `tasks:read`; a grant in a workspace the person no longer belongs to reaches nothing. For a [connected app](#connected-apps)'s client, the same query reads the person's role in the app's workspace instead, and the token is refused once they are not a member there. |
 | A service credential | That it exists and is not revoked, and that its secret matches the stored hash, compared in constant time. The same query reads its workspace's name. |
 | No credential, and the public workspace's id in the `x-ntasks-workspace` header | That `PUBLIC_WORKSPACE_ID` names that workspace and the workspace exists. The query reads its name. |
 
@@ -410,6 +553,9 @@ several.
   - the project grants their agents hold in the workspace are deleted, and an
     agent left with no grant anywhere loses its approval, so inviting them
     again shows each agent's approval page again;
+  - their sign-in to each of the workspace's connected apps ends, with its
+    access and refresh tokens, and their sign-in to another workspace's apps
+    stays;
   - the open invitations they sent in the workspace are revoked, and so are
     open invitations there for a login they joined under;
   - the service credentials they made in the workspace are revoked: they hold
@@ -430,6 +576,8 @@ Each of these takes effect at the caller's next request.
 | To cut off | Do this |
 |---|---|
 | An agent | `POST /api/access/agents/<client id>/revoke`, signed in as the person who approved it. Its project grants in every workspace and the person's consent are deleted, and its access and refresh tokens are marked revoked. |
+| A connected app, for one person | `POST /api/access/apps/<client id>/revoke`, signed in as that person ([above](#revoking-and-removing)). |
+| A connected app, for everyone | `POST /api/access/apps/<client id>/remove`, signed in as an owner of its workspace. |
 | A service | `POST /api/access/services/<credential id>/revoke`, signed in as the owner of the credential's workspace, naming that workspace when they belong to several. |
 | A person, from one workspace | `POST /api/access/members/<user id>/remove`, signed in as an owner of the workspace ([above](#members-and-invitations)). Their session and their agents stop reaching it. |
 | A person, from all of Ntasks | Remove them from each of their workspaces, and their GitHub id from `OWNER_GITHUB_IDS` when it is there. When they are the admin the setup page recorded and sign-in uses the stored app, [change `AUTH_SECRET`](#changing-auth_secret) and run the setup page again with another GitHub account; on a deployment that sets the GitHub secrets, only `OWNER_GITHUB_IDS` names admins. Their sessions and the agents they approved are refused. |
@@ -496,10 +644,14 @@ and people's own sign-in, keep working.
 | `POST /api/auth/sign-out` | Ends the browser session |
 | Any other path under `/api/auth/` | `404`: the library's other routes, such as client administration, stay private |
 | `GET /sign-in`, `POST /sign-in` | The [setup page](#the-setup-page) and its steps until sign-in is set up; then the sign-in page, and its Sign in with GitHub and Sign out buttons |
-| `GET /agent-access`, `POST /agent-access` | The page where a person allows or denies an agent |
-| `GET /api/access/me` | Who the request is from: `kind`, `name`, `deploymentAdmin` (whether a person is a deployment admin: the setup page recorded them, or their GitHub id is in `OWNER_GITHUB_IDS`; false for an agent or a service) and `projects`: `all` for a person, or each project an agent or a service was granted, as `{ workspaceId, projectId, access }` |
-| `GET /api/access/agents` | The person's connected agents, with their grants, each as `{ workspaceId, projectId, access }` |
+| `GET /agent-access`, `POST /agent-access` | The page where a person allows or denies an agent or a connected app |
+| `GET /api/access/me` | Who the request is from: `kind`, `name`, `deploymentAdmin` (whether a person is a deployment admin: the setup page recorded them, or their GitHub id is in `OWNER_GITHUB_IDS`; false for an agent, a service or a connected app) and `projects`: `all` for a person, or each project an agent or a service was granted, as `{ workspaceId, projectId, access }`; and through a connected app, `app` ([above](#signing-a-person-in)) |
+| `GET /api/access/agents` | The person's connected agents, with their grants, each as `{ workspaceId, projectId, access }`. Connected apps are not listed here. |
 | `POST /api/access/agents/<client id>/revoke` | Revokes an agent |
+| `GET /api/access/apps` | `{ apps }`: the workspace's connected apps, newest first, for any member, each as `{ clientId, name, redirectUris, createdAt, connectedAt }`, where `connectedAt` is when the person asking last allowed it, or `null` |
+| `POST /api/access/apps` | Registers a connected app in the workspace from `{"name": "...", "redirectUris": ["..."]}`, for an owner, and answers `201` with `{ app }` |
+| `POST /api/access/apps/<client id>/revoke` | Ends the person's own sign-in to an app of the workspace: `{ "revoked": true }` |
+| `POST /api/access/apps/<client id>/remove` | Removes an app of the workspace for everyone, for an owner: `{ "removed": true }` |
 | `GET /api/access/services` | The workspace's service credentials, without their secrets |
 | `POST /api/access/services` | Makes a credential in the workspace from `{"name": "...", "grants": [{"projectId": "...", "access": "read"}]}`, with `"backup": true`, one that may also read the backup route, and with `"restore": true`, one that may load the empty store; such a credential may leave `grants` out. Every grant names a project of the workspace, and the name is the credential's alone in the workspace. The answer holds its token, `ntasks_service.<id>.<secret>`, which is never shown again. Neither choice changes after. |
 | `POST /api/access/services/<credential id>/revoke` | Revokes a credential of the workspace |
@@ -510,10 +662,11 @@ and people's own sign-in, keep working.
 | `GET /api/workspaces`, `POST /api/workspaces`, `PATCH /api/workspaces` | The workspaces the sender reaches, a new one a deployment admin creates, and a new name an owner gives one ([API](api.md#workspaces)) |
 
 Only a person's browser session may use the `/api/access/` routes that list,
-make or revoke; an agent or a service gets `403` with `owner_only`. The
-service credential, member and invitation routes act in the request's
-workspace: the one the `x-ntasks-workspace` header names, or the person's
-only one. Only its owners may use them. A refusal of these routes is JSON
+make or revoke; an agent, a service or a connected app gets `403` with
+`owner_only`. The service credential, member, invitation and app routes act
+in the request's workspace: the one the `x-ntasks-workspace` header names,
+or the person's only one. Only its owners may use them, except that any
+member lists the workspace's apps and revokes their own sign-in to one. A refusal of these routes is JSON
 with `error`, the rule that refused, and `detail`, a sentence saying why; a
 refusal about one body field names it in `field`.
 
@@ -521,8 +674,8 @@ refusal about one body field names it in `field`.
 |---|---|
 | `400` with `workspace_required` | The person belongs to several workspaces and the request names none. |
 | `403` with `owner_only` | The sender is an agent or a service, or a member who is not an owner of the workspace. |
-| `400` with `invalid_request` | The body is not a JSON object, holds an unknown field, or a field is malformed: `githubLogin` is not a GitHub login, or `role` is not `owner` or `member`. |
-| `404` with `not_found` | The workspace has no such open invitation, or no such member. |
+| `400` with `invalid_request` | The body is not a JSON object, holds an unknown field, or a field is malformed: `githubLogin` is not a GitHub login, `role` is not `owner` or `member`, or an app's `name` or `redirectUris` is not one [Registering an app](#registering-an-app) takes. |
+| `404` with `not_found` | The workspace has no such open invitation, no such member, or no such app; or the person is not signed in to the app they revoke. |
 | `409` with `invitation_exists` | The login already has an open invitation to the workspace (`field` is `githubLogin`). |
 | `409` with `last_owner` | The member to remove is the workspace's only owner. |
 
@@ -534,7 +687,7 @@ its sentence in `message` instead of `detail`.
 | Table | Holds |
 |---|---|
 | `auth_user`, `auth_session`, `auth_account`, `auth_verification` | Better Auth's people, browser sessions, GitHub accounts and sign-in state. The GitHub token from sign-in is stored encrypted. |
-| `auth_oauth_client`, `auth_oauth_consent`, `auth_oauth_access_token`, `auth_oauth_refresh_token` | The OAuth provider's registered agents, people's consents, and tokens stored as hashes |
+| `auth_oauth_client`, `auth_oauth_consent`, `auth_oauth_access_token`, `auth_oauth_refresh_token` | The OAuth provider's registered agents and connected apps, people's consents, and tokens stored as hashes. A connected app's client holds `ntasks-app:<workspace id>` in `reference_id`, and a removed one `disabled = 1`. |
 | `auth_oauth_resource`, `auth_oauth_client_resource`, `auth_oauth_client_assertion` | The MCP endpoint as a protected resource, and other OAuth provider records |
 | `workspaces` | Each workspace: `id`, a lowercase UUID, `name`, `created_by` and `created_at` |
 | `workspace_members` | Who belongs to each workspace: `workspace_id`, `user_id`, `role` (`owner` or `member`) and `created_at`, one row for each person in each workspace |

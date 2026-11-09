@@ -10,10 +10,12 @@ on the Worker's origin.
 
 ## What a host does
 
-1. **Signs the person in to the Ntasks.** The person's access token comes
-   from the Ntasks, to the host as one of its OAuth clients
-   ([Sign-in](sign-in.md)). The host passes the token to the pages; it never
-   vouches for the person with a credential of its own.
+1. **Signs the person in to the Ntasks.** The host is a connected app of the
+   Ntasks: an owner registers it, and the person signs in to the Ntasks from
+   the host's page, which receives their access token
+   ([Connected apps](sign-in.md#connected-apps)). The host passes the token
+   to the pages; it never vouches for the person with a credential of its
+   own.
 2. **Checks the version.** `GET /api/version` on the Ntasks answers
    `{ version, oldest }` before anyone signs in. When `version` is lower than
    the package's `API_VERSION`, the Ntasks lacks something the pages read and

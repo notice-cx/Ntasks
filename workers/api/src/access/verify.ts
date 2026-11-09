@@ -13,6 +13,11 @@
  *   still in place and the person still an admin or a member. It reaches
  *   only the projects the person granted it, in workspaces the person still
  *   belongs to.
+ * - **A person through a connected app**: an OAuth access token, checked as
+ *   an agent's, whose client an owner registered as a connected app of one
+ *   workspace. It is the person, in that workspace alone, while they are a
+ *   member of it, with what their role allows there bounded by the token's
+ *   scopes.
  * - **A service**: a service credential as a bearer token, unrevoked. It
  *   reaches its credential's one workspace: the projects named in its grants,
  *   the whole store for a backup when its owner made it a backup credential,
@@ -35,7 +40,15 @@ import type {
   ServicePrincipal,
   WorkspaceGrants,
 } from './principal.ts';
-import { bearerChallenge, bearerToken, mcpResource, scopeAccess } from './protocol.ts';
+import {
+  APP_SCOPES,
+  appReference,
+  appWorkspaceOf,
+  bearerChallenge,
+  bearerToken,
+  mcpResource,
+  scopeAccess,
+} from './protocol.ts';
 import { parseServiceToken, SERVICE_TOKEN_PREFIX } from './service-token.ts';
 
 export interface VerifierEnv extends SignInSecrets {
@@ -73,7 +86,7 @@ export async function verifyRequest(request: Request, env: VerifierEnv): Promise
   if (bearer !== null) {
     const principal = bearer.startsWith(`${SERVICE_TOKEN_PREFIX}.`)
       ? await verifyServiceToken(env.DB, bearer)
-      : await verifyAgentToken(env.DB, secrets, bearer);
+      : await verifyOAuthToken(env.DB, secrets, bearer);
     return principal ? { ok: true, principal } : refused(env.DB, secrets, 'invalid_token');
   }
   const cookie = sessionCookie(request.headers);
@@ -294,22 +307,32 @@ async function verifySession(
 }
 
 /**
- * The agent an access token belongs to; null when the token is unknown,
+ * The sender of an OAuth access token: an agent, or, for a connected app's
+ * token, the person who signed in to it. Null when the token is unknown,
  * expired, revoked or for another resource, its client is disabled, the
  * consent is gone, or its person is neither a deployment admin nor a member
- * of any workspace any more.
+ * of any workspace any more; and for an app's token, when the person is no
+ * longer a member of the app's workspace.
  */
-async function verifyAgentToken(db: D1Database, secrets: Secrets, token: string): Promise<AgentPrincipal | null> {
+async function verifyOAuthToken(
+  db: D1Database,
+  secrets: Secrets,
+  token: string,
+): Promise<AgentPrincipal | PersonPrincipal | null> {
   // Better Auth stores an opaque token as base64url(SHA-256(token)).
   const stored = base64url(await sha256(token));
   const row = await db
     .prepare(
-      `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name, u.name AS person_name,
+      `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name, c.reference_id,
+         u.name AS person_name,
          (SELECT json_group_array(json_array(g.workspace_id, w.name, g.project_id, g.access))
            FROM access_agent_grants g
            JOIN workspace_members m ON m.workspace_id = g.workspace_id AND m.user_id = g.user_id
            JOIN workspaces w ON w.id = g.workspace_id
            WHERE g.user_id = t.user_id AND g.client_id = t.client_id) AS grants,
+         (SELECT json_array(m.workspace_id, w.name, m.role)
+           FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
+           WHERE m.user_id = t.user_id AND c.reference_id = ? || m.workspace_id) AS app_membership,
          ${personColumns('t.user_id')},
          EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = t.user_id) AS member
        FROM auth_oauth_access_token t
@@ -318,15 +341,17 @@ async function verifyAgentToken(db: D1Database, secrets: Secrets, token: string)
        WHERE t.token = ? AND t.revoked IS NULL AND t.expires_at > ? AND t.user_id IS NOT NULL
          AND EXISTS (SELECT 1 FROM auth_oauth_consent k WHERE k.client_id = t.client_id AND k.user_id = t.user_id)`,
     )
-    .bind(stored, new Date().toISOString())
+    .bind(appReference(''), stored, new Date().toISOString())
     .first<{
       client_id: string;
       user_id: string;
       scopes: string;
       resources: string | null;
       client_name: string | null;
+      reference_id: string | null;
       person_name: string | null;
       grants: string | null;
+      app_membership: string | null;
       github_ids: string | null;
       recorded_admin: number;
       stored_origin: string | null;
@@ -338,8 +363,10 @@ async function verifyAgentToken(db: D1Database, secrets: Secrets, token: string)
   // A token names the resources it was issued for; one for another resource is refused.
   const resources = parseJson(row.resources);
   if (resources !== null && !(Array.isArray(resources) && resources.includes(mcpResource(origin)))) return null;
-  const scopes = parseJson(row.scopes);
-  const most = Array.isArray(scopes) ? scopeAccess(scopes.filter((scope) => typeof scope === 'string')) : null;
+  const parsed = parseJson(row.scopes);
+  const scopes = Array.isArray(parsed) ? parsed.filter((scope): scope is string => typeof scope === 'string') : [];
+  if (appWorkspaceOf(row.reference_id) !== null) return appPerson(row, scopes);
+  const most = scopeAccess(scopes);
   return Object.freeze({
     kind: 'agent',
     id: `agent:${row.client_id}:${row.user_id}`,
@@ -348,6 +375,38 @@ async function verifyAgentToken(db: D1Database, secrets: Secrets, token: string)
     clientId: row.client_id,
     name: displayName(row.client_name, 'agent'),
     workspaces: workspaceGrantsOf(row.grants, most),
+  });
+}
+
+/**
+ * The person a connected app's token acts for, in the app's one workspace
+ * with their role there, or null once they are no longer a member of it.
+ * Their deployment admin rights stay with their own browser session.
+ */
+function appPerson(
+  row: {
+    readonly client_id: string;
+    readonly user_id: string;
+    readonly client_name: string | null;
+    readonly person_name: string | null;
+    readonly app_membership: string | null;
+  },
+  scopes: readonly string[],
+): PersonPrincipal | null {
+  const memberships = membershipsOf(row.app_membership === null ? null : `[${row.app_membership}]`);
+  if (memberships.length !== 1) return null;
+  return Object.freeze({
+    kind: 'person',
+    id: `person:${row.user_id}`,
+    userId: row.user_id,
+    name: displayName(row.person_name, 'owner'),
+    admin: false,
+    memberships,
+    app: Object.freeze({
+      clientId: row.client_id,
+      name: displayName(row.client_name, 'app'),
+      scopes: Object.freeze(APP_SCOPES.filter((scope) => scopes.includes(scope))),
+    }),
   });
 }
 
