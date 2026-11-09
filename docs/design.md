@@ -226,7 +226,7 @@ for a task, testing these in order:
 |---|---|---|
 | Green circle with a tick | Done | it is closed. A close where nothing shipped (won't do, duplicate, can't reproduce, already handled, no longer needed) draws the same mark in Text 3 (`muted`) |
 | Dashed grey circle | Parked | it is set aside until a date (stored status `deferred`) |
-| Amber ring with a dot | Waiting for you | a person must answer it: an approval a person answers, or a ready task labelled `human` that nobody has answered (see [decisions and approvals](concepts.md#decisions-and-approvals)) |
+| Amber ring with a dot | Waiting for you | a person must answer it: an approval or a request to do steps, or a ready task labelled `human` that nobody has answered (see [decisions, approvals and steps to do](concepts.md#decisions-approvals-and-steps-to-do)) |
 | Red disc with a bar | Blocked | its stored status is `blocked`, or it is open and depends on a task that is not closed |
 | Indigo ring, half filled | In progress | someone has claimed it |
 | Grey ring | Open | none of the above, including a status the app does not know |
