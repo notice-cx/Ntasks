@@ -515,7 +515,7 @@ function Header({ theme, onTheme }: { theme: Theme; onTheme: (theme: Theme) => v
         {(
           [
             ['Typeface', 'Inter, JetBrains Mono for code'],
-            ['Accent', 'Indigo #5552D4'],
+            ['Accent', 'Notice blue #2745D4'],
             ['Icons', 'Lucide, 16 px, 1.75 stroke'],
             ['Density', '14 px text, 36 px rows'],
             [
