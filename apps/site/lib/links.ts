@@ -25,12 +25,14 @@ export interface DeadLink {
   reason: string;
 }
 
+/** Every HTML file under `dir`, as a path with forward slashes from `dir`. */
 function htmlFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true, encoding: 'utf8' })
     .filter((file) => file.endsWith('.html'))
     .map((file) => file.split(sep).join('/'));
 }
 
+/** An attribute value with the HTML entities a build writes in it turned back into characters. */
 function decode(value: string): string {
   return value
     .replace(/&amp;/g, '&')
@@ -40,6 +42,7 @@ function decode(value: string): string {
     .replace(/&gt;/g, '>');
 }
 
+/** The ids and anchor names a page defines: the targets a `#fragment` link can reach. */
 function ids(html: string): Set<string> {
   return new Set([...html.matchAll(/\s(?:id|name)="([^"]+)"/g)].map((match) => decode(match[1] ?? '')));
 }
@@ -85,6 +88,7 @@ function markdownHeadings(markdown: string): Set<string> {
   return slugs;
 }
 
+/** The links and images in the built site that lead nowhere, each with the page it is on and why. */
 export function checkLinks(options: LinkCheckOptions): DeadLink[] {
   const dead: DeadLink[] = [];
   const pageIds = new Map<string, Set<string>>();

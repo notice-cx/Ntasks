@@ -7,6 +7,7 @@ function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** A description from docs/index.md as the landing page shows it: plain text, starting with a capital. */
 function sentence(text: string): string {
   const plain = text.replace(/`([^`]*)`/g, '$1').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
   return plain.charAt(0).toUpperCase() + plain.slice(1);

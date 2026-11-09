@@ -68,6 +68,7 @@ export function readIndex(markdown: string): { text: string; files: IndexPage[] 
   return groups.filter((group) => group.files.length > 0);
 }
 
+/** A page's address in the sidebar: its file name without `.md`, under the docs' base. */
 function link(file: string): string {
   return `/${file.replace(/\.md$/, '')}`;
 }

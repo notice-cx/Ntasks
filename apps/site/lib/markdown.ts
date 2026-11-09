@@ -44,6 +44,7 @@ const PICTURE =
 // with a dot, so these gain a leading `./`.
 const RELATIVE_SOURCE = /(<(?:img|source)\b[^>]*?\s(?:src|srcset)=")(?![a-z][a-z0-9+.-]*:|[/.#])/gi;
 
+/** An `<img>` tag with `name` added to its classes, keeping any it has. */
 function withClass(img: string, name: string): string {
   if (/\sclass="/.test(img)) return img.replace(/\sclass="/, ` class="${name} `);
   return img.replace(/^<img\b/, `<img class="${name}"`);
@@ -53,6 +54,7 @@ function withSource(img: string, source: string): string {
   return img.replace(/\ssrc="[^"]*"/, ` src="${source}"`);
 }
 
+/** An `<img>` tag that loads when it nears the screen, unless it already says how to load. */
 function lazy(img: string): string {
   return /\sloading="/.test(img) ? img : img.replace(/^<img\b/, '<img loading="lazy"');
 }

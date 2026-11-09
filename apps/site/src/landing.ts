@@ -13,6 +13,7 @@ import './landing.css';
 const THEME_KEY = 'vitepress-theme-appearance';
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 
+/** The theme choice saved in the browser, or 'auto' when there is none or storage is blocked. */
 function savedTheme(): string {
   try {
     return localStorage.getItem(THEME_KEY) ?? 'auto';
@@ -21,6 +22,7 @@ function savedTheme(): string {
   }
 }
 
+/** Draws the page in the saved or system theme, and names the switch's next theme for screen readers. */
 function applyTheme(): void {
   const saved = savedTheme();
   const dark = saved === 'dark' || (saved !== 'light' && systemDark.matches);
@@ -30,6 +32,7 @@ function applyTheme(): void {
   }
 }
 
+/** Switches to the other theme and saves the choice, for the docs too. */
 function switchTheme(): void {
   const dark = !document.documentElement.classList.contains('dark');
   // Choosing the system's own theme follows the system again from then on.
@@ -55,6 +58,7 @@ for (const button of document.querySelectorAll('[data-theme-switch]')) {
 
 const copiedStatus = document.querySelector('[data-copied-status]');
 
+/** Copies the button's command, and says whether it worked in the page's status region. */
 async function copy(button: HTMLButtonElement): Promise<void> {
   try {
     // navigator.clipboard is missing outside a secure context, such as a
