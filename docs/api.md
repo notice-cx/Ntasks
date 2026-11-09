@@ -380,8 +380,11 @@ too.
   when it finds something: the sections the task's type expects that it still
   lacks, and advice. Advice names a title over 70 characters or holding a
   command, a file path or a commit hash; a description that writes a command
-  inline, or has a fenced block with no language tag or a `$` prompt; and
-  lettered options to pass as `choices`. Nothing is refused for it.
+  inline, or has a fenced block with no language tag or a `$` prompt; a
+  description whose first line repeats the title; an ask to a person, an
+  approval or a task labelled `human`, that names no link, control to press
+  or command; and lettered options to pass as `choices`. Nothing is refused
+  for it.
 
 ## Filing, claiming and closing in one call
 

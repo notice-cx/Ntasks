@@ -1,6 +1,6 @@
 /**
- * The rules the guide states (guide.ts) for a title and for the commands in a
- * description, checked on a write. A task that breaks them is advised on,
+ * The rules the guide states (guide.ts) for a title, the commands in a
+ * description and an ask to a person, checked on a write. A task that breaks them is advised on,
  * never refused: a title of up to 512 characters is valid, and tasks imported
  * from Beads carry long titles and inline commands.
  */
@@ -124,4 +124,73 @@ export function descriptionAdvice(description: string): readonly string[] {
         ? 'description: a fenced block has no language tag; name one after the opening fence, such as bash, sql or json.'
         : 'description: a fenced block has a $ prompt; leave it out, so the block pastes as it is.',
   );
+}
+
+/** Text as a reader compares it: lowercase, one space between words, no Markdown marks around it and no full stop after it. */
+function plain(text: string): string {
+  return text
+    .replace(/^\s*(?:#{1,6}\s+|[-*+>]\s+|\d+[.)]\s+)*/u, '')
+    .replace(/[*_`]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .replace(/[\s.!?:;,]+$/u, '')
+    .trim()
+    .toLowerCase();
+}
+
+/** Whether a description's first line that is not blank says only what the title says. */
+export function repeatsTitle(title: string, description: string): boolean {
+  const first = description.split(/\r?\n/u).find((line) => line.trim() !== '');
+  return first !== undefined && plain(first) === plain(title);
+}
+
+/** Advice on a description that opens with its title again. */
+export function repeatAdvice(title: string, description: string): readonly string[] {
+  return repeatsTitle(title, description)
+    ? [
+        'description: its first line repeats the title; use it for what the title leaves out: for work, what and why; for a person, the ask and where to act.',
+      ]
+    : [];
+}
+
+/** Words that send a person to a control on the page; "choose" or "pick" name the decision, not where to make it. */
+const CONTROL = /\b(?:press|click|tap|tick)\b|\bbutton\b|\bon this (?:task|approval)\b/iu;
+
+/** The language tags of a block a person runs, as against data such as JSON or YAML. */
+const RUNNABLE = /^(?:bash|sh|shell|zsh|fish|console|terminal|powershell|pwsh|ps1|cmd|bat|sql|psql)$/iu;
+
+/** Whether a fenced block is a command or query to run: by its tag, or by a line that starts like a command. */
+function runs(block: { readonly info: string; readonly lines: readonly string[] }): boolean {
+  return RUNNABLE.test(block.info.split(/\s+/u)[0] ?? '') || block.lines.some((line) => RUN.test(line.trim()));
+}
+
+/** Whether a description names a place for a person to act: a link, a command to run, or a control to press. */
+export function namesPlaceToAct(description: string): boolean {
+  const { prose, blocks } = parts(description);
+  return (
+    blocks.some(runs) ||
+    inlineCommands(prose).length > 0 ||
+    prose.some((line) => /https?:\/\/\S|\]\(/u.test(line) || CONTROL.test(line))
+  );
+}
+
+/**
+ * Advice on an ask to a person, an approval or a task labelled human, that
+ * names no place to act. A task with choices has one, a button per option,
+ * and so does a request to do steps: a tick per step.
+ */
+export function placeAdvice(task: {
+  readonly id: string;
+  readonly type: string;
+  readonly labels: readonly string[];
+  readonly description: string;
+  readonly choices: unknown;
+  readonly steps?: readonly unknown[] | null;
+}): readonly string[] {
+  const asks = task.type === 'gate' || task.labels.includes('human');
+  if (!asks || task.choices || (task.steps?.length ?? 0) > 0 || namesPlaceToAct(task.description)) return [];
+  return [
+    task.type === 'gate'
+      ? `description: it names no place to act; say where the person answers, such as "press Approve on this task" (its page in Ntasks is /tasks/${task.id}), with a link to what the approval covers.`
+      : `description: it names no place to act; say where the person acts: the button to press on its page in Ntasks, /tasks/${task.id}, a link, or the command to run.`,
+  ];
 }
