@@ -4,6 +4,7 @@
 import { TaskRefused, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { WORK_ARGS } from '../../src/args.ts';
+import { titleAdvice, titleHolds } from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
@@ -175,6 +176,8 @@ describe('tools/list', () => {
       'comment_on_task.model',
       ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
       'comment_on_task.detail',
+      'request_human_approval.title',
+      'request_human_approval.description',
       'request_human_approval.model',
       'close_task.tasks',
       'close_task.commit',
@@ -509,6 +512,49 @@ describe('create_task', () => {
       missing: ['## Steps to Reproduce', '## Acceptance Criteria'],
       advice: [CHOICES_ADVICE],
     });
+  });
+
+  it('advises on a title over 70 characters, or one holding a command, a file path or a commit hash', async () => {
+    const project = await newProject(engine);
+    const long = `Make ${'every page '.repeat(9)}load in a second`;
+    expect(long).toHaveLength(120);
+    const titles: readonly [string, readonly string[]][] = [
+      [long, []],
+      ['Deploy with wrangler deploy --env production', ['command']],
+      ['Run pnpm os:update on the host', ['command']],
+      ['Fix the lint in workers/api/src/mcp/guide.ts', ['file path']],
+      ['Run ./update.sh on the demo host', ['file path']],
+      ['Revert ba05bed67f1 on main', ['commit hash']],
+      ['Ship `git push` and ba05bed67f1', ['command', 'commit hash']],
+    ];
+    for (const [title, holds] of titles) {
+      expect(titleHolds(title)).toEqual(holds);
+      const reply = await write<{ lint: { advice: readonly string[] } }>(target, 'create_task', {
+        project: project.id,
+        title,
+        type: 'chore',
+        idempotency_key: key(),
+      });
+      expect(reply.lint.advice).toEqual(titleAdvice(title));
+      expect(reply.lint.advice).toHaveLength(title.length > 70 ? holds.length + 1 : 1);
+    }
+    // Plain titles, domains, owner/repo#123 and words joined by one slash hold none of them.
+    for (const title of [
+      'Approve updating demo.notice.cx so the demo runs its own Ntasks',
+      'Merge notice-cx/Ntasks#83 once review is done',
+      'Give agents read/write access to the docs project',
+      'Upgrade pnpm to 12 and Node.js to 24',
+      'Count 1234567 rows and the facade cache',
+    ]) {
+      expect(titleHolds(title)).toEqual([]);
+      const reply = await write<Record<string, unknown>>(target, 'create_task', {
+        project: project.id,
+        title,
+        type: 'chore',
+        idempotency_key: key(),
+      });
+      expect(reply).not.toHaveProperty('lint');
+    }
   });
 
   it('answers a retry with the task it filed, and refuses the key for a different task', async () => {
@@ -1122,6 +1168,28 @@ describe('update_task', () => {
     });
     const cleared = await current(project, id);
     expect([cleared.metadata, cleared.choices, cleared.dueAt]).toEqual([{}, null, '2027-02-01T00:00:00.000Z']);
+  });
+
+  it('advises on a title over 70 characters, or one holding a command, when it changes the title', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project, { title: 'Tidy the docs', type: 'chore' });
+    for (const title of [`Tidy ${'the docs and '.repeat(9)}the guide`, 'Tidy the docs with pnpm run format']) {
+      const reply = await write<{ lint: { advice: readonly string[] } }>(target, 'update_task', {
+        project: project.id,
+        task: id,
+        title,
+        idempotency_key: key(),
+      });
+      expect(reply.lint.advice).toEqual(titleAdvice(title));
+      expect(reply.lint.advice).toHaveLength(1);
+    }
+    const fixed = await write<Record<string, unknown>>(target, 'update_task', {
+      project: project.id,
+      task: id,
+      title: 'Tidy the docs',
+      idempotency_key: key(),
+    });
+    expect(fixed).not.toHaveProperty('lint');
   });
 
   it('gives a task to the name it is sent, and releases it with ""', async () => {
@@ -1824,6 +1892,87 @@ describe('request_human_approval', () => {
     const again = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', args);
     expect(again).toMatchObject({ approval: { id: first.approval.id }, created: false });
     expect((await current(project, id)).dependencies).toHaveLength(1);
+  });
+
+  it('opens an approval with the title and Markdown description it is given', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const description = [
+      'Approve deploying the API to production, so the new rules reach every agent.',
+      '',
+      '## What happens',
+      '',
+      '```bash',
+      'pnpm run deploy',
+      '```',
+      '',
+      '## Impact',
+      '',
+      '- No downtime; undo by deploying the previous release.',
+    ].join('\n');
+    const args = { project: project.id, task: id, title: 'Approve deploying the API to production', description };
+    const first = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', args);
+    expect(first).toMatchObject({
+      task: id,
+      approval: { status: 'open', title: 'Approve deploying the API to production' },
+      held: true,
+      created: true,
+    });
+    expect(first).not.toHaveProperty('lint');
+    expect(await current(project, first.approval.id)).toMatchObject({
+      type: 'gate',
+      awaitType: 'human',
+      title: 'Approve deploying the API to production',
+      description,
+    });
+    // Asked again, it is the open one; under another title it is another request.
+    const again = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', args);
+    expect(again).toMatchObject({ approval: { id: first.approval.id }, created: false });
+    const retitled = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', {
+      ...args,
+      title: 'Approve the API deployment',
+    });
+    expect(retitled.created).toBe(true);
+    expect((await current(project, id)).dependencies).toHaveLength(2);
+  });
+
+  it('advises title and description when a reason makes a title that breaks the rule', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const line = 'Approve running ./update.sh --commit ba05bed67f1 on the demo host, which restarts it';
+    const reply = await write<{ approval: { id: string }; lint: { advice: readonly string[] } }>(
+      target,
+      'request_human_approval',
+      { project: project.id, task: id, reason: `${line}\nIt takes 2 minutes.` },
+    );
+    expect((await current(project, reply.approval.id)).title).toBe(line);
+    expect(reply.lint.advice).toEqual([...titleAdvice(line), expect.any(String)]);
+    expect(titleAdvice(line)).toHaveLength(2);
+  });
+
+  it('refuses a title without a description, a title on two lines, and a reason beside a title', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const ask = (args: Record<string, unknown>) =>
+      refusal(target, 'request_human_approval', { workspace: WORKSPACE.id, project: project.id, task: id, ...args });
+    expect(await ask({ title: 'Approve the deploy' })).toBe(
+      'invalid arguments: description (required: pass title and description, or reason alone)',
+    );
+    expect(await ask({ description: 'Deploys the API.' })).toBe(
+      'invalid arguments: title (required: pass title and description, or reason alone)',
+    );
+    expect(await ask({})).toBe('invalid arguments: title (required: pass title and description, or reason alone)');
+    for (const title of ['Approve\nthe deploy', 'Approve\tthe deploy'])
+      expect(await ask({ title, description: 'Deploys the API.' })).toBe(
+        'invalid arguments: title (one line, with no tab or line break)',
+      );
+    expect(await ask({ title: 'Approve the deploy', description: 'Deploys the API.', reason: 'Deploy.' })).toBe(
+      'invalid arguments: reason (pass title and description, or reason alone)',
+    );
+    expect(await ask({ title: 'x'.repeat(71), description: 'Deploys the API.' })).toBe(
+      'invalid arguments: title (at most 70 characters; this one has 71)',
+    );
+    expect((await current(project, id)).dependencies).toEqual([]);
   });
 
   it('opens a new approval when only the start of an open one asks the same', async () => {

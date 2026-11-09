@@ -20,9 +20,10 @@ digits, such as `web`, and every task id in the project starts with it.
 
 A **task** is one piece of work. It has:
 
-- a **title**: the outcome, in plain words;
-- a **description**: what to do, why, and where;
-- **acceptance**: the proof that the work is done;
+- a **title**: the outcome, in plain words starting with a verb, of at most
+  70 characters;
+- a **description**: what to do, why, and where, in Markdown;
+- **acceptance**: the proof that the work is done, as a short checklist;
 - **notes**: what the people and agents working on it record as it moves,
   such as progress and findings;
 - a **design**: how the work is to be built;
@@ -41,6 +42,35 @@ A **task** is one piece of work. It has:
 
 A task's **id** is its project's prefix, a hyphen and a short key of lowercase
 letters and digits, such as `web-a1b2`.
+
+### Writing a task
+
+A task is written for someone who was not in the conversation that filed
+it. The web app shows the description, acceptance and comments as Markdown,
+and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
+
+- **Title.** The outcome, or for a person the ask, in plain words starting
+  with a verb. At most 70 characters, with no commands, file paths, commit
+  hashes or steps.
+- **Description.** A first line of one sentence that says what and why, or
+  for a person the ask. Then only the sections that apply: `## Why`,
+  `## Where` and `## Fix` for work; `## What happens`, `## Impact` and
+  `## How we'll check` for a person. A bug also has `## Steps to Reproduce`.
+- **Inside the description.** Steps as a numbered list, one action each.
+  Commands to paste in a fenced `bash` block; paths, identifiers, commands
+  and settings within a sentence in backticks. Links with readable labels,
+  and pull requests as `owner/repo#123`. Numbers with units. Paragraphs of at
+  most three sentences, and bullets for three or more items.
+- **Acceptance.** A short checklist of facts anyone can check on the day the
+  work lands.
+- **Approval.** The title is the action to approve. The description says
+  what will happen, with the exact commands; the impact: downtime, cost,
+  risk and how to undo it; how the result will be checked; and what happens
+  if the person says no.
+
+Creating or changing a task answers with advice when its title is longer
+than 70 characters or holds a command, a file path or a commit hash. Nothing
+is refused for it.
 
 ## Custom fields
 
@@ -191,8 +221,9 @@ Some steps only a person can take. Ntasks has two kinds:
   short label, and at most one is marked as recommended. The person's choice
   is recorded on the task.
 - An **approval** holds a task until a person approves a named action, such
-  as a deployment. While the approval is pending, the task is not ready, so
-  no agent starts it.
+  as a deployment. Its title names the action, and its description says what
+  will happen and its impact ([writing a task](#writing-a-task)). While the
+  approval is pending, the task is not ready, so no agent starts it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-decide-dark.webp">

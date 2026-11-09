@@ -185,7 +185,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `comment_on_task` | The `task` and the comment's `commentId`, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `idempotency_key` and `detail` |
 | `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
-| `request_human_approval` | The approval the task now waits on, and `created`: whether this call opened it | `workspace`, `task`, `reason` (at most 400 characters), and optionally `project` and `model` |
+| `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [title rule](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
 | `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `model`, `idempotency_key` and `detail` |
 | `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
@@ -363,8 +363,9 @@ too.
   link that would make tasks wait on each other in a loop is refused. A link
   to or from a person's decision changes and goes only when the person
   decides; a new one may be added.
-- **An approval** asked again with the same reason returns the open one,
-  with `created: false`.
+- **An approval** asked again with the same title and description, or the
+  same reason, returns the open one, with `created: false`. The same
+  description under another title opens another approval.
 - **Who did it**: the task records the sender's name as its filer, holder,
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the
@@ -374,8 +375,9 @@ too.
   it.
 - **Lint**: `create_task`, `create_tasks` and `update_task` return `lint`
   when it finds something: the sections the task's type expects that it still
-  lacks, and advice, such as passing lettered options as `choices`. Nothing is
-  refused for it.
+  lacks, and advice. Advice names a title over 70 characters or holding a
+  command, a file path or a commit hash, and lettered options to pass as
+  `choices`. Nothing is refused for it.
 
 ## Filing, claiming and closing in one call
 
