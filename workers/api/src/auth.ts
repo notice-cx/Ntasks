@@ -42,6 +42,9 @@ export interface Principal {
   /** The actor name of the person the sender is, or acts for: a pick the
    * sender relays records them as the one who chose. Absent for a service. */
   readonly person?: string;
+  /** The client id of the connected app the person acts through; a decision
+   * records it beside them. Absent for anyone else. */
+  readonly app?: string;
 }
 
 /** Whether the sender may read the project's tasks, or with `write`, change them. */

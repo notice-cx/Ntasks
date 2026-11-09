@@ -1,0 +1,554 @@
+// Connected apps through the Worker, as a host's page uses one: an owner
+// registers it, a person signs in to it in their browser, and the page calls
+// the API with the token, from its own origin.
+import { runInDurableObject } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
+import { describe, expect, it } from 'vitest';
+import { verifyRequest } from '../../src/access/verify.ts';
+import type { TaskStore } from '../../src/store/index.ts';
+import { store, TEST_WORKSPACE } from '../store.ts';
+import {
+  addMember,
+  Browser,
+  call,
+  choiceOf,
+  createProject,
+  locationOf,
+  McpClient,
+  MCP_RESOURCE,
+  meWithToken,
+  ORIGIN,
+  OWNER_GITHUB_ID,
+  pkce,
+  REDIRECT_URI,
+  userIdOf,
+  type Tokens,
+} from './client.ts';
+import { standInForGitHub } from './github.ts';
+
+standInForGitHub();
+
+const EVERY_SCOPE = 'tasks:read tasks:write tasks:decide offline_access';
+const OTHER_WORKSPACE = Object.freeze({ id: '0b5d2c41-8e7f-4a96-b3c2-5d1e9f7a6c84', name: 'Other workspace' });
+
+/** A registered app: its client id and the origin its page runs at, a new one for each test. */
+interface App {
+  readonly clientId: string;
+  readonly origin: string;
+  readonly redirect: string;
+}
+
+interface ListedApp {
+  readonly clientId: string;
+  readonly name: string;
+  readonly redirectUris: readonly string[];
+  readonly connectedAt: string | null;
+}
+
+/** An origin no other test's app runs at. */
+function newOrigin(): string {
+  return `https://tower-${crypto.randomUUID().slice(0, 8)}.example.com`;
+}
+
+/** Registers an app in the test workspace, or the one `workspaceId` names, as the owner signed in to `owner`. */
+async function registerApp(owner: Browser, workspaceId = TEST_WORKSPACE.id): Promise<App> {
+  const origin = newOrigin();
+  const redirect = `${origin}/tasks/signed-in`;
+  const response = await owner.fetch('/api/access/apps', {
+    method: 'POST',
+    json: { name: 'Example Tower', redirectUris: [redirect] },
+    headers: { 'x-ntasks-workspace': workspaceId },
+  });
+  expect(response.status).toBe(201);
+  const { app } = await response.json<{ app: ListedApp }>();
+  return { clientId: app.clientId, origin, redirect };
+}
+
+/** The workspace's apps, as the person signed in to `browser` sees them. */
+async function appsSeenBy(browser: Browser, workspaceId = TEST_WORKSPACE.id): Promise<ListedApp[]> {
+  const response = await browser.fetch('/api/access/apps', { headers: { 'x-ntasks-workspace': workspaceId } });
+  expect(response.status).toBe(200);
+  return (await response.json<{ apps: ListedApp[] }>()).apps;
+}
+
+/** Sends the person's browser to authorize the app, and returns where it lands with the PKCE verifier. */
+async function authorize(browser: Browser, app: App, scope: string): Promise<{ landing: URL; verifier: string }> {
+  const { verifier, challenge } = await pkce();
+  const query = new URLSearchParams({
+    response_type: 'code',
+    client_id: app.clientId,
+    redirect_uri: app.redirect,
+    scope,
+    state: 'app-state',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource: MCP_RESOURCE,
+  });
+  return { landing: locationOf(await browser.fetch(`/api/auth/oauth2/authorize?${query}`)), verifier };
+}
+
+/** A token request from the app's page, as a browser sends it from the app's origin. */
+function tokenRequest(app: App, form: Record<string, string>): Promise<Response> {
+  return call('/api/auth/oauth2/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', origin: app.origin },
+    body: new URLSearchParams({ client_id: app.clientId, ...form }).toString(),
+  });
+}
+
+/** Signs the person in to the app: authorize, allow it on the approval page, and exchange the code from the app's page. */
+async function signInThroughApp(browser: Browser, app: App, scope = EVERY_SCOPE): Promise<Tokens> {
+  const { landing, verifier } = await authorize(browser, app, scope);
+  expect(landing.pathname).toBe('/agent-access');
+  const allowed = await browser.fetch('/agent-access', {
+    form: { oauth_query: landing.search.slice(1), decision: 'allow' },
+  });
+  const back = locationOf(allowed);
+  expect(`${back.origin}${back.pathname}`).toBe(app.redirect);
+  expect(back.searchParams.get('state')).toBe('app-state');
+  const response = await tokenRequest(app, {
+    grant_type: 'authorization_code',
+    code: back.searchParams.get('code') ?? '',
+    redirect_uri: app.redirect,
+    code_verifier: verifier,
+    resource: MCP_RESOURCE,
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('access-control-allow-origin')).toBe(app.origin);
+  return response.json<Tokens>();
+}
+
+/** Calls the API from the app's page with its bearer token. */
+function fromApp(
+  app: App,
+  token: string,
+  path: string,
+  init: { method?: string; json?: unknown; workspace?: string } = {},
+) {
+  const headers = new Headers({ authorization: `Bearer ${token}`, origin: app.origin });
+  if (init.workspace) headers.set('x-ntasks-workspace', init.workspace);
+  if (init.json !== undefined) headers.set('content-type', 'application/json');
+  return call(path, {
+    method: init.method ?? (init.json === undefined ? 'GET' : 'POST'),
+    headers,
+    ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
+  });
+}
+
+/** A decision with two options in a new project of the test workspace, waiting on a person. */
+async function decision(title = 'Pick a launch day'): Promise<{ projectId: string; taskId: string }> {
+  const projectId = await createProject('Decided');
+  const taskId = await runInDurableObject(store(), async (instance: TaskStore) => {
+    const { task } = await instance.tasks.createTask(
+      projectId,
+      {
+        title,
+        type: 'decision',
+        labels: ['human'],
+        choices: {
+          question: 'Which day?',
+          options: [
+            { key: 'a', label: 'Monday', recommended: true },
+            { key: 'b', label: 'Friday' },
+          ],
+        },
+      },
+      { name: 'agent:planner' },
+    );
+    return task.id;
+  });
+  return { projectId, taskId };
+}
+
+/** Reads a task as the person signed in to `browser`. */
+async function taskRead(browser: Browser, { projectId, taskId }: { projectId: string; taskId: string }) {
+  const response = await browser.fetch(`/api/tasks/${taskId}?project=${projectId}`, {
+    headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+  });
+  expect(response.status).toBe(200);
+  return response.json<{ task: Record<string, unknown> }>();
+}
+
+describe('registering a connected app', () => {
+  it('lets an owner register one that every member of the workspace sees, and refuses a member', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const app = await registerApp(owner);
+    const member = new Browser({ joinTestWorkspace: false });
+    // A member's invitation is how they join; the test writes the membership.
+    expect((await member.signInWithGitHub(1002)).pathname).toBe('/');
+    await addMember(TEST_WORKSPACE, (await userIdOf(1002))!, 'member');
+
+    expect((await appsSeenBy(member)).find((listed) => listed.clientId === app.clientId)).toEqual({
+      clientId: app.clientId,
+      name: 'Example Tower',
+      redirectUris: [app.redirect],
+      createdAt: expect.any(String) as unknown,
+      connectedAt: null,
+    });
+    const refused = await member.fetch('/api/access/apps', {
+      method: 'POST',
+      json: { name: 'Another app', redirectUris: [app.redirect] },
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ error: 'owner_only' });
+  });
+
+  it.each([
+    ['http on a public host', 'http://tower.example.com/tasks'],
+    ['https on this machine', 'https://localhost/tasks'],
+    ['an address with a fragment', 'https://tower.example.com/tasks#signed-in'],
+    ['an address with no path', 'https://tower.example.com'],
+  ])('refuses a redirect address that is %s', async (_, address) => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const response = await owner.fetch('/api/access/apps', {
+      method: 'POST',
+      json: { name: 'Example Tower', redirectUris: [address] },
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'invalid_request' });
+  });
+});
+
+describe('a person signed in through a connected app', () => {
+  it('is that person, in the app’s workspace, holding only the scopes they allowed', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const app = await registerApp(browser);
+    const { projectId } = await decision();
+
+    const reader = await signInThroughApp(browser, app, 'tasks:read');
+    expect(await (await meWithToken(reader.access_token)).json()).toMatchObject({
+      kind: 'person',
+      deploymentAdmin: false,
+      projects: 'all',
+      app: { clientId: app.clientId, name: 'Example Tower', workspaceId: TEST_WORKSPACE.id, scopes: ['tasks:read'] },
+    });
+    expect((await fromApp(app, reader.access_token, `/api/tasks?project=${projectId}`)).status).toBe(200);
+    const write = await fromApp(app, reader.access_token, '/api/tasks', {
+      json: { projectId, title: 'Filed by the app' },
+    });
+    expect(write.status).toBe(403);
+    expect(await write.json()).toMatchObject({ error: 'insufficient_scope' });
+
+    const writer = await signInThroughApp(browser, app, EVERY_SCOPE);
+    expect(await (await meWithToken(writer.access_token)).json()).toMatchObject({
+      app: { scopes: ['tasks:read', 'tasks:write', 'tasks:decide'] },
+    });
+    const filed = await fromApp(app, writer.access_token, '/api/tasks', {
+      json: { projectId, title: 'Filed by the app' },
+    });
+    expect(filed.status).toBe(200);
+  });
+
+  it('records a pick under the person’s name, as their session does, with the app’s client id beside it', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const app = await registerApp(browser);
+    const tokens = await signInThroughApp(browser, app);
+    const inBrowser = await decision('Picked in the web app');
+    const inApp = await decision('Picked through the app');
+
+    const direct = await browser.fetch(`/api/tasks/${inBrowser.taskId}/choose`, {
+      method: 'POST',
+      json: { projectId: inBrowser.projectId, option: 'b' },
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(direct.status).toBe(200);
+    const through = await fromApp(app, tokens.access_token, `/api/tasks/${inApp.taskId}/choose`, {
+      json: { projectId: inApp.projectId, option: 'b' },
+    });
+    expect(through.status).toBe(200);
+
+    const personal = (await taskRead(browser, inBrowser)).task;
+    const viaApp = (await taskRead(browser, inApp)).task;
+    const person = (personal.choice as { by: string }).by;
+    expect(viaApp).toMatchObject({
+      status: 'closed',
+      closedBy: person,
+      choice: { option: 'b', by: person, app: app.clientId },
+      answer: { recordedBy: person, relayed: false, app: app.clientId },
+    });
+    expect(personal).toMatchObject({ closedBy: person, answer: { recordedBy: person, relayed: false, app: null } });
+    expect(personal.choice).not.toHaveProperty('app');
+
+    const history = await fromApp(
+      app,
+      tokens.access_token,
+      `/api/tasks/${inApp.taskId}/history?project=${inApp.projectId}`,
+    );
+    const { changes } = await history.json<{ changes: { actor: string; fields: Record<string, unknown> }[] }>();
+    expect(changes[0]).toMatchObject({
+      actor: person,
+      fields: { choice: { new: { by: person, app: app.clientId } } },
+    });
+  });
+
+  it('never manages access or creates a workspace, whatever the person may do in their own browser', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const app = await registerApp(browser);
+    const { access_token: token } = await signInThroughApp(browser, app);
+
+    for (const path of ['/api/access/agents', '/api/access/services', '/api/access/members', '/api/access/apps']) {
+      const response = await fromApp(app, token, path, { workspace: TEST_WORKSPACE.id });
+      expect(response.status, path).toBe(403);
+      expect(await response.json(), path).toMatchObject({ error: 'owner_only' });
+    }
+    const created = await fromApp(app, token, '/api/workspaces', { json: { name: 'Made by the app' } });
+    expect(created.status).toBe(403);
+    const renamed = await fromApp(app, token, '/api/workspaces', {
+      method: 'PATCH',
+      json: { workspaceId: TEST_WORKSPACE.id, name: 'Renamed by the app' },
+    });
+    expect(renamed.status).toBe(403);
+  });
+
+  it('reaches only the workspace the app belongs to', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    await addMember(OTHER_WORKSPACE, (await userIdOf(OWNER_GITHUB_ID))!, 'owner');
+    const app = await registerApp(browser, OTHER_WORKSPACE.id);
+    const { access_token: token } = await signInThroughApp(browser, app);
+
+    const listed = await (
+      await fromApp(app, token, '/api/workspaces')
+    ).json<{
+      workspaces: { workspaceId: string }[];
+    }>();
+    expect(listed.workspaces.map((workspace) => workspace.workspaceId)).toEqual([OTHER_WORKSPACE.id]);
+    const elsewhere = await fromApp(app, token, '/api/tasks/projects', { workspace: TEST_WORKSPACE.id });
+    expect(elsewhere.status).toBe(404);
+    const own = await fromApp(app, token, '/api/tasks/projects', { workspace: OTHER_WORKSPACE.id });
+    expect(own.status).toBe(200);
+  });
+
+  it('cannot be allowed by a person who is not a member of its workspace', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const app = await registerApp(owner);
+    const outsider = new Browser({ joinTestWorkspace: false });
+    await outsider.signInWithGitHub(1003);
+
+    const { landing } = await authorize(outsider, app, EVERY_SCOPE);
+    expect(landing.pathname).toBe('/agent-access');
+    const page = await (await outsider.fetch(landing.pathname + landing.search)).text();
+    expect(page).not.toContain('value="allow"');
+    const allowed = await outsider.fetch('/agent-access', {
+      form: { oauth_query: landing.search.slice(1), decision: 'allow' },
+    });
+    expect(allowed.status).toBe(200);
+    const consents = await env.DB.prepare('SELECT count(*) AS n FROM auth_oauth_consent WHERE client_id = ?')
+      .bind(app.clientId)
+      .first<{ n: number }>();
+    expect(consents?.n).toBe(0);
+  });
+});
+
+describe('ending a connected app’s access', () => {
+  it('ends a removed member’s sign-in to the workspace’s apps, and keeps their apps in other workspaces', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const here = await registerApp(owner);
+    const person = new Browser({ joinTestWorkspace: false });
+    await person.signInWithGitHub(1004);
+    const userId = (await userIdOf(1004))!;
+    await addMember(TEST_WORKSPACE, userId, 'member');
+    const elsewhere = Object.freeze({ id: '6a2f8e13-4c5b-4d7a-9e06-1b3c5d7f9a28', name: 'Elsewhere' });
+    await addMember(elsewhere, userId, 'owner');
+    const there = await registerApp(person, elsewhere.id);
+    const tokenHere = (await signInThroughApp(person, here)).access_token;
+    const tokenThere = (await signInThroughApp(person, there)).access_token;
+
+    const removed = await owner.fetch(`/api/access/members/${userId}/remove`, {
+      method: 'POST',
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(removed.status).toBe(200);
+
+    expect((await meWithToken(tokenHere)).status).toBe(401);
+    expect((await meWithToken(tokenThere)).status).toBe(200);
+    // Invited again, the person allows this workspace's app again before it acts as them.
+    await addMember(TEST_WORKSPACE, userId, 'member');
+    expect((await meWithToken(tokenHere)).status).toBe(401);
+    expect((await authorize(person, here, EVERY_SCOPE)).landing.pathname).toBe('/agent-access');
+  });
+
+  it('refuses the token and its refresh once the person revokes their sign-in, and the app shows signed out', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const app = await registerApp(browser);
+    const tokens = await signInThroughApp(browser, app);
+    const before = (await appsSeenBy(browser)).find((listed) => listed.clientId === app.clientId);
+    expect(before?.connectedAt).toEqual(expect.any(String));
+
+    const revoked = await browser.fetch(`/api/access/apps/${app.clientId}/revoke`, {
+      method: 'POST',
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(revoked.status).toBe(200);
+
+    expect((await meWithToken(tokens.access_token)).status).toBe(401);
+    const refresh = await tokenRequest(app, {
+      grant_type: 'refresh_token',
+      refresh_token: tokens.refresh_token ?? '',
+      resource: MCP_RESOURCE,
+    });
+    expect(refresh.status).toBe(400);
+    const after = (await appsSeenBy(browser)).find((listed) => listed.clientId === app.clientId);
+    expect(after?.connectedAt).toBeNull();
+  });
+
+  it('is revoked from its workspace’s list of apps, not as an agent', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const app = await registerApp(browser);
+    const tokens = await signInThroughApp(browser, app);
+
+    const asAgent = await browser.fetch(`/api/access/agents/${app.clientId}/revoke`, { method: 'POST' });
+    expect(asAgent.status).toBe(404);
+    expect((await meWithToken(tokens.access_token)).status).toBe(200);
+    const agents = await (await browser.fetch('/api/access/agents')).json<{ agents: { clientId: string }[] }>();
+    expect(agents.agents.map((agent) => agent.clientId)).not.toContain(app.clientId);
+  });
+
+  it('ends every person’s sign-in when an owner removes the app, and stops answering its page', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const app = await registerApp(owner);
+    const tokens = await signInThroughApp(owner, app);
+
+    const removed = await owner.fetch(`/api/access/apps/${app.clientId}/remove`, {
+      method: 'POST',
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(removed.status).toBe(200);
+
+    expect((await meWithToken(tokens.access_token)).status).toBe(401);
+    expect((await appsSeenBy(owner)).map((listed) => listed.clientId)).not.toContain(app.clientId);
+    const preflight = await call('/api/tasks', {
+      method: 'OPTIONS',
+      headers: { origin: app.origin, 'access-control-request-method': 'GET' },
+    });
+    expect(preflight.status).toBe(403);
+  });
+});
+
+describe('agents and services still never decide', () => {
+  it('refuses tasks:decide to a client that registered itself, which stays an agent', async () => {
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const project = await createProject('AgentDecides');
+    const registration = {
+      client_name: 'Example Tower',
+      redirect_uris: [REDIRECT_URI],
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+    };
+    const register = (body: Record<string, unknown>) =>
+      call('/api/auth/oauth2/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const asking = await register({ ...registration, scope: 'tasks:read tasks:decide' });
+    expect(asking.status).toBe(400);
+    expect(await asking.json()).toMatchObject({ error: 'invalid_scope' });
+    // A registration that claims to be a connected app: the library keeps neither claim.
+    const claiming = await register({
+      ...registration,
+      reference_id: `ntasks-app:${TEST_WORKSPACE.id}`,
+      metadata: { workspace: TEST_WORKSPACE.id },
+    });
+    expect(claiming.status).toBe(201);
+    const self = new McpClient();
+    self.clientId = (await claiming.json<{ client_id: string }>()).client_id;
+
+    const refused = (await self.authorize(browser, 'tasks:read tasks:decide')).landing;
+    expect(`${refused.origin}${refused.pathname}`).toBe(REDIRECT_URI);
+    expect(refused.searchParams.get('error')).toBe('invalid_scope');
+    const { landing, verifier } = await self.authorize(browser, 'tasks:read tasks:write');
+    expect(landing.pathname).toBe('/agent-access');
+    const approved = await browser.fetch('/agent-access', {
+      form: { oauth_query: landing.search.slice(1), decision: 'allow', project: choiceOf(project) },
+    });
+    const tokens = await self.exchange(locationOf(approved).searchParams.get('code') ?? '', verifier);
+    const verified = await verifyRequest(
+      new Request(`${ORIGIN}/api/mcp`, { headers: { authorization: `Bearer ${tokens.access_token}` } }),
+      env,
+    );
+    expect(verified).toMatchObject({
+      ok: true,
+      principal: { kind: 'agent', id: `agent:${self.clientId}:${(await userIdOf(OWNER_GITHUB_ID))!}` },
+    });
+    const { projectId, taskId } = await decision();
+    const chose = await call(`/api/tasks/${taskId}/choose`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${tokens.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId, option: 'a' }),
+    });
+    expect(chose.status).toBe(403);
+    expect(await chose.json()).toMatchObject({ error: 'insufficient_scope' });
+  });
+
+  it('refuses a decision sent with a service credential', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const { projectId, taskId } = await decision();
+    const made = await owner.fetch('/api/access/services', {
+      method: 'POST',
+      json: { name: `Example host ${crypto.randomUUID().slice(0, 8)}`, grants: [{ projectId, access: 'write' }] },
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(made.status).toBe(201);
+    const { service } = await made.json<{ service: { token: string } }>();
+
+    const chose = await call(`/api/tasks/${taskId}/choose`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${service.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId, option: 'a' }),
+    });
+    expect(chose.status).toBe(403);
+    expect(await chose.json()).toMatchObject({ error: 'insufficient_scope' });
+  });
+});
+
+describe('calls from a page at another origin', () => {
+  it('answers a preflight from a connected app’s origin, without credentials', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const app = await registerApp(owner);
+    const tokens = await signInThroughApp(owner, app);
+
+    const preflight = await call('/api/tasks/projects', {
+      method: 'OPTIONS',
+      headers: {
+        origin: app.origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization, x-ntasks-workspace',
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe(app.origin);
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization');
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
+
+    const read = await fromApp(app, tokens.access_token, '/api/tasks/projects');
+    expect(read.status).toBe(200);
+    expect(read.headers.get('access-control-allow-origin')).toBe(app.origin);
+    expect(read.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+
+  it('refuses a preflight from an origin no app registered', async () => {
+    const preflight = await call('/api/tasks/projects', {
+      method: 'OPTIONS',
+      headers: { origin: newOrigin(), 'access-control-request-method': 'GET' },
+    });
+    expect(preflight.status).toBe(403);
+    expect(preflight.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});

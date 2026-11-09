@@ -36,6 +36,8 @@ export interface Sender {
   readonly name: string;
   /** The actor name of the person the sender is, or acts for. Absent for a service. */
   readonly person?: string;
+  /** The client id of the connected app the person acts through. */
+  readonly app?: string;
   /** Every workspace the sender reaches, ordered by name. A service reaches
    * exactly the one its credential belongs to. */
   readonly workspaces: readonly WorkspaceReach[];
@@ -59,6 +61,7 @@ export function scopedTo(sender: Sender, reach: WorkspaceReach): Principal {
     scopes: reach.scopes,
     projects: reach.projects,
     ...(sender.person === undefined ? {} : { person: sender.person }),
+    ...(sender.app === undefined ? {} : { app: sender.app }),
   });
 }
 

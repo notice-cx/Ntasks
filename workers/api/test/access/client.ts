@@ -215,7 +215,8 @@ export async function createProject(name = 'Example'): Promise<string> {
   return id;
 }
 
-async function pkce(): Promise<{ verifier: string; challenge: string }> {
+/** A PKCE verifier and its S256 challenge. */
+export async function pkce(): Promise<{ verifier: string; challenge: string }> {
   const verifier = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
     .replace(/\+/gu, '-')
     .replace(/\//gu, '_')

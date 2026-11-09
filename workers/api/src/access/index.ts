@@ -14,6 +14,7 @@ export {
   type SignInAuthenticator,
 } from './authenticator.ts';
 export { handleAccess, isAccessPath, type AccessEnv } from './routes.ts';
+export { crossOrigin } from './cross-origin.ts';
 export { refusal, verifyRequest, type Verification, type VerifierEnv } from './verify.ts';
 export {
   actorOf,

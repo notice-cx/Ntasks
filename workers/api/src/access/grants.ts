@@ -8,6 +8,7 @@ import { workspaceStore, type StoreBinding } from '../store/index.ts';
 import type { Workspace } from '../workspaces.ts';
 import { hex, randomSecret, sha256 } from './crypto.ts';
 import type { ProjectAccess } from './principal.ts';
+import { notAnApp } from './protocol.ts';
 import { serviceToken } from './service-token.ts';
 
 /** The bindings the grant records read projects through. */
@@ -168,7 +169,7 @@ export interface ConnectedAgent {
   readonly grants: readonly AgentGrant[];
 }
 
-/** The agents a person approved and has not revoked. */
+/** The agents a person approved and has not revoked. The connected apps they signed in to are listed with their workspace's apps (apps.ts). */
 export async function listAgents(db: D1Database, userId: string): Promise<ConnectedAgent[]> {
   const { results } = await db
     .prepare(
@@ -176,7 +177,8 @@ export async function listAgents(db: D1Database, userId: string): Promise<Connec
          (SELECT json_group_array(json_object('workspaceId', g.workspace_id, 'projectId', g.project_id, 'access', g.access))
            FROM access_agent_grants g WHERE g.user_id = k.user_id AND g.client_id = k.client_id) AS grants
        FROM auth_oauth_consent k JOIN auth_oauth_client c ON c.client_id = k.client_id
-       WHERE k.user_id = ? GROUP BY k.client_id ORDER BY approved_at DESC LIMIT 200`,
+       WHERE k.user_id = ? AND ${notAnApp('c.reference_id')}
+       GROUP BY k.client_id ORDER BY approved_at DESC LIMIT 200`,
     )
     .bind(userId)
     .all<{
@@ -198,9 +200,10 @@ export async function listAgents(db: D1Database, userId: string): Promise<Connec
 }
 
 /**
- * Revokes an agent for a person, in one batch: its project grants and the
- * person's consent go, and every access and refresh token it holds for the
- * person is marked revoked. Its next call is refused, and its next refresh.
+ * Revokes an agent or a connected app for a person, in one batch: its
+ * project grants and the person's consent go, and every access and refresh
+ * token it holds for the person is marked revoked. Its next call is refused,
+ * and its next refresh. False when the person had not allowed it.
  */
 export async function revokeAgent(db: D1Database, userId: string, clientId: string): Promise<boolean> {
   const now = new Date().toISOString();
