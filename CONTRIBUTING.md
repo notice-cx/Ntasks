@@ -35,6 +35,7 @@ runs Workers on Cloudflare, with a local task store and a local D1 database.
 | [`tools/cli/`](tools/cli/) | The npm package `ntasks` and its command, `npx ntasks deploy`, which deploys a release to a Cloudflare account and updates it, with the build that makes the package and the Release workflow's notes |
 | [`tools/screenshots/`](tools/screenshots/) | The command that makes the pictures and animated walkthroughs of the web app in the README and the docs |
 | [`docs/`](docs/) | Concepts, architecture and the design system |
+| [`spec/`](spec/) | The Shared Work Protocol, a draft open contract for shared work, with its JSON Schemas and their tests, under its own licenses ([spec/README.md](spec/README.md)) |
 
 ## Commands
 

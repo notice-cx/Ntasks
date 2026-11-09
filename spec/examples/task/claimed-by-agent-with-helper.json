@@ -1,0 +1,49 @@
+{
+  "priority": 2,
+  "labels": [],
+  "parent": null,
+  "description": "",
+  "acceptance": "",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": false,
+  "assignee": "agent:Claude Code",
+  "for": "redirect-fix-2",
+  "work": {
+    "branch": "fix-sign-in",
+    "pr": "https://github.com/example/web/pull/42",
+    "next": "Write the failing test"
+  },
+  "lastActivityAt": "2026-11-02T10:15:00.000Z",
+  "choices": null,
+  "choice": null,
+  "answer": null,
+  "deferUntil": null,
+  "dependencies": [
+    {
+      "id": "web-a1b2",
+      "type": "discovered-from",
+      "title": "Show the sign-in page at /sign-in",
+      "status": "open"
+    }
+  ],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T10:15:00.000Z",
+  "startedAt": "2026-11-02T10:15:00.000Z",
+  "closedAt": null,
+  "closeReason": null,
+  "closeLink": null,
+  "resolution": null,
+  "duplicateOf": null,
+  "id": "web-c3d4",
+  "title": "Keep the return address through the sign-in redirect",
+  "status": "in_progress",
+  "type": "bug",
+  "version": 3
+}

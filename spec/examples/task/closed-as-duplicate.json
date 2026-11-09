@@ -1,0 +1,42 @@
+{
+  "priority": 2,
+  "labels": [],
+  "parent": null,
+  "description": "",
+  "acceptance": "",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": false,
+  "assignee": null,
+  "for": null,
+  "work": {},
+  "lastActivityAt": null,
+  "choices": null,
+  "choice": null,
+  "answer": null,
+  "deferUntil": null,
+  "dependencies": [
+    {
+      "id": "web-a1b2",
+      "type": "related"
+    }
+  ],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T09:00:00.000Z",
+  "startedAt": null,
+  "closedAt": "2026-11-02T14:40:00.000Z",
+  "closeReason": "web-a1b2 holds this work.",
+  "closeLink": null,
+  "resolution": "duplicate",
+  "duplicateOf": "web-a1b2",
+  "id": "web-j9k0",
+  "title": "Add GitHub sign-in",
+  "status": "closed",
+  "type": "feature"
+}

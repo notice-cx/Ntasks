@@ -1,0 +1,10 @@
+{
+  "question": "Which sign-in should the web app offer first?",
+  "options": [
+    {
+      "key": "a",
+      "label": "GitHub",
+      "recommended": true
+    }
+  ]
+}

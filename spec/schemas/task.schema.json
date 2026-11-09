@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/task.schema.json",
+  "title": "Task",
+  "description": "One piece of work, as a server returns it when a task is read in full. Fields a server leaves out read as their empty value. A reader ignores fields it does not know. Section 3.2 of the protocol.",
+  "type": "object",
+  "properties": {
+    "id": { "$ref": "link.schema.json#/$defs/taskId" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "status": { "enum": ["open", "in_progress", "blocked", "deferred", "closed"] },
+    "priority": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "type": {
+      "description": "gate is an approval a task waits on (section 3.7).",
+      "enum": ["task", "bug", "feature", "epic", "chore", "decision", "gate"]
+    },
+    "labels": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true
+    },
+    "parent": { "oneOf": [{ "$ref": "link.schema.json#/$defs/taskId" }, { "type": "null" }] },
+    "description": { "type": "string" },
+    "acceptance": { "type": "string" },
+    "notes": { "type": "string" },
+    "design": { "type": "string" },
+    "estimateMinutes": { "type": ["integer", "null"], "minimum": 0 },
+    "ready": { "description": "Whether someone can start the task now, as the server worked it out.", "type": "boolean" },
+    "awaitingHuman": { "description": "Whether the task waits on a person's answer now.", "type": "boolean" },
+    "assignee": { "$ref": "claim.schema.json#/properties/assignee" },
+    "for": { "$ref": "claim.schema.json#/properties/for" },
+    "work": { "$ref": "claim.schema.json#/$defs/workDetails" },
+    "lastActivityAt": { "$ref": "claim.schema.json#/properties/lastActivityAt" },
+    "choices": { "oneOf": [{ "$ref": "choices.schema.json" }, { "type": "null" }] },
+    "choice": { "oneOf": [{ "$ref": "pick.schema.json" }, { "type": "null" }] },
+    "answer": { "oneOf": [{ "$ref": "answer.schema.json" }, { "type": "null" }] },
+    "deferUntil": { "description": "The time the task is hidden from ready work until.", "type": ["string", "null"] },
+    "dependencies": {
+      "description": "The task's links to other tasks, read from this task.",
+      "type": "array",
+      "items": { "$ref": "link.schema.json#/$defs/taskLink" }
+    },
+    "externalLinks": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "link.schema.json#/$defs/externalLink" }
+    },
+    "fields": {
+      "description": "Values of the project's custom fields, by field key (section 8.2).",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        ]
+      }
+    },
+    "metadata": {
+      "description": "Facts other systems attach, stored and returned as given (section 8.1).",
+      "type": "object"
+    },
+    "commentCount": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "startedAt": { "type": ["string", "null"], "format": "date-time" },
+    "closedAt": { "type": ["string", "null"], "format": "date-time" },
+    "closeReason": { "type": ["string", "null"] },
+    "closeLink": {
+      "description": "A URL a close as done named to show work no commit or pull request shows.",
+      "type": ["string", "null"],
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "resolution": {
+      "enum": ["done", "wont-do", "duplicate", "cant-reproduce", "already-handled", "no-longer-needed", null]
+    },
+    "duplicateOf": { "oneOf": [{ "$ref": "link.schema.json#/$defs/taskId" }, { "type": "null" }] },
+    "delivery": { "$ref": "delivery.schema.json" },
+    "proof": {
+      "description": "none on a task, bug, feature or chore closed as done with no commit, pull request or link.",
+      "enum": ["none", null]
+    },
+    "version": {
+      "description": "Raised by exactly one with every change. Ntasks returns it on a write's answer.",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": ["id", "title", "status", "priority", "type", "createdAt", "updatedAt"],
+  "allOf": [
+    {
+      "description": "A task is closed exactly when it records how it closed.",
+      "if": { "properties": { "status": { "const": "closed" } }, "required": ["status"] },
+      "then": {
+        "required": ["closedAt", "resolution"],
+        "properties": { "closedAt": { "type": "string" }, "resolution": { "type": "string" } }
+      },
+      "else": {
+        "properties": {
+          "closedAt": { "type": "null" },
+          "resolution": { "type": "null" },
+          "closeReason": { "type": "null" },
+          "closeLink": { "type": "null" },
+          "duplicateOf": { "type": "null" },
+          "proof": { "type": "null" }
+        },
+        "not": { "required": ["delivery"] }
+      }
+    },
+    {
+      "description": "Only a task closed as done carries a delivery, a close link or proof none.",
+      "if": {
+        "anyOf": [
+          { "required": ["delivery"] },
+          { "properties": { "closeLink": { "type": "string" } }, "required": ["closeLink"] },
+          { "properties": { "proof": { "const": "none" } }, "required": ["proof"] }
+        ]
+      },
+      "then": { "properties": { "resolution": { "const": "done" } }, "required": ["resolution"] }
+    },
+    {
+      "description": "Proof none never sits beside the proof it says is missing, and only on the types that show proof.",
+      "if": { "properties": { "proof": { "const": "none" } }, "required": ["proof"] },
+      "then": {
+        "properties": {
+          "type": { "enum": ["task", "bug", "feature", "chore"] },
+          "closeLink": { "type": "null" }
+        },
+        "not": { "required": ["delivery"] }
+      }
+    },
+    {
+      "description": "A close as duplicate names the task it duplicates; no other close does.",
+      "if": { "properties": { "duplicateOf": { "type": "string" } }, "required": ["duplicateOf"] },
+      "then": { "properties": { "resolution": { "const": "duplicate" } } }
+    },
+    {
+      "description": "Work details and a helper exist only while someone holds a task that is not closed.",
+      "if": {
+        "anyOf": [
+          { "properties": { "status": { "const": "closed" } }, "required": ["status"] },
+          { "properties": { "assignee": { "type": "null" } }, "required": ["assignee"] }
+        ]
+      },
+      "then": { "properties": { "for": { "type": "null" }, "work": { "maxProperties": 0 } } }
+    }
+  ]
+}

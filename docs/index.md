@@ -32,3 +32,9 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 - [The task store](task-store.md): the database of each workspace and the
   engine contract.
 - [Design system](design.md): the web app's tokens, symbols and components.
+
+## For other tools
+
+- [The Shared Work Protocol](shared-work-protocol.md): a draft
+  specification of Ntasks's rules for shared work, which other task tools and
+  agent harnesses can implement.

@@ -1,0 +1,10 @@
+{
+  "assignee": "agent:Claude Code",
+  "for": "redirect-fix-2",
+  "work": {
+    "session": "claude-code:session/0b7e6c2a",
+    "branch": "fix-sign-in",
+    "next": "Write the failing test"
+  },
+  "lastActivityAt": "2026-11-02T10:15:00.000Z"
+}

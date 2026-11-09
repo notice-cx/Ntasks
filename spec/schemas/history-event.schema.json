@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/history-event.schema.json",
+  "title": "History event",
+  "description": "One change to a task as its history returns it: its provenance, what it did, and each field it set with the old and new value. History is written in the same transaction as the change, and is never edited or deleted. Section 3.9 of the protocol.",
+  "type": "object",
+  "allOf": [{ "$ref": "provenance.schema.json" }],
+  "properties": {
+    "revision": {
+      "description": "The change's place in the order of every change in the workspace, as a string.",
+      "type": "string",
+      "pattern": "^[0-9]+$"
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "enum": ["created", "updated", "claimed", "status_changed", "closed", "reopened", "commented"] }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": { "old": true, "new": true },
+        "required": ["old", "new"]
+      }
+    }
+  },
+  "required": ["revision", "actor", "at", "actions", "fields"]
+}

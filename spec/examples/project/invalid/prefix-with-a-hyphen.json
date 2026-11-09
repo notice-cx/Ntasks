@@ -1,0 +1,7 @@
+{
+  "projectId": "p-7c2e",
+  "key": "example/lib",
+  "name": "Example library",
+  "prefix": "web-app",
+  "deploys": false
+}
