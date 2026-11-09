@@ -281,8 +281,10 @@ header when they belong to several:
 - `redirectUris` lists 1 to 10 addresses the browser returns to after
   sign-in. Each is an `https` address on a host other than `localhost`,
   `127.0.0.1` or `[::1]`, or an `http` one on one of those three for an app
-  that runs on the same machine, written as its origin then a path, in
-  lowercase, without a fragment. `https` on those three hosts is refused. The origins of
+  that runs on the same machine, without a fragment. Its scheme and host
+  are written in lowercase, as a browser writes an origin, and its path,
+  which keeps the case the app uses, follows them. `https` on those three
+  hosts is refused. The origins of
   these addresses are where the app's page runs, and the only origins whose
   pages may read the API's answers ([below](#calls-from-the-apps-page)).
 - The answer is `201` with `{ app }`, as `GET /api/access/apps` lists it. Its
@@ -362,6 +364,9 @@ origin is the origin of an enabled app's redirect address:
   page read only what it asked for with its bearer token, never an answer to
   a request signed with the person's session cookie. A cookie-signed change
   from the app's page is still refused as from another site.
+- A change that carries a bearer token from any other origin answers `403`
+  with `{"error":"origin_not_allowed"}`, so a page whose app was removed
+  writes nothing even while a browser keeps its earlier preflight.
 - A request from the deployment's own origin, or with no `Origin` header,
   such as an agent's, is answered as before.
 
@@ -545,8 +550,9 @@ several.
   - the project grants their agents hold in the workspace are deleted, and an
     agent left with no grant anywhere loses its approval, so inviting them
     again shows each agent's approval page again;
-  - their sign-in to each of the workspace's connected apps ends, and their
-    sign-in to another workspace's apps stays;
+  - their sign-in to each of the workspace's connected apps ends, with its
+    access and refresh tokens, and their sign-in to another workspace's apps
+    stays;
   - the open invitations they sent in the workspace are revoked, and so are
     open invitations there for a login they joined under;
   - the service credentials they made in the workspace are revoked: they hold

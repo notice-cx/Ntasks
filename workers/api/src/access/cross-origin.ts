@@ -19,6 +19,7 @@ const HEADERS = `authorization, content-type, ${WORKSPACE_HEADER}, ${IDEMPOTENCY
 /** The headers an app may read: a bearer challenge, when to retry, and the API's version. */
 const EXPOSED = `www-authenticate, retry-after, ${API_VERSION_HEADER}`;
 const PREFLIGHT_SECONDS = '600';
+const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /** `answer`, answered for a connected app's page when the request comes from one. */
 export async function crossOrigin(
@@ -47,6 +48,16 @@ export async function crossOrigin(
         vary: 'origin',
       },
     });
+  }
+  // A browser that kept an earlier preflight may still send a write after the
+  // app is removed. A write with a bearer token is refused here unless its
+  // origin is an app's now; one signed by a cookie is refused as cross-site
+  // by the verifier.
+  if (!allowed && !READS.has(request.method) && request.headers.has('authorization')) {
+    return Response.json(
+      { error: 'origin_not_allowed', detail: 'no connected app runs at this origin' },
+      { status: 403, headers: { 'cache-control': 'no-store', vary: 'origin' } },
+    );
   }
   const response = await answer();
   if (!allowed) return response;

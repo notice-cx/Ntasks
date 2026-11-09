@@ -314,7 +314,8 @@ describe('ending a connected app’s access', () => {
     const elsewhere = Object.freeze({ id: '6a2f8e13-4c5b-4d7a-9e06-1b3c5d7f9a28', name: 'Elsewhere' });
     await addMember(elsewhere, userId, 'owner');
     const there = await registerApp(person, elsewhere.id);
-    const tokenHere = (await connectApp(person, here)).access_token;
+    const before = await connectApp(person, here);
+    const tokenHere = before.access_token;
     const tokenThere = (await connectApp(person, there)).access_token;
 
     const removed = await owner.fetch(`/api/access/members/${userId}/remove`, {
@@ -325,10 +326,19 @@ describe('ending a connected app’s access', () => {
 
     expect((await meWithToken(tokenHere)).status).toBe(401);
     expect((await meWithToken(tokenThere)).status).toBe(200);
-    // Invited again, the person allows this workspace's app again before it acts as them.
+    // Invited again, the person allows this workspace's app again before it
+    // acts as them, and the tokens from before stay refused.
     await addMember(TEST_WORKSPACE, userId, 'member');
     expect((await meWithToken(tokenHere)).status).toBe(401);
-    expect((await authorizeApp(person, here, EVERY_SCOPE)).landing.pathname).toBe('/agent-access');
+    const again = await connectApp(person, here, 'tasks:read');
+    expect((await meWithToken(again.access_token)).status).toBe(200);
+    expect((await meWithToken(tokenHere)).status).toBe(401);
+    const refresh = await appTokenRequest(here, {
+      grant_type: 'refresh_token',
+      refresh_token: before.refresh_token ?? '',
+      resource: MCP_RESOURCE,
+    });
+    expect(refresh.status).toBe(400);
   });
 
   it('refuses the token and its refresh once the person revokes their sign-in, and the app shows signed out', async () => {
@@ -497,6 +507,22 @@ describe('calls from a page at another origin', () => {
     expect(read.headers.get('access-control-allow-credentials')).toBeNull();
     // The page reads the API's version, as a client checks it.
     expect(read.headers.get('access-control-expose-headers')).toContain('x-ntasks-api-version');
+  });
+
+  it('refuses a write with an app’s token from an origin no app registered, and writes nothing', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const app = await registerApp(owner);
+    const tokens = await connectApp(owner, app);
+    const asked = await decision('Picked from a stray page');
+
+    const stray = { ...app, origin: newOrigin() };
+    const chose = await fromApp(stray, tokens.access_token, `/api/tasks/${asked.taskId}/choose`, {
+      json: { projectId: asked.projectId, option: 'a' },
+    });
+    expect(chose.status).toBe(403);
+    expect(await chose.json()).toMatchObject({ error: 'origin_not_allowed' });
+    expect((await taskRead(owner, asked)).task).toMatchObject({ status: 'open', choice: null });
   });
 
   it('refuses a preflight from an origin no app registered', async () => {
