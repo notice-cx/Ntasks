@@ -229,9 +229,9 @@ merge, and merged work of a project that deploys, which waits for a deploy.
   <img src="images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
 </picture>
 
-## Decisions and approvals
+## Decisions, approvals and steps to do
 
-Some steps only a person can take. Ntasks has two kinds:
+Some steps only a person can take. Ntasks asks a person in three ways:
 
 - A **decision** asks a person to choose between options. Each option has a
   short label, and at most one is marked as recommended. The person's choice
@@ -240,6 +240,14 @@ Some steps only a person can take. Ntasks has two kinds:
   as a deployment. Its title names the action, and its description says what
   the agent will do and what it changes ([writing a task](#writing-a-task)). While the
   approval is pending, the task is not ready, so no agent starts it.
+- A **request to do steps** holds a task until a person does steps only they
+  can do, such as running a command on their own machine. Its steps are an
+  ordered list, each with its text and the command it runs, shown as a block
+  to copy, and its context says what doing them changes and how the agent
+  will confirm the result. The person ticks each step, in any order, and can
+  leave a note on one or say where they are stuck. When every step is
+  ticked, the task is ready again, and the agent checks the result before it
+  continues.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-decide-dark.webp">
@@ -249,14 +257,16 @@ Some steps only a person can take. Ntasks has two kinds:
 ### What a person answers
 
 A task's **proposal** is what a person answers: its title, description,
-acceptance, type and options. For an approval, that is the exact action it
-asks for, with its environment, scope and verification. The **proposal
+acceptance, type and options, and a request's steps. For an approval, that
+is the exact action it asks for, with its environment, scope and
+verification. The **proposal
 version** is a short hash of the proposal, so it changes whenever the
 proposal does.
 
 An **answer** records:
 
-- the option the person chose, or for an approval, approve or decline;
+- the option the person chose; for an approval, approve or decline; for a
+  request to do steps, done or decline;
 - the person's exact words, as a quote. Ntasks never reads the quote to
   decide what it means: a quote such as "maybe" is kept as given;
 - where they said it, and who recorded it;
@@ -264,9 +274,9 @@ An **answer** records:
 
 ### Who can answer
 
-Only a person signed in to the web app answers a decision or approves an
-approval directly. An agent or a service cannot, whatever projects it was
-granted.
+Only a person signed in to the web app answers a decision, approves an
+approval or ticks a step directly. An agent or a service cannot, whatever
+projects it was granted. Each tick records the person and the time.
 
 An agent may record an answer a person gave it somewhere else, such as in a
 chat. It names the option, the quote, where it was said and the proposal

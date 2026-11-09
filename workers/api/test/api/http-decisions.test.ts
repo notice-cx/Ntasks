@@ -1,5 +1,6 @@
 // The HTTP routes of a person's decisions, in the shapes NoticeOS's Tasks API
-// took: answering, picking, dismissing, approving and disputing, who may send
+// took: answering, picking, dismissing, approving, ticking the steps of a
+// request to do steps, and disputing, who may send
 // them, how a retry is answered, and what each refusal says. The rules of a
 // pick and an answer are ported from NoticeOS's
 // scripts/hosted-task-command.test.mjs (choiceSteps and answerSteps).
@@ -45,6 +46,27 @@ async function task(input: Partial<Parameters<TaskEngine['createTask']>[1]> = {}
   return engine.createTask(project.id, { title: 'Asks a person', labels: ['human', 'ui'], ...input }, OWNER);
 }
 
+const STEPS = [
+  { text: 'Back up the database.', command: 'pnpm backup' },
+  { text: 'Update to the merged commit.', command: './update.sh --commit a1b2c3d4' },
+  { text: 'Open the site and sign in.' },
+] as const;
+
+/** A task labelled human that waits on a request that a person do STEPS. */
+async function doRequest(): Promise<{ readonly waiting: Task; readonly gate: string }> {
+  const { task: waiting } = await task();
+  const { created } = await engine.writeTask(
+    project.id,
+    waiting.id,
+    {
+      expectedVersion: waiting.version,
+      requestAction: { title: 'Update the site', context: 'The site runs the old release.', steps: STEPS },
+    },
+    AGENT,
+  );
+  return { waiting: await current(waiting.id), gate: created[0]!.id };
+}
+
 async function current(id: string): Promise<Task> {
   return (await engine.getTask(project.id, id))!;
 }
@@ -61,6 +83,7 @@ describe('who may decide', () => {
     const { task: asked } = await task({ choices: CHOICES });
     const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
     const gate = created[0]!;
+    const steps = (await doRequest()).gate;
     const service: Principal = { ...WRITER, id: 'service:x/tower', name: 'service:noticeos/tower' };
     for (const sender of [WRITER, service]) {
       const as = api({ principal: sender, now: time.now, engine });
@@ -70,19 +93,23 @@ describe('who may decide', () => {
         [`/api/tasks/${asked.id}/dismiss`, {}],
         [`/api/tasks/${gate.id}/dispute`, {}],
         [`/api/gates/${gate.id}/resolve`, {}],
+        [`/api/gates/${steps}/steps`, { step: 1, done: true }],
+        [`/api/gates/${steps}/steps`, { step: 2, stuck: 'Stopped here.' }],
       ] as const) {
         expect(await post(path, body, {}, as), path).toEqual({
           status: 403,
           body: {
             error: 'insufficient_scope',
             detail:
-              'Only a person signed in to Ntasks answers a decision, approves an approval or disputes one. Answer it in the Ntasks web app.',
+              'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step or disputes an approval. Answer it in the Ntasks web app.',
           },
         });
       }
     }
     expect(await current(asked.id)).toMatchObject({ status: 'open', choice: null, version: 1 });
     expect((await current(gate.id)).status).toBe('open');
+    expect(await current(steps)).toMatchObject({ status: 'open', version: 1 });
+    expect((await current(steps)).steps!.every((step) => step.done === null && step.stuck === null)).toBe(true);
   });
 
   it('are offered in the capabilities of a person, and of nobody else', async () => {
@@ -96,6 +123,7 @@ describe('who may decide', () => {
       'resolve',
       'choose',
       'dispute',
+      'step',
     ]);
     const writer = api({ principal: WRITER, now: time.now, engine });
     expect((await get(writer, '/api/tasks/capabilities')).body.operations).toEqual([
@@ -369,6 +397,111 @@ describe('POST /api/gates/:id/resolve', () => {
     expect((await post(`/api/gates/${created[0]!.id}/resolve`, {})).body).toEqual({
       error: 'task_refused',
       detail: `${created[0]!.id} is already closed.`,
+    });
+  });
+});
+
+describe('POST /api/gates/:id/steps', () => {
+  type Step = NonNullable<Task['steps']>[number];
+  const tick = (gate: string, body: Record<string, unknown>) => post(`/api/gates/${gate}/steps`, body);
+  const stepsOf = (answer: { body: Record<string, unknown> }) => (answer.body.task as { steps: Step[] }).steps;
+
+  it('records each tick with the person and the time, in any order, and frees the waiting task on the last', async () => {
+    const { waiting, gate } = await doRequest();
+    const { proposalVersion } = (await get(target, `/api/tasks/${gate}?project=${project.id}`)).body;
+    expect(waiting.ready).toBe(false);
+
+    const third = await tick(gate, { step: 3, done: true, proposalVersion });
+    expect(third.body.task).toMatchObject({ status: 'open' });
+    expect(stepsOf(third).map((step) => step.done)).toEqual([null, null, { by: 'Person', at: time.now() }]);
+    time.advance(5);
+    await tick(gate, { step: 1, done: true, proposalVersion });
+    expect(await current(waiting.id)).toMatchObject({ ready: false, labels: ['human', 'ui'] });
+    time.advance(5);
+    const last = await tick(gate, { step: 2, done: true, proposalVersion });
+
+    expect(last.body.task).toMatchObject({
+      status: 'closed',
+      resolution: 'done',
+      closedBy: 'Person',
+      closedAt: time.now(),
+    });
+    expect(stepsOf(last).map((step) => step.done?.at)).toEqual([
+      '2026-11-06T12:05:00.000Z',
+      time.now(),
+      '2026-11-06T12:00:00.000Z',
+    ]);
+    expect(stepsOf(last).map(({ text, command }) => ({ text, command }))).toEqual(
+      STEPS.map((step) => ({ text: step.text, command: 'command' in step ? step.command : null })),
+    );
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', assignee: null, ready: true, labels: ['ui'] });
+    expect(await texts(waiting.id)).toEqual([expect.stringContaining(gate)]);
+    const history = (await get(target, `/api/tasks/${gate}/history?project=${project.id}`)).body.changes as {
+      actor: string;
+      fields: Record<string, unknown>;
+    }[];
+    // Newest first: the three ticks, then the agent's filing of the steps.
+    expect(history.filter((change) => 'steps' in change.fields).map((change) => change.actor)).toEqual([
+      'Person',
+      'Person',
+      'Person',
+      AGENT.name,
+    ]);
+  });
+
+  it('marks where the person is stuck and why, tells the waiting task, and clears the mark on a tick', async () => {
+    const { waiting, gate } = await doRequest();
+    await tick(gate, { step: 1, done: true });
+
+    const stuck = await tick(gate, { step: 2, stuck: 'The host asks for a password.' });
+
+    expect(stuck.body.task).toMatchObject({ status: 'open' });
+    expect(stepsOf(stuck)[1]).toMatchObject({
+      done: null,
+      stuck: { reason: 'The host asks for a password.', by: 'Person', at: time.now() },
+    });
+    expect(await current(waiting.id)).toMatchObject({ ready: false });
+    expect(await texts(waiting.id)).toEqual([expect.stringContaining('The host asks for a password.')]);
+    const version = (await current(gate)).version;
+    await tick(gate, { step: 2, stuck: 'The host asks for a password.' });
+    expect((await current(gate)).version).toBe(version);
+
+    const ticked = await tick(gate, { step: 2, done: true });
+    expect(stepsOf(ticked)[1]).toMatchObject({ done: { by: 'Person' }, stuck: null });
+    const again = await tick(gate, { step: 1, stuck: 'The backup failed after all.' });
+    expect(stepsOf(again)[0]).toMatchObject({ done: null, stuck: { reason: 'The backup failed after all.' } });
+    expect(again.body.task).toMatchObject({ status: 'open' });
+  });
+
+  it('keeps a note on a step with who left it, takes it off, and unticks a step', async () => {
+    const { gate } = await doRequest();
+    const noted = await tick(gate, { step: 3, done: true, note: 'Signed in as the demo visitor.' });
+    expect(stepsOf(noted)[2]).toMatchObject({
+      done: { by: 'Person' },
+      note: { text: 'Signed in as the demo visitor.', by: 'Person', at: time.now() },
+    });
+    const cleared = await tick(gate, { step: 3, done: false, note: null });
+    expect(stepsOf(cleared)[2]).toMatchObject({ done: null, note: null });
+    expect(cleared.body.task).toMatchObject({ status: 'open' });
+  });
+
+  it('refuses an approval of the request, a step it does not have and a closed request, writing nothing', async () => {
+    const { gate } = await doRequest();
+    expect(await post(`/api/gates/${gate}/resolve`, {})).toMatchObject({
+      status: 409,
+      body: { error: 'task_refused' },
+    });
+    expect(await tick(gate, { step: 4, done: true })).toMatchObject({ status: 400, body: { field: 'step' } });
+    expect((await tick(gate, { step: 1 })).status).toBe(400);
+    expect((await tick(gate, { step: 1, done: true, stuck: 'Both.' })).status).toBe(400);
+    expect(await current(gate)).toMatchObject({ status: 'open', version: 1 });
+
+    const { created } = await task({ requestApproval: { reason: 'Deploy once' } });
+    expect(await tick(created[0]!.id, { step: 1, done: true })).toMatchObject({ status: 409 });
+    for (const step of [1, 2, 3]) await tick(gate, { step, done: true });
+    expect(await tick(gate, { step: 1, done: false })).toEqual({
+      status: 409,
+      body: { error: 'task_refused', detail: `${gate} is already closed.` },
     });
   });
 });

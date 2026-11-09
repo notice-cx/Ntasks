@@ -91,6 +91,16 @@ closed. A close as done may also name a link, a URL that shows work no commit
 or pull request shows, in `close_link`; like the rest of the close, only a
 task closed as done has one, and a reopen clears it.
 
+A request that a person do steps is a gate with its steps in the `steps`
+column of `tasks`: one JSON array, in order, each step holding its `text`, its
+`command` or null, and what the person recorded on it, `done`, `note` and
+`stuck`, each null or the person, the time and any connected app (`TaskStep` in
+[`task.ts`](../packages/domain/src/task.ts)). The database takes steps only on
+a gate, and at least one. An approval and every other task has none. A tick
+rewrites the whole array in one write, so the task's history holds the steps
+as they stood after each mark. The engine refuses a write that changes a
+step's text or command, or the number of steps.
+
 The open tasks one holder holds are read through `tasks_by_assignee`, one
 entry for each task held, with each task's last activity from
 `task_events_by_actor`: the list an agent reads when it connects.

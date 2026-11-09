@@ -1,0 +1,60 @@
+{
+  "priority": 2,
+  "labels": [],
+  "parent": null,
+  "description": "You: update the demo host to the merged commit, so the demo runs the new release.\n\n## What it changes\n\n- **Downtime:** visitors can't reach demo.example.com for about 2 minutes.\n- **Your time:** about 5 minutes.\n- **Undo:** start the previous release again.\n\n## How we'll confirm\n\n- The health check at demo.example.com answers `200`.",
+  "acceptance": "",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": false,
+  "assignee": null,
+  "for": null,
+  "work": {},
+  "lastActivityAt": null,
+  "choices": null,
+  "choice": null,
+  "answer": null,
+  "deferUntil": null,
+  "dependencies": [],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T10:12:00.000Z",
+  "startedAt": null,
+  "closedAt": "2026-11-02T10:12:00.000Z",
+  "closeReason": "Every step done",
+  "closeLink": null,
+  "resolution": "done",
+  "duplicateOf": null,
+  "id": "web-u5s4",
+  "title": "Update the demo host to the new release",
+  "status": "closed",
+  "type": "gate",
+  "steps": [
+    {
+      "text": "On the demo host, open a shell in the demo folder.",
+      "command": null,
+      "done": {
+        "by": "Avery Example",
+        "at": "2026-11-02T10:00:00.000Z"
+      },
+      "note": null,
+      "stuck": null
+    },
+    {
+      "text": "Update to the merged commit.",
+      "command": "./update.sh --commit a1b2c3d4",
+      "done": {
+        "by": "Avery Example",
+        "app": "tower-client-1",
+        "at": "2026-11-02T10:12:00.000Z"
+      },
+      "note": null,
+      "stuck": null
+    }
+  ]
+}

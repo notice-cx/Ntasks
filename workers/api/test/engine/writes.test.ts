@@ -618,6 +618,75 @@ describe('a new task that asks for an approval', () => {
   });
 });
 
+describe('a request that a person do steps', () => {
+  const steps = [{ text: 'Run the update.', command: './update.sh' }, { text: 'Sign in.' }];
+
+  async function asked() {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Update' }, AGENT);
+    const { created } = await tasks.writeTask(
+      project.id,
+      task.id,
+      { expectedVersion: 1, requestAction: { title: 'Update the site', context: 'Why.', steps } },
+      AGENT,
+    );
+    return { tasks, project, task, gate: created[0]! };
+  }
+
+  it('changes only the marks on its steps, never their text or commands, and only on a request', async () => {
+    const { tasks, project, task, gate } = await asked();
+    const marks = gate.steps!.map((step, index) =>
+      index === 0 ? { ...step, done: { by: OWNER.name, at: '2026-11-06T12:00:00.000Z' } } : step,
+    );
+    const { task: ticked } = await tasks.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: 1, set: { steps: marks } },
+      OWNER,
+    );
+    expect(ticked.steps![0]!.done).toEqual({ by: OWNER.name, at: '2026-11-06T12:00:00.000Z' });
+    for (const changed of [
+      marks.map((step, index) => (index === 1 ? { ...step, text: 'Sign out.' } : step)),
+      marks.map((step, index) => (index === 0 ? { ...step, command: 'rm -rf /' } : step)),
+      marks.slice(0, 1),
+      marks.map((step, index) =>
+        index === 0 ? { ...step, stuck: { by: OWNER.name, at: '2026-11-06T12:00:00.000Z', reason: 'Stopped.' } } : step,
+      ),
+    ]) {
+      await expectRefusal(
+        tasks.writeTask(project.id, gate.id, { expectedVersion: 2, set: { steps: changed } }, AGENT),
+        'invalid',
+      );
+    }
+    await expectRefusal(
+      tasks.writeTask(project.id, task.id, { expectedVersion: task.version + 1, set: { steps: marks } }, AGENT),
+      'invalid',
+    );
+    expect((await tasks.getTask(project.id, gate.id))!.version).toBe(2);
+  });
+
+  it('opens one request a write: an approval or steps, not both', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { task } = await tasks.createTask(project.id, { title: 'Update' }, AGENT);
+    await expectRefusal(
+      tasks.writeTask(
+        project.id,
+        task.id,
+        {
+          expectedVersion: 1,
+          requestApproval: { reason: 'Update?' },
+          requestAction: { title: 'Update the site', context: '', steps },
+        },
+        AGENT,
+      ),
+      'invalid',
+    );
+    expect((await tasks.getTask(project.id, task.id))!.dependencies).toEqual([]);
+  });
+});
+
 describe('a new task that blocks another', () => {
   it("keeps the other task's history whole while that task changes at the same moment", async () => {
     const tasks = engine();

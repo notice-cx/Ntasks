@@ -113,6 +113,16 @@ export function checkLinks(options: LinkCheckOptions): DeadLink[] {
         href: match[1] ?? '',
         image: true,
       })),
+      ...[...html.matchAll(/<meta\b[^>]*>/g)].flatMap(([tag]) => {
+        if (!/\b(?:property|name)="(?:og:image|twitter:image)"/.test(tag)) return [];
+        const href = /\bcontent="([^"]*)"/.exec(tag)?.[1];
+        return href ? [{ href, image: true }] : [];
+      }),
+      ...[...html.matchAll(/<link\b[^>]*>/g)].flatMap(([tag]) => {
+        if (!/\brel="(?:icon|apple-touch-icon)"/.test(tag)) return [];
+        const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+        return href ? [{ href, image: true }] : [];
+      }),
     ];
     for (const { href: raw, image } of targets) {
       const href = decode(raw);
