@@ -20,6 +20,7 @@ function task(fields: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
     parentId: null,
     type: 'task',
     awaitType: null,
+    steps: null,
     status: 'open',
     priority: 2,
     description: '',

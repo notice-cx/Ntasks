@@ -50,12 +50,16 @@ export function waitsOnPerson(task: Task): boolean {
 /**
  * The text an owner's answer is checked against: the task as the owner saw it
  * when asked. An answer recorded later must name this exact text, so a task
- * edited after the question was asked cannot borrow the answer.
+ * edited after the question was asked cannot borrow the answer. A request's
+ * steps count with their text and commands, not with anyone's marks on them,
+ * so a tick leaves the proposal as it was.
  */
 export function proposalOf(
-  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
+  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices' | 'steps'>,
 ): string {
-  return JSON.stringify([task.id, task.title, task.description, task.acceptance, task.type, task.choices]);
+  const asked = [task.id, task.title, task.description, task.acceptance, task.type, task.choices];
+  const steps = task.steps?.map((step) => [step.text, step.command]);
+  return JSON.stringify(steps === undefined ? asked : [...asked, steps]);
 }
 
 /** A proposal version as an answer names it. 128 bits, so nobody can write two
@@ -65,7 +69,7 @@ export const PROPOSAL_VERSION = /^[0-9a-f]{32}$/u;
 /** The proposal's version, which an owner's answer names: the first 32
  * hexadecimal characters of the SHA-256 of `proposalOf(task)`. */
 export function proposalVersionOf(
-  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices'>,
+  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices' | 'steps'>,
 ): Promise<string> {
   return shortHash(proposalOf(task), 32);
 }
@@ -77,10 +81,11 @@ const OWNER_ANSWERS: readonly Json[] = ['answer', 'declined', 'owner_performed']
  * The latest owner answer recorded on a task: what was chosen, the owner's
  * words, where they said it, who recorded it and how, and the proposal
  * version it answered; null when none is recorded. `option` is a letter on a
- * task with choices, `approve` or `decline` on an approval, and null when the
- * answer chose none of the options.
+ * task with choices, `approve` or `decline` on an approval, `done` or
+ * `decline` on a request to do steps, and null when the answer chose none of
+ * the options.
  */
-export function answerOf(task: Pick<Task, 'type' | 'metadata'>) {
+export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
   const record = objectOrNull(task.metadata[NOTICEOS.maintenance]);
   if (record === null) return null;
   const events = Array.isArray(record.events) ? record.events : [];
@@ -92,7 +97,14 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata'>) {
   const text = (value: Json | undefined) => (typeof value === 'string' ? value : null);
   const disputed = objectOrNull(answer.disputed);
   return {
-    option: task.type === 'gate' ? (answer.action === 'declined' ? 'decline' : 'approve') : text(answer.option),
+    option:
+      task.type === 'gate'
+        ? answer.action === 'declined'
+          ? 'decline'
+          : task.steps === null
+            ? 'approve'
+            : 'done'
+        : text(answer.option),
     quote: text(answer.response),
     source: text(answer.source),
     recordedBy: answer.by,
@@ -156,6 +168,8 @@ export function webTask(task: Task) {
     /** "none" for a task, bug, feature or chore closed as done with no commit, pull request or link. */
     proof: lacksProof(task) ? ('none' as const) : null,
     awaitType: task.awaitType,
+    /** On a request that a person do steps: each step, with who ticked it, their note and where they got stuck. */
+    steps: task.steps,
     choices: task.choices,
     choice: task.choice,
     answer: answerOf(task),
@@ -203,6 +217,7 @@ export function mcpTask(task: Task) {
     notes: task.notes,
     design: task.design,
     estimateMinutes: task.estimateMinutes,
+    steps: task.steps,
     choices: task.choices,
     choice: task.choice,
     answer: web.answer,
@@ -345,6 +360,7 @@ function snapshotView(state: Record<string, Json>) {
     notes: state.notes ?? '',
     design: state.design ?? '',
     estimateMinutes: state.estimateMinutes ?? null,
+    steps: state.steps ?? null,
     choices: state.choices ?? null,
     choice: state.choice ?? null,
     card: objectOrNull(metadata[NOTICEOS.card]),

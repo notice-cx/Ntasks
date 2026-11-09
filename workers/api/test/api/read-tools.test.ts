@@ -109,6 +109,7 @@ describe('tools/list', () => {
       'comment_on_task',
       'link_tasks',
       'request_human_approval',
+      'request_human_action',
       'close_task',
       'report_delivery',
       'list_fields',

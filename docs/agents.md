@@ -179,6 +179,7 @@ close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test p
 An agent that reaches more than one workspace also passes `workspace`, a
 `workspaceId` from `list_workspaces`, in each call.
 
-`get_task_guide` gives the agent the rest: filing work, linking tasks and
-asking a person for a decision. [The MCP endpoint](api.md#the-mcp-endpoint)
+`get_task_guide` gives the agent the rest: filing work, linking tasks,
+asking a person for a decision, an approval or steps to do, and the rules for
+[writing a task](concepts.md#writing-a-task). [The MCP endpoint](api.md#the-mcp-endpoint)
 lists every tool.

@@ -29,6 +29,7 @@ import {
   type TaskComment,
   type TaskEventKind,
   type TaskRefusal,
+  type TaskStep,
   type TaskWork,
   type TaskWrite,
   type WriteResult,
@@ -331,17 +332,51 @@ export class Writes {
     taskId: string,
     projectId: string,
     priority: number,
-    reason: string,
+    { reason, title: given }: check.CheckedApproval,
     actor: Actor,
     at: string,
   ): Statement[] {
     // The reason holds a line that is not blank: validate.ts refuses one that does not.
-    const title = reason
-      .replace(/\r/gu, '')
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line !== '')!
-      .slice(0, 512);
+    const title =
+      given ??
+      reason
+        .replace(/\r/gu, '')
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line !== '')!
+        .slice(0, 512);
+    return this.#request(gateId, taskId, projectId, priority, { title, description: reason, steps: null }, actor, at);
+  }
+
+  /** The gate a write opens: an approval, or a request that a person do steps. */
+  #opened(
+    gateId: string,
+    taskId: string,
+    projectId: string,
+    priority: number,
+    write: Pick<check.CheckedWrite, 'requestApproval' | 'requestAction'>,
+    actor: Actor,
+    at: string,
+  ): Statement[] {
+    if (write.requestApproval !== null)
+      return this.#gate(gateId, taskId, projectId, priority, write.requestApproval, actor, at);
+    const { title, context, steps } = write.requestAction!;
+    return this.#request(gateId, taskId, projectId, priority, { title, description: context, steps }, actor, at);
+  }
+
+  /** A new request to a person: the gate task, its created event, and the
+   * link by which `taskId` waits on it. With steps, it asks them to do the
+   * steps; without, to approve its description. */
+  #request(
+    gateId: string,
+    taskId: string,
+    projectId: string,
+    priority: number,
+    ask: { readonly title: string; readonly description: string; readonly steps: readonly TaskStep[] | null },
+    actor: Actor,
+    at: string,
+  ): Statement[] {
+    const { title, description: reason, steps } = ask;
     return [
       this.#insert('tasks', {
         id: gateId,
@@ -358,6 +393,7 @@ export class Writes {
         version: 1,
         created_at: at,
         updated_at: at,
+        steps: steps === null ? null : JSON.stringify(steps),
       }),
       this.#event({ id: gateId, projectId }, 1, 'created', actor, at, {
         id: gateId,
@@ -388,6 +424,7 @@ export class Writes {
         externalLinks: [],
         fields: {},
         close: null,
+        ...(steps === null ? {} : { steps: steps as unknown as Json }),
         filedBy: actor.name,
         filedModel: actor.model ?? null,
       }),
@@ -770,9 +807,7 @@ export class Writes {
         ...(values.size === 0 ? [] : [this.#noneRetired(projectId, [...values.keys()])]),
       ];
       if (gateId !== null && fields.requestApproval !== null) {
-        statements.push(
-          ...this.#gate(gateId, id, projectId, fields.priority, fields.requestApproval.reason, actor, at),
-        );
+        statements.push(...this.#gate(gateId, id, projectId, fields.priority, fields.requestApproval, actor, at));
       }
       for (const link of fields.links) {
         if (link.taskId === id) refuse('invalid', 'A task cannot link to itself.');
@@ -891,7 +926,8 @@ export class Writes {
     );
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      const gateId = write.requestApproval === null ? null : `${project.prefix}-${this.#newKey()}`;
+      const opens = write.requestApproval !== null || write.requestAction !== null;
+      const gateId = opens ? `${project.prefix}-${this.#newKey()}` : null;
       const recorded = {
         taskId,
         created: gateId === null ? [] : [gateId],
@@ -976,6 +1012,15 @@ export class Writes {
     const choices = set.choices !== undefined ? set.choices : current.choices;
     const choice = set.choice !== undefined ? set.choice : current.choice;
     if (choice !== null && choices === null) refuse('invalid', 'A choice needs choices to pick from.');
+    if (set.steps !== undefined) {
+      const filed = current.steps;
+      if (filed === null) refuse('invalid', 'Only a request that a person do steps has steps.');
+      const kept =
+        set.steps.length === filed.length &&
+        set.steps.every((step, index) => step.text === filed[index]!.text && step.command === filed[index]!.command);
+      if (!kept) refuse('invalid', "A request's steps keep the text and commands it was filed with.");
+      change('steps', 'steps', JSON.stringify(set.steps), set.steps as unknown as Json);
+    }
 
     if (set.parentId !== undefined && set.parentId !== current.parentId) {
       if (set.parentId === taskId) refuse('cycle');
@@ -1134,6 +1179,7 @@ export class Writes {
       (beside || detailsOnly) &&
       write.comment !== null &&
       write.requestApproval === null &&
+      write.requestAction === null &&
       Object.keys(columns).length === 0 &&
       addLabels.length === 0 &&
       removeLabels.length === 0 &&
@@ -1186,11 +1232,8 @@ export class Writes {
       if (set.parentId !== undefined && set.parentId !== null && set.parentId !== current.parentId) {
         statements.push(this.#noParentLoop(set.parentId, taskId));
       }
-      if (gateId !== null && write.requestApproval !== null) {
-        statements.push(
-          ...this.#gate(gateId, taskId, projectId, current.priority, write.requestApproval.reason, actor, at),
-        );
-      }
+      if (gateId !== null)
+        statements.push(...this.#opened(gateId, taskId, projectId, current.priority, write, actor, at));
       for (const label of removeLabels) {
         statements.push(
           this.#db.prepare('DELETE FROM task_labels WHERE task_id = ?1 AND label = ?2').bind(taskId, label),

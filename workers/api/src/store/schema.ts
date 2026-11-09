@@ -5,10 +5,12 @@
  */
 import taskStore from './migrations/0001_task_store.sql';
 import tasksByDuplicateOf from './migrations/0002_tasks_by_duplicate_of.sql';
+import gateSteps from './migrations/0003_gate_steps.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
   { name: '0002_tasks_by_duplicate_of', sql: tasksByDuplicateOf },
+  { name: '0003_gate_steps', sql: gateSteps },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */

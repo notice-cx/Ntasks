@@ -18,6 +18,7 @@ import type {
   TaskLink,
   TaskResolution,
   TaskStatus,
+  TaskStep,
   TaskType,
   TaskWork,
   WorkItem,
@@ -70,6 +71,8 @@ export interface StoredTaskRow {
   readonly merged_at: string | null;
   readonly live_at: string | null;
   readonly close_link: string | null;
+  /** A request's steps, as a JSON array, on a gate that asks a person to do steps. */
+  readonly steps: string | null;
 }
 
 /** A `tasks` row as the engine's reads select it, with the columns they compute. */
@@ -183,6 +186,7 @@ export function toTask(row: TaskRow): Task {
     parentId: row.parent_id,
     type: row.type,
     awaitType: row.await_type,
+    steps: row.steps === null ? null : (JSON.parse(row.steps) as TaskStep[]),
     status: row.status,
     priority: row.priority,
     title: row.title,
