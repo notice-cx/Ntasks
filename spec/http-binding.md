@@ -116,7 +116,7 @@ the code alone.
 | `401` `unauthorized` | The request carries no credential. The `www-authenticate` header tells an MCP client where to sign in |
 | `401` `invalid_token` | The credential is malformed, unknown, expired or revoked |
 | `403` `insufficient_scope` | The sender lacks the scope the route needs, such as a decision from an agent or a service |
-| `403` `cross_site_request` | A change signed in with a browser session came from another site's page, so its `Origin` is not the server's |
+| `403` `cross_site_request` | A change signed in with a browser session has no `Origin` header, or one other than the server's, such as another site's page sends |
 | `403` `forbidden` | The sender may read the project but not change it, or a change signed in with a bearer token carries an `Origin` other than the server's |
 | `404` `not_found` | The workspace, the project or a task does not exist, or the sender does not reach it ([AUTH-10](protocol.md#auth-10)) |
 | `405` `method_not_allowed` | The path does not take the method; the `allow` header names the ones it takes |

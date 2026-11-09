@@ -29,7 +29,12 @@
     {
       "description": "A relayed answer carries the person's words and where they said them.",
       "if": { "properties": { "relayed": { "const": true } } },
-      "then": { "properties": { "source": { "type": "string", "minLength": 1 }, "quote": { "type": "string" } } }
+      "then": {
+        "properties": {
+          "source": { "type": "string", "pattern": "\\S" },
+          "quote": { "type": "string", "pattern": "\\S" }
+        }
+      }
     },
     {
       "description": "A person's own answer cannot be disputed.",
