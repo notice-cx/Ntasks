@@ -8,6 +8,7 @@ import { SCOPES } from '../../src/auth.ts';
 import {
   GUIDE_TOOLS,
   INSTRUCTIONS_BUDGET,
+  ON_THE_TASK_BRIEF,
   TASK_QUALITY,
   TASK_START,
   TASK_WORKFLOW,
@@ -751,5 +752,9 @@ describe('the instructions an agent reads when it connects', () => {
     expect(more).toMatch(/^2 more: /u);
     expect(more).toContain('list_tasks');
     expect(instructions.indexOf(more) + more.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
+    // Where everything about a task goes follows them, and ends within the budget too.
+    const rule = instructions.indexOf(ON_THE_TASK_BRIEF);
+    expect(rule).toBeGreaterThan(instructions.indexOf(more));
+    expect(rule + ON_THE_TASK_BRIEF.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
   });
 });

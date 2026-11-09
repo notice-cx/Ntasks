@@ -179,6 +179,12 @@ close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test p
 An agent that reaches more than one workspace also passes `workspace`, a
 `workspaceId` from `list_workspaces`, in each call.
 
+Everything about a task goes on the task, as a comment or its fields:
+progress, hand-overs (where work stopped, file pointers, gotchas, what is
+left), findings and decisions. The guide and the skill tell agents never to
+keep it in a separate notes file or a tool's own notes, and to leave only a
+pointer to the task when another tool asks for a note.
+
 `get_task_guide` gives the agent the rest: filing work, linking tasks,
 asking a person for a decision, an approval or steps to do, and the rules for
 [writing a task](concepts.md#writing-a-task). [The MCP endpoint](api.md#the-mcp-endpoint)
