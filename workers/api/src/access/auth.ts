@@ -1,6 +1,6 @@
 /**
  * Better Auth, the sign-in library, configured for Ntasks on D1: people sign
- * in with GitHub, and AI agents get OAuth 2.1 tokens for the MCP endpoint
+ * in with GitHub, and AI agents and connected apps get OAuth 2.1 tokens
  * through its OAuth provider plugin.
  *
  * Building it costs CPU time, so only the sign-in routes build one, once per
@@ -17,6 +17,7 @@ import {
   AGENT_ACCESS_TOKEN_SECONDS,
   AGENT_REFRESH_TOKEN_SECONDS,
   AGENT_SCOPES,
+  APP_SCOPES,
   AUTH_BASE_PATH,
   OFFLINE_ACCESS,
   RESOURCE_NAME,
@@ -47,7 +48,11 @@ interface AuthOptions {
  */
 export function createAuth(db: D1Database, config: SignInConfig, options: AuthOptions = {}) {
   const resource = mcpResource(config.origin);
-  const scopes = [...Object.keys(AGENT_SCOPES), OFFLINE_ACCESS];
+  const agentScopes = [...Object.keys(AGENT_SCOPES), OFFLINE_ACCESS];
+  // Every scope a token may carry. A client that registers itself gets the
+  // agent scopes alone, so only a connected app, which an owner registers,
+  // can be granted tasks:decide.
+  const scopes = [...APP_SCOPES, OFFLINE_ACCESS];
   // The GitHub account this request's sign-in admitted, from the profile
   // GitHub just returned. Its invitations are accepted once its session is
   // made, when its user exists. An instance serves one request, so this holds
@@ -134,8 +139,8 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
         // MCP clients register themselves (RFC 7591) and must use PKCE.
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
-        clientRegistrationDefaultScopes: scopes,
-        clientRegistrationAllowedScopes: scopes,
+        clientRegistrationDefaultScopes: agentScopes,
+        clientRegistrationAllowedScopes: agentScopes,
         clientRegistrationDefaultResources: [resource],
         clientRegistrationAllowedResources: [resource],
         clientRegistrationRequirePKCE: true,

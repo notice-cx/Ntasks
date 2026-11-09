@@ -110,6 +110,8 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
     recordedBy: answer.by,
     /** A person who answered in the web app recorded it directly; an agent or a service relayed it. */
     relayed: answer.verification !== 'person',
+    /** The client id of the connected app the person answered through; null in the web app or when relayed. */
+    app: text(answer.app),
     proposalVersion: text(answer.proposalVersion),
     at: answer.at,
     disputedBy: text(disputed?.by),

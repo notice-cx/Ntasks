@@ -182,6 +182,8 @@ interface RecordedPick {
   readonly option: TaskChoiceKey;
   readonly label: string;
   readonly by: string;
+  /** The connected app the person picked through. */
+  readonly app?: string;
   readonly at: string;
   readonly note?: string;
 }
@@ -427,6 +429,7 @@ function pickInto(
   decision: boolean,
   withComment: boolean,
   field?: string,
+  app?: string,
 ): boolean {
   const task = draft.task;
   const closed = task.status === 'closed';
@@ -454,7 +457,14 @@ function pickInto(
         { kind: 'no-option', option, offered: choices.options.map((entry) => entry.key) },
         field,
       );
-    pick = { option: offered.key, label: offered.label, by: actor, at, ...(note === undefined ? {} : { note }) };
+    pick = {
+      option: offered.key,
+      label: offered.label,
+      by: actor,
+      ...(app === undefined ? {} : { app }),
+      at,
+      ...(note === undefined ? {} : { note }),
+    };
     draft.set.choice = pick as unknown as JsonObject;
     if (withComment) draft.comment = choiceComment(pick);
   }
@@ -472,6 +482,8 @@ export interface Deciding {
   readonly actor: string;
   readonly at: string;
   readonly proposalVersion: string;
+  /** The client id of the connected app the person decided through, recorded beside them; absent in their own session. */
+  readonly app?: string;
 }
 
 /**
@@ -493,6 +505,7 @@ function recordDirect(
     ...(answer.option === undefined ? {} : { option: answer.option }),
     ...askedAndAnswered(draft.task, answer.option, answer.words),
     by: deciding.actor,
+    ...(deciding.app === undefined ? {} : { app: deciding.app }),
     at: deciding.at,
     verification: 'person',
     ...(gate ? { outcome: 'approved', approved: true } : {}),
@@ -558,7 +571,18 @@ export function choiceWrite(
       `${task.id} is an approval: approve it instead.`,
     );
   const draft = new Draft(task);
-  const made = pickInto(draft, option, note, around, deciding.actor, deciding.at, task.type === 'decision', true);
+  const made = pickInto(
+    draft,
+    option,
+    note,
+    around,
+    deciding.actor,
+    deciding.at,
+    task.type === 'decision',
+    true,
+    undefined,
+    deciding.app,
+  );
   if (made) recordDirect(draft, deciding, { option, ...(note === undefined ? {} : { words: note }) });
   return draft.write();
 }
@@ -625,18 +649,20 @@ export interface StepMarking {
   readonly stuck?: string | null;
 }
 
-/** The step as `marking` leaves it, marked by `by` at `at`. A tick clears a
- * stuck mark and a stuck mark clears a tick: a step is to do, done or stuck. */
-function marked(step: TaskStep, marking: StepMarking, by: string, at: string): TaskStep {
+/** The step as `marking` leaves it, marked as `deciding` says. A tick clears
+ * a stuck mark and a stuck mark clears a tick: a step is to do, done or stuck. */
+function marked(step: TaskStep, marking: StepMarking, deciding: Deciding): TaskStep {
+  const { actor: by, at } = deciding;
+  const app = deciding.app === undefined ? {} : { app: deciding.app };
   let next = step;
-  if (marking.done === true && next.done === null) next = { ...next, done: { by, at }, stuck: null };
+  if (marking.done === true && next.done === null) next = { ...next, done: { by, ...app, at }, stuck: null };
   if (marking.done === false && next.done !== null) next = { ...next, done: null };
   if (marking.note === null && next.note !== null) next = { ...next, note: null };
   if (typeof marking.note === 'string' && next.note?.text !== marking.note)
-    next = { ...next, note: { by, at, text: marking.note } };
+    next = { ...next, note: { by, ...app, at, text: marking.note } };
   if (marking.stuck === null && next.stuck !== null) next = { ...next, stuck: null };
   if (typeof marking.stuck === 'string' && (next.stuck?.reason !== marking.stuck || next.done !== null))
-    next = { ...next, done: null, stuck: { by, at, reason: marking.stuck } };
+    next = { ...next, done: null, stuck: { by, ...app, at, reason: marking.stuck } };
   return next;
 }
 
@@ -665,7 +691,7 @@ export function stepWrite(
       `${task.id} has steps 1 to ${steps.length}.`,
       'step',
     );
-  const next = marked(step, marking, deciding.actor, deciding.at);
+  const next = marked(step, marking, deciding);
   if (next === step) return null;
   const all = steps.map((entry, index) => (index === marking.step - 1 ? next : entry));
   const draft = new Draft(task);
@@ -689,7 +715,13 @@ export function stepWrite(
  * stop the recorded action until a new approval. Once a person approved the
  * gate directly, nothing relayed is left to dispute.
  */
-export function disputeWrite(task: Task, around: Surroundings, actor: string, at: string): TaskWrite | null {
+export function disputeWrite(
+  task: Task,
+  around: Surroundings,
+  actor: string,
+  at: string,
+  app?: string,
+): TaskWrite | null {
   const previous = maintenanceOf(task);
   // The approval the gate stands on is its latest record, past any owner's
   // report recorded after the gate closed (`follows`), which completes that
@@ -725,7 +757,7 @@ export function disputeWrite(task: Task, around: Surroundings, actor: string, at
     draft.metadata[MAINTENANCE] = {
       ...previous,
       permission: 'none',
-      disputed: { by: actor, at, agent: previous.by ?? null, sources },
+      disputed: { by: actor, ...(app === undefined ? {} : { app }), at, agent: previous.by ?? null, sources },
       approved: false,
     };
   const steps = task.steps !== null;
@@ -1118,7 +1150,8 @@ function changedSinceShown(id: string): Refused {
 
 /**
  * A person's decision, run as one write: refused unless the sender is a person
- * signed in to the web app who may change the project, and, when `shown`
+ * signed in to the web app, or to a connected app they granted the decide
+ * scope, who may change the project, and, when `shown`
  * names the proposal version their page showed, unless that is still the
  * task's proposal.
  */
@@ -1142,7 +1175,12 @@ async function decide(
     const proposalVersion = await proposalVersionOf(current);
     if (shown !== undefined && shown !== proposalVersion) throw changedSinceShown(current.id);
     const around = await surroundings(context, project, current);
-    return plan(current, around, { actor: actor.name, at: context.now(), proposalVersion });
+    return plan(current, around, {
+      actor: actor.name,
+      at: context.now(),
+      proposalVersion,
+      ...(principal.app === undefined ? {} : { app: principal.app }),
+    });
   });
   return { project, result };
 }
@@ -1255,7 +1293,7 @@ export function dispute(
     context,
     projectId,
     taskId,
-    (task, around, deciding) => disputeWrite(task, around, deciding.actor, deciding.at),
+    (task, around, deciding) => disputeWrite(task, around, deciding.actor, deciding.at, deciding.app),
     retry,
   );
 }

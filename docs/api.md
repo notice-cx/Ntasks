@@ -47,14 +47,16 @@ before anything else. Each request reaches one workspace
 ([below](#workspaces)). In it, a sender holds **scopes**, the kinds of call it
 may make: `tasks:read` to read and `tasks:write` to change tasks. A person
 signed in to the web app also holds `tasks:decide`, which a person's
-decisions need; no agent or service holds it, whatever it was granted. A
+decisions need, and so does a person through a
+[connected app](sign-in.md#connected-apps) they allowed it; no agent or
+service holds it, whatever it was granted. A
 workspace's owner also holds `tasks:backup`, `tasks:restore` and
 `workspace:manage`, which creating a project and renaming the workspace need.
 
 | Answer | When |
 |---|---|
 | `401` | Nobody is signed in. |
-| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs in the request's workspace. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person signed in to the web app says so in `detail`, which a client relaying a person's click can show as it is. |
+| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs in the request's workspace. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person who holds `tasks:decide` says so in `detail`, which a client relaying a person's click can show as it is. |
 
 A sender also reaches certain **projects** of the workspace. A person
 reaches every project of a workspace they belong to; an agent or a service
@@ -70,8 +72,9 @@ A write to a project granted for reading only is refused: `403` with
 `forbidden` on an HTTP route, and a `refused: …` sentence from an MCP tool.
 
 The Worker signs every request in as [Sign-in](sign-in.md) describes: a
-person's browser session, an agent's OAuth access token, or a service
-credential. A request with none, or with one that is invalid, revoked or
+person's browser session, a person's access token from a
+[connected app](sign-in.md#connected-apps), an agent's OAuth access token,
+or a service credential. A request with none, or with one that is invalid, revoked or
 expired, gets `401` with a bearer challenge that tells an MCP client where to
 sign in. The one exception is a request with no credential that names the
 deployment's public workspace in the `x-ntasks-workspace` header: it reads
@@ -80,6 +83,11 @@ that workspace with `tasks:read` alone
 `x-ntasks-on-behalf-of` header, and the request is recorded as that agent's
 ([A service acting for its agents](sign-in.md#a-service-acting-for-its-agents)). The sign-in routes under `/api/auth` and `/api/access` answer as
 [Sign-in](sign-in.md#routes) describes.
+
+A page at another origin reads the API's answers only when it is a
+connected app's page, with its bearer token and without cookies
+([Calls from the app's page](sign-in.md#calls-from-the-apps-page)). A
+change sent from any other site's page is refused with `403`.
 
 ## Workspaces
 
@@ -539,8 +547,9 @@ as `answer`, or null:
 | `option` | The option chosen: a letter on a task with choices, or null when the answer chose none. On an approval, `decline` for a refusal, and `approve` both for an approval and for the owner's report that they did the action. On a request to do steps, `done` for the owner's report that they did them and `decline` for a refusal. It names the latest answer, not a standing permission: a disputed approval keeps `approve` and has `disputedBy` set. Whether the approved action may proceed is shown by the gate, as above |
 | `quote` | The owner's words, or null when a person answered in the web app without words: a pick with no note, or an approval with no reason |
 | `source` | Where the owner said it, as the relaying sender named it; null for an answer made in the web app |
-| `recordedBy` | The person who answered in the web app, or the agent or service that relayed the answer |
-| `relayed` | `false` for a person's own answer in the web app, `true` for any other |
+| `recordedBy` | The person who answered in the web app or through a connected app, or the agent or service that relayed the answer |
+| `relayed` | `false` for a person's own answer, in the web app or through a connected app, `true` for any other |
+| `app` | The client id of the [connected app](sign-in.md#connected-apps) the person answered through, or null |
 | `proposalVersion` | The proposal version it answered |
 | `at` | When it was recorded |
 | `disputedBy` | The person who disputed it, or null |
@@ -707,12 +716,13 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 2.
+field can hold is added. This is version 3.
 
 | Version | Added |
 |---|---|
 | 1 | The routes this page and [Sign-in](sign-in.md#routes) list |
-| 2 | `steps` on a task, and `POST /api/gates/:id/steps` ([below](#a-persons-decisions)) |
+| 2 | [Connected apps](sign-in.md#connected-apps) |
+| 3 | `steps` on a task, and `POST /api/gates/:id/steps` ([below](#a-persons-decisions)) |
 
 | Where | What it holds |
 |---|---|
@@ -791,7 +801,7 @@ misspelt filter fails instead of being ignored.
 | Route | Parameters | Answer |
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
-| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person signed in to the web app also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
+| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
@@ -806,7 +816,9 @@ misspelt filter fails instead of being ignored.
 
 Each write takes one JSON object of at most 32 KB, sent as
 `application/json`, with no key twice, and no query. A browser may send one
-only from the Worker's own origin. Each runs the same write as the MCP tool
+only from the Worker's own origin, or from a
+[connected app](sign-in.md#calls-from-the-apps-page)'s page with the app's
+bearer token. Each runs the same write as the MCP tool
 that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps).
 
 | Route | Body | Answer |
@@ -868,8 +880,9 @@ reads use.
 
 ### A person's decisions
 
-These routes take a person's own decision. Only a person signed in to the
-web app may send one (`tasks:decide`), in a project they may change; any
+These routes take a person's own decision. Only a person may send one
+(`tasks:decide`), signed in to the web app or through a connected app they
+allowed `tasks:decide`, in a project they may change; any
 other sender gets `403` with `insufficient_scope` and a `detail` saying so,
 and nothing changes. Each takes one JSON object and the optional
 `Idempotency-Key` header, as the other writes do, is one write, and answers
@@ -882,7 +895,7 @@ and when.
 | `POST /api/tasks/:id/respond` | `projectId`, `response` (at most 4,086 characters), and optionally `proposalVersion` | Answers a task labelled `human` that is not closed and not an approval, in the person's words, recorded as given: a decision closes as `done` with the reason `Responded` and the comment `Response: <response>`, and any other task goes back to ready work: open, unassigned, without the `human` label, with the comment `Answered: <response>`. A reply never picks an option; `choose` does. |
 | `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), and optionally `note` (at most 2,000 characters) and `proposalVersion` | Picks one of the task's options. The pick records the option, its label, the person and the time, with the comment `Chose (b) <label>.` and the note. A decision then closes with the reason `Chose (b) <label>`, past an open blocker or another holder; any other task goes back to ready work. A second pick is refused; the same person sending the same option again finishes a pick that stopped before its comment or its close. |
 | `POST /api/tasks/:id/dismiss` | `projectId`, and optionally `reason` (at most 2,037 characters), `resolution` (any but `done`; `wont-do` when left out), `proposalVersion` and, with `duplicate` only, `duplicateOf` | Declines a task labelled `human`: it closes with the reason `Dismissed` or `Dismissed: <reason>`. A duplicate is linked to the task it duplicates as `related`. |
-| `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), at least one of `done` (`true` ticks it, `false` unticks it), `note` (at most 1,024 characters; `null` takes it off) and `stuck` (why the person stopped there, at most 1,024 characters; `null` says they are past it), and optionally `proposalVersion` | Records the person's marks on one step of a request to do steps, in any order: each mark holds the person and the time. A tick clears the step's `stuck`, and `stuck` clears its tick; `done: true` with `stuck` is refused. `stuck` also comments on each task waiting on the request, naming the step and the reason. When every step is ticked, the request closes as `done` with the person as its closer, and each task waiting on it gets a comment to check the result; each labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label. A step's text and command never change. |
+| `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), at least one of `done` (`true` ticks it, `false` unticks it), `note` (at most 1,024 characters; `null` takes it off) and `stuck` (why the person stopped there, at most 1,024 characters; `null` says they are past it), and optionally `proposalVersion` | Records the person's marks on one step of a request to do steps, in any order: each mark holds the person, the time and, through a [connected app](sign-in.md#connected-apps), the app's client id as `app`. A tick clears the step's `stuck`, and `stuck` clears its tick; `done: true` with `stuck` is refused. `stuck` also comments on each task waiting on the request, naming the step and the reason. When every step is ticked, the request closes as `done` with the person as its closer, and each task waiting on it gets a comment to check the result; each labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label. A step's text and command never change. |
 | `POST /api/gates/:id/resolve` | `projectId`, and optionally `reason` and `proposalVersion` | Approves an approval: it closes as `done` with the reason, `Approved` when left out, and the tasks waiting on it are free of it. Each of them labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label, with a comment to keep within the approval, as after an approval an agent relays. The person's approval becomes the approval's recorded answer, so one an agent relayed before it can no longer be disputed. A request to do steps is refused: it takes ticks, not an approval. |
 | `POST /api/tasks/:id/dispute` | `projectId` | Withdraws an approval an agent relayed with `reconcile_task`: its record loses its permission and names who disputed it, the approval opens again, and it and each task waiting on it get a comment saying the recorded action must stop until a new approval. Disputing it again changes nothing, and tells the waiting tasks nothing again. Once the person approves it directly, a dispute of it is refused. |
 
@@ -894,6 +907,12 @@ stands. An answer, a pick and an approval each become the task's recorded
 `answer` ([above](#recording-an-owner-answer)), with `relayed: false`, the
 person as `recordedBy`, the proposal version it answered, and the person's
 words, note or reason as its quote.
+
+A decision made through a connected app is recorded exactly as one made in
+the web app, under the person's name, and also names the app's client id:
+`app` in the pick (`choice`), in the recorded `answer`, which is `null` for
+one made in the web app or relayed, and in a dispute's record. The task's
+history shows each in the change it made.
 
 A decision's close, after a pick or an answer, is refused while the decision
 waits on an open approval or has children that are not closed. Each refusal

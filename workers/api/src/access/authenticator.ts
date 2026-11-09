@@ -50,6 +50,17 @@ export interface SignInAuthenticator extends Authenticator {
   authenticate(request: Request): Promise<SignedIn | null>;
 }
 
+/**
+ * What a person may do through a connected app: their role's scopes that the
+ * app's token carries, where write includes read. Never a backup, a load or
+ * managing the workspace, whatever the role.
+ */
+function appScopes(role: WorkspaceRole, granted: readonly string[]): string[] {
+  const carried = new Set(granted);
+  if (carried.has(WRITE)) carried.add(READ);
+  return [READ, WRITE, DECIDE].filter((scope) => carried.has(scope) && ROLE_SCOPES[role].includes(scope));
+}
+
 /** The scopes for the most a sender may do in any one of these projects: none when it was granted none. */
 function grantScopes(projects: ReadonlyMap<string, ProjectAccess>): string[] {
   const access = new Set(projects.values());
@@ -58,7 +69,8 @@ function grantScopes(projects: ReadonlyMap<string, ProjectAccess>): string[] {
 
 /**
  * Every workspace the principal reaches, with what it may do there: a person
- * the workspaces they belong to, by their role; an agent the workspaces where
+ * the workspaces they belong to, by their role, and through a connected app
+ * its one workspace, by their role bounded by the app's scopes; an agent the workspaces where
  * its person granted it projects; a service its credential's one workspace,
  * with the backup and restore scopes when its owner made it with each; a
  * visitor the public workspace, to read every project there.
@@ -69,7 +81,7 @@ export function reachesOf(principal: Principal): WorkspaceReach[] {
       ? principal.memberships.map(({ workspace, role }) => ({
           workspace,
           role,
-          scopes: ROLE_SCOPES[role],
+          scopes: principal.app === undefined ? ROLE_SCOPES[role] : appScopes(role, principal.app.scopes),
           projects: 'all',
         }))
       : principal.kind === 'agent'
@@ -147,10 +159,12 @@ export function signInAuthenticator(env: VerifierEnv & PublicWorkspaceEnv): Sign
         principal = acting;
       }
       const person = personOf(principal);
+      const app = principal.kind === 'person' ? principal.app?.clientId : undefined;
       return Object.freeze({
         id: principal.id,
         name: actorOf(principal).name,
         ...(person === undefined ? {} : { person }),
+        ...(app === undefined ? {} : { app }),
         workspaces: reachesOf(principal),
         principal,
       });

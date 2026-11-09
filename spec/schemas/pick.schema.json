@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/pick.schema.json",
+  "title": "Pick",
+  "description": "The option a person chose on a task with choices: its key and label, who chose it, when, and their note. A task takes one pick. Section 3.6 of the protocol.",
+  "type": "object",
+  "properties": {
+    "option": { "$ref": "choices.schema.json#/$defs/optionKey" },
+    "label": { "type": "string", "minLength": 1 },
+    "by": { "$ref": "actor.schema.json" },
+    "at": { "type": "string", "format": "date-time" },
+    "note": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  },
+  "required": ["option", "label", "by", "at"]
+}

@@ -434,20 +434,63 @@
     "version": 2,
     "shapes": {
       "task": {
+        "answer.app": "null|string",
+        "choice.app": "absent|string"
+      },
+      "app": {
+        "clientId": "string",
+        "name": "string",
+        "redirectUris": "array",
+        "redirectUris[]": "string",
+        "createdAt": "null|string",
+        "connectedAt": "null|string"
+      }
+    },
+    "routes": {
+      "GET /api/access/me": {
+        "app": "absent|object",
+        "app.clientId": "string",
+        "app.name": "string",
+        "app.workspaceId": "string",
+        "app.scopes": "array",
+        "app.scopes[]": "string"
+      },
+      "POST /api/access/apps": {
+        "app": "@app"
+      },
+      "GET /api/access/apps": {
+        "apps": "array",
+        "apps[]": "@app"
+      },
+      "POST /api/access/apps/:id/revoke": {
+        "revoked": "boolean"
+      },
+      "POST /api/access/apps/:id/remove": {
+        "removed": "boolean"
+      }
+    }
+  },
+  {
+    "version": 3,
+    "shapes": {
+      "task": {
         "steps": "array|null",
         "steps[]": "object",
         "steps[].text": "string",
         "steps[].command": "null|string",
         "steps[].done": "null|object",
         "steps[].done.by": "string",
+        "steps[].done.app": "absent|string",
         "steps[].done.at": "string",
         "steps[].note": "null|object",
         "steps[].note.text": "string",
         "steps[].note.by": "string",
+        "steps[].note.app": "absent|string",
         "steps[].note.at": "string",
         "steps[].stuck": "null|object",
         "steps[].stuck.reason": "string",
         "steps[].stuck.by": "string",
+        "steps[].stuck.app": "absent|string",
         "steps[].stuck.at": "string"
       }
     },

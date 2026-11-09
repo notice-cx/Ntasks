@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/choices.schema.json",
+  "title": "Choices",
+  "description": "What a person decides: a question and two to six options keyed a, b, c… in the order shown, exactly one of them recommended. Section 3.6 of the protocol.",
+  "$defs": {
+    "optionKey": { "enum": ["a", "b", "c", "d", "e", "f"] },
+    "option": {
+      "type": "object",
+      "properties": {
+        "key": { "$ref": "#/$defs/optionKey" },
+        "label": {
+          "description": "One line: the words on the option's button.",
+          "type": "string",
+          "maxLength": 120,
+          "pattern": "^[^\\r\\n]*\\S[^\\r\\n]*$"
+        },
+        "detail": { "description": "What choosing it means.", "type": "string", "minLength": 1, "maxLength": 600 },
+        "recommended": { "const": true }
+      },
+      "required": ["key", "label"],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "question": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "options": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "a" } } },
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "b" } } },
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "c" } } },
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "d" } } },
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "e" } } },
+        { "$ref": "#/$defs/option", "properties": { "key": { "const": "f" } } }
+      ],
+      "items": false,
+      "contains": { "required": ["recommended"] },
+      "minContains": 1,
+      "maxContains": 1
+    }
+  },
+  "required": ["question", "options"],
+  "additionalProperties": false
+}

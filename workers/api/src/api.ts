@@ -192,9 +192,10 @@ export async function serveApi(request: Request, principal: Principal, context: 
   if (!route) return json({ error: 'method_not_allowed' }, 405, { allow: allowed(routes) });
   const scope = scopeOf(routes, method as Method);
   if (!principal.scopes.includes(scope)) return json({ error: 'insufficient_scope', detail: lacking(scope) }, 403);
-  // A write from a browser comes from the web app's own pages, never another site's.
+  // A write from a browser comes from the web app's own pages, never another
+  // site's, or from a connected app's page, whose bearer token no other site holds.
   const origin = request.headers.get('origin');
-  if (method !== 'GET' && origin !== null && origin !== url.origin) {
+  if (method !== 'GET' && origin !== null && origin !== url.origin && principal.app === undefined) {
     return json({ error: 'forbidden', detail: 'origin refused' }, 403);
   }
   try {

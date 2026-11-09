@@ -192,6 +192,8 @@ export interface CustomField {
 /** Who recorded something on a step, and when. */
 export interface StepMark {
   readonly by: string;
+  /** The client id of the connected app the person marked it through; absent in their own session. */
+  readonly app?: string;
   readonly at: string;
 }
 

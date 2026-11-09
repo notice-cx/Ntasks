@@ -94,7 +94,7 @@ task closed as done has one, and a reopen clears it.
 A request that a person do steps is a gate with its steps in the `steps`
 column of `tasks`: one JSON array, in order, each step holding its `text`, its
 `command` or null, and what the person recorded on it, `done`, `note` and
-`stuck`, each null or the person and the time (`TaskStep` in
+`stuck`, each null or the person, the time and any connected app (`TaskStep` in
 [`task.ts`](../packages/domain/src/task.ts)). The database takes steps only on
 a gate, and at least one. An approval and every other task has none. A tick
 rewrites the whole array in one write, so the task's history holds the steps

@@ -1,0 +1,5 @@
+{
+  "error": "task_refused",
+  "detail": "The proposal changed after the owner saw it; show it again.",
+  "field": "proposalVersion"
+}

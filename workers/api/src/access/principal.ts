@@ -5,7 +5,7 @@
  * principal, only the `Actor` and retry principal made from it.
  */
 import { TASK_LIMITS, type Actor } from '@ntasks/domain';
-import type { ProjectAccess } from '../auth.ts';
+import { SCOPES, type ProjectAccess } from '../auth.ts';
 import type { Workspace, WorkspaceRole } from '../workspaces.ts';
 
 export type { ProjectAccess };
@@ -22,17 +22,35 @@ export interface WorkspaceGrants {
   readonly projects: ReadonlyMap<string, ProjectAccess>;
 }
 
-/** A person, signed in in their own browser. Reaches every project of each
- * workspace they belong to. */
+/** A person, signed in in their own browser or through a connected app.
+ * Reaches every project of each workspace they belong to; through an app,
+ * only the app's workspace. */
 export interface PersonPrincipal {
   readonly kind: 'person';
   /** Stable and opaque: the retry principal for idempotency keys. */
   readonly id: string;
   readonly userId: string;
   readonly name: string;
-  /** Whether they are a deployment admin, who may create workspaces: the setup page recorded them, or their GitHub id is in OWNER_GITHUB_IDS. */
+  /** Whether they are a deployment admin, who may create workspaces: the setup page recorded them, or their GitHub id is in OWNER_GITHUB_IDS. Never through an app. */
   readonly admin: boolean;
   readonly memberships: readonly Membership[];
+  /** The connected app the person signed in to, when its token sent the
+   * request; absent for their own browser session (`ownSession`). */
+  readonly app?: ConnectedApp;
+}
+
+/** A connected app a person acts through: an OAuth client an owner of one workspace registered. */
+export interface ConnectedApp {
+  readonly clientId: string;
+  /** The name its owner registered it with, as the person saw it when allowing it. */
+  readonly name: string;
+  /** The scopes its token carries; they bound what the person's role allows. */
+  readonly scopes: readonly string[];
+}
+
+/** Whether this is a person in their own browser session, not through a connected app. Only that session manages access. */
+export function ownSession(principal: Principal): principal is PersonPrincipal {
+  return principal.kind === 'person' && principal.app === undefined;
 }
 
 /** An AI agent acting for the person who approved it, over OAuth. */
@@ -84,12 +102,13 @@ export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal | Vi
 
 /**
  * Whether an answer from this principal counts as a person's own decision.
- * Only a person's browser session does. An agent or a service may still pass
- * on an answer a person gave it, but the API layer records that as relayed,
- * never as the person's direct decision.
+ * Only a person's does: in their browser session, or through a connected app
+ * they granted `tasks:decide`. An agent or a service may still pass on an
+ * answer a person gave it, but the API layer records that as relayed, never
+ * as the person's direct decision.
  */
 export function mayDecide(principal: Principal): boolean {
-  return principal.kind === 'person';
+  return principal.kind === 'person' && (principal.app === undefined || principal.app.scopes.includes(SCOPES.decide));
 }
 
 /** A name that starts like one of the prefixes actorOf adds. */

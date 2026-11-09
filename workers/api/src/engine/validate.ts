@@ -498,6 +498,7 @@ function stepMark(value: unknown, field: string, words?: 'text' | 'reason'): Rec
   const given = value as Partial<StepMark> & Record<string, unknown>;
   return {
     by: text(given.by, `${field}.by`, TASK_LIMITS.actor, true),
+    ...(given.app === undefined ? {} : { app: text(given.app, `${field}.app`, TASK_LIMITS.actor, true) }),
     at: instant(given.at, `${field}.at`),
     ...(words === undefined ? {} : { [words]: text(given[words], `${field}.${words}`, TASK_LIMITS.stepNote, true) }),
   };
