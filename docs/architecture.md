@@ -151,6 +151,9 @@ without it.
 - **Services**, such as a NoticeOS installation, use a named credential of
   one workspace with access to named projects, which the workspace's owner
   can revoke.
+- **Visitors** send no credential and read one workspace, the deployment's
+  public workspace, when it has one, such as a product demo's; they change
+  nothing ([Sign-in](sign-in.md#the-public-workspace)).
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
 how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
