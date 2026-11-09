@@ -294,6 +294,9 @@ then `npm publish --provenance` of the tarball `pnpm pack` writes. It signs
 in to npm with npm's trusted publisher for this repository when the package
 has one, and otherwise with the `NPM_TOKEN` secret, as the `ntasks`
 command's release does; the token must be allowed to publish to `notice-cx`.
+A trusted publisher must allow `npm publish` as well as `npm stage publish`:
+npm sets a new one to allow staging only, and the workflow publishes
+directly.
 Pushing the tag needs the owner's approval, and the `npm` environment holds
 the run until the owner approves it
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
