@@ -41,10 +41,14 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  "2026-11-09: request_human_action asks a person to do steps only they can do, each with its command apart from its text, which they tick off in the web app; a request's steps are on get_task as steps. reconcile_task records their report that they did them with owner_performed.",
   '2026-11-09: an ask to a person says what is waiting, why it is theirs, and the exact place to act (see Writing a task). Lint advises on a description whose first line repeats the title, and on an ask that names no place to act.',
   '2026-11-09: a person can close a task as done on their own call, waiving criteria of its acceptance; get_task shows it as closeAcceptance. When the owner does so in conversation, reconcile_task action accepted records it, with met: the criteria they found met. Only a person waives a criterion: close_task as done still names its proof.',
+  '2026-11-09: everything about a task goes on the task, as a comment or its fields, never in a separate note (workflow step 4).',
 ]);
+
+/** Where everything about a task is kept, so the next person or agent finds it from the task. */
+export const ON_THE_TASK =
+  "Everything about a task goes on the task, as comment_on_task or its fields: progress, hand-overs (where work stopped, file pointers, gotchas, what is left), findings and decisions. Never put it in a separate notes file, scratch doc, chat-only summary, memory or a tool's own notes feature; when another tool asks for a note, write only a pointer to the task.";
 
 /** How a session starts. */
 export const TASK_START =
@@ -55,7 +59,7 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '1. A session starts with the open tasks you hold, listed in these instructions with each one’s next step: carry them on first. list_projects names each project and the prefix that starts its task ids.',
   '2. Choose: list_tasks with ready: true and no project lists work nothing blocks; get_task reads one in full, or several with tasks.',
   '3. Start: claim_task, or claim_task with pr alone for the task that pull request names. Pass for, branch and pr when a helper agent works under you. create_task with claim: true files new work and claims it.',
-  '4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each.',
+  `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. ${ON_THE_TASK}`,
   '5. Finish: close_task with the evidence and its proof: commit, pr or link. tasks closes several, with_children an epic and its open tasks; unblocked lists what is ready next. create_task with done files work already finished. After a merge or a deploy, report_delivery.',
   '6. Found work: create_task, or create_tasks for several, where #n names another task of the call. link_tasks sets or removes the one link between two tasks; update_task changes any other field.',
   '7. A step only a person can do: label the task human, with choices when they pick one option; request_human_approval when work must wait for approval; request_human_action when they must do steps themselves. When the owner answers you in conversation, reconcile_task records it, relayed by you: action answer (declined or owner_performed on an approval, and on a request to do steps owner_performed when they did them), proposal_version from get_task, quote (their exact words), source (such as claude-code:session/<session id>) and the option they chose; when they call a task done although some of its acceptance is unmet, action accepted with met, the numbers of the criteria they found met. An approved request’s waiting tasks go back to agents within its scope; a declined action must not happen; an answered task goes back to ready work, to claim and close with the implementation commit. A stale proposal_version means show the owner the task again.',
@@ -198,8 +202,9 @@ function heldSection(held: readonly HeldEntry[], several: boolean, room: number)
 
 /**
  * Every session's instructions: which of the guide's tools this endpoint
- * lacks, the guide's start, the tasks the sender holds when it connects, and
- * the rules for writing a task. The held tasks come before the rules and end
+ * lacks, the guide's start, the tasks the sender holds when it connects,
+ * where everything about a task is kept, and the rules for writing a task.
+ * The held tasks come before the rules and end
  * within INSTRUCTIONS_BUDGET, so an agent reads them however much a client cuts.
  */
 export function taskInstructions(offered: readonly string[], held: readonly HeldEntry[] = [], several = false): string {
@@ -211,5 +216,5 @@ export function taskInstructions(offered: readonly string[], held: readonly Held
     `${TASK_GUIDE_TOOL} returns these rules with the full workflow and what changed lately, at any time; list_workspaces returns its version as guideVersion, so read it again when that changes.`,
   ];
   const room = INSTRUCTIONS_BUDGET - start.join('\n').length - 1;
-  return [...start, ...heldSection(held, several, room), '', ...TASK_QUALITY].join('\n');
+  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK, ...TASK_QUALITY].join('\n');
 }
