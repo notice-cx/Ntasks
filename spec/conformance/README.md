@@ -32,8 +32,11 @@ pnpm --filter @ntasks/spec run conformance -- --target path/to/target.json
 | `--json <file>` | Also writes the whole report as JSON |
 | `--list` | Lists every check with its level, rule, section and what it checks, and runs none |
 
-The command exits 0 when every check of the claimed levels passed or is a
-listed gap, 1 when one failed, and 2 when its arguments are wrong.
+The command exits 1 when a check of a claimed level failed, or a listed gap
+passed; 2 when its arguments or the target file are wrong; and 0 otherwise,
+including when a level is `incomplete` because the target leaves out a
+sender or project some of its checks need. Read each level's verdict, at the
+end of the report, before stating which levels a server conforms to.
 
 ### What the target names
 

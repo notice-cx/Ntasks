@@ -85,7 +85,13 @@
   "$defs": {
     "binding": {
       "type": "object",
-      "properties": { "path": { "type": "string", "pattern": "^/" } },
+      "properties": {
+        "path": {
+          "description": "A path on the target's origin: one slash first, and no second slash, backslash, space or control character that a URL parser could read as another origin.",
+          "type": "string",
+          "pattern": "^/(?![/\\\\])[^\\\\\\u0000-\\u0020\\u007f]*$"
+        }
+      },
       "required": ["path"],
       "additionalProperties": false
     },

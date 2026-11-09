@@ -8,6 +8,8 @@
  * deployed one.
  */
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -16,7 +18,9 @@ import { KNOWN_GAPS, startLocalNtasks } from '../conformance/ntasks/local.ts';
 import { sectionOf } from '../conformance/src/check.ts';
 import { checks } from '../conformance/src/checks/index.ts';
 import { runSuite } from '../conformance/src/suite.ts';
-import { checkTarget, LEVELS, type Level } from '../conformance/src/target.ts';
+import { httpApi } from '../conformance/src/http.ts';
+import { mcpApi } from '../conformance/src/mcp.ts';
+import { addressOf, checkTarget, LEVELS, type Level } from '../conformance/src/target.ts';
 
 const SPEC = fileURLToPath(new URL('..', import.meta.url));
 const read = (name: string): string => readFileSync(join(SPEC, name), 'utf8');
@@ -103,6 +107,46 @@ describe('the conformance checks', () => {
     expect(checkTarget(example).projects.main).toBe('a1111111-0000-4000-8000-000000000001');
     expect(() => checkTarget({ ...example, levels: ['core', 'everything'] })).toThrow(/levels/u);
     expect(() => checkTarget({ ...example, senders: { agent: { headers: {} } } })).toThrow(/otherAgent/u);
+  });
+
+  it('refuse a binding path that a URL parser could read as another origin', () => {
+    const example = JSON.parse(read('conformance/target.example.json')) as Record<string, unknown>;
+    for (const path of ['//other.example/mcp', '/\\other.example/mcp', '/api mcp', 'api/mcp'])
+      expect(() => checkTarget({ ...example, bindings: { mcp: { path } } }), path).toThrow(/bindings\/mcp\/path/u);
+    const target = checkTarget(example);
+    expect(addressOf(target, '/api/mcp').href).toBe('https://ntasks.example.com/api/mcp');
+    expect(() => addressOf(target, '//other.example/mcp')).toThrow(/not the target's/u);
+  });
+
+  it("never follow a redirect, so a sender's headers stay on the target's origin", async () => {
+    const elsewhere: string[] = [];
+    const other = createServer((request, response) => {
+      elsewhere.push(request.headers.authorization ?? 'no credential');
+      response.end('{}');
+    });
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const otherPort = (other.address() as AddressInfo).port;
+    const redirecting = createServer((_request, response) => {
+      response.writeHead(307, { location: `http://127.0.0.1:${otherPort}/api/mcp` });
+      response.end();
+    });
+    await new Promise<void>((resolve) => redirecting.listen(0, '127.0.0.1', resolve));
+    try {
+      const example = JSON.parse(read('conformance/target.example.json')) as Record<string, unknown>;
+      const target = checkTarget({
+        ...example,
+        url: `http://127.0.0.1:${(redirecting.address() as AddressInfo).port}`,
+      });
+      for (const binding of ['mcp', 'http'] as const) {
+        const api = binding === 'mcp' ? mcpApi(target, 'agent') : httpApi(target, 'agent', () => target.projects.main);
+        const listed = await api.projects();
+        expect(listed.ok, binding).toBe(false);
+        expect(listed.refusal?.wellFormed, binding).toBe(false);
+      }
+      expect(elsewhere).toEqual([]);
+    } finally {
+      await Promise.all([redirecting, other].map((server) => new Promise((resolve) => server.close(resolve))));
+    }
   });
 
   it("list as Ntasks's known gaps only checks that exist", () => {

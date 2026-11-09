@@ -113,6 +113,7 @@ export class McpConnection {
     } | null;
     if (reply === null) throw new McpError(`${method} answered nothing`);
     if (reply.error) throw new McpError(`${method} failed: ${reply.error.code} ${reply.error.message}`);
+    if (!('result' in reply)) throw new McpError(`${method} answered neither a result nor an error`);
     return reply.result;
   }
 
@@ -124,7 +125,17 @@ export class McpConnection {
       'mcp-protocol-version': MCP_REVISION,
     };
     if (this.session !== null) headers['mcp-session-id'] = this.session;
-    const response = await fetch(this.endpoint, { method: 'POST', headers, body: JSON.stringify(message) });
+    // A redirect is never followed, so a sender's credentials and the body never leave the target's origin.
+    const response = await fetch(this.endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(message),
+      redirect: 'manual',
+    });
+    if (response.status >= 300 && response.status < 400)
+      throw new McpError(
+        `${String(message.method)} answered a redirect (${response.status}), which the suite does not follow`,
+      );
     const session = response.headers.get('mcp-session-id');
     if (session !== null) this.session = session;
     const text = await response.text();

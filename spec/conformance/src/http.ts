@@ -18,7 +18,7 @@ import {
   type TaskRead,
   type Written,
 } from './api.ts';
-import type { Target } from './target.ts';
+import { addressOf, type Target } from './target.ts';
 import { sendJson, type HttpAnswer, type Trace } from './transport.ts';
 
 /** The project a task id belongs to, by the prefix that starts it. */
@@ -64,7 +64,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
     options: { body?: Record<string, unknown>; query?: Record<string, string>; key?: string; model?: string } = {},
   ): Promise<Outcome<Record<string, unknown>>> => {
     if (options.model !== undefined) throw new NotOffered('http', 'name the model a write is made by');
-    const url = new URL(`${base}${path}`, target.url);
+    const url = addressOf(target, `${base}${path}`);
     for (const [name, value] of Object.entries(options.query ?? {})) url.searchParams.set(name, value);
     const answer: HttpAnswer = await sendJson(url, {
       method,

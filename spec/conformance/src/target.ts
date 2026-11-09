@@ -54,6 +54,17 @@ export function checkTarget(value: unknown): Target {
   return value as Target;
 }
 
+/**
+ * The address of `path` on the target. A path that would resolve to another
+ * origin is refused, so a sender's headers are only ever sent to the target.
+ */
+export function addressOf(target: Target, path: string): URL {
+  const origin = new URL(target.url).origin;
+  const address = new URL(path, origin);
+  if (address.origin !== origin) throw new Error(`${path} resolves to ${address.origin}, not the target's ${origin}`);
+  return address;
+}
+
 export function readTarget(path: string): Target {
   return checkTarget(JSON.parse(readFileSync(path, 'utf8')) as unknown);
 }

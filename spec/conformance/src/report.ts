@@ -34,6 +34,14 @@ export function formatReport(report: Report): string {
   }
   lines.push('');
   for (const level of report.levels) lines.push(`${level.level.padEnd(9)} ${level.status}`);
-  lines.push('', report.passed ? 'Every check of the claimed levels passed.' : 'Some checks failed.');
+  const incomplete = report.levels.some((level) => level.status === 'incomplete');
+  lines.push(
+    '',
+    !report.passed
+      ? 'Some checks failed.'
+      : incomplete
+        ? 'No check failed, but a claimed level is incomplete: some of its checks did not run.'
+        : 'No check of the claimed levels failed.',
+  );
   return lines.join('\n');
 }

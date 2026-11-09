@@ -16,7 +16,7 @@ import {
   type TaskRead,
   type Written,
 } from './api.ts';
-import type { Target } from './target.ts';
+import { addressOf, type Target } from './target.ts';
 import { McpConnection, McpError, type ToolResult, type Trace } from './transport.ts';
 
 const REFUSAL_KINDS: readonly [string, RefusalKind][] = [
@@ -35,7 +35,7 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
   if (!sender) throw new Error(`the target names no ${role}`);
   const binding = target.bindings.mcp;
   if (!binding) throw new Error('the target offers no MCP binding');
-  const endpoint = new URL(binding.path, target.url);
+  const endpoint = addressOf(target, binding.path);
   let connection: Promise<McpConnection> | null = null;
   const connected = () => (connection ??= new McpConnection(endpoint, sender.headers, trace).initialize());
   const workspace = target.workspace === undefined ? {} : { workspace: target.workspace };
