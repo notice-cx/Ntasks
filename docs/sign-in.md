@@ -279,9 +279,10 @@ header when they belong to several:
 - `name` is 1 to 64 letters, digits, spaces, dots, dashes or underscores.
   The approval page shows it to each person who signs in.
 - `redirectUris` lists 1 to 10 addresses the browser returns to after
-  sign-in. Each is an `https` address, or an `http` one on `localhost`,
-  `127.0.0.1` or `[::1]` for an app that runs on the same machine, written as
-  its origin then a path, in lowercase, without a fragment. The origins of
+  sign-in. Each is an `https` address on a host other than `localhost`,
+  `127.0.0.1` or `[::1]`, or an `http` one on one of those three for an app
+  that runs on the same machine, written as its origin then a path, in
+  lowercase, without a fragment. `https` on those three hosts is refused. The origins of
   these addresses are where the app's page runs, and the only origins whose
   pages may read the API's answers ([below](#calls-from-the-apps-page)).
 - The answer is `201` with `{ app }`, as `GET /api/access/apps` lists it. Its

@@ -806,7 +806,9 @@ misspelt filter fails instead of being ignored.
 
 Each write takes one JSON object of at most 32 KB, sent as
 `application/json`, with no key twice, and no query. A browser may send one
-only from the Worker's own origin. Each runs the same write as the MCP tool
+only from the Worker's own origin, or from a
+[connected app](sign-in.md#calls-from-the-apps-page)'s page with the app's
+bearer token. Each runs the same write as the MCP tool
 that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps).
 
 | Route | Body | Answer |
