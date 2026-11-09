@@ -103,8 +103,11 @@ Ntasks's own.
 Schema: [`refusal`](schemas/refusal.schema.json).
 
 **HTTP-1.** <a id="http-1"></a>A refused request MUST change nothing, and
-its body MUST carry an `error` code and a `detail` sentence a person can
-read, with `field` naming the body field at fault when there is one.
+its body MUST carry an `error` code. It SHOULD carry a `detail` sentence a
+person can read, and `field` naming the body field at fault when there is
+one. Ntasks's refusals from a task route carry `detail`; its refusals at
+sign-in (`401`, `403` `cross_site_request`) and of a method (`405`) carry
+the code alone.
 
 | Status and `error` | When |
 |---|---|
@@ -113,6 +116,7 @@ read, with `field` naming the body field at fault when there is one.
 | `401` `unauthorized` | The request carries no credential. The `www-authenticate` header tells an MCP client where to sign in |
 | `401` `invalid_token` | The credential is malformed, unknown, expired or revoked |
 | `403` `insufficient_scope` | The sender lacks the scope the route needs, such as a decision from an agent or a service |
+| `403` `cross_site_request` | A change signed in with a browser session came from another site's page |
 | `403` `forbidden` | The sender may read the project but not change it, or a write comes from another site's page |
 | `404` `not_found` | The workspace, the project or a task does not exist, or the sender does not reach it ([AUTH-10](protocol.md#auth-10)) |
 | `405` `method_not_allowed` | The path does not take the method; the `allow` header names the ones it takes |
