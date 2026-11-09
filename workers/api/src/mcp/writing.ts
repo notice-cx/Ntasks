@@ -1,7 +1,8 @@
 /**
- * The title rule the guide states (guide.ts), checked on a write: a title an
- * agent files is advised on, never refused, since a title of up to 512
- * characters is valid and tasks imported from Beads carry long ones.
+ * The rules the guide states (guide.ts) for a title and for the commands in a
+ * description, checked on a write. A task that breaks them is advised on,
+ * never refused: a title of up to 512 characters is valid, and tasks imported
+ * from Beads carry long titles and inline commands.
  */
 
 /** The most characters a title has: what a list row shows whole. */
@@ -56,4 +57,71 @@ export function titleAdvice(title: string): readonly string[] {
         ]
       : []),
   ];
+}
+
+/** How a description breaks the rule for what a person runs or pastes. */
+export type DescriptionHold = 'inline command' | 'untagged block' | 'prompt';
+
+/** A command a person runs: a tool with arguments, a script with arguments, or an SQL statement. */
+const RUN =
+  /^(?:sudo\s+)?(?:pnpm|npm|npx|yarn|bun|git|gh|curl|wget|wrangler|docker|kubectl|node|psql|sqlite3|bash|sh|make|brew)\s+\S|^\.{1,2}\/\S+\s+\S|^(?:select\s.+\sfrom|insert\s+into|update\s+\S+\s+set|delete\s+from)\s/iu;
+
+/** A fence's opening or closing line: its marker, and the info string after an opening one. */
+const FENCE = /^\s*(`{3,}|~{3,})(.*)$/u;
+
+/** A description's prose lines, and each fenced block's info string and lines. */
+function parts(markdown: string): {
+  readonly prose: readonly string[];
+  readonly blocks: readonly { readonly info: string; readonly lines: readonly string[] }[];
+} {
+  const prose: string[] = [];
+  const blocks: { info: string; lines: string[] }[] = [];
+  let open: { marker: string; info: string; lines: string[] } | null = null;
+  for (const line of markdown.replace(/\r\n?/gu, '\n').split('\n')) {
+    const fence = FENCE.exec(line);
+    if (open === null) {
+      if (fence === null) prose.push(line);
+      else open = { marker: fence[1]!, info: fence[2]!.trim(), lines: [] };
+    } else if (
+      fence !== null &&
+      fence[1]![0] === open.marker[0] &&
+      fence[1]!.length >= open.marker.length &&
+      fence[2]!.trim() === ''
+    ) {
+      blocks.push(open);
+      open = null;
+    } else open.lines.push(line);
+  }
+  if (open !== null) blocks.push(open);
+  return { prose, blocks };
+}
+
+/** The inline code spans of prose lines that hold a command. */
+function inlineCommands(prose: readonly string[]): string[] {
+  return prose
+    .flatMap((line) => [...line.matchAll(/`([^`]+)`/gu)].map((span) => span[1]!.trim()))
+    .filter((code) => RUN.test(code));
+}
+
+/** How a description breaks the rule for commands, in the order of DescriptionHold. */
+export function descriptionHolds(description: string): readonly DescriptionHold[] {
+  const { prose, blocks } = parts(description);
+  return [
+    ...(inlineCommands(prose).length > 0 ? (['inline command'] as const) : []),
+    ...(blocks.some((block) => block.info === '') ? (['untagged block'] as const) : []),
+    ...(blocks.some((block) => block.lines.some((line) => /^\s*\$\s/u.test(line))) ? (['prompt'] as const) : []),
+  ];
+}
+
+/** Advice on a description that breaks the rule for commands: a line for each way it does. */
+export function descriptionAdvice(description: string): readonly string[] {
+  const holds = descriptionHolds(description);
+  const first = inlineCommands(parts(description).prose)[0];
+  return holds.map((hold) =>
+    hold === 'inline command'
+      ? `description: it writes \`${first!.length > 60 ? `${first!.slice(0, 59)}…` : first!}\` inline; put each command a person runs or pastes in its own fenced block with a language tag, such as bash or sql.`
+      : hold === 'untagged block'
+        ? 'description: a fenced block has no language tag; name one after the opening fence, such as bash, sql or json.'
+        : 'description: a fenced block has a $ prompt; leave it out, so the block pastes as it is.',
+  );
 }

@@ -4,7 +4,7 @@
 import { TaskRefused, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { WORK_ARGS } from '../../src/args.ts';
-import { titleAdvice, titleHolds } from '../../src/mcp/writing.ts';
+import { descriptionAdvice, descriptionHolds, titleAdvice, titleHolds } from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
@@ -551,6 +551,48 @@ describe('create_task', () => {
         project: project.id,
         title,
         type: 'chore',
+        idempotency_key: key(),
+      });
+      expect(reply).not.toHaveProperty('lint');
+    }
+  });
+
+  it('advises on a command written inline in a description, a block with no language tag, and a $ prompt', async () => {
+    const project = await newProject(engine);
+    const fenced = (info: string, line: string) => ['Deploy the API.', '', '```' + info, line, '```'].join('\n');
+    const descriptions: readonly [string, readonly string[]][] = [
+      ['Deploy the API: run `pnpm run deploy` from the root.', ['inline command']],
+      ['Check the rows with `SELECT count(*) FROM tasks` first.', ['inline command']],
+      ['Run `./update.sh --commit 1a2b3c4` on the host.', ['inline command']],
+      [fenced('', 'pnpm run deploy'), ['untagged block']],
+      [fenced('bash', '$ pnpm run deploy'), ['prompt']],
+      [`Run \`git push\` first.\n\n${fenced('', '$ pnpm run deploy')}`, ['inline command', 'untagged block', 'prompt']],
+    ];
+    for (const [description, holds] of descriptions) {
+      expect(descriptionHolds(description)).toEqual(holds);
+      const reply = await write<{ lint: { advice: readonly string[] } }>(target, 'create_task', {
+        project: project.id,
+        title: 'Deploy the API',
+        type: 'chore',
+        description,
+        idempotency_key: key(),
+      });
+      expect(reply.lint.advice).toEqual(descriptionAdvice(description));
+      expect(reply.lint.advice).toHaveLength(holds.length);
+    }
+    // A command in a tagged block, an indented one in a list, and names that are not run hold none.
+    for (const description of [
+      fenced('bash', 'pnpm run deploy'),
+      ['1. On the host:', '', '   ```bash', '   ./update.sh --commit 1a2b3c4', '   ```'].join('\n'),
+      'Change `workers/api/src/mcp/guide.ts` and set `AUTH_SECRET`; `pnpm` and `get_task_guide` are names.',
+      'A refused change answers `403`; `GET /api/tasks` lists them.',
+    ]) {
+      expect(descriptionHolds(description)).toEqual([]);
+      const reply = await write<Record<string, unknown>>(target, 'create_task', {
+        project: project.id,
+        title: 'Deploy the API',
+        type: 'chore',
+        description,
         idempotency_key: key(),
       });
       expect(reply).not.toHaveProperty('lint');
@@ -1900,15 +1942,16 @@ describe('request_human_approval', () => {
     const description = [
       'Approve deploying the API to production, so the new rules reach every agent.',
       '',
-      '## What happens',
+      '## What the agent will do',
       '',
       '```bash',
       'pnpm run deploy',
       '```',
       '',
-      '## Impact',
+      '## What it changes',
       '',
-      '- No downtime; undo by deploying the previous release.',
+      '- **Downtime:** none for people using the API.',
+      '- **Undo:** deploy the previous release.',
     ].join('\n');
     const args = { project: project.id, task: id, title: 'Approve deploying the API to production', description };
     const first = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', args);

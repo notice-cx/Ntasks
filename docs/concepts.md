@@ -53,24 +53,40 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
   with a verb. At most 70 characters, with no commands, file paths, commit
   hashes or steps.
 - **Description.** A first line of one sentence that says what and why, or
-  for a person the ask. Then only the sections that apply: `## Why`,
-  `## Where` and `## Fix` for work; `## What happens`, `## Impact` and
-  `## How we'll check` for a person. A bug also has `## Steps to Reproduce`.
+  for a person the ask. Then only the sections that apply:
+  - work: `## Why`, `## Where` and `## Fix`, and for a bug
+    `## Steps to Reproduce`;
+  - steps a person does: `## Your steps`, `## What it changes` and
+    `## How we'll confirm`;
+  - an approval, where an agent acts once the person allows it:
+    `## What the agent will do`, `## What it changes`, `## How we'll confirm`
+    and `## If you decline`.
+- **Headings** say who acts, and never describe a pending action in the
+  present tense as if it already happens.
+- **What it changes.** Each line starts with a bold label naming what it
+  measures, such as **Downtime:**, **Your time:**, **Cost:**, **Download:**,
+  **Risk:** or **Undo:**, then the value with its unit and who or what it
+  applies to. A bare number or duration is never enough: "about 2 minutes"
+  becomes "**Downtime:** visitors can't reach the site for about 2 minutes".
+- **Commands.** Every command, query, request or snippet a person might run
+  or paste goes in its own fenced block with a language tag, such as `bash`,
+  `sql` or `json`: one command per block, with no `$` prompt and no output. A
+  command that spans lines stays one block. Inline backticks are only for
+  names that are not run: file paths, identifiers and settings.
 - **Inside the description.** Steps as a numbered list, one action each.
-  Commands to paste in a fenced `bash` block; paths, identifiers, commands
-  and settings within a sentence in backticks. Links with readable labels,
-  and pull requests as `owner/repo#123`. Numbers with units. Paragraphs of at
-  most three sentences, and bullets for three or more items.
+  Links with readable labels, and pull requests as `owner/repo#123`. Numbers
+  with units. Paragraphs of at most three sentences, and bullets for three
+  or more items.
 - **Acceptance.** A short checklist of facts anyone can check on the day the
   work lands.
-- **Approval.** The title is the action to approve. The description says
-  what will happen, with the exact commands; the impact: downtime, cost,
-  risk and how to undo it; how the result will be checked; and what happens
-  if the person says no.
+- **Approval.** The title is the action to approve, and the description has
+  the approval's sections, with the exact commands under
+  `## What the agent will do`.
 
 Creating or changing a task answers with advice when its title is longer
-than 70 characters or holds a command, a file path or a commit hash. Nothing
-is refused for it.
+than 70 characters or holds a command, a file path or a commit hash, and when
+its description writes a command inline, has a fenced block with no language
+tag, or has a `$` prompt in a block. Nothing is refused for it.
 
 ## Custom fields
 
@@ -222,7 +238,7 @@ Some steps only a person can take. Ntasks has two kinds:
   is recorded on the task.
 - An **approval** holds a task until a person approves a named action, such
   as a deployment. Its title names the action, and its description says what
-  will happen and its impact ([writing a task](#writing-a-task)). While the
+  the agent will do and what it changes ([writing a task](#writing-a-task)). While the
   approval is pending, the task is not ready, so no agent starts it.
 
 <picture>

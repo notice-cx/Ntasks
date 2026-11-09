@@ -105,7 +105,7 @@ import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
 import { projectFor, projectForNew } from './project.ts';
-import { TITLE_MOST, titleAdvice } from './writing.ts';
+import { descriptionAdvice, TITLE_MOST, titleAdvice } from './writing.ts';
 import { MANY, PROJECT, schema, TASK, TASKS, type TaskTool, type ToolContext } from './read-tools.ts';
 
 export const WRITE = Object.freeze({
@@ -717,9 +717,9 @@ function closeShown(task: Task): McpTaskField[] {
   return ['status', 'resolution', ...(task.delivery === null ? [] : ['delivery' as const])];
 }
 
-/** The advice beside lint's missing sections: on the title, and on options a button cannot press. */
+/** The advice beside lint's missing sections: on the title, the commands in the description, and options a button cannot press. */
 function adviceOn(task: Task): readonly string[] {
-  return [...titleAdvice(task.title), ...choiceAdvice(task)];
+  return [...titleAdvice(task.title), ...descriptionAdvice(task.description), ...choiceAdvice(task)];
 }
 
 /** Lint's answer, when it names a missing section or gives advice. */
@@ -1098,7 +1098,7 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
         type: 'string',
         maxLength: APPROVAL_DESCRIPTION_MAX,
         description:
-          "In Markdown: ## What happens, with the exact commands; ## Impact: downtime, cost, risk and how to undo it; ## How we'll check; and what happens if the person says no.",
+          "In Markdown, after a first sentence saying what and why: ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we'll confirm; ## If you decline.",
       },
       reason: {
         type: 'string',
@@ -1118,15 +1118,13 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
     const model = modelArg(args);
     const projectId = await projectFor(context, args, taskId);
     const { gate, created } = await requestApproval(context, projectId, taskId, request, model);
-    const advice = titleAdvice(gate.title);
-    return {
-      task: taskId,
-      ...approvalOf(taskId, gate),
-      created,
-      ...(advice.length === 0
-        ? {}
-        : { lint: { advice: request.title === undefined ? [...advice, APPROVAL_FORM] : advice } }),
-    };
+    const titled = titleAdvice(gate.title);
+    const advice = [
+      ...titled,
+      ...(request.title === undefined && titled.length > 0 ? [APPROVAL_FORM] : []),
+      ...descriptionAdvice(gate.description),
+    ];
+    return { task: taskId, ...approvalOf(taskId, gate), created, ...(advice.length === 0 ? {} : { lint: { advice } }) };
   },
 } satisfies TaskTool);
 

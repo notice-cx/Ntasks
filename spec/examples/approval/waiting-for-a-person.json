@@ -2,7 +2,7 @@
   "priority": 2,
   "labels": [],
   "parent": null,
-  "description": "Deploy web-c3d4 to production at app.example.com, once.\n\n## What happens\n\n```bash\npnpm run deploy\n```\n\n## Impact\n\n- No downtime; deploying the previous release undoes it.\n\n## How we'll check\n\n- `GET /healthz` answers `200`.\n\nIf you say no, web-c3d4 stays unreleased.",
+  "description": "Deploy web-c3d4 to production at app.example.com, once.\n\n## What the agent will do\n\n```bash\npnpm run deploy\n```\n\n## What it changes\n\n- **Downtime:** none for visitors to app.example.com.\n- **Undo:** deploy the previous release.\n\n## How we'll confirm\n\n- `GET /healthz` answers `200`.\n\n## If you decline\n\nweb-c3d4 stays unreleased.",
   "acceptance": "",
   "notes": "",
   "design": "",
