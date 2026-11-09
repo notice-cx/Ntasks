@@ -1,0 +1,59 @@
+/*
+  The site's colours and type, in the look of www.notice.cx, the Notice
+  website this site belongs to. Light is that site's paper palette: warm
+  off-white, near-black ink and its signal blue. Dark is the night palette
+  the same site draws its dark bands in, with the brand's blue tint for links.
+
+  Light is the root's theme; `.dark` on <html> switches every token. The
+  docs' theme switch and the landing page's both set it.
+*/
+
+:root {
+  color-scheme: light;
+  --background: #f5f3ed;
+  --canvas: #ece9e1;
+  --surface: #fbfaf6;
+  --hover: #ebe8df;
+  --border: #d9d7cd;
+  --border-strong: #c2bfb3;
+  --ink: #252720;
+  --ink-2: #5d6058;
+  --ink-3: #6b6e65;
+  --accent: #2745d4;
+  --accent-hover: #213bb8;
+  --on-accent: #ffffff;
+  --accent-text: #2745d4;
+  --accent-soft: #e3e5f1;
+  --shadow-raise: 0 1px 0 rgb(77 68 43 / 0.08);
+  --shadow-pop: 0 1px 0 rgb(77 68 43 / 0.08), 0 24px 48px -24px rgb(47 41 29 / 0.28);
+
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+  --font-wordmark: 'Stack Sans Notch Variable', 'Inter Variable', sans-serif;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #202622;
+  --canvas: #1a1f1c;
+  --surface: #272e29;
+  --hover: #2c342f;
+  --border: #343c36;
+  --border-strong: #4a534c;
+  --ink: #f5f3ed;
+  --ink-2: #d7dcd2;
+  --ink-3: #a9afa5;
+  --accent: #2745d4;
+  --accent-hover: #3550e0;
+  --on-accent: #ffffff;
+  --accent-text: #b0b9ff;
+  --accent-soft: #2b3247;
+  --shadow-raise: 0 0 0 1px rgb(255 255 255 / 0.04);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.06), 0 24px 48px -24px rgb(0 0 0 / 0.6);
+}
+
+/* A picture drawn in each theme shows the one for the page's theme. */
+.dark .only-light,
+:root:not(.dark) .only-dark {
+  display: none;
+}

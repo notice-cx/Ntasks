@@ -1,0 +1,209 @@
+/*
+  VitePress's default theme in the look of www.notice.cx (src/tokens.css):
+  paper and night backgrounds, the signal blue for links and the current
+  page, Inter headlines with tight tracking, the wordmark in Stack Sans
+  Notch, and hairlines instead of tinted panels.
+*/
+
+:root,
+.dark {
+  --vp-font-family-base: var(--font-sans);
+  --vp-font-family-mono: var(--font-mono);
+
+  --vp-c-bg: var(--background);
+  --vp-c-bg-alt: var(--background);
+  --vp-c-bg-elv: var(--surface);
+  --vp-c-bg-soft: var(--canvas);
+
+  --vp-c-border: var(--border-strong);
+  --vp-c-divider: var(--border);
+  --vp-c-gutter: var(--border);
+
+  --vp-c-text-1: var(--ink);
+  --vp-c-text-2: var(--ink-2);
+  --vp-c-text-3: var(--ink-3);
+
+  --vp-c-default-soft: var(--hover);
+
+  --vp-c-brand-1: var(--accent-text);
+  --vp-c-brand-2: var(--accent);
+  --vp-c-brand-3: var(--accent);
+  --vp-c-brand-soft: var(--accent-soft);
+
+  --vp-button-brand-bg: var(--accent);
+  --vp-button-brand-hover-bg: var(--accent-hover);
+  --vp-button-brand-active-bg: var(--accent-hover);
+  --vp-button-brand-text: var(--on-accent);
+  --vp-button-brand-hover-text: var(--on-accent);
+  --vp-button-brand-active-text: var(--on-accent);
+
+  --vp-code-color: var(--ink);
+  --vp-code-bg: var(--hover);
+  --vp-code-block-bg: var(--surface);
+
+  --vp-nav-bg-color: var(--background);
+  --vp-sidebar-bg-color: var(--background);
+  --vp-local-nav-bg-color: var(--background);
+  --vp-shadow-3: var(--shadow-pop);
+
+  --vp-local-search-bg: var(--background);
+  --vp-local-search-result-bg: var(--surface);
+  --vp-local-search-result-border: var(--border);
+  --vp-local-search-result-selected-bg: var(--surface);
+  --vp-local-search-result-selected-border: var(--accent);
+  --vp-local-search-highlight-bg: var(--accent);
+  --vp-local-search-highlight-text: var(--on-accent);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The header: the mark and the wordmark, then the links in 14 px ink. */
+
+.nt-mark-slot {
+  display: inline-flex;
+  margin-right: 10px;
+  color: var(--ink);
+}
+
+.nt-mark {
+  width: 22px;
+  height: 22px;
+}
+
+.VPNavBarTitle .title {
+  font-family: var(--font-wordmark);
+  font-size: 23px;
+  font-weight: 550;
+  letter-spacing: -1px;
+}
+
+.VPNavBarMenuLink {
+  font-size: 14px;
+  font-weight: 450;
+}
+
+.VPNavBar.has-sidebar .content-body,
+.VPNavBar .divider-line {
+  background-color: var(--background);
+}
+
+/* The sidebar: groups labelled the way www.notice.cx labels its sections. */
+
+.VPSidebar {
+  border-right: 1px solid var(--border);
+}
+
+.VPSidebarItem.level-0 > .item > .text {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 1.25px;
+  text-transform: uppercase;
+}
+
+.VPSidebarItem.level-1 .text {
+  font-size: 14px;
+}
+
+/* Page text */
+
+.vp-doc h1 {
+  font-size: 40px;
+  font-weight: 560;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.vp-doc h2 {
+  font-size: 28px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+.vp-doc h3,
+.vp-doc h4 {
+  font-weight: 560;
+  letter-spacing: -0.015em;
+}
+
+.vp-doc a {
+  text-underline-offset: 2px;
+}
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.vp-doc table th {
+  background: var(--canvas);
+}
+
+.vp-doc tr:nth-child(2n) {
+  background: transparent;
+}
+
+/* The docs' screenshots and diagrams. */
+.vp-doc img {
+  border-radius: 10px;
+}
+
+.vp-doc img[src$='.webp'] {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+}
+
+.vp-doc .mermaid-diagram {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.vp-doc .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mermaid sizes each label for its own text style; the docs' paragraph
+   margins and line height would push the words out of their boxes. */
+.vp-doc .mermaid-diagram p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.vp-doc .mermaid-source {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre;
+}
+
+/* The docs' home lists each page under a hairline, as the landing page does. */
+.docs-index .vp-doc ul {
+  padding-left: 0;
+  list-style: none;
+}
+
+.docs-index .vp-doc li {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  color: var(--ink-2);
+}
+
+.docs-index .vp-doc li > a:first-child {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 560;
+  letter-spacing: -0.3px;
+  text-decoration: none;
+}
+
+.docs-index .vp-doc li > a:first-child:hover {
+  color: var(--accent-text);
+}

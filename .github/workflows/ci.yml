@@ -49,3 +49,6 @@ jobs:
       # its own because deployments built from a copy of the repository run
       # `pnpm run build` and need no package.
       - run: pnpm run package
+      # The website: the landing page and docs/ rendered, with every link and
+      # heading checked. It builds files only; nothing here deploys it.
+      - run: pnpm site:build

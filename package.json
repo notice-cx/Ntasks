@@ -26,6 +26,8 @@
     "build": "pnpm -r --if-present run build",
     "deploy": "pnpm --filter @ntasks/api run deploy",
     "package": "pnpm --filter @ntasks/cli run package",
+    "site:dev": "pnpm --filter @ntasks/site run dev",
+    "site:build": "pnpm --filter @ntasks/site run build:site",
     "screenshots": "pnpm --filter @ntasks/screenshots run capture"
   },
   "cloudflare": {
