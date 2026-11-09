@@ -2,7 +2,16 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { compareReleases } from '../src/deploy.ts';
-import { emptyAccount, EXAMPLE_ACCOUNT, release, runCli, writes, type FakeAccountState } from './fake-account.ts';
+import {
+  emptyAccount,
+  EXAMPLE_ACCOUNT,
+  ntasksBindings,
+  release,
+  runCli,
+  writes,
+  type FakeAccountState,
+  type FakeBinding,
+} from './fake-account.ts';
 
 const FIRST = '0001_sign_in_and_workspaces.sql';
 const SECOND = '0002_example_change.sql';
@@ -16,7 +25,7 @@ function deployedAccount(): FakeAccountState {
         accountId: EXAMPLE_ACCOUNT.id,
         name: 'ntasks',
         secrets: { AUTH_SECRET: 'secret-set-by-the-first-deploy-0000000000' },
-        versions: [{ id: 'version-1', tag: 'v0.1.0', message: 'Ntasks 0.1.0', databaseId: 'db-1' }],
+        versions: [{ id: 'version-1', tag: 'v0.1.0', message: 'Ntasks 0.1.0', bindings: ntasksBindings('db-1') }],
         deployed: 'version-1',
       },
     ],
@@ -113,7 +122,7 @@ test('an update keeps the database the Worker is bound to when another database 
     { accountId: EXAMPLE_ACCOUNT.id, uuid: 'db-bound', name: 'ntasks-data', applied: [FIRST] },
     { accountId: EXAMPLE_ACCOUNT.id, uuid: 'db-decoy', name: 'ntasks', applied: null },
   ];
-  account.workers[0]!.versions[0]!.databaseId = 'db-bound';
+  account.workers[0]!.versions[0]!.bindings = ntasksBindings('db-bound');
 
   const run = await runCli(['deploy'], await release('0.2.0', [FIRST, SECOND]), account);
 
@@ -121,19 +130,29 @@ test('an update keeps the database the Worker is bound to when another database 
   const applied = Object.fromEntries(run.after.databases.map((database) => [database.uuid, database.applied]));
   assert.deepEqual(applied, { 'db-bound': [FIRST, SECOND], 'db-decoy': null });
   const [worker] = run.after.workers;
-  assert.equal(worker?.versions.find((version) => version.id === worker.deployed)?.databaseId, 'db-bound');
+  const deployed = worker?.versions.find((version) => version.id === worker.deployed);
+  assert.deepEqual(deployed?.bindings, ntasksBindings('db-bound'));
 });
 
 test('a Worker of that name that is not an Ntasks deployment is left alone', async () => {
-  const unbound = deployedAccount();
-  unbound.workers[0]!.versions[0]!.databaseId = null;
-  const boundElsewhere = deployedAccount();
-  boundElsewhere.workers[0]!.versions[0]!.databaseId = 'db-in-another-account';
+  const withBindings = (bindings: FakeBinding[]) => {
+    const account = deployedAccount();
+    account.workers[0]!.versions[0]!.bindings = bindings;
+    return account;
+  };
+  const [d1, taskStore] = ntasksBindings('db-1') as [FakeBinding, FakeBinding];
   const undeployedWithoutDatabase = deployedAccount();
   undeployedWithoutDatabase.workers[0]!.deployed = null;
   undeployedWithoutDatabase.databases = [];
+  const accounts = {
+    // Another Worker with a D1 binding DB to a database of the account.
+    withoutTaskStore: withBindings([d1]),
+    withoutDatabase: withBindings([taskStore]),
+    boundElsewhere: withBindings(ntasksBindings('db-in-another-account')),
+    undeployedWithoutDatabase,
+  };
 
-  for (const [label, account] of Object.entries({ unbound, boundElsewhere, undeployedWithoutDatabase })) {
+  for (const [label, account] of Object.entries(accounts)) {
     const run = await runCli(['deploy'], await release('0.2.0', [FIRST]), account);
 
     assert.equal(run.code, 1, label);

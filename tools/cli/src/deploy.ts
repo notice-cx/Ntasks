@@ -7,7 +7,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { databaseBinding, writeDeployConfig, type Release } from './release.ts';
+import { databaseBinding, ownDurableObjects, writeDeployConfig, type Release } from './release.ts';
 import { parseJson, WranglerError, type Io, type Wrangler } from './wrangler.ts';
 
 export interface DeployRequest {
@@ -45,7 +45,7 @@ interface Database {
 /**
  * The Worker as Cloudflare shows it: absent, or present. A present Worker
  * with a current version has that version's release, when its tag names
- * one, and the id of the D1 database its binding names, when it has one.
+ * one, and the bindings Cloudflare lists for it.
  */
 type WorkerState =
   | { readonly exists: false }
@@ -54,7 +54,7 @@ type WorkerState =
       readonly exists: true;
       readonly current: true;
       readonly release: string | undefined;
-      readonly databaseId: string | undefined;
+      readonly bindings: readonly Record<string, unknown>[];
     };
 
 /** The table wrangler records applied D1 migrations in. */
@@ -167,7 +167,7 @@ async function listDatabases(wrangler: Wrangler): Promise<Database[]> {
   );
 }
 
-async function findWorker(wrangler: Wrangler, name: string, binding: string): Promise<WorkerState> {
+async function findWorker(wrangler: Wrangler, name: string): Promise<WorkerState> {
   const args = ['deployments', 'status', '--name', name, '--json'];
   const output = await wrangler.capture(args);
   const text = output.stdout + output.stderr;
@@ -187,48 +187,57 @@ async function findWorker(wrangler: Wrangler, name: string, binding: string): Pr
   const annotations = isRecord(version) && isRecord(version['annotations']) ? version['annotations'] : {};
   const resources = isRecord(version) && isRecord(version['resources']) ? version['resources'] : {};
   const bindings = Array.isArray(resources['bindings']) ? (resources['bindings'] as unknown[]) : [];
-  // Cloudflare lists a D1 binding as { name, type: 'd1', id }.
-  const database = bindings.find(
-    (entry): entry is { id: string } =>
-      isRecord(entry) && entry['type'] === 'd1' && entry['name'] === binding && typeof entry['id'] === 'string',
-  );
   return {
     exists: true,
     current: true,
     release: releaseOfTag(annotations['workers/tag']),
-    databaseId: database?.id,
+    bindings: bindings.filter(isRecord),
   };
 }
 
 /**
- * The database a deploy uses. A deployed Worker keeps its data in the
- * database its binding names, whatever that database is called, so the
- * deploy keeps that one; otherwise it uses the database of the Worker's name,
- * if there is one.
+ * The database a deploy uses. A deployed Worker is an Ntasks deployment only
+ * when it has every binding an Ntasks Worker has to its own classes, such as
+ * the task store's Durable Object, and the D1 binding; it keeps its data in
+ * the database that binding names, whatever that database is called, so the
+ * deploy keeps that one. Otherwise the deploy uses the database of the
+ * Worker's name, if there is one.
  */
 function chooseDatabase(
   databases: readonly Database[],
   worker: WorkerState,
   name: string,
-  binding: string,
+  release: Release,
 ): Database | undefined {
   const byName = databases.find((database) => database.name === name);
   if (!worker.exists) return byName;
+  const notNtasks = (reason: string) =>
+    new Stop(
+      `The account has a Worker named ${name} that ${reason}, so it is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
+    );
   if (!worker.current) {
     if (byName) return byName;
-    throw new Stop(
-      `The account has a Worker named ${name} but no D1 database of that name, so that Worker is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
-    );
+    throw notNtasks('has no deployed version and no D1 database of its name');
   }
-  if (worker.databaseId === undefined) {
-    throw new Stop(
-      `The Worker ${name} has no D1 binding named ${binding}, so it is not an Ntasks deployment. Nothing was changed. Choose another name with --name.`,
+  // Cloudflare lists a Durable Object binding as { name, type:
+  // 'durable_object_namespace', class_name } and a D1 binding as
+  // { name, type: 'd1', id }.
+  for (const object of ownDurableObjects(release)) {
+    const found = worker.bindings.some(
+      (entry) =>
+        entry['type'] === 'durable_object_namespace' &&
+        entry['name'] === object.name &&
+        entry['class_name'] === object.className,
     );
+    if (!found) throw notNtasks(`has no Durable Object binding ${object.name} to the class ${object.className}`);
   }
-  const bound = databases.find((database) => database.uuid === worker.databaseId);
+  const binding = databaseBinding(release);
+  const databaseId = worker.bindings.find((entry) => entry['type'] === 'd1' && entry['name'] === binding)?.['id'];
+  if (typeof databaseId !== 'string') throw notNtasks(`has no D1 binding ${binding}`);
+  const bound = databases.find((database) => database.uuid === databaseId);
   if (!bound) {
     throw new Stop(
-      `The Worker ${name} is bound to the D1 database ${worker.databaseId}, which the account does not list. Nothing was changed.`,
+      `The Worker ${name} is bound to the D1 database ${databaseId}, which the account does not list. Nothing was changed.`,
     );
   }
   return bound;
@@ -301,8 +310,8 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
   const account = chooseAccount(await signIn(context), request.account, context.accountFromEnv);
   const wrangler = context.wrangler.withEnv({ CLOUDFLARE_ACCOUNT_ID: account.id });
 
-  const worker = await findWorker(wrangler, name, binding);
-  const database = chooseDatabase(await listDatabases(wrangler), worker, name, binding);
+  const worker = await findWorker(wrangler, name);
+  const database = chooseDatabase(await listDatabases(wrangler), worker, name, release);
   const applied = database
     ? await appliedMigrations(
         wrangler,
@@ -327,11 +336,12 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
   }
   io.out('');
   if (!database) io.out(`- Create the D1 database ${name}.`);
-  else if (database.name !== name) io.out(`- Keep the D1 database the Worker is bound to, ${database.name}.`);
+  else if (worker.exists) io.out(`- Use the D1 database the Worker is bound to, ${database.name} (${database.uuid}).`);
+  else io.out(`- Use the existing D1 database ${database.name} (${database.uuid}).`);
   io.out(
     pending.length === 0
-      ? '- The D1 database has every migration of this release.'
-      : `- Apply ${plural(pending.length, 'D1 migration', 'D1 migrations')}: ${pending.join(', ')}`,
+      ? '- The database has every migration of this release.'
+      : `- Apply ${plural(pending.length, 'D1 migration', 'D1 migrations')} to it: ${pending.join(', ')}`,
   );
   io.out(
     worker.exists
@@ -389,7 +399,7 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
     // updates that Worker and never shows the secret, so show it now. When
     // the account cannot be read, the Worker may exist, so show it too.
     if (secret !== undefined) {
-      const created = await findWorker(wrangler, name, binding).then(
+      const created = await findWorker(wrangler, name).then(
         (state) => (state.exists ? 'yes' : 'no'),
         () => 'unknown',
       );

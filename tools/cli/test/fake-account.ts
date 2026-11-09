@@ -6,6 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main } from '../src/cli.ts';
 
+/** A binding of a Worker version, as Cloudflare lists it. */
+export type FakeBinding =
+  { name: string; type: 'd1'; id: string } | { name: string; type: 'durable_object_namespace'; class_name: string };
+
+/** The bindings an Ntasks Worker's version has, with its D1 binding to this database. */
+export function ntasksBindings(databaseId: string): FakeBinding[] {
+  return [
+    { name: 'DB', type: 'd1', id: databaseId },
+    { name: 'TASK_STORE', type: 'durable_object_namespace', class_name: 'TaskStore' },
+  ];
+}
+
 export interface FakeAccountState {
   loggedIn: boolean;
   subdomain: string;
@@ -16,8 +28,7 @@ export interface FakeAccountState {
     accountId: string;
     name: string;
     secrets: Record<string, string>;
-    /** databaseId: the D1 database the version's DB binding names, or null for none. */
-    versions: { id: string; tag: string | null; message: string | null; databaseId: string | null }[];
+    versions: { id: string; tag: string | null; message: string | null; bindings: FakeBinding[] }[];
     deployed: string | null;
   }[];
   /** The deploy creates the Worker's version, then stops, as when the account has no workers.dev subdomain. */
@@ -66,6 +77,7 @@ export async function release(version: string, migrations: readonly string[]): P
       compatibility_date: '2026-11-06',
       assets: { directory: 'assets', not_found_handling: 'single-page-application' },
       secrets: { required: ['AUTH_SECRET'] },
+      durable_objects: { bindings: [{ name: 'TASK_STORE', class_name: 'TaskStore' }] },
       d1_databases: [{ binding: 'DB', database_name: 'ntasks', migrations_dir: 'migrations' }],
     }),
   );

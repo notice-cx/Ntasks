@@ -64,6 +64,7 @@ interface Config {
   no_bundle?: boolean;
   assets: { directory: string };
   secrets?: { required?: string[] };
+  durable_objects?: { bindings: { name: string; class_name: string }[] };
   d1_databases: { binding: string; database_name: string; database_id?: string; migrations_dir: string }[];
 }
 
@@ -174,8 +175,16 @@ switch (true) {
     const annotations: Record<string, string> = { 'workers/triggered_by': 'upload' };
     if (version.tag !== null) annotations['workers/tag'] = version.tag;
     if (version.message !== null) annotations['workers/message'] = version.message;
-    const bindings = version.databaseId === null ? [] : [{ name: 'DB', type: 'd1', id: version.databaseId }];
-    finish(0, JSON.stringify({ id: version.id, number: 1, metadata: {}, annotations, resources: { bindings } }));
+    finish(
+      0,
+      JSON.stringify({
+        id: version.id,
+        number: 1,
+        metadata: {},
+        annotations,
+        resources: { bindings: version.bindings },
+      }),
+    );
   }
   case positionals[0] === 'deploy': {
     const account = accountId();
@@ -186,7 +195,7 @@ switch (true) {
     if (cfg.no_bundle !== true || !existsSync(cfg.main) || !existsSync(cfg.assets.directory)) {
       finish(1, '', '✘ [ERROR] The configuration does not name a prebuilt Worker and its assets');
     }
-    const { database } = databaseOf(cfg, 'DB');
+    databaseOf(cfg, 'DB');
     const secretsFile = flags.get('--secrets-file');
     const secrets: Record<string, string> =
       typeof secretsFile === 'string' ? (JSON.parse(readFileSync(secretsFile, 'utf8')) as Record<string, string>) : {};
@@ -206,7 +215,14 @@ switch (true) {
       id: randomUUID(),
       tag: typeof tag === 'string' ? tag : null,
       message: typeof message === 'string' ? message : null,
-      databaseId: database.uuid,
+      bindings: [
+        ...cfg.d1_databases.map((d1) => ({ name: d1.binding, type: 'd1' as const, id: d1.database_id ?? '' })),
+        ...(cfg.durable_objects?.bindings ?? []).map((object) => ({
+          name: object.name,
+          type: 'durable_object_namespace' as const,
+          class_name: object.class_name,
+        })),
+      ],
     };
     worker.versions.push(version);
     if (state.failDeployAfterUpload) finish(1, '', '✘ [ERROR] You need to register a workers.dev subdomain');

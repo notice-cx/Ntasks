@@ -31,8 +31,12 @@ app and the D1 migrations, and deploys them with wrangler. The first run:
 
 The command stops without changing anything when your login reaches several
 accounts and none is chosen, and when the account's Worker of that name is
-not an Ntasks deployment: it has no D1 binding `DB`, or no deployed version
-and no D1 database of its name.
+not an Ntasks deployment: its deployed version lacks the `TASK_STORE` Durable
+Object binding to the class `TaskStore` or the D1 binding `DB`, or it has no
+deployed version and no D1 database of its name. An update replaces the
+Worker's code and applies migrations to its database, so run it with
+`--dry-run` first when the account holds other Workers: the plan names the
+account, the Worker, the database and the migrations.
 
 ### Update
 

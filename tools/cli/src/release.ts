@@ -26,6 +26,9 @@ export interface PackagedConfig {
   readonly base_dir: string;
   readonly assets: { readonly directory: string; readonly [setting: string]: unknown };
   readonly d1_databases: readonly [D1Binding];
+  readonly durable_objects?: {
+    readonly bindings: readonly { readonly name: string; readonly class_name: string; readonly script_name?: string }[];
+  };
   readonly [setting: string]: unknown;
 }
 
@@ -88,6 +91,13 @@ export async function readRelease(dir: string): Promise<Release> {
 /** The binding commands name the D1 database by, so they find it from the configuration. */
 export function databaseBinding(release: Release): string {
   return release.config.d1_databases[0].binding;
+}
+
+/** The Durable Object bindings to classes of the Worker's own, such as the task store's. */
+export function ownDurableObjects(release: Release): readonly { readonly name: string; readonly className: string }[] {
+  return (release.config.durable_objects?.bindings ?? [])
+    .filter((binding) => binding.script_name === undefined)
+    .map((binding) => ({ name: binding.name, className: binding.class_name }));
 }
 
 /**
