@@ -53,7 +53,7 @@ These options run it without prompts:
 |---|---|---|
 | `--url <address>` | `NTASKS_URL` | The Ntasks address |
 | `--agents <list>` | `NTASKS_AGENTS` | The agents to set up, separated by commas: `claude`, `codex`, `gemini` |
-| `--yes` | `NTASKS_YES=1` | Makes the changes without asking, including replacing an `ntasks` server registered at another address or as a local command. Without it and without a terminal, the script shows its plan and changes nothing |
+| `--yes` | `NTASKS_YES=1` | Makes the changes without asking, including replacing an `ntasks` server registered at another address or as a local command. Without it and without a terminal, the script stops at its first question and changes nothing |
 | | `NTASKS_REF` | The branch or tag of this repository the skill is downloaded from. Default `main` |
 | | `NTASKS_SKILL_SOURCE` | Another URL or a local file to read the skill from |
 
