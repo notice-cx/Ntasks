@@ -1,5 +1,5 @@
 import { CircleAlert, Inbox, ListFilter, Plus, Search, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
 import { PageSkeleton, ReadFailed } from '../components/surface';
@@ -15,9 +15,18 @@ import { BarSpacer, TopBar } from '../components/ui/shell';
 import { StatusMark } from '../components/ui/symbols';
 import type { FieldFilters, LiveTask, TaskField } from '../api/types';
 import { useBoard, type Board } from '../hooks/useBoard';
+import { useMedia } from '../hooks/useMedia';
 import { useNow } from '../hooks/useNow';
 import { READ_ONLY, useAnswerHides, useCapabilities, useProjectFields, writesAvailable } from '../hooks/useTasks';
-import { FIELD_FILTER_PREFIX, fieldFiltersOf, groupRows, isWork, type BoardFilters } from '../lib/board-read';
+import {
+  FIELD_FILTER_PREFIX,
+  fieldFiltersOf,
+  groupRows,
+  isWork,
+  NO_FILTERS,
+  type BoardFilters,
+} from '../lib/board-read';
+import { readEpics } from '../lib/epics';
 import { fieldMatches, filterValueText, isKnownFieldType } from '../lib/custom-fields';
 import { ageMs, fieldKeyName, formatAge, formatInt } from '../lib/format';
 import { composeRequested, COMPOSE_STATE, searchRequested } from '../lib/page-state';
@@ -25,25 +34,31 @@ import { PRIORITY_LABELS, STATUS_MARK_LABELS, type StatusMark as StatusMarkKey }
 import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '../lib/task-model';
 import { WaitingGroup } from './tasks/ask-queue';
 import { DELIVERY_GROUPS, DeliveryGroup, useDeliveryWaits } from './tasks/delivery-groups';
+import { EpicsSummary, EpicsView } from './tasks/epics-view';
 import { TaskRow, type RowContext } from './tasks/task-row';
 
 /** Tailwind's `max-sm`: below it the top bar has no room for the search field. */
 const PHONE = '(width < 40rem)';
 
+/** Tailwind's `max-md`: below it the top bar has no room for the views. */
+const NARROW = '(width < 48rem)';
+
 /** Rows a group shows per press: enough to fill a laptop screen. */
 const PAGE_ROWS = 25;
 
-/** The board's views. Waiting for you is the sidebar's; the tabs offer the rest. */
-const VIEWS = ['all', 'active', 'done', 'waiting'] as const;
+/** The board's views. Waiting for you is the sidebar's; the tabs offer the rest, and Epics while one project is in view. */
+const VIEWS = ['all', 'active', 'done', 'waiting', 'epics'] as const;
 type View = (typeof VIEWS)[number];
+type TaskView = Exclude<View, 'epics'>;
 const TABS: readonly { value: View; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'done', label: 'Done' },
 ];
+const EPICS_TAB: { value: View; label: string } = { value: 'epics', label: 'Epics' };
 
-/** The groups each view shows, in order; Waiting for you is drawn by its own component. */
-const VIEW_GROUPS: Readonly<Record<View, readonly StatusMarkKey[]>> = {
+/** The groups each view of tasks shows, in order; Waiting for you is drawn by its own component. */
+const VIEW_GROUPS: Readonly<Record<TaskView, readonly StatusMarkKey[]>> = {
   all: ['waiting', 'in-progress', 'open', 'blocked', 'parked', 'done'],
   active: ['waiting', 'in-progress', 'open', 'blocked'],
   done: ['done'],
@@ -79,9 +94,25 @@ export function TasksBoard() {
     assignee: params.get('assignee') ?? 'all',
     fields: fieldFiltersOf(params),
   };
-  const view = viewOf(params.get('view'));
+  const asked = viewOf(params.get('view'));
   const composing = params.get('new') === '1' || composeRequested(location.state);
   const board = useBoard(filters);
+  // Epics are one project's: the tab is offered, and its address honoured, only while one project is in view.
+  const epicsProject = board.projects.length === 1 && board.fieldProject !== null ? (board.projects[0] ?? null) : null;
+  const epicsView = asked === 'epics' && epicsProject !== null;
+  const view: TaskView = asked === 'epics' ? 'all' : asked;
+  const tabs = epicsProject === null ? TABS : [...TABS, EPICS_TAB];
+  const tabValue: View = epicsView ? 'epics' : view;
+  // One set of views: in the top bar, or below 768 px on a row of its own under it.
+  const narrow = useMedia(NARROW);
+  const views = <Tabs label="View" items={tabs} value={tabValue} onChange={(next) => setParam('view', next)} />;
+  const epics = useMemo(
+    () =>
+      epicsView && epicsProject !== null && epicsProject.ok
+        ? readEpics(epicsProject, board.statuses, board.held)
+        : null,
+    [epicsView, epicsProject, board.statuses, board.held],
+  );
   const fieldDefinitions = useProjectFields(board.fieldProject).data?.fields ?? [];
   // A filter by custom field holds only while its project is the one in view.
   const fieldFilters = board.fieldProject === null ? {} : filters.fields;
@@ -119,9 +150,9 @@ export function TasksBoard() {
     setParams(next, { replace: true });
   }
 
-  /** Clears the search and the filters, keeping the view. */
+  /** Clears the search and the filters, keeping the view of tasks; Epics, being one project's, goes with the project. */
   function clearFilters() {
-    setParams(view === 'all' ? {} : { view }, { replace: true });
+    setParams(asked === 'all' || asked === 'epics' ? {} : { view: asked }, { replace: true });
   }
 
   function openComposer() {
@@ -156,13 +187,8 @@ export function TasksBoard() {
 
   const bar = (
     <TopBar title="Tasks">
-      <Tabs
-        label="View"
-        items={TABS}
-        value={view}
-        onChange={(next) => setParam('view', next)}
-        className="max-md:hidden"
-      />
+      {narrow ? null : views}
+      {epics !== null ? <EpicsSummary read={epics} /> : null}
       <BarSpacer />
       {searchField('w-60 max-lg:w-44 max-sm:hidden', search)}
       <IconButton
@@ -175,13 +201,15 @@ export function TasksBoard() {
           setPhoneSearch(!phoneSearch);
         }}
       />
-      <FilterMenu
-        board={board}
-        filters={filters}
-        fieldFilters={fieldFilters}
-        fields={fieldDefinitions}
-        onPick={setParam}
-      />
+      {epicsView ? null : (
+        <FilterMenu
+          board={board}
+          filters={filters}
+          fieldFilters={fieldFilters}
+          fields={fieldDefinitions}
+          onPick={setParam}
+        />
+      )}
       <Button
         variant="primary"
         disabled={!writable}
@@ -218,6 +246,13 @@ export function TasksBoard() {
     );
   } else if (board.available.length === 0) {
     body = <EmptyState icon={<Inbox />} title="No projects yet" />;
+  } else if (epicsView) {
+    body =
+      epics === null ? (
+        <EmptyState icon={<CircleAlert />} title="This project's tasks could not be read" />
+      ) : (
+        <EpicsView read={epics} q={filters.q} nowMs={now} onClearSearch={() => setParam('q', '')} />
+      );
   } else {
     body = (
       <Groups
@@ -235,14 +270,20 @@ export function TasksBoard() {
   return (
     <div className="flex min-h-full flex-col" data-tasks-board="">
       {bar}
+      {narrow ? (
+        <div className="border-b border-border px-4 py-1.5" data-narrow-views="">
+          {views}
+        </div>
+      ) : null}
       {phoneSearch || filters.q !== '' ? (
         <div className="border-b border-border px-4 py-2 sm:hidden" data-phone-search="">
           {searchField('w-full', phoneField)}
         </div>
       ) : null}
       <ActiveFilters
-        filters={filters}
-        fieldFilters={fieldFilters}
+        // The filters other than the project and the search narrow tasks, so the Epics view sets them aside.
+        filters={epicsView ? { ...NO_FILTERS, project: filters.project, q: filters.q } : filters}
+        fieldFilters={epicsView ? {} : fieldFilters}
         fields={fieldDefinitions}
         board={board}
         onPick={setParam}
@@ -321,7 +362,7 @@ function Groups({
   now,
 }: {
   board: Board;
-  view: View;
+  view: TaskView;
   filters: BoardFilters;
   /** A filter by custom field holds, which the server applied. */
   narrowedByFields: boolean;
