@@ -1993,7 +1993,7 @@ describe('request_human_approval', () => {
     expect(titleAdvice(line)).toHaveLength(2);
   });
 
-  it('refuses a title without a description, a title on two lines, and a reason beside a title', async () => {
+  it('refuses a title without a description, a title on two lines, a reason beside a title, and a "Reason:" line', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
     const ask = (args: Record<string, unknown>) =>
@@ -2015,7 +2015,19 @@ describe('request_human_approval', () => {
     expect(await ask({ title: 'x'.repeat(71), description: 'Deploys the API.' })).toBe(
       'invalid arguments: title (at most 70 characters; this one has 71)',
     );
-    expect((await current(project, id)).dependencies).toEqual([]);
+    // Read as an imported approval, the request would be only the text after "Reason:".
+    expect(await ask({ title: 'Approve the deploy', description: 'Deploys the API.\nReason: the key expires.' })).toBe(
+      'invalid arguments: description (a line that starts "Reason:" makes an approval ask only what follows it, as one imported from Beads does; reword that line)',
+    );
+    expect(
+      await write<{ created: boolean }>(target, 'request_human_approval', {
+        project: project.id,
+        task: id,
+        title: 'Approve the deploy',
+        description: 'Deploys the API.\n\n## Why\n\nThe reason: the key expires.',
+      }),
+    ).toMatchObject({ created: true });
+    expect((await current(project, id)).dependencies).toHaveLength(1);
   });
 
   it('opens a new approval when only the start of an open one asks the same', async () => {

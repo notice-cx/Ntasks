@@ -365,7 +365,9 @@ too.
   decides; a new one may be added.
 - **An approval** asked again with the same title and description, or the
   same reason, returns the open one, with `created: false`. The same
-  description under another title opens another approval.
+  description under another title opens another approval. A `description`
+  with a line that starts `Reason:` is refused: an approval imported from
+  Beads asks only what follows that line, and every answer reads it so.
 - **Who did it**: the task records the sender's name as its filer, holder,
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the

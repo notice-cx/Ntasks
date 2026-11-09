@@ -62,6 +62,7 @@ import {
 } from '../args.ts';
 import { SCOPES } from '../auth.ts';
 import {
+  askedOf,
   choiceAdvice,
   GATE_REASON_MAX,
   gateReason,
@@ -1071,6 +1072,12 @@ function approvalArgs(args: Args): ApprovalRequest {
       `invalid arguments: ${title === undefined ? 'title' : 'description'} (required: pass title and description, or reason alone)`,
     );
   if (/[\t\r\n]/u.test(title)) refuse('invalid arguments: title (one line, with no tab or line break)');
+  // An approval imported from Beads asks only what follows its first "Reason:"
+  // line, and every reader of a request reads it so; a new one asks its whole text.
+  if (askedOf(description) !== description.replace(/\r\n?/gu, '\n').trim())
+    refuse(
+      'invalid arguments: description (a line that starts "Reason:" makes an approval ask only what follows it, as one imported from Beads does; reword that line)',
+    );
   return { reason: description, title: title.trim() };
 }
 
