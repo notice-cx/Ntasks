@@ -113,12 +113,17 @@ asking you for a decision.
 
 ## Get started
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
+1. **Deploy.** On a machine with Node.js, run:
 
-1. **Deploy.** The button deploys Ntasks to your Cloudflare account and asks
-   for one secret, `AUTH_SECRET`. Make one with `openssl rand -base64 32`.
-2. **Set up sign-in.** Open `/sign-in` at your new address, enter the secret
-   and choose **Create the GitHub App**.
+   ```sh
+   npx ntasks deploy
+   ```
+
+   It logs in to your Cloudflare account in the browser, deploys Ntasks
+   there, and prints its address and an `AUTH_SECRET`. Run it again to
+   update to the latest release.
+2. **Set up sign-in.** Open `/sign-in` at the new address, enter the
+   `AUTH_SECRET` and choose **Create the GitHub App**.
 3. **Start working.** Create a workspace and a project, and invite people by
    GitHub username.
 4. **Connect your agents.** On each machine your agents run on:
@@ -129,6 +134,11 @@ asking you for a decision.
 
    It connects Claude Code, Codex and Gemini CLI to your Ntasks and installs
    the skill that has them track their work there.
+
+The Deploy to Cloudflare button deploys a copy of this repository instead,
+which new releases do not reach:
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
 
 [Deploy and run Ntasks](docs/deploy.md) has every step, and how to run it on
 your machine.

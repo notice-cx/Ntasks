@@ -79,12 +79,15 @@ expires, and a service credential still sign their calls in, as
 needs only `AUTH_SECRET` and the stored origin, not the stored app's
 credentials.
 
-The [Deploy to Cloudflare button](deploy.md#deploy-your-own) asks for
+[`npx ntasks deploy`](deploy.md#deploy-your-own) makes `AUTH_SECRET` on a
+first deploy, sets it with the Worker and prints it. The
+[Deploy to Cloudflare button](deploy.md#deploy-with-the-button) asks for
 `AUTH_SECRET`, the one name in [`.dev.vars.example`](../.dev.vars.example),
 with the description under `cloudflare.bindings` in the root `package.json`.
-On a deployment made another way, set each secret with
-`wrangler secret put <NAME>` from the repository root. `wrangler deploy`
-refuses a Worker that lacks `AUTH_SECRET`. For `pnpm dev`, copy
+To set any other secret, run `npx wrangler secret put <NAME> --name <Worker>`,
+or `wrangler secret put <NAME>` from a checkout's root, which finds the Worker
+in `wrangler.jsonc`. `wrangler deploy` refuses a Worker that lacks
+`AUTH_SECRET`. For `pnpm dev`, copy
 `.dev.vars.example` to `.dev.vars` at the repository root, which git
 ignores, fill in `AUTH_SECRET`, and run the setup page at
 `http://localhost:8787/sign-in`. GitHub accepts `http://localhost`

@@ -5,13 +5,62 @@ time, and run it on your machine.
 
 ## Deploy your own
 
+```sh
+npx ntasks deploy
+```
+
+This deploys the latest Ntasks release to your Cloudflare account: one
+Worker, its D1 database and the Durable Object that holds the tasks. It needs
+Node.js and a Cloudflare account, and no copy of this repository: the npm
+package [`ntasks`](../tools/cli/README.md) holds the built Worker, the web
+app and the D1 migrations, and deploys them with wrangler. The first run:
+
+1. Opens Cloudflare's login in your browser (`wrangler login`), unless
+   wrangler is logged in already or `CLOUDFLARE_API_TOKEN` is set.
+2. Creates a D1 database named `ntasks` and applies the D1 migrations to it.
+3. Makes an `AUTH_SECRET` and deploys a Worker named `ntasks` with it.
+4. Prints the Worker's address and the `AUTH_SECRET`. Keep a copy: the
+   [setup page](#set-up-sign-in) asks for it, and the command shows it only
+   on this run.
+
+| Option | What it does |
+|---|---|
+| `--dry-run` | Prints the plan and changes nothing in the account. |
+| `--name <name>` | Names the Worker and its D1 database, when `ntasks` is taken. |
+| `--account <id or name>` | Chooses the Cloudflare account when your login reaches several. |
+
+The command stops without changing anything when your login reaches several
+accounts and none is chosen, and when the account has a Worker of that name
+but no D1 database of that name.
+
+### Update
+
+Run `npx ntasks deploy` again. It finds the Worker and its database in the
+account by name, applies the D1 migrations the database lacks, deploys the
+latest release and prints the release before and after. The Worker's
+secrets stay as they are, and each workspace's task store applies its own
+migrations when it next starts. `npx ntasks@<version> deploy` deploys that
+release in place of the latest. Nothing is kept on your machine between
+runs: each deploy tags the Worker's version with its release, such as
+`v0.1.0`, and the next run reads the tag.
+
+A deployment made with the button or from a checkout can move to
+`npx ntasks deploy` when its Worker and its D1 database share a name; the
+first run shows its current release as unknown. A Worker connected to a
+repository still deploys that repository on each push, so disconnect it in
+the Cloudflare dashboard under Workers & Pages, the Worker, Settings,
+Builds.
+
+### Deploy with the button
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
 
 The button copies this repository into your GitHub or GitLab account and
-deploys it to your Cloudflare account: one Worker, its D1 database and the
-Durable Object that holds the tasks. It asks for one secret, `AUTH_SECRET`:
-a random value of at least 32 characters. Make one with
-`openssl rand -base64 32`, and keep a copy for the setup page below.
+deploys that copy to your Cloudflare account. The copy has no link back to
+this repository, so new releases reach it only when you bring them into it
+yourself. It asks for one secret, `AUTH_SECRET`: a random value of at least
+32 characters. Make one with `openssl rand -base64 32`, and keep a copy for
+the setup page below.
 
 On Cloudflare's deploy page, the build command is `pnpm run build` and the
 deploy command is `pnpm run deploy`; set them if the page shows others. The
@@ -19,10 +68,10 @@ build command builds the web app. The deploy command applies the D1
 migrations to the database, then deploys the Worker. Cloudflare runs both
 again for each push to your copy's `main` branch.
 
-### Deploy from a checkout, without a copy
+### Deploy from a checkout
 
-The button always creates a new repository. To deploy from a checkout you
-already have, run these from its root after `pnpm install`:
+To deploy a change of your own from a checkout of this repository, run these
+from its root after `pnpm install`:
 
 ```sh
 pnpm run build
@@ -58,19 +107,23 @@ To update a deployment made from a checkout, bring the checkout to the latest
 root. `pnpm run deploy` applies any new D1 migrations, then deploys the
 Worker. A deployment connected to Builds updates on each push instead.
 
+### Set up sign-in
+
 When the deploy finishes, set up sign-in with GitHub on the deployment's
 setup page:
 
 1. Open `/sign-in` at the Worker's address, such as
-   `https://ntasks.<your subdomain>.workers.dev/sign-in`. The Workers & Pages
-   page of the Cloudflare dashboard shows the address. Sign-in is bound to
+   `https://ntasks.<your subdomain>.workers.dev/sign-in`. `npx ntasks deploy`
+   prints the address, and the Workers & Pages page of the Cloudflare
+   dashboard shows it. Sign-in is bound to
    the address the setup runs at, so use the one people will use. On a
    custom domain, use one that
    [Google Safe Browsing](https://transparencyreport.google.com/safe-browsing/search)
    does not list as unsafe: Chrome blocks GitHub's return to the sign-in
    callback on a domain it lists, even when the deployment's own address is
    not listed.
-2. Enter `AUTH_SECRET` and choose **Create the GitHub App**.
+2. Enter `AUTH_SECRET`, the one `npx ntasks deploy` printed or the one you
+   made, and choose **Create the GitHub App**.
 3. GitHub shows the app it will create under your GitHub account. Create it.
 4. GitHub returns to Ntasks and asks you to authorize the app. You are
    signed in as the deployment's admin.
