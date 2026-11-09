@@ -85,7 +85,7 @@ The last lines give each level's verdict:
 
 | Verdict | Means |
 |---|---|
-| `passed` | Every check of the level ran and passed |
+| `passed` | Every check of the level ran, and none of a MUST rule failed. A check of a SHOULD rule that failed reads `warn` in the list above |
 | `known-gaps` | Every check ran, and each one that failed is a listed gap |
 | `failed` | A check failed, or a listed gap passed |
 | `incomplete` | Some of its checks did not run, or `--only` left them out |
