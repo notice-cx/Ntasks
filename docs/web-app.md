@@ -14,6 +14,12 @@ from the web app's invented example data. Regenerate the pictures with
   <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
 </picture>
 
+**Epics.** With one project in view, the Epics tab lists the project's open
+epics, one line each, grouped by what they need: Waiting for you, Moving, Not
+moving, Every task done and No tasks. Each line shows how many of its tasks
+wait for you or are blocked, a bar of its tasks by status, its tasks done of
+all, and how many closed this week, counting its sub-epics' tasks too.
+
 **Task page.** Markdown text, Done when, activity and the task's facts. A
 task in an epic also shows From the epic: the comments pinned on the epic
 for its tasks, and the epic's most recently closed tasks with their close
@@ -32,7 +38,8 @@ reasons. A pinned comment is marked Pinned among its own task's comments.
 </picture>
 
 **Live.** Every task in progress, grouped by when its holder last changed or
-commented on it: Active, Quiet and Stalled.
+commented on it: Active, Quiet and Stalled. In each group a task sits under
+its epic, with the epic's progress bar.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">

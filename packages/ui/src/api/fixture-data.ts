@@ -35,6 +35,8 @@ export interface FixtureWorkspace extends Workspace {
   invitations: WorkspaceInvitation[];
   /** Its connected apps; none when left out. */
   apps?: ConnectedApp[];
+  /** Its GitHub webhook, with the secret the Worker would keep encrypted; none when left out. */
+  github?: { secret: string; deployChecks: string[]; updatedAt: string };
 }
 
 /** A workspace with no projects. */

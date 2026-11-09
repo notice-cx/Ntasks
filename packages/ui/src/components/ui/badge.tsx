@@ -66,6 +66,68 @@ export function progressShare(done: number, total: number): number {
   return Math.min(Math.max(done / total, 0), 1);
 }
 
+/** The tasks a `ProgressBar` draws, by the mark each shows on the board. */
+export interface ProgressParts {
+  done: number;
+  inProgress: number;
+  waiting: number;
+  blocked: number;
+  open: number;
+  parked: number;
+}
+
+/** The parts in the order the bar draws them, each in the colour of its board mark. */
+const BAR_PARTS: readonly { key: keyof ProgressParts; className: string; words: string }[] = [
+  { key: 'done', className: 'bg-done', words: 'done' },
+  { key: 'inProgress', className: 'bg-accent', words: 'in progress' },
+  { key: 'waiting', className: 'bg-wait', words: 'waiting for you' },
+  { key: 'blocked', className: 'bg-block', words: 'blocked' },
+  { key: 'open', className: 'bg-border-strong', words: 'open' },
+  {
+    key: 'parked',
+    className: 'bg-[repeating-linear-gradient(90deg,var(--border-strong)_0_2px,transparent_2px_4px)]',
+    words: 'parked',
+  },
+];
+
+/**
+ * An epic's tasks as one bar, a part per mark, each as wide as its share:
+ * Done in green, In progress in Accent, Waiting for you in amber, Blocked in
+ * red, Open in Border strong and Parked hatched. An epic with no tasks is an
+ * empty ring.
+ */
+export function ProgressBar({ parts, className }: { parts: ProgressParts; className?: string }) {
+  const shown = BAR_PARTS.filter((part) => parts[part.key] > 0);
+  const total = BAR_PARTS.reduce((sum, part) => sum + parts[part.key], 0);
+  const label =
+    total === 0
+      ? 'No tasks'
+      : `${parts.done} of ${total} done${shown
+          .filter((part) => part.key !== 'done')
+          .map((part) => `, ${parts[part.key]} ${part.words}`)
+          .join('')}`;
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      className={cn(
+        'flex h-1.5 w-20 shrink-0 gap-px overflow-hidden rounded-full',
+        total === 0 ? 'inset-ring inset-ring-border-strong' : 'bg-border',
+        className,
+      )}
+      data-progress-bar=""
+    >
+      {shown.map((part) => (
+        <span
+          key={part.key}
+          className={cn('block min-w-0.5', part.className)}
+          style={{ flex: `${parts[part.key]} 1 0` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /** An epic's or a checklist's progress: a 14 px ring that fills in Accent, then `1/4`. */
 export function Progress({ done, total, className }: { done: number; total: number; className?: string }) {
   const share = progressShare(done, total);

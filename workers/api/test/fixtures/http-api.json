@@ -526,6 +526,36 @@
   {
     "version": 5,
     "shapes": {
+      "github": {
+        "url": "string",
+        "secretSaved": "boolean",
+        "deployChecks": "array",
+        "deployChecks[]": "string",
+        "updatedAt": "null|string"
+      }
+    },
+    "routes": {
+      "GET /api/access/github": {
+        "github": "@github"
+      },
+      "POST /api/access/github": {
+        "github": "@github"
+      },
+      "POST /api/access/github/remove": {
+        "removed": "boolean"
+      },
+      "POST /api/github/:workspaceId": {
+        "moved": "array",
+        "moved[]": "object",
+        "moved[].id": "string",
+        "moved[].stage": "string",
+        "ignored": "absent|string"
+      }
+    }
+  },
+  {
+    "version": 6,
+    "shapes": {
       "comment": {
         "pinned": "boolean"
       }
