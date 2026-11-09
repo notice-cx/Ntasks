@@ -52,6 +52,11 @@ describe('how recently a holder worked on a task', () => {
     expect(after(ago(DAY))).toBe('stalled');
   });
 
+  it('follows the server’s stalled when it sends one, whatever the page’s clock says', () => {
+    expect(after(ago(5 * 60_000), { stalled: true })).toBe('stalled');
+    expect(after(ago(3 * DAY), { stalled: false })).toBe('quiet');
+  });
+
   it('is stalled when nothing is recorded or the time cannot be read, and only while someone holds the task', () => {
     expect(after(null)).toBe('stalled');
     expect(after(undefined)).toBe('stalled');

@@ -4,7 +4,7 @@
 // them, how a retry is answered, and what each refusal says. The rules of a
 // pick and an answer are ported from NoticeOS's
 // scripts/hosted-task-command.test.mjs (choiceSteps and answerSteps).
-import type { Project, Task, TaskEngine } from '@ntasks/domain';
+import { TASK_LIMITS, WORK_DETAILS, WORK_LIMITS, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
@@ -656,6 +656,35 @@ describe('POST /api/tasks/:id/release', () => {
       (entry) => entry.kind !== 'commented',
     );
     expect(event).toMatchObject({ actor: 'Person', changes: { assignee: null, status: 'open' } });
+  });
+
+  it('frees a task whose holder left work details as long as they may be, cutting each to fit one comment', async () => {
+    const { task: made } = await engine.createTask(project.id, { title: 'Rebuild the pricing page' }, OWNER);
+    const long = (detail: keyof typeof WORK_LIMITS) =>
+      detail === 'pr' ? `https://example.com/${'p'.repeat(WORK_LIMITS.pr - 20)}` : 'w'.repeat(WORK_LIMITS[detail]);
+    await engine.writeTask(
+      project.id,
+      made.id,
+      {
+        expectedVersion: 1,
+        set: {
+          assignee: AGENT.name,
+          status: 'in_progress',
+          work: Object.fromEntries(WORK_DETAILS.map((detail) => [detail, long(detail)])),
+        },
+      },
+      AGENT,
+    );
+
+    const freed = await post(`/api/tasks/${made.id}/release`, {});
+
+    expect(freed.status).toBe(200);
+    const comment = (await texts(made.id)).find((text) => text.includes('on their own call'))!;
+    expect(comment.length).toBeLessThanOrEqual(TASK_LIMITS.comment);
+    expect(comment).toContain(`- Pull request: https://example.com/`);
+    // The task's history keeps each detail whole.
+    const history = await engine.listHistory(project.id, made.id, { limit: 10 });
+    expect(JSON.stringify(history)).toContain(long('session'));
   });
 
   it('keeps a blocked task’s status, and refuses a task nobody holds and a closed one, writing nothing', async () => {

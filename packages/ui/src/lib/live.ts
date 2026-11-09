@@ -2,10 +2,10 @@
  * How recently the holder of each task in progress worked on it: the Live
  * page's groups and the sidebar's live dots. The signal is the task's last
  * activity, when its holder last changed or commented on it, which the server
- * sends with every task. Stalled is the server's rule (isStalled in
- * @ntasks/domain), worked out here with the page's clock so a task turns
- * stalled without a new read. It is never written to the task: its status
- * stays In progress until someone frees it.
+ * sends with every task. Stalled is the server's: the `stalled` it sends as of
+ * its read, so a browser's clock never disagrees with it; a server that sends
+ * none is read by the same rule (isStalled in @ntasks/domain). It is never
+ * written to the task: its status stays In progress until someone frees it.
  */
 import { isStalled } from '@ntasks/domain';
 import { ageMs } from './format';
@@ -24,11 +24,11 @@ export const ACTIVITY_LABELS: Readonly<Record<Activity, string>> = Object.freeze
 /** A task whose holder wrote to it within this long is active. */
 export const ACTIVE_WITHIN_MS = 3_600_000;
 
-type Held = Pick<BoardTask, 'status' | 'assignee' | 'lastActivityAt'>;
+type Held = Pick<BoardTask, 'status' | 'assignee' | 'lastActivityAt' | 'stalled'>;
 
-/** How recently a task's holder worked on it: stalled by the server's rule, else active within the hour, else quiet. */
+/** How recently a task's holder worked on it: stalled as the server says, else active within the hour, else quiet. */
 export function activityOf(task: Held, nowMs: number): Activity {
-  if (isStalled(task, new Date(nowMs).toISOString())) return 'stalled';
+  if (task.stalled ?? isStalled(task, new Date(nowMs).toISOString())) return 'stalled';
   const age = ageMs(nowMs, task.lastActivityAt);
   return age !== null && age < ACTIVE_WITHIN_MS ? 'active' : 'quiet';
 }

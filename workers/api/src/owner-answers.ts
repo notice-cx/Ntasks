@@ -11,6 +11,7 @@ import {
   ACCEPTED_REASON,
   criteriaOf,
   markedStep,
+  sameActor,
   TASK_LIMITS,
   type AcceptedCriterion,
   type Json,
@@ -178,12 +179,6 @@ const isRecord = (value: unknown): value is JsonObject =>
 const stringOf = (value: unknown): string => (typeof value === 'string' ? value : '');
 
 /** Beads' actor match, which NoticeOS kept: a run of `.`, `_` or `-` is one separator, and `--` another. */
-function canonicalActor(name: string): string {
-  return name.replace(/[._-]+/gu, (run) => (run === '--' ? '/' : '_'));
-}
-function sameActor(a: string, b: string): boolean {
-  return a === b || canonicalActor(a) === canonicalActor(b);
-}
 
 /** A recorded pick, read strictly; null for anything else. */
 interface RecordedPick {
@@ -881,9 +876,19 @@ const KEPT_WORK: readonly [WorkDetail, string][] = [
   ['session', 'Session'],
 ];
 
+/** The most characters of one work detail the comment keeps: six of them at
+ * this length, with the lines above them, fit in one comment. */
+const KEPT_DETAIL_MOST = 500;
+
+/** `text` cut to `most` characters, its end marked when cut. */
+function cut(text: string, most: number): string {
+  return text.length <= most ? text : `${text.slice(0, most - 1)}…`;
+}
+
 /** The comment a person's free leaves: who freed it, and where the work
- * stopped, since the holder's work details go with the claim. The holder's
- * last comment is cut to what one comment holds. */
+ * stopped, since the holder's work details go with the claim. A long work
+ * detail, and the holder's last comment, are cut to what one comment holds;
+ * the task's history keeps every work detail whole. */
 function whereItStopped(task: Task, holder: string, comments: readonly TaskComment[], person: string): string {
   const lines = [
     `${person} freed ${task.id} on their own call. Where it stopped:`,
@@ -891,7 +896,7 @@ function whereItStopped(task: Task, holder: string, comments: readonly TaskComme
     `- Last activity: ${task.lastActivityAt ?? 'none recorded'}`,
     ...KEPT_WORK.flatMap(([detail, label]) => {
       const value = task.work[detail];
-      return value === undefined ? [] : [`- ${label}: ${value}`];
+      return value === undefined ? [] : [`- ${label}: ${cut(value, KEPT_DETAIL_MOST)}`];
     }),
   ];
   const head = lines.join('\n');
@@ -900,8 +905,7 @@ function whereItStopped(task: Task, holder: string, comments: readonly TaskComme
   const intro = `\n- Last comment, ${last.createdAt}: `;
   const room = TASK_LIMITS.comment - head.length - intro.length;
   if (room < 2) return head;
-  const text = last.text.replace(/\s+/gu, ' ').trim();
-  return `${head}${intro}${text.length <= room ? text : `${text.slice(0, room - 1)}…`}`;
+  return `${head}${intro}${cut(last.text.replace(/\s+/gu, ' ').trim(), room)}`;
 }
 
 /**

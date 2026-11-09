@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { CirclePause } from 'lucide-react';
 import { toast } from 'sonner';
+import { sameActor } from '@ntasks/domain';
 import type { LiveTask, TaskComment } from '../../api/types';
 import { Button } from '../../components/ui/button';
 import { useReleaseTask } from '../../hooks/useTasks';
@@ -43,7 +44,8 @@ export function WhereItStopped({
 }) {
   const release = useReleaseTask();
   const age = ageMs(nowMs, task.lastActivityAt);
-  const last = comments.findLast((comment) => comment.author === task.assignee);
+  const holderName = task.assignee;
+  const last = holderName === null ? undefined : comments.findLast((comment) => sameActor(comment.author, holderName));
   const pr = task.work?.pr ? httpUrl(task.work.pr) : null;
   return (
     <section
