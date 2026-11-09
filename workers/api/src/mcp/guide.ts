@@ -50,6 +50,11 @@ export const WHATS_CHANGED: readonly string[] = Object.freeze([
 export const ON_THE_TASK =
   "Everything about a task goes on the task, as comment_on_task or its fields: progress, hand-overs (where work stopped, file pointers, gotchas, what is left), findings and decisions. Never put it in a separate notes file, scratch doc, chat-only summary, memory or a tool's own notes feature; when another tool asks for a note, write only a pointer to the task.";
 
+/** The rule as the instructions carry it: short enough to end within
+ * INSTRUCTIONS_BUDGET after ten held tasks. Workflow step 4 carries it whole. */
+export const ON_THE_TASK_BRIEF =
+  "Everything about a task goes on the task, as a comment or its fields, hand-overs included, never in a separate note; get_task_guide's step 4 has the rule.";
+
 /** How a session starts. */
 export const TASK_START =
   "Ntasks: tasks that people and AI agents share. Start with list_workspaces; every other tool acts in a workspace from it, which you name only when you reach several. A tool that names a task needs no project: the task id's prefix names it. idempotency_key and model are optional: an identical call sent again answers once while the tasks it wrote are unchanged, and model, the model you run as, is recorded beside your name. get_agent_stats counts work by model.";
@@ -204,7 +209,7 @@ function heldSection(held: readonly HeldEntry[], several: boolean, room: number)
  * Every session's instructions: which of the guide's tools this endpoint
  * lacks, the guide's start, the tasks the sender holds when it connects,
  * where everything about a task is kept, and the rules for writing a task.
- * The held tasks come before the rules and end
+ * The held tasks and where a task's record is kept come before the rules and end
  * within INSTRUCTIONS_BUDGET, so an agent reads them however much a client cuts.
  */
 export function taskInstructions(offered: readonly string[], held: readonly HeldEntry[] = [], several = false): string {
@@ -215,6 +220,7 @@ export function taskInstructions(offered: readonly string[], held: readonly Held
     TASK_START,
     `${TASK_GUIDE_TOOL} returns these rules with the full workflow and what changed lately, at any time; list_workspaces returns its version as guideVersion, so read it again when that changes.`,
   ];
-  const room = INSTRUCTIONS_BUDGET - start.join('\n').length - 1;
-  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK, ...TASK_QUALITY].join('\n');
+  // The brief rule follows the held tasks and a blank line, and ends within the budget too.
+  const room = INSTRUCTIONS_BUDGET - start.join('\n').length - 1 - (ON_THE_TASK_BRIEF.length + 2);
+  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK_BRIEF, ...TASK_QUALITY].join('\n');
 }
