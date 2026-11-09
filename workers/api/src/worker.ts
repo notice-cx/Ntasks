@@ -1,5 +1,5 @@
 /**
- * The Worker: it answers the health check, signs each API request in, and
+ * The Worker: it answers the health check and the API's version, signs each API request in, and
  * picks the workspace the request reaches before any task store is called. An
  * HTTP route goes to that workspace's store with the sender scoped to it; the
  * MCP endpoint is answered here, and each of its tool calls goes to the store
@@ -10,6 +10,7 @@ import type { Authenticator } from './auth.ts';
 import { json } from './http/respond.ts';
 import { serveTaskMcp } from './mcp/server.ts';
 import { workspaceStore } from './store/index.ts';
+import { API_VERSION, OLDEST_API_VERSION, VERSION_PATH } from './version.ts';
 import { chooseWorkspace, scopedTo, WORKSPACE_HEADER, type Sender } from './workspaces.ts';
 
 export interface WorkerOptions {
@@ -22,6 +23,7 @@ export function createWorker(options: WorkerOptions) {
     async fetch(request: Request, env: Env): Promise<Response> {
       const { pathname } = new URL(request.url);
       if (pathname === '/healthz') return health(request);
+      if (pathname === VERSION_PATH) return version(request);
       if (!isApiPath(pathname)) return json({ error: 'not_found' }, 404);
       try {
         const authenticator = options.authenticator(env);
@@ -64,4 +66,12 @@ function health(request: Request): Response {
     return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
   }
   return json({ ok: true }, 200);
+}
+
+/** The API's versions, answered like the health check, before sign-in. */
+function version(request: Request): Response {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
+  }
+  return json({ version: API_VERSION, oldest: OLDEST_API_VERSION }, 200);
 }
