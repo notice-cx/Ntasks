@@ -112,6 +112,7 @@ const TYPE_ORDER: readonly Exclude<TypeMarkKey, 'other'>[] = [
   'epic',
   'decision',
   'approval',
+  'steps',
   'chore',
   'gate',
 ];

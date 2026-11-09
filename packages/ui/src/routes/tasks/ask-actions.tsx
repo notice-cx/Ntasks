@@ -1,16 +1,20 @@
-import { useId, useState, type ReactNode } from 'react';
-import { Check, CornerDownLeft, SendHorizontal } from 'lucide-react';
-import type { TaskChoiceKey, TaskChoices } from '../../api/types';
+import { lazy, Suspense, useId, useState, type ReactNode } from 'react';
+import { Check, CornerDownLeft, ListChecks, SendHorizontal } from 'lucide-react';
+import type { TaskChoiceKey, TaskChoices, TaskStep } from '../../api/types';
 import { Button } from '../../components/ui/button';
 import { Segmented } from '../../components/ui/choice';
 import { Textarea } from '../../components/ui/field';
 import { useInboxAnswer } from '../../hooks/useTasks';
-import type { InboxAsk } from '../../lib/task-model';
+import { stepsDone, type InboxAsk } from '../../lib/task-model';
+
+// The steps draw Markdown, whose renderer the board loads only when a row opens them.
+const StepList = lazy(() => import('./step-list').then((module) => ({ default: module.StepList })));
 
 /**
  * What a row in Waiting for you offers: Approve on an approval, the options
- * side by side on a decision (one press answers), and Answer on a question,
- * which opens a box under the row. Every answer waits in the Undo window.
+ * side by side on a decision (one press answers), Answer on a question,
+ * which opens a box under the row, and Your steps on a request to do steps,
+ * which opens its steps under the row. Every answer waits in the Undo window.
  * `buttons` sit beside the title and `box` under it; both are null when
  * nothing is asked. Closing as something else is in the row's menu.
  */
@@ -21,6 +25,8 @@ export function useAskActions({
   project,
   proposalVersion = null,
   choices = null,
+  steps = null,
+  nowMs = Date.now(),
   disabledReason = null,
   chooseDisabledReason = disabledReason,
 }: {
@@ -31,6 +37,9 @@ export function useAskActions({
   /** The proposal version the row shows, which every answer sends. */
   proposalVersion?: string | null;
   choices?: TaskChoices | null;
+  /** A request's steps, which Steps opens. */
+  steps?: readonly TaskStep[] | null;
+  nowMs?: number;
   /** Why the verbs cannot run here, or null. */
   disabledReason?: string | null;
   chooseDisabledReason?: string | null;
@@ -62,51 +71,77 @@ export function useAskActions({
   // carries the reason as its description, and a pointer shows it as a tip.
   const reason = choosing ? chooseDisabledReason : disabledReason;
   const described = reason ? reasonId : undefined;
-  const control =
-    ask === 'approve' ? (
-      <Button
-        variant="primary"
-        type="button"
-        size="sm"
-        disabled={disabled}
-        title={disabledReason || undefined}
-        aria-describedby={described}
-        onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
-        data-task-action="approve"
-      >
-        <Check aria-hidden strokeWidth={2} />
-        Approve
-      </Button>
-    ) : choosing ? (
-      <Segmented
-        question={choices.question}
-        options={choices.options.map((option) => ({
-          key: option.key,
-          label: option.label,
-          recommended: option.recommended === true,
-        }))}
-        disabled={chooseDisabledReason !== null}
-        describedBy={described}
-        onChoose={choose}
+  const doing = ask === 'do' && steps !== null;
+  const control = doing ? (
+    <Button
+      type="button"
+      size="sm"
+      aria-expanded={answering}
+      onClick={() => setAnswering((open) => !open)}
+      data-task-action="steps"
+    >
+      <ListChecks aria-hidden />
+      Your steps
+      <span className="nums text-ink-3">
+        {stepsDone(steps)}/{steps.length}
+      </span>
+    </Button>
+  ) : ask === 'approve' ? (
+    <Button
+      variant="primary"
+      type="button"
+      size="sm"
+      disabled={disabled}
+      title={disabledReason || undefined}
+      aria-describedby={described}
+      onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
+      data-task-action="approve"
+    >
+      <Check aria-hidden strokeWidth={2} />
+      Approve
+    </Button>
+  ) : choosing ? (
+    <Segmented
+      question={choices.question}
+      options={choices.options.map((option) => ({
+        key: option.key,
+        label: option.label,
+        recommended: option.recommended === true,
+      }))}
+      disabled={chooseDisabledReason !== null}
+      describedBy={described}
+      onChoose={choose}
+    />
+  ) : (
+    <Button
+      type="button"
+      size="sm"
+      aria-expanded={answering}
+      disabled={disabled}
+      title={disabledReason || undefined}
+      aria-describedby={described}
+      onClick={() => setAnswering((open) => !open)}
+      data-task-action="answer"
+    >
+      <CornerDownLeft aria-hidden />
+      Answer
+    </Button>
+  );
+  const box = !answering ? null : doing ? (
+    <Suspense fallback={<span className="text-meta text-ink-3">Loading…</span>}>
+      <StepList
+        id={id}
+        project={project}
+        steps={steps}
+        proposalVersion={proposalVersion}
+        open
+        disabledReason={disabledReason}
+        nowMs={nowMs}
       />
-    ) : (
-      <Button
-        type="button"
-        size="sm"
-        aria-expanded={answering}
-        disabled={disabled}
-        title={disabledReason || undefined}
-        aria-describedby={described}
-        onClick={() => setAnswering((open) => !open)}
-        data-task-action="answer"
-      >
-        <CornerDownLeft aria-hidden />
-        Answer
-      </Button>
-    );
-  const box = answering ? (
+    </Suspense>
+  ) : (
     <AnswerForm id={id} text={text} onText={setText} onSend={send} onCancel={() => setAnswering(false)} size="sm" />
-  ) : null;
+  );
   const buttons = (
     <>
       {control}

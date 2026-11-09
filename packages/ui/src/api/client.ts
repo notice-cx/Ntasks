@@ -31,6 +31,7 @@ import type {
   NewProject,
   NewTask,
   ProjectFields,
+  StepMarking,
   TaskChoiceKey,
   TaskCreated,
   TaskEdit,
@@ -114,6 +115,8 @@ export interface TasksApi {
   dispute(id: string, project: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
+  /** Tick, untick, note or mark as stuck one step of a request to do steps. */
+  markStep(id: string, project: string, marking: StepMarking, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Only the workspace's owners may create a project. */
   createProject(input: NewProject, options?: WriteOptions): Promise<void>;
   /** Says whether a project's changes go live by a deploy: an owner's setting. */
@@ -493,6 +496,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
     dispute: (id, project) => scope().dispute(id, project),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
+    markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
     setDeploys: (project, deploys) => scope().setDeploys(project, deploys),
     members: (signal) => scope().members(signal),
@@ -673,6 +677,16 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         path,
         { ...(reason === undefined ? {} : { reason }), ...shownIn(sending), projectId: await projectId(project) },
         `Approval ${id}`,
+        sending,
+      );
+    },
+    async markStep(id, project, marking, sending = {}) {
+      const path = `/api/gates/${encodeURIComponent(id)}/steps`;
+      await write(
+        'POST',
+        path,
+        { ...marking, ...shownIn(sending), projectId: await projectId(project) },
+        `Step ${marking.step} of ${id}`,
         sending,
       );
     },

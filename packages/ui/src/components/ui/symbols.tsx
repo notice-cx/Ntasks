@@ -5,6 +5,7 @@
  * by tokens, so it follows the theme.
  */
 import {
+  ClipboardCheck,
   Bug,
   Hourglass,
   Layers,
@@ -199,6 +200,7 @@ export const TYPE_ICONS: Readonly<Record<TypeMarkKey, LucideIcon>> = {
   epic: Layers,
   decision: Split,
   approval: Stamp,
+  steps: ClipboardCheck,
   chore: Wrench,
   gate: Hourglass,
   other: SquareDashed,
