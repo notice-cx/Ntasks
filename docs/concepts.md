@@ -107,39 +107,41 @@ closed, and Ntasks lists the epics that can.
 ## Claiming a task
 
 To start a task, an agent or a person **claims** it: the task becomes
-`in_progress` and records who holds it. Only one claim succeeds. When two
+`in_progress` and records who holds it. Only one claim succeeds: when two
 agents claim the same task at the same moment, one gets it and the other is
 told it is taken.
 
-The holder can record the **work in hand** on the task, when it claims the
-task or comments on it:
+The holder can record the **work in hand** when it claims the task or
+comments on it:
 
 - **for**: the helper agent working under the holder, when the holder hands
-  the work to one that cannot reach Ntasks itself. The holder stays the one
-  who holds the task, and the task shows both, as `claude for page-rebuild-2`;
-- a link to or id of the agent **session** doing the work, its **worktree**,
-  its **branch**, its pull request (**pr**), the **commit** last tested, and
-  the **next** step.
+  the work to one that cannot reach Ntasks itself. The holder still holds the
+  task, and the task shows both, as `claude for page-rebuild-2`.
+- **session**, **worktree**, **branch**, **pr**, **commit** and **next**: a
+  link to or id of the agent session doing the work, its worktree and branch,
+  its pull request, the commit last tested, and the next step.
 
 Each new value replaces the one before it. Releasing or closing the task
-clears them, and its history keeps every value they had.
+clears them; its history keeps every value they had.
 
-A task also shows its **last activity**: when its holder last changed or
-commented on it. The web app's Live page groups the tasks in progress by it:
-**Active** when the holder wrote to the task within the last hour, **Quiet**
-until the time the person reading chooses under Stalled after (1 day unless
-they choose another), and **Stalled** from then on, or when nothing is
-recorded. Stalled is shown, never stored: the task stays in progress and its
-holder keeps it.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-live-work-dark.webp">
+  <img src="images/walkthrough-live-work-light.webp" width="800" alt="A held task's row shows the helper its agent works for and its last activity; the cursor opens it, and the page shows the assignee, last activity, next step, branch and pull request.">
+</picture>
 
-A claim is a reservation, not a timer. Ntasks never gives a task to someone
-else because time passed, however old its last activity. To release a task
-that someone holds, first check that they stopped working on it, and keep the
-progress they recorded.
-
-When an agent connects, the instructions it reads list the open tasks it
-holds, with each one's helper, branch, next step and last activity, so a new
-session carries on the work in hand.
+- **Last activity** is when the holder last changed or commented on the task.
+- **The Live page** groups the tasks in progress by last activity: **Active**
+  within the last hour, **Quiet** until the time chosen under Stalled after
+  (1 day unless the reader chooses another), and **Stalled** from then on, or
+  when nothing is recorded. Stalled is shown, never stored: the task stays in
+  progress and its holder keeps it.
+- **A claim does not expire.** Ntasks never gives a task to someone else
+  because time passed, however old its last activity. Before you release a
+  task someone holds, check that they stopped working on it, and keep the
+  progress they recorded.
+- **A new session carries on.** When an agent connects, the instructions it
+  reads list the open tasks it holds, with each one's helper, branch, next
+  step and last activity.
 
 ## Closing a task
 
@@ -159,20 +161,31 @@ first close and its evidence.
 
 ## Where a change is
 
-A task closed as done with a commit or a pull request has a **delivery**,
-which says where its change is: **built** when it closes, **merged** once the
-change is merged, and **live** once a deploy ships it. The repository's
-automation, or the agent that merges or deploys, sends a signal naming the
-pull requests or commits that merged or went live, and the tasks that carry
-them move to that stage. A task only moves forward. A project whose changes
-do not go live by a deploy, such as a library, stops at merged; the
-project's owner says which kind it is. The web app's Waiting for you view
-lists built work, which waits for a merge, and merged work of a project that
-deploys, which waits for a deploy. [API](api.md#delivery) gives the rules.
+A task closed as done with a commit or a pull request has a **delivery**: the
+stage its change has reached.
+
+- **Built** when the task closes.
+- **Merged** once the change is merged.
+- **Live** once a deploy ships it.
+
+The repository's automation, or the agent that merges or deploys, sends a
+signal naming the pull requests or commits that merged or went live, and the
+tasks that carry them move to that stage. A task only moves forward. A
+project whose changes do not go live by a deploy, such as a library, stops at
+merged; the project's owner says which kind it is.
+
+The web app's **Waiting for you** list shows built work, which waits for a
+merge, and merged work of a project that deploys, which waits for a deploy.
+[API](api.md#delivery) gives the rules.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-shipped-dark.webp">
+  <img src="images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
+</picture>
 
 ## Decisions and approvals
 
-Some steps only a person can take. Ntasks has two kinds.
+Some steps only a person can take. Ntasks has two kinds:
 
 - A **decision** asks a person to choose between options. Each option has a
   short label, and at most one is marked as recommended. The person's choice
@@ -181,26 +194,46 @@ Some steps only a person can take. Ntasks has two kinds.
   as a deployment. While the approval is pending, the task is not ready, so
   no agent starts it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-decide-dark.webp">
+  <img src="images/walkthrough-decide-light.webp" width="800" alt="The cursor picks the recommended option of a decision in Waiting for you, the decision leaves the list, and the task that waited on it moves from Blocked to Open with its Claim button.">
+</picture>
+
+### What a person answers
+
 A task's **proposal** is what a person answers: its title, description,
 acceptance, type and options. For an approval, that is the exact action it
 asks for, with its environment, scope and verification. The **proposal
 version** is a short hash of the proposal, so it changes whenever the
 proposal does.
 
-An **answer** records the option the person chose (for an approval, approve
-or decline), the person's exact words as a quote, where they said it, who
-recorded it, and the proposal version it answered. Ntasks never reads the
-quote to decide what it means: a quote such as "maybe" is kept as given.
+An **answer** records:
+
+- the option the person chose, or for an approval, approve or decline;
+- the person's exact words, as a quote. Ntasks never reads the quote to
+  decide what it means: a quote such as "maybe" is kept as given;
+- where they said it, and who recorded it;
+- the proposal version it answered.
+
+### Who can answer
 
 Only a person signed in to the web app answers a decision or approves an
-approval directly; an agent or a service cannot, whatever projects it was
-granted. An agent may record an answer a person gave it somewhere else, such
-as in a chat: it names the option, the quote, where it was said and the
-proposal version it showed the person. Ntasks records that answer as relayed
-by that agent, and refuses it when the proposal has changed since that
-version, so a task edited after the person answered cannot borrow the answer.
+approval directly. An agent or a service cannot, whatever projects it was
+granted.
+
+An agent may record an answer a person gave it somewhere else, such as in a
+chat. It names the option, the quote, where it was said and the proposal
+version it showed the person. Ntasks records that answer as relayed by that
+agent, and refuses it when the proposal has changed since that version, so a
+task edited after the person answered cannot borrow the answer.
+
 The person can dispute a relayed approval: the approval opens again, and the
 tasks waiting on it are told to stop until a new approval.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-approve-dark.webp">
+  <img src="images/walkthrough-approve-light.webp" width="800" alt="An approval names its action, environment, scope and verification; the cursor approves it and the task shows Done, Approved; then an approval Claude recorded for a person shows the person's words and a Dispute button.">
+</picture>
 
 ## History and comments
 

@@ -1,7 +1,8 @@
 # Connect an agent
 
 An AI agent works with Ntasks through the MCP endpoint, `/api/mcp`. Setting
-an agent up has two parts:
+an agent up takes two steps, and [the setup command](#set-up-with-one-command)
+does both:
 
 1. **Register the server** with the agent's MCP client. On first use the
    client signs in with OAuth: Ntasks opens in your browser, and you allow the
@@ -12,22 +13,34 @@ an agent up has two parts:
    standing rules: Ntasks is the only list of open work, work the agent finds
    becomes a task, and `get_task_guide` holds the rest.
 
-The server sends its own rules when an agent connects: the server's
-instructions, and the full guide from `get_task_guide`. An agent reads them
-while it makes task calls. The skill makes it file what it finds in Ntasks in
-every session, including sessions where it is doing something else.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/agent-access-dark.webp">
+  <img src="images/agent-access-light.webp" width="380" alt="The agent approval page: the agent's name and address, the access it asks for, the account, where the answer returns to, a project checklist, Deny and Allow.">
+</picture>
+
+When an agent connects, the server sends its instructions, and
+`get_task_guide` returns the full guide; the agent reads them while it makes
+task calls. The skill makes it file what it finds in Ntasks in every session,
+including sessions where it is doing something else.
 
 ## Set up with one command
+
+Run this on each machine your agents use:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash
 ```
 
-[`install.sh`](../install.sh) asks for your Ntasks address, lists the
-supported agents it finds on the machine and asks which to set up. It shows
-what it will change and asks before changing anything. Then, for each agent,
-it registers an MCP server named `ntasks` at `<address>/api/mcp` for every
-project, and writes the skill file. It needs no `sudo`.
+[`install.sh`](../install.sh):
+
+1. asks for your Ntasks address;
+2. lists the supported agents it finds on the machine and asks which to set
+   up;
+3. shows what it will change, and asks before changing anything;
+4. for each agent, registers an MCP server named `ntasks` at
+   `<address>/api/mcp` for every project, and writes the skill file.
+
+It needs no `sudo`.
 
 | Agent | It registers the server with | It writes the skill to | Sign-in step it prints |
 |---|---|---|---|
@@ -38,16 +51,23 @@ project, and writes the skill file. It needs no `sudo`.
 Codex and Gemini CLI both read skills from `~/.agents/skills`, so they share
 one copy.
 
-Run it again at any time. A server already registered as `ntasks` at the same
-endpoint is left as it is. One registered at another address, or as a local
-command, is replaced only after you agree. A skill file that differs from the
-repository's is replaced.
+### Running it again
+
+Run it again at any time:
+
+- A server already registered as `ntasks` at the same endpoint is left as it
+  is.
+- One registered at another address, or as a local command, is replaced only
+  after you agree.
+- A skill file that differs from the repository's is replaced.
 
 The address is the deployment's origin, such as `https://ntasks.example.com`.
 An address without a scheme gets `https://`; `http://` is accepted only for
 `localhost` and `127.0.0.1`.
 
-These options run it without prompts:
+### Running it without prompts
+
+These options answer its questions:
 
 | Option | Environment variable | Effect |
 |---|---|---|
@@ -131,14 +151,14 @@ standing rules, in the [Agent Skills](https://agentskills.io/specification)
 format. Its description tells the agent to load it at the start of every
 session and whenever it chooses, starts, finds or finishes work.
 
-For an agent that reads skills, copy the `skills/ntasks` folder into its
-skills folder. For an agent that does not, paste the file's body, everything
-after the frontmatter, into its instructions file: `~/.claude/CLAUDE.md` for
-Claude Code in every project
-([memory](https://code.claude.com/docs/en/memory)), `~/.codex/AGENTS.md` for
-Codex
-([AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)),
-or a repository's `CLAUDE.md` or `AGENTS.md`.
+- **An agent that reads skills:** copy the `skills/ntasks` folder into its
+  skills folder.
+- **An agent that does not:** paste the file's body, everything after the
+  frontmatter, into its instructions file: `~/.claude/CLAUDE.md` for Claude
+  Code in every project ([memory](https://code.claude.com/docs/en/memory)),
+  `~/.codex/AGENTS.md` for Codex
+  ([AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)),
+  or a repository's `CLAUDE.md` or `AGENTS.md`.
 
 The skill points to `get_task_guide` instead of repeating it, so the guide
 stays the one copy of the workflow. When the guide changes, `list_workspaces`
