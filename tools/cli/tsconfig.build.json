@@ -1,0 +1,12 @@
+{
+  // Compiles src into the package's JavaScript. Node does not strip the types
+  // of a file under node_modules, so the published package holds JavaScript.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "dist/lib"
+  },
+  "include": ["src"]
+}
