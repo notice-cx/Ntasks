@@ -64,13 +64,16 @@ since, the answer is refused with `409`, `task_refused` and
 | Pick an option | `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), optionally `note` |
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
+| Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
 | Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |
 | Free a held task on the person's call | `POST /api/tasks/:id/release` | `projectId` ([AUTH-9](protocol.md#auth-9)) |
 | Dispute a relayed approval or acceptance | `POST /api/tasks/:id/dispute` | `projectId` |
 
-Each answers `{ task }`, the task as the decision left it, and records the
-person as the answer's `recordedBy`, with `relayed: false`
-([3.6](protocol.md#36-decisions)).
+Each answers `{ task }`, the task as the decision left it. An answer, a
+pick and an approval record the person as the answer's `recordedBy`, with
+`relayed: false` ([3.6](protocol.md#36-decisions)). A dismissal closes the
+task and records no answer, and a mark on a step records the person and the
+time on the step.
 
 ### Delivery
 
