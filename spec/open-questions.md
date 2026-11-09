@@ -203,3 +203,14 @@ binding would need neutral header names, or let a server name its own.
 linking, asking for an approval, relaying an answer and releasing another
 holder's task are MCP only, and a person's direct decisions are HTTP only.
 The protocol could require a level per binding, or per server.
+
+### OQ-24
+
+**Should a task carry structured criteria?** <a id="oq-24"></a>
+([3.10](protocol.md#310-acceptance-as-done),
+[STATE-15](protocol.md#state-15)) Criteria are read from the free text of
+`acceptance`, line by line, so an edit that splits or joins a line
+renumbers them, and an acceptance relayed by number depends on the
+proposal version it names. A list of criteria with stable ids would let a
+person tick them one by one before the close, and let a server check each
+one, at the cost of a second way to write what shows a task done.

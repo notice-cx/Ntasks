@@ -47,6 +47,10 @@ protocol appears in neither table.
 | STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "refuses an approval of the request, a step it does not have and a closed request, writing nothing" |
 | STATE-14 | `workers/api/test/engine/writes.test.ts` › "changes only the marks on its steps, never their text or commands, and only on a request" |
 | STATE-14 | `workers/api/test/api/owner-answers.test.ts` › "closes on the owner’s report that they did the steps, and hands the waiting task back to agents" |
+| STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason" |
+| STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "closes with its own reason when the person gives none, and with no criteria on a task that has none" |
+| STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "refuses a criterion the task lacks, an unread or stale proposal, a closed task, a request and a task waiting on one, writing nothing" |
+| STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "is cleared by a reopen, whose history keeps it" |
 | AUTH-1 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "keeps an agent named after the owner apart from the owner" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "marks an owner whose own name starts like an agent’s, so the two never meet" |
@@ -68,6 +72,10 @@ protocol appears in neither table.
 | AUTH-9 | `workers/api/test/api/owner-answers.test.ts` › "releases a dormant assignment and keeps blocked and deferred work as it was" |
 | AUTH-10 | `workers/api/test/api/write-tools.test.ts` › "refuses a project the sender may only read, and one it cannot reach as if it did not exist" |
 | AUTH-10 | `workers/api/test/api/http-writes.test.ts` › "refuses fields that break their rules, a project it cannot reach and one it may only read" |
+| AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
+| AUTH-11 | `workers/api/test/api/owner-answers.test.ts` › "closes the task as done, accepted by the owner and relayed by the agent, each criterion met or waived" |
+| AUTH-11 | `workers/api/test/api/owner-answers.test.ts` › "opens the task again on the owner’s dispute, tells the waiting task, and refuses the disputed source" |
+| AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "needs an approval or an acceptance an agent recorded" |
 | INV-1 | `workers/api/test/api/write-tools.test.ts` › "lets exactly one of two agents claiming at once take the task (rule 1)" |
 | INV-1 | `workers/api/test/engine/writes.test.ts` › "lets exactly one of two agents that read the same version claim the task, and records nothing for the other" |
 | INV-3 | `workers/api/test/engine/writes.test.ts` › "answers a repeated write with the same result, without a second change" |
@@ -85,6 +93,7 @@ protocol appears in neither table.
 | INV-6 | `workers/api/test/schema.test.ts` › "keeps a task in its project" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "shows proof none on a task done with no commit, pull request or link, and warns its closer" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics" |
+| INV-7 | `workers/api/test/api/http-decisions.test.ts` › "closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason" |
 | INV-8 | `workers/api/test/engine/ready.test.ts` › "holds a task until every task blocking it is closed" |
 | INV-9 | `workers/api/test/engine/writes.test.ts` › "reopens a closed task with no close left on it, and keeps the earlier close in history (rule 6)" |
 | INV-10 | `workers/api/test/api/read-tools.test.ts` › "list each task the sender holds, most recently active first, with its helper, branch and next step, before the rules" |
