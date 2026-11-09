@@ -168,6 +168,16 @@ describe('a seed', () => {
     ]);
   });
 
+  it('is refused when a time is in the right form but names no real instant', () => {
+    for (const createdAt of ['2026-02-30T10:00:00.000Z', '2026-13-01T00:00:00.000Z', '2026-09-02T25:61:61.000Z']) {
+      const impossible = seed();
+      (impossible.tasks as Record<string, unknown>[])[3]!.createdAt = createdAt;
+      expect(planSeed(impossible).refusals).toEqual([
+        { subject: 'rcp-g5h6', reason: 'createdAt is a UTC time with milliseconds' },
+      ]);
+    }
+  });
+
   it('is refused when its tasks wait on each other in a loop', () => {
     const looped = seed();
     const tasks = looped.tasks as Record<string, unknown>[];

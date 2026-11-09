@@ -37,6 +37,17 @@ export const SEED_FORMAT = 'ntasks-seed-v1';
 
 /** Times are UTC ISO 8601 with milliseconds, as the store keeps them. */
 const TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+
+/** Whether the value is a time in that form that names a real instant: one
+ * that reads back as itself, so no 30 February or 25 o'clock. */
+function isTime(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    TIME.test(value) &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value
+  );
+}
 const PREFIX = /^[a-z0-9]{1,32}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 /** The longest name the schema stores, such as an actor, a label or a model. */
@@ -126,8 +137,7 @@ export function planSeed(value: unknown): { readonly plan: ImportPlan | null; re
       refuse(subject, 'name is 1 to 128 characters');
     if (typeof prefix !== 'string' || !PREFIX.test(prefix))
       refuse(subject, 'prefix is 1 to 32 lowercase letters and digits');
-    if (typeof createdAt !== 'string' || !TIME.test(createdAt))
-      refuse(subject, 'createdAt is a UTC time with milliseconds');
+    if (!isTime(createdAt)) refuse(subject, 'createdAt is a UTC time with milliseconds');
     if (deploys !== undefined && typeof deploys !== 'boolean') refuse(subject, 'deploys is true or false');
     for (const [field, held] of [
       ['id', id],
@@ -326,9 +336,9 @@ function readTask(
   const choices = entry.choices ?? null;
   if (choices !== null && !isJsonObject(choices)) fail('choices is an object');
   const dueAt = entry.dueAt ?? null;
-  if (dueAt !== null && (typeof dueAt !== 'string' || !TIME.test(dueAt))) fail('dueAt is a UTC time with milliseconds');
+  if (dueAt !== null && !isTime(dueAt)) fail('dueAt is a UTC time with milliseconds');
   const createdAt = entry.createdAt;
-  if (typeof createdAt !== 'string' || !TIME.test(createdAt)) fail('createdAt is a UTC time with milliseconds');
+  if (!isTime(createdAt)) fail('createdAt is a UTC time with milliseconds');
   const createdBy = nameOf(entry.createdBy);
   if (createdBy === undefined) fail(`createdBy is 1 to ${NAME_LIMIT} characters`);
   const createdModel = entry.createdModel === undefined ? null : (nameOf(entry.createdModel) ?? null);
@@ -390,8 +400,7 @@ function readTask(
       const text = textUpTo(comment.text, 4096);
       if (author === undefined) fail(`${which}: author is 1 to ${NAME_LIMIT} characters`);
       if (text === undefined || text.trim() === '') fail(`${which}: text is 1 to 4096 characters`);
-      if (typeof comment.at !== 'string' || !TIME.test(comment.at))
-        fail(`${which}: at is a UTC time with milliseconds`);
+      if (!isTime(comment.at)) fail(`${which}: at is a UTC time with milliseconds`);
       else if (comment.at < (createdAt as string)) fail(`${which}: at is before the task was created`);
       else if (author !== undefined && text !== undefined)
         comments.push({
@@ -439,7 +448,7 @@ function applyChange(previous: Version, change: unknown, fail: (reason: string) 
   for (const key of Object.keys(change)) if (!CHANGE_FIELDS.has(key)) refuse(`${key} is not a field of a change`);
   const { at, by } = change;
   const actor = nameOf(by);
-  if (typeof at !== 'string' || !TIME.test(at)) refuse('at is a UTC time with milliseconds');
+  if (!isTime(at)) refuse('at is a UTC time with milliseconds');
   else if (at < previous.at) refuse(`at is before the change before it, ${previous.at}`);
   if (actor === undefined) refuse(`by is 1 to ${NAME_LIMIT} characters`);
   const model = change.model === undefined ? null : (nameOf(change.model) ?? null);
@@ -465,7 +474,7 @@ function applyChange(previous: Version, change: unknown, fail: (reason: string) 
     else state.priority = priority;
   }
   if (change.deferUntil !== undefined) {
-    if (change.deferUntil !== null && (typeof change.deferUntil !== 'string' || !TIME.test(change.deferUntil)))
+    if (change.deferUntil !== null && !isTime(change.deferUntil))
       refuse('deferUntil is a UTC time with milliseconds, or null');
     else state.deferUntil = change.deferUntil;
   }

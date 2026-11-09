@@ -4,8 +4,8 @@
 // stored for them. The Worker itself signs those tokens in, in
 // workers/api/test/node/provision.ts.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { readFileSync, statSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -146,15 +146,20 @@ describe('the provision command', () => {
     return { io: value, out, err };
   }
 
-  it('writes the file once, readable only by its owner', async () => {
+  it('writes the file once, readable only by its owner, and never over it', async () => {
     const folder = await mkdtemp(path.join(tmpdir(), 'ntasks-provision-test-'));
-    const from = path.join(folder, 'request.json');
-    await writeFile(from, JSON.stringify(request()));
-    const out = path.join(folder, 'provision.json');
-    expect(await main(['provision', '--from', from, '--out', out], io().io)).toBe(0);
-    expect(JSON.parse(readFileSync(out, 'utf8'))).toMatchObject({ workspaceId: WORKSPACE });
-    const again = io();
-    expect(await main(['provision', '--from', from, '--out', out], again.io)).toBe(1);
-    expect(existsSync(out)).toBe(true);
+    try {
+      const from = path.join(folder, 'request.json');
+      await writeFile(from, JSON.stringify(request()));
+      const out = path.join(folder, 'provision.json');
+      expect(await main(['provision', '--from', from, '--out', out], io().io)).toBe(0);
+      expect(statSync(out).mode & 0o777).toBe(0o600);
+      const written = readFileSync(out, 'utf8');
+      expect(JSON.parse(written)).toMatchObject({ workspaceId: WORKSPACE });
+      expect(await main(['provision', '--from', from, '--out', out], io().io)).toBe(1);
+      expect(readFileSync(out, 'utf8')).toBe(written);
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
   });
 });
