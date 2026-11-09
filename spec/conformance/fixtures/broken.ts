@@ -128,7 +128,9 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
   ): Promise<{ status: number; type: string; text: string }> => {
     const route = path.slice(httpPath.length).split('?')[0] ?? '';
     const json = body === undefined || body === '' ? null : (JSON.parse(body) as Json);
-    const decision = /^\/(?:tasks\/[^/]+\/(?:choose|respond|dismiss|dispute)|gates\/[^/]+\/resolve)$/u.test(route);
+    const decision = /^\/(?:tasks\/[^/]+\/(?:choose|respond|dismiss|dispute)|gates\/[^/]+\/(?:resolve|steps))$/u.test(
+      route,
+    );
     if (defect === 'disputes-refused' && /\/dispute$/u.test(route))
       return {
         status: 409,

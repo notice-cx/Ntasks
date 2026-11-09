@@ -68,6 +68,7 @@ a task again therefore claims it twice.
 |---|---|---|
 | Ask a person to choose | `create_task`, `update_task` with `choices` and the `human` label | Exactly one option `recommended` |
 | Ask for an approval | `request_human_approval`, or `create_task` with `approval` | `title` and `description`, or `reason` alone, whose first line becomes the title. Answers the approval and `created`; the same request again returns the open one ([STATE-10](protocol.md#state-10)) |
+| Ask a person to do steps | `request_human_action` | `title`, `context`, and 1 to 20 `steps`, each with `text` and optionally `command`. Answers the request and `created`; the same title and steps again return the open one ([STATE-14](protocol.md#state-14)) |
 | Record a relayed answer | `reconcile_task`, action `answer`, `declined` or `owner_performed` | `proposal_version`, `quote`, `source`, and `option` on a task with choices ([AUTH-3](protocol.md#auth-3)) |
 | Retire a request with evidence | `reconcile_task`, action `completed`, `obsolete`, `superseded` or `duplicate` | `explanation` and `evidence`, and `duplicate_of` for a duplicate ([AUTH-7](protocol.md#auth-7)) |
 | Take the `human` label off routine work | `reconcile_task`, action `routine` | `explanation` and `evidence` ([AUTH-8](protocol.md#auth-8)) |

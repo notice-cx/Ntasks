@@ -229,6 +229,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
       }),
     link: () => notOffered('link two tasks'),
     requestApproval: () => notOffered('ask for an approval'),
+    requestSteps: () => notOffered('ask a person to do steps'),
     relay: () => notOffered('record a relayed answer'),
     decide: (task, decision, options = {}) => {
       const project = projectId(task);
@@ -245,7 +246,12 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
               ? [`/tasks/${id}/dismiss`, { reason: decision.reason, resolution: decision.resolution }]
               : decision.kind === 'approve'
                 ? [`/gates/${id}/resolve`, { reason: decision.reason, proposalVersion: decision.proposalVersion }]
-                : [`/tasks/${id}/dispute`, {}];
+                : decision.kind === 'step'
+                  ? [
+                      `/gates/${id}/steps`,
+                      { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
+                    ]
+                  : [`/tasks/${id}/dispute`, {}];
       return map(send('POST', path, { body: { projectId: project, ...body }, ...options }), (value) =>
         taskOf(value.task as Record<string, unknown>),
       );

@@ -9,25 +9,25 @@
  * check and exits 1 when a check of a claimed level fails.
  */
 import { writeFileSync } from 'node:fs';
-import { parseArgs } from 'node:util';
 import { sectionOf } from './src/check.ts';
 import { checks } from './src/checks/index.ts';
+import { optionsOf } from './src/cli.ts';
 import { formatReport, resultLine } from './src/report.ts';
 import { runSuite } from './src/suite.ts';
 import { BINDINGS, readTarget, type BindingName, type Target } from './src/target.ts';
 
-// pnpm passes the `--` before a script's own options through.
-const args = process.argv.slice(2).filter((arg) => arg !== '--');
-const { values } = parseArgs({
-  args,
-  options: {
+const USAGE =
+  'Usage: node conformance/run.ts --target target.json [--only ids] [--binding mcp|http] [--json file], or --list';
+const values = optionsOf(
+  {
     target: { type: 'string' },
     only: { type: 'string' },
     binding: { type: 'string' },
     json: { type: 'string' },
     list: { type: 'boolean' },
   },
-});
+  USAGE,
+);
 if (values.list === true) {
   for (const check of checks)
     console.log(
@@ -36,7 +36,7 @@ if (values.list === true) {
   process.exit(0);
 }
 if (values.target === undefined) {
-  console.error('Usage: node conformance/run.ts --target target.json [--only ids] [--binding mcp|http] [--json file]');
+  console.error(USAGE);
   process.exit(2);
 }
 const binding = values.binding as BindingName | undefined;

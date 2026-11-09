@@ -169,6 +169,19 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
           created: value.created,
         }),
       ),
+    requestSteps: (task, request) =>
+      map(
+        call('request_human_action', {
+          task,
+          title: request.title,
+          context: request.context,
+          steps: request.steps,
+        }),
+        (value: { request: { id: string }; created: boolean }) => ({
+          request: value.request.id,
+          created: value.created,
+        }),
+      ),
     relay: (task, relay, options) =>
       map(
         call('reconcile_task', {

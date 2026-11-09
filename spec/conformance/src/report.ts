@@ -34,14 +34,23 @@ export function formatReport(report: Report): string {
   }
   lines.push('');
   for (const level of report.levels) lines.push(`${level.level.padEnd(9)} ${level.status}`);
-  const incomplete = report.levels.some((level) => level.status === 'incomplete');
-  lines.push(
-    '',
-    !report.passed
-      ? 'Some checks failed.'
-      : incomplete
-        ? 'No check failed, but a claimed level is incomplete: some of its checks did not run.'
-        : 'No check of the claimed levels failed.',
-  );
+  lines.push('', verdict(report));
   return lines.join('\n');
+}
+
+/** The run's result in one sentence, naming what a passing run still leaves out. */
+function verdict(report: Report): string {
+  if (!report.passed) return 'Some checks failed.';
+  const count = (status: CheckResult['status']) => report.results.filter((result) => result.status === status).length;
+  const caveats = [
+    [count('known-gap'), 'known gap failed as listed', 'known gaps failed as listed'],
+    [count('warned'), 'check of a SHOULD rule failed', 'checks of SHOULD rules failed'],
+    [
+      count('not-run'),
+      'check did not run, so its level is incomplete',
+      'checks did not run, so their levels are incomplete',
+    ],
+  ] as const;
+  const named = caveats.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  return named.length === 0 ? 'Every check of the claimed levels passed.' : `The run passed, but ${named.join('; ')}.`;
 }

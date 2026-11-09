@@ -139,6 +139,7 @@ within a test run:
 | [INV-6](../protocol.md#inv-6) | Deleting a task, an event or a comment: no binding offers a deletion to try. The check reads earlier history and comments again and compares them |
 | [AUTH-10](../protocol.md#auth-10) | That a link to a task the sender cannot reach is left out of answers |
 | [STATE-9](../protocol.md#state-9) | The SHOULD that a server lists the epics that can close |
+| [STATE-14](../protocol.md#state-14) | A refused change to a step's text or command: no binding offers such a change to try |
 | [EXT-1](../protocol.md#ext-1) | Metadata a server does not take: a server MAY limit the keys a write takes, so a refused key passes |
 | [EXT-2](../protocol.md#ext-2) | Custom fields, which no level requires |
 | [VER-1](../protocol.md#ver-1) to [VER-3](../protocol.md#ver-3) | Rules of the document and its schemas; [`../test/schemas.test.ts`](../test/schemas.test.ts) checks the schemas' `$id`s |

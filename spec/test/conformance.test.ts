@@ -32,7 +32,7 @@ const FAILS: Readonly<Record<Defect, readonly string[]>> = {
   'stale-answers-accepted': ['auth-3-stale-proposal-refused'],
   'agents-decide': ['auth-1-only-a-person-answers'],
   'relays-unmarked': ['auth-3-relayed-answer-recorded-as-relayed'],
-  'disputes-refused': ['auth-5-dispute-reopens-a-relayed-approval'],
+  'disputes-refused': ['auth-5-dispute-reopens-a-relayed-approval', 'state-14-relayed-report-can-be-disputed'],
   'proof-dropped': [
     'inv-7-done-carries-proof',
     'inv-9-reopen-keeps-earlier-close',

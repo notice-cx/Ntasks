@@ -7,15 +7,16 @@
  * the local database, runs every check of the four levels Ntasks claims, and
  * stops the Worker. Nothing reaches Cloudflare or a deployed Ntasks.
  */
-import { parseArgs } from 'node:util';
 import { checks } from '../src/checks/index.ts';
+import { optionsOf } from '../src/cli.ts';
 import { formatReport, resultLine } from '../src/report.ts';
 import { runSuite } from '../src/suite.ts';
 import { startLocalNtasks } from './local.ts';
 
-// pnpm passes the `--` before a script's own options through.
-const args = process.argv.slice(2).filter((arg) => arg !== '--');
-const { values } = parseArgs({ args, options: { only: { type: 'string' } } });
+const values = optionsOf(
+  { only: { type: 'string' } },
+  'Usage: pnpm --filter @ntasks/spec run conformance:ntasks [-- --only ids]',
+);
 const only = values.only?.split(',');
 const unknown = only?.filter((name) => !checks.some((check) => check.id === name || check.rule === name)) ?? [];
 if (unknown.length > 0) {

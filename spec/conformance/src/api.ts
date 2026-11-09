@@ -76,7 +76,23 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly metadata?: Readonly<Record<string, unknown>> | null;
   readonly createdAt?: string;
   readonly duplicateOf?: string | null;
+  readonly steps?: readonly Step[] | null;
 };
+
+/** One step of a request to do steps, with the person's marks on it. */
+export interface Step {
+  readonly text: string;
+  readonly command: string | null;
+  readonly done: { readonly by: string; readonly at: string } | null;
+  readonly note: { readonly text: string; readonly by: string } | null;
+  readonly stuck: { readonly reason: string; readonly by: string } | null;
+}
+
+export interface StepsRequest {
+  readonly title: string;
+  readonly context: string;
+  readonly steps: readonly { readonly text: string; readonly command?: string }[];
+}
 
 export interface Delivery {
   readonly stage: 'built' | 'merged' | 'live';
@@ -218,7 +234,15 @@ export type Decision =
   | { readonly kind: 'respond'; readonly response: string; readonly proposalVersion?: string }
   | { readonly kind: 'dismiss'; readonly reason?: string; readonly resolution?: string }
   | { readonly kind: 'approve'; readonly reason?: string; readonly proposalVersion?: string }
-  | { readonly kind: 'dispute' };
+  | { readonly kind: 'dispute' }
+  | {
+      readonly kind: 'step';
+      /** The step's place, from 1. */
+      readonly step: number;
+      readonly done?: boolean;
+      readonly note?: string | null;
+      readonly stuck?: string | null;
+    };
 
 export interface Signal {
   readonly repository: string;
@@ -256,6 +280,11 @@ export interface Api {
     task: string,
     request: string,
   ): Promise<Outcome<{ readonly approval: string; readonly created: boolean }>>;
+  /** Asks a person to do steps; the task waits on the request. */
+  requestSteps(
+    task: string,
+    request: StepsRequest,
+  ): Promise<Outcome<{ readonly request: string; readonly created: boolean }>>;
   relay(task: string, relay: Relay, options?: WriteOptions): Promise<Outcome<Written>>;
   decide(task: string, decision: Decision, options?: WriteOptions): Promise<Outcome<Task>>;
   signal(

@@ -67,9 +67,31 @@ function asPerson(context: Context) {
   return context.api('person');
 }
 
+const STEPS = [
+  { text: 'On the staging host, update to the merged commit.', command: './update.sh --commit a1b2c3d' },
+  { text: 'Open the staging site and sign in.' },
+  { text: 'Check that the new page shows.' },
+] as const;
+
+/** A task labelled human and the request to do steps it waits on, asked through the setup binding. */
+async function withSteps(context: Context): Promise<{ task: string; request: string }> {
+  const task = await file(context, { labels: ['human'] });
+  const asked = answered(
+    await context.setup().requestSteps(task, {
+      title: 'Update the staging site',
+      context: 'Staging runs the old release. The agent confirms by reading the new page.',
+      steps: STEPS,
+    }),
+    `asking for ${task}'s steps`,
+  );
+  return { task, request: asked.request };
+}
+
 async function decision(context: Context, labels: readonly string[] = ['human']): Promise<string> {
   return file(context, { type: 'decision', labels, choices: CHOICES });
 }
+
+const stepsOf = async (context: Context, request: string) => (await taskOf(context.api(), request)).steps ?? [];
 
 export const human: readonly Check[] = [
   {
@@ -252,16 +274,181 @@ export const human: readonly Check[] = [
     },
   },
   {
+    id: 'state-14-steps-asked-once',
+    rule: 'STATE-14',
+    level: 'human',
+    title:
+      'Asking again for the same steps while the request is open returns it, and the request keeps each step as filed',
+    async run(context) {
+      const task = await file(context);
+      const request = { title: 'Update the staging site', context: 'Staging runs the old release.', steps: STEPS };
+      const first = answered(await context.api().requestSteps(task, request), 'asking for steps');
+      same(first.created, true, 'the first request opened one');
+      const again = answered(await context.api().requestSteps(task, request), 'asking again');
+      same([again.created, again.request], [false, first.request], 'the request the same steps asked again answer');
+      same((await taskOf(context.api(), task)).ready, false, `${task}'s readiness while it waits on the steps`);
+      same(
+        (await stepsOf(context, first.request)).map((step) => [step.text, step.command ?? null]),
+        STEPS.map((step) => [step.text, 'command' in step ? step.command : null]),
+        `${first.request}'s steps and commands`,
+      );
+    },
+  },
+  {
+    id: 'state-14-ticks-in-any-order-close-on-the-last',
+    rule: 'STATE-14',
+    level: 'human',
+    title:
+      "A person's ticks, in any order and undone while open, each name the person and close the request on the last",
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const { task, request } = await withSteps(context);
+      for (const [step, done] of [
+        [3, true],
+        [1, true],
+        [1, false],
+        [1, true],
+      ] as const) {
+        answered(await person.decide(request, { kind: 'step', step, done }), `marking step ${step} ${done}`);
+        same((await taskOf(context.api(), request)).status, 'open', `${request}'s status before its last tick`);
+      }
+      const marked = await stepsOf(context, request);
+      expect(
+        typeof marked[0]?.done?.by === 'string' && !Number.isNaN(Date.parse(marked[0].done.at)),
+        'a tick does not record the person and the time',
+      );
+      same(marked[1]?.done ?? null, null, 'the step not yet ticked');
+      answered(await person.decide(request, { kind: 'step', step: 2, done: true }), 'ticking the last step');
+      const closed = await taskOf(context.api(), request);
+      same([closed.status, closed.resolution], ['closed', 'done'], `${request}'s status and resolution`);
+      const waiting = await taskOf(context.api(), task);
+      same(waiting.status, 'open', `${task}'s status once the steps are done`);
+      same(waiting.assignee ?? null, null, `${task}'s holder once the steps are done`);
+      expect(!(waiting.labels ?? []).includes('human'), `${task} still carries the human label`);
+    },
+  },
+  {
+    id: 'state-14-stuck-mark-tells-the-waiting-task',
+    rule: 'STATE-14',
+    level: 'human',
+    title: "A stuck mark clears the step's tick and tells the waiting task why, and a tick clears the mark",
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const { task, request } = await withSteps(context);
+      const comments = answered(await context.api().read(task), 'reading').comments.length;
+      answered(await person.decide(request, { kind: 'step', step: 1, done: true }), 'ticking step 1');
+      const reason = 'The host asks for a password.';
+      answered(await person.decide(request, { kind: 'step', step: 1, stuck: reason }), 'marking step 1 stuck');
+      const stuck = (await stepsOf(context, request))[0];
+      same([stuck?.done ?? null, stuck?.stuck?.reason], [null, reason], "step 1's tick and stuck mark");
+      const told = answered(await context.api().read(task), 'reading');
+      expect(
+        told.comments.length > comments && told.comments.some((comment) => comment.text.includes(reason)),
+        `${task} was not told which step stopped the person and why`,
+      );
+      answered(await person.decide(request, { kind: 'step', step: 1, done: true }), 'ticking step 1 again');
+      same((await stepsOf(context, request))[0]?.stuck ?? null, null, "step 1's stuck mark after the tick");
+    },
+  },
+  {
+    id: 'state-14-takes-no-approval-or-option',
+    rule: 'STATE-14',
+    level: 'human',
+    title: 'A request to do steps takes no approval and no option',
+    async run(context) {
+      const { request } = await withSteps(context);
+      const api = context.binding === 'http' ? asPerson(context) : context.api();
+      const before = await snapshot(context.api(), request);
+      if (context.binding === 'http') {
+        refused(await api.decide(request, { kind: 'approve' }), `approving the request to do steps ${request}`);
+      } else {
+        const proposalVersion = await proposalOf(context, request);
+        refused(
+          await api.relay(request, { action: 'answer', proposalVersion, quote: 'Yes.', source: source() }),
+          `relaying an approval of ${request}`,
+        );
+        refused(
+          await api.relay(request, { action: 'answer', option: 'a', proposalVersion, quote: 'A.', source: source() }),
+          `relaying an option on ${request}`,
+        );
+      }
+      await unchanged(context.api(), request, before, 'the refused answers');
+    },
+  },
+  {
+    id: 'state-14-relayed-report-and-refusal',
+    rule: 'STATE-14',
+    level: 'human',
+    title:
+      'A relayed report that the person did the steps closes the request as done, unticked; a relayed refusal as wont-do',
+    async run(context) {
+      const done = await withSteps(context);
+      answered(
+        await context.api().relay(done.request, {
+          action: 'owner_performed',
+          proposalVersion: await proposalOf(context, done.request),
+          quote: 'Ran it, all good.',
+          source: source(),
+        }),
+        'relaying the report that the person did the steps',
+      );
+      const reported = await taskOf(context.api(), done.request);
+      same([reported.status, reported.resolution], ['closed', 'done'], `${done.request}'s status and resolution`);
+      same(
+        (reported.steps ?? []).map((step) => step.done ?? null),
+        STEPS.map(() => null),
+        `${done.request}'s ticks after the relayed report`,
+      );
+      const declined = await withSteps(context);
+      answered(
+        await context.api().relay(declined.request, {
+          action: 'declined',
+          proposalVersion: await proposalOf(context, declined.request),
+          quote: 'Not this week.',
+          source: source(),
+        }),
+        'relaying the refusal',
+      );
+      const refusal = await taskOf(context.api(), declined.request);
+      same([refusal.status, refusal.resolution], ['closed', 'wont-do'], `${declined.request}'s status and resolution`);
+    },
+  },
+  {
+    id: 'state-14-relayed-report-can-be-disputed',
+    rule: 'STATE-14',
+    level: 'human',
+    title: 'Disputing a relayed report that the person did the steps opens the request again',
+    senders: ['person'],
+    async run(context) {
+      const { request } = await withSteps(context);
+      answered(
+        await context.setup().relay(request, {
+          action: 'owner_performed',
+          proposalVersion: await proposalOf(context, request),
+          quote: 'Done.',
+          source: source(),
+        }),
+        'relaying the report',
+      );
+      answered(await asPerson(context).decide(request, { kind: 'dispute' }), `disputing ${request}`);
+      same((await taskOf(context.api(), request)).status, 'open', `${request}'s status after the dispute`);
+    },
+  },
+  {
     id: 'auth-1-only-a-person-answers',
     rule: 'AUTH-1',
     level: 'human',
-    title: 'A direct answer, approval or dispute from an agent or a service is refused and changes nothing',
+    title:
+      'A direct answer, approval, dispute or mark on a step from an agent or a service is refused and changes nothing',
     senders: ['service'],
     async run(context) {
       const id = await decision(context);
       const { gate } = await withApproval(context);
       const relayed = await withApproval(context);
       await relayApproval(context, relayed.gate);
+      const steps = await withSteps(context);
       for (const role of ['agent', 'service'] as const) {
         const api = context.api(role);
         for (const [task, decide] of [
@@ -270,6 +457,7 @@ export const human: readonly Check[] = [
           [id, { kind: 'dismiss' }],
           [gate, { kind: 'approve' }],
           [relayed.gate, { kind: 'dispute' }],
+          [steps.request, { kind: 'step', step: 1, done: true }],
         ] as const) {
           const before = await snapshot(context.setup(), task);
           refused(await api.decide(task, decide), `the ${role} sending a person's ${decide.kind}`);

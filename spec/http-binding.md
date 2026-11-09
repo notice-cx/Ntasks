@@ -63,11 +63,13 @@ changed since, the answer is refused with `409`, `task_refused` and
 | Pick an option | `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), optionally `note` |
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
+| Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
 | Dispute a relayed approval | `POST /api/tasks/:id/dispute` | `projectId` |
 
-Each answers `{ task }`, the task as the decision left it, and records the
-person as the answer's `recordedBy`, with `relayed: false`
-([3.6](protocol.md#36-decisions)).
+Each answers `{ task }`, the task as the decision left it. An answer, a
+pick, a dismissal and an approval record the person as the answer's
+`recordedBy`, with `relayed: false` ([3.6](protocol.md#36-decisions)); a
+mark on a step records the person and the time on the step.
 
 ### Delivery
 
