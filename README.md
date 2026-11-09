@@ -62,8 +62,9 @@ Ntasks runs on your own Cloudflare account, within
    The button asks for one secret, `AUTH_SECRET`. Make one with
    `openssl rand -base64 32` and keep a copy.
 
-2. **Set up sign-in.** Open `/sign-in` at your new address, enter the secret
-   and choose **Create the GitHub App**.
+2. **Set up sign-in.** Open `/sign-in` at the address people will use, such
+   as your custom domain, since sign-in is bound to it. Enter the secret and
+   choose **Create the GitHub App**.
 
 3. **Create a workspace and a project**, and invite people by GitHub
    username.
