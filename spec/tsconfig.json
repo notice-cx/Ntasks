@@ -1,11 +1,12 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    // The test reads the schemas and samples from disk.
+    // The tests read the schemas and samples from disk, and the conformance
+    // suite runs in Node as it is written.
     "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "erasableSyntaxOnly": true
   },
-  "include": ["test"]
+  "include": ["test", "conformance"]
 }

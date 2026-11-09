@@ -43,6 +43,10 @@ jobs:
       - run: shellcheck install.sh
       - run: pnpm typecheck
       - run: pnpm test
+      # The Shared Work Protocol's conformance suite against this
+      # repository's Worker, which wrangler's test harness runs on the runner.
+      # It reaches no deployed Ntasks and no Cloudflare account.
+      - run: pnpm --filter @ntasks/spec run conformance:ntasks
       - run: pnpm build
       # The npm package @ntasks/ui, from the build above: its tarball installed,
       # from the file, into an empty Vite and React project that typechecks,
