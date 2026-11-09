@@ -28,7 +28,7 @@ pnpm --filter @ntasks/spec run conformance -- --target path/to/target.json
 |---|---|
 | `--target <file>` | The target file to check |
 | `--only <ids>` | Only these checks, by check id or rule id, separated by commas, such as `INV-1,inv-3-key-reuse-refused`. A level with checks left out reads `incomplete`, so such a run shows whether those checks pass, not which levels a server conforms to |
-| `--binding mcp` or `--binding http` | Only that binding, of those the target offers |
+| `--binding mcp` or `--binding http` | Only that binding, of those the target offers. As with `--only`, every claimed level then reads `incomplete` |
 | `--json <file>` | Also writes the whole report as JSON |
 | `--list` | Lists every check with its level, rule, section and what it checks, and runs none |
 
@@ -88,7 +88,7 @@ The last lines give each level's verdict:
 | `passed` | Every check of the level ran, and none of a MUST rule failed. A check of a SHOULD rule that failed reads `warn` in the list above |
 | `known-gaps` | Every check ran, and each one that failed is a listed gap |
 | `failed` | A check failed, or a listed gap passed |
-| `incomplete` | Some of its checks did not run, or `--only` left them out |
+| `incomplete` | Some of its checks did not run, or `--only` or `--binding` left checks or a binding out |
 | `not-claimed` | The target does not claim the level |
 
 ### Known gaps

@@ -56,7 +56,9 @@ function verdict(report: Report): string {
   ] as const;
   const named = [
     ...caveats.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`),
-    ...(report.filtered ? ["--only left the other checks out, so no level's verdict is a conformance result"] : []),
+    ...(report.filtered
+      ? ["--only or --binding left part of the run out, so no level's verdict is a conformance result"]
+      : []),
   ];
   return named.length === 0 ? 'Every check of the claimed levels passed.' : `The run passed, but ${named.join('; ')}.`;
 }

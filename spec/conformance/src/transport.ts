@@ -138,12 +138,17 @@ export class McpConnection {
       );
     const session = response.headers.get('mcp-session-id');
     if (session !== null) this.session = session;
-    const text = await response.text();
-    if (!('id' in message)) return null;
-    if (response.status === 401 || response.status === 403)
+    if (!('id' in message)) {
+      await response.body?.cancel();
+      return null;
+    }
+    if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel();
       throw new McpError(`${String(message.method)} was refused sign-in: ${response.status}`);
+    }
     const type = response.headers.get('content-type') ?? '';
-    if (type.includes('text/event-stream')) return lastEvent(text, message.id);
+    if (type.includes('text/event-stream')) return replyIn(response, message.id);
+    const text = await response.text();
     try {
       return JSON.parse(text) as unknown;
     } catch {
@@ -152,21 +157,44 @@ export class McpConnection {
   }
 }
 
-/** The JSON-RPC reply to `id` in an event stream. */
-function lastEvent(stream: string, id: unknown): unknown {
-  for (const event of stream.split(/\r?\n\r?\n/u)) {
-    const data = event
-      .split(/\r?\n/u)
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trimStart())
-      .join('\n');
-    if (data === '') continue;
-    try {
-      const message = JSON.parse(data) as { id?: unknown };
-      if (message.id === id) return message;
-    } catch {
-      continue;
+/**
+ * The JSON-RPC reply to `id` in an event stream, read event by event: a
+ * server may keep the stream open after it, so the read stops at the reply.
+ */
+async function replyIn(response: Response, id: unknown): Promise<unknown> {
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const events = buffer.split(/\r?\n\r?\n/u);
+      buffer = done ? '' : (events.pop() ?? '');
+      for (const event of events) {
+        const reply = replyOf(event, id);
+        if (reply !== null) return reply;
+      }
+      if (done) return null;
     }
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
-  return null;
+}
+
+/** The message one event carries, when it is the reply to `id`. */
+function replyOf(event: string, id: unknown): unknown {
+  const data = event
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+  if (data === '') return null;
+  try {
+    const message = JSON.parse(data) as { id?: unknown };
+    return message.id === id ? message : null;
+  } catch {
+    return null;
+  }
 }

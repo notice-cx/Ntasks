@@ -8,7 +8,7 @@
  * deployed one.
  */
 import { readFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,6 +157,43 @@ describe('the conformance checks', () => {
     }
   });
 
+  it('read an MCP reply from an event stream the server keeps open after it', async () => {
+    const open: ServerResponse[] = [];
+    const streaming = createServer((request, response) => {
+      let body = '';
+      request.on('data', (chunk: Buffer) => (body += chunk.toString('utf8')));
+      request.on('end', () => {
+        const message = JSON.parse(body) as { id?: number; method: string };
+        if (message.id === undefined) {
+          response.writeHead(202);
+          response.end();
+          return;
+        }
+        const result =
+          message.method === 'initialize'
+            ? { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'streaming', version: '0' } }
+            : { content: [{ type: 'text', text: '{"projects":[]}' }], structuredContent: { projects: [] } };
+        response.writeHead(200, { 'content-type': 'text/event-stream' });
+        response.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: message.id, result })}\n\n`);
+        open.push(response);
+      });
+    });
+    await new Promise<void>((resolve) => streaming.listen(0, '127.0.0.1', resolve));
+    try {
+      const example = JSON.parse(read('conformance/target.example.json')) as Record<string, unknown>;
+      const target = checkTarget({
+        ...example,
+        url: `http://127.0.0.1:${(streaming.address() as AddressInfo).port}`,
+      });
+      const listed = await mcpApi(target, 'agent').projects();
+      expect(listed).toEqual({ ok: true, value: [] });
+    } finally {
+      for (const response of open) response.end();
+      streaming.closeAllConnections();
+      await new Promise((resolve) => streaming.close(resolve));
+    }
+  }, 10_000);
+
   it("list as Ntasks's known gaps only checks that exist", () => {
     const ids = new Set(checks.map((check) => check.id));
     expect(Object.keys(KNOWN_GAPS).filter((key) => !ids.has(key.split('@')[0]!))).toEqual([]);
@@ -201,6 +238,12 @@ describe("the suite's verdicts", () => {
         { core: 'known-gaps', human: 'incomplete' },
         true,
         false,
+      ]);
+      expect(verdicts(await runSuite(target, { checks: stand, knownGaps, bindings: ['mcp'] }))).toEqual([
+        { 'state-1-listed': 'known-gap', 'state-10-needs-a-person': 'passed' },
+        { core: 'incomplete', human: 'incomplete' },
+        true,
+        true,
       ]);
       expect(verdicts(await runSuite(target, { checks: stand, knownGaps, only: ['STATE-1'] }))).toEqual([
         { 'state-1-listed': 'known-gap' },

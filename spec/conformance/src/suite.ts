@@ -54,13 +54,13 @@ export interface Report {
     readonly level: Level;
     readonly claimed: boolean;
     /**
-     * `incomplete`: some of its checks did not run, or `--only` left them out.
+     * `incomplete`: some of its checks did not run, or `only` or `bindings` left checks or a binding out.
      * `known-gaps`: every check that ran passed, apart from listed gaps.
      */
     readonly status: 'passed' | 'known-gaps' | 'failed' | 'incomplete' | 'not-claimed';
   }[];
   readonly results: readonly CheckResult[];
-  /** Whether `only` left some checks of the claimed levels out, so no level's verdict is complete. */
+  /** Whether `only` or `bindings` left some checks or a binding out, so no level's verdict is complete. */
   readonly filtered: boolean;
   /** Whether every check of every claimed level passed or is a listed gap. */
   readonly passed: boolean;
@@ -157,10 +157,11 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
     options.onResult?.(result);
   }
   const every = options.checks ?? allChecks;
+  const bindingsLeft = BINDINGS.some((binding) => target.bindings[binding] !== undefined && !offered.includes(binding));
   const levels = LEVELS.map((level) => {
     const claimed = target.levels.includes(level);
     const own = results.filter((result) => result.level === level);
-    const left = own.length < every.filter((check) => check.level === level).length;
+    const left = bindingsLeft || own.length < every.filter((check) => check.level === level).length;
     const status = !claimed
       ? ('not-claimed' as const)
       : own.some((result) => result.status === 'failed' || result.status === 'gap-closed')
@@ -176,7 +177,7 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
     target: target.url,
     levels,
     results,
-    filtered: selected.length < every.filter((check) => target.levels.includes(check.level)).length,
+    filtered: bindingsLeft || selected.length < every.filter((check) => target.levels.includes(check.level)).length,
     passed: results.every((result) => !['failed', 'gap-closed'].includes(result.status)),
   };
 }

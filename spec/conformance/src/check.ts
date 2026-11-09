@@ -93,13 +93,13 @@ export async function snapshot(api: Api, task: string): Promise<Snapshot> {
   };
 }
 
-/** Fails the check when `task` changed since `before`: a field, a comment or a history event. */
+/** Fails the check when `task` changed since `before`: a field, a comment or a history event, added or edited. */
 export async function unchanged(api: Api, task: string, before: Snapshot, what: string): Promise<void> {
   const after = await snapshot(api, task);
   const strip = (read: TaskRead) => {
     const { readAt: _readAt, ...task } = read.task as Record<string, unknown>;
-    return { task, comments: read.comments.length };
+    return { task, comments: read.comments };
   };
-  same(strip(after.read), strip(before.read), `${what} left ${task} as it was`);
-  same(after.history.length, before.history.length, `${what} left no history event on ${task}`);
+  same(strip(after.read), strip(before.read), `${what} left ${task} and its comments as they were`);
+  same(after.history, before.history, `${what} left ${task}'s history as it was`);
 }
