@@ -1,5 +1,7 @@
 export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
+export { markedStep } from './steps.ts';
+export type { StepMarking } from './steps.ts';
 export {
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
