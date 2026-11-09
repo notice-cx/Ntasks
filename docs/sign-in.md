@@ -180,7 +180,12 @@ The stored app is bound to the origin the setup ran at. To serve sign-in at
 another address, such as a custom domain, delete the stored app with
 `pnpm --filter @ntasks/api exec wrangler d1 execute DB --remote --command "DELETE FROM access_github_app"`,
 then run the setup page at the new address; deleting the app also deletes
-the admin it recorded, and the new app's owner becomes the admin.
+the admin it recorded, and the new app's owner becomes the admin. On a
+deployment made with `npx ntasks deploy`, which has no checkout, name the D1
+database the Worker is bound to, which `npx ntasks deploy --dry-run` shows:
+`npx wrangler d1 execute <database> --remote --command "DELETE FROM access_github_app"`,
+with `CLOUDFLARE_ACCOUNT_ID` set to the account's id when your login reaches
+several.
 Alternatively, set the three GitHub secrets for the new address.
 
 Agents stop working at the move, and each connects again at the new

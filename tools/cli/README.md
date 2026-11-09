@@ -18,8 +18,11 @@ The first run:
 
 1. Opens Cloudflare's login in your browser (`wrangler login`). It skips this
    when wrangler is logged in already or `CLOUDFLARE_API_TOKEN` is set.
-2. Creates a D1 database named `ntasks`.
-3. Applies the D1 migrations to it.
+2. Creates a D1 database named `ntasks`, or uses the one of that name the
+   account already has, as after a first run that stopped. `--dry-run`
+   names the database first; when it is not Ntasks's, choose another name
+   with `--name`.
+3. Applies the D1 migrations the database lacks.
 4. Makes an `AUTH_SECRET` and deploys a Worker named `ntasks` with it.
 5. Prints the Worker's address and the setup steps: open `/sign-in`, enter
    the `AUTH_SECRET` it printed and choose **Create the GitHub App**. Keep a

@@ -17,7 +17,10 @@ app and the D1 migrations, and deploys them with wrangler. The first run:
 
 1. Opens Cloudflare's login in your browser (`wrangler login`), unless
    wrangler is logged in already or `CLOUDFLARE_API_TOKEN` is set.
-2. Creates a D1 database named `ntasks` and applies the D1 migrations to it.
+2. Creates a D1 database named `ntasks`, or uses the one of that name the
+   account already has, as after a first run that stopped, and applies the
+   D1 migrations it lacks. `--dry-run` names the database first; when it is
+   not Ntasks's, choose another name with `--name`.
 3. Makes an `AUTH_SECRET` and deploys a Worker named `ntasks` with it.
 4. Prints the Worker's address and the `AUTH_SECRET`. Keep a copy: the
    [setup page](#set-up-sign-in) asks for it, and the command shows it only
