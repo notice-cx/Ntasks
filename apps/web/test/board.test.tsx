@@ -34,7 +34,7 @@ describe('the board', () => {
     expect(rowIds(open)[0]).toBe('web-b2r6');
     expect(rowIds(open)).toContain('web-k3m9');
     expect(within(open).getByRole('img', { name: '1 of 4 done' })).toBeTruthy();
-    expect(rowIds(await group('In progress')).sort()).toEqual(['docs-n6j1', 'web-k3m9.2']);
+    expect(rowIds(await group('In progress')).sort()).toEqual(['docs-n6j1', 'web-k3m9.2', 'web-w6n2']);
     // Blocked by status, and open but waiting on a task that is not closed.
     expect(rowIds(await group('Blocked')).sort()).toEqual(['docs-k8f2', 'docs-w8e3', 'web-k3m9.3', 'web-k3m9.4']);
     const all = [...document.querySelectorAll('[data-group]:not([data-group="waiting"]) [data-task-row]')].map((row) =>
@@ -130,7 +130,7 @@ describe('the board', () => {
     expect(screen.getByRole('button', { name: 'Filter, 2 set' })).toBeTruthy();
     // The menu's counts stay the whole project's, as for every other filter.
     const project = screen.getByRole('combobox', { name: 'Project' }) as HTMLSelectElement;
-    expect(project.selectedOptions[0]?.textContent).toBe('Example web app · 11');
+    expect(project.selectedOptions[0]?.textContent).toBe('Example web app · 12');
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear Product area: Accessibility' }));
     expect(rowIds(await group('Open'))).toContain('web-b2r6');

@@ -15,6 +15,7 @@ people use over a network. Keep that link in every version of the app.
 | `/tasks` | The board: what waits for you first, answered on its row, then every task grouped by status (In progress, Open, Blocked, Parked, Done). The view (`?view=active`, `done` or `waiting`), the search and the filters are part of the address. `?new=1` opens the composer. |
 | `/tasks/:id` | One task: its title, description, a decision's options, Done when, design, notes, links, epic tasks and activity, with a side panel of its facts. A fact this sign-in may change opens a menu of values; the others are plain words. |
 | `/tasks/focus` | Your decisions one at a time, each on a card: an option's letter selects it, Enter answers or approves, → skips. |
+| `/live` | Every task in progress, grouped by its holder's last activity: Active (changed or commented on within the hour), Quiet (until the Stalled after choice: 4 hours, 1 day, 3 days or 1 week, kept in this browser) and Stalled (after it, or with nothing recorded, the five most recent first and the rest under Show more). Each row shows the next step, the pull request or else the branch, the helper, the holder and how long since their last change. Stalled changes nothing on the task (`src/lib/live.ts`). |
 | `/projects` | The workspace's projects, each with its prefix and open tasks. An owner creates one with New project (`N`): Name and Prefix, both required. |
 | `/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else sees neither. |
 | `/settings` | The workspace's icon, name and ID, with Copy ID. An owner edits the name and saves it; anyone else reads it. |
@@ -31,14 +32,15 @@ draws the pages again.
 
 Every page sits in one frame (`src/App.tsx`): the sidebar
 (`src/components/AppSidebar.tsx`) with the workspace's icon and name, Waiting
-for you, Tasks, Focus, each project and each person or agent with open work,
-then Projects, Members (for an owner), Settings and the source-code link. With
+for you, Tasks, Live with its count of active tasks, Focus, each project and
+each person or agent with open work, those active within the hour first and
+marked with a dot, then Projects, Members (for an owner), Settings and the source-code link. With
 two or more workspaces, the name is a menu that switches between them and
 opens Settings. A rename shows in the sidebar and the menu at once. The frame
 reads every project's board once, for the sidebar's counts and the page alike,
 and runs the one change feed (`BoardsProvider` in `src/hooks/useBoard.tsx`).
-On any page, `C` opens the composer, `/` puts the cursor in the board's search
-and `F` opens Focus.
+On any page, `C` opens the composer, `/` puts the cursor in the board's search,
+`F` opens Focus and `L` opens Live.
 
 Every page draws with the design system's tokens and the components in
 `src/components/ui/`; [the design system](../../docs/design.md) gives the

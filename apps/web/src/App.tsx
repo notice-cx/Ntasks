@@ -20,6 +20,7 @@ import { COMPOSE_STATE, SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
 const TasksBoard = lazy(() => import('@/routes/TasksBoard'));
 const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
 const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
+const LiveRoute = lazy(() => import('@/routes/LiveRoute'));
 const ProjectsRoute = lazy(() => import('@/routes/ProjectsRoute'));
 const MembersRoute = lazy(() => import('@/routes/MembersRoute'));
 const SettingsRoute = lazy(() => import('@/routes/SettingsRoute'));
@@ -54,6 +55,7 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
                 <Route path="tasks" element={<TasksBoard />} />
                 <Route path="tasks/focus" element={<FocusRoute />} />
                 <Route path="tasks/:id" element={<TaskRoute />} />
+                <Route path="live" element={<LiveRoute />} />
                 <Route path="projects" element={<ProjectsRoute />} />
                 <Route path="members" element={<MembersRoute />} />
                 <Route path="settings" element={<SettingsRoute />} />
@@ -82,8 +84,8 @@ export function App({ api, queryClient }: { api: TasksApi; queryClient?: QueryCl
 
 /**
  * The frame every task page shares: the sidebar, the page, and the keys that
- * work on any of them: `C` for a new task, `/` to search the board and `F`
- * for Focus.
+ * work on any of them: `C` for a new task, `/` to search the board, `F` for
+ * Focus and `L` for Live.
  */
 function Shell() {
   const { pathname, search } = useLocation();
@@ -99,6 +101,7 @@ function Shell() {
     () => void navigate('/tasks/focus', { state: { returnTo: `${pathname}${search}` } }),
     pathname !== '/tasks/focus',
   );
+  useShortcut('l', () => void navigate('/live'), pathname !== '/live');
   return (
     <BoardsProvider>
       <AppShell sidebar={<AppSidebar />}>

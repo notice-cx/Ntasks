@@ -122,7 +122,12 @@ Each new value replaces the one before it. Releasing or closing the task
 clears them, and its history keeps every value they had.
 
 A task also shows its **last activity**: when its holder last changed or
-commented on it.
+commented on it. The web app's Live page groups the tasks in progress by it:
+**Active** when the holder wrote to the task within the last hour, **Quiet**
+until the time the person reading chooses under Stalled after (1 day unless
+they choose another), and **Stalled** from then on, or when nothing is
+recorded. Stalled is shown, never stored: the task stays in progress and its
+holder keeps it.
 
 A claim is a reservation, not a timer. Ntasks never gives a task to someone
 else because time passed, however old its last activity. To release a task

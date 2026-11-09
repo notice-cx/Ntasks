@@ -19,6 +19,7 @@ import {
   CornerDownLeft,
   Ellipsis,
   Folder,
+  GitBranch,
   GitPullRequest,
   Hand,
   Inbox,
@@ -78,8 +79,17 @@ import {
   TopBar,
   WorkspaceButton,
 } from '@/components/ui/shell';
-import { GitHubMark, NtasksLogo, PriorityMark, StatusMark, TypeMark, WorkspaceIcon } from '@/components/ui/symbols';
+import {
+  ActivityMark,
+  GitHubMark,
+  NtasksLogo,
+  PriorityMark,
+  StatusMark,
+  TypeMark,
+  WorkspaceIcon,
+} from '@/components/ui/symbols';
 import { COLOUR_TOKENS, IDENTITY_HUES, type ColourToken, type IdentityHue } from '@/lib/design-tokens';
+import { ACTIVITIES, ACTIVITY_LABELS } from '@/lib/live';
 import {
   PRIORITY_LABELS,
   STATUS_MARK_LABELS,
@@ -126,6 +136,7 @@ const ICONS: readonly [string, LucideIcon][] = [
   ['moon', Moon],
   ['link', LinkIcon],
   ['git-pull-request', GitPullRequest],
+  ['git-branch', GitBranch],
   ['message-square', MessageSquare],
   ['corner-down-left', CornerDownLeft],
   ['pencil', Pencil],
@@ -330,6 +341,19 @@ export default function DesignRoute() {
               <p className="m-0 mt-3 flex items-center gap-2 text-meta text-ink-3">
                 <StatusMark status="done" muted label={null} />
                 Closed with nothing shipped: Won't do, Duplicate, No longer needed
+              </p>
+            </Panel>
+            <Panel title="Activity">
+              <SymbolGrid>
+                {ACTIVITIES.map((activity) => (
+                  <SymbolCell key={activity} name={ACTIVITY_LABELS[activity]}>
+                    <ActivityMark activity={activity} label={null} />
+                    <ActivityMark activity={activity} size={20} label={null} />
+                  </SymbolCell>
+                ))}
+              </SymbolGrid>
+              <p className="m-0 mt-3 text-meta text-ink-3">
+                A task in progress on the Live page, by its holder&apos;s last activity
               </p>
             </Panel>
             <Panel title="Priority">
@@ -934,11 +958,11 @@ function ShellSample() {
             <NavItem href="#tasks" icon={<List aria-hidden />} count={13} active>
               Tasks
             </NavItem>
+            <NavItem href="#live" icon={<Activity aria-hidden />} count={2}>
+              Live
+            </NavItem>
             <NavItem href="#focus" icon={<Target aria-hidden />}>
               Focus
-            </NavItem>
-            <NavItem href="#activity" icon={<Activity aria-hidden />}>
-              Activity
             </NavItem>
             <NavSection title="Projects">
               <NavItem href="#web" icon={<ProjectBadge prefix="web" />} count={9}>

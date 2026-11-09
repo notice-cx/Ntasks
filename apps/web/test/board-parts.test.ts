@@ -121,16 +121,29 @@ describe('the board groups', () => {
 });
 
 describe('the people in the sidebar', () => {
-  it('are whoever holds open work, those working now first, each once', () => {
-    const people = peopleOf([
-      task({ id: 'web-1', assignee: 'Example Owner' }),
-      task({ id: 'web-2', assignee: 'agent:codex', status: 'in_progress', assigneeModel: 'codex-example' }),
-      task({ id: 'web-3', assignee: 'agent:codex' }),
-      task({ id: 'web-4', assignee: 'agent:claude', status: 'closed' }),
-    ]);
+  it('are whoever holds open work, those who worked on a task in progress within the hour first, each once', () => {
+    const now = Date.parse('2026-11-09T12:00:00Z');
+    const people = peopleOf(
+      [
+        task({ id: 'web-1', assignee: 'Example Owner' }),
+        task({
+          id: 'web-2',
+          assignee: 'agent:codex',
+          status: 'in_progress',
+          assigneeModel: 'codex-example',
+          lastActivityAt: '2026-11-09T11:50:00Z',
+        }),
+        task({ id: 'web-3', assignee: 'agent:codex' }),
+        task({ id: 'web-4', assignee: 'agent:claude', status: 'closed' }),
+        // In progress, but its holder last wrote to it two days ago.
+        task({ id: 'web-5', assignee: 'agent:gemini', status: 'in_progress', lastActivityAt: '2026-11-07T12:00:00Z' }),
+      ],
+      now,
+    );
     expect(people.map((person) => [person.name, person.live, person.model])).toEqual([
       ['codex', true, 'codex-example'],
       ['Example Owner', false, null],
+      ['gemini', false, null],
     ]);
   });
 });

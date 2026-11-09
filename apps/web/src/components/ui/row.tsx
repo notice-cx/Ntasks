@@ -77,8 +77,10 @@ export function RowMeta({ className, ...props }: ComponentProps<'span'>) {
 }
 
 /** Takes the free width between the title and the end of the row. */
-export function RowSpacer() {
-  return <span aria-hidden className="min-w-3 flex-1 group-has-[[data-row-answer]]/row:max-sm:hidden" />;
+export function RowSpacer({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={cn('min-w-3 flex-1 group-has-[[data-row-answer]]/row:max-sm:hidden', className)} />
+  );
 }
 
 /** The row's own actions (Claim, its menu). They show while the row is hovered or holds focus, never on a phone. */

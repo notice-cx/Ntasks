@@ -205,7 +205,7 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `plus`, `list-filter`, `chevron-down`, `chevron-right`, `ellipsis`, `check`,
 `x`, `list`, `target`, `activity`, `bell`, `settings`, `hand`, `user-plus`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
-`message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
+`git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
 `star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`
 and `building-2`.
@@ -233,6 +233,22 @@ for a task, testing these in order:
 
 A list groups its rows in the order Waiting for you, In progress, Open,
 Blocked, Parked, Done.
+
+### Activity
+
+Three marks for a task in progress on the Live page, 14 px in rows and in
+the group headings. `activityOf` (`src/lib/live.ts`) picks one from the
+task's last activity, when its holder last changed or commented on it:
+
+| Mark | Name | A task in progress shows it when |
+|---|---|---|
+| Indigo disc in a faint indigo ring | Active | its holder wrote to it within the last hour |
+| Indigo ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than the Stalled after time |
+| Grey ring, half filled | Stalled | its holder has not written to it for the Stalled after time or more, or nothing is recorded |
+
+The marks differ in fill and lightness as well as colour, so they read apart
+without colour. They use Accent and greys only: amber, red and green keep
+their single meanings.
 
 ### Priority
 
@@ -287,7 +303,8 @@ Every mark is drawn at 62% of the circle's width (`avatarMarkSize`). Claude's
 mark fills its box, and the Blossom's box is cropped with a margin around
 its drawing, so Codex's mark is never drawn larger than Claude's;
 `apps/web/test/symbols.test.tsx` checks both. `live` adds an Accent dot for an actor
-active now. `AvatarGroup` overlaps avatars by 6 px, each ringed in Background.
+active now: in the sidebar, one who changed or commented on a task in progress
+within the last hour. `AvatarGroup` overlaps avatars by 6 px, each ringed in Background.
 
 ### Workspaces
 
@@ -559,6 +576,33 @@ field is part of the address (`field.<key>=<value>`, as the API takes it),
 shows as a badge that clears it, and is dropped when another project is
 picked.
 
+### Live
+
+`/live` lists every task in progress under a `TopBar` titled Live. The bar
+holds each group's count after its activity mark (`6 active`, `3 quiet`,
+`50 stalled`, from 640 px wide) and, at its end, the Stalled after menu: a
+secondary button naming the time chosen, whose menu offers 4 hours, 1 day,
+3 days and 1 week with the one held ticked. The choice is kept in the
+browser's local storage, and 1 day is the default.
+
+The page is three groups, each a `GroupHeader` with its activity mark, its
+name, its count and, at its end from 640 px wide, what it holds in Text 3
+(Changed in the last hour; Last change 1 hour to 1 day ago; Nothing for 1 day
+or more). A group with no tasks takes no room, and a page with none shows
+`EmptyState`'s No tasks in progress. In each group the latest activity comes
+first and a task with none recorded last. Stalled shows five rows, then Show
+more, a `ghost` button with the count it adds.
+
+A row is its activity mark, `RowId`, the title as a link to the task, then
+`RowMeta` facts: Next and the next step in Text 2, the pull request's number
+as a link after `git-pull-request` or else the branch after `git-branch`, the
+helper after `bot`, and Nothing recorded when the holder never wrote to it.
+The next step and the branch give way before the title when the row is
+narrow. The holder's `Avatar` and `RowAge`, how long since their last
+change, end the row. On a phone the row takes two lines: the mark, the
+title, the avatar and the age, then the holder's name and the next step in
+Text 3.
+
 ### Projects, Members, Settings and the first workspace
 
 Projects and Members are lists of `Row`s under a `TopBar` whose primary
@@ -625,6 +669,7 @@ Each action's key:
 | `C` | New task |
 | `/` | Search |
 | `F` | Focus, the decisions one at a time |
+| `L` | Live, the tasks in progress by their holders' last activity |
 | `↵` | Open the task; answer a decision with the option selected; approve on the Focus page |
 | `⌘↵` | Send a comment; file a task from the composer |
 | `M` | Claim |
