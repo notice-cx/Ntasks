@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/project.schema.json",
+  "title": "Project",
+  "description": "The tasks of one body of work, such as one repository. Its prefix starts every task id in it. deploys says whether its changes go live by a deploy: when false, merged is the last stage of a task's delivery. Section 3.2 of the protocol.",
+  "type": "object",
+  "properties": {
+    "projectId": { "type": "string", "minLength": 1 },
+    "key": { "description": "The name people know the project by.", "type": "string", "minLength": 1, "maxLength": 128 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "prefix": { "type": "string", "pattern": "^[a-z0-9]{1,32}$" },
+    "deploys": { "type": "boolean" }
+  },
+  "required": ["projectId", "key", "name", "prefix", "deploys"]
+}

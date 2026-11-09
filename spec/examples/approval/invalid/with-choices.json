@@ -1,0 +1,55 @@
+{
+  "priority": 2,
+  "labels": [],
+  "parent": null,
+  "description": "Deploy web-c3d4 to production (app.example.com): pnpm run deploy. Scope: this one deploy. Verification: GET /healthz answers 200.",
+  "acceptance": "",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": true,
+  "assignee": null,
+  "for": null,
+  "work": {},
+  "lastActivityAt": null,
+  "choices": {
+    "question": "Which sign-in should the web app offer first?",
+    "options": [
+      {
+        "key": "a",
+        "label": "GitHub",
+        "detail": "Every invited person already has an account.",
+        "recommended": true
+      },
+      {
+        "key": "b",
+        "label": "Email links"
+      },
+      {
+        "key": "c",
+        "label": "Both at once"
+      }
+    ]
+  },
+  "choice": null,
+  "answer": null,
+  "deferUntil": null,
+  "dependencies": [],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T09:00:00.000Z",
+  "startedAt": null,
+  "closedAt": null,
+  "closeReason": null,
+  "closeLink": null,
+  "resolution": null,
+  "duplicateOf": null,
+  "id": "web-p3q4",
+  "title": "Deploy web-c3d4 to production",
+  "status": "open",
+  "type": "gate"
+}

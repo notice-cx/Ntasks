@@ -21,8 +21,6 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 - [Connect an agent](agents.md): the setup command, each agent by hand, and the
   Ntasks skill.
 - [The web app](web-app.md): every page, with animated walkthroughs.
-- [Embed the web app](embed.md): rendering the web app's pages inside another
-  site's page with the npm package `@ntasks/ui`.
 
 ## Reference for contributors
 
@@ -34,3 +32,11 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 - [The task store](task-store.md): the database of each workspace and the
   engine contract.
 - [Design system](design.md): the web app's tokens, symbols and components.
+
+## For other tools
+
+- [The Shared Work Protocol](shared-work-protocol.md): a draft
+  specification of Ntasks's rules for shared work, which other task tools and
+  agent harnesses can implement.
+- [Embed the web app](embed.md): rendering the web app's pages inside another
+  site's page with the npm package `@ntasks/ui`.

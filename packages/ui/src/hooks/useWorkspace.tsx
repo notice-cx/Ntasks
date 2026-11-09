@@ -6,12 +6,13 @@
 import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
 import { createContext, useContext } from 'react';
 import { useTasksApi } from '../api/context';
-import type { NewInvitation, NewProject, Workspace, WorkspaceMembers } from '../api/types';
+import type { ConnectedApp, NewApp, NewInvitation, NewProject, Workspace, WorkspaceMembers } from '../api/types';
 
 /** The reads about the sign-in itself, which stay when the workspace changes. */
 export const WORKSPACES_KEY = ['workspaces'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
 const MEMBERS_KEY = ['members'] as const;
+const APPS_KEY = ['apps'] as const;
 
 /** Whether a cached read belongs to the workspace open now, so a switch drops it. */
 export function inWorkspace(query: Query): boolean {
@@ -143,4 +144,40 @@ export function useRevokeInvitation() {
 export function useRemoveMember() {
   const api = useTasksApi();
   return useMembersWrite((userId: string) => api.removeMember(userId));
+}
+
+/** The open workspace's connected apps, each with whether the person signed in to it. */
+export function useApps() {
+  const api = useTasksApi();
+  return useQuery<ConnectedApp[]>({
+    queryKey: APPS_KEY,
+    queryFn: ({ signal }) => api.apps(signal),
+    staleTime: 15_000,
+  });
+}
+
+/** One write to the app list, which is read again once it lands. */
+function useAppsWrite<Input, Output>(send: (input: Input) => Promise<Output>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: send,
+    onSuccess: () => client.invalidateQueries({ queryKey: APPS_KEY }),
+  });
+}
+
+export function useRegisterApp() {
+  const api = useTasksApi();
+  return useAppsWrite(({ input, idempotencyKey }: { input: NewApp; idempotencyKey: string }) =>
+    api.registerApp(input, { idempotencyKey }),
+  );
+}
+
+export function useRevokeApp() {
+  const api = useTasksApi();
+  return useAppsWrite((clientId: string) => api.revokeApp(clientId));
+}
+
+export function useRemoveApp() {
+  const api = useTasksApi();
+  return useAppsWrite((clientId: string) => api.removeApp(clientId));
 }
