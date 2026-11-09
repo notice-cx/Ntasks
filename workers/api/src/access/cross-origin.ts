@@ -8,6 +8,7 @@
  * Origin header, is not a cross-origin call and passes through unchanged.
  */
 import { IDEMPOTENCY_HEADER } from '../http/writes.ts';
+import { API_VERSION_HEADER } from '../version.ts';
 import { WORKSPACE_HEADER } from '../workspaces.ts';
 import { isAppOrigin } from './apps.ts';
 
@@ -15,8 +16,8 @@ const API_PREFIX = '/api/';
 const METHODS = 'GET, POST, PATCH';
 /** The headers an app sends: its token, a JSON body, the workspace and a retry key. */
 const HEADERS = `authorization, content-type, ${WORKSPACE_HEADER}, ${IDEMPOTENCY_HEADER}`;
-/** The headers an app may read: a bearer challenge, and when to retry. */
-const EXPOSED = 'www-authenticate, retry-after';
+/** The headers an app may read: a bearer challenge, when to retry, and the API's version. */
+const EXPOSED = `www-authenticate, retry-after, ${API_VERSION_HEADER}`;
 const PREFLIGHT_SECONDS = '600';
 
 /** `answer`, answered for a connected app's page when the request comes from one. */

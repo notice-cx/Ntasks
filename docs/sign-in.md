@@ -355,7 +355,8 @@ origin is the origin of an enabled app's redirect address:
   `content-type`, `x-ntasks-workspace` and `idempotency-key`. From any other
   origin it answers `403` with `{"error":"origin_not_allowed"}`.
 - Other answers to such a page carry `Access-Control-Allow-Origin` and expose
-  `www-authenticate` and `retry-after`.
+  `www-authenticate`, `retry-after` and `x-ntasks-api-version`
+  ([API](api.md#versions)).
 - No answer carries `Access-Control-Allow-Credentials`, so a browser lets the
   page read only what it asked for with its bearer token, never an answer to
   a request signed with the person's session cookie. A cookie-signed change

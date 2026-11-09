@@ -9,7 +9,8 @@ The Worker answers under `/api` in two ways, both over the same task engine:
   app.
 
 `/api/workspaces` lists the workspaces a sender reaches, creates one and
-renames one ([below](#workspaces)). Two more serve a workspace's store as a
+renames one ([below](#workspaces)). `/api/version` answers the API's version
+([below](#versions)). Two more serve a workspace's store as a
 whole: `/api/backup` hands it out for a backup
 ([below](#backing-up-the-whole-store)), and `/api/restore` loads an import or
 a backup into an empty store ([below](#loading-an-empty-store)).
@@ -34,7 +35,10 @@ Ntasks adds optional arguments for what NoticeOS's tools lacked, such as a
 task's notes; every argument NoticeOS's tools take is unchanged, and
 [`write-tools.test.ts`](../workers/api/test/api/write-tools.test.ts) compares
 the tools' schemas with NoticeOS's own. The HTTP routes take the bodies and
-give the answers NoticeOS's task pages used, with the same additions.
+give the answers NoticeOS's task pages used, with the same additions. The
+HTTP routes only add, and every answer under `/api` names their version
+([below](#versions)), so a page made for one version of Ntasks keeps working
+with every later one.
 
 ## Signing in
 
@@ -703,9 +707,79 @@ A write that another write beats to the same task reads the task again,
 checks the rules again and tries again, up to three times. After that it
 answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
+## Versions
+
+The HTTP API has a version: a whole number that goes up by one each time a
+route, a query parameter, a body field, a field of an answer or a value a
+field can hold is added. This is version 2, which added
+[connected apps](sign-in.md#connected-apps).
+
+| Where | What it holds |
+|---|---|
+| The `x-ntasks-api-version` header | The version, on every answer under `/api`: a route's answer, a refusal, a `401` and a `404` alike |
+| `GET /api/version` | `{ version, oldest }`: the version, and `oldest`, the earliest version a client may be made for. It answers `GET` and `HEAD` before sign-in, so a client can check it before it sends a person to sign in. |
+
+The API only adds. A route, a query parameter, a body field and a field of an
+answer that one version has, every later version keeps, with the same name,
+meaning and type: none is renamed, removed or given another type, and a field
+that was never `null` or left out does not become so. A client made for
+version N therefore works with every Ntasks that answers version N or later,
+and `oldest` stays 1.
+
+A client made for version N compares it with the version an answer names:
+
+- **Lower than N**: the Ntasks is older than the client. The client shows the
+  person that this Ntasks must be updated to version N, instead of failing on
+  a field it does not answer yet.
+- **N or higher, with `oldest` at most N**: the client works.
+- **`oldest` higher than N**: the Ntasks no longer answers something the
+  client uses, and the client must be updated.
+
+A client can also use a route or a field only when the version shows it is
+there, so one client works with older deployments too. A client treats a
+value it does not know, such as a status added later, as it treats any value
+it has no special case for.
+
+The MCP tools keep their own contract ([above](#the-mcp-endpoint)); the version
+counts the HTTP routes.
+
+### A change that would break a client
+
+Removing or renaming a route, a parameter or a field, or giving one another
+type, breaks every client made for an earlier version. It is the owner's
+decision, never a refactor. Where it can, such a change is made as an
+addition: the new field beside the old one, which keeps its answer. A
+removal raises the version, and raises `oldest` to that version, so a client
+made for an earlier one finds out that it is too old.
+
+### The recorded contract
+
+[`http-api.json`](../workers/api/test/fixtures/http-api.json) records, version
+by version, the fields each route answers and the type of each. A field
+several answers hold, such as a task, is recorded once, as a shape.
+[`http-contract.test.ts`](../workers/api/test/api/http-contract.test.ts)
+signs in as a person, sends every route the record names through the Worker,
+and compares the answers with the record, so it fails when an answer:
+
+- leaves out a recorded field, or gives it a type the record does not allow;
+- holds a field the record lacks. The failure names the line that records it.
+
+An addition is recorded in a new entry at the end of the record, with the
+next version, and `API_VERSION` in
+[`version.ts`](../workers/api/src/version.ts) is raised to that version in the
+same change. A recorded field is never edited or removed, and the test
+refuses a field recorded twice.
+
+The record covers every HTTP route this page and
+[Sign-in](sign-in.md#routes) list, except two groups. The OAuth routes under
+`/api/auth` follow the OAuth standards. The routes under `/api/restore` take
+only rows made with the store's own migrations, so their bodies follow the
+store's tables rather than the API's version.
+
 ## The HTTP routes
 
-Every route answers JSON with `cache-control: no-store`. Each acts in the
+Every route answers JSON with `cache-control: no-store` and the
+[`x-ntasks-api-version` header](#versions). Each acts in the
 workspace the request reaches ([above](#workspaces)): a person or an agent who
 reaches several names it in the `x-ntasks-workspace` header.
 

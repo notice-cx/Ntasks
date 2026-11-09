@@ -9,26 +9,27 @@ import type { TaskStore } from '../../src/store/index.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
 import {
   addMember,
+  appTokenRequest,
+  authorizeApp,
   Browser,
   call,
   choiceOf,
+  connectApp,
   createProject,
+  EVERY_APP_SCOPE as EVERY_SCOPE,
   locationOf,
   McpClient,
   MCP_RESOURCE,
   meWithToken,
   ORIGIN,
   OWNER_GITHUB_ID,
-  pkce,
   REDIRECT_URI,
   userIdOf,
-  type Tokens,
 } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
 standInForGitHub();
 
-const EVERY_SCOPE = 'tasks:read tasks:write tasks:decide offline_access';
 const OTHER_WORKSPACE = Object.freeze({ id: '0b5d2c41-8e7f-4a96-b3c2-5d1e9f7a6c84', name: 'Other workspace' });
 
 /** A registered app: its client id and the origin its page runs at, a new one for each test. */
@@ -69,53 +70,6 @@ async function appsSeenBy(browser: Browser, workspaceId = TEST_WORKSPACE.id): Pr
   const response = await browser.fetch('/api/access/apps', { headers: { 'x-ntasks-workspace': workspaceId } });
   expect(response.status).toBe(200);
   return (await response.json<{ apps: ListedApp[] }>()).apps;
-}
-
-/** Sends the person's browser to authorize the app, and returns where it lands with the PKCE verifier. */
-async function authorize(browser: Browser, app: App, scope: string): Promise<{ landing: URL; verifier: string }> {
-  const { verifier, challenge } = await pkce();
-  const query = new URLSearchParams({
-    response_type: 'code',
-    client_id: app.clientId,
-    redirect_uri: app.redirect,
-    scope,
-    state: 'app-state',
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-    resource: MCP_RESOURCE,
-  });
-  return { landing: locationOf(await browser.fetch(`/api/auth/oauth2/authorize?${query}`)), verifier };
-}
-
-/** A token request from the app's page, as a browser sends it from the app's origin. */
-function tokenRequest(app: App, form: Record<string, string>): Promise<Response> {
-  return call('/api/auth/oauth2/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', origin: app.origin },
-    body: new URLSearchParams({ client_id: app.clientId, ...form }).toString(),
-  });
-}
-
-/** Signs the person in to the app: authorize, allow it on the approval page, and exchange the code from the app's page. */
-async function signInThroughApp(browser: Browser, app: App, scope = EVERY_SCOPE): Promise<Tokens> {
-  const { landing, verifier } = await authorize(browser, app, scope);
-  expect(landing.pathname).toBe('/agent-access');
-  const allowed = await browser.fetch('/agent-access', {
-    form: { oauth_query: landing.search.slice(1), decision: 'allow' },
-  });
-  const back = locationOf(allowed);
-  expect(`${back.origin}${back.pathname}`).toBe(app.redirect);
-  expect(back.searchParams.get('state')).toBe('app-state');
-  const response = await tokenRequest(app, {
-    grant_type: 'authorization_code',
-    code: back.searchParams.get('code') ?? '',
-    redirect_uri: app.redirect,
-    code_verifier: verifier,
-    resource: MCP_RESOURCE,
-  });
-  expect(response.status).toBe(200);
-  expect(response.headers.get('access-control-allow-origin')).toBe(app.origin);
-  return response.json<Tokens>();
 }
 
 /** Calls the API from the app's page with its bearer token. */
@@ -220,7 +174,7 @@ describe('a person signed in through a connected app', () => {
     const app = await registerApp(browser);
     const { projectId } = await decision();
 
-    const reader = await signInThroughApp(browser, app, 'tasks:read');
+    const reader = await connectApp(browser, app, 'tasks:read');
     expect(await (await meWithToken(reader.access_token)).json()).toMatchObject({
       kind: 'person',
       deploymentAdmin: false,
@@ -234,7 +188,7 @@ describe('a person signed in through a connected app', () => {
     expect(write.status).toBe(403);
     expect(await write.json()).toMatchObject({ error: 'insufficient_scope' });
 
-    const writer = await signInThroughApp(browser, app, EVERY_SCOPE);
+    const writer = await connectApp(browser, app, EVERY_SCOPE);
     expect(await (await meWithToken(writer.access_token)).json()).toMatchObject({
       app: { scopes: ['tasks:read', 'tasks:write', 'tasks:decide'] },
     });
@@ -248,7 +202,7 @@ describe('a person signed in through a connected app', () => {
     const browser = new Browser();
     await browser.signInAsOwner();
     const app = await registerApp(browser);
-    const tokens = await signInThroughApp(browser, app);
+    const tokens = await connectApp(browser, app);
     const inBrowser = await decision('Picked in the web app');
     const inApp = await decision('Picked through the app');
 
@@ -291,7 +245,7 @@ describe('a person signed in through a connected app', () => {
     const browser = new Browser();
     await browser.signInAsOwner();
     const app = await registerApp(browser);
-    const { access_token: token } = await signInThroughApp(browser, app);
+    const { access_token: token } = await connectApp(browser, app);
 
     for (const path of ['/api/access/agents', '/api/access/services', '/api/access/members', '/api/access/apps']) {
       const response = await fromApp(app, token, path, { workspace: TEST_WORKSPACE.id });
@@ -312,7 +266,7 @@ describe('a person signed in through a connected app', () => {
     await browser.signInAsOwner();
     await addMember(OTHER_WORKSPACE, (await userIdOf(OWNER_GITHUB_ID))!, 'owner');
     const app = await registerApp(browser, OTHER_WORKSPACE.id);
-    const { access_token: token } = await signInThroughApp(browser, app);
+    const { access_token: token } = await connectApp(browser, app);
 
     const listed = await (
       await fromApp(app, token, '/api/workspaces')
@@ -333,7 +287,7 @@ describe('a person signed in through a connected app', () => {
     const outsider = new Browser({ joinTestWorkspace: false });
     await outsider.signInWithGitHub(1003);
 
-    const { landing } = await authorize(outsider, app, EVERY_SCOPE);
+    const { landing } = await authorizeApp(outsider, app, EVERY_SCOPE);
     expect(landing.pathname).toBe('/agent-access');
     const page = await (await outsider.fetch(landing.pathname + landing.search)).text();
     expect(page).not.toContain('value="allow"');
@@ -360,8 +314,8 @@ describe('ending a connected app’s access', () => {
     const elsewhere = Object.freeze({ id: '6a2f8e13-4c5b-4d7a-9e06-1b3c5d7f9a28', name: 'Elsewhere' });
     await addMember(elsewhere, userId, 'owner');
     const there = await registerApp(person, elsewhere.id);
-    const tokenHere = (await signInThroughApp(person, here)).access_token;
-    const tokenThere = (await signInThroughApp(person, there)).access_token;
+    const tokenHere = (await connectApp(person, here)).access_token;
+    const tokenThere = (await connectApp(person, there)).access_token;
 
     const removed = await owner.fetch(`/api/access/members/${userId}/remove`, {
       method: 'POST',
@@ -374,14 +328,14 @@ describe('ending a connected app’s access', () => {
     // Invited again, the person allows this workspace's app again before it acts as them.
     await addMember(TEST_WORKSPACE, userId, 'member');
     expect((await meWithToken(tokenHere)).status).toBe(401);
-    expect((await authorize(person, here, EVERY_SCOPE)).landing.pathname).toBe('/agent-access');
+    expect((await authorizeApp(person, here, EVERY_SCOPE)).landing.pathname).toBe('/agent-access');
   });
 
   it('refuses the token and its refresh once the person revokes their sign-in, and the app shows signed out', async () => {
     const browser = new Browser();
     await browser.signInAsOwner();
     const app = await registerApp(browser);
-    const tokens = await signInThroughApp(browser, app);
+    const tokens = await connectApp(browser, app);
     const before = (await appsSeenBy(browser)).find((listed) => listed.clientId === app.clientId);
     expect(before?.connectedAt).toEqual(expect.any(String));
 
@@ -392,7 +346,7 @@ describe('ending a connected app’s access', () => {
     expect(revoked.status).toBe(200);
 
     expect((await meWithToken(tokens.access_token)).status).toBe(401);
-    const refresh = await tokenRequest(app, {
+    const refresh = await appTokenRequest(app, {
       grant_type: 'refresh_token',
       refresh_token: tokens.refresh_token ?? '',
       resource: MCP_RESOURCE,
@@ -406,7 +360,7 @@ describe('ending a connected app’s access', () => {
     const browser = new Browser();
     await browser.signInAsOwner();
     const app = await registerApp(browser);
-    const tokens = await signInThroughApp(browser, app);
+    const tokens = await connectApp(browser, app);
 
     const asAgent = await browser.fetch(`/api/access/agents/${app.clientId}/revoke`, { method: 'POST' });
     expect(asAgent.status).toBe(404);
@@ -419,7 +373,7 @@ describe('ending a connected app’s access', () => {
     const owner = new Browser();
     await owner.signInAsOwner();
     const app = await registerApp(owner);
-    const tokens = await signInThroughApp(owner, app);
+    const tokens = await connectApp(owner, app);
 
     const removed = await owner.fetch(`/api/access/apps/${app.clientId}/remove`, {
       method: 'POST',
@@ -522,7 +476,7 @@ describe('calls from a page at another origin', () => {
     const owner = new Browser();
     await owner.signInAsOwner();
     const app = await registerApp(owner);
-    const tokens = await signInThroughApp(owner, app);
+    const tokens = await connectApp(owner, app);
 
     const preflight = await call('/api/tasks/projects', {
       method: 'OPTIONS',
@@ -541,6 +495,8 @@ describe('calls from a page at another origin', () => {
     expect(read.status).toBe(200);
     expect(read.headers.get('access-control-allow-origin')).toBe(app.origin);
     expect(read.headers.get('access-control-allow-credentials')).toBeNull();
+    // The page reads the API's version, as a client checks it.
+    expect(read.headers.get('access-control-expose-headers')).toContain('x-ntasks-api-version');
   });
 
   it('refuses a preflight from an origin no app registered', async () => {

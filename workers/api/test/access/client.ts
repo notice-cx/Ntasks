@@ -342,6 +342,70 @@ export async function connectAgent(
   return { client, tokens: await client.exchange(code, verifier) };
 }
 
+/** A connected app as a test signs in to it: its client id and one of its redirect addresses, whose origin its page runs at. */
+export interface AppClient {
+  readonly clientId: string;
+  readonly redirect: string;
+}
+
+/** Every scope a connected app may ask for, with a refresh token. */
+export const EVERY_APP_SCOPE = 'tasks:read tasks:write tasks:decide offline_access';
+
+/** Sends the person's browser to authorize the app, and returns where it lands with the PKCE verifier. */
+export async function authorizeApp(
+  browser: Browser,
+  app: AppClient,
+  scope: string,
+): Promise<{ landing: URL; verifier: string }> {
+  const { verifier, challenge } = await pkce();
+  const query = new URLSearchParams({
+    response_type: 'code',
+    client_id: app.clientId,
+    redirect_uri: app.redirect,
+    scope,
+    state: 'app-state',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource: MCP_RESOURCE,
+  });
+  return { landing: locationOf(await browser.fetch(`/api/auth/oauth2/authorize?${query}`)), verifier };
+}
+
+/** A token request from the app's page, as a browser sends it from the app's origin. */
+export function appTokenRequest(app: AppClient, form: Record<string, string>): Promise<Response> {
+  return call('/api/auth/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      accept: 'application/json',
+      origin: new URL(app.redirect).origin,
+    },
+    body: new URLSearchParams({ client_id: app.clientId, ...form }).toString(),
+  });
+}
+
+/** Signs the person in to the app: authorize, allow it on the approval page, and exchange the code from the app's page. */
+export async function connectApp(browser: Browser, app: AppClient, scope = EVERY_APP_SCOPE): Promise<Tokens> {
+  const { landing, verifier } = await authorizeApp(browser, app, scope);
+  expect(landing.pathname).toBe('/agent-access');
+  const allowed = await browser.fetch('/agent-access', {
+    form: { oauth_query: landing.search.slice(1), decision: 'allow' },
+  });
+  const back = locationOf(allowed);
+  expect(`${back.origin}${back.pathname}`).toBe(app.redirect);
+  expect(back.searchParams.get('state')).toBe('app-state');
+  const response = await appTokenRequest(app, {
+    grant_type: 'authorization_code',
+    code: back.searchParams.get('code') ?? '',
+    redirect_uri: app.redirect,
+    code_verifier: verifier,
+    resource: MCP_RESOURCE,
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('access-control-allow-origin')).toBe(new URL(app.redirect).origin);
+  return response.json<Tokens>();
+}
+
 /** Calls GET /api/access/me with a bearer token. */
 export function meWithToken(token: string): Promise<Response> {
   return call('/api/access/me', { headers: { authorization: `Bearer ${token}` } });
