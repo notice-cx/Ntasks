@@ -6,13 +6,23 @@
 import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
 import { createContext, useContext } from 'react';
 import { useTasksApi } from '../api/context';
-import type { ConnectedApp, NewApp, NewInvitation, NewProject, Workspace, WorkspaceMembers } from '../api/types';
+import type {
+  ConnectedApp,
+  GitHubWebhook,
+  GitHubWebhookSettings,
+  NewApp,
+  NewInvitation,
+  NewProject,
+  Workspace,
+  WorkspaceMembers,
+} from '../api/types';
 
 /** The reads about the sign-in itself, which stay when the workspace changes. */
 export const WORKSPACES_KEY = ['workspaces'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
 const MEMBERS_KEY = ['members'] as const;
 const APPS_KEY = ['apps'] as const;
+const GITHUB_KEY = ['github'] as const;
 
 /** Whether a cached read belongs to the workspace open now, so a switch drops it. */
 export function inWorkspace(query: Query): boolean {
@@ -180,4 +190,34 @@ export function useRevokeApp() {
 export function useRemoveApp() {
   const api = useTasksApi();
   return useAppsWrite((clientId: string) => api.removeApp(clientId));
+}
+
+/** The open workspace's GitHub webhook, which only its owners read. */
+export function useGitHubWebhook() {
+  const api = useTasksApi();
+  return useQuery<GitHubWebhook>({
+    queryKey: GITHUB_KEY,
+    queryFn: ({ signal }) => api.githubWebhook(signal),
+    staleTime: 15_000,
+  });
+}
+
+/** Saves the webhook's secret, its deploy checks or both, and keeps the saved webhook as the read. */
+export function useSaveGitHubWebhook() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: GitHubWebhookSettings) => api.saveGitHubWebhook(settings),
+    onSuccess: (saved) => client.setQueryData(GITHUB_KEY, saved),
+  });
+}
+
+/** Removes the webhook, then reads it again. */
+export function useRemoveGitHubWebhook() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.removeGitHubWebhook(),
+    onSuccess: () => client.invalidateQueries({ queryKey: GITHUB_KEY }),
+  });
 }

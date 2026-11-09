@@ -85,7 +85,10 @@ time on the step.
 | Say whether a project deploys | `PATCH /api/tasks/projects` | `projectId`, `deploys`. Only the workspace's owner |
 
 [Ntasks's API reference](../docs/api.md#delivery) has a GitHub Actions
-workflow that sends both signals.
+workflow that sends both signals, and a
+[receiver for GitHub's webhook](../docs/api.md#from-a-github-webhook) that
+sends them from GitHub's own events, signed with a secret instead of a
+sign-in.
 
 ### Live work
 

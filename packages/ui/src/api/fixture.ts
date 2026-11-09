@@ -51,6 +51,9 @@ const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/u;
 const NAME_LIMIT = 80;
 /** A connected app's name, as the Worker takes it. */
 const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
+/** A GitHub webhook's secret and deploy checks, as the Worker takes them. */
+const WEBHOOK_SECRET = /^[\x21-\x7e]{32,255}$/u;
+const DEPLOY_CHECKS = 20;
 
 /** A redirect address the Worker takes: https on a public host, or http on this machine, with a path. */
 function redirectAddress(value: string): boolean {
@@ -822,5 +825,58 @@ export function createFixtureTasksApi({
         throw new ApiError('This workspace has no such app.', 404, 'not_found');
       workspace.apps = apps.filter((row) => row.clientId !== clientId);
     },
+    async githubWebhook() {
+      return webhookOf(owned());
+    },
+    /** Saves as the Worker does: the rules it checks, and settings without a secret only once one is saved. */
+    async saveGitHubWebhook({ secret, deployChecks }) {
+      const workspace = owned();
+      if (secret !== undefined && !WEBHOOK_SECRET.test(secret))
+        throw new ApiError(
+          'secret is 32 to 255 letters, digits and punctuation, with no spaces, as you enter it in GitHub',
+          400,
+          'invalid_request',
+          'secret',
+        );
+      const names = deployChecks?.map((name) => name.trim());
+      if (names !== undefined && (names.length > DEPLOY_CHECKS || names.some((name) => name.length === 0)))
+        throw new ApiError(
+          `deployChecks is a list of at most ${DEPLOY_CHECKS} names`,
+          400,
+          'invalid_request',
+          'deployChecks',
+        );
+      const kept = secret ?? workspace.github?.secret;
+      if (kept === undefined)
+        throw new ApiError(
+          'save a secret first: GitHub signs every delivery with it',
+          400,
+          'invalid_request',
+          'secret',
+        );
+      workspace.github = {
+        secret: kept,
+        deployChecks: names === undefined ? (workspace.github?.deployChecks ?? []) : [...new Set(names)],
+        updatedAt: new Date(now()).toISOString(),
+      };
+      return webhookOf(workspace);
+    },
+    /** Removes the webhook, refused as the Worker refuses one when none is saved. */
+    async removeGitHubWebhook() {
+      const workspace = owned();
+      if (workspace.github === undefined) throw new ApiError('this workspace has no GitHub webhook', 404, 'not_found');
+      delete workspace.github;
+    },
+  };
+}
+
+/** The webhook as the Worker shows it: where GitHub sends, and never the secret. */
+function webhookOf(workspace: FixtureWorkspace) {
+  const origin = globalThis.location?.origin ?? 'https://ntasks.example.com';
+  return {
+    url: `${origin}/api/github/${workspace.workspaceId}`,
+    secretSaved: workspace.github !== undefined,
+    deployChecks: [...(workspace.github?.deployChecks ?? [])],
+    updatedAt: workspace.github?.updatedAt ?? null,
   };
 }

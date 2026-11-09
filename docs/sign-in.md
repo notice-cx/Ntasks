@@ -659,11 +659,14 @@ and people's own sign-in, keep working.
 | `POST /api/access/invitations` | Invites a GitHub login to the workspace from `{"githubLogin": "...", "role": "member"}` and answers `201` with `{ invitation }`, shaped as `GET /api/access/members` lists it |
 | `POST /api/access/invitations/<invitation id>/revoke` | Revokes an open invitation of the workspace: `{ "revoked": true }` |
 | `POST /api/access/members/<user id>/remove` | Removes a member of the workspace and their agents' grants there: `{ "removed": true }` |
+| `GET /api/access/github` | `{ github }`: the workspace's [GitHub webhook](api.md#from-a-github-webhook), for an owner, as `{ url, secretSaved, deployChecks, updatedAt }`: the Payload URL to enter in GitHub, whether a secret is saved that still decrypts, the deploy checks, and when they were last saved, or `null`. The secret itself is never answered. |
+| `POST /api/access/github` | Saves the workspace's webhook from `{"secret": "...", "deployChecks": ["..."]}`, for an owner, and answers `{ github }`. Either field may be left out once a secret is saved: one without the other keeps the saved value. |
+| `POST /api/access/github/remove` | Removes the workspace's webhook, for an owner, after which every delivery is refused: `{ "removed": true }` |
 | `GET /api/workspaces`, `POST /api/workspaces`, `PATCH /api/workspaces` | The workspaces the sender reaches, a new one a deployment admin creates, and a new name an owner gives one ([API](api.md#workspaces)) |
 
 Only a person's browser session may use the `/api/access/` routes that list,
 make or revoke; an agent, a service or a connected app gets `403` with
-`owner_only`. The service credential, member, invitation and app routes act
+`owner_only`. The service credential, member, invitation, app and GitHub webhook routes act
 in the request's workspace: the one the `x-ntasks-workspace` header names,
 or the person's only one. Only its owners may use them, except that any
 member lists the workspace's apps and revokes their own sign-in to one. A refusal of these routes is JSON
@@ -674,8 +677,8 @@ refusal about one body field names it in `field`.
 |---|---|
 | `400` with `workspace_required` | The person belongs to several workspaces and the request names none. |
 | `403` with `owner_only` | The sender is an agent or a service, or a member who is not an owner of the workspace. |
-| `400` with `invalid_request` | The body is not a JSON object, holds an unknown field, or a field is malformed: `githubLogin` is not a GitHub login, `role` is not `owner` or `member`, or an app's `name` or `redirectUris` is not one [Registering an app](#registering-an-app) takes. |
-| `404` with `not_found` | The workspace has no such open invitation, no such member, or no such app; or the person is not signed in to the app they revoke. |
+| `400` with `invalid_request` | The body is not a JSON object, holds an unknown field, or a field is malformed: `githubLogin` is not a GitHub login, `role` is not `owner` or `member`, an app's `name` or `redirectUris` is not one [Registering an app](#registering-an-app) takes, or a webhook's `secret` is not 32 to 255 letters, digits and punctuation, or its `deployChecks` is not a list of at most 20 names. A webhook saved without a secret while none is saved names `secret`. |
+| `404` with `not_found` | The workspace has no such open invitation, no such member, no such app, or no GitHub webhook to remove; or the person is not signed in to the app they revoke. |
 | `409` with `invitation_exists` | The login already has an open invitation to the workspace (`field` is `githubLogin`). |
 | `409` with `last_owner` | The member to remove is the workspace's only owner. |
 
@@ -695,6 +698,7 @@ its sentence in `message` instead of `detail`.
 | `access_agent_grants` | The projects each agent may reach for the person who approved it: `user_id`, `client_id`, `workspace_id`, `project_id`, `access` and `created_at` |
 | `access_service_credentials`, `access_service_grants` | Service credentials, each in one workspace (`workspace_id`), with the SHA-256 of each secret, the backup and restore choices, and their projects. A name is unique within its workspace. |
 | `access_registration_days` | How many agents registered on each UTC day, for the daily registration budget |
+| `access_github_webhooks` | Each workspace's [GitHub webhook](api.md#from-a-github-webhook): `workspace_id`, the `secret` GitHub signs deliveries with, encrypted under a key derived from `AUTH_SECRET`, since the receiver needs the secret itself to check a signature, the `deploy_checks` as a JSON list of names, `updated_by` and `updated_at` |
 | `access_github_app` | The GitHub App the setup page registered: one row, with the `origin` the setup ran at, the app's client ID and client secret as `credentials`, encrypted under a key derived from `AUTH_SECRET`, `admin_github_id`, the numeric id of the account that created the app and the admin the setup recorded, and `created_at` |
 
 These tables are in D1; the tasks and projects are in the workspaces' task
