@@ -38,7 +38,9 @@ export function EpicMark({ state, label }: { state: EpicState; label?: string | 
 }
 
 /** "this week" as a day: `Nov 2`, or null when the read named no start. */
-function sinceDay(since: string | null, nowMs: number): string | null {
+export function sinceDay(since: string | null, nowMs: number): string | null {
+  // The server names the day itself (`2026-11-02`); read as an instant it is UTC midnight, the day before west of UTC.
+  if (since !== null && /^\d{4}-\d{2}-\d{2}$/.test(since)) return calendarDay(since, nowMs);
   const at = since === null ? Number.NaN : Date.parse(since);
   return Number.isNaN(at) ? null : calendarDay(localDay(at), nowMs);
 }

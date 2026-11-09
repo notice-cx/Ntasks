@@ -96,7 +96,9 @@ export function TasksBoard() {
   };
   const asked = viewOf(params.get('view'));
   const composing = params.get('new') === '1' || composeRequested(location.state);
-  const board = useBoard(filters);
+  // A filter by custom field narrows the server's read to the tasks holding the value, which would shrink every
+  // epic's counts; the Epics view reads the whole project and keeps those filters in the address for the task views.
+  const board = useBoard(asked === 'epics' ? { ...filters, fields: {} } : filters);
   // Epics are one project's: the tab is offered, and its address honoured, only while one project is in view.
   const epicsProject = board.projects.length === 1 && board.fieldProject !== null ? (board.projects[0] ?? null) : null;
   const epicsView = asked === 'epics' && epicsProject !== null;

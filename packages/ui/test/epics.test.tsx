@@ -4,6 +4,7 @@ import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed, type FixtureTask } from '@/api/fixture-data';
 import { byEpic, readEpics, type EpicSummary } from '@/lib/epics';
 import type { BoardTask } from '@/lib/task-model';
+import { sinceDay } from '@/routes/tasks/epics-view';
 import { renderApp } from './render';
 
 const HOUR = 3_600_000;
@@ -256,6 +257,21 @@ describe('the Epics tab', () => {
     renderApp('/tasks?project=web&view=epics&q=nothing-like-this', createFixtureTasksApi({ seed: epicSeed() }));
     fireEvent.click(await screen.findByRole('button', { name: 'Clear search' }));
     expect(await epicRows('Moving')).toEqual(['web-k3m9']);
+  });
+
+  it('counts the whole project when the address holds a filter by custom field', async () => {
+    renderApp('/tasks?project=web&view=epics&field.area=Email', createFixtureTasksApi({ seed: epicSeed() }));
+    expect(await epicRows('Moving')).toEqual(['web-k3m9']);
+    const moving = document.querySelector('[data-epic-row="web-k3m9"]') as HTMLElement;
+    expect(within(moving).getByLabelText('1 of 4 done')).toBeTruthy();
+    expect(within(moving).getByLabelText('2 blocked')).toBeTruthy();
+  });
+
+  it('names the first day of the week as the server names it, whatever the time zone', () => {
+    // A day alone, as the server sends it, is that calendar day, not the UTC midnight before it.
+    expect(sinceDay('2026-11-02', NOW)).toBe('Nov 2');
+    expect(sinceDay(null, NOW)).toBeNull();
+    expect(sinceDay('not a day', NOW)).toBeNull();
   });
 
   it('falls back to the task list when the project leaves the address', async () => {
