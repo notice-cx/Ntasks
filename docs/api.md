@@ -43,14 +43,16 @@ before anything else. Each request reaches one workspace
 ([below](#workspaces)). In it, a sender holds **scopes**, the kinds of call it
 may make: `tasks:read` to read and `tasks:write` to change tasks. A person
 signed in to the web app also holds `tasks:decide`, which a person's
-decisions need; no agent or service holds it, whatever it was granted. A
+decisions need, and so does a person through a
+[connected app](sign-in.md#connected-apps) they allowed it; no agent or
+service holds it, whatever it was granted. A
 workspace's owner also holds `tasks:backup`, `tasks:restore` and
 `workspace:manage`, which creating a project and renaming the workspace need.
 
 | Answer | When |
 |---|---|
 | `401` | Nobody is signed in. |
-| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs in the request's workspace. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person signed in to the web app says so in `detail`, which a client relaying a person's click can show as it is. |
+| `403` with `insufficient_scope` | The sender lacks the scope an HTTP route needs in the request's workspace. An MCP tool refuses the same call with a sentence instead. A decision from anyone but a person who holds `tasks:decide` says so in `detail`, which a client relaying a person's click can show as it is. |
 
 A sender also reaches certain **projects** of the workspace. A person
 reaches every project of a workspace they belong to; an agent or a service
@@ -66,8 +68,9 @@ A write to a project granted for reading only is refused: `403` with
 `forbidden` on an HTTP route, and a `refused: …` sentence from an MCP tool.
 
 The Worker signs every request in as [Sign-in](sign-in.md) describes: a
-person's browser session, an agent's OAuth access token, or a service
-credential. A request with none, or with one that is invalid, revoked or
+person's browser session, a person's access token from a
+[connected app](sign-in.md#connected-apps), an agent's OAuth access token,
+or a service credential. A request with none, or with one that is invalid, revoked or
 expired, gets `401` with a bearer challenge that tells an MCP client where to
 sign in. The one exception is a request with no credential that names the
 deployment's public workspace in the `x-ntasks-workspace` header: it reads
@@ -76,6 +79,11 @@ that workspace with `tasks:read` alone
 `x-ntasks-on-behalf-of` header, and the request is recorded as that agent's
 ([A service acting for its agents](sign-in.md#a-service-acting-for-its-agents)). The sign-in routes under `/api/auth` and `/api/access` answer as
 [Sign-in](sign-in.md#routes) describes.
+
+A page at another origin reads the API's answers only when it is a
+connected app's page, with its bearer token and without cookies
+([Calls from the app's page](sign-in.md#calls-from-the-apps-page)). A
+change sent from any other site's page is refused: `403` with `forbidden`.
 
 ## Workspaces
 
@@ -530,8 +538,9 @@ as `answer`, or null:
 | `option` | The option chosen: a letter on a task with choices, or null when the answer chose none. On an approval, `decline` for a refusal, and `approve` both for an approval and for the owner's report that they did the action. It names the latest answer, not a standing permission: a disputed approval keeps `approve` and has `disputedBy` set. Whether the approved action may proceed is shown by the gate, as above |
 | `quote` | The owner's words, or null when a person answered in the web app without words: a pick with no note, or an approval with no reason |
 | `source` | Where the owner said it, as the relaying sender named it; null for an answer made in the web app |
-| `recordedBy` | The person who answered in the web app, or the agent or service that relayed the answer |
-| `relayed` | `false` for a person's own answer in the web app, `true` for any other |
+| `recordedBy` | The person who answered in the web app or through a connected app, or the agent or service that relayed the answer |
+| `relayed` | `false` for a person's own answer, in the web app or through a connected app, `true` for any other |
+| `app` | The client id of the [connected app](sign-in.md#connected-apps) the person answered through, or null |
 | `proposalVersion` | The proposal version it answered |
 | `at` | When it was recorded |
 | `disputedBy` | The person who disputed it, or null |
@@ -785,8 +794,9 @@ reads use.
 
 ### A person's decisions
 
-These routes take a person's own decision. Only a person signed in to the
-web app may send one (`tasks:decide`), in a project they may change; any
+These routes take a person's own decision. Only a person may send one
+(`tasks:decide`), signed in to the web app or through a connected app they
+allowed `tasks:decide`, in a project they may change; any
 other sender gets `403` with `insufficient_scope` and a `detail` saying so,
 and nothing changes. Each takes one JSON object and the optional
 `Idempotency-Key` header, as the other writes do, is one write, and answers
@@ -810,6 +820,12 @@ stands. An answer, a pick and an approval each become the task's recorded
 `answer` ([above](#recording-an-owner-answer)), with `relayed: false`, the
 person as `recordedBy`, the proposal version it answered, and the person's
 words, note or reason as its quote.
+
+A decision made through a connected app is recorded exactly as one made in
+the web app, under the person's name, and also names the app's client id:
+`app` in the pick (`choice`), in the recorded `answer`, which is `null` for
+one made in the web app or relayed, and in a dispute's record. The task's
+history shows each in the change it made.
 
 A decision's close, after a pick or an answer, is refused while the decision
 waits on an open approval or has children that are not closed. Each refusal
