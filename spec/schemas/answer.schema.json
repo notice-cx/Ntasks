@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/answer.schema.json",
+  "title": "Answer",
+  "description": "The latest answer recorded on a task that waits on a person: made directly by a person in the server's own interface (relayed false), or relayed by an agent or a service that names where the person said it (relayed true). option is a letter on a task with choices, approve or decline on an approval, null when the answer chose none. Only a relayed answer can be disputed. Section 3.6 of the contract.",
+  "$defs": {
+    "proposalVersion": {
+      "description": "The first 32 hexadecimal characters of the SHA-256 of the task's proposal.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    }
+  },
+  "type": "object",
+  "properties": {
+    "option": { "enum": ["a", "b", "c", "d", "e", "f", "approve", "decline", null] },
+    "quote": { "description": "The person's exact words, recorded as given; nothing reads them.", "type": ["string", "null"] },
+    "source": {
+      "description": "Where the person said it, as the relaying sender named it; null for a direct answer.",
+      "type": ["string", "null"]
+    },
+    "recordedBy": { "$ref": "actor.schema.json" },
+    "relayed": { "type": "boolean" },
+    "proposalVersion": { "oneOf": [{ "$ref": "#/$defs/proposalVersion" }, { "type": "null" }] },
+    "at": { "type": "string", "format": "date-time" },
+    "disputedBy": { "oneOf": [{ "$ref": "actor.schema.json" }, { "type": "null" }] }
+  },
+  "required": ["option", "quote", "source", "recordedBy", "relayed", "proposalVersion", "at", "disputedBy"],
+  "allOf": [
+    {
+      "description": "A relayed answer carries the person's words and where they said them.",
+      "if": { "properties": { "relayed": { "const": true } } },
+      "then": { "properties": { "source": { "type": "string", "minLength": 1 }, "quote": { "type": "string" } } }
+    },
+    {
+      "description": "A person's own answer cannot be disputed.",
+      "if": { "properties": { "relayed": { "const": false } } },
+      "then": { "properties": { "disputedBy": { "type": "null" } } }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/provenance.schema.json",
+  "title": "Provenance",
+  "description": "Who made one change and when: the actor the server signed in, the model the actor said it runs as, and the time the server recorded. The actor comes from sign-in, never from the request's arguments; the model is the caller's own statement. Section 3.1 of the contract.",
+  "type": "object",
+  "properties": {
+    "actor": { "$ref": "actor.schema.json" },
+    "model": {
+      "description": "The model the actor named, such as claude-opus-5-5; null when it named none.",
+      "type": ["string", "null"],
+      "maxLength": 128
+    },
+    "at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["actor", "at"]
+}

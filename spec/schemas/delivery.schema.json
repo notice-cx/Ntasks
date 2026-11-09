@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/delivery.schema.json",
+  "title": "Delivery",
+  "description": "Where the change of a task closed as done has reached: built when the task closed with a commit or a pull request, merged once a signal says the change merged, live once a signal says a deploy shipped it. A task only moves forward. Section 3.8 of the contract.",
+  "$defs": {
+    "commit": {
+      "description": "A commit's name: 7 to 64 lowercase hexadecimal characters. Two commits match when one starts with the other.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$"
+    }
+  },
+  "type": "object",
+  "properties": {
+    "stage": { "enum": ["built", "merged", "live"] },
+    "commit": { "oneOf": [{ "$ref": "#/$defs/commit" }, { "type": "null" }] },
+    "pullRequest": { "type": ["string", "null"], "format": "uri", "pattern": "^https?://", "maxLength": 2048 },
+    "mergeCommit": {
+      "description": "The commit that merged the change, when the merged signal named exactly one.",
+      "oneOf": [{ "$ref": "#/$defs/commit" }, { "type": "null" }]
+    },
+    "builtAt": { "type": "string", "format": "date-time" },
+    "mergedAt": {
+      "description": "Null until a merged signal; a task can go live without one.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "liveAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["stage", "commit", "pullRequest", "builtAt", "mergedAt", "liveAt"],
+  "anyOf": [
+    { "properties": { "commit": { "type": "string" } } },
+    { "properties": { "pullRequest": { "type": "string" } } }
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "stage": { "const": "built" } } },
+      "then": { "properties": { "mergedAt": { "type": "null" }, "liveAt": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "merged" } } },
+      "then": { "properties": { "mergedAt": { "type": "string" }, "liveAt": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "stage": { "const": "live" } } },
+      "then": { "properties": { "liveAt": { "type": "string" } } }
+    }
+  ]
+}

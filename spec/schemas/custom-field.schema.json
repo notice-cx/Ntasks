@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/custom-field.schema.json",
+  "title": "Custom field",
+  "description": "A fact a project's own work tracks, which its tasks carry a value of. A key names one field for good: a project never defines a key twice, retired or not. A retired field takes no new values; the values tasks carry stay. Section 8.2 of the contract.",
+  "type": "object",
+  "properties": {
+    "key": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\r\\n]*$" },
+    "type": { "enum": ["text", "number", "date", "single-choice", "multiple-choice", "url", "yes-no"] },
+    "options": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        { "type": "null" }
+      ]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "retiredAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["key", "name", "type", "options", "createdAt", "retiredAt"],
+  "if": { "properties": { "type": { "enum": ["single-choice", "multiple-choice"] } } },
+  "then": { "properties": { "options": { "type": "array" } } },
+  "else": { "properties": { "options": { "type": "null" } } }
+}

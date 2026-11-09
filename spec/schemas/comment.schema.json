@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/comment.schema.json",
+  "title": "Comment",
+  "description": "A note or piece of evidence added to a task while the work moves. A comment is never edited or deleted. Section 3.4 of the contract.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "author": { "$ref": "actor.schema.json" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "author", "text", "createdAt"]
+}

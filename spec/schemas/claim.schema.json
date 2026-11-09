@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/claim.schema.json",
+  "title": "Claim and work in hand",
+  "description": "Who holds a task and what the holder recorded about the work in hand. A claim makes the task in_progress and names its holder; only one claim on a task succeeds. Each work detail replaces the one before it, and releasing or closing the task clears them; history keeps every value. Section 3.3 of the contract.",
+  "$defs": {
+    "workDetails": {
+      "description": "Only the details the holder recorded. A server keeps these six; a reader ignores any other.",
+      "type": "object",
+      "properties": {
+        "session": { "description": "A link to, or the id of, the agent session doing the work.", "type": "string", "maxLength": 512 },
+        "worktree": { "type": "string", "maxLength": 512 },
+        "branch": { "type": "string", "maxLength": 255 },
+        "pr": { "description": "The pull request's URL.", "type": "string", "format": "uri", "pattern": "^https?://", "maxLength": 2048 },
+        "commit": { "description": "The commit last tested.", "type": "string", "maxLength": 128 },
+        "next": { "description": "The next step, in one line.", "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "assignee": {
+      "description": "The holder, or null while nobody holds the task.",
+      "oneOf": [{ "$ref": "actor.schema.json" }, { "type": "null" }]
+    },
+    "for": {
+      "description": "The helper agent the holder works through, as the holder named it; null when it named none. The holder still holds the task.",
+      "type": ["string", "null"],
+      "maxLength": 64
+    },
+    "work": { "$ref": "#/$defs/workDetails" },
+    "lastActivityAt": {
+      "description": "When the holder last changed or commented on the task. Shown only: it never releases a claim.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "required": ["assignee", "for", "work", "lastActivityAt"],
+  "if": { "properties": { "assignee": { "type": "null" } } },
+  "then": {
+    "properties": {
+      "for": { "type": "null" },
+      "work": { "maxProperties": 0 },
+      "lastActivityAt": { "type": "null" }
+    }
+  }
+}

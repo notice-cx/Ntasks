@@ -56,8 +56,10 @@ Every feature and every change to an existing one meets all five:
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)). `docs/index.md` lists the pages in the order the website's sidebar shows them |
 | `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build; no merge or CI run deploys it ([apps/site/README.md](apps/site/README.md)) |
+| `spec/` | The draft open contract for shared work that other tools can implement: its text, JSON Schemas, sample objects and the tests that check them. Its text is CC BY 4.0 and its schemas and tests Apache-2.0, apart from Ntasks's AGPL-3.0 code ([spec/README.md](spec/README.md)). A change to a rule Ntasks keeps updates the contract and its appendix of tests |
 
-A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
+A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, or
+is `spec/`, which stands alone so it can move to a home of its own; it is
 named `@ntasks/<name>`, and follows an existing workspace's `package.json` and
 `tsconfig.json`. A workspace with code has a `typecheck` script, and one with
 tests a `test` script, so the root commands reach it.

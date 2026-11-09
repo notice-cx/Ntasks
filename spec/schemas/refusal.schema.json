@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/refusal.schema.json",
+  "title": "HTTP refusal",
+  "description": "The body of a refused HTTP request: a code a client can branch on, a sentence a person can read, and the body field at fault when there is one. Nothing of a refused write is stored. Section 12.3 of the contract.",
+  "type": "object",
+  "properties": {
+    "error": {
+      "enum": [
+        "invalid_request",
+        "workspace_required",
+        "insufficient_scope",
+        "forbidden",
+        "not_found",
+        "task_refused",
+        "idempotency_conflict",
+        "unavailable"
+      ]
+    },
+    "detail": { "type": "string", "minLength": 1 },
+    "field": { "type": "string", "minLength": 1 }
+  },
+  "required": ["error"]
+}

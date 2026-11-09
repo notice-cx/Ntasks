@@ -1,0 +1,71 @@
+{
+  "priority": 2,
+  "labels": [
+    "human"
+  ],
+  "parent": null,
+  "description": "",
+  "acceptance": "",
+  "notes": "",
+  "design": "",
+  "estimateMinutes": null,
+  "ready": false,
+  "awaitingHuman": false,
+  "assignee": null,
+  "for": null,
+  "work": {},
+  "lastActivityAt": null,
+  "choices": {
+    "question": "Which sign-in should the web app offer first?",
+    "options": [
+      {
+        "key": "a",
+        "label": "GitHub",
+        "detail": "Every invited person already has an account.",
+        "recommended": true
+      },
+      {
+        "key": "b",
+        "label": "Email links"
+      },
+      {
+        "key": "c",
+        "label": "Both at once"
+      }
+    ]
+  },
+  "choice": {
+    "option": "a",
+    "label": "GitHub",
+    "by": "Avery Example",
+    "at": "2026-11-02T14:40:00.000Z"
+  },
+  "answer": {
+    "option": "a",
+    "quote": null,
+    "source": null,
+    "recordedBy": "Avery Example",
+    "relayed": false,
+    "proposalVersion": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "at": "2026-11-02T14:40:00.000Z",
+    "disputedBy": null
+  },
+  "deferUntil": null,
+  "dependencies": [],
+  "externalLinks": [],
+  "fields": {},
+  "metadata": {},
+  "commentCount": 0,
+  "createdAt": "2026-11-02T09:00:00.000Z",
+  "updatedAt": "2026-11-02T09:00:00.000Z",
+  "startedAt": null,
+  "closedAt": "2026-11-02T14:40:00.000Z",
+  "closeReason": "Chose (a) GitHub",
+  "closeLink": null,
+  "resolution": "done",
+  "duplicateOf": null,
+  "id": "web-m1n2",
+  "title": "Choose the first sign-in method",
+  "status": "closed",
+  "type": "decision"
+}
