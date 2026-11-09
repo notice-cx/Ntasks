@@ -40,7 +40,8 @@ one copy.
 
 Run it again at any time. A server already registered as `ntasks` at the same
 endpoint is left as it is. One registered at another address, or as a local
-command, is replaced only after you agree. A skill file that differs from the repository's is replaced.
+command, is replaced only after you agree. A skill file that differs from the
+repository's is replaced.
 
 The address is the deployment's origin, such as `https://ntasks.example.com`.
 An address without a scheme gets `https://`; `http://` is accepted only for
