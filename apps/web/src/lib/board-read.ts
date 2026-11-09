@@ -4,7 +4,7 @@
  * filters keep. A project whose read failed is named as such and counted as
  * missing, never as empty.
  */
-import type { FieldFilters, LiveTasksPayload, TaskProject } from '@/api/types';
+import type { FieldFilters, FoundTask, LiveTasksPayload, TaskProject } from '@/api/types';
 import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
   boardOrder,
@@ -170,10 +170,18 @@ function matchesSearch(task: BoardTask, q: string): boolean {
   return words.every((word) => text.includes(word));
 }
 
-/** Whether a task holds the search and every filter but the project, filtered by the status key `status`. */
-export function keptByFilters(task: BoardTask, filters: BoardFilters, status: string | null): boolean {
+const NONE: ReadonlySet<string> = new Set();
+
+/** Whether a task holds the search and every filter but the project, filtered by the status key `status`.
+ * A task the server's search found, named in `found`, holds the search. */
+export function keptByFilters(
+  task: BoardTask,
+  filters: BoardFilters,
+  status: string | null,
+  found: ReadonlySet<string> = NONE,
+): boolean {
   return (
-    matchesSearch(task, filters.q) &&
+    (found.has(task.id) || matchesSearch(task, filters.q)) &&
     (filters.status === 'all' || status === filters.status) &&
     (filters.priority === 'all' || priorityBand(task.priority) === filters.priority) &&
     (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase()))) &&
@@ -181,18 +189,35 @@ export function keptByFilters(task: BoardTask, filters: BoardFilters, status: st
   );
 }
 
+/**
+ * The board from every project's read, with the filters applied. `found` is
+ * what the server's search of every project found for `filters.q`: each such
+ * task holds the search, and one no board in view holds (closed before the
+ * board's week, or in a project whose board has not arrived) is a row too,
+ * though no count includes it.
+ */
 export function readBoard(
   catalog: readonly TaskProject[],
   reads: ReadonlyMap<string, ProjectRead>,
   filters: BoardFilters,
+  found: readonly FoundTask[] = [],
 ) {
   const available = catalog.map((project) => readProject(project, reads.get(project.logicalKey)));
   const projects = available.filter((project) => filters.project === 'all' || project.key === filters.project);
   const allTasks = projects.flatMap((project) => project.tasks);
-  const statuses = new Map(allTasks.map((task) => [task.id, task.status]));
+  const onBoards = new Set(allTasks.map((task) => task.id));
+  const inView = new Set(projects.map((project) => project.key));
+  // As a board draws them: only approvals a person answers.
+  const beyond = found
+    .filter((task) => inView.has(task.project) && !onBoards.has(task.id))
+    .filter((task) => task.awaitType === null || task.awaitType === 'human')
+    .flatMap((task) => boardRows(task.project, [task]));
+  const beyondIds = new Set(beyond.map((task) => task.id));
+  const statuses = new Map([...allTasks, ...beyond].map((task) => [task.id, task.status]));
   const filterStatus = (task: BoardTask) => statusKey(isWork(task) ? workStatus(task, statuses) : task.status);
 
-  const matches = (task: BoardTask) => keptByFilters(task, filters, filterStatus(task));
+  const hits = new Set(found.map((task) => task.id));
+  const matches = (task: BoardTask) => keptByFilters(task, filters, filterStatus(task), hits);
 
   const statusCounts = new Map<string, number>();
   const priorityCounts = new Map<string, number>();
@@ -222,8 +247,11 @@ export function readBoard(
     projects,
     allTasks,
     inbox,
-    /** Every task the filters keep, epics included, except the decisions in `inbox`; approvals are only ever decisions. */
-    rows: allTasks.filter((task) => !isGate(task) && matches(task) && !waitingIds.has(task.id)).sort(boardOrder),
+    /** Every task the filters keep, epics included, except the decisions in `inbox`. An approval on a board is
+     * only ever a decision; one the search found beyond the boards is a row. */
+    rows: [...allTasks, ...beyond]
+      .filter((task) => (!isGate(task) || beyondIds.has(task.id)) && matches(task) && !waitingIds.has(task.id))
+      .sort(boardOrder),
     /** Every task's status by id, for `statusMarkFor` and `groupRows`. */
     statuses,
     /** The tasks a pending approval holds, for `statusMarkFor` and `groupRows`. */

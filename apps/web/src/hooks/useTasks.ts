@@ -4,7 +4,7 @@
  * Undo window (`lib/answer-queue.ts`) before they are sent.
  */
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAnswerQueue, useTasksApi } from '@/api/context';
@@ -19,6 +19,7 @@ import type {
   TaskChoiceKey,
   TaskEdit,
   TaskProject,
+  TaskSearch,
   TasksCapabilities,
 } from '@/api/types';
 import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
@@ -136,6 +137,44 @@ export function useFilteredBoard(project: string | null, fields: FieldFilters) {
     staleTime: 15_000,
     refetchOnWindowFocus: false,
   });
+}
+
+/** How long the typed text holds still before the server is asked, and the shortest text it is asked for:
+ * each search reads the row of every unfinished task in the workspace. */
+export const SEARCH_DELAY_MS = 250;
+export const SEARCH_MIN_LENGTH = 2;
+
+/**
+ * The server's search of every project this sign-in reaches for `text`,
+ * asked once the text has held still for `SEARCH_DELAY_MS`. Its key is under
+ * the boards', so whatever reads every board again reads it again too.
+ * `searching` holds while the answer for the text typed has not arrived.
+ */
+export function useTaskSearch(text: string) {
+  const api = useTasksApi();
+  const typed = text.trim();
+  const wanted = typed.length >= SEARCH_MIN_LENGTH ? typed : '';
+  const [asked, setAsked] = useState(wanted);
+  useEffect(() => {
+    const timer = setTimeout(() => setAsked(wanted), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [wanted]);
+  const search = useQuery<TaskSearch>({
+    // An object, so no project's key, which is text, can name the same query.
+    queryKey: ['tasks', { search: asked }],
+    queryFn: ({ signal }) => api.search(asked, signal),
+    enabled: asked !== '',
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
+  const current = asked === wanted && wanted !== '';
+  return {
+    found: current ? (search.data?.tasks ?? []) : [],
+    searching: wanted !== '' && (!current || search.isPending),
+    failure: current ? search.error : null,
+    version: `${asked}:${search.status}:${search.dataUpdatedAt}:${search.errorUpdatedAt}`,
+    refetch: () => (current ? search.refetch() : Promise.resolve()),
+  };
 }
 
 /** A project's custom fields, retired ones included. Fields are defined rarely, so a read lasts a minute. */

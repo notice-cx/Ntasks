@@ -221,6 +221,17 @@ export interface LiveTasksPayload {
   epics: LiveEpic[] | null;
 }
 
+/** A task a search found, with its project's key. */
+export type FoundTask = LiveTask & { project: string };
+
+/** What a search of every project this sign-in reaches found. */
+export interface TaskSearch {
+  readAt: string;
+  /** How many tasks matched; `tasks` holds the most urgent of them. */
+  total: number;
+  tasks: FoundTask[];
+}
+
 /** One change to a task, as the change feed lists it. */
 export interface TaskChange {
   /** Orders every change in the installation. */
