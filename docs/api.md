@@ -708,6 +708,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
+| `GET /api/tasks/search` | `q`, 1 to 512 characters, and optionally `limit` (1 to 200, default 100) | `{ readAt, closedSince, total, tasks }`: the tasks of every project the sender reaches whose id, title, description, acceptance or labels hold every word of `q`, ignoring case, among the open ones and those closed in the last 7 days, most urgent first, as `list_tasks` searches with `query`. When `q` is a task id whose prefix names a project the sender reaches, that task comes first, closed at any time. Each task carries `project`, its project's key; `total` counts every match, and `tasks` holds the first `limit`. |
 | `GET /api/tasks/:id` | `project` | The task, its comments, its `proposal` and its `proposalVersion`, as `get_task` returns them ([recording an owner answer](#recording-an-owner-answer)) |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
@@ -952,8 +953,9 @@ query:
 
 - a read of one task, its comments or its history reads a few dozen rows;
 - a list or a board reads about ten rows for each task it returns;
-- `list_tasks` reads the external links of the tasks on the page it returns,
-  in one statement after the board, and no other task's;
+- `list_tasks` and `GET /api/tasks/search` read the external links of the
+  tasks on the page they return, in one statement after the board, and no
+  other task's;
 - a label read reads about fifteen rows for each task carrying the label in
   that project, however many tasks the project has;
 - a task's custom field values are part of its row, so they cost no row of

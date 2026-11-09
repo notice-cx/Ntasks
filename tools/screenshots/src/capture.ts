@@ -1,6 +1,6 @@
 /**
- * Captures the screenshots of the web app in docs/images/: the README's
- * pictures and the design gallery. It serves the app with its invented tasks
+ * Captures the screenshots of the web app in docs/images/: the pictures in
+ * the README and docs/web-app.md, and the design gallery. It serves the app with its invented tasks
  * (Vite's fixture mode, no API), draws each page in a headless Chrome or
  * Chromium in light and in dark, and writes them as WebP.
  *
@@ -26,7 +26,7 @@ import {
   type Theme,
   type WorkerPages,
 } from './browser.ts';
-import { navigate, until } from './devtools.ts';
+import { navigate, until, type PageSend } from './devtools.ts';
 
 interface Shot {
   /** The file name, before `-light.webp` or `-dark.webp`. */
@@ -35,13 +35,18 @@ interface Shot {
   address: string;
   width: number;
   height: number;
-  /** Image pixels per page pixel. The README shows a desktop shot 800 pixels wide and the phone shot 320, so 1.5
+  /** Image pixels per page pixel. The docs show a desktop shot 800 pixels wide and the phone shot 320, so 1.5
    * and 2 keep their text sharp on a high-density screen without making the files larger than that needs. */
   scale: number;
   /** An element that is on the page once it has drawn what the shot shows. */
   ready: string;
   /** Capture the whole page, however tall, instead of `height` pixels of it. */
   fullPage?: boolean;
+  /**
+   * Draw the picture inside a rounded, bordered frame with a transparent
+   * margin, so its edges show on a page of the same colour as the app.
+   */
+  framed?: boolean;
   /**
    * A page the Worker writes, drawn in place of the app's document at
    * `address`, so the fonts it loads from its origin come from the app's
@@ -52,6 +57,8 @@ interface Shot {
 
 // The desktop shots are 1100 pixels wide, so the README's 800-pixel pictures keep their text readable.
 const SHOTS: readonly Shot[] = [
+  // The README's one picture: the top of the board, Waiting for you to the end of Open.
+  { name: 'hero', address: '/tasks', width: 1100, height: 590, scale: 1.5, ready: '[data-task-row]', framed: true },
   // Tall enough to show every group, Waiting for you to Done.
   { name: 'board', address: '/tasks', width: 1100, height: 960, scale: 1.5, ready: '[data-task-row]' },
   {
@@ -122,6 +129,36 @@ const SHOTS: readonly Shot[] = [
 /** WebP quality: small files with no visible loss in flat interface colours. */
 const QUALITY = 82;
 
+/** A framed shot's margin and corner radius, in page pixels; the margin leaves room for the shadow. */
+const FRAME = { margin: 32, radius: 12 } as const;
+const FRAME_STYLE: Record<Theme, string> = {
+  light: 'border: 1px solid rgb(0 0 0 / 0.12); box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);',
+  dark: 'border: 1px solid rgb(255 255 255 / 0.16); box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);',
+};
+
+/** Draws `png`, a shot's picture, in its frame on a transparent page, and returns that picture as WebP. */
+async function frame(send: PageSend, shot: Shot, theme: Theme, png: string): Promise<string> {
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: shot.width + 2 * (FRAME.margin + 1),
+    height: shot.height + 2 * (FRAME.margin + 1),
+    deviceScaleFactor: shot.scale,
+    mobile: false,
+  });
+  await send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
+  try {
+    const style = `html, body { margin: 0; background: transparent; } img { display: block; margin: ${FRAME.margin}px; width: ${shot.width}px; height: ${shot.height}px; border-radius: ${FRAME.radius}px; ${FRAME_STYLE[theme]} }`;
+    const html = `<!doctype html><style>${style}</style><img alt="" src="data:image/png;base64,${png}">`;
+    const { frameTree } = await send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
+    await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html });
+    await send('Runtime.evaluate', { expression: 'document.images[0].decode()', awaitPromise: true });
+    const { data } = await send<{ data: string }>('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
+    return data;
+  } finally {
+    // With no colour, the override ends and the next shot draws on the page's own background.
+    await send('Emulation.setDefaultBackgroundColorOverride', {});
+  }
+}
+
 async function capture({ send }: Tab, shot: Shot, theme: Theme) {
   await send('Emulation.setDeviceMetricsOverride', {
     width: shot.width,
@@ -170,7 +207,12 @@ async function capture({ send }: Tab, shot: Shot, theme: Theme) {
       awaitPromise: true,
     });
   }
-  const { data } = await send<{ data: string }>('Page.captureScreenshot', { format: 'webp', quality: QUALITY });
+  // A framed shot is captured without loss, so it is compressed once, in its frame.
+  const { data: page } = await send<{ data: string }>(
+    'Page.captureScreenshot',
+    shot.framed ? { format: 'png' } : { format: 'webp', quality: QUALITY },
+  );
+  const data = shot.framed ? await frame(send, shot, theme, page) : page;
   const file = path.join(OUT, `${shot.name}-${theme}.webp`);
   await writeFile(file, Buffer.from(data, 'base64'));
   return file;

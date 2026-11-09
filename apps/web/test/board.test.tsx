@@ -330,6 +330,83 @@ describe('the board', () => {
   });
 });
 
+describe("the board's search", () => {
+  const search = (text: string) =>
+    fireEvent.change(screen.getAllByRole('searchbox', { name: 'Search tasks' })[0] as HTMLElement, {
+      target: { value: text },
+    });
+
+  /** The fixture API with the docs project's board never answering, as a large board still on its way. */
+  function docsUnread(api = createFixtureTasksApi()) {
+    return {
+      ...api,
+      board: (project: string, signal?: AbortSignal) =>
+        project === 'docs' ? new Promise<never>(() => {}) : api.board(project, signal),
+    };
+  }
+
+  it('finds and opens a task by its id in a project whose board has not been read', async () => {
+    renderApp('/tasks', docsUnread());
+    await group('Open');
+    expect(document.querySelector('[data-task-row="docs-m2v7"]')).toBeNull();
+    search('docs-m2v7');
+    const row = await waitFor(() => {
+      const found = document.querySelector('[data-task-row="docs-m2v7"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    fireEvent.click(within(row).getByRole('link', { name: /Write the guide to claiming a task/ }));
+    expect(await screen.findByRole('heading', { name: 'Write the guide to claiming a task' })).toBeTruthy();
+  });
+
+  it('finds words in the description of a task in a project whose board has not been read', async () => {
+    renderApp('/tasks', docsUnread());
+    await group('Open');
+    search('hand back');
+    await waitFor(() => expect(rowIds(document.body)).toEqual(['docs-m2v7']));
+  });
+
+  it('finds by its id a task closed before the board’s week, and opens Done to show it', async () => {
+    const api = createFixtureTasksApi();
+    const closed = api.state.tasks.find((task) => task.id === 'web-h1z8')!;
+    const longAgo = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    api.state.tasks.push({ ...closed, id: 'web-a0b1', title: 'Retire the old pricing page', closedAt: longAgo });
+    renderApp('/tasks', api);
+    await group('Open');
+    search('web-a0b1');
+    await waitFor(async () => expect(rowIds(await group('Done'))).toEqual(['web-a0b1']));
+  });
+
+  it('says it is searching until the server answers, and when it could not search', async () => {
+    const api = createFixtureTasksApi();
+    const pending: (() => void)[] = [];
+    let failing = false;
+    renderApp('/tasks', {
+      ...api,
+      search: (text: string, signal?: AbortSignal) =>
+        failing
+          ? Promise.reject(new Error('The search: the server answered 503.'))
+          : new Promise((resolve) => pending.push(() => resolve(api.search(text, signal)))),
+    });
+    await group('Open');
+    search('nothing like this');
+    expect(await screen.findByText('Searching…')).toBeTruthy();
+    expect(screen.queryByText('No tasks match these filters')).toBeNull();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    act(() => pending[0]!());
+    expect(await screen.findByText('No tasks match these filters')).toBeTruthy();
+
+    failing = true;
+    search('nothing like that');
+    const failed = (await screen.findByText("Couldn't search every project")).closest('[role="alert"]') as HTMLElement;
+    failing = false;
+    fireEvent.click(within(failed).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    act(() => pending[1]!());
+    await waitFor(() => expect(screen.queryByText("Couldn't search every project")).toBeNull());
+  });
+});
+
 describe('the sidebar', () => {
   it('counts what waits for you and each project, and names who holds open work', async () => {
     renderApp('/tasks');

@@ -44,6 +44,9 @@ const WORKSPACE_NAME_LIMIT = 128;
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
 const DAY = 24 * 3_600_000;
+/** The most tasks a search answers, and the longest text it takes, as the Worker's search route. */
+const SEARCH_PAGE = 100;
+const SEARCH_TEXT = 512;
 
 function copy<T>(value: T): T {
   return structuredClone(value);
@@ -449,6 +452,26 @@ export function createFixtureTasksApi({
         task: withLinks(task),
         comments: state.comments.get(id) ?? [],
         actors: FIXTURE_ACTORS,
+      });
+    },
+    async search(text) {
+      reach();
+      const query = text.trim().toLowerCase();
+      if (query === '' || query.length > SEARCH_TEXT)
+        invalid(`q must hold 1 to ${SEARCH_TEXT} characters besides spaces`);
+      const words = query.split(/\s+/u);
+      const since = now() - CLOSED_DAYS * DAY;
+      const named = isTaskId(query) ? state.tasks.find((task) => task.id === query) : undefined;
+      const matched = state.tasks.filter((task) => {
+        if (task === named || (task.status === 'closed' && !(Date.parse(task.closedAt ?? '') >= since))) return false;
+        const searched = [task.id, task.title, task.description, task.acceptance, ...task.labels].join('\n');
+        return words.every((word) => searched.toLowerCase().includes(word));
+      });
+      const found = [...(named === undefined ? [] : [named]), ...matched];
+      return copy({
+        readAt: new Date(now()).toISOString(),
+        total: found.length,
+        tasks: found.slice(0, SEARCH_PAGE).map((task) => ({ ...withLinks(task), project: task.project })),
       });
     },
     async fields(key) {

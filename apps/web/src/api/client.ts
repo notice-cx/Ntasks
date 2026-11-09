@@ -34,6 +34,7 @@ import type {
   TaskEdit,
   TaskField,
   TaskProject,
+  TaskSearch,
   TasksCapabilities,
   Workspace,
   WorkspaceMembers,
@@ -77,6 +78,10 @@ export interface TasksApi {
   /** One project's closed tasks whose change is built or merged, whenever they closed. */
   delivery(project: string, signal?: AbortSignal): Promise<LiveTasksPayload>;
   task(id: string, project: string, signal?: AbortSignal): Promise<LiveTaskDetail>;
+  /** The tasks of every project this sign-in reaches whose id, title, description, acceptance or labels hold
+   * every word of `text`, among unfinished tasks and the last week's closes; a task id names its task first,
+   * closed at any time. */
+  search(text: string, signal?: AbortSignal): Promise<TaskSearch>;
   /** The project's custom fields, retired ones included. */
   fields(project: string, signal?: AbortSignal): Promise<ProjectFields>;
   /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
@@ -446,6 +451,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     board: (project, signal, fields) => scope().board(project, signal, fields),
     delivery: (project, signal) => scope().delivery(project, signal),
     task: (id, project, signal) => scope().task(id, project, signal),
+    search: (text, signal) => scope().search(text, signal),
     fields: (project, signal) => scope().fields(project, signal),
     changes: (after, signal) => scope().changes(after, signal),
     createTask: (input, options) => scope().createTask(input, options),
@@ -568,6 +574,13 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     async task(id, project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
+    },
+    async search(text, signal) {
+      const found = await read<unknown>(`/api/tasks/search?${new URLSearchParams({ q: text })}`, 'The search', signal);
+      if (!isRecord(found) || !Array.isArray(found.tasks) || typeof found.total !== 'number') {
+        throw new UnreadableAnswer('The search could not be read.');
+      }
+      return found as unknown as TaskSearch;
     },
     async createTask({ project, ...input }, options) {
       const response = await write(

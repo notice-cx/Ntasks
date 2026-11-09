@@ -254,23 +254,20 @@ export function TasksBoard() {
         </p>
       ) : null}
       {board.readFailure === null && board.broken.length > 0 ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-5.5 py-2 text-label text-ink"
+        <ReadBanner
+          title={`${
+            board.broken.length === 1
+              ? '1 project could not be read'
+              : `${formatInt(board.broken.length)} projects could not be read`
+          }:`}
+          onRetry={() => void board.refetch()}
           data-projects-unread=""
         >
-          <CircleAlert aria-hidden size={15} className="text-ink-2" />
-          <span className="font-medium">
-            {board.broken.length === 1
-              ? '1 project could not be read'
-              : `${formatInt(board.broken.length)} projects could not be read`}
-            :
-          </span>
-          <span>{board.broken.map((project) => project.name).join(', ')}</span>
-          <Button size="sm" className="ms-auto" onClick={() => void board.refetch()}>
-            Retry
-          </Button>
-        </div>
+          {board.broken.map((project) => project.name).join(', ')}
+        </ReadBanner>
+      ) : null}
+      {board.searchFailure !== null ? (
+        <ReadBanner title="Couldn't search every project" onRetry={() => void board.refetch()} data-search-failed="" />
       ) : null}
       {composing ? (
         <TaskComposer
@@ -282,6 +279,33 @@ export function TasksBoard() {
         />
       ) : null}
       {body}
+    </div>
+  );
+}
+
+/** A line across the board saying what could not be read, with a way to read it again. */
+function ReadBanner({
+  title,
+  children,
+  onRetry,
+  ...data
+}: {
+  title: string;
+  children?: ReactNode;
+  onRetry: () => void;
+} & Record<`data-${string}`, string>) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-5.5 py-2 text-label text-ink"
+      {...data}
+    >
+      <CircleAlert aria-hidden size={15} className="text-ink-2" />
+      <span className="font-medium">{title}</span>
+      {children === undefined ? null : <span>{children}</span>}
+      <Button size="sm" className="ms-auto" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
@@ -305,7 +329,11 @@ function Groups({
   hides: (id: string, fetchedAt: number | null) => boolean;
   now: number;
 }) {
-  const [folded, setFolded] = useState<ReadonlySet<StatusMarkKey>>(() => new Set(['done']));
+  // A search opens Done too, since a pasted id is often a closed task's; each keeps its own folds.
+  const searched = filters.q.trim() !== '';
+  const [boardFolds, setBoardFolds] = useState<ReadonlySet<StatusMarkKey>>(() => new Set(['done']));
+  const [searchFolds, setSearchFolds] = useState<ReadonlySet<StatusMarkKey>>(() => new Set());
+  const [folded, setFolded] = searched ? [searchFolds, setSearchFolds] : [boardFolds, setBoardFolds];
   const [shown, setShown] = useState<Partial<Record<string, number>>>({});
   // The Waiting for you view also lists the work waiting for a merge or a deploy.
   const delivery = useDeliveryWaits(board, filters, view === 'waiting');
@@ -337,6 +365,7 @@ function Groups({
     FILTER_NAMES.some((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all'));
 
   if (marks.length === 0 && deliveryGroups.length === 0) {
+    if (board.searching) return <EmptyState icon={<Search />} title="Searching…" />;
     return narrowed ? (
       <EmptyState
         icon={<Search />}
