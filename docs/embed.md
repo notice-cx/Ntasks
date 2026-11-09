@@ -15,7 +15,9 @@ on the Worker's origin.
    the host's page, which receives their access token
    ([Connected apps](sign-in.md#connected-apps)). The host passes the token
    to the pages; it never vouches for the person with a credential of its
-   own.
+   own. The Ntasks answers the host's page, `/api/version` and its writes
+   included, only from the origin of the app's registered redirect address
+   ([Calls from the app's page](sign-in.md#calls-from-the-apps-page)).
 2. **Checks the version.** `GET /api/version` on the Ntasks answers
    `{ version, oldest }` before anyone signs in. When `version` is lower than
    the package's `API_VERSION`, the Ntasks lacks something the pages read and
