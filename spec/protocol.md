@@ -761,8 +761,8 @@ Core: a server MAY claim Core and Delivery without Human decisions and
 approvals. How a server states the levels it claims is
 [OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
 [conformance suite](conformance/README.md) checks that claim;
-[Implementations](implementations.md) lists each server and the levels it
-passes.
+[the spec's README](README.md#implementations) lists each server and the
+levels it passes.
 
 ## 8. Extensions
 
