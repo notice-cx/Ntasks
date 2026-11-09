@@ -148,6 +148,7 @@ describe('tools/list', () => {
     expect(found.required).toEqual([]);
     expect(found.added).toEqual([
       'list_tasks.stage',
+      'list_tasks.stalled',
       'list_tasks.fields',
       'get_task.tasks',
       'create_task.notes',

@@ -33,6 +33,7 @@ import {
   dismiss,
   dispute,
   markStep,
+  release,
   RESPONDED,
   respond,
   seen,
@@ -147,6 +148,19 @@ export async function acceptRoute(
     );
   const accepting = { met, ...(reason === undefined ? {} : { reason }) };
   return decided(context, await accept(context, projectId, taskId, accepting, retry(body), shown));
+}
+
+/** POST /api/tasks/:id/release: a person freeing a task someone holds, on their own call. */
+export async function releaseRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  taskId: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'release', { task: taskId });
+  only(body, ['projectId']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  return decided(context, await release(context, projectId, taskId, retry(body)));
 }
 
 /** POST /api/tasks/:id/dispute: a person withdrawing an approval or an acceptance an agent recorded for them. */

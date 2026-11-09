@@ -522,5 +522,18 @@
         "task": "@task"
       }
     }
+  },
+  {
+    "version": 5,
+    "shapes": {
+      "task": {
+        "stalled": "boolean"
+      }
+    },
+    "routes": {
+      "POST /api/tasks/:id/release": {
+        "task": "@task"
+      }
+    }
   }
 ]

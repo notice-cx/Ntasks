@@ -101,6 +101,7 @@ export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
   'dispute',
   'step',
   'accept',
+  'release',
 ]);
 
 /** A write's body and its retry key. The body is one JSON object, with no key twice. */

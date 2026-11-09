@@ -22,6 +22,7 @@ import {
   type StepMarking,
   type TaskResolution,
   type TaskWrite,
+  type WorkDetail,
 } from '@ntasks/domain';
 import { listed } from './args.ts';
 import { SCOPES } from './auth.ts';
@@ -870,6 +871,61 @@ function acceptanceDisputeWrite(
   return draft.write();
 }
 
+/** The work details a freed task's comment keeps, in the order it lists them. */
+const KEPT_WORK: readonly [WorkDetail, string][] = [
+  ['next', 'Next step'],
+  ['branch', 'Branch'],
+  ['pr', 'Pull request'],
+  ['commit', 'Commit'],
+  ['worktree', 'Worktree'],
+  ['session', 'Session'],
+];
+
+/** The comment a person's free leaves: who freed it, and where the work
+ * stopped, since the holder's work details go with the claim. The holder's
+ * last comment is cut to what one comment holds. */
+function whereItStopped(task: Task, holder: string, comments: readonly TaskComment[], person: string): string {
+  const lines = [
+    `${person} freed ${task.id} on their own call. Where it stopped:`,
+    `- Held by: ${holder}${task.assigneeFor === null ? '' : ` for ${task.assigneeFor}`}`,
+    `- Last activity: ${task.lastActivityAt ?? 'none recorded'}`,
+    ...KEPT_WORK.flatMap(([detail, label]) => {
+      const value = task.work[detail];
+      return value === undefined ? [] : [`- ${label}: ${value}`];
+    }),
+  ];
+  const head = lines.join('\n');
+  const last = comments.findLast((comment) => sameActor(comment.author, holder));
+  if (last === undefined) return head;
+  const intro = `\n- Last comment, ${last.createdAt}: `;
+  const room = TASK_LIMITS.comment - head.length - intro.length;
+  if (room < 2) return head;
+  const text = last.text.replace(/\s+/gu, ' ').trim();
+  return `${head}${intro}${text.length <= room ? text : `${text.slice(0, room - 1)}…`}`;
+}
+
+/**
+ * A person freeing a task someone holds, on their own call: nobody holds it
+ * then, a task in progress is open again, and a blocked or deferred one keeps
+ * its status, as after an agent's release. A comment keeps who freed it and
+ * where the work stopped. An agent frees a task only with reconcile_task's
+ * release, naming the holder and how it checked the holder stopped.
+ */
+export function releaseWrite(task: Task, around: Surroundings, deciding: Deciding): TaskWrite | null {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  const holder = task.assignee;
+  if (holder === null)
+    throw new Refused(
+      'state',
+      `refused: nobody holds ${task.id}, so there is no claim to free.`,
+      `Nobody holds ${task.id}.`,
+    );
+  const draft = new Draft(task);
+  draft.comment = whereItStopped(task, holder, around.comments, deciding.actor);
+  draft.handBack(false, task.status !== 'in_progress');
+  return draft.write();
+}
+
 // ─── An owner answer an agent relays, and maintenance ─────────────────────────
 
 /** The checks of a disposition's arguments together, before any read. */
@@ -1314,8 +1370,8 @@ async function decide(
 export function notAPerson(): Refused {
   return new Refused(
     'forbidden',
-    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Record an existing owner answer with reconcile_task.',
-    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Answer it in the Ntasks web app.',
+    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step, accepts a task as done or frees a task on their own call, or disputes an answer relayed for them. Record an existing owner answer, or release a holder that stopped with its evidence, with reconcile_task.',
+    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done or frees a task on their own call, or disputes an answer relayed for them. Answer it in the Ntasks web app.',
   );
 }
 
@@ -1406,6 +1462,16 @@ export function markStep(
     retry,
     shown,
   );
+}
+
+/** A person freeing a task someone holds, on their own call (releaseWrite). */
+export function release(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  retry?: RetryRequest,
+): Promise<Written> {
+  return decide(context, projectId, taskId, (task, around, deciding) => releaseWrite(task, around, deciding), retry);
 }
 
 /** A person accepting a task as done on their own call (acceptanceWrite). */
