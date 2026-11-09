@@ -1,17 +1,18 @@
 # Design system
 
 The web app's tokens, symbols and components, and the rules for using them.
-The code is in three places:
+The code is in three places in [`@ntasks/ui`](../packages/ui/README.md), the
+package that holds the web app's pages:
 
 | Path | Holds |
 |---|---|
-| [`apps/web/src/index.css`](../apps/web/src/index.css) | The tokens: colours for light and dark, the type scale, radii, shadows and motion, as CSS variables that Tailwind reads through `@theme inline` |
-| [`apps/web/src/components/ui/`](../apps/web/src/components/ui/) | The components and the symbols that draw tasks, people and agents |
-| [`apps/web/src/lib/symbols.ts`](../apps/web/src/lib/symbols.ts) | Which status, priority and type mark a task gets, and which avatar a person or agent gets |
+| [`packages/ui/src/index.css`](../packages/ui/src/index.css) | The tokens: colours for light and dark, the type scale, radii, shadows and motion, as CSS variables that Tailwind reads through `@theme inline` |
+| [`packages/ui/src/components/ui/`](../packages/ui/src/components/ui/) | The components and the symbols that draw tasks, people and agents |
+| [`packages/ui/src/lib/symbols.ts`](../packages/ui/src/lib/symbols.ts) | Which status, priority and type mark a task gets, and which avatar a person or agent gets |
 
-The page `/design` of the app draws every token, symbol and component from
-that code. Open it at http://localhost:5173/design with
-`pnpm --filter @ntasks/web dev`, or at http://localhost:8787/design with
+The gallery, the page `/design` of the web app, draws every token, symbol and
+component from that code. Open it at http://localhost:5173/design with
+`pnpm --filter @ntasks/ui dev`, or at http://localhost:8787/design with
 `pnpm dev`. Its theme switch draws it in light or dark whatever the system
 prefers. `pnpm screenshots design` captures it in both themes
 ([tools/screenshots](../tools/screenshots/README.md)):
@@ -35,9 +36,11 @@ prefers. `pnpm screenshots design` captures it in both themes
 
 ## Colour
 
-Light is the root's theme. `.dark` on `<html>` switches every token, and
-[`src/theme.ts`](../apps/web/src/theme.ts) sets it while the system prefers
-dark. `.light` or `.dark` on any element draws that element's subtree in that
+Light is the root's theme. `.dark` on the app's root element switches every
+token, and [`NtasksApp`](../packages/ui/src/NtasksApp.tsx) sets it while its
+theme is dark: always, never, or while the system prefers dark. The
+package's stylesheet applies only inside that root element, `[data-ntasks]`
+([the package's styles](../packages/ui/README.md#styles)). `.light` or `.dark` on any element draws that element's subtree in that
 theme, which the gallery uses to show both palettes side by side. A part of a
 page drawn in a theme of its own goes in a `ThemeScope` (`popover.tsx`), so the
 popovers opened inside it render inside it and take its theme too.
@@ -79,7 +82,7 @@ The marks have four tokens of their own:
 The identity palette gives each workspace's icon a colour of its own, and
 nothing but a workspace's icon uses it. Its six hues stay apart from Accent,
 amber, red and green, so none reads as a state, and each letter is at least
-4.5:1 on its fill in both themes, which `apps/web/test/design.test.tsx`
+4.5:1 on its fill in both themes, which `packages/ui/test/design.test.tsx`
 checks. These tokens have no Tailwind names: `WorkspaceIcon` reads them with
 `var()`, so no other component can draw with them through a utility.
 
@@ -115,7 +118,7 @@ the Worker writes, outside the app's build. They load Inter's Latin file
 from `/fonts/inter-latin-opsz-normal.woff2`, which the build copies from the
 same pinned package (`apps/web/server-fonts.config.ts`), and fall back to the
 system's sans serif for other scripts. Their colours are copies of the tokens
-in `workers/api/src/access/page-look.ts`; `apps/web/test/design.test.tsx`
+in `workers/api/src/access/page-look.ts`; `packages/ui/test/design.test.tsx`
 fails when one differs from `index.css`.
 
 `nums` sets tabular figures and turns off Inter's contextual alternates, so a
@@ -302,7 +305,7 @@ and `service:<name>/<agent>` for a service and the agent it acts for; see
 Every mark is drawn at 62% of the circle's width (`avatarMarkSize`). Claude's
 mark fills its box, and the Blossom's box is cropped with a margin around
 its drawing, so Codex's mark is never drawn larger than Claude's;
-`apps/web/test/symbols.test.tsx` checks both. `live` adds an Accent dot for an actor
+`packages/ui/test/symbols.test.tsx` checks both. `live` adds an Accent dot for an actor
 active now: in the sidebar, one who changed or commented on a task in progress
 within the last hour. `AvatarGroup` overlaps avatars by 6 px, each ringed in Background.
 
@@ -322,12 +325,12 @@ readers.
 `NtasksLogo` is a white N on an Accent square with 5.5/20 corners, 28 to 32 px
 on a page of its own, such as New workspace. `GitHubMark` draws GitHub's mark
 in the text colour, for Sign in with GitHub. The brand paths live in
-[`brand-marks.ts`](../apps/web/src/components/ui/brand-marks.ts) with their
+[`brand-marks.ts`](../packages/ui/src/components/ui/brand-marks.ts) with their
 sources.
 
 ## Components
 
-Each is in `apps/web/src/components/ui/`.
+Each is in `packages/ui/src/components/ui/`.
 
 ### Button and IconButton (`button.tsx`)
 
@@ -578,7 +581,7 @@ picked.
 
 ### Live
 
-`/live` lists every task in progress under a `TopBar` titled Live. The bar
+`/tasks/live` lists every task in progress under a `TopBar` titled Live. The bar
 holds each group's count after its activity mark (`6 active`, `3 quiet`,
 `50 stalled`, from 640 px wide) and, at its end, the Stalled after menu: a
 secondary button naming the time chosen, whose menu offers 4 hours, 1 day,
@@ -697,8 +700,8 @@ Each action's key:
   Blocked, Waiting for you, Parked, Done; Top, High, Normal, Low, Lowest.
 - Ages are figures and a unit, `40m`, `9h`, `12d`; counts are figures.
 - The product's own words stay consistent with the copy tests in
-  `apps/web/test/`: [`ui-lexicon.test.ts`](../apps/web/test/ui-lexicon.test.ts)
+  `packages/ui/test/`: [`ui-lexicon.test.ts`](../packages/ui/test/ui-lexicon.test.ts)
   fails on an internal word in a shown string (bead, hub, lane, pulse, tile
   and the rest, each with the word to use), and
-  [`ui-noun.test.ts`](../apps/web/test/ui-noun.test.ts) fails on "site" or
+  [`ui-noun.test.ts`](../packages/ui/test/ui-noun.test.ts) fails on "site" or
   "property" for an asset.

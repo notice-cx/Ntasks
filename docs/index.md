@@ -21,6 +21,8 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 - [Connect an agent](agents.md): the setup command, each agent by hand, and the
   Ntasks skill.
 - [The web app](web-app.md): every page, with animated walkthroughs.
+- [Embed the web app](embed.md): rendering the web app's pages inside another
+  site's page with the npm package `@ntasks/ui`.
 
 ## Reference for contributors
 
