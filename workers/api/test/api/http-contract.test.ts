@@ -206,9 +206,9 @@ async function drive(): Promise<readonly Sample[]> {
   );
   await as('POST /api/gates/:id/resolve', `/api/gates/${approval}/resolve`, inProject());
 
-  const send2 = (await tool(owner, 'create_task', { project: projectId, title: 'Email the list' })).id as string;
+  const mailing = (await tool(owner, 'create_task', { project: projectId, title: 'Email the list' })).id as string;
   const relayed = idOf(
-    await tool(owner, 'request_human_approval', { task: send2, reason: 'Email the list.' }),
+    await tool(owner, 'request_human_approval', { task: mailing, reason: 'Email the list.' }),
     'approval',
   );
   const { proposalVersion } = await tool(owner, 'get_task', { task: relayed });
