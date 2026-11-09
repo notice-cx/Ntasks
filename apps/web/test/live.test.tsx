@@ -147,6 +147,17 @@ describe('the Live page', () => {
     expect(screen.queryByRole('button', { name: /more/ })).toBeNull();
   });
 
+  it('links a pull request only when it is a web address, and shows the branch instead', async () => {
+    const seed = fixtureSeed(Date.now());
+    const held = seed.tasks.find((entry) => entry.id === 'web-k3m9.2') as FixtureTask;
+    held.work = { ...held.work, pr: 'javascript:alert(1)' };
+    renderApp('/live', createFixtureTasksApi({ seed }));
+    await liveRows('Active');
+    const row = document.querySelector('[data-live-row="web-k3m9.2"]') as HTMLElement;
+    expect(row.querySelector('[data-live-pr]')).toBeNull();
+    expect(row.querySelector('[data-live-branch]')?.textContent).toContain('codex/sign-in-a11y');
+  });
+
   it('says so when nothing is in progress', async () => {
     const seed = fixtureSeed(Date.now());
     seed.tasks = seed.tasks.filter((entry) => entry.status !== 'in_progress');

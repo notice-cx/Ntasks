@@ -12,6 +12,7 @@ import { ActivityMark } from '@/components/ui/symbols';
 import { useBoard } from '@/hooks/useBoard';
 import { useNow } from '@/hooks/useNow';
 import { NO_FILTERS } from '@/lib/board-read';
+import { httpUrl } from '@/lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '@/lib/format';
 import {
   ACTIVITIES,
@@ -164,7 +165,8 @@ function LiveRow({ task, activity, nowMs }: { task: BoardTask; activity: Activit
   const age = ageMs(nowMs, task.lastActivityAt);
   const holder = task.assignee ? actorLabel(task.assignee, task.actors) : null;
   const next = task.work?.next ?? null;
-  const pr = task.work?.pr ?? null;
+  // A pull request that is not an http or https address shows no link, as on the task page.
+  const pr = task.work?.pr ? httpUrl(task.work.pr) : null;
   const branch = task.work?.branch ?? null;
   const phoneLine = [holder, next ? `Next: ${next}` : null, age === null ? 'Nothing recorded' : null]
     .filter((part) => part !== null)
