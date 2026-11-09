@@ -181,8 +181,8 @@ Schemas: [`task`](schemas/task.schema.json),
 | Field | Holds |
 |---|---|
 | `id` | The project's prefix, a hyphen and a key of lowercase letters and digits; a child adds `.n` to its parent's id, as `web-a1b2.3` ([OQ-13](open-questions.md#oq-13)) |
-| `title` | The outcome, in plain words |
-| `description`, `acceptance`, `notes`, `design` | What to do, why and where; what proves it done; what those working on it record; how it is to be built. Markdown |
+| `title` | The outcome, or for a person the ask, in plain words starting with a verb. It SHOULD be at most 70 characters and hold no commands, file paths, commit hashes or steps |
+| `description`, `acceptance`, `notes`, `design` | What to do, why and where; what proves it done, as a short checklist of observable facts; what those working on it record; how it is to be built. Markdown. A description SHOULD open with one sentence that says what and why, or for a person the ask, followed by only the sections that apply: `## Why`, `## Where` and `## Fix` for work; `## Your steps`, `## What it changes` and `## How we'll confirm` for steps a person does; `## What the agent will do`, `## What it changes`, `## How we'll confirm` and `## If you decline` for an approval. Headings SHOULD say who acts. Each command, query or snippet a person might run or paste SHOULD be in its own fenced block with a language tag |
 | `type` | `task`, `bug`, `feature`, `chore`, `epic`, `decision` or `gate` |
 | `status` | `open`, `in_progress`, `blocked`, `deferred` or `closed` ([4.1](#41-status)) |
 | `priority` | `0`, the most urgent, to `4` |
@@ -296,9 +296,12 @@ recorded on the task:
 
 Schema: [`approval`](schemas/approval.schema.json).
 
-An **approval** is a task of type `gate`. Its description is the request:
-the exact action, with its environment, scope and verification, in at most
-400 characters. The task that asked for it waits on it through a `blocks`
+An **approval** is a task of type `gate`. Its title names the action to
+approve, and SHOULD be at most 70 characters. Its description is the
+request: what the agent will do, with the exact commands; what it changes,
+each line a labelled measure such as downtime, cost, risk or how to undo it;
+how the result will be confirmed; and what happens if the person declines.
+The task that asked for it waits on it through a `blocks`
 link, so it is not ready while the approval is open. An approval is never
 ready work itself, since only a person answers it.
 
@@ -440,7 +443,8 @@ closed gate, as `done`, `wont-do` and `already-handled`,
 
 - opens when a task asks for one. Asking again with the same request while
   it is open MUST return the open approval rather than open a second one, so
-  a person is never asked twice;
+  a person is never asked twice. A request that names a title is the same
+  only as an approval with that title;
 - closes as `done` when a person approves it ([AUTH-1](#auth-1),
   [AUTH-3](#auth-3)). Each waiting task labelled `human` that is neither a
   decision nor an approval and offers no options goes back to agents: open,

@@ -90,6 +90,14 @@ export interface NewTaskLink {
   readonly type: DependencyType;
 }
 
+/** An approval to open. `reason` is its description: the request a person
+ * answers. `title` is its title; left out, the reason's first line that is
+ * not blank. */
+export interface ApprovalRequest {
+  readonly reason: string;
+  readonly title?: string;
+}
+
 /** A step of a new request that a person do steps: its text, and the command it runs when it runs one. */
 export interface NewTaskStep {
   readonly text: string;
@@ -135,7 +143,7 @@ export interface CreateTaskInput {
   readonly metadata?: JsonObject;
   /** Opens an approval with the new task, in the same batch: a gate the new
    * task waits on until a person answers it. The gate is in the result's `created`. */
-  readonly requestApproval?: { readonly reason: string };
+  readonly requestApproval?: ApprovalRequest;
   /** Files the task claimed by the actor: assigned to it and in progress. */
   readonly claim?: true;
   /** Files the task closed as done by the actor, held by nobody,
@@ -212,7 +220,7 @@ export interface TaskWrite {
   readonly setFields?: Readonly<Record<string, FieldValue | null>>;
   /** Opens an approval: a gate task that this task waits on until a person
    * answers it. The new gate's id is in the result's `created`. */
-  readonly requestApproval?: { readonly reason: string };
+  readonly requestApproval?: ApprovalRequest;
   /** Opens a request that a person do steps: a gate this task waits on until
    * they tick every step. Not with `requestApproval`. The new gate's id is in
    * the result's `created`. */
