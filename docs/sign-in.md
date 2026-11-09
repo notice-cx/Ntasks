@@ -281,10 +281,11 @@ header when they belong to several:
 - `redirectUris` lists 1 to 10 addresses the browser returns to after
   sign-in. Each is an `https` address on a host other than `localhost`,
   `127.0.0.1` or `[::1]`, or an `http` one on one of those three for an app
-  that runs on the same machine, without a fragment. Its scheme and host
-  are written in lowercase, as a browser writes an origin, and its path,
-  which keeps the case the app uses, follows them. `https` on those three
-  hosts is refused. The origins of
+  that runs on the same machine, without a fragment. It starts with its
+  origin written as a browser writes one: the scheme and host in lowercase,
+  and no port when it is the scheme's default, so
+  `https://app.example.com:443/callback` is refused. The path follows, in the
+  case the app uses. `https` on those three hosts is refused. The origins of
   these addresses are where the app's page runs, and the only origins whose
   pages may read the API's answers ([below](#calls-from-the-apps-page)).
 - The answer is `201` with `{ app }`, as `GET /api/access/apps` lists it. Its
@@ -366,7 +367,8 @@ origin is the origin of an enabled app's redirect address:
   from the app's page is still refused as from another site.
 - A change that carries a bearer token from any other origin answers `403`
   with `{"error":"origin_not_allowed"}`, so a page whose app was removed
-  writes nothing even while a browser keeps its earlier preflight.
+  writes nothing even while a browser keeps its earlier preflight. An origin
+  stays allowed while any enabled app has a redirect address there.
 - A request from the deployment's own origin, or with no `Origin` header,
   such as an agent's, is answered as before.
 
@@ -383,7 +385,8 @@ origin.
 - **An owner** removes an app for everyone with **Remove**, or
   `POST /api/access/apps/<client id>/remove`. The client is disabled, every
   person's consent and token for it go, and its origin no longer reads the
-  API's answers.
+  API's answers, unless another enabled app has a redirect address at the
+  same origin.
 
 ## Checking every request
 
