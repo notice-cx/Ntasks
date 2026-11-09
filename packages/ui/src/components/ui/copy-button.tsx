@@ -9,11 +9,11 @@ const COPIED_MS = 2000;
 
 /**
  * A small button that copies `text()`. `label`, such as "Copy the code", is
- * its name for a screen reader and its tooltip. After a copy it shows Copied
- * for two seconds, and a screen reader reads that change. Where the browser
- * cannot copy, as on a page served without HTTPS or after a refused write,
- * it selects the text of `target`, so the keyboard's copy key takes it, and
- * says so.
+ * its name for a screen reader and its tooltip, and stays its name. After a
+ * copy the button shows Copied for two seconds, and a status region beside
+ * it says Copied, which a screen reader reads. Where the browser cannot copy,
+ * as on a page served without HTTPS or after a refused write, it selects the
+ * text of `target`, so the keyboard's copy key takes it, and says so.
  */
 export function CopyButton({
   label,
@@ -46,25 +46,27 @@ export function CopyButton({
   }
 
   return (
-    <button
-      type="button"
-      title={label}
-      aria-live="polite"
-      onClick={() => void copy()}
-      data-copied={copied ? '' : undefined}
-      className={cn(buttonVariants({ variant: 'ghost', size: 'sm', icon: !copied }), className)}
-    >
-      {copied ? (
-        <>
-          <Check aria-hidden />
-          Copied
-        </>
-      ) : (
-        <>
+    <>
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onClick={() => void copy()}
+        data-copied={copied ? '' : undefined}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'sm', icon: !copied }), className)}
+      >
+        {copied ? (
+          <>
+            <Check aria-hidden />
+            Copied
+          </>
+        ) : (
           <Copy aria-hidden />
-          <span className="sr-only">{label}</span>
-        </>
-      )}
-    </button>
+        )}
+      </button>
+      <span role="status" className="sr-only">
+        {copied ? 'Copied' : ''}
+      </span>
+    </>
   );
 }

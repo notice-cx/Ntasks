@@ -15,6 +15,11 @@ function openTask() {
   return renderApp('/tasks/web-b2r6', createFixtureTasksApi({ seed }));
 }
 
+/** Whether a status region beside a Copy button says Copied, as a screen reader reads it. */
+function saysCopied(): boolean {
+  return screen.queryAllByRole('status').some((region) => region.textContent === 'Copied');
+}
+
 function clipboard(writeText = vi.fn().mockResolvedValue(undefined)) {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
   return writeText;
@@ -31,7 +36,8 @@ describe('Copy on a code block', () => {
     openTask();
     fireEvent.click(await screen.findByRole('button', { name: 'Copy the code' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(COMMANDS));
-    expect(await screen.findByRole('button', { name: 'Copied' })).toBeTruthy();
+    await waitFor(() => expect(saysCopied()).toBe(true));
+    expect(screen.getByRole('button', { name: 'Copy the code' }).textContent).toBe('Copied');
   });
 
   it('selects the block and says so where the browser cannot copy', async () => {
@@ -40,7 +46,7 @@ describe('Copy on a code block', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Copy the code' }));
     expect(await screen.findByText('Could not copy. The text is selected: copy it with your keyboard.')).toBeTruthy();
     expect(getSelection()?.toString().trim()).toBe(COMMANDS);
-    expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
+    expect(saysCopied()).toBe(false);
   });
 });
 
@@ -50,6 +56,6 @@ describe("Copy beside a task's id", () => {
     openTask();
     fireEvent.click(await screen.findByRole('button', { name: 'Copy the task id' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('web-b2r6'));
-    expect(await screen.findByRole('button', { name: 'Copied' })).toBeTruthy();
+    await waitFor(() => expect(saysCopied()).toBe(true));
   });
 });
