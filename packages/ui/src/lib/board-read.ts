@@ -91,6 +91,8 @@ export interface BoardProject {
   epicNames: Map<string, string>;
   /** Each epic's children, closed and in all, when the server could read them. */
   epicProgress: Map<string, { closed: number; total: number }>;
+  /** The earliest close `tasks` holds; null when the read named none. */
+  closedSince: string | null;
 }
 
 /** Approvals and epics stay reachable, but are not work a row counts. */
@@ -129,6 +131,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
       held: new Set(),
       epicNames: new Map(),
       epicProgress: new Map(),
+      closedSince: null,
     };
   }
   // Only approvals a person answers are drawn; one that resolves itself waits on nobody.
@@ -160,6 +163,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
       ...tasks.filter((task) => task.issueType === 'epic').map((task) => [task.id, task.title] as const),
     ]),
     epicProgress: new Map((payload.epics ?? []).map((epic) => [epic.id, { closed: epic.closed, total: epic.total }])),
+    closedSince: payload.closedSince ?? null,
   };
 }
 

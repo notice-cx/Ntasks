@@ -493,6 +493,11 @@ group that folds starts with a chevron and is a button with `aria-expanded`.
   Waiting soft.
 - `Progress`: an epic's or checklist's share done, a 14 px ring filling in
   Accent, then `1/4`.
+- `ProgressBar`: an epic's tasks as one bar, 80 px by 6 px, a part per mark,
+  each as wide as its share: Done in green, In progress in Accent, Waiting for
+  you in amber, Blocked in red, Open in Border strong and Parked hatched, 1 px
+  apart. Its name says each part ("222 of 263 done, 5 waiting for you, 14
+  blocked"). An epic with no tasks is an empty ring.
 
 ### The frame (`shell.tsx`)
 
@@ -509,7 +514,8 @@ menu is open. Its menu lists the workspaces, each with its icon and the open
 one ticked, then Settings under a divider.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
-search and actions.
+search and actions. Below 768 px the board's views leave the top bar for a
+row of their own under it.
 
 On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
 with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a
@@ -616,6 +622,13 @@ or more). A group with no tasks takes no room, and a page with none shows
 first and a task with none recorded last. Stalled shows five rows, then Show
 more, a `ghost` button with the count it adds.
 
+In each group, a task in an epic sits under its epic's line, 24 px further
+in: the `layers` icon in Text 3, the epic's id, its title as a link in Text
+2, and at the end its `ProgressBar` and its tasks done of all, as the Epics
+view counts them. The epics come in the order of their latest task, and the
+tasks in no open epic come last under No epic. A group where no task is in
+an epic draws no epic lines.
+
 A row is its activity mark, `RowId`, the title as a link to the task, then
 `RowMeta` facts: Next and the next step in Text 2, the pull request's number
 as a link after `git-pull-request` or else the branch after `git-branch`, the
@@ -625,6 +638,51 @@ narrow. The holder's `Avatar` and `RowAge`, how long since their last
 change, end the row. On a phone the row takes two lines: the mark, the
 title, the avatar and the age, then the holder's name and the next step in
 Text 3.
+
+### Epics
+
+While one project is in view, the board's views end with Epics
+(`?view=epics`): the project's open epics, one line each. An epic counts the
+tasks directly in it and the tasks of its open sub-epics, all the way down; a
+closed sub-epic counts as one done task. The top bar holds how many of the
+project's top epics wait for you, move and do not move (from 1024 px wide),
+the search, which lists every epic, sub-epics included, whose id or title
+holds its words, and New task; the Filter menu's filters narrow tasks, so the
+view leaves it out and keeps them in the address for the other views.
+
+The epics fall in five groups, worked out on the page and never written to
+the epic, testing these in order (`epicState` in `src/lib/epics.ts`):
+
+| Group | Mark | An epic falls in it when |
+|---|---|---|
+| No tasks | Open | nothing is filed in it |
+| Every task done | Done | it has tasks and none is open: it is ready to close |
+| Waiting for you | Waiting for you | a task in it waits for a person |
+| Moving | Active | a task in it closed this week or is in progress |
+| Not moving | Stalled | none of the above |
+
+This week is the board's own window of closes, which starts seven days back;
+the Moving and Not moving headings name its first day ("A task done since
+Nov 2"). Each group's heading carries its mark, its name, its count and, from
+640 px wide, that rule. In a group, the highest priority comes first, then
+the latest change.
+
+An epic's line is a `Row`: a chevron that shows and hides its sub-epics when
+it has some, its `PriorityMark`, `RowId`, its group's mark, its title as a
+link to the epic, `2 sub-epics` in Text 3, then its facts in columns: the
+tasks waiting for you (an amber count after the Waiting for you mark), the
+blocked tasks (after the Blocked mark), its `ProgressBar`, its tasks done of
+all (`222/263`, all-time), the tasks done this week (`+33 this week` in Text
+3), and `RowAge`, how long since it, a task in it or a sub-epic last changed.
+A zero leaves its column empty. A sub-epic's line sits 24 px further in under
+its parent's. On a phone the facts take a second line.
+
+After the groups, Closed this week folds the epics closed in the board's
+window, each with its age, and No epic is one line for the open tasks in no
+open epic: how many wait for you and are blocked, how many are open, and how
+many closed this week. A project with neither epics nor such tasks shows
+`EmptyState`'s No epics in this project; a search that matches no epic, No
+epics match this search with Clear search.
 
 ### Projects, Members, Settings and the first workspace
 

@@ -154,6 +154,30 @@ describe('the Live page', () => {
     expect(row.querySelector('[data-live-branch]')?.textContent).toContain('codex/sign-in-a11y');
   });
 
+  it('puts each task under its epic’s line, with the epic’s progress, and the tasks in no epic last', async () => {
+    const seed = fixtureSeed(Date.now());
+    const model = seed.tasks.find((entry) => entry.id === 'web-k3m9.2') as FixtureTask;
+    const at = (ms: number) => new Date(Date.now() - ms).toISOString();
+    seed.tasks.push(
+      { ...model, id: 'web-e8', title: 'Speed up the search page', issueType: 'epic', status: 'open', parent: null },
+      { ...model, id: 'web-e8.1', title: 'Cache the search results', parent: 'web-e8', lastActivityAt: at(2 * 60_000) },
+      { ...model, id: 'web-n1', title: 'Answer the support backlog', parent: null, lastActivityAt: at(5 * 60_000) },
+    );
+    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    const active = await screen.findByRole('region', { name: 'Active' });
+    const lines = [...active.querySelectorAll('[data-live-epic], [data-live-row]')].map(
+      (line) => line.getAttribute('data-live-epic') ?? line.getAttribute('data-live-row'),
+    );
+    // The epics in the order of their latest task, then No epic, however recent its tasks.
+    expect(lines).toEqual(['web-e8', 'web-e8.1', 'web-k3m9', 'web-k3m9.2', 'none', 'web-n1']);
+    const epic = active.querySelector('[data-live-epic="web-k3m9"]') as HTMLElement;
+    expect(within(epic).getByLabelText('1 of 4 done')).toBeTruthy();
+    expect(within(epic).getByRole('link', { name: 'Ship the new sign-in page' })).toBeTruthy();
+    // A group with no task in an epic draws no epic lines.
+    const quiet = await screen.findByRole('region', { name: 'Quiet' });
+    expect(quiet.querySelector('[data-live-epic]')).toBeNull();
+  });
+
   it('says so when nothing is in progress', async () => {
     const seed = fixtureSeed(Date.now());
     seed.tasks = seed.tasks.filter((entry) => entry.status !== 'in_progress');
