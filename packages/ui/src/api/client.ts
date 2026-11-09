@@ -23,6 +23,8 @@ import type {
   ChangesPage,
   CloseOptions,
   ConnectedApp,
+  GitHubWebhook,
+  GitHubWebhookSettings,
   FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
@@ -143,6 +145,12 @@ export interface TasksApi {
   revokeApp(clientId: string): Promise<void>;
   /** Remove an app for everyone; only the workspace's owners may. */
   removeApp(clientId: string): Promise<void>;
+  /** The workspace's GitHub webhook, without its secret; only its owners may read it. */
+  githubWebhook(signal?: AbortSignal): Promise<GitHubWebhook>;
+  /** Save the webhook's secret, its deploy checks or both; only the workspace's owners may. */
+  saveGitHubWebhook(settings: GitHubWebhookSettings): Promise<GitHubWebhook>;
+  /** Remove the webhook, after which GitHub's deliveries are refused; only the workspace's owners may. */
+  removeGitHubWebhook(): Promise<void>;
 }
 
 /** The calls made in one workspace. */
@@ -381,6 +389,21 @@ function readApp(row: unknown, unreadable: string): ConnectedApp {
   };
 }
 
+/** The webhook in an answer of `GET` or `POST /api/access/github`; `unreadable` says what failed when it is not there. */
+function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook {
+  const row = isRecord(payload) ? payload.github : null;
+  if (!isRecord(row) || typeof row.url !== 'string' || typeof row.secretSaved !== 'boolean')
+    throw new UnreadableAnswer(unreadable);
+  return {
+    url: row.url,
+    secretSaved: row.secretSaved,
+    deployChecks: Array.isArray(row.deployChecks)
+      ? row.deployChecks.filter((name): name is string => typeof name === 'string')
+      : [],
+    updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : null,
+  };
+}
+
 function readApps(payload: unknown): ConnectedApp[] {
   const unreadable = 'The app list could not be read.';
   if (!isRecord(payload) || !Array.isArray(payload.apps)) throw new UnreadableAnswer(unreadable);
@@ -516,6 +539,9 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     registerApp: (input, options) => scope().registerApp(input, options),
     revokeApp: (clientId) => scope().revokeApp(clientId),
     removeApp: (clientId) => scope().removeApp(clientId),
+    githubWebhook: (signal) => scope().githubWebhook(signal),
+    saveGitHubWebhook: (settings) => scope().saveGitHubWebhook(settings),
+    removeGitHubWebhook: () => scope().removeGitHubWebhook(),
   };
 }
 
@@ -742,6 +768,18 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async removeApp(clientId) {
       await write('POST', `/api/access/apps/${encodeURIComponent(clientId)}/remove`, {}, 'The app');
+    },
+    async githubWebhook(signal) {
+      const answer = await read<unknown>('/api/access/github', 'The GitHub webhook', signal);
+      return readGitHubWebhook(answer, 'The GitHub webhook could not be read.');
+    },
+    async saveGitHubWebhook(settings) {
+      const response = await write('POST', '/api/access/github', { ...settings }, 'The GitHub webhook');
+      const unreadable = 'The GitHub webhook was saved, but the answer could not be read.';
+      return readGitHubWebhook(await answerJson(response, unreadable), unreadable);
+    },
+    async removeGitHubWebhook() {
+      await write('POST', '/api/access/github/remove', {}, 'The GitHub webhook');
     },
   };
 }

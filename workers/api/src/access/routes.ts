@@ -3,7 +3,7 @@
  * routes MCP clients and browsers use, the setup, sign-in and approval
  * pages, a person's routes for listing and revoking their agents and
  * connected apps, an owner's routes for a workspace's members, invitations,
- * service credentials and connected apps, and
+ * service credentials, connected apps and GitHub webhook, and
  * the workspace routes, which read and write D1 beside sign-in. Every path
  * here is in wrangler.jsonc's run_worker_first.
  */
@@ -14,7 +14,7 @@ import { json } from '../http/respond.ts';
 import { chooseWorkspace, WORKSPACE_HEADER, type WorkspaceReach } from '../workspaces.ts';
 import { createAuth, type Auth } from './auth.ts';
 import { reachesOf } from './authenticator.ts';
-import { loadSignIn, originOf, storeGitHubApp, type SignIn, type SignInConfig } from './config.ts';
+import { loadSignIn, originOf, signInSecrets, storeGitHubApp, type SignIn, type SignInConfig } from './config.ts';
 import { randomSecret, sameBytes, sha256 } from './crypto.ts';
 import {
   AccessRefused,
@@ -34,6 +34,12 @@ import {
   WORKSPACE_ID,
   workspaceNameOf,
 } from './grants.ts';
+import {
+  githubWebhookSettingsOf,
+  githubWebhookView,
+  removeGitHubWebhook,
+  saveGitHubWebhook,
+} from './github-webhook.ts';
 import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
 import { appRegistrationOf, clientOf, isAppOf, listApps, markApp, removeApp } from './apps.ts';
 import {
@@ -711,7 +717,8 @@ function ownedWorkspace(request: Request, principal: PersonPrincipal, what: stri
 }
 
 /** The JSON routes under /api/access: who the sender is, a person's agents,
- * and a workspace's members, invitations and service credentials. */
+ * and a workspace's members, invitations, service credentials, connected
+ * apps and GitHub webhook. */
 async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Response> {
   const verification = await verifyRequest(request, env);
   if (!verification.ok) return refusal(verification, env);
@@ -747,6 +754,8 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
   if (apps) return apps;
   const members = await membersApi(request, env, principal, path);
   if (members) return members;
+  const github = await githubApi(request, env, principal, path, url);
+  if (github) return github;
   const service = /^\/services\/([0-9a-f-]{36})\/revoke$/u.exec(path);
   const services = path === '/services' && (request.method === 'GET' || request.method === 'POST');
   if (!services && !(service?.[1] && request.method === 'POST')) return json({ error: 'not_found' }, 404);
@@ -839,6 +848,54 @@ async function appsApi(
   await markApp(env.DB, newId, workspaceId);
   const [listed] = (await listApps(env.DB, workspaceId, principal.userId)).filter((entry) => entry.clientId === newId);
   return json({ app: listed }, 201);
+}
+
+/**
+ * The GitHub webhook of the request's workspace, for its owners: GET /github
+ * shows where GitHub sends deliveries, whether a secret is saved and the
+ * deploy checks, never the secret; POST /github saves a secret, deploy
+ * checks or both; POST /github/remove removes the webhook. Null for any
+ * other path.
+ */
+async function githubApi(
+  request: Request,
+  env: AccessEnv,
+  principal: PersonPrincipal,
+  path: string,
+  url: URL,
+): Promise<Response | null> {
+  const show = path === '/github' && request.method === 'GET';
+  const save = path === '/github' && request.method === 'POST';
+  const remove = path === '/github/remove' && request.method === 'POST';
+  if (!show && !save && !remove) return null;
+  const owned = ownedWorkspace(request, principal, 'its GitHub webhook');
+  if (owned instanceof Response) return owned;
+  const workspaceId = owned.workspace.id;
+  const secrets = signInSecrets(env);
+  if (!secrets) return notConfigured(env);
+  if (remove) {
+    if (!(await removeGitHubWebhook(env.DB, workspaceId))) {
+      return json({ error: 'not_found', detail: 'this workspace has no GitHub webhook' }, 404);
+    }
+    return json({ removed: true }, 200);
+  }
+  if (save) {
+    const body = await jsonBody(request, 'webhook settings');
+    if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+    const settings = githubWebhookSettingsOf(body);
+    if ('detail' in settings) return json({ error: 'invalid_request', ...settings }, 400);
+    if (!(await saveGitHubWebhook(env.DB, secrets.secret, workspaceId, settings, principal.userId))) {
+      return json(
+        {
+          error: 'invalid_request',
+          detail: 'save a secret first: GitHub signs every delivery with it',
+          field: 'secret',
+        },
+        400,
+      );
+    }
+  }
+  return json({ github: await githubWebhookView(env.DB, secrets.secret, workspaceId, url.origin) }, 200);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

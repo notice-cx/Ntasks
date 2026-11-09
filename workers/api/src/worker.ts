@@ -1,12 +1,15 @@
 /**
- * The Worker: it answers the health check and the API's version, signs each API request in, and
+ * The Worker: it answers the health check, the API's version and GitHub's
+ * signed deliveries (github.ts), signs each other API request in, and
  * picks the workspace the request reaches before any task store is called. An
  * HTTP route goes to that workspace's store with the sender scoped to it; the
  * MCP endpoint is answered here, and each of its tool calls goes to the store
  * of the workspace its `workspace` argument names.
  */
+import { GITHUB_WEBHOOK_PATH } from './access/github-webhook.ts';
 import { isApiPath, MCP_PATH } from './api.ts';
 import type { Authenticator } from './auth.ts';
+import { githubReceiver } from './github.ts';
 import { json } from './http/respond.ts';
 import { serveTaskMcp } from './mcp/server.ts';
 import { workspaceStore } from './store/index.ts';
@@ -18,14 +21,19 @@ export interface WorkerOptions {
   readonly authenticator: (env: Env) => Authenticator;
 }
 
+/** The Worker, signing each request in with the authenticator `options` gives. */
 export function createWorker(options: WorkerOptions) {
   return {
+    /** Answers the health check, the version and GitHub's deliveries, then signed-in API and MCP requests. */
     async fetch(request: Request, env: Env): Promise<Response> {
       const { pathname } = new URL(request.url);
       if (pathname === '/healthz') return health(request);
       if (pathname === VERSION_PATH) return version(request);
-      if (!isApiPath(pathname)) return json({ error: 'not_found' }, 404);
+      const hook = GITHUB_WEBHOOK_PATH.exec(pathname)?.[1];
+      if (hook === undefined && !isApiPath(pathname)) return json({ error: 'not_found' }, 404);
       try {
+        // GitHub signs its deliveries instead of signing in.
+        if (hook !== undefined) return await githubReceiver(request, env, hook);
         const authenticator = options.authenticator(env);
         const sender = await signedIn(authenticator, request);
         if (!sender) return authenticator.challenge(request);

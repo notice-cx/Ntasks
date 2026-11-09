@@ -37,6 +37,8 @@ protocol appears in neither table.
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "goes from built to merged with its merge commit, then live, and a repeated signal moves nothing" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "matches a commit the task closed with when the signal names a longer one" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "stops a task of a project that does not deploy at merged" |
+| STATE-12 | `workers/api/test/access/github-webhook.test.ts` › "moves nothing when GitHub sends the same delivery again" |
+| STATE-12 | `workers/api/test/access/github-webhook.test.ts` › "never moves a task back a stage" |
 | STATE-12 | `workers/api/test/schema.test.ts` › "keeps a delivery on a task closed as done with a commit or pull request, and nowhere else" |
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "clears the helper and work details when the task closes or is released, and its history keeps them" |
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "updates the work from its holder’s comments, which move its last activity, and from nobody else’s" |
