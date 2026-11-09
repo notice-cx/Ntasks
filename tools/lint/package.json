@@ -2,7 +2,7 @@
   "name": "@ntasks/lint",
   "version": "0.0.0",
   "private": true,
-  "description": "Tests that the repository's lint check reports the mistakes it exists to catch.",
+  "description": "Tests that the repository's lint check reports the mistakes it exists to catch, and tests of the files at its root.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {

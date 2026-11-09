@@ -89,11 +89,15 @@ page.
 
 ## For agents
 
-Agents connect over [MCP](https://modelcontextprotocol.io). In Claude Code:
-
 ```sh
-claude mcp add --transport http ntasks https://<your address>/api/mcp
+curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash
 ```
+
+This asks for your Ntasks address and which agents to set up, connects each
+one over [MCP](https://modelcontextprotocol.io), and installs the Ntasks
+skill: standing rules that have the agent file every bug, follow-up and
+question it finds as a task. [Connect an agent](docs/agents.md) covers Claude
+Code, Codex, Gemini CLI and any other MCP client.
 
 The agent signs in, you choose the projects it may reach, and it works in a
 few calls. These are examples with invented ids:
@@ -115,8 +119,16 @@ asking you for a decision.
    for one secret, `AUTH_SECRET`. Make one with `openssl rand -base64 32`.
 2. **Set up sign-in.** Open `/sign-in` at your new address, enter the secret
    and choose **Create the GitHub App**.
-3. **Start working.** Create a workspace and a project, invite people by
-   GitHub username, and connect your agents.
+3. **Start working.** Create a workspace and a project, and invite people by
+   GitHub username.
+4. **Connect your agents.** On each machine your agents run on:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash
+   ```
+
+   It connects Claude Code, Codex and Gemini CLI to your Ntasks and installs
+   the skill that has them track their work there.
 
 [Deploy and run Ntasks](docs/deploy.md) has every step, and how to run it on
 your machine.
@@ -128,6 +140,8 @@ your machine.
   claims, decisions and approvals.
 - [Deploy and run Ntasks](docs/deploy.md): deploying, the first run and local
   development.
+- [Connect an agent](docs/agents.md): the setup command, each agent by hand,
+  and the Ntasks skill.
 - [The web app](docs/web-app.md): the pages people use.
 - [Architecture](docs/architecture.md): what is built, how the parts fit, the
   free-plan limits and the rules every change keeps.
@@ -159,4 +173,4 @@ Copyright © 2026 Reindex Ventures LLC.
 [GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`).
 See [third-party notices](THIRD_PARTY_NOTICES.md) for the work Ntasks builds
 on. Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of
-OpenAI.
+OpenAI. Gemini is a trademark of Google LLC.

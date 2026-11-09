@@ -49,9 +49,10 @@ Every feature and every change to an existing one meets all five:
 | `wrangler.jsonc`, `.dev.vars.example` | The Worker's Cloudflare settings and the names of the secrets it requires, with their descriptions under `cloudflare.bindings` in the root `package.json`. They sit at the root because the Deploy to Cloudflare button reads them there; wrangler commands run in `workers/api` find them, and `.dev.vars` for local runs goes beside them |
 | `apps/web/` | The web app. Its build in `dist/` is the Worker's static assets |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
-| `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, and the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires. The lint configuration itself is `eslint.config.js` at the root |
+| `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires, and the tests of `install.sh`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, and the verifier |
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
+| `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)) |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, is
@@ -68,6 +69,7 @@ the pnpm version in `package.json`'s `packageManager` field:
 pnpm install
 pnpm lint          # ESLint: promises that nothing handles, and the other Worker-code rules it can see
 pnpm format:check  # Prettier; `pnpm format` rewrites the files it would change
+shellcheck install.sh  # the agent setup script
 pnpm typecheck     # every workspace, plus the Worker's generated types
 pnpm test          # every workspace's tests
 pnpm build         # the web app, then `wrangler deploy --dry-run`
