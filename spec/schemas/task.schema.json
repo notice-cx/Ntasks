@@ -32,6 +32,10 @@
     "work": { "$ref": "claim.schema.json#/$defs/workDetails" },
     "lastActivityAt": { "$ref": "claim.schema.json#/properties/lastActivityAt" },
     "choices": { "oneOf": [{ "$ref": "choices.schema.json" }, { "type": "null" }] },
+    "steps": {
+      "description": "On a request to do steps, its steps (do-request.schema.json); null or left out on any other task.",
+      "type": ["array", "null"]
+    },
     "choice": { "oneOf": [{ "$ref": "pick.schema.json" }, { "type": "null" }] },
     "answer": { "oneOf": [{ "$ref": "answer.schema.json" }, { "type": "null" }] },
     "deferUntil": { "description": "The time the task is hidden from ready work until.", "type": ["string", "null"] },
