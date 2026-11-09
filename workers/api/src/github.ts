@@ -74,6 +74,7 @@ function at(payload: unknown, ...path: readonly string[]): unknown {
   return value;
 }
 
+/** The text at `path` in a payload, or undefined when it is missing or is not text. */
 function textAt(payload: unknown, ...path: readonly string[]): string | undefined {
   const value = at(payload, ...path);
   return typeof value === 'string' ? value : undefined;

@@ -21,8 +21,10 @@ export interface WorkerOptions {
   readonly authenticator: (env: Env) => Authenticator;
 }
 
+/** The Worker, signing each request in with the authenticator `options` gives. */
 export function createWorker(options: WorkerOptions) {
   return {
+    /** Answers the health check, the version and GitHub's deliveries, then signed-in API and MCP requests. */
     async fetch(request: Request, env: Env): Promise<Response> {
       const { pathname } = new URL(request.url);
       if (pathname === '/healthz') return health(request);

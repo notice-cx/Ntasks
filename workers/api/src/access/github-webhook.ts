@@ -13,6 +13,7 @@ import { hex, hmac } from './crypto.ts';
 /** Where GitHub sends a workspace's deliveries. */
 export const GITHUB_WEBHOOK_PATH = /^\/api\/github\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
 
+/** The Payload URL the workspace's owner enters in GitHub, at `origin`, this deployment's address. */
 export function githubWebhookUrl(origin: string, workspaceId: string): string {
   return `${origin}/api/github/${workspaceId}`;
 }
@@ -56,6 +57,7 @@ interface Row {
   readonly updated_at: string;
 }
 
+/** The workspace's saved row, or null when its owner saved none. */
 async function rowOf(db: D1Database, workspaceId: string): Promise<Row | null> {
   return db
     .prepare('SELECT secret, deploy_checks, updated_at FROM access_github_webhooks WHERE workspace_id = ?')
@@ -63,6 +65,7 @@ async function rowOf(db: D1Database, workspaceId: string): Promise<Row | null> {
     .first<Row>();
 }
 
+/** The stored secret decrypted, or null when it does not decrypt under this AUTH_SECRET. */
 async function decrypted(authSecret: string, stored: string): Promise<string | null> {
   try {
     const secret = await symmetricDecrypt({ key: await secretKey(authSecret), data: stored });
@@ -72,6 +75,7 @@ async function decrypted(authSecret: string, stored: string): Promise<string | n
   }
 }
 
+/** The deploy checks a row stores as JSON; the table's CHECK keeps the text a JSON list. */
 function checksOf(stored: string): string[] {
   const parsed: unknown = JSON.parse(stored);
   return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : [];

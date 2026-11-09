@@ -4,6 +4,7 @@ import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureWorkspaces } from '@/api/fixture-data';
 import { enabledButton, renderApp } from './render';
 
+/** The webhook's form on the Settings page, once it shows. */
 async function webhookForm(): Promise<HTMLElement> {
   return screen.findByRole('form', { name: 'GitHub webhook' });
 }

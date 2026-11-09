@@ -389,6 +389,7 @@ function readApp(row: unknown, unreadable: string): ConnectedApp {
   };
 }
 
+/** The webhook in an answer of `GET` or `POST /api/access/github`; `unreadable` says what failed when it is not there. */
 function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook {
   const row = isRecord(payload) ? payload.github : null;
   if (!isRecord(row) || typeof row.url !== 'string' || typeof row.secretSaved !== 'boolean')

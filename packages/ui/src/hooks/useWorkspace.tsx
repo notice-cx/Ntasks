@@ -202,6 +202,7 @@ export function useGitHubWebhook() {
   });
 }
 
+/** Saves the webhook's secret, its deploy checks or both, and keeps the saved webhook as the read. */
 export function useSaveGitHubWebhook() {
   const api = useTasksApi();
   const client = useQueryClient();
@@ -211,6 +212,7 @@ export function useSaveGitHubWebhook() {
   });
 }
 
+/** Removes the webhook, then reads it again. */
 export function useRemoveGitHubWebhook() {
   const api = useTasksApi();
   const client = useQueryClient();

@@ -68,6 +68,7 @@ async function closedWith(owner: Browser, projectId: string, proof: Body): Promi
   return id;
 }
 
+/** The task as the store holds it, read in the store itself. */
 async function taskOf(projectId: string, id: string): Promise<Task> {
   const task = await runInDurableObject(store(), (instance: TaskStore) => instance.tasks.getTask(projectId, id));
   if (!task) throw new Error(`no task ${id}`);
@@ -84,10 +85,12 @@ function newNumber(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000;
 }
 
+/** A delivery's `repository`, whose default branch is main. */
 function repository(fullName = REPOSITORY) {
   return { full_name: fullName, default_branch: 'main' };
 }
 
+/** A `pull_request` delivery for a pull request merged into `base`, main unless named. */
 function mergedPullRequest(number: number, mergeCommit: string, options: { repo?: string; base?: string } = {}) {
   const repo = options.repo ?? REPOSITORY;
   return {
@@ -104,6 +107,7 @@ function mergedPullRequest(number: number, mergeCommit: string, options: { repo?
   };
 }
 
+/** A completed `check_run` delivery, a success on main unless the options say otherwise. */
 function checkRun(name: string, sha: string, options: { branch?: string; conclusion?: string } = {}) {
   return {
     action: 'completed',
@@ -118,10 +122,12 @@ function checkRun(name: string, sha: string, options: { branch?: string; conclus
   };
 }
 
+/** A `deployment_status` delivery for a deployment of `sha` to `environment`. */
 function deploymentStatus(environment: string, sha: string, state = 'success') {
   return { deployment_status: { state }, deployment: { environment, sha }, repository: repository() };
 }
 
+/** X-Hub-Signature-256 of `body` under `secret`, as GitHub signs a delivery. */
 async function signatureOf(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
     'sign',

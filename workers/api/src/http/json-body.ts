@@ -26,6 +26,7 @@ export function jsonContentType(headers: Headers): boolean {
   return headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() === 'application/json';
 }
 
+/** The body's text, of at most `maxBytes`, when it is declared as JSON and is UTF-8. */
 export async function readBoundedJsonText(request: Request, maxBytes: number): Promise<string> {
   if (!jsonContentType(request.headers)) invalid();
   return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(await readBoundedBytes(request, maxBytes));

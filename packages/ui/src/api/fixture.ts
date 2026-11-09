@@ -810,6 +810,7 @@ export function createFixtureTasksApi({
     async githubWebhook() {
       return webhookOf(owned());
     },
+    /** Saves as the Worker does: the rules it checks, and settings without a secret only once one is saved. */
     async saveGitHubWebhook({ secret, deployChecks }) {
       const workspace = owned();
       if (secret !== undefined && !WEBHOOK_SECRET.test(secret))
@@ -842,6 +843,7 @@ export function createFixtureTasksApi({
       };
       return webhookOf(workspace);
     },
+    /** Removes the webhook, refused as the Worker refuses one when none is saved. */
     async removeGitHubWebhook() {
       const workspace = owned();
       if (workspace.github === undefined) throw new ApiError('this workspace has no GitHub webhook', 404, 'not_found');
