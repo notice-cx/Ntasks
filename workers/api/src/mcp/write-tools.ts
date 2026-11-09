@@ -1117,7 +1117,8 @@ const REQUEST_HUMAN_ACTION: TaskTool = Object.freeze({
         type: 'string',
         maxLength: TASK_LIMITS.description,
         description:
-          'Markdown, shown above the steps: why the steps are needed, what they change, and how you will check the result.',
+          "Markdown, shown above the steps: a section headed What it changes (what the steps change, any downtime, the person's time, how to undo it) " +
+          "and one headed How we'll confirm (the checks you run once every step is ticked). The steps go in steps, never here.",
       },
       steps: {
         type: 'array',
