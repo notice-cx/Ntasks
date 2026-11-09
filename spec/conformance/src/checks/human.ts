@@ -5,7 +5,7 @@
  * check of approving or answering exercises the person on HTTP and a relay
  * on MCP.
  */
-import { NotOffered, type Outcome, type Relay } from '../api.ts';
+import { MissingSender, type Outcome, type Relay } from '../api.ts';
 import { answered, expect, refused, same, snapshot, unchanged, type Check, type Context } from '../check.ts';
 import { actorOf, file, linksTo, taskOf } from './steps.ts';
 
@@ -62,8 +62,7 @@ async function approveUnderTest(context: Context, gate: string): Promise<Outcome
 }
 
 function asPerson(context: Context) {
-  if (!context.target.senders.person)
-    throw new NotOffered(context.binding, 'decide as a person: the target names no person');
+  if (!context.target.senders.person) throw new MissingSender('person');
   return context.api('person');
 }
 

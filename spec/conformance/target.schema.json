@@ -47,7 +47,7 @@
           "minLength": 1
         },
         "hidden": {
-          "description": "A project the agents cannot reach and the person can.",
+          "description": "A project the agents cannot reach and the person may file tasks in.",
           "type": "string",
           "minLength": 1
         }

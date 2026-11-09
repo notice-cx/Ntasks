@@ -116,11 +116,24 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
       ),
     history: (task) =>
       map(call('get_task_history', { task, limit: 200 }), (value: { changes: HistoryEvent[] }) => value.changes),
-    ready: (project) =>
-      map(
-        call('list_tasks', { project: project ?? target.projects.main, ready: true, limit: 200 }),
-        (value: { tasks: { id: string }[] }) => value.tasks.map((task) => task.id),
-      ),
+    ready: async (project) => {
+      // Every page, so a task listed after the first 200 ready ones is still found.
+      const ids: string[] = [];
+      let offset: number | undefined = 0;
+      for (let page = 0; offset !== undefined && page < 100; page += 1) {
+        const listed = await call('list_tasks', {
+          project: project ?? target.projects.main,
+          ready: true,
+          limit: 200,
+          offset,
+        });
+        if (!listed.ok) return listed;
+        const value = listed.value as { tasks: { id: string }[]; nextOffset?: number | null };
+        ids.push(...value.tasks.map((task) => task.id));
+        offset = typeof value.nextOffset === 'number' ? value.nextOffset : undefined;
+      }
+      return { ok: true, value: ids };
+    },
     claim: (task, options = {}) =>
       map(call('claim_task', { task, ...work(options), ...writeOptions(options) }), written),
     claimByPullRequest: (pr, options = {}) =>

@@ -12,7 +12,10 @@ const MARK: Readonly<Record<CheckResult['status'], string>> = {
 
 export function resultLine(result: CheckResult): string {
   const bindings = result.bindings
-    .map((binding) => `${binding.binding} ${binding.status === 'not-offered' ? '-' : binding.status}`)
+    .map(
+      (binding) =>
+        `${binding.binding} ${binding.status === 'not-offered' ? '-' : binding.status === 'not-run' ? 'skipped' : binding.status}`,
+    )
     .join(', ');
   return `${MARK[result.status]}  ${result.rule.padEnd(9)} ${result.id}${bindings === '' ? '' : `  [${bindings}]`}`;
 }
@@ -51,6 +54,9 @@ function verdict(report: Report): string {
       'checks did not run, so their levels are incomplete',
     ],
   ] as const;
-  const named = caveats.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  const named = [
+    ...caveats.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`),
+    ...(report.filtered ? ["--only left the other checks out, so no level's verdict is a conformance result"] : []),
+  ];
   return named.length === 0 ? 'Every check of the claimed levels passed.' : `The run passed, but ${named.join('; ')}.`;
 }

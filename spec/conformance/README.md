@@ -10,9 +10,9 @@ The suite is licensed [Apache-2.0](../LICENSE-APACHE-2.0).
 
 ## Run it against a server
 
-The checks file tasks into the target's main project, change and close them,
-and leave them there. Point the suite at a test deployment or a test
-workspace, never at one people work in.
+The checks file tasks into the target's `main` project, and the person's
+into `hidden`, change and close them, and leave them there. Point the suite
+at a test deployment or a test workspace, never at one people work in.
 
 1. With Node.js 24, run `pnpm install` at the repository root.
 2. Write a target file for the server. [`target.example.json`](target.example.json)
@@ -27,16 +27,16 @@ pnpm --filter @ntasks/spec run conformance -- --target path/to/target.json
 | Option | Does |
 |---|---|
 | `--target <file>` | The target file to check |
-| `--only <ids>` | Only these checks, by check id or rule id, separated by commas, such as `INV-1,inv-3-key-reuse-refused` |
+| `--only <ids>` | Only these checks, by check id or rule id, separated by commas, such as `INV-1,inv-3-key-reuse-refused`. A level with checks left out reads `incomplete`, so such a run shows whether those checks pass, not which levels a server conforms to |
 | `--binding mcp` or `--binding http` | Only that binding, of those the target offers |
 | `--json <file>` | Also writes the whole report as JSON |
 | `--list` | Lists every check with its level, rule, section and what it checks, and runs none |
 
 The command exits 1 when a check of a claimed level failed, or a listed gap
 passed; 2 when its arguments or the target file are wrong; and 0 otherwise,
-including when a level is `incomplete` because the target leaves out a
-sender or project some of its checks need. Read each level's verdict, at the
-end of the report, before stating which levels a server conforms to.
+including when a level reads `incomplete` or `known-gaps`. Read each
+level's verdict, at the end of the report, before stating which levels a
+server conforms to: only a level that reads `passed` is shown to conform.
 
 ### What the target names
 
@@ -46,7 +46,7 @@ end of the report, before stating which levels a server conforms to.
 | `levels` | The levels the server claims: `core`, `human`, `delivery`, `live`. The suite runs those levels' checks |
 | `bindings` | `mcp`, `http` or both, each with the path it answers at |
 | `workspace` | The workspace the senders work in, for a server where a sender reaches several |
-| `projects` | `main`, a project the agents and the service may change; `readOnly`, one the agents may only read; `hidden`, one the agents cannot reach and the person can |
+| `projects` | `main`, a project the agents and the service may change; `readOnly`, one the agents may only read; `hidden`, one the agents cannot reach and the person may file tasks in |
 | `senders` | The headers that sign each sender in: `agent` and `otherAgent`, two agents with the same grants; `service`, a service credential; `person`, a person signed in to the server's own interface, who may decide in `main` |
 | `repository` | The repository a delivery signal names, as `owner/name` |
 | `knownGaps` | Checks the server is known to fail, each with its reason ([below](#known-gaps)) |
@@ -67,11 +67,13 @@ result on each binding the target offers.
 | `pass` | It passed on at least one binding and failed on none |
 | `FAIL` | It failed on a binding. The lines after the list give what was expected, what the server answered, and each request the check sent |
 | `warn` | A check of a SHOULD rule failed. It fails nothing |
-| `skip` | The target names no sender, project or binding the check needs |
+| `skip` | The target names no sender, project or binding the check needs, on at least one binding that offers the call |
 | `gap` | It failed, and the target lists it as a known gap |
 
 On a binding, `-` means the binding offers no way to make the call the check
-tests, such as linking two tasks over HTTP. A check runs once on each binding
+tests, such as linking two tasks over HTTP, and `skipped` that it offers the
+call but the target names no sender the check needs for it, such as a person
+for the HTTP binding's approval. A check runs once on each binding
 the target offers. It arranges what it needs, such as a task waiting on an
 approval, through MCP when the server offers it, and through HTTP for the
 person; then it makes the call it tests through the binding under test.
@@ -79,8 +81,15 @@ Where a rule says a refused write leaves nothing behind, the check reads the
 task, its comments and its history before and after the write and compares
 them.
 
-The last lines give each level's verdict: `passed`, `failed`, `incomplete`
-or `not-claimed`.
+The last lines give each level's verdict:
+
+| Verdict | Means |
+|---|---|
+| `passed` | Every check of the level ran and passed |
+| `known-gaps` | Every check ran, and each one that failed is a listed gap |
+| `failed` | A check failed, or a listed gap passed |
+| `incomplete` | Some of its checks did not run, or `--only` left them out |
+| `not-claimed` | The target does not claim the level |
 
 ### Known gaps
 

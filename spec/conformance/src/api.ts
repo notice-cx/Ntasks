@@ -54,6 +54,16 @@ export class NotOffered extends Error {
   }
 }
 
+/** A check needs a sender the target names none of, on a binding that offers the call. */
+export class MissingSender extends Error {
+  readonly role: string;
+
+  constructor(role: string) {
+    super(`the target names no ${role}`);
+    this.role = role;
+  }
+}
+
 /** A task as a read answers it. Fields a server leaves out read as their empty value. */
 export type Task = Readonly<Record<string, unknown>> & {
   readonly id: string;

@@ -67,9 +67,10 @@ changed since, the answer is refused with `409`, `task_refused` and
 | Dispute a relayed approval | `POST /api/tasks/:id/dispute` | `projectId` |
 
 Each answers `{ task }`, the task as the decision left it. An answer, a
-pick, a dismissal and an approval record the person as the answer's
-`recordedBy`, with `relayed: false` ([3.6](protocol.md#36-decisions)); a
-mark on a step records the person and the time on the step.
+pick and an approval record the person as the answer's `recordedBy`, with
+`relayed: false` ([3.6](protocol.md#36-decisions)). A dismissal closes the
+task and records no answer, and a mark on a step records the person and the
+time on the step.
 
 ### Delivery
 

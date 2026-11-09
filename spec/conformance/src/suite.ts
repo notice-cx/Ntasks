@@ -5,14 +5,15 @@
  * on none.
  */
 import { randomBytes } from 'node:crypto';
-import { NotOffered, type Api, type Role } from './api.ts';
+import { MissingSender, NotOffered, type Api, type Role } from './api.ts';
 import { CheckFailed, sectionOf, type Check, type Context } from './check.ts';
 import { checks as allChecks } from './checks/index.ts';
 import { httpApi } from './http.ts';
 import { mcpApi } from './mcp.ts';
 import { BINDINGS, LEVELS, type BindingName, type Level, type Target } from './target.ts';
 
-export type BindingStatus = 'passed' | 'failed' | 'not-offered';
+/** `not-run`: the binding offers the call, but the target names no sender the check needs for it. */
+export type BindingStatus = 'passed' | 'failed' | 'not-offered' | 'not-run';
 
 export interface BindingResult {
   readonly binding: BindingName;
@@ -52,9 +53,15 @@ export interface Report {
   readonly levels: readonly {
     readonly level: Level;
     readonly claimed: boolean;
-    readonly status: 'passed' | 'failed' | 'incomplete' | 'not-claimed';
+    /**
+     * `incomplete`: some of its checks did not run, or `--only` left them out.
+     * `known-gaps`: every check that ran passed, apart from listed gaps.
+     */
+    readonly status: 'passed' | 'known-gaps' | 'failed' | 'incomplete' | 'not-claimed';
   }[];
   readonly results: readonly CheckResult[];
+  /** Whether `only` left some checks of the claimed levels out, so no level's verdict is complete. */
+  readonly filtered: boolean;
   /** Whether every check of every claimed level passed or is a listed gap. */
   readonly passed: boolean;
 }
@@ -134,6 +141,7 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
           bindings.push({ binding, status: 'passed' });
         } catch (error) {
           if (error instanceof NotOffered) bindings.push({ binding, status: 'not-offered', detail: error.message });
+          else if (error instanceof MissingSender) bindings.push({ binding, status: 'not-run', detail: error.message });
           else
             bindings.push({
               binding,
@@ -148,22 +156,27 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
     results.push(result);
     options.onResult?.(result);
   }
+  const every = options.checks ?? allChecks;
   const levels = LEVELS.map((level) => {
     const claimed = target.levels.includes(level);
     const own = results.filter((result) => result.level === level);
+    const left = own.length < every.filter((check) => check.level === level).length;
     const status = !claimed
       ? ('not-claimed' as const)
       : own.some((result) => result.status === 'failed' || result.status === 'gap-closed')
         ? ('failed' as const)
-        : own.some((result) => result.status === 'not-run')
+        : left || own.some((result) => result.status === 'not-run')
           ? ('incomplete' as const)
-          : ('passed' as const);
+          : own.some((result) => result.status === 'known-gap')
+            ? ('known-gaps' as const)
+            : ('passed' as const);
     return { level, claimed, status };
   });
   return {
     target: target.url,
     levels,
     results,
+    filtered: selected.length < every.filter((check) => target.levels.includes(check.level)).length,
     passed: results.every((result) => !['failed', 'gap-closed'].includes(result.status)),
   };
 }
@@ -192,6 +205,13 @@ function judge(
   if (failed.length > 0 && failed.every(gapCovers))
     return { ...base, status: 'known-gap', detail: gaps.map((key) => `${key}: ${knownGaps[key]}`).join('; ') };
   if (failed.length > 0) return { ...base, status: check.strength === 'should' ? 'warned' : 'failed' };
+  const unrun = bindings.filter((result) => result.status === 'not-run');
+  if (unrun.length > 0)
+    return {
+      ...base,
+      status: 'not-run',
+      detail: unrun.map((result) => `${result.binding}: ${result.detail}`).join('; '),
+    };
   if (!bindings.some((result) => result.status === 'passed'))
     return { ...base, status: 'not-run', detail: 'no binding the target offers has what the check needs' };
   if (gaps.length > 0)

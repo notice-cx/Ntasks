@@ -15,9 +15,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DEFECTS, startBrokenServer, type Defect } from '../conformance/fixtures/broken.ts';
 import { KNOWN_GAPS, startLocalNtasks } from '../conformance/ntasks/local.ts';
-import { sectionOf } from '../conformance/src/check.ts';
+import { MissingSender } from '../conformance/src/api.ts';
+import { fail, sectionOf, type Check } from '../conformance/src/check.ts';
 import { checks } from '../conformance/src/checks/index.ts';
-import { runSuite } from '../conformance/src/suite.ts';
+import { runSuite, type Report } from '../conformance/src/suite.ts';
 import { httpApi } from '../conformance/src/http.ts';
 import { mcpApi } from '../conformance/src/mcp.ts';
 import { addressOf, checkTarget, LEVELS, type Level } from '../conformance/src/target.ts';
@@ -152,6 +153,57 @@ describe('the conformance checks', () => {
   it("list as Ntasks's known gaps only checks that exist", () => {
     const ids = new Set(checks.map((check) => check.id));
     expect(Object.keys(KNOWN_GAPS).filter((key) => !ids.has(key.split('@')[0]!))).toEqual([]);
+  });
+});
+
+describe("the suite's verdicts", () => {
+  it('read a level incomplete when a sender or --only leaves checks out, and known-gaps when only listed gaps fail', async () => {
+    const nothing = createServer((_request, response) => {
+      response.writeHead(404, { 'content-type': 'application/json' });
+      response.end('{"error":"not_found"}');
+    });
+    await new Promise<void>((resolve) => nothing.listen(0, '127.0.0.1', resolve));
+    try {
+      const example = JSON.parse(read('conformance/target.example.json')) as Record<string, unknown>;
+      const target = checkTarget({
+        ...example,
+        url: `http://127.0.0.1:${(nothing.address() as AddressInfo).port}`,
+        levels: ['core', 'human'],
+      });
+      const stand: Check[] = [
+        { id: 'state-1-listed', rule: 'STATE-1', level: 'core', title: 'Fails as a listed gap', run: () => fail('no') },
+        {
+          id: 'state-10-needs-a-person',
+          rule: 'STATE-10',
+          level: 'human',
+          title: 'Needs a person on HTTP',
+          run: async (context) => {
+            if (context.binding === 'http') throw new MissingSender('person');
+          },
+        },
+      ];
+      const knownGaps = { 'state-1-listed': 'tracked elsewhere' };
+      const verdicts = (report: Report) => [
+        Object.fromEntries(report.results.map((result) => [result.id, result.status])),
+        Object.fromEntries(report.levels.filter((level) => level.claimed).map((level) => [level.level, level.status])),
+        report.passed,
+        report.filtered,
+      ];
+      expect(verdicts(await runSuite(target, { checks: stand, knownGaps }))).toEqual([
+        { 'state-1-listed': 'known-gap', 'state-10-needs-a-person': 'not-run' },
+        { core: 'known-gaps', human: 'incomplete' },
+        true,
+        false,
+      ]);
+      expect(verdicts(await runSuite(target, { checks: stand, knownGaps, only: ['STATE-1'] }))).toEqual([
+        { 'state-1-listed': 'known-gap' },
+        { core: 'known-gaps', human: 'incomplete' },
+        true,
+        true,
+      ]);
+    } finally {
+      await new Promise((resolve) => nothing.close(resolve));
+    }
   });
 });
 
