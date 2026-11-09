@@ -61,7 +61,7 @@ a hex value.
 | Text | `--ink` | `#17171C` | `#EDEDF1` | Titles, values |
 | Text 2 | `--ink-2` | `#474852` | `#B3B5BF` | Body, labels |
 | Text 3 | `--ink-3` | `#696B76` | `#8A8D98` | Ids, ages, counts, placeholders, icons in controls |
-| Accent | `--accent` | `#2745D4` | `#3D5BE6` | Primary buttons, focus, in progress |
+| Accent | `--accent` | `#2745D4` | `#4565EF` | Primary buttons, focus, in progress |
 | On accent | `--on-accent` | `#FFFFFF` | `#FFFFFF` | Text and icons on Accent |
 | Accent text | `--accent-text` | `#2745D4` | `#B0B9FF` | Links, task ids in text, code keywords |
 | Accent soft | `--accent-soft` | `#EEF0FF` | `#1C2347` | The selected option, the focus halo of a field |
