@@ -727,7 +727,7 @@ field can hold is added. This is version 3.
 |---|---|
 | 1 | The routes this page and [Sign-in](sign-in.md#routes) list |
 | 2 | [Connected apps](sign-in.md#connected-apps) |
-| 3 | `steps` on a task, and `POST /api/gates/:id/steps` ([below](#a-persons-decisions)) |
+| 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
 
 | Where | What it holds |
 |---|---|
@@ -806,7 +806,7 @@ misspelt filter fails instead of being ignored.
 | Route | Parameters | Answer |
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
-| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose` and `dispute`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
+| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute` and `step`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
