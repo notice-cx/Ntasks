@@ -394,10 +394,14 @@ export const STALLED_AFTER_MS = 24 * 60 * 60 * 1000;
  * its holder has done nothing on it for STALLED_AFTER_MS, or never recorded
  * anything on it. It is shown only: time alone never frees a claim.
  */
-export function isStalled(task: Pick<Task, 'status' | 'assignee' | 'lastActivityAt'>, now: string): boolean {
+export function isStalled(
+  task: { readonly status: string; readonly assignee: string | null; readonly lastActivityAt?: string | null },
+  now: string,
+): boolean {
   if (task.status !== 'in_progress' || task.assignee === null) return false;
-  if (task.lastActivityAt === null) return true;
-  return Date.parse(now) - Date.parse(task.lastActivityAt) >= STALLED_AFTER_MS;
+  const last = Date.parse(task.lastActivityAt ?? '');
+  // A time that cannot be read records nothing, as no time does.
+  return !Number.isFinite(last) || Date.parse(now) - last >= STALLED_AFTER_MS;
 }
 
 /** A task one holder holds, with what the holder recorded about the work in hand. */

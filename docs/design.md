@@ -247,8 +247,8 @@ task's last activity, when its holder last changed or commented on it:
 | Mark | Name | A task in progress shows it when |
 |---|---|---|
 | Blue disc in a faint blue ring | Active | its holder wrote to it within the last hour |
-| Blue ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than the Stalled after time |
-| Grey ring, half filled | Stalled | its holder has not written to it for the Stalled after time or more, or nothing is recorded |
+| Blue ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than a day ago |
+| Grey ring, half filled | Stalled | its holder has not written to it for a day or more, or nothing is recorded: the server's rule, `isStalled` in `@ntasks/domain` |
 
 The marks differ in fill and lightness as well as colour, so they read apart
 without colour. They use Accent and greys only: amber, red and green keep
@@ -590,14 +590,20 @@ field is part of the address (`field.<key>=<value>`, as the API takes it),
 shows as a badge that clears it, and is dropped when another project is
 picked.
 
+### Where it stopped
+
+A stalled task's page shows, under its title, a block in the surface of a
+closed task's summary: a pause mark, Where it stopped, and how long its holder
+has done nothing on it; then the next step, branch, pull request and the
+holder's last comment, each on its own line; then Free it, a primary button,
+beside one line saying what freeing does. A board row of a stalled task says
+Stalled, with the holder's last activity, in place of Active.
+
 ### Live
 
 `/tasks/live` lists every task in progress under a `TopBar` titled Live. The bar
 holds each group's count after its activity mark (`6 active`, `3 quiet`,
-`50 stalled`, from 640 px wide) and, at its end, the Stalled after menu: a
-secondary button naming the time chosen, whose menu offers 4 hours, 1 day,
-3 days and 1 week with the one held ticked. The choice is kept in the
-browser's local storage, and 1 day is the default.
+`50 stalled`, from 640 px wide).
 
 The page is three groups, each a `GroupHeader` with its activity mark, its
 name, its count and, at its end from 640 px wide, what it holds in Text 3

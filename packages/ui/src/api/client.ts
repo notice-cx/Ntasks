@@ -113,6 +113,8 @@ export interface TasksApi {
   ): Promise<void>;
   /** Reopen an approval whose recorded answer the person disputes. */
   dispute(id: string, project: string): Promise<void>;
+  /** Free a task someone holds, on the person's own call: nobody holds it then, and a comment keeps where it stopped. */
+  release(id: string, project: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Tick, untick, note or mark as stuck one step of a request to do steps. */
@@ -495,6 +497,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     choose: (id, project, option, note, options) => scope().choose(id, project, option, note, options),
     dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
     dispute: (id, project) => scope().dispute(id, project),
+    release: (id, project) => scope().release(id, project),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
     markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
@@ -669,6 +672,9 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async dispute(id, project) {
       await act(id, project, 'dispute', {});
+    },
+    async release(id, project) {
+      await act(id, project, 'release', {});
     },
     async resolveGate(id, project, reason, sending = {}) {
       const path = `/api/gates/${encodeURIComponent(id)}/resolve`;

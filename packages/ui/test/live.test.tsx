@@ -42,19 +42,21 @@ function task(id: string, fields: Partial<BoardTask>): BoardTask {
 const ids = (tasks: readonly BoardTask[]) => tasks.map((entry) => entry.id);
 
 describe('how recently a holder worked on a task', () => {
-  it('is active within the hour, quiet until the threshold and stalled from it on', () => {
-    expect(activityOf(ago(HOUR - 1), NOW, DAY)).toBe('active');
-    expect(activityOf(ago(HOUR), NOW, DAY)).toBe('quiet');
-    expect(activityOf(ago(DAY - 1), NOW, DAY)).toBe('quiet');
-    expect(activityOf(ago(DAY), NOW, DAY)).toBe('stalled');
-    // A shorter threshold stalls work sooner.
-    expect(activityOf(ago(5 * HOUR), NOW, 4 * HOUR)).toBe('stalled');
+  const after = (lastActivityAt: string | null | undefined, fields: Partial<BoardTask> = {}) =>
+    activityOf(task('web-1', { lastActivityAt, ...fields }), NOW);
+
+  it('is active within the hour, quiet until a day and stalled from then on, as the server marks it', () => {
+    expect(after(ago(HOUR - 1))).toBe('active');
+    expect(after(ago(HOUR))).toBe('quiet');
+    expect(after(ago(DAY - 1))).toBe('quiet');
+    expect(after(ago(DAY))).toBe('stalled');
   });
 
-  it('is stalled when nothing is recorded or the time cannot be read', () => {
-    expect(activityOf(null, NOW, DAY)).toBe('stalled');
-    expect(activityOf(undefined, NOW, DAY)).toBe('stalled');
-    expect(activityOf('not a time', NOW, DAY)).toBe('stalled');
+  it('is stalled when nothing is recorded or the time cannot be read, and only while someone holds the task', () => {
+    expect(after(null)).toBe('stalled');
+    expect(after(undefined)).toBe('stalled');
+    expect(after('not a time')).toBe('stalled');
+    expect(after(ago(2 * DAY), { assignee: null })).toBe('quiet');
   });
 
   it('counts as working now only on a task in progress', () => {
@@ -79,7 +81,6 @@ describe('the Live page’s groups', () => {
         task('web-9', { status: 'blocked', lastActivityAt: ago(60_000) }),
       ],
       NOW,
-      DAY,
     );
     expect(ids(groups.active)).toEqual(['web-2', 'web-1']);
     expect(ids(groups.quiet)).toEqual(['web-3']);
@@ -112,21 +113,11 @@ describe('the Live page', () => {
     expect(await screen.findByRole('heading', { name: 'Check the sign-in form with a screen reader' })).toBeTruthy();
   });
 
-  it('moves work between Quiet and Stalled with the threshold chosen, and keeps the choice', async () => {
+  it('shows a stalled task and changes nothing on it', async () => {
     const api = createFixtureTasksApi();
-    const view = renderApp('/tasks/live', api);
-    expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
-    fireEvent.click(screen.getByRole('button', { name: /Stalled after 1 day/ }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: '1 week' }));
-    expect(await liveRows('Quiet')).toEqual(['docs-n6j1', 'web-w6n2']);
-    expect(screen.queryByRole('region', { name: 'Stalled' })).toBeNull();
-    // Showing Stalled changes nothing on the task.
-    expect(api.state.tasks.find((entry) => entry.id === 'web-w6n2')?.status).toBe('in_progress');
-
-    view.unmount();
     renderApp('/tasks/live', api);
-    expect(await screen.findByRole('button', { name: /Stalled after 1 week/ })).toBeTruthy();
-    expect(await liveRows('Quiet')).toEqual(['docs-n6j1', 'web-w6n2']);
+    expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
+    expect(api.state.tasks.find((entry) => entry.id === 'web-w6n2')).toMatchObject({ status: 'in_progress' });
   });
 
   it('shows the most recently stalled first and the rest on request', async () => {

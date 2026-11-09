@@ -1,11 +1,10 @@
-import { Activity as ActivityIcon, Bot, ChevronDown, GitBranch, GitPullRequest } from 'lucide-react';
+import { Activity as ActivityIcon, Bot, GitBranch, GitPullRequest } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Avatar } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { EmptyState } from '../components/ui/empty-state';
-import { Menu, MenuContent, MenuItem, MenuTrigger } from '../components/ui/menu';
 import { GroupHeader, Row, RowAge, RowId, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
 import { BarSpacer, TopBar } from '../components/ui/shell';
 import { ActivityMark } from '../components/ui/symbols';
@@ -14,15 +13,7 @@ import { useNow } from '../hooks/useNow';
 import { NO_FILTERS } from '../lib/board-read';
 import { httpUrl } from '../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../lib/format';
-import {
-  ACTIVITIES,
-  ACTIVITY_LABELS,
-  liveGroups,
-  STALLED_AFTER,
-  storedStalledAfter,
-  storeStalledAfter,
-  type Activity,
-} from '../lib/live';
+import { ACTIVITIES, ACTIVITY_LABELS, liveGroups, type Activity } from '../lib/live';
 import { isAgentActor } from '../lib/symbols';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
@@ -30,17 +21,12 @@ import { usePaths } from '../lib/paths';
 /** The stalled tasks shown before Show more: the most recently stalled, where work is likeliest to resume. */
 const STALLED_SHOWN = 5;
 
-function stalledLabel(ms: number): string {
-  return STALLED_AFTER.find((option) => option.ms === ms)?.label ?? STALLED_AFTER[1].label;
-}
-
-/** What each group holds, in words, for the threshold chosen. */
-function groupRule(activity: Activity, stalledAfterMs: number): string {
-  const after = stalledLabel(stalledAfterMs);
-  if (activity === 'active') return 'Changed in the last hour';
-  if (activity === 'quiet') return `Last change 1 hour to ${after} ago`;
-  return `Nothing for ${after} or more`;
-}
+/** What each group holds, in words. */
+const GROUP_RULES: Readonly<Record<Activity, string>> = Object.freeze({
+  active: 'Changed in the last hour',
+  quiet: 'Last change 1 hour to 1 day ago',
+  stalled: 'Nothing for 1 day or more',
+});
 
 /** A pull request's number from its URL, as `#42`, or its kind when the URL names none. */
 function pullRequestLabel(url: string): string {
@@ -50,24 +36,17 @@ function pullRequestLabel(url: string): string {
 
 /**
  * Live, `<base>/live`: every task in progress, grouped by how recently its
- * holder changed or commented on it: Active within the hour, Quiet until the
- * threshold chosen under Stalled after, and Stalled after it or with nothing
- * recorded.
+ * holder changed or commented on it: Active within the hour, Quiet until a
+ * day, and Stalled after it or with nothing recorded, as the server marks it.
  * The page shows Stalled and changes nothing: the task stays In progress.
  */
 export function LiveRoute() {
   const now = useNow();
   const board = useBoard(NO_FILTERS);
-  const [stalledAfter, setStalledAfter] = useState(storedStalledAfter);
   const [allStalled, setAllStalled] = useState(false);
-  const groups = useMemo(() => liveGroups(board.allTasks, now, stalledAfter), [board.allTasks, now, stalledAfter]);
+  const groups = useMemo(() => liveGroups(board.allTasks, now), [board.allTasks, now]);
   const total = ACTIVITIES.reduce((sum, activity) => sum + groups[activity].length, 0);
   const shown = board.readFailure === null && !board.loading && total > 0;
-
-  function choose(ms: number) {
-    setStalledAfter(ms);
-    storeStalledAfter(ms);
-  }
 
   let body;
   if (board.readFailure !== null) {
@@ -100,11 +79,7 @@ export function LiveRoute() {
             mark={<ActivityMark activity={activity} label={null} />}
             label={ACTIVITY_LABELS[activity]}
             count={tasks.length}
-            end={
-              <span className="text-meta font-normal text-ink-3 max-sm:hidden">
-                {groupRule(activity, stalledAfter)}
-              </span>
-            }
+            end={<span className="text-meta font-normal text-ink-3 max-sm:hidden">{GROUP_RULES[activity]}</span>}
           />
           {folded.map((task) => (
             <LiveRow key={task.id} task={task} activity={activity} nowMs={now} />
@@ -135,21 +110,6 @@ export function LiveRoute() {
           </span>
         ) : null}
         <BarSpacer />
-        <Menu>
-          <MenuTrigger asChild>
-            <Button data-stalled-after={stalledAfter}>
-              Stalled after {stalledLabel(stalledAfter)}
-              <ChevronDown aria-hidden />
-            </Button>
-          </MenuTrigger>
-          <MenuContent label="Stalled after" align="end">
-            {STALLED_AFTER.map((option) => (
-              <MenuItem key={option.ms} checked={option.ms === stalledAfter} onSelect={() => choose(option.ms)}>
-                {option.label}
-              </MenuItem>
-            ))}
-          </MenuContent>
-        </Menu>
       </TopBar>
       <div data-live-page="">{body}</div>
     </>

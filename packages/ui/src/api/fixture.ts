@@ -653,6 +653,24 @@ export function createFixtureTasksApi({
       task.resolution = null;
       touch(task);
     },
+    async release(id, key) {
+      reach();
+      const task = find(id, key);
+      const holder = task.assignee;
+      if (task.status === 'closed' || holder === null) throw new ApiError(`Nobody holds ${id}.`, 409, 'task_refused');
+      const where = [
+        `- Held by: ${holder}`,
+        `- Last activity: ${task.lastActivityAt ?? 'none recorded'}`,
+        ...(task.work?.next ? [`- Next step: ${task.work.next}`] : []),
+        ...(task.work?.branch ? [`- Branch: ${task.work.branch}`] : []),
+        ...(task.work?.pr ? [`- Pull request: ${task.work.pr}`] : []),
+      ];
+      addComment(task, [`${FIXTURE_ACTOR} freed ${id} on their own call. Where it stopped:`, ...where].join('\n'));
+      endWork(task);
+      task.assignee = null;
+      if (task.status === 'in_progress') task.status = 'open';
+      touch(task);
+    },
     async resolveGate(id, key, reason, options) {
       reach();
       once(options?.idempotencyKey, ['resolve', id, key, reason ?? null], () => {

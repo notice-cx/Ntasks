@@ -189,6 +189,8 @@ export interface LiveTask {
   work?: TaskWork;
   /** When the assignee last changed or commented on the task, when the server sends it. */
   lastActivityAt?: string | null;
+  /** In progress and held, with no holder activity for a day or none recorded, as of the read, when the server sends it. */
+  stalled?: boolean;
 }
 
 /** An epic with its all-time child progress. */
