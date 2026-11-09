@@ -3,6 +3,8 @@ export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
 export type { StepMarking } from './steps.ts';
 export { sameActor } from './actors.ts';
+export { releaseComment } from './release.ts';
+export type { FreedTask } from './release.ts';
 export { criteriaOf } from './criteria.ts';
 export type { Criterion } from './criteria.ts';
 export {

@@ -11,6 +11,7 @@ import {
   ACCEPTED_REASON,
   criteriaOf,
   markedStep,
+  releaseComment,
   sameActor,
   TASK_LIMITS,
   type AcceptedCriterion,
@@ -23,7 +24,6 @@ import {
   type StepMarking,
   type TaskResolution,
   type TaskWrite,
-  type WorkDetail,
 } from '@ntasks/domain';
 import { listed } from './args.ts';
 import { SCOPES } from './auth.ts';
@@ -866,48 +866,6 @@ function acceptanceDisputeWrite(
   return draft.write();
 }
 
-/** The work details a freed task's comment keeps, in the order it lists them. */
-const KEPT_WORK: readonly [WorkDetail, string][] = [
-  ['next', 'Next step'],
-  ['branch', 'Branch'],
-  ['pr', 'Pull request'],
-  ['commit', 'Commit'],
-  ['worktree', 'Worktree'],
-  ['session', 'Session'],
-];
-
-/** The most characters of one work detail the comment keeps: six of them at
- * this length, with the lines above them, fit in one comment. */
-const KEPT_DETAIL_MOST = 500;
-
-/** `text` cut to `most` characters, its end marked when cut. */
-function cut(text: string, most: number): string {
-  return text.length <= most ? text : `${text.slice(0, most - 1)}…`;
-}
-
-/** The comment a person's free leaves: who freed it, and where the work
- * stopped, since the holder's work details go with the claim. A long work
- * detail, and the holder's last comment, are cut to what one comment holds;
- * the task's history keeps every work detail whole. */
-function whereItStopped(task: Task, holder: string, comments: readonly TaskComment[], person: string): string {
-  const lines = [
-    `${person} freed ${task.id} on their own call. Where it stopped:`,
-    `- Held by: ${holder}${task.assigneeFor === null ? '' : ` for ${task.assigneeFor}`}`,
-    `- Last activity: ${task.lastActivityAt ?? 'none recorded'}`,
-    ...KEPT_WORK.flatMap(([detail, label]) => {
-      const value = task.work[detail];
-      return value === undefined ? [] : [`- ${label}: ${cut(value, KEPT_DETAIL_MOST)}`];
-    }),
-  ];
-  const head = lines.join('\n');
-  const last = comments.findLast((comment) => sameActor(comment.author, holder));
-  if (last === undefined) return head;
-  const intro = `\n- Last comment, ${last.createdAt}: `;
-  const room = TASK_LIMITS.comment - head.length - intro.length;
-  if (room < 2) return head;
-  return `${head}${intro}${cut(last.text.replace(/\s+/gu, ' ').trim(), room)}`;
-}
-
 /**
  * A person freeing a task someone holds, on their own call: nobody holds it
  * then, a task in progress is open again, and a blocked or deferred one keeps
@@ -925,7 +883,11 @@ export function releaseWrite(task: Task, around: Surroundings, deciding: Decidin
       `Nobody holds ${task.id}.`,
     );
   const draft = new Draft(task);
-  draft.comment = whereItStopped(task, holder, around.comments, deciding.actor);
+  draft.comment = releaseComment(
+    { id: task.id, holder, helper: task.assigneeFor, lastActivityAt: task.lastActivityAt, work: task.work },
+    around.comments,
+    deciding.actor,
+  );
   draft.handBack(false, task.status !== 'in_progress');
   return draft.write();
 }

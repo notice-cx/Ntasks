@@ -15,6 +15,7 @@ import {
   isTaskId,
   markedStep,
   PROVED_TYPES,
+  releaseComment,
   TASK_LIMITS,
   type TaskResolution,
 } from '@ntasks/domain';
@@ -685,14 +686,19 @@ export function createFixtureTasksApi({
       const task = find(id, key);
       const holder = task.assignee;
       if (task.status === 'closed' || holder === null) throw new ApiError(`Nobody holds ${id}.`, 409, 'task_refused');
-      const where = [
-        `- Held by: ${holder}`,
-        `- Last activity: ${task.lastActivityAt ?? 'none recorded'}`,
-        ...(task.work?.next ? [`- Next step: ${task.work.next}`] : []),
-        ...(task.work?.branch ? [`- Branch: ${task.work.branch}`] : []),
-        ...(task.work?.pr ? [`- Pull request: ${task.work.pr}`] : []),
-      ];
-      addComment(task, [`${FIXTURE_ACTOR} freed ${id} on their own call. Where it stopped:`, ...where].join('\n'));
+      // Written before the work details go, as the Worker writes it.
+      const comment = releaseComment(
+        {
+          id,
+          holder,
+          helper: task.for ?? null,
+          lastActivityAt: task.lastActivityAt ?? null,
+          work: task.work ?? {},
+        },
+        state.comments.get(id) ?? [],
+        FIXTURE_ACTOR,
+      );
+      addComment(task, comment);
       endWork(task);
       task.assignee = null;
       if (task.status === 'in_progress') task.status = 'open';
