@@ -11,8 +11,8 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
 ## Start here
 
 - [Why Ntasks](why-ntasks.md): the problems Ntasks solves, with their sources.
-- [Concepts](concepts.md): projects, tasks, dependencies, ready work, claims,
-  decisions and approvals, and how Ntasks differs from Beads.
+- [Concepts](concepts.md): projects, tasks, dependencies, claims, decisions
+  and approvals, and how Ntasks differs from Beads.
 
 ## Run Ntasks
 
@@ -20,7 +20,7 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
   and local development.
 - [Connect an agent](agents.md): the setup command, each agent by hand, and the
   Ntasks skill.
-- [The web app](web-app.md): each page, and walkthroughs of its features.
+- [The web app](web-app.md): every page, with animated walkthroughs.
 
 ## Reference for contributors
 

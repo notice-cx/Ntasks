@@ -320,8 +320,14 @@ code {
 }
 
 .hero-shot {
-  margin-top: 56px;
-  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  max-width: 1040px;
+  margin-top: 40px;
+}
+
+.hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .window {
@@ -336,12 +342,6 @@ code {
   display: block;
   width: 100%;
   height: auto;
-}
-
-.hero-shot .window img {
-  aspect-ratio: 1650 / 1080;
-  object-fit: cover;
-  object-position: top;
 }
 
 /* Sections */
@@ -783,19 +783,21 @@ main:has(> .section.alt:last-child) + .site-footer {
     padding-top: 56px;
   }
 
+  /* The phone screenshot, at a phone's width, framed and faded out at its foot. */
   .hero-shot {
-    margin-top: 40px;
+    mask-image: linear-gradient(to bottom, #000 75%, transparent);
   }
 
-  /* The phone screenshot, at a phone's width. */
-  .hero-shot .window {
+  .hero-shot img {
     max-width: 320px;
     margin-inline: auto;
-    border-radius: 16px;
-  }
-
-  .hero-shot .window img {
     aspect-ratio: 780 / 1300;
+    object-fit: cover;
+    object-position: top;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--canvas);
+    box-shadow: var(--shadow-pop);
   }
 
   [role='tablist'] {

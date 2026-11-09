@@ -16,7 +16,7 @@ const FIXED = {
   'favicon.svg': 'apps/web/public/brand/notice-icon.svg',
   'favicon-32.png': 'apps/web/public/brand/notice-icon-32.png',
   'apple-touch-icon.png': 'apps/web/public/brand/notice-icon-180.png',
-  'social.webp': 'docs/images/board-light.webp',
+  'social.webp': 'docs/images/hero-light.webp',
 };
 
 function landing(): Plugin {
