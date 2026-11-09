@@ -1,0 +1,70 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 publishes the npm package ntasks, built from
+# tools/cli. The tag must name the version in tools/cli/package.json, on a
+# commit of main (tools/cli/README.md, "Build and release").
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ntasks to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The repository's settings can require an approval for this environment,
+    # and npm's trusted publisher for the package can name it.
+    environment: npm
+    permissions:
+      contents: read
+      # npm's trusted publishing and the provenance statement use GitHub's
+      # OIDC token.
+      id-token: write
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      # Actions are pinned to a commit; Dependabot proposes each new release.
+      # The full history lets the next step find the tag's commit on main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Check that the tag names tools/cli's version on a commit of main
+        run: |
+          version="$(node -p "require('./tools/cli/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not name the version in tools/cli/package.json, $version."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The tag $GITHUB_REF_NAME is not on a commit of main."
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Builds the package in tools/cli/dist and checks its files and its
+      # deploy configuration.
+      - run: pnpm build
+      # npm signs in through the trusted publisher when the package has one,
+      # and otherwise with the NPM_TOKEN secret.
+      - name: Publish
+        working-directory: tools/cli/dist
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
