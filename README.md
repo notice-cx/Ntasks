@@ -17,9 +17,9 @@
 </p>
 
 <p align="center">
-  <a href="#get-started">Get started</a> ·
-  <a href="#connect-an-agent">Connect an agent</a> ·
-  <a href="docs/why-ntasks.md">Why Ntasks</a> ·
+  <a href="#get-started">Get&nbsp;started</a> ·
+  <a href="#connect-an-agent">Connect&nbsp;an&nbsp;agent</a> ·
+  <a href="docs/why-ntasks.md">Why&nbsp;Ntasks</a> ·
   <a href="#learn-more">Docs</a>
 </p>
 
@@ -42,9 +42,8 @@ who's working on what and answer whatever needs you.
   change is built, merged or live.
 - **It's hard to see what each agent is doing.** Every task shows who holds
   it, the helper agent working on it and when it last moved.
-- **Decisions get lost in chat.** Waiting for you lists every decision and
-  approval that needs you, and the changes waiting to ship. Each decision
-  takes one click.
+- **Decisions get lost in chat.** Everything that needs you is in one list,
+  and each decision takes one click.
 - **Task tools slow agents down.** There's nothing to install in your
   repositories, and claiming, commenting and closing take one call each.
 
