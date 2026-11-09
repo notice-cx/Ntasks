@@ -110,10 +110,13 @@ read, with `field` naming the body field at fault when there is one.
 |---|---|
 | `400` `invalid_request` | A parameter, the body or a field is missing, unknown, repeated or out of range |
 | `400` `workspace_required` | The sender reaches several workspaces and the request names none |
-| `401` | Nobody is signed in |
+| `401` `unauthorized` | The request carries no credential. The `www-authenticate` header tells an MCP client where to sign in |
+| `401` `invalid_token` | The credential is malformed, unknown, expired or revoked |
 | `403` `insufficient_scope` | The sender lacks the scope the route needs, such as a decision from an agent or a service |
 | `403` `forbidden` | The sender may read the project but not change it, or a write comes from another site's page |
 | `404` `not_found` | The workspace, the project or a task does not exist, or the sender does not reach it ([AUTH-10](protocol.md#auth-10)) |
+| `405` `method_not_allowed` | The path does not take the method; the `allow` header names the ones it takes |
 | `409` `task_refused` | The task's state refuses the write, such as a close of a task someone else holds |
 | `409` `idempotency_conflict` | The `Idempotency-Key` was first used for a different write |
 | `503` `unavailable` | The task kept changing while the write was made; nothing was written ([INV-4](protocol.md#inv-4)) |
+| `503` `sign_in_not_configured` | The deployment's sign-in is not set up, so it refuses every request |

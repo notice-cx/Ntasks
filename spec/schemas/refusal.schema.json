@@ -9,12 +9,16 @@
       "enum": [
         "invalid_request",
         "workspace_required",
+        "unauthorized",
+        "invalid_token",
         "insufficient_scope",
         "forbidden",
         "not_found",
+        "method_not_allowed",
         "task_refused",
         "idempotency_conflict",
-        "unavailable"
+        "unavailable",
+        "sign_in_not_configured"
       ]
     },
     "detail": { "type": "string", "minLength": 1 },
