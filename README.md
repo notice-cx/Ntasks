@@ -55,22 +55,31 @@ whatever needs you.
 Ntasks runs on your own Cloudflare account, within
 [the free plan](docs/architecture.md#the-free-plan-budget).
 
-1. **Deploy** to your Cloudflare account:
+1. **Deploy.** On a machine with Node.js, run:
 
-   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
+   ```sh
+   npx ntasks deploy
+   ```
 
-   The button asks for one secret, `AUTH_SECRET`. Make one with
-   `openssl rand -base64 32` and keep a copy.
+   It logs in to your Cloudflare account in the browser, deploys Ntasks
+   there, and prints its address and an `AUTH_SECRET`. Keep a copy of the
+   secret: the command shows it only once. Run it again to update to the
+   latest release.
 
 2. **Set up sign-in.** Open `/sign-in` at the address people will use, such
-   as your custom domain, since sign-in is bound to it. Enter the secret and
-   choose **Create the GitHub App**.
+   as your custom domain, since sign-in is bound to it. Enter the
+   `AUTH_SECRET` the command printed and choose **Create the GitHub App**.
 
 3. **Create a workspace and a project**, and invite people by GitHub
    username.
 
-To deploy from a checkout, update a deployment or run Ntasks on your machine,
-see [Deploy and run Ntasks](docs/deploy.md).
+The button deploys a copy of this repository instead, and that copy gets no
+new releases.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks)
+
+To deploy with the button or from a checkout, or to run Ntasks on your
+machine, see [Deploy and run Ntasks](docs/deploy.md).
 
 ## Connect an agent
 
