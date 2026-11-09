@@ -5,7 +5,9 @@
  * Statuses, types and link types stay strings here: a value this build has
  * never seen is drawn as itself instead of breaking the page.
  */
-import type { TaskResolution, TaskWork } from '@ntasks/domain';
+import type { TaskResolution, TaskStep, TaskWork } from '@ntasks/domain';
+
+export type { StepMark, StepMarking, TaskStep } from '@ntasks/domain';
 
 /** Option keys, in the order options are shown. */
 export const TASK_CHOICE_KEYS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
@@ -38,7 +40,8 @@ export interface TaskChoice {
 
 /** The latest answer recorded on a task. */
 export interface TaskAnswer {
-  /** A letter on a task with choices, `approve` or `decline` on an approval, null when it chose none. */
+  /** A letter on a task with choices, `approve` or `decline` on an approval, `done` or `decline` on a
+   * request to do steps, null when it chose none. */
   readonly option: string | null;
   /** The person's words, as given. */
   readonly quote: string | null;
@@ -178,6 +181,9 @@ export interface LiveTask {
   closeReason: string | null;
   /** `human` on an approval a person answers; null on every other task. */
   awaitType: string | null;
+  /** On a request that a person do steps: the steps, with who ticked each, their notes and where they got
+   * stuck. Null on every other task, and absent when the server sends none. */
+  steps?: readonly TaskStep[] | null;
   /** Who closed the task and the model they named, when the server sends them. */
   closedBy?: string | null;
   closedModel?: string | null;

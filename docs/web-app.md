@@ -106,6 +106,15 @@ An approval covers the action, environment and scope you read, and nothing
 beyond it. An answer an agent relays from a chat shows your words, and you
 can dispute it.
 
+### Tick off your steps
+
+When an agent needs something only you can do, such as running a command on
+your own machine, it asks for your steps. Each step is a box to tick, with its
+command as a block to copy. Tick them in any order, leave a note when the
+agent asked for a value, or press **Stuck here** and say why. Ticking the last
+step hands the waiting task back to the agent, which checks the result before
+it continues.
+
 ### Set it up in one step
 
 <picture>
