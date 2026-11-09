@@ -33,7 +33,11 @@ esac`,
 case "$1 $2" in
   "mcp get")
     [ -f "$state/codex-$3" ] || { echo "Error: No MCP server named '$3' found." >&2; exit 1; }
-    printf '{\\n  "name": "%s",\\n  "transport": {\\n    "type": "streamable_http",\\n    "url": "%s",\\n    "bearer_token_env_var": null\\n  }\\n}\\n' "$3" "$(cat "$state/codex-$3")" ;;
+    if [ "$(cat "$state/codex-$3")" = stdio ]; then
+      printf '{\\n  "name": "%s",\\n  "transport": {\\n    "type": "stdio",\\n    "command": "ntasks-local"\\n  }\\n}\\n' "$3"
+    else
+      printf '{\\n  "name": "%s",\\n  "transport": {\\n    "type": "streamable_http",\\n    "url": "%s",\\n    "bearer_token_env_var": null\\n  }\\n}\\n' "$3" "$(cat "$state/codex-$3")"
+    fi ;;
   "mcp add") printf '%s' "$5" >"$state/codex-$3" ;;
 esac`,
   gemini: `
@@ -156,22 +160,27 @@ test('without --yes and with no terminal, it changes nothing', async () => {
   assert.equal(await readFile(join(at.home, '.claude/skills/ntasks/SKILL.md'), 'utf8').catch(() => null), null);
 });
 
-test('replaces a registration at another address only with --yes', async () => {
-  const at = await machine(['claude']);
+test('replaces a registration at another address, or as a local command, only with --yes', async () => {
+  const at = await machine(['claude', 'codex']);
   const old = 'https://old.example.com/api/mcp';
   await writeFile(join(at.home, '.stub', 'claude-ntasks'), old);
+  await writeFile(join(at.home, '.stub', 'codex-ntasks'), 'stdio');
 
-  const refused = await install(at, ['--url', 'https://ntasks.example.com', '--agents', 'claude']);
+  const refused = await install(at, ['--url', 'https://ntasks.example.com', '--agents', 'claude,codex']);
   assert.notEqual(refused.code, 0);
   assert.equal(await registered(at, 'claude'), old);
+  assert.equal(await registered(at, 'codex'), 'stdio');
   assert.deepEqual(writes(await calls(at)), []);
 
-  const replaced = await install(at, ['--url', 'https://ntasks.example.com', '--agents', 'claude', '--yes']);
+  const args = ['--url', 'https://ntasks.example.com', '--agents', 'claude,codex', '--yes'];
+  const replaced = await install(at, args);
   assert.equal(replaced.code, 0, replaced.output);
   assert.equal(await registered(at, 'claude'), endpoint);
+  assert.equal(await registered(at, 'codex'), endpoint);
   assert.deepEqual(writes(await calls(at)), [
     'claude mcp remove ntasks --scope user',
     `claude mcp add --transport http --scope user ntasks ${endpoint}`,
+    `codex mcp add ntasks --url ${endpoint}`,
   ]);
 });
 

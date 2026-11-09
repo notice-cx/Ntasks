@@ -24,8 +24,8 @@ Usage: install.sh [--url <address>] [--agents <list>] [--yes]
   --agents <list>   The agents to set up, separated by commas: claude, codex,
                     gemini (environment: NTASKS_AGENTS)
   --yes             Make the changes without asking, including replacing an
-                    ntasks server registered at another address
-                    (environment: NTASKS_YES=1)
+                    ntasks server registered at another address or as a
+                    local command (environment: NTASKS_YES=1)
   --help            Show this text
 
 NTASKS_REF names the branch or tag of notice-cx/Ntasks the skill is
@@ -107,6 +107,11 @@ shown() {
   esac
 }
 
+# Where a registration points, from registered_url.
+described() {
+  if [ "$1" = - ]; then printf 'as a local command'; else printf 'at %s' "$1"; fi
+}
+
 # Runs an agent's command in an empty folder, so that no project's own MCP
 # settings hide the user-level ones, with stdin closed so that it cannot read
 # the rest of a piped script.
@@ -121,8 +126,9 @@ quietly() {
   fi
 }
 
-# The URL of the user-level ntasks server an agent has registered, or nothing.
-# Each agent's output is read as its current release prints it.
+# The URL of the user-level ntasks server an agent has registered, - when it is
+# registered without one (a local command), or nothing. Each agent's output is
+# read as its current release prints it.
 registered_url() {
   local said line
   case $1 in
@@ -137,6 +143,7 @@ registered_url() {
           ;;
         esac
       done <<<"$said"
+      printf -- -
       ;;
     codex)
       said=$(in_work codex mcp get "$SERVER" --json 2>/dev/null) || return 0
@@ -149,13 +156,15 @@ registered_url() {
           ;;
         esac
       done <<<"$said"
+      printf -- -
       ;;
     gemini)
       said=$(in_work gemini mcp list 2>/dev/null) || return 0
       while IFS= read -r line; do
         case $line in *" $SERVER: "*)
           line=${line#*" $SERVER: "}
-          printf '%s' "${line%% *}"
+          line=${line%% *}
+          case $line in http://* | https://*) printf '%s' "$line" ;; *) printf -- - ;; esac
           return 0
           ;;
         esac
@@ -165,7 +174,7 @@ registered_url() {
 }
 
 # Registers ntasks at the endpoint for every project; $2 says whether an
-# earlier registration at another address goes first.
+# earlier registration of that name goes first.
 register() {
   case $1 in
     claude)
@@ -293,8 +302,8 @@ main() {
     elif [ -n "$yes" ]; then
       printf -v "plan_$id" replace
     else
-      ask "$(agent_name "$id") has $SERVER registered at $url. Replace it with $endpoint? [y/N] " \
-        "$(agent_name "$id") has $SERVER registered at $url. Pass --yes to replace it with $endpoint."
+      ask "$(agent_name "$id") has $SERVER registered $(described "$url"). Replace it with $endpoint? [y/N] " \
+        "$(agent_name "$id") has $SERVER registered $(described "$url"). Pass --yes to replace it with $endpoint."
       case $answer in
         y | Y | yes | Yes) printf -v "plan_$id" replace ;;
         *) printf -v "plan_$id" other ;;
@@ -311,9 +320,9 @@ main() {
     printf '  %s\n' "$(agent_name "$id")"
     case ${!plan} in
       add) printf '    register the MCP server %s at %s, for every project\n' "$SERVER" "$endpoint" ;;
-      replace) printf '    replace the MCP server %s at %s with %s\n' "$SERVER" "${!was}" "$endpoint" ;;
+      replace) printf '    replace the MCP server %s %s with %s\n' "$SERVER" "$(described "${!was}")" "$endpoint" ;;
       keep) printf '    keep the MCP server %s: already at %s\n' "$SERVER" "$endpoint" ;;
-      other) printf '    keep the MCP server %s at %s\n' "$SERVER" "${!was}" ;;
+      other) printf '    keep the MCP server %s %s\n' "$SERVER" "$(described "${!was}")" ;;
     esac
     case ${!plan} in add | replace) changes=$((changes + 1)) ;; esac
     if cmp -s "$skill" "$path"; then

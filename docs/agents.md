@@ -39,8 +39,8 @@ Codex and Gemini CLI both read skills from `~/.agents/skills`, so they share
 one copy.
 
 Run it again at any time. A server already registered as `ntasks` at the same
-endpoint is left as it is. One registered at another address is replaced only
-after you agree. A skill file that differs from the repository's is replaced.
+endpoint is left as it is. One registered at another address, or as a local
+command, is replaced only after you agree. A skill file that differs from the repository's is replaced.
 
 The address is the deployment's origin, such as `https://ntasks.example.com`.
 An address without a scheme gets `https://`; `http://` is accepted only for
@@ -52,7 +52,7 @@ These options run it without prompts:
 |---|---|---|
 | `--url <address>` | `NTASKS_URL` | The Ntasks address |
 | `--agents <list>` | `NTASKS_AGENTS` | The agents to set up, separated by commas: `claude`, `codex`, `gemini` |
-| `--yes` | `NTASKS_YES=1` | Makes the changes without asking, including replacing an `ntasks` server registered at another address. Without it and without a terminal, the script shows its plan and changes nothing |
+| `--yes` | `NTASKS_YES=1` | Makes the changes without asking, including replacing an `ntasks` server registered at another address or as a local command. Without it and without a terminal, the script shows its plan and changes nothing |
 | | `NTASKS_REF` | The branch or tag of this repository the skill is downloaded from. Default `main` |
 | | `NTASKS_SKILL_SOURCE` | Another URL or a local file to read the skill from |
 
