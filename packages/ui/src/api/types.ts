@@ -467,6 +467,23 @@ export interface ConnectedApp {
   connectedAt: string | null;
 }
 
+/** The workspace's GitHub webhook, as `GET /api/access/github` shows it to an owner: never its secret. */
+export interface GitHubWebhook {
+  /** Where GitHub sends deliveries: the webhook's Payload URL. */
+  url: string;
+  /** Whether a secret is saved that deliveries can be checked against. */
+  secretSaved: boolean;
+  /** The check runs and deployment environments whose success means a change is live. */
+  deployChecks: string[];
+  updatedAt: string | null;
+}
+
+/** What an owner saves with `POST /api/access/github`: a new secret, the deploy checks, or both. */
+export interface GitHubWebhookSettings {
+  secret?: string;
+  deployChecks?: string[];
+}
+
 /** A connected app, as `POST /api/access/apps` takes it. */
 export interface NewApp {
   name: string;

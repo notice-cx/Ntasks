@@ -268,9 +268,9 @@ stage its change has reached.
 - **Merged** once the change is merged.
 - **Live** once a deploy ships it.
 
-The repository's automation, or the agent that merges or deploys, sends a
-signal naming the pull requests or commits that merged or went live, and the
-tasks that carry them move to that stage. A task only moves forward. A
+A GitHub webhook, the repository's automation, or the agent that merges or
+deploys, sends a signal naming the pull requests or commits that merged or
+went live, and the tasks that carry them move to that stage. A task only moves forward. A
 project whose changes do not go live by a deploy, such as a library, stops at
 merged; the project's owner says which kind it is.
 

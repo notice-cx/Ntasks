@@ -892,7 +892,8 @@ protocol version it implements is [OQ-18](open-questions.md#oq-18).
   or holds the change ([OQ-8](open-questions.md#oq-8)). A delivery signal
   is trusted as far as its sender's grant: only a sender that may change a
   project moves its tasks. A server SHOULD grant signals to a dedicated
-  service credential.
+  service credential, or take them from the code host's webhook only once
+  the delivery's signature checks out.
 - **Retries and replays.** Idempotency keys are kept for each sender, so
   one sender cannot replay or block another's key. A replay returns the
   first answer with the task as it stands now.

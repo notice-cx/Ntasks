@@ -5,12 +5,22 @@
  * workspace's store with the sender scoped to it; the object answers it with
  * no network trip per query, and serves repeated reads from memory (cache.ts).
  */
-import type { BackupRows, BackupTable, HeldTask, Project, TaskEngine } from '@ntasks/domain';
+import type {
+  BackupRows,
+  BackupTable,
+  DeliveryMove,
+  DeliverySignal,
+  HeldTask,
+  Project,
+  TaskEngine,
+} from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
 import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
+import { reportDelivery } from '../delivery.ts';
 import { createEngine } from '../engine/index.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
+import { Refused } from '../refused.ts';
 import { storeName, type Workspace } from '../workspaces.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
@@ -124,6 +134,24 @@ export class TaskStore extends DurableObject<Env> {
    * the MCP endpoint lists when an agent connects. */
   async heldTasks(principal: Principal): Promise<readonly HeldTask[]> {
     return heldBy({ engine: this.tasks, principal });
+  }
+
+  /** Moves the closed tasks a signal names, for `principal`, the workspace's
+   * GitHub webhook once the Worker checked a delivery's signature (github.ts).
+   * A refusal comes back as its sentence, since an error's class does not
+   * survive the call from the Worker. */
+  async deliver(
+    signal: DeliverySignal,
+    principal: Principal,
+  ): Promise<{ readonly moved: readonly DeliveryMove[] } | { readonly refused: string }> {
+    try {
+      return {
+        moved: await reportDelivery({ engine: this.tasks, principal, now: () => new Date().toISOString() }, signal),
+      };
+    } catch (error) {
+      if (error instanceof Refused) return { refused: error.detail };
+      throw error;
+    }
   }
 
   /** Answers one HTTP API request, sent by `principal`, whom the Worker signed in and scoped to this store's workspace. */

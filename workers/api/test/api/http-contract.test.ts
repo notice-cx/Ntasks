@@ -6,6 +6,7 @@
 // compares the answers with the record.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { hex } from '../../src/access/crypto.ts';
 import { API_VERSION, API_VERSION_HEADER, OLDEST_API_VERSION } from '../../src/version.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { Browser, call, connectAgent, connectApp, meWithToken } from '../access/client.ts';
@@ -67,6 +68,15 @@ async function tool(browser: Browser, name: string, args: Body): Promise<Body> {
 }
 
 const idOf = (body: Body, key: string) => (body[key] as { id: string }).id;
+
+/** X-Hub-Signature-256 of `body` under `secret`, as GitHub signs a delivery. */
+async function signed(secret: string, body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'sign',
+  ]);
+  return `sha256=${hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body))))}`;
+}
 
 /** Sends every route the contract records, in states that give each field a value. */
 async function drive(): Promise<readonly Sample[]> {
@@ -331,6 +341,45 @@ async function drive(): Promise<readonly Sample[]> {
   const backups = (await service({ name: 'Backups', backup: true })).service as { id: string };
   await as('POST /api/access/services/:id/revoke', `/api/access/services/${backups.id}/revoke`, {});
   await as('GET /api/access/services', '/api/access/services');
+
+  // GitHub's deliveries, signed with the secret the owner saves: one moves a task, and a ping moves none.
+  const secret = 'contract-webhook-secret-0123456789abcdef';
+  await as('GET /api/access/github', '/api/access/github');
+  await as('POST /api/access/github', '/api/access/github', { secret, deployChecks: ['Deploy'] });
+  const deployed = await create({ title: 'Deploy the launch page' });
+  await as(
+    'POST /api/tasks/:id/close',
+    task(deployed, '/close'),
+    inProject({ reason: 'Live.', commit: 'c3d4e5f6a7b8' }),
+  );
+  const checkRun = {
+    action: 'completed',
+    check_run: {
+      name: 'Deploy',
+      conclusion: 'success',
+      head_sha: 'c3d4e5f6a7b8',
+      check_suite: { head_branch: 'main' },
+    },
+    repository: { full_name: 'example/launch', default_branch: 'main' },
+  };
+  for (const [event, payload] of [
+    ['check_run', checkRun],
+    ['ping', { hook_id: 1 }],
+  ] as const) {
+    const body = JSON.stringify(payload);
+    const path = `/api/github/${TEST_WORKSPACE.id}`;
+    const delivery = await call(path, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-github-event': event,
+        'x-hub-signature-256': await signed(secret, body),
+      },
+      body,
+    });
+    await keep(samples, 'POST /api/github/:workspaceId', path, delivery);
+  }
+  await as('POST /api/access/github/remove', '/api/access/github/remove', {});
 
   // A connected app: the owner registers it, signs in through it and picks an option with its token.
   const registered = (
