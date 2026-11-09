@@ -4,6 +4,7 @@
  * on any day. Nothing here describes a real project, person or task.
  */
 import type {
+  ConnectedApp,
   LiveTask,
   TaskActor,
   TaskComment,
@@ -32,6 +33,8 @@ export interface FixtureWorkspace extends Workspace {
   seed: FixtureSeed;
   members: WorkspaceMember[];
   invitations: WorkspaceInvitation[];
+  /** Its connected apps; none when left out. */
+  apps?: ConnectedApp[];
 }
 
 /** A workspace with no projects. */
@@ -474,6 +477,15 @@ export function fixtureWorkspaces(nowMs: number, seed: FixtureSeed = fixtureSeed
       ],
       invitations: [
         { invitationId: 'i-example-invitee', githubLogin: 'example-invitee', role: 'member', createdAt: at(2 * DAY) },
+      ],
+      apps: [
+        {
+          clientId: 'c-example-tower',
+          name: 'Example Tower',
+          redirectUris: ['https://tower.example.com/tasks/signed-in'],
+          createdAt: at(5 * DAY),
+          connectedAt: at(DAY),
+        },
       ],
     },
     {

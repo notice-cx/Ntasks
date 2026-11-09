@@ -405,3 +405,19 @@ export interface NewInvitation {
   githubLogin: string;
   role: WorkspaceRole;
 }
+
+/** A connected app of the workspace, as `GET /api/access/apps` lists it: one that acts as whoever signs in to it. */
+export interface ConnectedApp {
+  clientId: string;
+  name: string;
+  redirectUris: string[];
+  createdAt: string | null;
+  /** When the person reading signed in to it, or null when they have not. */
+  connectedAt: string | null;
+}
+
+/** A connected app, as `POST /api/access/apps` takes it. */
+export interface NewApp {
+  name: string;
+  redirectUris: string[];
+}
