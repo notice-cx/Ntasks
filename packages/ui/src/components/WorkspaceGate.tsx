@@ -2,15 +2,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Building2 } from 'lucide-react';
 import { useCallback, useId, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { needsSignIn, refusedField } from '@/api/client';
-import { useAnswerQueue, useTasksApi } from '@/api/context';
-import type { Workspace } from '@/api/types';
-import { PageSkeleton, ReadFailed, SignIn } from '@/components/surface';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Field, FieldError, Input } from '@/components/ui/field';
-import { GitHubMark, NtasksLogo } from '@/components/ui/symbols';
-import { useRetryKey } from '@/hooks/useTasks';
+import { needsSignIn, refusedField } from '../api/client';
+import { useAnswerQueue, useTasksApi } from '../api/context';
+import type { Workspace } from '../api/types';
+import { PageSkeleton, ReadFailed, SignIn } from './surface';
+import { Button } from './ui/button';
+import { EmptyState } from './ui/empty-state';
+import { Field, FieldError, Input } from './ui/field';
+import { GitHubMark, NtasksLogo } from './ui/symbols';
+import { useRetryKey } from '../hooks/useTasks';
 import {
   inWorkspace,
   useAccount,
@@ -19,10 +19,10 @@ import {
   WORKSPACES_KEY,
   WorkspaceContext,
   type OpenWorkspace,
-} from '@/hooks/useWorkspace';
-import { NEW_PROJECT_STATE, SOURCE_URL } from '@/lib/page-state';
-import { openingWorkspace, storedWorkspace, storeWorkspace } from '@/lib/workspace-choice';
-import { usePaths } from '@/lib/paths';
+} from '../hooks/useWorkspace';
+import { NEW_PROJECT_STATE, SOURCE_URL } from '../lib/page-state';
+import { openingWorkspace, storedWorkspace, storeWorkspace } from '../lib/workspace-choice';
+import { usePaths } from '../lib/paths';
 
 /**
  * Opens a workspace before any task page draws: the one chosen last in this

@@ -274,6 +274,12 @@ beside them. `scripts/check-host.ts` packs the package as npm would publish
 it, installs the tarball from the file into a project made from `host/`, and
 typechecks, builds and tests that project; CI runs it after `pnpm build`.
 
+Inside this repository, the export condition `ntasks-source` names the
+package's source, and `apps/web`'s typecheck and tests resolve with it, so
+they need no build of the package first; its `vite build` takes the built
+package. `publishConfig.exports` leaves the condition out of the published
+manifest.
+
 ## Releasing
 
 The package publishes to npm, at https://registry.npmjs.org, as `@ntasks/ui`.

@@ -2,21 +2,21 @@ import { Folder, Plus } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
-import { refusedField } from '@/api/client';
-import { PageSkeleton, ReadFailed } from '@/components/surface';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Field, FieldError, Input } from '@/components/ui/field';
-import { Kbd } from '@/components/ui/kbd';
-import { Row, RowMeta, RowSpacer, RowTitle } from '@/components/ui/row';
-import { BarSpacer, ProjectBadge, TopBar } from '@/components/ui/shell';
-import { useBoard } from '@/hooks/useBoard';
-import { useShortcut } from '@/hooks/useShortcut';
-import { useRetryKey } from '@/hooks/useTasks';
-import { useCreateProject, useIsOwner, useSetDeploys } from '@/hooks/useWorkspace';
-import { NO_FILTERS } from '@/lib/board-read';
-import { newProjectRequested } from '@/lib/page-state';
-import { usePaths } from '@/lib/paths';
+import { refusedField } from '../api/client';
+import { PageSkeleton, ReadFailed } from '../components/surface';
+import { Button } from '../components/ui/button';
+import { EmptyState } from '../components/ui/empty-state';
+import { Field, FieldError, Input } from '../components/ui/field';
+import { Kbd } from '../components/ui/kbd';
+import { Row, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
+import { BarSpacer, ProjectBadge, TopBar } from '../components/ui/shell';
+import { useBoard } from '../hooks/useBoard';
+import { useShortcut } from '../hooks/useShortcut';
+import { useRetryKey } from '../hooks/useTasks';
+import { useCreateProject, useIsOwner, useSetDeploys } from '../hooks/useWorkspace';
+import { NO_FILTERS } from '../lib/board-read';
+import { newProjectRequested } from '../lib/page-state';
+import { usePaths } from '../lib/paths';
 
 /** The workspace's projects, each a link to its board. An owner creates one with New project (`N`). */
 export default function ProjectsRoute() {

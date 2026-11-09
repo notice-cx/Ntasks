@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 import { Kbd } from './kbd';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { roveFocus } from './rove';

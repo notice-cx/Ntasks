@@ -5,11 +5,11 @@
  */
 import { GitMerge, GitPullRequest } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { GroupHeader } from '@/components/ui/row';
-import type { Board } from '@/hooks/useBoard';
-import { useDeliveryBoards } from '@/hooks/useTasks';
-import { keptByFilters, type BoardFilters } from '@/lib/board-read';
-import { boardOrder, boardRows, deliveryWait, type BoardTask, type DeliveryWait } from '@/lib/task-model';
+import { GroupHeader } from '../../components/ui/row';
+import type { Board } from '../../hooks/useBoard';
+import { useDeliveryBoards } from '../../hooks/useTasks';
+import { keptByFilters, type BoardFilters } from '../../lib/board-read';
+import { boardOrder, boardRows, deliveryWait, type BoardTask, type DeliveryWait } from '../../lib/task-model';
 import { TaskRow, type RowContext } from './task-row';
 
 export const DELIVERY_GROUPS: readonly {

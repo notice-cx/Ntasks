@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { isShortcut } from '@/lib/symbols';
+import { isShortcut } from '../lib/symbols';
 
 /**
  * Runs `action` when the page's single-key shortcut `key` is pressed, while

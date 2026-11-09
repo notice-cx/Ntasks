@@ -17,8 +17,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { ReactElement, SVGProps } from 'react';
-import { ACTIVITY_LABELS, type Activity } from '@/lib/live';
-import { priorityBand } from '@/lib/task-model';
+import { ACTIVITY_LABELS, type Activity } from '../../lib/live';
+import { priorityBand } from '../../lib/task-model';
 import {
   priorityBars,
   priorityLabel,
@@ -27,8 +27,8 @@ import {
   workspaceMark,
   type StatusMark as StatusMarkKey,
   type TypeMark as TypeMarkKey,
-} from '@/lib/symbols';
-import { cn } from '@/lib/utils';
+} from '../../lib/symbols';
+import { cn } from '../../lib/utils';
 import { BLOSSOM_PATH, BLOSSOM_VIEWBOX, CLAUDE_ORANGE, CLAUDE_PATH, CLAUDE_VIEWBOX, GITHUB_PATH } from './brand-marks';
 
 /** A mark's name for a screen reader, or `null` when words beside it already say it. */

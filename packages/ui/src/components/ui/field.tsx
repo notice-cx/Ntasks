@@ -1,6 +1,6 @@
 import { CircleAlert } from 'lucide-react';
 import { createContext, useContext, useId, type ComponentProps, type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * Text entry. A field is 30 px tall (36 px on a touch screen), Background

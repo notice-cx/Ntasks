@@ -4,7 +4,7 @@
  * filters keep. A project whose read failed is named as such and counted as
  * missing, never as empty.
  */
-import type { FieldFilters, FoundTask, LiveTasksPayload, TaskProject } from '@/api/types';
+import type { FieldFilters, FoundTask, LiveTasksPayload, TaskProject } from '../api/types';
 import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
   boardOrder,

@@ -3,25 +3,25 @@ import { Component, lazy, Suspense, useEffect, useId, useRef, useState, type Rea
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { NewTask, TaskProject } from '@/api/types';
-import { Badge } from '@/components/ui/badge';
-import { Button, IconButton } from '@/components/ui/button';
-import { Tabs } from '@/components/ui/choice';
-import { Field, Input, Select, Textarea } from '@/components/ui/field';
-import { usePortalContainer } from '@/components/ui/popover';
-import { useCreateTask, useRetryKey } from '@/hooks/useTasks';
-import { PRIORITY_LABELS, typeLabel } from '@/lib/symbols';
-import { usePaths } from '@/lib/paths';
-import { cn } from '@/lib/utils';
-import { TaskPrefixesProvider } from '@/routes/tasks/task-prefixes';
+import type { NewTask, TaskProject } from '../api/types';
+import { Badge } from './ui/badge';
+import { Button, IconButton } from './ui/button';
+import { Tabs } from './ui/choice';
+import { Field, Input, Select, Textarea } from './ui/field';
+import { usePortalContainer } from './ui/popover';
+import { useCreateTask, useRetryKey } from '../hooks/useTasks';
+import { PRIORITY_LABELS, typeLabel } from '../lib/symbols';
+import { usePaths } from '../lib/paths';
+import { cn } from '../lib/utils';
+import { TaskPrefixesProvider } from '../routes/tasks/task-prefixes';
 
 // The Markdown renderer is about 100 kB compressed, and the board, where the
 // composer opens, has no other use for it: it loads when a preview is asked for.
-let renderer: Promise<typeof import('@/routes/tasks/task-markdown')> | null = null;
+let renderer: Promise<typeof import('../routes/tasks/task-markdown')> | null = null;
 
 /** The renderer's module, read once. A failed read is forgotten, so the next attempt asks again. */
-function loadRenderer(): Promise<typeof import('@/routes/tasks/task-markdown')> {
-  renderer ??= import('@/routes/tasks/task-markdown').catch((error: unknown) => {
+function loadRenderer(): Promise<typeof import('../routes/tasks/task-markdown')> {
+  renderer ??= import('../routes/tasks/task-markdown').catch((error: unknown) => {
     renderer = null;
     throw error;
   });

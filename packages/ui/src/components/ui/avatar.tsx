@@ -1,7 +1,7 @@
 import { Bot } from 'lucide-react';
 import { Children, type CSSProperties, type ReactNode } from 'react';
-import { avatarFace, avatarMarkSize } from '@/lib/symbols';
-import { cn } from '@/lib/utils';
+import { avatarFace, avatarMarkSize } from '../../lib/symbols';
+import { cn } from '../../lib/utils';
 import { ClaudeMark, CodexMark } from './symbols';
 
 /** The sizes an avatar is drawn at: 18 in the sidebar, 20 in rows, 28 in a heading, 40 on a person's own page. */

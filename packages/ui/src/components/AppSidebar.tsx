@@ -1,29 +1,21 @@
 import { Activity, Folder, List, Search, Settings, Target, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar } from '@/components/ui/avatar';
-import { Count } from '@/components/ui/badge';
-import { IconButton } from '@/components/ui/button';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import {
-  NavItem,
-  NavSection,
-  ProjectBadge,
-  Sidebar,
-  SidebarHeader,
-  SidebarSpacer,
-  WorkspaceButton,
-} from '@/components/ui/shell';
-import { GitHubMark, StatusMark, WorkspaceIcon } from '@/components/ui/symbols';
-import { useBoard } from '@/hooks/useBoard';
-import { useNow } from '@/hooks/useNow';
-import { useAnswerHides } from '@/hooks/useTasks';
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { NO_FILTERS } from '@/lib/board-read';
-import { activeNow } from '@/lib/live';
-import { SEARCH_STATE, SOURCE_URL } from '@/lib/page-state';
-import { isAgentActor } from '@/lib/symbols';
-import { actorLabel, claimedModel, type BoardTask } from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
+import { Avatar } from './ui/avatar';
+import { Count } from './ui/badge';
+import { IconButton } from './ui/button';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
+import { NavItem, NavSection, ProjectBadge, Sidebar, SidebarHeader, SidebarSpacer, WorkspaceButton } from './ui/shell';
+import { GitHubMark, StatusMark, WorkspaceIcon } from './ui/symbols';
+import { useBoard } from '../hooks/useBoard';
+import { useNow } from '../hooks/useNow';
+import { useAnswerHides } from '../hooks/useTasks';
+import { useWorkspace } from '../hooks/useWorkspace';
+import { NO_FILTERS } from '../lib/board-read';
+import { activeNow } from '../lib/live';
+import { SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
+import { isAgentActor } from '../lib/symbols';
+import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
+import { usePaths } from '../lib/paths';
 
 /** The people and agents shown under People, at most this many. */
 const PEOPLE = 6;

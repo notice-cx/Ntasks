@@ -21,14 +21,14 @@ import {
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { CloseDoneForm } from '@/components/CloseResolution';
-import { Avatar } from '@/components/ui/avatar';
-import { Badge, Progress } from '@/components/ui/badge';
-import { Button, IconButton } from '@/components/ui/button';
-import { Field, Input } from '@/components/ui/field';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '@/components/ui/row';
-import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
+import { CloseDoneForm } from '../../components/CloseResolution';
+import { Avatar } from '../../components/ui/avatar';
+import { Badge, Progress } from '../../components/ui/badge';
+import { Button, IconButton } from '../../components/ui/button';
+import { Field, Input } from '../../components/ui/field';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
+import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
+import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
 import {
   fieldAvailable,
   operationAvailable,
@@ -37,10 +37,10 @@ import {
   useCloseTask,
   useUpdateTask,
   verbReason,
-} from '@/hooks/useTasks';
-import { copyText } from '@/lib/clipboard';
-import { ageMs, calendarDay, formatAge, formatMinutes } from '@/lib/format';
-import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '@/lib/symbols';
+} from '../../hooks/useTasks';
+import { copyText } from '../../lib/clipboard';
+import { ageMs, calendarDay, formatAge, formatMinutes } from '../../lib/format';
+import { isAgentActor, statusMarkFor, typeMarkFor, type StatusMark as StatusMarkKey } from '../../lib/symbols';
 import {
   actorLabel,
   askVerb,
@@ -53,8 +53,8 @@ import {
   waitingOn,
   type BoardTask,
   type NotDone,
-} from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
+} from '../../lib/task-model';
+import { usePaths } from '../../lib/paths';
 import { useAskActions } from './ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './close-actions';
 

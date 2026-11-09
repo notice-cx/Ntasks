@@ -14,7 +14,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 import { IconButton } from './button';
 
 interface SidebarState {

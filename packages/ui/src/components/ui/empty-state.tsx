@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * What a list or a page shows when it has nothing: a 20 px icon in Text 3,

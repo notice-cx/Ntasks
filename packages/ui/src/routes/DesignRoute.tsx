@@ -46,17 +46,17 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { SOURCE_URL } from '@/lib/page-state';
-import type { TaskChoiceKey, TaskChoices } from '@/api/types';
-import { Avatar, AvatarGroup, type AvatarSize } from '@/components/ui/avatar';
-import { Badge, Count, Progress } from '@/components/ui/badge';
-import { Button, IconButton } from '@/components/ui/button';
-import { Segmented, Tabs, type ChoiceOption } from '@/components/ui/choice';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Field, Input, Select } from '@/components/ui/field';
-import { Kbd } from '@/components/ui/kbd';
-import { Menu, MenuContent, MenuItem, MenuPanel, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import { ThemeScope } from '@/components/ui/popover';
+import { SOURCE_URL } from '../lib/page-state';
+import type { TaskChoiceKey, TaskChoices } from '../api/types';
+import { Avatar, AvatarGroup, type AvatarSize } from '../components/ui/avatar';
+import { Badge, Count, Progress } from '../components/ui/badge';
+import { Button, IconButton } from '../components/ui/button';
+import { Segmented, Tabs, type ChoiceOption } from '../components/ui/choice';
+import { EmptyState } from '../components/ui/empty-state';
+import { Field, Input, Select } from '../components/ui/field';
+import { Kbd } from '../components/ui/kbd';
+import { Menu, MenuContent, MenuItem, MenuPanel, MenuSeparator, MenuTrigger } from '../components/ui/menu';
+import { ThemeScope } from '../components/ui/popover';
 import {
   GroupHeader,
   Row,
@@ -67,7 +67,7 @@ import {
   RowMeta,
   RowSpacer,
   RowTitle,
-} from '@/components/ui/row';
+} from '../components/ui/row';
 import {
   AppShell,
   BarSpacer,
@@ -79,7 +79,7 @@ import {
   SidebarSpacer,
   TopBar,
   WorkspaceButton,
-} from '@/components/ui/shell';
+} from '../components/ui/shell';
 import {
   ActivityMark,
   GitHubMark,
@@ -88,9 +88,9 @@ import {
   StatusMark,
   TypeMark,
   WorkspaceIcon,
-} from '@/components/ui/symbols';
-import { COLOUR_TOKENS, IDENTITY_HUES, type ColourToken, type IdentityHue } from '@/lib/design-tokens';
-import { ACTIVITIES, ACTIVITY_LABELS } from '@/lib/live';
+} from '../components/ui/symbols';
+import { COLOUR_TOKENS, IDENTITY_HUES, type ColourToken, type IdentityHue } from '../lib/design-tokens';
+import { ACTIVITIES, ACTIVITY_LABELS } from '../lib/live';
 import {
   PRIORITY_LABELS,
   STATUS_MARK_LABELS,
@@ -98,8 +98,8 @@ import {
   workspaceMark,
   type StatusMark as StatusMarkKey,
   type TypeMark as TypeMarkKey,
-} from '@/lib/symbols';
-import { cn } from '@/lib/utils';
+} from '../lib/symbols';
+import { cn } from '../lib/utils';
 import { DecisionAnswer } from './tasks/decision-card';
 
 type Theme = 'system' | 'light' | 'dark';

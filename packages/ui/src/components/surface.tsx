@@ -3,10 +3,10 @@
  * a read that failed, a visitor who must sign in, and loading.
  */
 import { CircleAlert, LogIn, RotateCw } from 'lucide-react';
-import { needsSignIn } from '@/api/client';
-import { useSignIn } from '@/api/context';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { needsSignIn } from '../api/client';
+import { useSignIn } from '../api/context';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
 
 /** A read that failed: what could not be read, the server's words, and Retry. */
 export function ReadFailed({

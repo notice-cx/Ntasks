@@ -2,11 +2,11 @@ import { useState, type ComponentType, type FormEvent } from 'react';
 import { Check, CheckCheck, ChevronDown, CircleSlash, Copy, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { isTaskId, type TaskResolution } from '@ntasks/domain';
-import { Button } from '@/components/ui/button';
-import { Field, Input, Textarea } from '@/components/ui/field';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import { useCloseTask } from '@/hooks/useTasks';
-import { NOT_DONE, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
+import { Button } from './ui/button';
+import { Field, Input, Textarea } from './ui/field';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
+import { useCloseTask } from '../hooks/useTasks';
+import { NOT_DONE, RESOLUTION_LABELS, type NotDone } from '../lib/task-model';
 
 /** Each close where nothing shipped wears a glyph beside its words; none has a colour of its own. */
 export const RESOLUTION_GLYPH: Readonly<Record<NotDone, ComponentType<{ className?: string }>>> = {

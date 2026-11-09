@@ -1,10 +1,10 @@
 import { useId, useState, type ReactNode } from 'react';
 import { ChevronDown, CornerDownLeft, LoaderCircle } from 'lucide-react';
-import { IconButton } from '@/components/ui/button';
-import { FieldError, Input } from '@/components/ui/field';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
-import { PopoverAnchor } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { IconButton } from './ui/button';
+import { FieldError, Input } from './ui/field';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
+import { PopoverAnchor } from './ui/popover';
+import { cn } from '../lib/utils';
 
 export interface FactChoice {
   value: string;

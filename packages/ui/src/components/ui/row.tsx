@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * A list row: one line, 36 px, divided by Border. Left to right: priority

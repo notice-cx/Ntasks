@@ -8,13 +8,13 @@ import { Layers, Moon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { TASK_LIMITS } from '@ntasks/domain';
-import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '@/api/types';
-import { Fact, LinkedFact, type FactChoice, type FactEditor } from '@/components/Fact';
-import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { PriorityMark, StatusMark, TypeMark } from '@/components/ui/symbols';
-import { fieldAvailable, useCapabilities, useProjectFields, useUpdateTask } from '@/hooks/useTasks';
-import { fieldEditable, httpUrl, parseFieldInput, toggledOptions } from '@/lib/custom-fields';
+import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '../../api/types';
+import { Fact, LinkedFact, type FactChoice, type FactEditor } from '../../components/Fact';
+import { Avatar } from '../../components/ui/avatar';
+import { Badge } from '../../components/ui/badge';
+import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import { fieldAvailable, useCapabilities, useProjectFields, useUpdateTask } from '../../hooks/useTasks';
+import { fieldEditable, httpUrl, parseFieldInput, toggledOptions } from '../../lib/custom-fields';
 import {
   ageMs,
   calendarDay,
@@ -24,7 +24,7 @@ import {
   formatMinutes,
   localDay,
   parseMinutes,
-} from '@/lib/format';
+} from '../../lib/format';
 import {
   isAgentActor,
   priorityLabel,
@@ -34,10 +34,10 @@ import {
   STATUS_MARK_LABELS,
   typeLabel,
   typeMarkFor,
-} from '@/lib/symbols';
-import { actorLabel, claimedModel, RESOLUTION_LABELS, TASK_STATUSES } from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
-import { cn } from '@/lib/utils';
+} from '../../lib/symbols';
+import { actorLabel, claimedModel, RESOLUTION_LABELS, TASK_STATUSES } from '../../lib/task-model';
+import { usePaths } from '../../lib/paths';
+import { cn } from '../../lib/utils';
 
 export type FieldSave = (input: {
   label: string;

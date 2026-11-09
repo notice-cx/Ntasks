@@ -1,14 +1,14 @@
 import { Copy } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { refusedField } from '@/api/client';
-import type { Workspace } from '@/api/types';
-import { Button, IconButton } from '@/components/ui/button';
-import { Field, FieldError, Input } from '@/components/ui/field';
-import { TopBar } from '@/components/ui/shell';
-import { WorkspaceIcon } from '@/components/ui/symbols';
-import { useRenameWorkspace, useWorkspace } from '@/hooks/useWorkspace';
-import { copyText } from '@/lib/clipboard';
+import { refusedField } from '../api/client';
+import type { Workspace } from '../api/types';
+import { Button, IconButton } from '../components/ui/button';
+import { Field, FieldError, Input } from '../components/ui/field';
+import { TopBar } from '../components/ui/shell';
+import { WorkspaceIcon } from '../components/ui/symbols';
+import { useRenameWorkspace, useWorkspace } from '../hooks/useWorkspace';
+import { copyText } from '../lib/clipboard';
 
 /**
  * The open workspace's name and id. An owner renames it; anyone else reads

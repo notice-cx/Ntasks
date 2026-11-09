@@ -5,8 +5,8 @@
  */
 import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
 import { createContext, useContext } from 'react';
-import { useTasksApi } from '@/api/context';
-import type { NewInvitation, NewProject, Workspace, WorkspaceMembers } from '@/api/types';
+import { useTasksApi } from '../api/context';
+import type { NewInvitation, NewProject, Workspace, WorkspaceMembers } from '../api/types';
 
 /** The reads about the sign-in itself, which stay when the workspace changes. */
 export const WORKSPACES_KEY = ['workspaces'] as const;

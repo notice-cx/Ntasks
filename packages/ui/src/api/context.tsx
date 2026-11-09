@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
-import { createAnswerQueue, type AnswerQueue } from '@/lib/answer-queue';
+import { createAnswerQueue, type AnswerQueue } from '../lib/answer-queue';
 import { SIGN_IN_PATH, type TasksApi } from './client';
 import type { TokenSource } from './connection';
 

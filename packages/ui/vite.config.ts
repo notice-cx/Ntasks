@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
@@ -37,9 +36,6 @@ function importFonts(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), importFonts()],
   css: { postcss: { plugins: [scopeStyles()] } },
-  resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
-  },
   build: {
     lib: {
       entry: { index: 'src/index.ts', fixture: 'src/fixture.ts' },

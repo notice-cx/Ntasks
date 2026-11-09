@@ -1,22 +1,22 @@
 import { UserPlus, Users } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { refusedField } from '@/api/client';
-import type { WorkspaceInvitation, WorkspaceMember, WorkspaceRole } from '@/api/types';
-import { PageSkeleton, ReadFailed } from '@/components/surface';
-import { Avatar } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Field, FieldError, Input, Select } from '@/components/ui/field';
-import { Kbd } from '@/components/ui/kbd';
-import { GroupHeader, Row, RowAge, RowMeta, RowSpacer, RowTitle } from '@/components/ui/row';
-import { BarSpacer, TopBar } from '@/components/ui/shell';
-import { useNow } from '@/hooks/useNow';
-import { useShortcut } from '@/hooks/useShortcut';
-import { useRetryKey } from '@/hooks/useTasks';
-import { useInvite, useIsOwner, useMembers, useRemoveMember, useRevokeInvitation } from '@/hooks/useWorkspace';
-import { ageMs, formatAge } from '@/lib/format';
+import { refusedField } from '../api/client';
+import type { WorkspaceInvitation, WorkspaceMember, WorkspaceRole } from '../api/types';
+import { PageSkeleton, ReadFailed } from '../components/surface';
+import { Avatar } from '../components/ui/avatar';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { EmptyState } from '../components/ui/empty-state';
+import { Field, FieldError, Input, Select } from '../components/ui/field';
+import { Kbd } from '../components/ui/kbd';
+import { GroupHeader, Row, RowAge, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
+import { BarSpacer, TopBar } from '../components/ui/shell';
+import { useNow } from '../hooks/useNow';
+import { useShortcut } from '../hooks/useShortcut';
+import { useRetryKey } from '../hooks/useTasks';
+import { useInvite, useIsOwner, useMembers, useRemoveMember, useRevokeInvitation } from '../hooks/useWorkspace';
+import { ageMs, formatAge } from '../lib/format';
 
 const ROLE_WORDS: Readonly<Record<WorkspaceRole, string>> = { owner: 'Owner', member: 'Member' };
 

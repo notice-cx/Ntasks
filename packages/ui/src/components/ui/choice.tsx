@@ -1,8 +1,8 @@
 import { Check, Star } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
-import { TASK_CHOICE_KEYS, type TaskChoiceKey } from '@/api/types';
-import { choiceName } from '@/lib/task-model';
-import { cn } from '@/lib/utils';
+import { TASK_CHOICE_KEYS, type TaskChoiceKey } from '../../api/types';
+import { choiceName } from '../../lib/task-model';
+import { cn } from '../../lib/utils';
 import { Kbd } from './kbd';
 import { roveFocus } from './rove';
 

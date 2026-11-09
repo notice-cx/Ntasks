@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { CloseNoteForm } from '@/components/CloseResolution';
-import { useInboxAnswer } from '@/hooks/useTasks';
-import type { NotDone } from '@/lib/task-model';
+import { CloseNoteForm } from '../../components/CloseResolution';
+import { useInboxAnswer } from '../../hooks/useTasks';
+import type { NotDone } from '../../lib/task-model';
 
 /** A task waiting on a person (labelled `human`) is declined with the resolution; any other task is closed with it. */
 export function declinedOnClose(task: { readonly labels: readonly string[] }): boolean {

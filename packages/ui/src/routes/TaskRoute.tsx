@@ -17,21 +17,21 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { TaskResolution } from '@ntasks/domain';
-import { ApiError } from '@/api/client';
-import type { LiveEpic, LiveTask, TaskActor, TaskChoiceKey, TaskComment, TaskProject } from '@/api/types';
-import { CloseDoneForm, CloseMenu } from '@/components/CloseResolution';
-import { TaskTimeline, type TimelineEntry } from '@/components/TaskTimeline';
-import { PageSkeleton, ReadFailed } from '@/components/surface';
-import { Progress } from '@/components/ui/badge';
-import { Button, IconButton } from '@/components/ui/button';
-import { OptionList } from '@/components/ui/choice';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Field, Input, Select, Textarea } from '@/components/ui/field';
-import { Kbd } from '@/components/ui/kbd';
-import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
-import { BarSpacer, TopBar } from '@/components/ui/shell';
-import { StatusMark } from '@/components/ui/symbols';
-import { useNow } from '@/hooks/useNow';
+import { ApiError } from '../api/client';
+import type { LiveEpic, LiveTask, TaskActor, TaskChoiceKey, TaskComment, TaskProject } from '../api/types';
+import { CloseDoneForm, CloseMenu } from '../components/CloseResolution';
+import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
+import { PageSkeleton, ReadFailed } from '../components/surface';
+import { Progress } from '../components/ui/badge';
+import { Button, IconButton } from '../components/ui/button';
+import { OptionList } from '../components/ui/choice';
+import { EmptyState } from '../components/ui/empty-state';
+import { Field, Input, Select, Textarea } from '../components/ui/field';
+import { Kbd } from '../components/ui/kbd';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '../components/ui/menu';
+import { BarSpacer, TopBar } from '../components/ui/shell';
+import { StatusMark } from '../components/ui/symbols';
+import { useNow } from '../hooks/useNow';
 import {
   fieldAvailable,
   operationAvailable,
@@ -46,10 +46,10 @@ import {
   useTask,
   useTaskProjects,
   verbReason,
-} from '@/hooks/useTasks';
-import { copyText } from '@/lib/clipboard';
-import { httpUrl } from '@/lib/custom-fields';
-import { isAgentActor, statusMarkOfStored } from '@/lib/symbols';
+} from '../hooks/useTasks';
+import { copyText } from '../lib/clipboard';
+import { httpUrl } from '../lib/custom-fields';
+import { isAgentActor, statusMarkOfStored } from '../lib/symbols';
 import {
   actorLabel,
   choiceName,
@@ -61,10 +61,10 @@ import {
   isBlockingLink,
   RESOLUTION_LABELS,
   type NotDone,
-} from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
-import { taskPrefix } from '@/lib/task-path';
-import { cn } from '@/lib/utils';
+} from '../lib/task-model';
+import { usePaths } from '../lib/paths';
+import { taskPrefix } from '../lib/task-path';
+import { cn } from '../lib/utils';
 import { AnswerForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';

@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * A label on a row: a task label after a grey dot (`copy`), or a type after

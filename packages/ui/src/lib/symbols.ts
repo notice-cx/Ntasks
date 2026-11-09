@@ -3,7 +3,7 @@
  * functions. src/components/ui/symbols.tsx and avatar.tsx draw what these
  * return; docs/design.md lists every symbol and when it is used.
  */
-import type { LiveTask } from '@/api/types';
+import type { LiveTask } from '../api/types';
 import { IDENTITY_HUES, type IdentityHue } from './design-tokens';
 import { IN_PROGRESS, isGate, PARKED, PRIORITY_BANDS, priorityBand, waitsOnPerson, waitsOnTask } from './task-model';
 

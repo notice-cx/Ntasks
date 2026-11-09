@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { needsSignIn } from '@/api/client';
-import type { LiveTasksPayload, TaskProject } from '@/api/types';
-import { fieldsProject, readBoard, type BoardFilters, type ProjectRead } from '@/lib/board-read';
+import { needsSignIn } from '../api/client';
+import type { LiveTasksPayload, TaskProject } from '../api/types';
+import { fieldsProject, readBoard, type BoardFilters, type ProjectRead } from '../lib/board-read';
 import { useChangeFeed } from './useChangeFeed';
 import { useBoards, useFilteredBoard, useTaskProjects, useTaskSearch } from './useTasks';
 

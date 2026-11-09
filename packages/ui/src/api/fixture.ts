@@ -9,7 +9,7 @@
  * owner manages them.
  */
 import { isExternalLinkKind, isTaskId, PROVED_TYPES, TASK_LIMITS, type TaskResolution } from '@ntasks/domain';
-import { fieldMatches, httpUrl, isCalendarDate } from '@/lib/custom-fields';
+import { fieldMatches, httpUrl, isCalendarDate } from '../lib/custom-fields';
 import { ApiError, type TasksApi } from './client';
 import {
   emptySeed,

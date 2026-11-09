@@ -1,13 +1,13 @@
 import { Target } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Kbd } from '@/components/ui/kbd';
-import { GroupHeader } from '@/components/ui/row';
-import { StatusMark } from '@/components/ui/symbols';
-import type { BoardTask } from '@/lib/task-model';
+import { Button } from '../../components/ui/button';
+import { Kbd } from '../../components/ui/kbd';
+import { GroupHeader } from '../../components/ui/row';
+import { StatusMark } from '../../components/ui/symbols';
+import type { BoardTask } from '../../lib/task-model';
 import { WaitingRow, type RowContext } from './task-row';
-import { usePaths } from '@/lib/paths';
+import { usePaths } from '../../lib/paths';
 
 /**
  * The first group of the board: the tasks waiting for you, most urgent first,

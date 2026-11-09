@@ -41,8 +41,8 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { Check, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { usePaths, type AppPaths } from '@/lib/paths';
-import { cn } from '@/lib/utils';
+import { usePaths, type AppPaths } from '../../lib/paths';
+import { cn } from '../../lib/utils';
 import { TaskPrefixes } from './task-prefixes';
 
 export { TaskPrefixesProvider } from './task-prefixes';

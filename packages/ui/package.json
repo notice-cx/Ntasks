@@ -21,14 +21,29 @@
   ],
   "exports": {
     ".": {
+      "ntasks-source": "./src/index.ts",
       "types": "./dist/types/index.d.ts",
       "default": "./dist/index.js"
     },
     "./fixture": {
+      "ntasks-source": "./src/fixture.ts",
       "types": "./dist/types/fixture.d.ts",
       "default": "./dist/fixture.js"
     },
     "./styles.css": "./dist/ntasks-ui.css"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./fixture": {
+        "types": "./dist/types/fixture.d.ts",
+        "default": "./dist/fixture.js"
+      },
+      "./styles.css": "./dist/ntasks-ui.css"
+    }
   },
   "scripts": {
     "dev": "vite --mode fixture",

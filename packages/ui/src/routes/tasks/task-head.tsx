@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { ChevronRight, GitPullRequest } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
-import type { TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '@/api/types';
-import { Avatar } from '@/components/ui/avatar';
-import { OptionList } from '@/components/ui/choice';
-import { ProjectBadge } from '@/components/ui/shell';
-import { StatusMark } from '@/components/ui/symbols';
-import { ageMs, formatAge } from '@/lib/format';
-import { choiceName, RESOLUTION_LABELS, stageLabel } from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
+import type { TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '../../api/types';
+import { Avatar } from '../../components/ui/avatar';
+import { OptionList } from '../../components/ui/choice';
+import { ProjectBadge } from '../../components/ui/shell';
+import { StatusMark } from '../../components/ui/symbols';
+import { ageMs, formatAge } from '../../lib/format';
+import { choiceName, RESOLUTION_LABELS, stageLabel } from '../../lib/task-model';
+import { usePaths } from '../../lib/paths';
 import { cardOptions } from './decision-card';
 
 /** Who did something on a task, as an avatar draws them. */

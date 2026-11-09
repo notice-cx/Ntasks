@@ -8,9 +8,9 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useRef } from 'react';
-import { retryRead } from '@/api/client';
-import { useTasksApi } from '@/api/context';
-import type { TaskProject } from '@/api/types';
+import { retryRead } from '../api/client';
+import { useTasksApi } from '../api/context';
+import type { TaskProject } from '../api/types';
 
 /** How often the feed is asked while the page is visible. A hidden page asks nothing. */
 export const CHANGE_POLL_MS = 30_000;

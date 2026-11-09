@@ -1,10 +1,10 @@
 import { useId, type ReactNode } from 'react';
-import type { TaskChoiceKey, TaskChoices } from '@/api/types';
-import { Button } from '@/components/ui/button';
-import { OptionList, type ChoiceOption } from '@/components/ui/choice';
-import { Input } from '@/components/ui/field';
-import { Kbd } from '@/components/ui/kbd';
-import { choiceOrder } from '@/lib/task-model';
+import type { TaskChoiceKey, TaskChoices } from '../../api/types';
+import { Button } from '../../components/ui/button';
+import { OptionList, type ChoiceOption } from '../../components/ui/choice';
+import { Input } from '../../components/ui/field';
+import { Kbd } from '../../components/ui/kbd';
+import { choiceOrder } from '../../lib/task-model';
 
 /** The longest note a pick may carry. */
 export const NOTE_MAX = 2000;

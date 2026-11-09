@@ -1,7 +1,7 @@
 import { Slot } from '@radix-ui/react-slot';
 import { type VariantProps, cva } from 'class-variance-authority';
 import type { ComponentProps, ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * Buttons. `primary` is the one action a view is for (New task, Approve,

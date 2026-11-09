@@ -1,11 +1,11 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Check, CornerDownLeft, SendHorizontal } from 'lucide-react';
-import type { TaskChoiceKey, TaskChoices } from '@/api/types';
-import { Button } from '@/components/ui/button';
-import { Segmented } from '@/components/ui/choice';
-import { Textarea } from '@/components/ui/field';
-import { useInboxAnswer } from '@/hooks/useTasks';
-import type { InboxAsk } from '@/lib/task-model';
+import type { TaskChoiceKey, TaskChoices } from '../../api/types';
+import { Button } from '../../components/ui/button';
+import { Segmented } from '../../components/ui/choice';
+import { Textarea } from '../../components/ui/field';
+import { useInboxAnswer } from '../../hooks/useTasks';
+import type { InboxAsk } from '../../lib/task-model';
 
 /**
  * What a row in Waiting for you offers: Approve on an approval, the options

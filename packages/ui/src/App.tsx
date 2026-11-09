@@ -3,29 +3,29 @@ import { Component, lazy, Suspense, useState, type CSSProperties, type ReactNode
 import { LucideProvider } from 'lucide-react';
 import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { retryRead, type TasksApi } from '@/api/client';
-import type { TokenSource } from '@/api/connection';
-import { TasksApiProvider } from '@/api/context';
-import { AppSidebar } from '@/components/AppSidebar';
-import { PageSkeleton } from '@/components/surface';
-import { WorkspaceGate } from '@/components/WorkspaceGate';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { AppShell, TopBar } from '@/components/ui/shell';
-import { BoardsProvider } from '@/hooks/useBoard';
-import { useShortcut } from '@/hooks/useShortcut';
-import { useCapabilities, writesAvailable } from '@/hooks/useTasks';
-import { COMPOSE_STATE, SEARCH_STATE } from '@/lib/page-state';
-import { PathsProvider, usePaths, type AppPaths } from '@/lib/paths';
+import { retryRead, type TasksApi } from './api/client';
+import type { TokenSource } from './api/connection';
+import { TasksApiProvider } from './api/context';
+import { AppSidebar } from './components/AppSidebar';
+import { PageSkeleton } from './components/surface';
+import { WorkspaceGate } from './components/WorkspaceGate';
+import { Button } from './components/ui/button';
+import { EmptyState } from './components/ui/empty-state';
+import { AppShell, TopBar } from './components/ui/shell';
+import { BoardsProvider } from './hooks/useBoard';
+import { useShortcut } from './hooks/useShortcut';
+import { useCapabilities, writesAvailable } from './hooks/useTasks';
+import { COMPOSE_STATE, SEARCH_STATE } from './lib/page-state';
+import { PathsProvider, usePaths, type AppPaths } from './lib/paths';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
-const TasksBoard = lazy(() => import('@/routes/TasksBoard'));
-const TaskRoute = lazy(() => import('@/routes/TaskRoute'));
-const FocusRoute = lazy(() => import('@/routes/FocusRoute'));
-const LiveRoute = lazy(() => import('@/routes/LiveRoute'));
-const ProjectsRoute = lazy(() => import('@/routes/ProjectsRoute'));
-const MembersRoute = lazy(() => import('@/routes/MembersRoute'));
-const SettingsRoute = lazy(() => import('@/routes/SettingsRoute'));
+const TasksBoard = lazy(() => import('./routes/TasksBoard'));
+const TaskRoute = lazy(() => import('./routes/TaskRoute'));
+const FocusRoute = lazy(() => import('./routes/FocusRoute'));
+const LiveRoute = lazy(() => import('./routes/LiveRoute'));
+const ProjectsRoute = lazy(() => import('./routes/ProjectsRoute'));
+const MembersRoute = lazy(() => import('./routes/MembersRoute'));
+const SettingsRoute = lazy(() => import('./routes/SettingsRoute'));
 
 export function newQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true, retry: retryRead } } });

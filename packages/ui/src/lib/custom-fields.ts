@@ -5,7 +5,7 @@
  * (docs/api.md, "custom fields").
  */
 import { TASK_LIMITS } from '@ntasks/domain';
-import type { TaskField, TaskFieldValue } from '@/api/types';
+import type { TaskField, TaskFieldValue } from '../api/types';
 
 /** The field types the pages draw an editor for; a type this build does not know is shown as its value, read-only. */
 export const KNOWN_FIELD_TYPES = [

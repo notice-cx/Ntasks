@@ -1,6 +1,6 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { createContext, useContext, useState, type ComponentProps } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * An anchored panel on Radix: Radix owns focus, Escape and outside-press

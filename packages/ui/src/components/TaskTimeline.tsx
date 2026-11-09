@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Avatar } from '@/components/ui/avatar';
-import { ageMs, formatAge } from '@/lib/format';
+import { Avatar } from './ui/avatar';
+import { ageMs, formatAge } from '../lib/format';
 
 export interface TimelineEntry {
   id: string;

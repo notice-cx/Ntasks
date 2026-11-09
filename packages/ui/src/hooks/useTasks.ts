@@ -7,8 +7,8 @@ import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useAnswerQueue, useTasksApi } from '@/api/context';
-import type { TasksApi } from '@/api/client';
+import { useAnswerQueue, useTasksApi } from '../api/context';
+import type { TasksApi } from '../api/client';
 import type {
   CloseOptions,
   FieldFilters,
@@ -21,10 +21,10 @@ import type {
   TaskProject,
   TaskSearch,
   TasksCapabilities,
-} from '@/api/types';
-import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
-import { choiceName, closeAsReason, RESOLUTION_LABELS, type NotDone } from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
+} from '../api/types';
+import { UNDO_WINDOW_MS } from '../lib/answer-queue';
+import { choiceName, closeAsReason, RESOLUTION_LABELS, type NotDone } from '../lib/task-model';
+import { usePaths } from '../lib/paths';
 
 /** Until the answer arrives, nothing is offered as writable: a button that
  * appears and then cannot work is a write the person believes happened. */

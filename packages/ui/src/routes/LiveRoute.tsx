@@ -1,19 +1,19 @@
 import { Activity as ActivityIcon, Bot, ChevronDown, GitBranch, GitPullRequest } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageSkeleton, ReadFailed } from '@/components/surface';
-import { Avatar } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
-import { GroupHeader, Row, RowAge, RowId, RowMeta, RowSpacer, RowTitle } from '@/components/ui/row';
-import { BarSpacer, TopBar } from '@/components/ui/shell';
-import { ActivityMark } from '@/components/ui/symbols';
-import { useBoard } from '@/hooks/useBoard';
-import { useNow } from '@/hooks/useNow';
-import { NO_FILTERS } from '@/lib/board-read';
-import { httpUrl } from '@/lib/custom-fields';
-import { ageMs, formatAge, formatInt } from '@/lib/format';
+import { PageSkeleton, ReadFailed } from '../components/surface';
+import { Avatar } from '../components/ui/avatar';
+import { Button } from '../components/ui/button';
+import { EmptyState } from '../components/ui/empty-state';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '../components/ui/menu';
+import { GroupHeader, Row, RowAge, RowId, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
+import { BarSpacer, TopBar } from '../components/ui/shell';
+import { ActivityMark } from '../components/ui/symbols';
+import { useBoard } from '../hooks/useBoard';
+import { useNow } from '../hooks/useNow';
+import { NO_FILTERS } from '../lib/board-read';
+import { httpUrl } from '../lib/custom-fields';
+import { ageMs, formatAge, formatInt } from '../lib/format';
 import {
   ACTIVITIES,
   ACTIVITY_LABELS,
@@ -22,10 +22,10 @@ import {
   storedStalledAfter,
   storeStalledAfter,
   type Activity,
-} from '@/lib/live';
-import { isAgentActor } from '@/lib/symbols';
-import { actorLabel, claimedModel, type BoardTask } from '@/lib/task-model';
-import { usePaths } from '@/lib/paths';
+} from '../lib/live';
+import { isAgentActor } from '../lib/symbols';
+import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
+import { usePaths } from '../lib/paths';
 
 /** The stalled tasks shown before Show more: the most recently stalled, where work is likeliest to resume. */
 const STALLED_SHOWN = 5;

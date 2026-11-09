@@ -3,7 +3,7 @@
  * reload opens it again. Storage can be missing or refuse a write (a private
  * window, a blocked site), and then the app opens the first workspace.
  */
-import type { Workspace } from '@/api/types';
+import type { Workspace } from '../api/types';
 
 const STORAGE_KEY = 'ntasks.workspace';
 

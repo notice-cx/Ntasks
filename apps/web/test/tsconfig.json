@@ -5,7 +5,8 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    "customConditions": ["ntasks-source"]
   },
   "include": [".", "../src", "../vite.config.ts", "../vitest.config.ts", "../server-fonts.config.ts"]
 }

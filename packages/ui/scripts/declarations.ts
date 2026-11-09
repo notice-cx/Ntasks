@@ -1,10 +1,9 @@
 /**
  * Writes the package's type declarations to dist/types, after `vite build`.
- * tsc writes them with the source's own import names; this rewrites the two
- * a host cannot resolve: `@/…`, the source's alias for src/, and
- * `@ntasks/domain`, the task model the build bundles, whose declarations it
- * copies to dist/types/domain. It drops the stylesheet's import, which a
- * host imports as `@ntasks/ui/styles.css`.
+ * tsc writes them with the source's own import names; this rewrites the one
+ * a host cannot resolve, `@ntasks/domain`, the task model the build bundles,
+ * to the copy of its declarations in dist/types/domain. It drops the
+ * stylesheet's import, which a host imports as `@ntasks/ui/styles.css`.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,7 +15,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, 'dist', 'types');
 const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
 
-/** `specifier` as a path from the declaration file `from` to `target`, a module in dist/types. */
+/** The import path from the declaration file `from` to `target`, a module in dist/types. */
 function relative(from: string, target: string): string {
   const rel = path.relative(path.dirname(from), target).split(path.sep).join('/');
   return rel.startsWith('.') ? rel : `./${rel}`;
@@ -25,10 +24,8 @@ function relative(from: string, target: string): string {
 export function rewriteDeclaration(source: string, file: string, types: string): string {
   return source
     .replace(/^import '[^']+\.css';\n/gm, '')
-    .replace(/(['"])(@\/[^'"]+|@ntasks\/domain)\1/g, (_match, quote: string, specifier: string) => {
-      const target =
-        specifier === '@ntasks/domain' ? path.join(types, 'domain', 'index') : path.join(types, specifier.slice(2));
-      return `${quote}${relative(file, target)}${quote}`;
+    .replace(/(['"])@ntasks\/domain\1/g, (_match, quote: string) => {
+      return `${quote}${relative(file, path.join(types, 'domain', 'index'))}${quote}`;
     });
 }
 

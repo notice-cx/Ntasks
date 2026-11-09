@@ -5,7 +5,7 @@
  * so both apps rank and word the same tasks the same way.
  */
 import { TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices } from '@/api/types';
+import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices } from '../api/types';
 
 export const IN_PROGRESS = 'in_progress';
 /** The stored status the pages call Parked. */
