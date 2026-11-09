@@ -44,6 +44,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # The npm package ntasks, from the build above, checked with
+      # `npm pack --dry-run` and `wrangler deploy --dry-run`. It is a step of
+      # its own because deployments built from a copy of the repository run
+      # `pnpm run build` and need no package.
+      - run: pnpm run package
       # The website: the landing page and docs/ rendered, with every link and
       # heading checked. It builds files only; nothing here deploys it.
       - run: pnpm site:build

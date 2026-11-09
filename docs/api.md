@@ -69,7 +69,10 @@ The Worker signs every request in as [Sign-in](sign-in.md) describes: a
 person's browser session, an agent's OAuth access token, or a service
 credential. A request with none, or with one that is invalid, revoked or
 expired, gets `401` with a bearer challenge that tells an MCP client where to
-sign in. A service names the agent each request is for in the
+sign in. The one exception is a request with no credential that names the
+deployment's public workspace in the `x-ntasks-workspace` header: it reads
+that workspace with `tasks:read` alone
+([The public workspace](sign-in.md#the-public-workspace)). A service names the agent each request is for in the
 `x-ntasks-on-behalf-of` header, and the request is recorded as that agent's
 ([A service acting for its agents](sign-in.md#a-service-acting-for-its-agents)). The sign-in routes under `/api/auth` and `/api/access` answer as
 [Sign-in](sign-in.md#routes) describes.
@@ -87,6 +90,7 @@ Which workspace a request reaches:
 | A service | Its credential's one workspace. It may leave the header out; a header naming another workspace gets `404`. |
 | A person or an agent, over HTTP | The workspace the `x-ntasks-workspace` header names, or the only one it reaches when the header is left out. Which one that is changes when its memberships or grants change, so a client that writes names the workspace. |
 | Anyone, over MCP | The workspace a tool call's `workspace` argument names, or the only one the sender reaches when the argument is left out. Every MCP tool but `list_workspaces` and `get_task_guide` takes it, as NoticeOS's tools did, and the header is not read. |
+| A visitor, with no credential | The public workspace, which it names in the header, over HTTP and over MCP alike ([Sign-in](sign-in.md#the-public-workspace)). |
 
 A person reaches the workspaces they belong to, an agent the workspaces where
 it was granted a project, and a service its credential's workspace.

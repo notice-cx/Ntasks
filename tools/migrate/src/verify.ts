@@ -522,6 +522,19 @@ export async function verify(data: BeadsExport, plan: ImportPlan, read: StoreRea
   };
 }
 
+/**
+ * Compares a store loaded from a seed with the rows the seed planned, row by
+ * row, and checks that each task's history, replayed, rebuilds the task.
+ */
+export async function verifySeed(plan: ImportPlan, read: StoreReader): Promise<readonly Difference[]> {
+  const held = await readStore(read);
+  const differences: Difference[] = [];
+  againstPlan(plan, held, differences);
+  againstHistory(held, differences);
+  const unique = new Map(differences.map((difference) => [stableJson(difference), difference]));
+  return [...unique.values()];
+}
+
 export interface BackupReport {
   readonly differences: readonly Difference[];
   /** The rows the store holds, per table. */

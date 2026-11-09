@@ -71,7 +71,16 @@ export interface ServicePrincipal {
   readonly onBehalfOf?: string;
 }
 
-export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal;
+/** Anyone, reading the deployment's public workspace without signing in
+ * (visitor.ts). It reads every project there and changes nothing. */
+export interface VisitorPrincipal {
+  readonly kind: 'visitor';
+  readonly id: 'visitor';
+  readonly name: 'anyone';
+  readonly workspace: Workspace;
+}
+
+export type Principal = PersonPrincipal | AgentPrincipal | ServicePrincipal | VisitorPrincipal;
 
 /**
  * Whether an answer from this principal counts as a person's own decision.
@@ -84,14 +93,15 @@ export function mayDecide(principal: Principal): boolean {
 }
 
 /** A name that starts like one of the prefixes actorOf adds. */
-const PREFIXED = /^(?:agent|service|person):/u;
+const PREFIXED = /^(?:agent|service|person|visitor):/u;
 
 /**
  * The engine's actor for a write by this principal, with the model an agent
  * names. The task store records it as the filer, assignee, closer or author.
  * An agent picks its own name when it registers, and could pick the owner's,
  * so an agent's actor is `agent:<name>` and a service's `service:<name>`, or
- * `service:<name>/<agent>` when it acts for an agent it names. An owner's
+ * `service:<name>/<agent>` when it acts for an agent it names. A visitor's is
+ * `visitor:anyone`, though a visitor writes nothing. An owner's
  * actor is their name, or `person:<name>` when their name itself starts with
  * one of these prefixes. So an actor that starts with `agent:` is always an
  * agent, and one that starts with `service:` always a service. The engine
