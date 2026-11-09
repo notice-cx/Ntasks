@@ -4,7 +4,16 @@
 import { TaskRefused, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { WORK_ARGS } from '../../src/args.ts';
-import { descriptionAdvice, descriptionHolds, titleAdvice, titleHolds } from '../../src/mcp/writing.ts';
+import {
+  descriptionAdvice,
+  descriptionHolds,
+  namesPlaceToAct,
+  placeAdvice,
+  repeatAdvice,
+  repeatsTitle,
+  titleAdvice,
+  titleHolds,
+} from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import {
@@ -559,7 +568,8 @@ describe('create_task', () => {
 
   it('advises on a command written inline in a description, a block with no language tag, and a $ prompt', async () => {
     const project = await newProject(engine);
-    const fenced = (info: string, line: string) => ['Deploy the API.', '', '```' + info, line, '```'].join('\n');
+    const fenced = (info: string, line: string) =>
+      ['Ship the release to production.', '', '```' + info, line, '```'].join('\n');
     const descriptions: readonly [string, readonly string[]][] = [
       ['Deploy the API: run `pnpm run deploy` from the root.', ['inline command']],
       ['Check the rows with `SELECT count(*) FROM tasks` first.', ['inline command']],
@@ -597,6 +607,81 @@ describe('create_task', () => {
       });
       expect(reply).not.toHaveProperty('lint');
     }
+  });
+
+  it('advises on a description whose first line repeats the title', async () => {
+    const project = await newProject(engine);
+    const title = 'Approve merging the API pull request';
+    for (const description of [title, `## ${title.toLowerCase()}.\n\nIt adds a column.`, `\n**${title}**`]) {
+      expect(repeatsTitle(title, description)).toBe(true);
+      const reply = await write<{ lint: { advice: readonly string[] } }>(target, 'create_task', {
+        project: project.id,
+        title,
+        type: 'chore',
+        description,
+        idempotency_key: key(),
+      });
+      expect(reply.lint.advice).toEqual(repeatAdvice(title, description));
+      expect(reply.lint.advice).toHaveLength(1);
+    }
+    const added = 'Approve merging the API pull request, so agents can file Do checklists.';
+    expect(repeatsTitle(title, added)).toBe(false);
+    const reply = await write<Record<string, unknown>>(target, 'create_task', {
+      project: project.id,
+      title,
+      type: 'chore',
+      description: added,
+      idempotency_key: key(),
+    });
+    expect(reply).not.toHaveProperty('lint');
+  });
+
+  it("advises on a person's ask that names no place to act, unless its choices are buttons", async () => {
+    const project = await newProject(engine);
+    const ask = (description: string, extra: Record<string, unknown> = {}) =>
+      write<Record<string, unknown> & { id: string; lint?: { advice: readonly string[] } }>(target, 'create_task', {
+        project: project.id,
+        title: 'Choose the domain for the docs',
+        type: 'chore',
+        labels: ['human'],
+        description,
+        idempotency_key: key(),
+        ...extra,
+      });
+    const vague = 'You: decide which domain the docs move to, since only you hold the registrar account.';
+    expect(namesPlaceToAct(vague)).toBe(false);
+    const reply = await ask(vague);
+    expect(reply.lint!.advice).toEqual(placeAdvice(await current(project, reply.id)));
+    expect(reply.lint!.advice).toHaveLength(1);
+    // A link, a button, a command or this task's page is a place to act; so are choices.
+    for (const description of [
+      `${vague} Reply in https://github.com/example/web/pull/4.`,
+      `${vague} Press Answer and name it.`,
+      `${vague} Then run:\n\n\`\`\`bash\npnpm run docs:move\n\`\`\``,
+      `${vague} Answer on this task.`,
+    ]) {
+      expect(namesPlaceToAct(description)).toBe(true);
+      expect(await ask(description)).not.toHaveProperty('lint');
+    }
+    const chosen = await ask(vague, {
+      choices: {
+        question: 'Which domain?',
+        options: [
+          { key: 'a', label: 'docs.example.com', recommended: true },
+          { key: 'b', label: 'example.com/docs' },
+        ],
+      },
+    });
+    expect(chosen).not.toHaveProperty('lint');
+    // Work no person is asked to do needs no place to act.
+    const work = await write<Record<string, unknown>>(target, 'create_task', {
+      project: project.id,
+      title: 'Move the docs to the new domain',
+      type: 'chore',
+      description: vague,
+      idempotency_key: key(),
+    });
+    expect(work).not.toHaveProperty('lint');
   });
 
   it('answers a retry with the task it filed, and refuses the key for a different task', async () => {
@@ -1979,17 +2064,53 @@ describe('request_human_approval', () => {
     expect((await current(project, id)).dependencies).toHaveLength(2);
   });
 
+  it('advises an approval that names no place to answer, and not one that does', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const title = 'Approve merging Ntasks PR #88: Do checklists, one new database column';
+    const vague = await write<{ approval: { id: string }; lint: { advice: readonly string[] } }>(
+      target,
+      'request_human_approval',
+      { project: project.id, task: id, title, description: 'The merge adds one empty column to the task database.' },
+    );
+    expect(vague.lint.advice).toEqual(placeAdvice(await current(project, vague.approval.id)));
+    expect(vague.lint.advice).toHaveLength(1);
+    const clear = await write<Record<string, unknown>>(target, 'request_human_approval', {
+      project: project.id,
+      task: id,
+      title,
+      description: [
+        'You: press Approve on this task to let the agent merge https://github.com/example/web/pull/88.',
+        '',
+        '## Why this needs you',
+        '',
+        'A change to the live task database comes to you first.',
+      ].join('\n'),
+    });
+    expect(clear).toMatchObject({ created: true });
+    expect(clear).not.toHaveProperty('lint');
+  });
+
   it('advises title and description when a reason makes a title that breaks the rule', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
     const line = 'Approve running ./update.sh --commit ba05bed67f1 on the demo host, which restarts it';
+    const reason = `${line}\nIt takes 2 minutes.`;
     const reply = await write<{ approval: { id: string }; lint: { advice: readonly string[] } }>(
       target,
       'request_human_approval',
-      { project: project.id, task: id, reason: `${line}\nIt takes 2 minutes.` },
+      { project: project.id, task: id, reason },
     );
-    expect((await current(project, reply.approval.id)).title).toBe(line);
-    expect(reply.lint.advice).toEqual([...titleAdvice(line), expect.any(String)]);
+    const gate = await current(project, reply.approval.id);
+    expect(gate.title).toBe(line);
+    // Its title is its reason's first line, so it repeats it, and it names nowhere to answer.
+    expect(repeatsTitle(gate.title, gate.description)).toBe(true);
+    expect(reply.lint.advice).toEqual([
+      ...titleAdvice(line),
+      ...repeatAdvice(gate.title, gate.description),
+      ...placeAdvice(gate),
+      expect.any(String),
+    ]);
     expect(titleAdvice(line)).toHaveLength(2);
   });
 

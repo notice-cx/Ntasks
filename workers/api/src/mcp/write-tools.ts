@@ -106,7 +106,7 @@ import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
 import { projectFor, projectForNew } from './project.ts';
-import { descriptionAdvice, TITLE_MOST, titleAdvice } from './writing.ts';
+import { descriptionAdvice, placeAdvice, repeatAdvice, TITLE_MOST, titleAdvice } from './writing.ts';
 import { MANY, PROJECT, schema, TASK, TASKS, type TaskTool, type ToolContext } from './read-tools.ts';
 
 export const WRITE = Object.freeze({
@@ -718,9 +718,19 @@ function closeShown(task: Task): McpTaskField[] {
   return ['status', 'resolution', ...(task.delivery === null ? [] : ['delivery' as const])];
 }
 
-/** The advice beside lint's missing sections: on the title, the commands in the description, and options a button cannot press. */
+/**
+ * The advice beside lint's missing sections: on the title, the description's
+ * commands and first line, and a person's ask. Lettered options to pass as
+ * choices give the ask its buttons, so they stand in for the place to act.
+ */
 function adviceOn(task: Task): readonly string[] {
-  return [...titleAdvice(task.title), ...descriptionAdvice(task.description), ...choiceAdvice(task)];
+  const choice = choiceAdvice(task);
+  return [
+    ...titleAdvice(task.title),
+    ...descriptionAdvice(task.description),
+    ...repeatAdvice(task.title, task.description),
+    ...(choice.length > 0 ? choice : placeAdvice(task)),
+  ];
 }
 
 /** Lint's answer, when it names a missing section or gives advice. */
@@ -1089,7 +1099,9 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
   description:
     'Ask a person to approve an action before a task proceeds. This opens a gate, a separate item ' +
     'that holds the task out of ready work until the owner approves its scope. Pass title and description; ' +
-    'reason, one text whose first line becomes the title, still works. Record an existing answer with reconcile_task. ' +
+    'reason, one text whose first line becomes the title, still works. The description starts with the ask and where ' +
+    'to answer it, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>", in plain ' +
+    'words without internal terms. Record an existing answer with reconcile_task. ' +
     'To ask without holding the task, comment on it instead. Asking again with the same title and description, ' +
     'or the same reason, returns the open request.',
   inputSchema: schema(
@@ -1105,7 +1117,7 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
         type: 'string',
         maxLength: APPROVAL_DESCRIPTION_MAX,
         description:
-          "In Markdown, after a first sentence saying what and why: ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we'll confirm; ## If you decline.",
+          'In Markdown: a first line with the ask and where to answer, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>"; ## Why this needs you; ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we\'ll confirm; ## If you decline.',
       },
       reason: {
         type: 'string',
@@ -1125,12 +1137,8 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
     const model = modelArg(args);
     const projectId = await projectFor(context, args, taskId);
     const { gate, created } = await requestApproval(context, projectId, taskId, request, model);
-    const titled = titleAdvice(gate.title);
-    const advice = [
-      ...titled,
-      ...(request.title === undefined && titled.length > 0 ? [APPROVAL_FORM] : []),
-      ...descriptionAdvice(gate.description),
-    ];
+    const found = adviceOn(gate);
+    const advice = request.title === undefined && found.length > 0 ? [...found, APPROVAL_FORM] : found;
     return { task: taskId, ...approvalOf(taskId, gate), created, ...(advice.length === 0 ? {} : { lint: { advice } }) };
   },
 } satisfies TaskTool);

@@ -56,11 +56,11 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
   for a person the ask. Then only the sections that apply:
   - work: `## Why`, `## Where` and `## Fix`, and for a bug
     `## Steps to Reproduce`;
-  - steps a person does: `## Your steps`, `## What it changes` and
-    `## How we'll confirm`;
+  - steps a person does: `## Your steps`, `## Why this needs you`,
+    `## What it changes` and `## How we'll confirm`;
   - an approval, where an agent acts once the person allows it:
-    `## What the agent will do`, `## What it changes`, `## How we'll confirm`
-    and `## If you decline`.
+    `## Why this needs you`, `## What the agent will do`,
+    `## What it changes`, `## How we'll confirm` and `## If you decline`.
 - **Headings** say who acts, and never describe a pending action in the
   present tense as if it already happens.
 - **What it changes.** Each line starts with a bold label naming what it
@@ -82,11 +82,26 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
 - **Approval.** The title is the action to approve, and the description has
   the approval's sections, with the exact commands under
   `## What the agent will do`.
+- **An ask to a person**, an approval or a task labelled `human`, says in
+  plain words what is waiting, why it is theirs to decide, and the exact
+  place to act: the button on the task's page in Ntasks, a link, or the
+  command to run. Internal terms such as store migration or gate stay out of
+  it. For example, an approval titled "Approve merging Ntasks PR #88: Do
+  checklists, one new database column" opens with "You: press Approve on this
+  task to let the agent merge" and the pull request's link, where its first
+  draft repeated one sentence about "store migration 0003_gate_steps" as both
+  title and description.
 
-Creating or changing a task answers with advice when its title is longer
-than 70 characters or holds a command, a file path or a commit hash, and when
-its description writes a command inline, has a fenced block with no language
-tag, or has a `$` prompt in a block. Nothing is refused for it.
+Creating or changing a task answers with advice when:
+
+- its title is longer than 70 characters or holds a command, a file path or
+  a commit hash;
+- its description writes a command inline, has a fenced block with no
+  language tag, or has a `$` prompt in a block;
+- its description's first line repeats the title;
+- it asks a person and names no place to act.
+
+Nothing is refused for it.
 
 ## Custom fields
 

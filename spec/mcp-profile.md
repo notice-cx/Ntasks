@@ -105,7 +105,7 @@ the protocol defines none of them.
 | `get_agent_stats` | Counts of agents' work by model |
 | `list_fields`, `define_field`, `retire_field` | Custom fields ([EXT-2](protocol.md#ext-2)), which the protocol describes but no level requires |
 | `card`, `change_class` arguments | Facts NoticeOS ranks tasks by ([EXT-4](protocol.md#ext-4)) |
-| `lint`, `possibleDuplicates`, `warnings` in answers | Advice on a write: sections a task lacks, a title over 70 characters or holding a command, a file path or a commit hash, a command written inline in a description, open tasks with similar titles, texts that cite what a reader cannot check |
+| `lint`, `possibleDuplicates`, `warnings` in answers | Advice on a write: sections a task lacks, a title over 70 characters or holding a command, a file path or a commit hash, a command written inline in a description, a description that repeats its title, an ask to a person that names no place to act, open tasks with similar titles, texts that cite what a reader cannot check |
 
 ## 11.4 Refusals
 
