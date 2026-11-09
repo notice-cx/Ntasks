@@ -1,0 +1,137 @@
+/*
+  VitePress's default theme in the web app's tokens (src/tokens.css). Indigo
+  marks links, the current page and the primary button, as it marks the one
+  primary action in the app.
+*/
+
+:root,
+.dark {
+  --vp-font-family-base: var(--font-sans);
+  --vp-font-family-mono: var(--font-mono);
+
+  --vp-c-bg: var(--background);
+  --vp-c-bg-alt: var(--canvas);
+  --vp-c-bg-elv: var(--background);
+  --vp-c-bg-soft: var(--surface);
+
+  --vp-c-border: var(--border-strong);
+  --vp-c-divider: var(--border);
+  --vp-c-gutter: var(--border);
+
+  --vp-c-text-1: var(--ink);
+  --vp-c-text-2: var(--ink-2);
+  --vp-c-text-3: var(--ink-3);
+
+  --vp-c-default-soft: var(--hover);
+
+  --vp-c-brand-1: var(--accent-text);
+  --vp-c-brand-2: var(--accent);
+  --vp-c-brand-3: var(--accent);
+  --vp-c-brand-soft: var(--accent-soft);
+
+  --vp-button-brand-text: var(--on-accent);
+  --vp-button-brand-hover-text: var(--on-accent);
+  --vp-button-brand-active-text: var(--on-accent);
+
+  --vp-code-color: var(--ink);
+  --vp-code-bg: var(--hover);
+  --vp-code-block-bg: var(--surface);
+
+  --vp-shadow-3: var(--shadow-pop);
+  --vp-sidebar-bg-color: var(--canvas);
+  --vp-local-search-bg: var(--canvas);
+  --vp-local-search-result-bg: var(--background);
+  --vp-local-search-result-selected-border: var(--accent);
+  --vp-local-search-highlight-bg: var(--accent);
+  --vp-local-search-highlight-text: var(--on-accent);
+}
+
+body {
+  font-feature-settings:
+    'cv05' 1,
+    'cv08' 1;
+}
+
+.nt-mark-slot {
+  display: inline-flex;
+  margin-right: 8px;
+  color: var(--ink);
+}
+
+.nt-mark {
+  width: 20px;
+  height: 20px;
+}
+
+/* Code blocks sit on Surface with a border, as in the app. */
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--border);
+}
+
+.vp-doc a {
+  text-underline-offset: 2px;
+}
+
+/* The docs' screenshots and diagrams. */
+.vp-doc img {
+  border-radius: 8px;
+}
+
+.vp-doc img[src$='.webp'] {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-raise);
+}
+
+.vp-doc .mermaid-diagram {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.vp-doc .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mermaid sizes each label for its own text style; the docs' paragraph
+   margins and line height would push the words out of their boxes. */
+.vp-doc .mermaid-diagram p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.vp-doc .mermaid-source {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre;
+}
+
+/* The docs' home lists each page with its one-line description. */
+.docs-index .vp-doc ul {
+  list-style: none;
+  padding-left: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.docs-index .vp-doc li {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--ink-2);
+}
+
+.docs-index .vp-doc li > a:first-child {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.docs-index .vp-doc li:has(> a:first-child:hover) {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}

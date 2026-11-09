@@ -1,0 +1,55 @@
+/*
+  The web app's colour and elevation tokens (apps/web/src/index.css), for the
+  landing page and the docs. test/tokens.test.ts fails when a value here
+  differs from the app's. docs/design.md gives each token's role.
+
+  Light is the root's theme; `.dark` on <html> switches every token, as in
+  the app. The docs' theme switch and the landing page's both set it.
+*/
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --canvas: #f6f6f8;
+  --surface: #fafafb;
+  --hover: #f1f1f4;
+  --border: #e8e8ed;
+  --border-strong: #d4d4dc;
+  --ink: #17171c;
+  --ink-2: #474852;
+  --ink-3: #696b76;
+  --accent: #5552d4;
+  --on-accent: #ffffff;
+  --accent-text: #4b48c9;
+  --accent-soft: #efeffc;
+  --shadow-raise: 0 1px 2px rgb(15 15 30 / 0.06);
+  --shadow-pop: 0 0 0 1px rgb(15 15 30 / 0.06), 0 4px 12px rgb(15 15 30 / 0.08), 0 16px 32px -8px rgb(15 15 30 / 0.12);
+
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #111216;
+  --canvas: #0b0c0f;
+  --surface: #17181d;
+  --hover: #1d1e24;
+  --border: #25262d;
+  --border-strong: #363741;
+  --ink: #ededf1;
+  --ink-2: #b3b5bf;
+  --ink-3: #8a8d98;
+  --accent: #5e5ce6;
+  --on-accent: #ffffff;
+  --accent-text: #9d9bff;
+  --accent-soft: #1f1f3a;
+  --shadow-raise: 0 0 0 1px rgb(255 255 255 / 0.04);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+/* A picture drawn in each theme shows the one for the page's theme. */
+.dark .only-light,
+:root:not(.dark) .only-dark {
+  display: none;
+}

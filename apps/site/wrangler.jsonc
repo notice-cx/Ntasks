@@ -1,0 +1,23 @@
+// The website at ntasks.notice.cx: a Worker with no script that serves the
+// files `pnpm build:site` writes to dist/. Nothing deploys it on a merge:
+// the Workers Builds connection and the Deploy to Cloudflare button read the
+// app's wrangler.jsonc at the repository root, never this one. Publishing is
+// `wrangler deploy` run here by hand (README.md).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ntasks-site",
+  "compatibility_date": "2026-11-06",
+  "assets": {
+    "directory": "dist",
+    // /docs/agents serves dist/docs/agents.html, and /docs serves
+    // dist/docs/index.html after a redirect to /docs/.
+    "html_handling": "auto-trailing-slash",
+    // A missing page gets the nearest 404.html above it: the docs' own under
+    // /docs/, the landing page's elsewhere.
+    "not_found_handling": "404-page"
+  },
+  // The site is served only at its own address, never at a workers.dev one.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "ntasks.notice.cx", "custom_domain": true }]
+}
