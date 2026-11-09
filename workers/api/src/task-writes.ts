@@ -12,6 +12,7 @@ import {
   TaskRefused,
   type ActionRequest,
   type Actor,
+  type ApprovalRequest,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -976,12 +977,13 @@ export async function linkTasks(
 }
 
 /** Opens an approval the task waits on, or returns the open one already
- * asking the same thing, so a repeated request never asks a person twice. */
+ * asking the same thing, so a repeated request never asks a person twice. A
+ * request with a title asks the same only of an approval with that title. */
 export async function requestApproval(
   context: WriteContext,
   projectId: string,
   taskId: string,
-  reason: string,
+  request: ApprovalRequest,
   model?: string,
 ): Promise<{ readonly gate: Task; readonly created: boolean }> {
   const project = await projectOf(context, projectId, 'write');
@@ -990,14 +992,17 @@ export async function requestApproval(
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     if (task.status === 'closed') throw closedRefusal(task.id);
     const open = (await openGates(context, project, task)).find(
-      (gate) => gate.awaitType === 'human' && asksAlike(gate.description, reason),
+      (gate) =>
+        gate.awaitType === 'human' &&
+        asksAlike(gate.description, request.reason) &&
+        (request.title === undefined || gate.title === request.title),
     );
     if (open !== undefined) return { gate: open, created: false };
     try {
       const { created } = await context.engine.writeTask(
         project.id,
         task.id,
-        { expectedVersion: task.version, requestApproval: { reason } },
+        { expectedVersion: task.version, requestApproval: request },
         actor,
       );
       return { gate: created[0]!, created: true };

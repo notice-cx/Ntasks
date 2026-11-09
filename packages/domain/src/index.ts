@@ -59,6 +59,7 @@ export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRef
 export type {
   ActionRequest,
   Actor,
+  ApprovalRequest,
   BoardQuery,
   ChangePage,
   CommentResult,

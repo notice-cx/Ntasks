@@ -28,6 +28,7 @@ protocol appears in neither table.
 | STATE-8 | `workers/api/test/api/delivery.test.ts` › "is cleared by a reopen and kept in history, and a close without a commit or pull request has none" |
 | STATE-9 | `workers/api/test/engine/ready.test.ts` › "lists open epics with their children, eligible to close once every child is" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval once, returning the open one when asked the same again" |
+| STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |
 | STATE-10 | `workers/api/test/api/owner-answers.test.ts` › "refuses any relayed answer on a closed approval but the owner’s report, so a person’s approval stays as given" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "closes a decision on the pick, past an open blocker and another holder" |
@@ -40,6 +41,12 @@ protocol appears in neither table.
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "clears the helper and work details when the task closes or is released, and its history keeps them" |
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "updates the work from its holder’s comments, which move its last activity, and from nobody else’s" |
 | STATE-13 | `workers/api/test/schema.test.ts` › "keeps a helper and work details only on a task someone holds that is not closed" |
+| STATE-14 | `workers/api/test/api/write-tools.test.ts` › "opens a request the task waits on, with each step and its command stored apart, once" |
+| STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "records each tick with the person and the time, in any order, and frees the waiting task on the last" |
+| STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "marks where the person is stuck and why, tells the waiting task, and clears the mark on a tick" |
+| STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "refuses an approval of the request, a step it does not have and a closed request, writing nothing" |
+| STATE-14 | `workers/api/test/engine/writes.test.ts` › "changes only the marks on its steps, never their text or commands, and only on a request" |
+| STATE-14 | `workers/api/test/api/owner-answers.test.ts` › "closes on the owner’s report that they did the steps, and hands the waiting task back to agents" |
 | AUTH-1 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "keeps an agent named after the owner apart from the owner" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "marks an owner whose own name starts like an agent’s, so the two never meet" |

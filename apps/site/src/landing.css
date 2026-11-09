@@ -219,6 +219,16 @@ code {
   background: var(--accent-hover);
 }
 
+.button.secondary {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.button.secondary:hover {
+  background: var(--hover);
+}
+
 .button .icon,
 .text-link .icon {
   width: 16px;
@@ -569,6 +579,15 @@ code {
 .copy:not(.copied) .when-copied,
 .copy.copied .when-idle {
   display: none;
+}
+
+.alt-deploy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  margin-top: 48px;
+  color: var(--ink-2);
 }
 
 .setup-shot {

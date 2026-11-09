@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/do-request.schema.json",
+  "title": "Request to do steps",
+  "description": "A request to do steps is a task of type gate with steps: it holds the tasks waiting on it out of ready work until a person ticks every step. Its title names what the person gets done. Its description says what doing the steps changes and how the result will be confirmed. Each step holds its text, the command it runs or null, and what the person recorded on it. A task waits on it through a blocks link. Section 3.7 of the protocol.",
+  "allOf": [{ "$ref": "task.schema.json" }],
+  "type": "object",
+  "properties": {
+    "type": { "const": "gate" },
+    "choices": { "type": "null" },
+    "choice": { "type": "null" },
+    "steps": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/step" } },
+    "answer": {
+      "oneOf": [
+        {
+          "allOf": [{ "$ref": "answer.schema.json" }],
+          "properties": { "option": { "enum": ["done", "decline"] } }
+        },
+        { "type": "null" }
+      ]
+    }
+  },
+  "required": ["type", "steps"],
+  "$defs": {
+    "mark": {
+      "description": "Who recorded something on a step and when, and the connected app they used, if any.",
+      "type": "object",
+      "properties": {
+        "by": { "type": "string", "minLength": 1 },
+        "app": { "type": "string", "minLength": 1 },
+        "at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["by", "at"]
+    },
+    "step": {
+      "description": "One step: what to do, the exact command to copy or null, who ticked it, their note, and where they stopped. A tick clears a stuck mark and a stuck mark clears a tick.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "command": { "type": ["string", "null"], "minLength": 1, "maxLength": 4096 },
+        "done": { "oneOf": [{ "$ref": "#/$defs/mark" }, { "type": "null" }] },
+        "note": {
+          "oneOf": [
+            {
+              "allOf": [{ "$ref": "#/$defs/mark" }],
+              "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+              "required": ["text"]
+            },
+            { "type": "null" }
+          ]
+        },
+        "stuck": {
+          "oneOf": [
+            {
+              "allOf": [{ "$ref": "#/$defs/mark" }],
+              "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+              "required": ["reason"]
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": ["text", "command", "done", "note", "stuck"],
+      "not": { "properties": { "done": { "type": "object" }, "stuck": { "type": "object" } }, "required": ["done", "stuck"] }
+    }
+  }
+}

@@ -332,17 +332,19 @@ export class Writes {
     taskId: string,
     projectId: string,
     priority: number,
-    reason: string,
+    { reason, title: given }: check.CheckedApproval,
     actor: Actor,
     at: string,
   ): Statement[] {
     // The reason holds a line that is not blank: validate.ts refuses one that does not.
-    const title = reason
-      .replace(/\r/gu, '')
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line !== '')!
-      .slice(0, 512);
+    const title =
+      given ??
+      reason
+        .replace(/\r/gu, '')
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line !== '')!
+        .slice(0, 512);
     return this.#request(gateId, taskId, projectId, priority, { title, description: reason, steps: null }, actor, at);
   }
 
@@ -357,7 +359,7 @@ export class Writes {
     at: string,
   ): Statement[] {
     if (write.requestApproval !== null)
-      return this.#gate(gateId, taskId, projectId, priority, write.requestApproval.reason, actor, at);
+      return this.#gate(gateId, taskId, projectId, priority, write.requestApproval, actor, at);
     const { title, context, steps } = write.requestAction!;
     return this.#request(gateId, taskId, projectId, priority, { title, description: context, steps }, actor, at);
   }
@@ -805,9 +807,7 @@ export class Writes {
         ...(values.size === 0 ? [] : [this.#noneRetired(projectId, [...values.keys()])]),
       ];
       if (gateId !== null && fields.requestApproval !== null) {
-        statements.push(
-          ...this.#gate(gateId, id, projectId, fields.priority, fields.requestApproval.reason, actor, at),
-        );
+        statements.push(...this.#gate(gateId, id, projectId, fields.priority, fields.requestApproval, actor, at));
       }
       for (const link of fields.links) {
         if (link.taskId === id) refuse('invalid', 'A task cannot link to itself.');

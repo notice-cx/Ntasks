@@ -231,21 +231,26 @@
           <ol class="features steps">
             <li>
               <h3><span class="step-number">1</span>Deploy</h3>
-              <p>Deploy to your Cloudflare account. The button asks for one secret, <code>AUTH_SECRET</code>. Make one and keep a copy:</p>
+              <p>On a machine with Node.js 22 or later, run:</p>
               <div class="command">
-                <pre><code>openssl rand -base64 32</code></pre>
-                <button class="copy" type="button" data-copy="openssl rand -base64 32" aria-label="Copy the command">
+                <pre><code>npx ntasks deploy</code></pre>
+                <button class="copy" type="button" data-copy="npx ntasks deploy" aria-label="Copy the command">
                   <svg class="icon when-idle" aria-hidden="true"><use href="#i-copy" /></svg>
                   <svg class="icon when-copied" aria-hidden="true"><use href="#i-done" /></svg>
                 </button>
               </div>
-              <a class="button primary" href="https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks">Deploy to Cloudflare</a>
+              <p>
+                It logs in to your Cloudflare account in the browser, deploys Ntasks there, and prints its address and
+                an <code>AUTH_SECRET</code>. Keep a copy of the secret: the command shows it only once. Run it again to
+                update to the latest release.
+              </p>
             </li>
             <li>
               <h3><span class="step-number">2</span>Set up sign-in</h3>
               <p>
                 Open <code>/sign-in</code> at the address people will use, such as your custom domain, since sign-in is
-                bound to it. Enter the secret and choose <strong>Create the GitHub App</strong>.
+                bound to it. Enter the <code>AUTH_SECRET</code> the command printed and choose
+                <strong>Create the GitHub App</strong>.
               </p>
             </li>
             <li>
@@ -253,6 +258,10 @@
               <p>Then invite people by GitHub username.</p>
             </li>
           </ol>
+          <div class="alt-deploy">
+            <p>The button deploys a copy of this repository instead, and that copy gets no new releases.</p>
+            <a class="button secondary" href="https://deploy.workers.cloudflare.com/?url=https://github.com/notice-cx/Ntasks">Deploy to Cloudflare</a>
+          </div>
           <div class="window setup-shot">
                 <picture class="only-light">
                   <source media="(prefers-reduced-motion: reduce)" srcset="../../docs/images/sign-in-light.webp" width="840" height="660" />
@@ -264,7 +273,7 @@
                 </picture>
           </div>
           <p class="more">
-            <a class="text-link" href="/docs/deploy">To deploy from a checkout, update a deployment or run Ntasks on your machine, see Deploy and run Ntasks
+            <a class="text-link" href="/docs/deploy">To deploy with the button or from a checkout, or to run Ntasks on your machine, see Deploy and run Ntasks
               <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
           </p>
 

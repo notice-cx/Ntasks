@@ -20,9 +20,10 @@ digits, such as `web`, and every task id in the project starts with it.
 
 A **task** is one piece of work. It has:
 
-- a **title**: the outcome, in plain words;
-- a **description**: what to do, why, and where;
-- **acceptance**: the proof that the work is done;
+- a **title**: the outcome, in plain words starting with a verb, of at most
+  70 characters;
+- a **description**: what to do, why, and where, in Markdown;
+- **acceptance**: the proof that the work is done, as a short checklist;
 - **notes**: what the people and agents working on it record as it moves,
   such as progress and findings;
 - a **design**: how the work is to be built;
@@ -41,6 +42,51 @@ A **task** is one piece of work. It has:
 
 A task's **id** is its project's prefix, a hyphen and a short key of lowercase
 letters and digits, such as `web-a1b2`.
+
+### Writing a task
+
+A task is written for someone who was not in the conversation that filed
+it. The web app shows the description, acceptance and comments as Markdown,
+and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
+
+- **Title.** The outcome, or for a person the ask, in plain words starting
+  with a verb. At most 70 characters, with no commands, file paths, commit
+  hashes or steps.
+- **Description.** A first line of one sentence that says what and why, or
+  for a person the ask. Then only the sections that apply:
+  - work: `## Why`, `## Where` and `## Fix`, and for a bug
+    `## Steps to Reproduce`;
+  - steps a person does: `## Your steps`, `## What it changes` and
+    `## How we'll confirm`;
+  - an approval, where an agent acts once the person allows it:
+    `## What the agent will do`, `## What it changes`, `## How we'll confirm`
+    and `## If you decline`.
+- **Headings** say who acts, and never describe a pending action in the
+  present tense as if it already happens.
+- **What it changes.** Each line starts with a bold label naming what it
+  measures, such as **Downtime:**, **Your time:**, **Cost:**, **Download:**,
+  **Risk:** or **Undo:**, then the value with its unit and who or what it
+  applies to. A bare number or duration is never enough: "about 2 minutes"
+  becomes "**Downtime:** visitors can't reach the site for about 2 minutes".
+- **Commands.** Every command, query, request or snippet a person might run
+  or paste goes in its own fenced block with a language tag, such as `bash`,
+  `sql` or `json`: one command per block, with no `$` prompt and no output. A
+  command that spans lines stays one block. Inline backticks are only for
+  names that are not run: file paths, identifiers and settings.
+- **Inside the description.** Steps as a numbered list, one action each.
+  Links with readable labels, and pull requests as `owner/repo#123`. Numbers
+  with units. Paragraphs of at most three sentences, and bullets for three
+  or more items.
+- **Acceptance.** A short checklist of facts anyone can check on the day the
+  work lands.
+- **Approval.** The title is the action to approve, and the description has
+  the approval's sections, with the exact commands under
+  `## What the agent will do`.
+
+Creating or changing a task answers with advice when its title is longer
+than 70 characters or holds a command, a file path or a commit hash, and when
+its description writes a command inline, has a fenced block with no language
+tag, or has a `$` prompt in a block. Nothing is refused for it.
 
 ## Custom fields
 
@@ -183,16 +229,25 @@ merge, and merged work of a project that deploys, which waits for a deploy.
   <img src="images/walkthrough-shipped-light.webp" width="800" alt="Waiting for you lists work waiting for merge and for deploy, then the Done view shows tasks marked Built, Merged and Live, and one marked No proof.">
 </picture>
 
-## Decisions and approvals
+## Decisions, approvals and steps to do
 
-Some steps only a person can take. Ntasks has two kinds:
+Some steps only a person can take. Ntasks asks a person in three ways:
 
 - A **decision** asks a person to choose between options. Each option has a
   short label, and at most one is marked as recommended. The person's choice
   is recorded on the task.
 - An **approval** holds a task until a person approves a named action, such
-  as a deployment. While the approval is pending, the task is not ready, so
-  no agent starts it.
+  as a deployment. Its title names the action, and its description says what
+  the agent will do and what it changes ([writing a task](#writing-a-task)). While the
+  approval is pending, the task is not ready, so no agent starts it.
+- A **request to do steps** holds a task until a person does steps only they
+  can do, such as running a command on their own machine. Its steps are an
+  ordered list, each with its text and the command it runs, shown as a block
+  to copy, and its context says what doing them changes and how the agent
+  will confirm the result. The person ticks each step, in any order, and can
+  leave a note on one or say where they are stuck. When every step is
+  ticked, the task is ready again, and the agent checks the result before it
+  continues.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-decide-dark.webp">
@@ -202,14 +257,16 @@ Some steps only a person can take. Ntasks has two kinds:
 ### What a person answers
 
 A task's **proposal** is what a person answers: its title, description,
-acceptance, type and options. For an approval, that is the exact action it
-asks for, with its environment, scope and verification. The **proposal
+acceptance, type and options, and a request's steps. For an approval, that
+is the exact action it asks for, with its environment, scope and
+verification. The **proposal
 version** is a short hash of the proposal, so it changes whenever the
 proposal does.
 
 An **answer** records:
 
-- the option the person chose, or for an approval, approve or decline;
+- the option the person chose; for an approval, approve or decline; for a
+  request to do steps, done or decline;
 - the person's exact words, as a quote. Ntasks never reads the quote to
   decide what it means: a quote such as "maybe" is kept as given;
 - where they said it, and who recorded it;
@@ -217,9 +274,9 @@ An **answer** records:
 
 ### Who can answer
 
-Only a person signed in to the web app answers a decision or approves an
-approval directly. An agent or a service cannot, whatever projects it was
-granted.
+Only a person signed in to the web app answers a decision, approves an
+approval or ticks a step directly. An agent or a service cannot, whatever
+projects it was granted. Each tick records the person and the time.
 
 An agent may record an answer a person gave it somewhere else, such as in a
 chat. It names the option, the quote, where it was said and the proposal
