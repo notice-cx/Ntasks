@@ -48,6 +48,10 @@ jobs:
       # It reaches no deployed Ntasks and no Cloudflare account.
       - run: pnpm --filter @ntasks/spec run conformance:ntasks
       - run: pnpm build
+      # The npm package @ntasks/ui, from the build above: its tarball installed,
+      # from the file, into an empty Vite and React project that typechecks,
+      # builds and renders the board from invented tasks.
+      - run: pnpm --filter @ntasks/ui run check:host
       # The npm package ntasks, from the build above, checked with
       # `npm pack --dry-run` and `wrangler deploy --dry-run`. It is a step of
       # its own because deployments built from a copy of the repository run

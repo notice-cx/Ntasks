@@ -1,0 +1,8 @@
+{
+  // The build's scripts run in Node, as they are.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["."]
+}

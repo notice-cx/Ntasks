@@ -1,0 +1,73 @@
+name: Release UI package
+
+# Pushing a tag such as ui-v0.2.0 publishes the npm package @ntasks/ui, built
+# from packages/ui. The tag must name the version in packages/ui/package.json,
+# on a commit of main (packages/ui/README.md, "Releasing").
+on:
+  push:
+    tags: ['ui-v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @ntasks/ui to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The repository's settings can require an approval for this environment,
+    # and npm's trusted publisher for the package can name it.
+    environment: npm
+    permissions:
+      contents: read
+      # npm's trusted publishing and the provenance statement use GitHub's
+      # OIDC token.
+      id-token: write
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      # Actions are pinned to a commit; Dependabot proposes each new release.
+      # The full history lets the next step find the tag's commit on main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Check that the tag names packages/ui's version on a commit of main
+        run: |
+          version="$(node -p "require('./packages/ui/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "ui-v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not name the version in packages/ui/package.json, $version."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The tag $GITHUB_REF_NAME is not on a commit of main."
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter @ntasks/ui run check:host
+      # pnpm packs the package as the host check installed it; npm publishes
+      # that tarball with its provenance statement. npm signs in through the
+      # trusted publisher when the package has one, and otherwise with the
+      # NPM_TOKEN secret.
+      - name: Publish
+        working-directory: packages/ui
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP/ui-package"
+          npm publish "$RUNNER_TEMP"/ui-package/ntasks-ui-*.tgz --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
