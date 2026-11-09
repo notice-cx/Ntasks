@@ -3,6 +3,7 @@ import DefaultTheme from 'vitepress/theme-without-fonts';
 import { h } from 'vue';
 import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/jetbrains-mono/index.css';
+import '@fontsource-variable/stack-sans-notch/index.css';
 import '../../src/tokens.css';
 import './custom.css';
 import markSvg from '../../../web/public/brand/notice-icon.svg?raw';

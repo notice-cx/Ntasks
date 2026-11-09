@@ -1,5 +1,6 @@
 import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/jetbrains-mono/index.css';
+import '@fontsource-variable/stack-sans-notch/index.css';
 import './tokens.css';
 import './landing.css';
 

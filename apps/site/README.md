@@ -2,15 +2,17 @@
 
 The site at [ntasks.notice.cx](https://ntasks.notice.cx): the landing page at
 `/`, and the Markdown in [`docs/`](../../docs/) rendered as the docs at
-`/docs/`, with search, a sidebar and light and dark themes. Both use the web
-app's colours and fonts.
+`/docs/`, with search, a sidebar and light and dark themes. Both take the look
+of [www.notice.cx](https://www.notice.cx), the Notice website this site
+belongs to: its paper palette in light, its night palette in dark, Inter, and
+the wordmark in Stack Sans Notch.
 
 | Path | Holds |
 |---|---|
 | `index.html`, `404.html`, `src/` | The landing page and the 404 page for addresses outside `/docs/`, built with Vite. The page's script runs the theme switch, the copy buttons and the walkthrough tabs; the page reads without it |
-| `.vitepress/` | The docs: [VitePress](https://vitepress.dev) reads `docs/` in place, with its default theme in the app's tokens |
+| `.vitepress/` | The docs: [VitePress](https://vitepress.dev) reads `docs/` in place, with its default theme in those colours and fonts |
 | `lib/` | The rules both builds share: how the docs' Markdown renders, the sidebar, the link check |
-| `src/tokens.css` | The app's colour tokens. `test/tokens.test.ts` fails when one differs from `apps/web/src/index.css` |
+| `src/tokens.css` | The colours and fonts both builds use, taken from www.notice.cx |
 | `public/` | `_headers` and `robots.txt`, copied into the build as they are |
 | `wrangler.jsonc` | The Cloudflare Worker that serves the build. It has no script, only the files |
 

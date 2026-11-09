@@ -1,51 +1,55 @@
 /*
-  The web app's colour and elevation tokens (apps/web/src/index.css), for the
-  landing page and the docs. test/tokens.test.ts fails when a value here
-  differs from the app's. docs/design.md gives each token's role.
+  The site's colours and type, in the look of www.notice.cx, the Notice
+  website this site belongs to. Light is that site's paper palette: warm
+  off-white, near-black ink and its signal blue. Dark is the night palette
+  the same site draws its dark bands in, with the brand's blue tint for links.
 
-  Light is the root's theme; `.dark` on <html> switches every token, as in
-  the app. The docs' theme switch and the landing page's both set it.
+  Light is the root's theme; `.dark` on <html> switches every token. The
+  docs' theme switch and the landing page's both set it.
 */
 
 :root {
   color-scheme: light;
-  --background: #ffffff;
-  --canvas: #f6f6f8;
-  --surface: #fafafb;
-  --hover: #f1f1f4;
-  --border: #e8e8ed;
-  --border-strong: #d4d4dc;
-  --ink: #17171c;
-  --ink-2: #474852;
-  --ink-3: #696b76;
-  --accent: #5552d4;
+  --background: #f5f3ed;
+  --canvas: #ece9e1;
+  --surface: #fbfaf6;
+  --hover: #ebe8df;
+  --border: #d9d7cd;
+  --border-strong: #c2bfb3;
+  --ink: #252720;
+  --ink-2: #5d6058;
+  --ink-3: #6b6e65;
+  --accent: #2745d4;
+  --accent-hover: #213bb8;
   --on-accent: #ffffff;
-  --accent-text: #4b48c9;
-  --accent-soft: #efeffc;
-  --shadow-raise: 0 1px 2px rgb(15 15 30 / 0.06);
-  --shadow-pop: 0 0 0 1px rgb(15 15 30 / 0.06), 0 4px 12px rgb(15 15 30 / 0.08), 0 16px 32px -8px rgb(15 15 30 / 0.12);
+  --accent-text: #2745d4;
+  --accent-soft: #e3e5f1;
+  --shadow-raise: 0 1px 0 rgb(77 68 43 / 0.08);
+  --shadow-pop: 0 1px 0 rgb(77 68 43 / 0.08), 0 24px 48px -24px rgb(47 41 29 / 0.28);
 
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+  --font-wordmark: 'Stack Sans Notch Variable', 'Inter Variable', sans-serif;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #111216;
-  --canvas: #0b0c0f;
-  --surface: #17181d;
-  --hover: #1d1e24;
-  --border: #25262d;
-  --border-strong: #363741;
-  --ink: #ededf1;
-  --ink-2: #b3b5bf;
-  --ink-3: #8a8d98;
-  --accent: #5e5ce6;
+  --background: #202622;
+  --canvas: #1a1f1c;
+  --surface: #272e29;
+  --hover: #2c342f;
+  --border: #343c36;
+  --border-strong: #4a534c;
+  --ink: #f5f3ed;
+  --ink-2: #d7dcd2;
+  --ink-3: #a9afa5;
+  --accent: #2745d4;
+  --accent-hover: #3550e0;
   --on-accent: #ffffff;
-  --accent-text: #9d9bff;
-  --accent-soft: #1f1f3a;
+  --accent-text: #b0b9ff;
+  --accent-soft: #2b3247;
   --shadow-raise: 0 0 0 1px rgb(255 255 255 / 0.04);
-  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.06), 0 24px 48px -24px rgb(0 0 0 / 0.6);
 }
 
 /* A picture drawn in each theme shows the one for the page's theme. */
