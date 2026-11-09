@@ -2163,6 +2163,97 @@ describe('request_human_approval', () => {
   });
 });
 
+describe('request_human_action', () => {
+  const STEPS = [
+    { text: 'On the demo host, update to the merged commit.', command: './update.sh --commit a1b2c3d4' },
+    { text: 'Open the demo and sign in.' },
+  ];
+  type Asked = { request: { id: string; status: string; title: string; steps: number }; created: boolean };
+  const ask = (project: string, id: string, extra: Record<string, unknown> = {}) =>
+    write<Asked>(target, 'request_human_action', {
+      project,
+      task: id,
+      title: 'Update the demo',
+      context: 'The demo still runs the old release.',
+      steps: STEPS,
+      ...extra,
+    });
+
+  it('opens a request the task waits on, with each step and its command stored apart, once', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const first = await ask(project.id, id);
+    expect(first).toMatchObject({
+      task: id,
+      request: { status: 'open', title: 'Update the demo', steps: 2 },
+      held: true,
+      created: true,
+    });
+    const gate = await current(project, first.request.id);
+    expect(gate).toMatchObject({
+      type: 'gate',
+      awaitType: 'human',
+      description: 'The demo still runs the old release.',
+    });
+    expect(gate.steps).toEqual([
+      { text: STEPS[0]!.text, command: STEPS[0]!.command, done: null, note: null, stuck: null },
+      { text: STEPS[1]!.text, command: null, done: null, note: null, stuck: null },
+    ]);
+    expect((await current(project, id)).ready).toBe(false);
+    const shown = await read<{ task: { steps: unknown[]; awaitingHuman: boolean } }>(target, 'get_task', {
+      project: project.id,
+      task: gate.id,
+    });
+    expect(shown.task).toMatchObject({ awaitingHuman: true, steps: gate.steps });
+
+    expect(await ask(project.id, id)).toMatchObject({ request: { id: first.request.id }, created: false });
+    const other = await ask(project.id, id, { steps: [STEPS[1]] });
+    expect(other).toMatchObject({ created: true });
+    expect((await current(project, id)).dependencies).toHaveLength(2);
+  });
+
+  it('leaves the request to the person: an agent cannot close it or answer it as an approval', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const { request } = await ask(project.id, id);
+    expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, task: request.id, reason: 'Done.' })).toMatch(
+      /^refused: .* is a human request/u,
+    );
+    expect(await refusal(target, 'close_task', { workspace: WORKSPACE.id, task: id, reason: 'Done.' })).toMatch(
+      new RegExp(`^refused: ${id} waits on ${request.id}, steps a person is asked to do`, 'u'),
+    );
+  });
+
+  it('advises moving a command out of a step’s text into its command, filing the request as asked', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const reply = await ask(project.id, id, { steps: [{ text: 'Run `./update.sh` on the host.' }, STEPS[1]] });
+    expect(reply).toMatchObject({ created: true, lint: { advice: [expect.stringMatching(/^steps\[0\]\.text: /u)] } });
+    expect((await ask(project.id, id)) as Record<string, unknown>).not.toHaveProperty('lint');
+  });
+
+  it('refuses steps that are missing, empty or carry an argument a step does not take', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    for (const [steps, at] of [
+      [[], 'steps'],
+      [[{ text: ' ' }], 'steps[0].text'],
+      [[{ text: 'Run it.', run: 'ls' }], 'steps[0].run'],
+    ] as const) {
+      const sentence = await refusal(target, 'request_human_action', {
+        workspace: WORKSPACE.id,
+        task: id,
+        title: 'Update the demo',
+        context: 'Why.',
+        steps,
+      });
+      expect(sentence.startsWith('invalid arguments: '), sentence).toBe(true);
+      expect(sentence).toContain(at);
+    }
+    expect((await current(project, id)).dependencies).toEqual([]);
+  });
+});
+
 describe('close_task', () => {
   it('closes with the reason, crediting the closer and model, and keeps the card it shipped with', async () => {
     const project = await newProject(engine);

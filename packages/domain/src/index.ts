@@ -1,5 +1,7 @@
 export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
+export { markedStep } from './steps.ts';
+export type { StepMarking } from './steps.ts';
 export {
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
@@ -38,6 +40,7 @@ export type {
   Json,
   JsonObject,
   Project,
+  StepMark,
   Task,
   TaskClose,
   TaskComment,
@@ -47,12 +50,14 @@ export type {
   TaskLink,
   TaskResolution,
   TaskStatus,
+  TaskStep,
   TaskType,
   TaskWork,
   WorkDetail,
 } from './task.ts';
 export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRefused } from './engine.ts';
 export type {
+  ActionRequest,
   Actor,
   ApprovalRequest,
   BoardQuery,
@@ -68,6 +73,7 @@ export type {
   LabelQuery,
   NewExternalLink,
   NewTaskLink,
+  NewTaskStep,
   OtherTaskWrite,
   Retry,
   TaskEngine,

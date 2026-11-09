@@ -1,7 +1,8 @@
 /**
  * The HTTP routes of a person's decisions: answering a task that waits on
- * them, picking one of its options, declining it, approving an approval and
- * disputing an approval an agent recorded for them. Each route and body has
+ * them, picking one of its options, declining it, approving an approval,
+ * ticking the steps of a request that they do steps, and disputing an
+ * approval an agent recorded for them. Each route and body has
  * the shape NoticeOS's Tasks API took (scripts/hosted-task-http.mts there),
  * and an answer may also name the `proposalVersion` the person's page showed.
  * owner-answers.ts holds the rules, and each decision is one write. Only a
@@ -9,10 +10,21 @@
  * Also the agent statistics read, GET /api/tasks/agent-stats.
  */
 import { TASK_LIMITS, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import { choiceArg, only, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
+import { booleanArg, choiceArg, only, projectArg, refuse, taskArg, textArg, type Args } from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { TASK_CHOICE_KEYS, TASK_CHOICE_LIMITS } from '../noticeos-fields.ts';
-import { ANSWERED, approve, choose, DISMISSED, dismiss, dispute, RESPONDED, respond, seen } from '../owner-answers.ts';
+import {
+  ANSWERED,
+  approve,
+  choose,
+  DISMISSED,
+  dismiss,
+  dispute,
+  markStep,
+  RESPONDED,
+  respond,
+  seen,
+} from '../owner-answers.ts';
 import type { WriteContext, Written } from '../task-writes.ts';
 import { PROPOSAL_VERSION, webTasks } from '../views.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
@@ -123,6 +135,35 @@ export async function resolveRoute(
   const projectId = projectArg(body, 'projectId', 'http');
   const reason = textArg(body, 'reason', TASK_LIMITS.reason, false);
   return decided(context, await approve(context, projectId, gateId, reason, retry(body), shownOf(body)));
+}
+
+/** A note or a reason that may be taken off: text, or null. Undefined when the body leaves it out. */
+function nullableText(body: Args, name: string): string | null | undefined {
+  return body[name] === null ? null : textArg(body, name, TASK_LIMITS.stepNote, false);
+}
+
+/** POST /api/gates/:id/steps: a person's marks on one step of a request that they do steps. */
+export async function stepRoute(context: WriteContext, url: URL, request: Request, gateId: string): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'step', { task: gateId });
+  only(body, ['projectId', 'step', 'done', 'note', 'stuck', 'proposalVersion']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  const step = body.step;
+  if (typeof step !== 'number' || !Number.isInteger(step) || step < 1 || step > TASK_LIMITS.steps)
+    refuse(`invalid arguments: step (the step's place in the request, from 1 to ${TASK_LIMITS.steps})`);
+  const done = booleanArg(body, 'done');
+  const note = nullableText(body, 'note');
+  const stuck = nullableText(body, 'stuck');
+  if (done === undefined && note === undefined && stuck === undefined)
+    refuse('invalid arguments: done, note or stuck (at least one)');
+  if (done === true && typeof stuck === 'string')
+    refuse('invalid arguments: stuck (a step is done or stuck, not both)');
+  const marking = {
+    step,
+    ...(done === undefined ? {} : { done }),
+    ...(note === undefined ? {} : { note }),
+    ...(stuck === undefined ? {} : { stuck }),
+  };
+  return decided(context, await markStep(context, projectId, gateId, marking, retry(body), shownOf(body)));
 }
 
 /** GET /api/tasks/agent-stats?project=…: agent statistics, of one project or every one the sender reaches. */

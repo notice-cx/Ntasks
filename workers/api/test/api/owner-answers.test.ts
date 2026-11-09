@@ -808,6 +808,56 @@ describe('relayed approvals and their disputes', () => {
   });
 });
 
+describe('requests to do steps', () => {
+  async function stepsGate() {
+    const project = await newProject(engine);
+    const { task: update } = await make(project, 'Update the demo', { labels: ['human'] });
+    const { created } = await engine.writeTask(
+      project.id,
+      update.id,
+      {
+        expectedVersion: update.version,
+        requestAction: {
+          title: 'Update the demo',
+          context: 'The demo still runs the old release.',
+          steps: [{ text: 'On the demo host, update to the merged commit.', command: './update.sh --commit a1b2c3d4' }],
+        },
+      },
+      ENGINE_OWNER,
+    );
+    return { project, update, gate: created[0]! };
+  }
+
+  it('closes on the owner’s report that they did the steps, and hands the waiting task back to agents', async () => {
+    const { project, update, gate } = await stepsGate();
+    const done = await answered(project, gate.id, { ...RELAY, action: 'owner_performed', quote: 'Ran it, all good.' });
+    expect(done).toMatchObject({ status: 'closed', resolution: 'done', answer: { option: 'done', relayed: true } });
+    expect(done.metadata.noticeos_maintenance!.permission).toBe('none');
+    expect(await current(project, update.id)).toMatchObject({ labels: [], ready: true });
+    expect((await current(project, gate.id)).steps!.map((step) => step.done)).toEqual([null]);
+  });
+
+  it('refuses an answer that approves it, writing nothing', async () => {
+    const { project, gate } = await stepsGate();
+    expect(await refusedWith(project, gate.id, { ...RELAY, quote: 'Yes.' })).toMatch(/^refused: action: /u);
+    expect(await current(project, gate.id)).toMatchObject({ status: 'open', version: 1 });
+  });
+
+  it('opens again on the owner’s dispute of a relayed report, for them to tick each step', async () => {
+    const { project, update, gate } = await stepsGate();
+    await answered(project, gate.id, { ...RELAY, action: 'owner_performed', quote: 'Done.' });
+    const disputed = await send(person, 'POST', `/api/tasks/${gate.id}/dispute`, { projectId: project.id });
+    expect(disputed.body.task).toMatchObject({ status: 'open' });
+    const ticked = await send(person, 'POST', `/api/gates/${gate.id}/steps`, {
+      projectId: project.id,
+      step: 1,
+      done: true,
+    });
+    expect(ticked.body.task).toMatchObject({ status: 'closed', closedBy: OWNER });
+    expect((await current(project, update.id)).ready).toBe(true);
+  });
+});
+
 describe('who records an owner answer', () => {
   it('records a service’s answer only as relayed by the service, which cannot answer as a person', async () => {
     const service: Principal = Object.freeze({
