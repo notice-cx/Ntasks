@@ -1,7 +1,7 @@
 // A task store holding a row of every kind: two projects, tasks of every type
 // and state with a child whose parent's id sorts after its own, every link
 // type, an external link, labels, comments, history, custom fields, a held
-// task's work details and a retry record. The backup and load tests share it.
+// task's work details, a request's steps and a retry record. The backup and load tests share it.
 import type { BackupRows, TaskRow } from '@ntasks/domain';
 
 export const ACME = 'a1111111-0000-4000-8000-00000000000a';
@@ -79,6 +79,30 @@ export const TASKS: TaskRow[] = [
     metadata: JSON.stringify({ noticeos_card: { usd: 100 } }),
   },
   { ...task, id: 'beta-g1', project_id: BETA, type: 'gate', await_type: 'human', title: 'Approve it' },
+  {
+    ...task,
+    id: 'beta-g2',
+    project_id: BETA,
+    type: 'gate',
+    await_type: 'human',
+    title: 'Update the host',
+    steps: JSON.stringify([
+      {
+        text: 'Run the update.',
+        command: './update.sh',
+        done: { by: 'owner', at: LATER },
+        note: { text: 'It took a minute.', by: 'owner', at: LATER },
+        stuck: null,
+      },
+      {
+        text: 'Sign in.',
+        command: null,
+        done: null,
+        note: null,
+        stuck: { reason: 'No password.', by: 'owner', at: LATER },
+      },
+    ]),
+  },
   {
     ...task,
     id: 'beta-r1',

@@ -17,7 +17,9 @@ import {
   TaskRefused,
   WORK_DETAILS,
   WORK_LIMITS,
+  type ActionRequest,
   type Actor,
+  type ApprovalRequest,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -30,9 +32,12 @@ import {
   type JsonObject,
   type NewExternalLink,
   type NewTaskLink,
+  type NewTaskStep,
   type Retry,
+  type StepMark,
   type TaskFieldChanges,
   type TaskResolution,
+  type TaskStep,
   type TaskWrite,
   type WorkDetail,
 } from '@ntasks/domain';
@@ -378,7 +383,7 @@ export interface CreateFields {
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
   readonly metadata: JsonObject;
-  readonly requestApproval: { reason: string } | null;
+  readonly requestApproval: CheckedApproval | null;
   readonly claim: boolean;
   /** A close as done the task is filed with. */
   readonly close: { reason: string; commit: string | null; pullRequest: string | null; link: string | null } | null;
@@ -453,8 +458,83 @@ function workDetails(value: unknown): Partial<Record<WorkDetail, string>> {
   return checked;
 }
 
-function approval(value: { reason: string } | undefined): { reason: string } {
-  return { reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) };
+/** An approval to open, checked; its title is null when the request leaves it to the reason's first line. */
+export interface CheckedApproval {
+  readonly reason: string;
+  readonly title: string | null;
+}
+
+function approval(value: ApprovalRequest | undefined): CheckedApproval {
+  return {
+    reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true),
+    title: value?.title === undefined ? null : line(value.title, 'requestApproval.title', TASK_LIMITS.title),
+  };
+}
+
+/** A request that a person do steps, checked: its steps carry no marks yet. */
+export interface CheckedAction {
+  readonly title: string;
+  readonly context: string;
+  readonly steps: TaskStep[];
+}
+
+function action(value: ActionRequest): CheckedAction {
+  if (value === null || typeof value !== 'object') invalid('requestAction must be an object');
+  const steps: unknown = value.steps;
+  if (!Array.isArray(steps) || steps.length < 1 || steps.length > TASK_LIMITS.steps)
+    invalid(`requestAction.steps must be a list of 1 to ${TASK_LIMITS.steps} steps`);
+  return {
+    title: line(value.title, 'requestAction.title', TASK_LIMITS.title),
+    context: text(value.context, 'requestAction.context', TASK_LIMITS.description),
+    steps: steps.map((step: unknown, index): TaskStep => {
+      const field = `requestAction.steps[${index}]`;
+      if (step === null || typeof step !== 'object' || Array.isArray(step)) invalid(`${field} must be an object`);
+      const { text: words, command } = step as NewTaskStep;
+      return {
+        text: text(words, `${field}.text`, TASK_LIMITS.stepText, true),
+        command: command === undefined ? null : text(command, `${field}.command`, TASK_LIMITS.stepCommand, true),
+        done: null,
+        note: null,
+        stuck: null,
+      };
+    }),
+  };
+}
+
+/** A mark on a step: who and when, and with `words` the text it carries; null for none. */
+function stepMark(value: unknown, field: string, words?: 'text' | 'reason'): Record<string, string> | null {
+  if (value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) invalid(`${field} must be an object or null`);
+  const given = value as Partial<StepMark> & Record<string, unknown>;
+  return {
+    by: text(given.by, `${field}.by`, TASK_LIMITS.actor, true),
+    ...(given.app === undefined ? {} : { app: text(given.app, `${field}.app`, TASK_LIMITS.actor, true) }),
+    at: instant(given.at, `${field}.at`),
+    ...(words === undefined ? {} : { [words]: text(given[words], `${field}.${words}`, TASK_LIMITS.stepNote, true) }),
+  };
+}
+
+/** A request's steps with a person's marks, as a write sets them. The engine
+ * checks they keep the text and commands the request was filed with. */
+function stepsWithMarks(value: unknown): TaskStep[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.steps)
+    invalid(`steps must be a list of 1 to ${TASK_LIMITS.steps} steps`);
+  return value.map((step: unknown, index): TaskStep => {
+    const field = `steps[${index}]`;
+    if (step === null || typeof step !== 'object' || Array.isArray(step)) invalid(`${field} must be an object`);
+    const given = step as Record<string, unknown>;
+    const done = stepMark(given.done, `${field}.done`) as StepMark | null;
+    const stuck = stepMark(given.stuck, `${field}.stuck`, 'reason') as TaskStep['stuck'];
+    // A step is to do, done or stuck: a tick clears a stuck mark and a stuck mark a tick.
+    if (done !== null && stuck !== null) invalid(`${field} is done or stuck, not both`);
+    return {
+      text: text(given.text, `${field}.text`, TASK_LIMITS.stepText, true),
+      command: given.command === null ? null : text(given.command, `${field}.command`, TASK_LIMITS.stepCommand, true),
+      done,
+      note: stepMark(given.note, `${field}.note`, 'text') as TaskStep['note'],
+      stuck,
+    };
+  });
 }
 
 export interface CheckedWrite {
@@ -469,7 +549,8 @@ export interface CheckedWrite {
   readonly removeExternalLinks: string[];
   /** Checked against the project's fields when the write is made. */
   readonly setFields: Record<string, unknown> | null;
-  readonly requestApproval: { reason: string } | null;
+  readonly requestApproval: CheckedApproval | null;
+  readonly requestAction: CheckedAction | null;
   readonly close: {
     reason: string;
     resolution: TaskResolution;
@@ -493,8 +574,8 @@ function otherWrites(value: unknown): CheckedWrite['others'] {
   const checked = value.map((entry: unknown, index) => {
     if (entry === null || typeof entry !== 'object') invalid(`others[${index}] must be an object`);
     const { taskId: id, ...change } = entry as TaskWrite & { readonly taskId?: unknown };
-    if (change.requestApproval !== undefined || change.others !== undefined)
-      invalid(`others[${index}] changes another task's fields, links or comments, and opens no approval`);
+    if (change.requestApproval !== undefined || change.requestAction !== undefined || change.others !== undefined)
+      invalid(`others[${index}] changes another task's fields, links or comments, and opens no request`);
     return { taskId: taskId(id, `others[${index}].taskId`), write: write(change) };
   });
   if (new Set(checked.map((other) => other.taskId)).size !== checked.length) invalid('others names each task once');
@@ -546,10 +627,13 @@ export function write(input: TaskWrite): CheckedWrite {
       ? {}
       : { choices: nullable(given.choices, (value) => jsonObject(value, 'choices')) }),
     ...(given.choice === undefined ? {} : { choice: nullable(given.choice, (value) => jsonObject(value, 'choice')) }),
+    ...(given.steps === undefined ? {} : { steps: stepsWithMarks(given.steps) }),
   };
   if (input.close !== undefined && input.reopen === true) invalid('a write closes or reopens a task, not both');
   const close = input.close === undefined ? null : closing(input.close);
   if (close !== null && set.status !== undefined) invalid('a write that closes a task does not also set its status');
+  if (input.requestApproval !== undefined && input.requestAction !== undefined)
+    invalid('a write opens one request: an approval or steps for a person to do');
   const metadata =
     input.metadata === undefined ? null : (jsonObject(input.metadata, 'metadata') as Record<string, Json | null>);
   const removeLinks: unknown = input.removeLinks ?? [];
@@ -576,6 +660,7 @@ export function write(input: TaskWrite): CheckedWrite {
     removeExternalLinks,
     setFields: input.setFields === undefined ? null : valuesObject(input.setFields, 'setFields.'),
     requestApproval: input.requestApproval === undefined ? null : approval(input.requestApproval),
+    requestAction: input.requestAction === undefined ? null : action(input.requestAction),
     close,
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),
@@ -592,6 +677,7 @@ export function write(input: TaskWrite): CheckedWrite {
     removeExternalLinks.length === 0 &&
     (checked.setFields === null || Object.keys(checked.setFields).length === 0) &&
     checked.requestApproval === null &&
+    checked.requestAction === null &&
     close === null &&
     !checked.reopen &&
     checked.comment === null;

@@ -13,7 +13,9 @@ the wordmark in Stack Sans Notch.
 | `.vitepress/` | The docs: [VitePress](https://vitepress.dev) reads `docs/` in place, with its default theme in those colours and fonts |
 | `lib/` | The rules both builds share: how the docs' Markdown renders, the sidebar, the link check |
 | `src/tokens.css` | The colours and fonts both builds use, taken from www.notice.cx |
-| `public/` | `_headers` and `robots.txt`, copied into the build as they are |
+| `public/` | Headers, robots rules, social cards and favicon fallbacks, copied into the build as they are |
+| `design/` | The editable social-card layout and [image/export notes](design/README.md) |
+| `lib/social.ts`, `lib/discovery.ts` | Shared link-preview and favicon metadata, structured data, and the generated `llms.txt` documentation directory |
 | `wrangler.jsonc` | The Cloudflare Worker that serves the build. It has no script, only the files |
 
 ## Commands
