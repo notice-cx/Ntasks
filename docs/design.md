@@ -116,7 +116,7 @@ never from a font service:
 The Worker's own pages (sign-in, agent approval, an expired link) are HTML
 the Worker writes, outside the app's build. They load Inter's Latin file
 from `/fonts/inter-latin-opsz-normal.woff2`, which the build copies from the
-same pinned package (`apps/web/server-fonts.config.ts`), and fall back to the
+same pinned package (`packages/ui/server-fonts.config.ts`), and fall back to the
 system's sans serif for other scripts. Their colours are copies of the tokens
 in `workers/api/src/access/page-look.ts`; `packages/ui/test/design.test.tsx`
 fails when one differs from `index.css`.

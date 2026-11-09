@@ -113,7 +113,7 @@ describe('a host page', () => {
 });
 
 describe("the app's addresses", () => {
-  it('put every page under the base path, however it is written', () => {
+  it('put every page under the base path, however it is written, and never at the site root', () => {
     for (const base of ['/tasks', 'tasks', '/tasks/']) {
       const paths = appPaths(base);
       expect([paths.board, paths.task('web-a1'), paths.focus, paths.settings]).toEqual([
@@ -123,7 +123,7 @@ describe("the app's addresses", () => {
         '/tasks/settings',
       ]);
     }
-    const root = appPaths('/');
-    expect([root.board, root.task('web-a1'), root.live]).toEqual(['/', '/web-a1', '/live']);
+    expect(appPaths('/tasks').isAppPage('/sign-in')).toBe(false);
+    for (const root of ['/', '']) expect(() => appPaths(root)).toThrow(/below the root/);
   });
 });

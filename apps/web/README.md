@@ -17,7 +17,7 @@ returns `index.html`, and the page shows the app.
 
 The Worker's own pages (sign-in, agent approval) load Inter from `/fonts/`,
 where the build copies the files they name from the pinned
-`@fontsource-variable/inter` package (`server-fonts.config.ts`).
+`@fontsource-variable/inter` package (`packages/ui/server-fonts.config.ts`).
 
 The app links to its source code, as AGPL-3.0 section 13 requires of a copy
 people use over a network. Keep that link in every version of the app.

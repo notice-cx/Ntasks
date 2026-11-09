@@ -1,10 +1,11 @@
 /**
  * The font files the Worker's own pages (sign-in, agent approval) load, as a
- * Vite plugin that vite.config.ts adds. The app's own fonts get hashed names
+ * Vite plugin: apps/web's build copies them, and this package's development
+ * server serves them, for the pictures tools/screenshots draws of those
+ * pages. The app's own fonts get hashed names
  * at each build, which a page the Worker writes cannot know, so the build
  * also copies each file those pages name to that exact address, from the
- * same pinned @fontsource package the app uses. The dev server serves them
- * at the same addresses.
+ * same pinned @fontsource package the app uses.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
