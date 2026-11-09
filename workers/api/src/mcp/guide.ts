@@ -11,15 +11,21 @@
  */
 import type { HeldTask } from '@ntasks/domain';
 import { shortHash } from '../short-hash.ts';
+import { TITLE_MOST } from './writing.ts';
 
 /** How to write a task that reads cold. */
 export const TASK_QUALITY: readonly string[] = Object.freeze([
-  'Writing a task: a stranger must be able to act on it without this conversation.',
-  '- title: the outcome, in plain language.',
-  '- description: plain labelled lines, unwrapped: WHAT, WHY with the numbers, WHERE as pointers that resolve in a repo (file paths, commits, doc sections), FIX. A bug also has a "## Steps to Reproduce" section.',
-  '- acceptance: the proof that completes it, provable the day the work lands. Never "watch for N days": close on today\'s proof and name where a recurrence would show.',
+  'Writing a task: a stranger must be able to act on it without this conversation. The web app shows descriptions, acceptance and comments as Markdown.',
+  `- title: the outcome, or for a person the ask, in plain words starting with a verb; at most ${TITLE_MOST} characters; no commands, file paths, commit hashes or steps.`,
+  "- description, in Markdown: a first line of one sentence saying what and why (for a person, the ask), then only the sections that apply. Work: ## Why, with the numbers; ## Where, as pointers that resolve in a repo (file paths, commits, doc sections); ## Fix. A bug also has ## Steps to Reproduce. Steps a person does: ## Your steps; ## What it changes; ## How we'll confirm. An approval, where an agent acts once allowed: ## What the agent will do; ## What it changes; ## How we'll confirm; ## If you decline.",
+  '- Headings say who acts, and never describe a pending action in the present tense as if it already happens.',
+  '- What it changes: each line starts with a bold label naming what it measures, such as **Downtime:**, **Your time:**, **Cost:**, **Download:**, **Risk:** or **Undo:**, then the value with its unit and who or what it applies to: "**Downtime:** visitors can\'t reach the site for about 2 minutes". Never a bare number or duration.',
+  '- Every command, query, request or snippet a person might run or paste goes in its own fenced block with a language tag (bash, sql, json…): one command per block, with no $ prompt and no output; a multi-line command stays one block. Inline backticks are only for names that are not run: file paths, identifiers, settings.',
+  '- In a description: steps as a numbered list, one action each; links with readable labels, pull requests as owner/repo#123; numbers with units; paragraphs of at most 3 sentences; bullets for 3 or more items; no internal shorthand.',
+  '- acceptance: a short checklist of observable facts, provable the day the work lands. Never "watch for N days": close on today\'s proof and name where a recurrence would show.',
+  '- An approval: request_human_approval with title, the action to approve, and a description in the approval sections above, with the exact commands under ## What the agent will do.',
   '- Implementation evidence cites the repo, commits and tests, never a session summary or temporary file. An existing owner answer cites its task comment or explicitly linked conversation, with the exact proposal and scope.',
-  "- Work only a person can do (a decision, a credential, an admin step) carries the human label and is written for that person: the ask as the description's first line, technical notes last. When the person picks between options, pass them as choices: a question and two to six options keyed a, b, c… in order, each a one-line label with an optional detail, exactly one marked recommended. The web app shows one button per option. A step that must wait for approval uses request_human_approval.",
+  "- Work only a person can do (a decision, a credential, an admin step) carries the human label and is written for that person: the ask as the description's first line, technical notes last. When the person picks between options, pass them as choices: a question and two to six options keyed a, b, c… in order, each a one-line label with an optional detail, exactly one marked recommended. The web app shows one button per option.",
   '- Too big for one working session: an epic with session-sized children. Three or more related tasks share an epic. depends_on only for a real blocking edge; related for the rest. Work waiting on a date is deferred with the reason.',
   '- Found work, including debt (two copies of one rule, a hardcoded value with a canonical source, half-done work), is a task, never a TODO comment, a list in a doc or a memory note. Claim before you build; close with the commit, pull request or link that proves it.',
   '- create_task answers possibleDuplicates: open tasks in its project whose titles share most of its words. Work already filed gets a comment, never a second task; of two tasks filed for one piece of work, close the later as duplicate with duplicate_of.',
@@ -30,9 +36,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-07: workspace is optional when you reach only one; a tool that names a task needs no project, and project takes a key or prefix too; idempotency_key and model are optional on every tool. A write answers with the task id, its version and what changed (detail: "full" for the whole task). A refusal names the task and the argument at fault, and ends by saying whether a retry is safe.',
   '2026-11-07: reconcile_task records an owner’s answer as the option they chose on the proposal_version get_task returned, with their exact words as quote and where they said it as source; nothing reads the quote, and an answer to an older version is refused.',
   '2026-11-07: one call each. create_task takes claim and done, and answers possibleDuplicates; create_tasks files the rest when one is refused, and #n names any task of the call. claim_task takes pr in place of task. close_task takes tasks, with_children and link, and lists unblocked; comment_on_task and get_task take tasks. link_tasks replaces add_dependency and remove_dependency. A task done without commit, pr or link shows proof: none. The instructions list the tasks you hold.',
+  `2026-11-09: new rules for writing a task: a title of at most ${TITLE_MOST} characters with no commands, paths or hashes, and a Markdown description with a one-sentence first line and only the sections that apply. request_human_approval takes title and description; reason still works. Lint on create and update advises on a title that breaks the rule, and on a command written inline in a description.`,
 ]);
 
 /** How a session starts. */

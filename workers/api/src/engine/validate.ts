@@ -18,6 +18,7 @@ import {
   WORK_DETAILS,
   WORK_LIMITS,
   type Actor,
+  type ApprovalRequest,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -378,7 +379,7 @@ export interface CreateFields {
   readonly dueAt: string | null;
   readonly choices: JsonObject | null;
   readonly metadata: JsonObject;
-  readonly requestApproval: { reason: string } | null;
+  readonly requestApproval: CheckedApproval | null;
   readonly claim: boolean;
   /** A close as done the task is filed with. */
   readonly close: { reason: string; commit: string | null; pullRequest: string | null; link: string | null } | null;
@@ -453,8 +454,17 @@ function workDetails(value: unknown): Partial<Record<WorkDetail, string>> {
   return checked;
 }
 
-function approval(value: { reason: string } | undefined): { reason: string } {
-  return { reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true) };
+/** An approval to open, checked; its title is null when the request leaves it to the reason's first line. */
+export interface CheckedApproval {
+  readonly reason: string;
+  readonly title: string | null;
+}
+
+function approval(value: ApprovalRequest | undefined): CheckedApproval {
+  return {
+    reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true),
+    title: value?.title === undefined ? null : line(value.title, 'requestApproval.title', TASK_LIMITS.title),
+  };
 }
 
 export interface CheckedWrite {
@@ -469,7 +479,7 @@ export interface CheckedWrite {
   readonly removeExternalLinks: string[];
   /** Checked against the project's fields when the write is made. */
   readonly setFields: Record<string, unknown> | null;
-  readonly requestApproval: { reason: string } | null;
+  readonly requestApproval: CheckedApproval | null;
   readonly close: {
     reason: string;
     resolution: TaskResolution;

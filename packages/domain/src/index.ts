@@ -54,6 +54,7 @@ export type {
 export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRefused } from './engine.ts';
 export type {
   Actor,
+  ApprovalRequest,
   BoardQuery,
   ChangePage,
   CommentResult,
