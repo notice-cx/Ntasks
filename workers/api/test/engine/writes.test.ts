@@ -650,6 +650,9 @@ describe('a request that a person do steps', () => {
       marks.map((step, index) => (index === 1 ? { ...step, text: 'Sign out.' } : step)),
       marks.map((step, index) => (index === 0 ? { ...step, command: 'rm -rf /' } : step)),
       marks.slice(0, 1),
+      marks.map((step, index) =>
+        index === 0 ? { ...step, stuck: { by: OWNER.name, at: '2026-11-06T12:00:00.000Z', reason: 'Stopped.' } } : step,
+      ),
     ]) {
       await expectRefusal(
         tasks.writeTask(project.id, gate.id, { expectedVersion: 2, set: { steps: changed } }, AGENT),
