@@ -30,10 +30,17 @@ const read = (name: string): string => readFileSync(join(SPEC, name), 'utf8');
 const FAILS: Readonly<Record<Defect, readonly string[]>> = {
   'two-claims-win': ['inv-1-one-claim-wins'],
   'retries-repeat': ['inv-3-retry-answers-once', 'inv-3-key-reuse-refused'],
-  'stale-answers-accepted': ['auth-3-stale-proposal-refused'],
-  'agents-decide': ['auth-1-only-a-person-answers'],
+  'stale-answers-accepted': [
+    'auth-3-stale-proposal-refused',
+    'state-15-refuses-an-unknown-criterion-or-an-old-proposal',
+  ],
+  'agents-decide': ['auth-1-only-a-person-answers', 'auth-11-only-a-person-accepts'],
   'relays-unmarked': ['auth-3-relayed-answer-recorded-as-relayed'],
-  'disputes-refused': ['auth-5-dispute-reopens-a-relayed-approval', 'state-14-relayed-report-can-be-disputed'],
+  'disputes-refused': [
+    'auth-5-dispute-reopens-a-relayed-approval',
+    'state-14-relayed-report-can-be-disputed',
+    'auth-11-dispute-reopens-a-relayed-acceptance',
+  ],
   'proof-dropped': [
     'inv-7-done-carries-proof',
     'inv-9-reopen-keeps-earlier-close',

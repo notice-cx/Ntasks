@@ -128,9 +128,8 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
   ): Promise<{ status: number; type: string; text: string }> => {
     const route = path.slice(httpPath.length).split('?')[0] ?? '';
     const json = body === undefined || body === '' ? null : (JSON.parse(body) as Json);
-    const decision = /^\/(?:tasks\/[^/]+\/(?:choose|respond|dismiss|dispute)|gates\/[^/]+\/(?:resolve|steps))$/u.test(
-      route,
-    );
+    const decision =
+      /^\/(?:tasks\/[^/]+\/(?:choose|respond|dismiss|dispute|accept)|gates\/[^/]+\/(?:resolve|steps))$/u.test(route);
     if (defect === 'disputes-refused' && /\/dispute$/u.test(route))
       return {
         status: 409,
@@ -145,7 +144,16 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     if (defect === 'retries-repeat' && headers['idempotency-key'] !== undefined)
       headers['idempotency-key'] = `broken-${randomBytes(8).toString('hex')}`;
     if (json !== null) {
-      if (defect === 'stale-answers-accepted' && decision) delete json.proposalVersion;
+      if (defect === 'stale-answers-accepted' && decision && json.proposalVersion !== undefined) {
+        const task = route.split('/')[2] ?? '';
+        const current = await forward(
+          'GET',
+          `${httpPath}/tasks/${task}?project=${encodeURIComponent(String(json.projectId))}`,
+          headers,
+          undefined,
+        );
+        json.proposalVersion = (JSON.parse(current.text) as { proposalVersion?: unknown }).proposalVersion;
+      }
       if (defect === 'proof-dropped' && /\/close$/u.test(route) && (json.resolution ?? 'done') === 'done')
         for (const proof of ['commit', 'pullRequest', 'link']) delete json[proof];
     }

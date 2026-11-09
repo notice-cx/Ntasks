@@ -130,6 +130,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
             projectId: task.project ?? target.projects.main,
             title: task.title,
             description: task.description,
+            acceptance: task.acceptance,
             type: task.type,
             labels: task.labels,
             parent: task.parent,
@@ -246,12 +247,17 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
               ? [`/tasks/${id}/dismiss`, { reason: decision.reason, resolution: decision.resolution }]
               : decision.kind === 'approve'
                 ? [`/gates/${id}/resolve`, { reason: decision.reason, proposalVersion: decision.proposalVersion }]
-                : decision.kind === 'step'
+                : decision.kind === 'accept'
                   ? [
-                      `/gates/${id}/steps`,
-                      { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
+                      `/tasks/${id}/accept`,
+                      { met: decision.met, proposalVersion: decision.proposalVersion, reason: decision.reason },
                     ]
-                  : [`/tasks/${id}/dispute`, {}];
+                  : decision.kind === 'step'
+                    ? [
+                        `/gates/${id}/steps`,
+                        { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
+                      ]
+                    : [`/tasks/${id}/dispute`, {}];
       return map(send('POST', path, { body: { projectId: project, ...body }, ...options }), (value) =>
         taskOf(value.task as Record<string, unknown>),
       );

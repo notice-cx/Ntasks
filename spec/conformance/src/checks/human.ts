@@ -86,6 +86,37 @@ async function withSteps(context: Context): Promise<{ task: string; request: str
   return { task, request: asked.request };
 }
 
+const CRITERIA = '- The new page is live.\n- An accountant confirms the tax treatment.\n- The docs say how to give.';
+const CRITERION_TEXTS = [
+  'The new page is live.',
+  'An accountant confirms the tax treatment.',
+  'The docs say how to give.',
+];
+
+/** Accepts as done through the binding under test: the person over HTTP, a relayed acceptance over MCP. */
+async function acceptUnderTest(
+  context: Context,
+  task: string,
+  met: readonly number[],
+  proposalVersion?: string,
+): Promise<Outcome<unknown>> {
+  const shown = proposalVersion ?? (await proposalOf(context, task));
+  if (context.binding === 'http')
+    return asPerson(context).decide(task, {
+      kind: 'accept',
+      met,
+      proposalVersion: shown,
+      reason: 'I accept the tax risk.',
+    });
+  return context.api().relay(task, {
+    action: 'accepted',
+    met,
+    proposalVersion: shown,
+    quote: 'Close it. I accept the tax risk.',
+    source: source(),
+  });
+}
+
 async function decision(context: Context, labels: readonly string[] = ['human']): Promise<string> {
   return file(context, { type: 'decision', labels, choices: CHOICES });
 }
@@ -433,6 +464,201 @@ export const human: readonly Check[] = [
       );
       answered(await asPerson(context).decide(request, { kind: 'dispute' }), `disputing ${request}`);
       same((await taskOf(context.api(), request)).status, 'open', `${request}'s status after the dispute`);
+    },
+  },
+  {
+    id: 'state-15-acceptance-records-each-criterion',
+    rule: 'STATE-15',
+    level: 'human',
+    title:
+      'An acceptance as done closes the task, recording each criterion as met or waived, even when someone else holds it',
+    async run(context) {
+      const id = await file(context, { acceptance: CRITERIA }, 'otherAgent');
+      answered(await context.setup('otherAgent').claim(id), `another agent claiming ${id}`);
+      answered(await acceptUnderTest(context, id, [3, 1]), `accepting ${id} as done`);
+      const task = await taskOf(context.api(), id);
+      same([task.status, task.resolution], ['closed', 'done'], `${id}'s status and resolution`);
+      same(
+        task.closeAcceptance?.criteria,
+        [
+          { text: CRITERION_TEXTS[0], met: true },
+          { text: CRITERION_TEXTS[1], met: false },
+          { text: CRITERION_TEXTS[2], met: true },
+        ],
+        `${id}'s criteria, met and waived`,
+      );
+      expect(typeof task.closeAcceptance?.by === 'string', `${id}'s acceptance names nobody as having accepted it`);
+      expect(task.proof !== 'none', `${id}, accepted as done, is marked proof: none`);
+      same([task.delivery ?? null, task.closeLink ?? null], [null, null], `${id}'s delivery and close link`);
+    },
+  },
+  {
+    id: 'state-15-refuses-an-unknown-criterion-or-an-old-proposal',
+    rule: 'STATE-15',
+    level: 'human',
+    title: 'An acceptance naming a criterion the task lacks, or a proposal version older than the task, is refused',
+    async run(context) {
+      const id = await file(context, { acceptance: CRITERIA });
+      const old = await proposalOf(context, id);
+      const before = await snapshot(context.api(), id);
+      refused(await acceptUnderTest(context, id, [4]), `accepting ${id} with a criterion it lacks`);
+      await unchanged(context.api(), id, before, 'the refused acceptance');
+      answered(await context.setup().update(id, { description: 'Changed after the person read it.' }), 'editing');
+      const edited = await snapshot(context.api(), id);
+      refused(await acceptUnderTest(context, id, [1], old), `accepting ${id} as it stood before the edit`);
+      await unchanged(context.api(), id, edited, 'the refused acceptance of the old proposal');
+    },
+  },
+  {
+    id: 'state-15-refused-where-it-does-not-apply',
+    rule: 'STATE-15',
+    level: 'human',
+    title:
+      'An acceptance is refused on a closed task, an approval, a request to do steps, a task waiting on an approval and a parent with open children',
+    async run(context) {
+      const closed = await file(context, { acceptance: CRITERIA });
+      answered(await context.setup().close(closed, { reason: 'Dropped', resolution: 'wont-do' }), 'closing');
+      const { task: waiting, gate } = await withApproval(context);
+      const { request } = await withSteps(context);
+      const parent = await file(context, { type: 'epic', acceptance: CRITERIA });
+      await file(context, { parent });
+      for (const [id, what] of [
+        [closed, 'a closed task'],
+        [gate, 'an approval'],
+        [request, 'a request to do steps'],
+        [waiting, 'a task waiting on an open approval'],
+        [parent, 'a parent with an open child'],
+      ] as const) {
+        const before = await snapshot(context.api(), id);
+        refused(await acceptUnderTest(context, id, []), `accepting ${what}, ${id}`);
+        await unchanged(context.api(), id, before, `the refused acceptance of ${what}`);
+      }
+    },
+  },
+  {
+    id: 'auth-11-only-a-person-accepts',
+    rule: 'AUTH-11',
+    level: 'human',
+    title: 'An acceptance as done sent directly by an agent or a service is refused and changes nothing',
+    senders: ['service'],
+    async run(context) {
+      const id = await file(context, { acceptance: CRITERIA });
+      const proposalVersion = await proposalOf(context, id);
+      for (const role of ['agent', 'service'] as const) {
+        const before = await snapshot(context.setup(), id);
+        refused(
+          await context.api(role).decide(id, { kind: 'accept', met: [1], proposalVersion }),
+          `the ${role} accepting ${id} as done directly`,
+        );
+        await unchanged(context.setup(), id, before, `the ${role}'s refused acceptance`);
+      }
+    },
+  },
+  {
+    id: 'auth-11-agent-close-waives-nothing',
+    rule: 'AUTH-11',
+    level: 'human',
+    title: "An agent's close as done records no criterion as waived; it names its proof",
+    async run(context) {
+      const id = await file(context, { acceptance: CRITERIA });
+      answered(await context.api().close(id, { reason: 'Shipped', link: 'https://example.com/shipped' }), 'closing');
+      same(
+        (await taskOf(context.api(), id)).closeAcceptance ?? null,
+        null,
+        `${id}'s acceptance after an agent's close`,
+      );
+    },
+  },
+  {
+    id: 'auth-11-relayed-acceptance-names-the-relay',
+    rule: 'AUTH-11',
+    level: 'human',
+    title:
+      'A relayed acceptance records the person as accepting it and the sender as relaying it; one from a service is refused',
+    senders: ['service'],
+    async run(context) {
+      const id = await file(context, { acceptance: CRITERIA });
+      const relay = {
+        action: 'accepted',
+        met: [1],
+        proposalVersion: await proposalOf(context, id),
+        quote: 'Close it. I accept the tax risk.',
+        source: source(),
+      } as const;
+      const other = await file(context, { acceptance: CRITERIA });
+      const before = await snapshot(context.api(), other);
+      refused(
+        await context.api('service').relay(other, { ...relay, proposalVersion: await proposalOf(context, other) }),
+        'a service relaying an acceptance',
+      );
+      await unchanged(context.api(), other, before, "the service's refused relay");
+      answered(await context.api().relay(id, relay), 'the agent relaying an acceptance');
+      const accepted = (await taskOf(context.api(), id)).closeAcceptance;
+      const agent = await actorOf(context, 'agent');
+      same(
+        [accepted?.relayed?.by, accepted?.relayed?.source, accepted?.relayed?.quote],
+        [agent, relay.source, relay.quote],
+        `who relayed ${id}'s acceptance, from where, and the person's words`,
+      );
+      expect(
+        typeof accepted?.by === 'string' && accepted.by !== agent,
+        `${id}'s acceptance names ${accepted?.by}, not the person, as having accepted it`,
+      );
+    },
+  },
+  {
+    id: 'auth-11-dispute-reopens-a-relayed-acceptance',
+    rule: 'AUTH-11',
+    level: 'human',
+    title:
+      'Disputing a relayed acceptance opens the task again, tells the waiting task, refuses the same source, and changes nothing a second time',
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const id = await file(context, { acceptance: CRITERIA });
+      const waiting = await file(context, { dependsOn: [id] });
+      const from = source();
+      const relay = { action: 'accepted', met: [1], quote: 'Close it.', source: from } as const;
+      answered(
+        await context.setup().relay(id, { ...relay, proposalVersion: await proposalOf(context, id) }),
+        'relaying an acceptance',
+      );
+      const comments = answered(await context.setup().read(waiting), 'reading').comments.length;
+      answered(await person.decide(id, { kind: 'dispute' }), `disputing ${id}'s acceptance`);
+      const reopened = await taskOf(context.api(), id);
+      same(reopened.status, 'open', `${id}'s status after the dispute`);
+      same(reopened.closeAcceptance ?? null, null, `${id}'s acceptance after the dispute`);
+      expect(
+        JSON.stringify(answered(await context.api().history(id), 'reading history')).includes(relay.quote),
+        `${id}'s history no longer holds the disputed close`,
+      );
+      const told = answered(await context.api().read(waiting), 'reading').comments.length;
+      expect(told > comments, `${waiting}, which waits on ${id}, was not told of the dispute`);
+      refused(
+        await context.setup().relay(id, { ...relay, proposalVersion: await proposalOf(context, id) }),
+        'an acceptance relayed again from the disputed source',
+      );
+      const before = await snapshot(context.api(), waiting);
+      await person.decide(id, { kind: 'dispute' });
+      await unchanged(context.api(), waiting, before, 'the second dispute');
+    },
+  },
+  {
+    id: 'auth-11-own-acceptance-not-disputable',
+    rule: 'AUTH-11',
+    level: 'human',
+    title: "A person's own acceptance as done cannot be disputed",
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const id = await file(context, { acceptance: CRITERIA });
+      answered(
+        await person.decide(id, { kind: 'accept', met: [1, 2, 3], proposalVersion: await proposalOf(context, id) }),
+        `accepting ${id}`,
+      );
+      const before = await snapshot(context.api(), id);
+      refused(await person.decide(id, { kind: 'dispute' }), `disputing the person's own acceptance of ${id}`);
+      await unchanged(context.api(), id, before, 'the refused dispute');
     },
   },
   {

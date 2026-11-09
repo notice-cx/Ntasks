@@ -87,7 +87,15 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly createdAt?: string;
   readonly duplicateOf?: string | null;
   readonly steps?: readonly Step[] | null;
+  readonly closeAcceptance?: Acceptance | null;
 };
+
+/** A close as done on a person's call: each criterion met or waived, and who passed it on. */
+export interface Acceptance {
+  readonly by: string;
+  readonly relayed?: { readonly by: string; readonly source: string; readonly quote: string } | null;
+  readonly criteria: readonly { readonly text: string; readonly met: boolean }[];
+}
 
 /** One step of a request to do steps, with the person's marks on it. */
 export interface Step {
@@ -177,6 +185,8 @@ export interface NewTask {
   readonly project?: string;
   readonly title: string;
   readonly description?: string;
+  /** What proves it done; each list item or line is a criterion. */
+  readonly acceptance?: string;
   readonly type?: string;
   readonly labels?: readonly string[];
   readonly parent?: string;
@@ -224,8 +234,11 @@ export interface Relay {
     | 'superseded'
     | 'duplicate'
     | 'routine'
-    | 'release';
+    | 'release'
+    | 'accepted';
   readonly proposalVersion: string;
+  /** With `accepted`: the numbers of the criteria the person found met. */
+  readonly met?: readonly number[];
   readonly option?: string;
   readonly quote?: string;
   readonly source?: string;
@@ -245,6 +258,13 @@ export type Decision =
   | { readonly kind: 'dismiss'; readonly reason?: string; readonly resolution?: string }
   | { readonly kind: 'approve'; readonly reason?: string; readonly proposalVersion?: string }
   | { readonly kind: 'dispute' }
+  | {
+      readonly kind: 'accept';
+      /** The numbers of the criteria the person found met, from 1. */
+      readonly met: readonly number[];
+      readonly proposalVersion?: string;
+      readonly reason?: string;
+    }
   | {
       readonly kind: 'step';
       /** The step's place, from 1. */
