@@ -5,7 +5,7 @@
  * so both apps rank and word the same tasks the same way.
  */
 import { TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices } from '../api/types';
+import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices, TaskStep } from '../api/types';
 
 export const IN_PROGRESS = 'in_progress';
 /** The stored status the pages call Parked. */
@@ -83,7 +83,7 @@ export function isGate(task: Pick<LiveTask, 'issueType'> & { awaitType?: string 
 }
 
 type AskFacts = Pick<LiveTask, 'issueType' | 'status' | 'labels' | 'ready' | 'awaitType'> &
-  Pick<Partial<LiveTask>, 'choices' | 'choice'>;
+  Pick<Partial<LiveTask>, 'choices' | 'choice' | 'steps'>;
 
 /**
  * Whether a task waits on a person: an open approval a person answers, or a
@@ -96,12 +96,17 @@ export function waitsOnPerson(task: AskFacts): boolean {
   return (task.choice ?? null) === null && task.issueType !== 'epic' && task.labels.includes('human') && task.ready;
 }
 
-/** What a task waiting on a person asks of them. */
-export type InboxAsk = 'approve' | 'answer' | 'choose';
+/** What a task waiting on a person asks of them: an approval, an answer, a pick of an option, or steps to do. */
+export type InboxAsk = 'approve' | 'answer' | 'choose' | 'do';
 
-export function askVerb(task: Pick<AskFacts, 'issueType' | 'awaitType' | 'choices' | 'choice'>): InboxAsk {
-  if (isGate(task)) return 'approve';
+export function askVerb(task: Pick<AskFacts, 'issueType' | 'awaitType' | 'choices' | 'choice' | 'steps'>): InboxAsk {
+  if (isGate(task)) return (task.steps ?? null) === null ? 'approve' : 'do';
   return (task.choices ?? null) !== null && (task.choice ?? null) === null ? 'choose' : 'answer';
+}
+
+/** How many of a request's steps are ticked. */
+export function stepsDone(steps: readonly Pick<TaskStep, 'done'>[]): number {
+  return steps.filter((step) => step.done !== null).length;
 }
 
 export function inboxAsk(task: AskFacts): InboxAsk | null {
