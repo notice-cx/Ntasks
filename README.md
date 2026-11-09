@@ -1,40 +1,59 @@
-# Ntasks
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+    <img src="docs/images/logo-light.svg" height="56" alt="">
+  </picture>
+</p>
 
-**One task list for you and your AI agents.**
+<h1 align="center">Ntasks</h1>
 
-[![CI](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
+<p align="center">
+  <strong>One task list for you and your AI agents.</strong>
+</p>
 
-Ntasks is a task list that people and AI coding agents share. Agents connect
-over MCP to pick up tasks that nothing blocks, record their progress and close
-each task with proof. People use the web app to see who works on what and to
-answer what needs them. It runs on your own Cloudflare account, within
-[the free plan](docs/architecture.md#the-free-plan-budget).
+<p align="center">
+  <a href="https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml"><img src="https://github.com/notice-cx/Ntasks/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue.svg" alt="License: AGPL v3"></a>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-  <img src="docs/images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
-</picture>
+<p align="center">
+  <a href="#get-started">Get started</a> ·
+  <a href="#connect-an-agent">Connect an agent</a> ·
+  <a href="docs/why-ntasks.md">Why Ntasks</a> ·
+  <a href="#learn-more">Docs</a>
+</p>
+
+Ntasks is a task list that people and AI coding agents share. Your agents
+pick up work, report progress and close each task with proof, while you see
+who's working on what and answer whatever needs you.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.webp">
+    <img src="docs/images/hero-light.webp" width="840" alt="The Ntasks board: Waiting for you lists an approval with an Approve button, two decisions with their options and a task with an Answer button; below it are two tasks in progress, one of them worked on by a helper agent, and four open tasks.">
+  </picture>
+</p>
 
 ## What it solves
 
-- **Agents lose track of work between sessions.** Each task keeps its branch,
-  pull request and next step, and an agent that connects is told which tasks
-  it holds.
-- **"Done" that isn't done.** A closed task shows its proof (a commit, a pull
-  request or a link) and whether the change is built, merged or live.
-- **Nobody can see what each agent is doing.** Every task shows who holds it,
-  the helper agent doing the work and its last activity.
-- **Decisions and reviews get lost.** Waiting for you lists the decisions and
-  approvals that need you and the work waiting to merge or deploy. You answer
-  a decision with one button, on the exact proposal you saw.
-- **Task tools cost setup time and agent context.** Nothing to install in your
-  repositories. Agents claim, comment on and close work in one call each, with
-  short replies.
+- **Agents forget where they left off.** Each task keeps its branch, pull
+  request and next step, and a reconnecting agent is told what it holds.
+- **"Done" isn't always done.** A closed task shows its proof, and whether the
+  change is built, merged or live.
+- **It's hard to see what each agent is doing.** Every task shows who holds
+  it, the helper agent working on it and when it last moved.
+- **Decisions get lost in chat.** Waiting for you lists every decision and
+  approval that needs you, and the changes waiting to ship. Each decision
+  takes one click.
+- **Task tools slow agents down.** There's nothing to install in your
+  repositories, and claiming, commenting and closing take one call each.
 
-[Why Ntasks](docs/why-ntasks.md) lists the public reports behind each one.
+[Why Ntasks](docs/why-ntasks.md) has the public reports behind each one.
 
 ## Get started
+
+Ntasks runs on your own Cloudflare account, within
+[the free plan](docs/architecture.md#the-free-plan-budget).
 
 1. **Deploy** to your Cloudflare account:
 
@@ -49,50 +68,48 @@ answer what needs them. It runs on your own Cloudflare account, within
 3. **Create a workspace and a project**, and invite people by GitHub
    username.
 
-[Deploy and run Ntasks](docs/deploy.md) covers deploying from a checkout,
-updating a deployment and running Ntasks on your machine.
+To deploy from a checkout, update a deployment or run Ntasks on your machine,
+see [Deploy and run Ntasks](docs/deploy.md).
 
 ## Connect an agent
 
-On each machine your agents run on:
+Run this on each machine your agents use:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash
 ```
 
 It asks for your Ntasks address and which agents to set up, connects Claude
-Code, Codex CLI or Gemini CLI over MCP, and installs the Ntasks skill, which
-has the agent track its work in Ntasks. Any other MCP client connects to
-`https://<your address>/api/mcp`; [Connect an agent](docs/agents.md) has the
-steps for each.
+Code, Codex CLI or Gemini CLI over MCP, and installs the Ntasks skill so each
+agent keeps its work in Ntasks. Other MCP clients connect to
+`https://<your address>/api/mcp`, as [Connect an agent](docs/agents.md)
+describes.
 
 ## Learn more
 
 - [Why Ntasks](docs/why-ntasks.md): the problems, with their sources.
-- [Concepts](docs/concepts.md): projects, tasks, dependencies, ready work,
-  claims, decisions and approvals, and how Ntasks differs from
-  [Beads](docs/concepts.md#ntasks-and-beads).
-- [The web app](docs/web-app.md): each page, and animated walkthroughs of its
-  features.
+- [Concepts](docs/concepts.md): projects, tasks, dependencies, claims,
+  decisions and approvals, and how Ntasks differs from Beads.
+- [The web app](docs/web-app.md): every page, with animated walkthroughs.
 - [Deploy and run Ntasks](docs/deploy.md): deploying, the first run and local
   development.
-- [Connect an agent](docs/agents.md): the setup command, each agent by hand,
+- [Connect an agent](docs/agents.md): the setup command, each agent by hand
   and the Ntasks skill.
-- [Architecture](docs/architecture.md), [the API](docs/api.md),
-  [sign-in](docs/sign-in.md), [the task store](docs/task-store.md) and
-  [the design system](docs/design.md), for contributors.
+- For contributors: [architecture](docs/architecture.md),
+  [the API](docs/api.md), [sign-in](docs/sign-in.md),
+  [the task store](docs/task-store.md) and
+  [the design system](docs/design.md).
 
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the checks to run and the
-pull request process. Report vulnerabilities privately through
-[SECURITY.md](SECURITY.md).
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup,
+the checks to run and the pull request process. Please report
+vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 
-Copyright © 2026 Reindex Ventures LLC.
-
-[GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`).
-See [third-party notices](THIRD_PARTY_NOTICES.md) for the work Ntasks builds
-on. Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of
+Copyright © 2026 Reindex Ventures LLC. Ntasks is licensed under the
+[GNU Affero General Public License, version 3](LICENSE) (`AGPL-3.0-only`);
+see [third-party notices](THIRD_PARTY_NOTICES.md) for the work it builds on.
+Claude is a trademark of Anthropic. OpenAI and Codex are trademarks of
 OpenAI. Gemini is a trademark of Google LLC.

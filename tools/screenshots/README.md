@@ -8,7 +8,7 @@ its features in [The web app](../../docs/web-app.md#walkthroughs).
 
 ```sh
 pnpm screenshots          # every still picture
-pnpm screenshots design   # only the ones named: board, task, focus, phone, sign-in, agent-access, design
+pnpm screenshots design   # only the ones named: hero, board, task, focus, phone, sign-in, agent-access, design
 ```
 
 Run it from the repository root after a change to a page the pictures show.
@@ -16,6 +16,7 @@ It writes WebP files to `docs/images/`:
 
 | File | Shows |
 |---|---|
+| `hero-light.webp`, `hero-dark.webp` | The README's picture: the top of the Tasks board, 1100 by 590 pixels, from Waiting for you to the end of Open, in a frame with rounded corners, a border and a shadow on a transparent margin, so its edges show on GitHub's light and dark pages |
 | `board-light.webp`, `board-dark.webp` | The Tasks board, 1100 pixels wide: the sidebar, Waiting for you, then every group to Done |
 | `task-light.webp`, `task-dark.webp` | The page of task `web-b2r6`, 1100 pixels wide, whose description uses headings, lists, a code block and a task-id link |
 | `focus-light.webp`, `focus-dark.webp` | Focus on the decision `web-d4x1`, 1100 pixels wide: its card with three options |
