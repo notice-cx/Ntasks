@@ -650,6 +650,14 @@ describe('create_task', () => {
       });
     const vague = 'You: decide which domain the docs move to, since only you hold the registrar account.';
     expect(namesPlaceToAct(vague)).toBe(false);
+    // Words for the decision, and data to read, name no place to act either.
+    for (const description of [
+      'You: choose or pick which domain the docs move to, then reply.',
+      `${vague}\n\n\`\`\`json\n{ "domain": "docs.example.com" }\n\`\`\``,
+    ]) {
+      expect(namesPlaceToAct(description)).toBe(false);
+      expect((await ask(description)).lint!.advice).toHaveLength(1);
+    }
     const reply = await ask(vague);
     expect(reply.lint!.advice).toEqual(placeAdvice(await current(project, reply.id)));
     expect(reply.lint!.advice).toHaveLength(1);
@@ -658,6 +666,7 @@ describe('create_task', () => {
       `${vague} Reply in https://github.com/example/web/pull/4.`,
       `${vague} Press Answer and name it.`,
       `${vague} Then run:\n\n\`\`\`bash\npnpm run docs:move\n\`\`\``,
+      `${vague} Then check:\n\n\`\`\`sql\nSELECT domain FROM sites\n\`\`\``,
       `${vague} Answer on this task.`,
     ]) {
       expect(namesPlaceToAct(description)).toBe(true);

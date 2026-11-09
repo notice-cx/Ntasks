@@ -152,14 +152,22 @@ export function repeatAdvice(title: string, description: string): readonly strin
     : [];
 }
 
-/** Words that send a person to a control on the page or to a reply. */
-const CONTROL = /\b(?:press|click|tap|select|tick|choose|pick|reply)\b|\bbutton\b|\bon this (?:task|approval)\b/iu;
+/** Words that send a person to a control on the page; "choose" or "pick" name the decision, not where to make it. */
+const CONTROL = /\b(?:press|click|tap|tick)\b|\bbutton\b|\bon this (?:task|approval)\b/iu;
+
+/** The language tags of a block a person runs, as against data such as JSON or YAML. */
+const RUNNABLE = /^(?:bash|sh|shell|zsh|fish|console|terminal|powershell|pwsh|ps1|cmd|bat|sql|psql)$/iu;
+
+/** Whether a fenced block is a command or query to run: by its tag, or by a line that starts like a command. */
+function runs(block: { readonly info: string; readonly lines: readonly string[] }): boolean {
+  return RUNNABLE.test(block.info.split(/\s+/u)[0] ?? '') || block.lines.some((line) => RUN.test(line.trim()));
+}
 
 /** Whether a description names a place for a person to act: a link, a command to run, or a control to press. */
 export function namesPlaceToAct(description: string): boolean {
   const { prose, blocks } = parts(description);
   return (
-    blocks.length > 0 ||
+    blocks.some(runs) ||
     inlineCommands(prose).length > 0 ||
     prose.some((line) => /https?:\/\/\S|\]\(/u.test(line) || CONTROL.test(line))
   );
