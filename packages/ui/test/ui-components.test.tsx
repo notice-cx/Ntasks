@@ -243,8 +243,11 @@ describe('a page key', () => {
   });
 
   it('treats a checkbox as no text field, and a named key as itself', () => {
+    const root = document.createElement('div');
+    root.setAttribute('data-ntasks', '');
     const box = document.createElement('input');
     box.type = 'checkbox';
+    root.append(box);
     const event = { key: 'c', altKey: false, ctrlKey: false, metaKey: false, defaultPrevented: false };
     expect(isShortcut({ ...event, target: box }, 'c')).toBe(true);
     expect(isShortcut({ ...event, key: 'Enter', target: null }, 'Enter')).toBe(true);

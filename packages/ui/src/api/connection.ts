@@ -20,6 +20,15 @@ export interface TokenSource {
   signIn: string | (() => void);
 }
 
+/** `apiOrigin` as an origin, such as `https://tasks.example.com`; an address that is none is refused by name. */
+export function originOf(apiOrigin: string): string {
+  try {
+    return new URL(apiOrigin).origin;
+  } catch {
+    throw new Error(`apiOrigin must be an origin such as https://tasks.example.com, not ${JSON.stringify(apiOrigin)}.`);
+  }
+}
+
 /**
  * The Ntasks session cookie: the default, for pages served by the Ntasks
  * Worker itself. It sends no token, since the browser sends the cookie to its
