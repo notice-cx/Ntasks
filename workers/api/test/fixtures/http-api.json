@@ -429,5 +429,32 @@
         "services[]": "@service"
       }
     }
+  },
+  {
+    "version": 2,
+    "shapes": {
+      "task": {
+        "steps": "array|null",
+        "steps[]": "object",
+        "steps[].text": "string",
+        "steps[].command": "null|string",
+        "steps[].done": "null|object",
+        "steps[].done.by": "string",
+        "steps[].done.at": "string",
+        "steps[].note": "null|object",
+        "steps[].note.text": "string",
+        "steps[].note.by": "string",
+        "steps[].note.at": "string",
+        "steps[].stuck": "null|object",
+        "steps[].stuck.reason": "string",
+        "steps[].stuck.by": "string",
+        "steps[].stuck.at": "string"
+      }
+    },
+    "routes": {
+      "POST /api/gates/:id/steps": {
+        "task": "@task"
+      }
+    }
   }
 ]

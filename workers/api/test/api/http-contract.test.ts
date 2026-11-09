@@ -16,7 +16,8 @@ import { compare, expand, merge, observe, observed, withoutValue, type ContractV
 
 standInForGitHub();
 
-const CONTRACT = merge(RECORD as readonly ContractVersion[]);
+// Through unknown: the JSON import types each version's entry apart, so the list is no one type.
+const CONTRACT = merge(RECORD as unknown as readonly ContractVersion[]);
 
 /** One answer a route gave. */
 interface Sample {
@@ -221,6 +222,28 @@ async function drive(): Promise<readonly Sample[]> {
   });
   await as('POST /api/tasks/:id/dispute', task(relayed, '/dispute'), inProject());
 
+  const ask = async (title: string) => {
+    const waiting = (await tool(owner, 'create_task', { project: projectId, title })).id as string;
+    const asked = await tool(owner, 'request_human_action', {
+      task: waiting,
+      title,
+      context: 'The demo still runs the old release.',
+      steps: [
+        { text: 'On the demo host, update to the release.', command: './update.sh --commit a1b2c3d4' },
+        { text: 'Open the demo and sign in.' },
+      ],
+    });
+    return idOf(asked, 'request');
+  };
+  const step = (gate: string, body: Body) =>
+    as('POST /api/gates/:id/steps', `/api/gates/${gate}/steps`, inProject(body));
+  const stuck = await ask('Update the demo');
+  await step(stuck, { step: 2, done: true, note: 'Signed in as a visitor.' });
+  await step(stuck, { step: 1, stuck: 'The host asks for a password.' });
+  const done = await ask('Update the staging copy');
+  await step(done, { step: 2, done: true });
+  await step(done, { step: 1, done: true });
+
   await as('GET /api/tasks/projects', '/api/tasks/projects');
   await as('GET /api/tasks/capabilities', '/api/tasks/capabilities');
   await as('GET /api/tasks', `/api/tasks?project=${projectId}`);
@@ -230,7 +253,7 @@ async function drive(): Promise<readonly Sample[]> {
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
-  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed])
+  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done])
     await as('GET /api/tasks/:id', `${task(id)}?project=${projectId}`);
   for (const id of [post, checked])
     await as('GET /api/tasks/:id/history', `${task(id, '/history')}?project=${projectId}`);

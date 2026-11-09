@@ -16,6 +16,7 @@ import {
   type TaskComment,
   type TaskFieldChanges,
   type TaskResolution,
+  type TaskStep,
   type TaskWrite,
 } from '@ntasks/domain';
 import { listed } from './args.ts';
@@ -203,6 +204,11 @@ function offeredOf(task: Task): Offered | null {
   return choicesOf(task.choices) as Offered | null;
 }
 
+/** The steps a request asks for, without anyone's marks, as one text: null on an approval. */
+function stepsAsked(gate: Task): string | null {
+  return gate.steps === null ? null : JSON.stringify(gate.steps.map((step) => [step.text, step.command]));
+}
+
 /** What an approval asks, as it stands: its action, environment, scope and verification. */
 function requestOf(gate: Task): string {
   return askedOf(gate.description) ?? gate.title;
@@ -372,11 +378,37 @@ function handedBackWith(dependent: Task): boolean {
 /** What an approval of `draft`'s gate does to the tasks waiting on it: each
  * one labelled human goes back to agents, told to keep within the approval. */
 function handBackOnApproval(draft: Draft, around: Surroundings): void {
+  if (draft.task.steps !== null)
+    return handBackOnSteps(
+      draft,
+      around,
+      `The owner's report that they did the steps of ${draft.task.id} is recorded.`,
+    );
   for (const dependent of waiting(around).filter(handedBackWith)) {
     const other = draft.other(dependent);
     other.comment = `Owner approval recorded on ${draft.task.id}. Continue only within that recorded scope; other approvals are unchanged.`;
     other.handBack(true);
   }
+}
+
+/** What finishing the steps of `draft`'s request does to the tasks waiting on
+ * it: each is told, and each labelled human goes back to agents, who check
+ * the result before they go on. */
+function handBackOnSteps(draft: Draft, around: Surroundings, done: string): void {
+  for (const dependent of waiting(around)) {
+    const other = draft.other(dependent);
+    other.comment = `${done} Check the result yourself before continuing.`;
+    if (handedBackWith(dependent)) other.handBack(true);
+  }
+}
+
+/** The refusal of an approval's answer on a request that a person do steps. */
+function stepsRefusal(task: Task): Refused {
+  return new Refused(
+    'state',
+    `refused: ${task.id} asks a person to do steps, which they tick one by one in the web app; it takes no approval or option.`,
+    `${task.id} asks you to do steps: tick each one as you do it.`,
+  );
 }
 
 /**
@@ -472,6 +504,7 @@ function recordDirect(
 /** A person's decision on a task that is open and waits on them: labelled human, not an approval. */
 function asked(task: Task): void {
   if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  if (task.steps !== null) throw stepsRefusal(task);
   if (task.type === 'gate')
     throw new Refused(
       'state',
@@ -517,6 +550,7 @@ export function choiceWrite(
   around: Surroundings,
   deciding: Deciding,
 ): TaskWrite | null {
+  if (task.steps !== null) throw stepsRefusal(task);
   if (task.type === 'gate')
     throw new Refused(
       'state',
@@ -569,12 +603,83 @@ export function approvalWrite(
   deciding: Deciding,
 ): TaskWrite | null {
   if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  if (task.steps !== null) throw stepsRefusal(task);
   if (task.type !== 'gate' || task.awaitType !== 'human')
     throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
   const draft = new Draft(task);
   draft.close = { reason: reason ?? 'Approved', resolution: 'done' };
   recordDirect(draft, deciding, reason === undefined ? {} : { words: reason });
   handBackOnApproval(draft, around);
+  return draft.write();
+}
+
+/** What a person records on one step of a request that they do steps. A field left out stays as it is. */
+export interface StepMarking {
+  /** The step's place in the request, from 1. */
+  readonly step: number;
+  /** true ticks the step, false unticks it. */
+  readonly done?: boolean;
+  /** Their note on the step, such as a value the agent asked for; null takes it off. */
+  readonly note?: string | null;
+  /** Why they stopped at this step; null says they are past it. */
+  readonly stuck?: string | null;
+}
+
+/** The step as `marking` leaves it, marked by `by` at `at`. A tick clears a
+ * stuck mark and a stuck mark clears a tick: a step is to do, done or stuck. */
+function marked(step: TaskStep, marking: StepMarking, by: string, at: string): TaskStep {
+  let next = step;
+  if (marking.done === true && next.done === null) next = { ...next, done: { by, at }, stuck: null };
+  if (marking.done === false && next.done !== null) next = { ...next, done: null };
+  if (marking.note === null && next.note !== null) next = { ...next, note: null };
+  if (typeof marking.note === 'string' && next.note?.text !== marking.note)
+    next = { ...next, note: { by, at, text: marking.note } };
+  if (marking.stuck === null && next.stuck !== null) next = { ...next, stuck: null };
+  if (typeof marking.stuck === 'string' && (next.stuck?.reason !== marking.stuck || next.done !== null))
+    next = { ...next, done: null, stuck: { by, at, reason: marking.stuck } };
+  return next;
+}
+
+/**
+ * A person's marks on one step of a request that they do steps, in any
+ * order. When every step is ticked, the request closes as done with them as
+ * its closer, and the tasks waiting on it are free of it: each is told to
+ * check the result, and each labelled human goes back to agents. A step
+ * marked stuck tells the waiting tasks where and why the person stopped.
+ */
+export function stepWrite(
+  task: Task,
+  marking: StepMarking,
+  around: Surroundings,
+  deciding: Deciding,
+): TaskWrite | null {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  const steps = task.steps;
+  if (steps === null)
+    throw new Refused('state', `refused: ${task.id} is not a request to do steps.`, `${task.id} has no steps to tick.`);
+  const step = steps[marking.step - 1];
+  if (step === undefined)
+    throw new Refused(
+      'invalid',
+      `invalid arguments: step (${task.id} has steps 1 to ${steps.length})`,
+      `${task.id} has steps 1 to ${steps.length}.`,
+      'step',
+    );
+  const next = marked(step, marking, deciding.actor, deciding.at);
+  if (next === step) return null;
+  const all = steps.map((entry, index) => (index === marking.step - 1 ? next : entry));
+  const draft = new Draft(task);
+  draft.set.steps = all;
+  if (next.stuck !== null && next.stuck !== step.stuck) {
+    for (const dependent of waiting(around))
+      draft.other(dependent).comment =
+        `${deciding.actor} is stuck at step ${marking.step} of ${task.id}: ${next.stuck.reason}\nStep: ${next.text}`;
+  }
+  if (all.every((entry) => entry.done !== null)) {
+    decisionClose(task, around);
+    draft.close = { reason: 'Every step done', resolution: 'done' };
+    handBackOnSteps(draft, around, `${deciding.actor} ticked the last step of ${task.id}, so every step is done.`);
+  }
   return draft.write();
 }
 
@@ -623,7 +728,10 @@ export function disputeWrite(task: Task, around: Surroundings, actor: string, at
       disputed: { by: actor, at, agent: previous.by ?? null, sources },
       approved: false,
     };
-  const text = `Owner disputed the approval relayed by ${stringOf(previous.by)}. The gate is reopened; the recorded action requires a new owner approval.\nDisputed source: ${stringOf(previous.source)}`;
+  const steps = task.steps !== null;
+  const text = steps
+    ? `Owner disputed the report relayed by ${stringOf(previous.by)} that they did these steps. The request is open again; it is done when they tick every step.\nDisputed source: ${stringOf(previous.source)}`
+    : `Owner disputed the approval relayed by ${stringOf(previous.by)}. The gate is reopened; the recorded action requires a new owner approval.\nDisputed source: ${stringOf(previous.source)}`;
   // The gate's comment names the disputed source: once it is there, this
   // dispute and its notice to the waiting tasks were already made together.
   const announced = around.comments.some((comment) => comment.text === text);
@@ -631,8 +739,9 @@ export function disputeWrite(task: Task, around: Surroundings, actor: string, at
   if (task.status === 'closed') draft.reopen = true;
   else if (task.status !== 'open') draft.set.status = 'open';
   for (const dependent of announced ? [] : waiting(around)) {
-    draft.other(dependent).comment =
-      `Owner disputed approval ${task.id}, relayed by ${stringOf(previous.by)}. Stop the recorded action until a new owner approval is recorded.`;
+    draft.other(dependent).comment = steps
+      ? `Owner disputed the report, relayed by ${stringOf(previous.by)}, that they did the steps of ${task.id}. Wait until they tick every step.`
+      : `Owner disputed approval ${task.id}, relayed by ${stringOf(previous.by)}. Stop the recorded action until a new owner approval is recorded.`;
   }
   return draft.write();
 }
@@ -706,7 +815,9 @@ function answerNote(op: TaskMaintenance, task: Task, actor: string): string {
       ? op.action === 'declined'
         ? 'declined'
         : op.action === 'owner_performed'
-          ? 'approved, and done by the owner'
+          ? task.steps === null
+            ? 'approved, and done by the owner'
+            : 'the steps were done by the owner'
           : 'approved'
       : op.option === undefined
         ? null
@@ -717,7 +828,9 @@ function answerNote(op: TaskMaintenance, task: Task, actor: string): string {
     (op.explanation === undefined ? '' : `\n${op.explanation}`) +
     (op.evidence === undefined ? '' : `\nEvidence: ${op.evidence}`) +
     (op.action === 'declined'
-      ? '\nApproval declined. The recorded action must not happen. Continue only the remaining authorized work.'
+      ? task.steps === null
+        ? '\nApproval declined. The recorded action must not happen. Continue only the remaining authorized work.'
+        : '\nThe owner will not do these steps. Continue only the remaining authorized work.'
       : '')
   );
 }
@@ -764,6 +877,11 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       'action',
       `owner_performed is for an approval, and ${task.id} is not one; send action answer, or completed with evidence.`,
     );
+  if (op.action === 'answer' && task.steps !== null)
+    return refuseAnswer(
+      'action',
+      `${task.id} asks the owner to do steps, not to approve; record their report that they did them with owner_performed, or declined.`,
+    );
   const retiring = ['completed', 'obsolete', 'superseded', 'duplicate'].includes(op.action);
   const closed = task.status === 'closed';
   // An approval in force that still covers the gate's request as it stands now.
@@ -781,9 +899,11 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       );
     return refuseAnswer(
       'task',
-      performed
-        ? `${task.id}'s request changed after it was approved, or its approval was withdrawn; the owner's report does not complete it.`
-        : `${task.id} is already answered and closed; only owner_performed may follow its approval.`,
+      task.steps !== null
+        ? `${task.id} is already closed; get_task shows how it ended.`
+        : performed
+          ? `${task.id}'s request changed after it was approved, or its approval was withdrawn; the owner's report does not complete it.`
+          : `${task.id} is already answered and closed; only owner_performed may follow its approval.`,
     );
   }
   if (gate && ['routine', 'release', 'completed'].includes(op.action)) {
@@ -823,9 +943,13 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       decisionClose(task, input, 'task');
       if (!closed) {
         const reason = declined
-          ? 'Owner declined the recorded scope; the action must not happen'
+          ? task.steps === null
+            ? 'Owner declined the recorded scope; the action must not happen'
+            : 'Owner declined to do the steps'
           : performed
-            ? 'Approved and done by the owner'
+            ? task.steps === null
+              ? 'Approved and done by the owner'
+              : 'Done by the owner'
             : 'Owner approved the recorded scope';
         answer = () => {
           draft.close = { reason, resolution: declined ? 'wont-do' : 'done' };
@@ -885,7 +1009,11 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
     ? answerNote(op, task, actor)
     : `Task maintenance: ${op.action}. ${op.explanation}\nEvidence: ${op.evidence}` +
       (op.action === 'release' ? `\nActivity checked: ${op.activityCheck}\nProgress preserved: ${op.progress}` : '') +
-      (gate && retiring ? '\nRequest retired. No permission to perform the action was granted.' : '');
+      (gate && retiring
+        ? task.steps === null
+          ? '\nRequest retired. No permission to perform the action was granted.'
+          : '\nRequest retired. Its steps are not recorded as done.'
+        : '');
   if (!comments.some((comment) => comment.author === actor && comment.text === note)) draft.comment = note;
   if (op.action === 'duplicate') {
     if (!duplicate || duplicate.id !== op.duplicateOf || duplicate.status === 'closed') {
@@ -893,9 +1021,16 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
     }
     if (
       gate &&
-      (duplicate.type !== 'gate' || duplicate.awaitType !== 'human' || duplicate.description !== task.description)
+      (duplicate.type !== 'gate' ||
+        duplicate.awaitType !== 'human' ||
+        duplicate.description !== task.description ||
+        stepsAsked(duplicate) !== stepsAsked(task))
     ) {
-      return refuse('Duplicate approvals must retain exactly the same requested scope.');
+      return refuse(
+        task.steps === null
+          ? 'Duplicate approvals must retain exactly the same requested scope.'
+          : 'A duplicate request must ask for exactly the same steps, with the same context.',
+      );
     }
     // A link the two have, of any type, stays as it is.
     if (![...task.dependencies, ...task.dependents].some((link) => link.taskId === op.duplicateOf))
@@ -906,10 +1041,13 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       const other = draft.other(dependent);
       if (op.action === 'duplicate' && !dependent.dependencies.some((link) => link.taskId === op.duplicateOf))
         other.addLinks.push({ taskId: op.duplicateOf!, type: 'blocks' });
+      const why = op.explanation === undefined ? '' : `: ${op.explanation}`;
       other.comment =
-        `Approval request ${task.id} ${declined ? 'declined' : 'retired'}${op.explanation === undefined ? '' : `: ${op.explanation}`}. ` +
-        'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.' +
-        `\nExcluded action: ${task.description}`;
+        task.steps === null
+          ? `Approval request ${task.id} ${declined ? 'declined' : 'retired'}${why}. ` +
+            'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.' +
+            `\nExcluded action: ${task.description}`
+          : `Request ${task.id} for steps ${declined ? 'declined' : 'retired'}${why}. Its steps are not recorded as done. Continue only the remaining authorized work.`;
       if (op.action !== 'duplicate' && handedBackWith(dependent)) other.handBack(true);
     }
   }
@@ -1013,8 +1151,8 @@ async function decide(
 export function notAPerson(): Refused {
   return new Refused(
     'forbidden',
-    'refused: only a person signed in to the web app answers a decision, approves an approval or disputes one. Record an existing owner answer with reconcile_task.',
-    'Only a person signed in to Ntasks answers a decision, approves an approval or disputes one. Answer it in the Ntasks web app.',
+    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step or disputes an approval. Record an existing owner answer with reconcile_task.',
+    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step or disputes an approval. Answer it in the Ntasks web app.',
   );
 }
 
@@ -1083,6 +1221,25 @@ export function approve(
     projectId,
     taskId,
     (task, around, deciding) => approvalWrite(task, reason, around, deciding),
+    retry,
+    shown,
+  );
+}
+
+/** A person's marks on one step of a request that they do steps (stepWrite). */
+export function markStep(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  marking: StepMarking,
+  retry?: RetryRequest,
+  shown?: string,
+): Promise<Written> {
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, around, deciding) => stepWrite(task, marking, around, deciding),
     retry,
     shown,
   );

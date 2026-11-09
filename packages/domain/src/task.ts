@@ -9,7 +9,9 @@
 export const TASK_STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'closed'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-/** `gate` is an approval a task waits on; people see it as an approval, not as a task type. */
+/** `gate` is a request to a person that a task waits on: an approval, or, with
+ * steps, a request that they do those steps. People see it as that request,
+ * not as a task type. */
 export const TASK_TYPES = ['task', 'bug', 'feature', 'epic', 'chore', 'decision', 'gate'] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -126,6 +128,12 @@ export const TASK_LIMITS = Object.freeze({
   /** The most other tasks one write changes beside its own: the open tasks
    * waiting on one approval, which a decision on it tells or hands back. */
   others: 500,
+  /** The steps of one request that a person do steps, and the characters of
+   * each one's text, its command, and a person's note or reason on it. */
+  steps: 20,
+  stepText: 1024,
+  stepCommand: 4096,
+  stepNote: 1024,
 });
 
 /** A JSON value, as stored in a task's metadata, choices and history. */
@@ -181,6 +189,30 @@ export interface CustomField {
   readonly retiredBy: string | null;
 }
 
+/** Who recorded something on a step, and when. */
+export interface StepMark {
+  readonly by: string;
+  readonly at: string;
+}
+
+/**
+ * One step of a request that a person do steps: what to do, the command to
+ * run when there is one, and what the person recorded on it. Only a person
+ * records the marks; the text and the command stay as the request was filed.
+ */
+export interface TaskStep {
+  /** Markdown, one paragraph. */
+  readonly text: string;
+  /** The exact command or query to run, shown as a block to copy; null when the step has none. */
+  readonly command: string | null;
+  /** Who ticked it and when; null while it is not done. */
+  readonly done: StepMark | null;
+  /** A value or remark the person left on it, such as one the agent asked for. */
+  readonly note: (StepMark & { readonly text: string }) | null;
+  /** Where the person stopped, and why; null unless they are stuck on it. A tick clears it. */
+  readonly stuck: (StepMark & { readonly reason: string }) | null;
+}
+
 /** How the task's current close ended. Earlier closes are in its history. */
 export interface TaskClose {
   readonly at: string;
@@ -217,6 +249,8 @@ export interface Task {
   readonly type: TaskType;
   /** For a gate: who answers it. */
   readonly awaitType: 'human' | null;
+  /** For a gate that asks a person to do steps: the steps, in order. Null on an approval and on any other task. */
+  readonly steps: readonly TaskStep[] | null;
   readonly status: TaskStatus;
   readonly priority: number;
   readonly title: string;

@@ -23,6 +23,7 @@ import {
   TASK_RESOLUTIONS,
   WORK_LIMITS,
   type DependencyType,
+  type NewTaskStep,
   type Project,
   type Task,
   type TaskStatus,
@@ -87,6 +88,7 @@ import {
   lintView,
   OPEN_STATUSES,
   proofWarning,
+  requestAction,
   requestApproval,
   retryStanding,
   sha256,
@@ -1068,6 +1070,99 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
   },
 } satisfies TaskTool);
 
+/** A request's steps as the call gives them: each one's text, and its command when it has one. */
+function stepsArg(args: Args): NewTaskStep[] {
+  const value = args.steps;
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.steps)
+    refuse(`invalid arguments: steps (a list of 1 to ${TASK_LIMITS.steps} steps)`);
+  return value.map((entry: unknown, index) => {
+    const at = `steps[${index}]`;
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry))
+      refuse(`invalid arguments: ${at} (an object with text, and command when the step runs one)`);
+    const step = entry as Args;
+    const unknown = Object.keys(step).filter((key) => key !== 'text' && key !== 'command');
+    if (unknown.length > 0) refuse(`invalid arguments: ${at}.${unknown[0]} (a step takes text and command)`);
+    const text = textArg({ [`${at}.text`]: step.text }, `${at}.text`, TASK_LIMITS.stepText, true)!;
+    const command = textArg({ [`${at}.command`]: step.command }, `${at}.command`, TASK_LIMITS.stepCommand, false);
+    return command === undefined ? { text } : { text, command };
+  });
+}
+
+/** What a reply says about the request that a person do steps a task now waits on. */
+function actionOf(taskId: string, gate: Task) {
+  return {
+    request: { id: gate.id, status: gate.status, title: gate.title, steps: gate.steps?.length ?? 0 },
+    held: true,
+    note: `${taskId} waits for a person to tick each step of ${gate.id}. Once they have, check the result yourself before continuing; never ask for the same steps again.`,
+  };
+}
+
+const REQUEST_HUMAN_ACTION: TaskTool = Object.freeze({
+  name: 'request_human_action',
+  description:
+    'Ask a person to do steps that only they can do, such as running a command on their own machine or changing a setting in an admin console, before a task proceeds. ' +
+    'This opens a request the task waits on: the person ticks each step in the web app as they do it, can leave a note on a step or say where they are stuck, ' +
+    'and the task is ready again once every step is ticked. Check the result yourself before continuing. ' +
+    'Use request_human_approval instead when you will do the action and need permission. Asking again with the same title and steps returns the open request.',
+  inputSchema: schema(
+    {
+      project: PROJECT,
+      task: TASK,
+      title: {
+        type: 'string',
+        maxLength: TASK_LIMITS.title,
+        description: 'One line: what the person gets done, such as "Update the demo to the new release".',
+      },
+      context: {
+        type: 'string',
+        maxLength: TASK_LIMITS.description,
+        description:
+          'Markdown, shown above the steps: why the steps are needed, what they change, and how you will check the result.',
+      },
+      steps: {
+        type: 'array',
+        minItems: 1,
+        maxItems: TASK_LIMITS.steps,
+        description: 'The steps, in the order to do them. The person ticks each one.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            text: {
+              type: 'string',
+              maxLength: TASK_LIMITS.stepText,
+              description: 'What to do, in a sentence, such as "On the demo host, update to the merged commit".',
+            },
+            command: {
+              type: 'string',
+              maxLength: TASK_LIMITS.stepCommand,
+              description:
+                'The exact command or query to run, shown as a block to copy. Give it here, never inside text.',
+            },
+          },
+          required: ['text'],
+        },
+      },
+      model: MODEL,
+    },
+    ['task', 'title', 'context', 'steps'],
+  ),
+  annotations: WRITE,
+  scope: SCOPES.write,
+  async run(context, args) {
+    const taskId = taskArg(args);
+    const title = textArg(args, 'title', TASK_LIMITS.title, true)!.trim();
+    if (/[\r\n]/u.test(title)) refuse('invalid arguments: title (one line)');
+    const about = textArg(args, 'context', TASK_LIMITS.description, true)!;
+    const steps = stepsArg(args);
+    const model = modelArg(args);
+    const projectId = await projectFor(context, args, taskId);
+    const request = { title, context: about, steps };
+    const { gate, created } = await requestAction(context, projectId, taskId, request, model);
+    return { task: taskId, ...actionOf(taskId, gate), created };
+  },
+} satisfies TaskTool);
+
 export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'create_task',
@@ -1352,6 +1447,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     },
   },
   REQUEST_HUMAN_APPROVAL,
+  REQUEST_HUMAN_ACTION,
   {
     name: 'close_task',
     description:

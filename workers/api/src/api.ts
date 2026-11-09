@@ -18,6 +18,7 @@ import {
   disputeRoute,
   resolveRoute,
   respondRoute,
+  stepRoute,
 } from './http/decisions.ts';
 import {
   boardRoute,
@@ -109,9 +110,12 @@ function routesOf(pathname: string): Routes | null {
   if (routes) return routes;
   const retire = RETIRE_PATH.exec(pathname);
   if (retire) return { POST: (context, url, request) => retireFieldRoute(context, url, request, retire[1]!) };
-  const gateId = gatePath(pathname);
-  if (gateId !== null)
-    return { POST: (context, url, request) => resolveRoute(context, url, request, gateId), scope: SCOPES.decide };
+  const gate = gatePath(pathname);
+  if (gate !== null) {
+    const { gateId } = gate;
+    const route = gate.part === 'steps' ? stepRoute : resolveRoute;
+    return { POST: (context, url, request) => route(context, url, request, gateId), scope: SCOPES.decide };
+  }
   const task = taskPath(pathname);
   if (!task) return null;
   const { taskId } = task;
