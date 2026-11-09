@@ -285,15 +285,18 @@ manifest.
 
 ## Releasing
 
-The package publishes to npm, at https://registry.npmjs.org, as `@notice-cx/ntasks-ui`.
+The package publishes to npm, at https://registry.npmjs.org, as
+`@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
 Pushing a tag `ui-v<version>` on a commit of `main`, such as `ui-v0.1.0`
 for the version in `package.json`, runs the Release UI package workflow
 (`.github/workflows/release-ui.yml`): it runs every check, the host check,
-then `npm publish --provenance` of the tarball `pnpm pack` writes. The first
-publish needs the `ntasks` organization on npm, which holds the `@ntasks`
-scope, and npm's trusted publisher for this repository or the `NPM_TOKEN`
-secret, as the `ntasks` command's release does. Pushing the tag is the
-owner's step ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
+then `npm publish --provenance` of the tarball `pnpm pack` writes. It signs
+in to npm with npm's trusted publisher for this repository when the package
+has one, and otherwise with the `NPM_TOKEN` secret, as the `ntasks`
+command's release does; the token must be allowed to publish to `notice-cx`.
+Pushing the tag needs the owner's approval, and the `npm` environment holds
+the run until the owner approves it
+([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
 
 ## License
 
