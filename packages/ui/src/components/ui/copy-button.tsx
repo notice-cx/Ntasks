@@ -8,6 +8,24 @@ import { buttonVariants } from './button';
 const COPIED_MS = 2000;
 
 /**
+ * Selects `element`'s text, leaving out a line break that ends it, as every
+ * code block's does: pasted into a terminal, that line break would run the
+ * command. The selection then holds what a copy would have put on the
+ * clipboard.
+ */
+function select(element: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let last: Text | null = null;
+  for (let node = texts.nextNode(); node; node = texts.nextNode()) last = node as Text;
+  if (last?.data.endsWith('\n')) range.setEnd(last, last.data.length - 1);
+  const selection = getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+/**
  * A small button that copies `text()`. `label`, such as "Copy the code", is
  * its name for a screen reader and its tooltip, and stays its name. After a
  * copy the button shows Copied for two seconds, and a status region beside
@@ -38,7 +56,7 @@ export function CopyButton({
       if (!navigator.clipboard) throw new Error('No clipboard');
       await navigator.clipboard.writeText(text());
     } catch {
-      if (target.current) getSelection()?.selectAllChildren(target.current);
+      if (target.current) select(target.current);
       toast.error('Could not copy. The text is selected: copy it with your keyboard.');
       return;
     }

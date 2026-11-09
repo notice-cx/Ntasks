@@ -45,7 +45,7 @@ describe('Copy on a code block', () => {
     openTask();
     fireEvent.click(await screen.findByRole('button', { name: 'Copy the code' }));
     expect(await screen.findByText('Could not copy. The text is selected: copy it with your keyboard.')).toBeTruthy();
-    expect(getSelection()?.toString().trim()).toBe(COMMANDS);
+    expect(getSelection()?.toString()).toBe(COMMANDS);
     expect(saysCopied()).toBe(false);
   });
 });

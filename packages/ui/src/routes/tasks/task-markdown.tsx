@@ -371,7 +371,7 @@ function Checkbox({ type, checked }: ComponentProps<'input'> & ExtraProps) {
 /**
  * A code block, with a Copy button in its corner that copies the block's
  * text as written, without the line break that ends every block. A pointer
- * shows the button on hover; a touch screen shows it always.
+ * shows the button on hover; it shows always on a device with a touch screen.
  */
 function CodeBlock({ children }: { children?: ReactNode }) {
   const block = useRef<HTMLPreElement>(null);
@@ -387,7 +387,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         label="Copy the code"
         target={block}
         text={() => (block.current?.textContent ?? '').replace(/\n$/, '')}
-        className="absolute top-2 right-2 bg-surface opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100 data-copied:opacity-100 pointer-coarse:opacity-100"
+        className="absolute top-2 right-2 bg-surface opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100 data-copied:opacity-100 any-pointer-coarse:opacity-100"
       />
     </div>
   );
