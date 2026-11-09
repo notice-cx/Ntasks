@@ -21,6 +21,8 @@ export interface FakeAccountState {
   }[];
   /** The deploy creates the Worker's version, then stops, as when the account has no workers.dev subdomain. */
   failDeployAfterUpload?: boolean;
+  /** After a deploy, reading the Worker's deployments fails, as when the network drops. */
+  failLookupAfterDeploy?: boolean;
   calls: { args: string[]; account: string | null; cwd: string }[];
 }
 

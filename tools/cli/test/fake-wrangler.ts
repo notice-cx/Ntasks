@@ -141,6 +141,9 @@ switch (true) {
   case command === 'deployments status': {
     const account = accountId();
     const name = flag('--name');
+    if (state.failLookupAfterDeploy && state.calls.some((call) => call.args[0] === 'deploy')) {
+      finish(1, '', '✘ [ERROR] A request to the Cloudflare API failed: fetch failed');
+    }
     const worker = state.workers.find((w) => w.accountId === account && w.name === name);
     if (!worker) {
       finish(

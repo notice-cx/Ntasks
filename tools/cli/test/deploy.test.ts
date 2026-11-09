@@ -118,12 +118,18 @@ test('a Worker of that name with no database of that name is left alone', async 
 });
 
 test('a first deploy that stops after Cloudflare created the Worker shows the AUTH_SECRET it set', async () => {
-  const run = await runCli(['deploy'], await release('0.1.0', [FIRST]), emptyAccount({ failDeployAfterUpload: true }));
+  for (const failLookupAfterDeploy of [false, true]) {
+    const run = await runCli(
+      ['deploy'],
+      await release('0.1.0', [FIRST]),
+      emptyAccount({ failDeployAfterUpload: true, failLookupAfterDeploy }),
+    );
 
-  assert.equal(run.code, 1);
-  const secret = run.after.workers[0]?.secrets['AUTH_SECRET'];
-  assert.ok(secret);
-  assert.ok(run.err.includes(secret));
+    assert.equal(run.code, 1);
+    const secret = run.after.workers[0]?.secrets['AUTH_SECRET'];
+    assert.ok(secret);
+    assert.ok(run.err.includes(secret), `shown when the lookup ${failLookupAfterDeploy ? 'fails' : 'works'}`);
+  }
 });
 
 test('releases are ordered by their numbers, with a pre-release before its release', () => {

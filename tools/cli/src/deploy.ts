@@ -327,15 +327,24 @@ export async function deploy(request: DeployRequest, context: DeployContext): Pr
   if (code !== 0) {
     // A deploy can stop after Cloudflare created the Worker with its secret,
     // as when the account has no workers.dev subdomain yet. The next run then
-    // updates that Worker and never shows the secret, so show it now.
-    if (secret !== undefined && (await findWorker(wrangler, name)).exists) {
-      io.err(
-        [
-          `The deploy stopped after it created the Worker ${name} with an AUTH_SECRET. Run the command again to finish the deploy.`,
-          '',
-          ...setupLines(undefined, secret),
-        ].join('\n'),
+    // updates that Worker and never shows the secret, so show it now. When
+    // the account cannot be read, the Worker may exist, so show it too.
+    if (secret !== undefined) {
+      const created = await findWorker(wrangler, name).then(
+        (state) => (state.exists ? 'yes' : 'no'),
+        () => 'unknown',
       );
+      if (created !== 'no') {
+        io.err(
+          [
+            created === 'yes'
+              ? `The deploy stopped after it created the Worker ${name} with an AUTH_SECRET. Run the command again to finish the deploy.`
+              : `The deploy stopped, and the account could not be read to tell whether it created the Worker ${name}. If it did, its AUTH_SECRET is the one below. Run the command again to finish the deploy.`,
+            '',
+            ...setupLines(undefined, secret),
+          ].join('\n'),
+        );
+      }
     }
     throw new Stop(`The deploy stopped with exit code ${code}. Wrangler's output above shows why.`);
   }
