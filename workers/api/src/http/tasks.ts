@@ -16,7 +16,7 @@ import {
 } from '@ntasks/domain';
 import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
 import { linksSeenBy } from '../lookup.ts';
-import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS } from '../service.ts';
+import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
 import { commentView, fieldView, historyView, proposalOf, proposalVersionOf, webTasks } from '../views.ts';
 import { projectView } from './delivery.ts';
@@ -179,6 +179,50 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     epics: epics?.map(epicView) ?? null,
     actors: [],
     lastSeq,
+  });
+}
+
+/** The most tasks a search answers when `limit` is left out, and the longest `q` it takes. */
+const SEARCH_PAGE = 100;
+const SEARCH_TEXT = 512;
+
+/**
+ * GET /api/tasks/search?q=…&limit=…: the tasks of every project the sender
+ * reaches whose id, title, description, acceptance or labels hold every word
+ * of `q`, ignoring case, among the open ones and those closed in the last 7
+ * days, most urgent first: the search `list_tasks` makes with `query`. When
+ * `q` is a task id whose prefix names a project the sender reaches, that task
+ * comes first, in any status and closed at any time. Each task names its
+ * project's key in `project`.
+ */
+export async function searchRoute(context: ReadContext, url: URL): Promise<Response> {
+  const { engine, principal, now } = context;
+  const query = queryOf(url, ['q', 'limit']);
+  const text = (query.q ?? '').trim().toLowerCase();
+  if (text === '' || text.length > SEARCH_TEXT)
+    invalidRequest(`q must hold 1 to ${SEARCH_TEXT} characters besides spaces`);
+  const limit = wholeOf(query, 'limit', 1, TASK_LIMITS.page, SEARCH_PAGE);
+  const projects = reachable(principal, await engine.listProjects());
+  const keys = new Map(projects.map((project) => [project.id, project.key]));
+  const named = isTaskId(text)
+    ? projects.find((project) => project.prefix === text.slice(0, text.indexOf('-')))
+    : undefined;
+  const [found, task, links] = await Promise.all([
+    board(engine, null, TASK_STATUSES, CLOSED_DAYS, { words: text.split(/\s+/u), withoutExternalLinks: true }, now),
+    named === undefined ? null : engine.getTask(named.id, text),
+    linksSeenBy(context),
+  ]);
+  const matched = found.tasks.filter((match) => keys.has(match.projectId) && match.id !== task?.id);
+  const page = [
+    ...(task ? [task] : []),
+    ...(await withExternalLinks(engine, matched.slice(0, task ? limit - 1 : limit))),
+  ];
+  const views = await webTasks(page.map(links.task));
+  return json({
+    readAt: found.readAt,
+    closedSince: found.closedSince,
+    total: matched.length + (task ? 1 : 0),
+    tasks: views.map((view, index) => ({ ...view, project: keys.get(page[index]!.projectId) })),
   });
 }
 

@@ -129,7 +129,7 @@ function withoutBlocks(history: TaskHistory, children: ReadonlySet<string>): Tas
 }
 
 /** Orders tasks so a parent and a duplicate's original come before the tasks naming them; null when they form a loop. */
-function insertOrder(states: ReadonlyMap<string, TaskState>): string[] | null {
+export function insertOrder(states: ReadonlyMap<string, TaskState>): string[] | null {
   const order: string[] = [];
   const placed = new Set<string>();
   const visiting = new Set<string>();
@@ -151,7 +151,7 @@ function insertOrder(states: ReadonlyMap<string, TaskState>): string[] | null {
 }
 
 /** Tasks caught in a loop of `blocks` links or parents: Ntasks refuses a write that would make one. */
-function waitingLoops(states: ReadonlyMap<string, TaskState>): string[] {
+export function waitingLoops(states: ReadonlyMap<string, TaskState>): string[] {
   const waitsOn = (state: TaskState) => [
     ...state.dependencies.filter((link) => link.type === 'blocks').map((link) => link.taskId),
     ...(state.parentId === null ? [] : [state.parentId]),
@@ -178,7 +178,7 @@ function waitingLoops(states: ReadonlyMap<string, TaskState>): string[] {
   return [...looped].sort();
 }
 
-function taskRow(state: TaskState, version: number, createdAt: string, updatedAt: string): TaskRow {
+export function taskRow(state: TaskState, version: number, createdAt: string, updatedAt: string): TaskRow {
   const close = state.close;
   return {
     id: state.id,
@@ -241,7 +241,7 @@ function linkSince(history: TaskHistory, taskId: string, type: DependencyType, c
  * task's events: an event sorts at its own time or its task's previous
  * event's, whichever is later.
  */
-function sequence(perTask: readonly EventRecord[][]): EventRecord[] {
+export function sequence(perTask: readonly EventRecord[][]): EventRecord[] {
   const keyed = perTask.flatMap((events, task) => {
     let key = '';
     return events.map((event, position) => {
@@ -465,7 +465,7 @@ export function planImport(data: BeadsExport): {
   };
 }
 
-function sortRefusals(refusals: readonly Refusal[]): Refusal[] {
+export function sortRefusals(refusals: readonly Refusal[]): Refusal[] {
   const unique = new Map(refusals.map((refusal) => [stableJson(refusal), refusal]));
   return [...unique.values()].sort((a, b) => a.subject.localeCompare(b.subject) || a.reason.localeCompare(b.reason));
 }

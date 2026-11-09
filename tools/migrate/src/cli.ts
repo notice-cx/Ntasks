@@ -11,6 +11,9 @@
  *   node tools/migrate/src/cli.ts restore --from <backup.json> --store <new-file.sqlite>
  *   node tools/migrate/src/cli.ts load --api <https://address> --token-file <file> --from <export.json | backup.json>
  *   node tools/migrate/src/cli.ts verify --from <backup.json> --store <file.sqlite>
+ *   node tools/migrate/src/cli.ts seed --from <seed.json> --check
+ *   node tools/migrate/src/cli.ts seed --from <seed.json> --out <backup.json>
+ *   node tools/migrate/src/cli.ts provision --from <request.json> --out <provision.json>
  */
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -34,7 +37,9 @@ import { isJsonObject } from './json.ts';
 import { checkReadable, copyAsBackup, loadIntoStore, verifyLoaded } from './load.ts';
 import { openLocalStore, storeMigrations, type LocalStore } from './local-store.ts';
 import { planImport, type ImportPlan, type Refusal } from './plan.ts';
-import { verify, verifyBackup, type Difference } from './verify.ts';
+import { planProvision } from './provision.ts';
+import { planSeed } from './seed.ts';
+import { verify, verifyBackup, verifySeed, type Difference } from './verify.ts';
 
 /** The free plan's limits an import or a backup meets (docs/architecture.md): data that Durable Objects store, in all, and rows the task store writes and reads in a day. */
 export const FREE_PLAN = Object.freeze({
@@ -62,7 +67,10 @@ const USAGE = `Usage:
   cli.ts backup --api <https://address> --token-file <file> --out <backup.json>
   cli.ts restore --from <backup.json> --store <new-file.sqlite>
   cli.ts load --api <https://address> --token-file <file> --from <export.json | backup.json>
-  cli.ts verify --from <backup.json> --store <file.sqlite>`;
+  cli.ts verify --from <backup.json> --store <file.sqlite>
+  cli.ts seed --from <seed.json> --check
+  cli.ts seed --from <seed.json> --out <backup.json>
+  cli.ts provision --from <request.json> --out <provision.json>`;
 
 class UsageError extends Error {}
 
@@ -380,6 +388,72 @@ async function runRestore(values: Record<string, string | boolean | undefined>, 
   }
 }
 
+/**
+ * Turns a seed into a backup file that `load` and `restore` take: planned,
+ * loaded into a local copy of the store in memory and verified there first.
+ * With --check it writes nothing.
+ */
+async function runSeed(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
+  const from = option(values, 'from');
+  const check = values.check === true;
+  if (check && values.out !== undefined) throw new UsageError('Give --check or --out, not both.');
+  const out = check ? null : option(values, 'out');
+  if (out !== null && existsSync(out)) {
+    io.err(`Refused: ${out} already exists. The seed never writes over a file.`);
+    return 1;
+  }
+  const { plan, refusals } = planSeed(JSON.parse(await readFile(from, 'utf8')) as unknown);
+  if (plan === null) {
+    printRefusals(refusals, io);
+    return 1;
+  }
+  const copy = await openLocalStore(':memory:', { create: true });
+  try {
+    copy.load(plan);
+    const differences = await verifySeed(plan, (table) => copy.read(table));
+    if (differences.length > 0) {
+      io.err('The seed does not verify in a local copy of the store, so nothing was written.');
+      return printDifferences(differences, io);
+    }
+    io.out(`The seed holds ${planSummary(plan)}, and each task's history rebuilds it.`);
+    for (const line of costLines(copy)) io.out(line);
+    if (out === null) {
+      io.out('Nothing was written.');
+      return 0;
+    }
+    const file = copyAsBackup(copy, new Date().toISOString());
+    await writeFile(out, `${JSON.stringify(file)}\n`, { mode: 0o600, flag: 'wx' });
+    io.out(`Wrote ${out}, a backup of a store holding the seed. Load it into an empty store with load.`);
+    return 0;
+  } finally {
+    copy.close();
+  }
+}
+
+/**
+ * Writes the statements that provision a new, empty D1 database, and the
+ * tokens of the credentials they make, into one file only its owner reads.
+ */
+async function runProvision(values: Record<string, string | boolean | undefined>, io: Io): Promise<number> {
+  const out = option(values, 'out');
+  if (existsSync(out)) {
+    io.err(`Refused: ${out} already exists. The provision never writes over a file.`);
+    return 1;
+  }
+  const { file, refusals } = planProvision(JSON.parse(await readFile(option(values, 'from'), 'utf8')) as unknown);
+  if (file === null) {
+    printRefusals(refusals, io);
+    return 1;
+  }
+  // The file holds the credentials' tokens: private to its owner, and never written over.
+  await writeFile(out, `${JSON.stringify(file)}\n`, { mode: 0o600, flag: 'wx' });
+  io.out(
+    `Wrote ${out}: ${count(file.statements.length)} statements for an empty D1 database, making workspace ${file.workspaceId} ` +
+      `and the credentials ${Object.keys(file.tokens).join(', ')}. It holds their tokens: keep it private.`,
+  );
+  return 0;
+}
+
 export async function main(
   argv: readonly string[],
   io: Io,
@@ -407,6 +481,8 @@ export async function main(
     if (command === 'backup') return await runBackup(values, io, network);
     if (command === 'restore') return await runRestore(values, io);
     if (command === 'load') return await runLoad(values, io, network);
+    if (command === 'seed') return await runSeed(values, io);
+    if (command === 'provision') return await runProvision(values, io);
     throw new UsageError(command === undefined ? 'Name a command.' : `Unknown command ${command}.`);
   } catch (error) {
     if (error instanceof UsageError || (error as { code?: string }).code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {

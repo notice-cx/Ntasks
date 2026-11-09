@@ -4,7 +4,7 @@ import { needsSignIn } from '@/api/client';
 import type { LiveTasksPayload, TaskProject } from '@/api/types';
 import { fieldsProject, readBoard, type BoardFilters, type ProjectRead } from '@/lib/board-read';
 import { useChangeFeed } from './useChangeFeed';
-import { useBoards, useFilteredBoard, useTaskProjects } from './useTasks';
+import { useBoards, useFilteredBoard, useTaskProjects, useTaskSearch } from './useTasks';
 
 interface BoardsRead {
   catalog: UseQueryResult<readonly TaskProject[], Error>;
@@ -41,7 +41,8 @@ export function BoardsProvider({ children }: { children: ReactNode }) {
  * Every project's board, read and combined, with the filters applied. Inside
  * a `BoardsProvider`. A filter by custom field is the server's: the board of
  * the one project in view is read again with it, and that read takes the
- * project's place.
+ * project's place. The search is the server's too, of every project, so it
+ * finds what no board read holds; the boards' own rows match it meanwhile.
  */
 export function useBoard(filters: BoardFilters) {
   const shared = useContext(BoardsContext);
@@ -50,6 +51,7 @@ export function useBoard(filters: BoardFilters) {
   const fieldFilters = fieldProject === null ? {} : filters.fields;
   const filtering = fieldProject !== null && Object.keys(fieldFilters).length > 0;
   const narrowed = useFilteredBoard(filtering ? fieldProject : null, fieldFilters);
+  const search = useTaskSearch(filters.q);
   // A page passes a new filters object on every draw; the same filters are the same read.
   const filterKey = JSON.stringify(filters);
   const narrowedVersion = `${narrowed.status}:${narrowed.fetchStatus}:${narrowed.dataUpdatedAt}:${narrowed.errorUpdatedAt}`;
@@ -62,7 +64,7 @@ export function useBoard(filters: BoardFilters) {
       }),
     );
     const boardFilters = JSON.parse(filterKey) as BoardFilters;
-    let read = readBoard(catalog.data ?? [], reads, boardFilters);
+    let read = readBoard(catalog.data ?? [], reads, boardFilters, search.found);
     if (filtering && fieldProject !== null) {
       const whole = read;
       read = readBoard(
@@ -73,6 +75,7 @@ export function useBoard(filters: BoardFilters) {
           fetchedAt: narrowed.dataUpdatedAt || null,
         }),
         boardFilters,
+        search.found,
       );
       // The Filter menu's counts are the whole project's, as no other filter narrows them either.
       read = {
@@ -101,16 +104,21 @@ export function useBoard(filters: BoardFilters) {
         (keys.length > 0 && boards.every((board) => board.isPending)) ||
         (filtering && narrowed.isPending),
       fetching: catalog.isFetching || boards.some((board) => board.isFetching) || narrowed.isFetching,
+      /** The server has not yet answered the search typed. */
+      searching: search.searching,
+      /** Why the server's search failed, when it did: only the boards' own rows match it. */
+      searchFailure: search.failure,
       refetch: async () => {
         await Promise.all([
           catalog.refetch(),
           ...boards.map((board) => board.refetch()),
           ...(filtering ? [narrowed.refetch()] : []),
+          search.refetch(),
         ]);
       },
     };
-    // `narrowedVersion` stands for the filtered read, as `shared` does for the others.
-  }, [shared, filterKey, narrowedVersion, fieldProject, filtering]);
+    // `narrowedVersion` and `search.version` stand for those reads, as `shared` does for the others.
+  }, [shared, filterKey, narrowedVersion, search.version, fieldProject, filtering]);
 }
 
 export type Board = ReturnType<typeof useBoard>;

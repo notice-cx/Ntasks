@@ -173,6 +173,60 @@ describe('GET /api/tasks/:id and its history', () => {
   });
 });
 
+describe('GET /api/tasks/search', () => {
+  const idsOf = (body: Record<string, unknown>) => (body.tasks as { id: string }[]).map((task) => task.id);
+
+  it('finds the tasks of every project the sender reaches that hold every word, each naming its project', async () => {
+    const first = await newProject(engine);
+    const second = await newProject(engine);
+    const titled = (await engine.createTask(first.id, { title: 'Rotate the quokka keys' }, AGENT)).task;
+    const described = (
+      await engine.createTask(second.id, { title: 'Expiry', description: 'The Quokka keys expire monthly.' }, AGENT)
+    ).task;
+    await engine.createTask(second.id, { title: 'Rotate the quokka logs' }, AGENT);
+
+    const { status, body } = await get(target, '/api/tasks/search?q=quokka%20KEYS');
+    expect(status).toBe(200);
+    expect(idsOf(body).sort()).toEqual([titled.id, described.id].sort());
+    expect(body).toMatchObject({ total: 2, closedSince: '2026-10-30' });
+    expect(body.tasks).toContainEqual(
+      expect.objectContaining({ id: described.id, project: second.key, title: 'Expiry', status: 'open' }),
+    );
+
+    const granted = api({ principal: grantedOnly(first.id), now: time.now });
+    expect(idsOf((await get(granted, '/api/tasks/search?q=quokka%20keys')).body)).toEqual([titled.id]);
+  });
+
+  it('puts first the task a task id names, closed at any time, in a project the sender reaches', async () => {
+    const past = clock('2026-09-01T12:00:00.000Z');
+    const old = api({ now: past.now }).engine;
+    const own = await newProject(old);
+    const { task } = await old.createTask(own.id, { title: 'Archived long ago' }, AGENT);
+    await old.writeTask(own.id, task.id, { expectedVersion: 1, close: { reason: 'Done.', resolution: 'done' } }, OWNER);
+    // An open task whose text holds the id is a match of its own, after it.
+    const { task: mention } = await engine.createTask(own.id, { title: `Follow up on ${task.id}` }, AGENT);
+
+    const { body } = await get(target, `/api/tasks/search?q=${task.id}`);
+    expect(idsOf(body)).toEqual([task.id, mention.id]);
+    expect(body.tasks).toContainEqual(expect.objectContaining({ id: task.id, project: own.key, status: 'closed' }));
+    expect(body.total).toBe(2);
+
+    const granted = api({ principal: grantedOnly(project.id), now: time.now });
+    expect(idsOf((await get(granted, `/api/tasks/search?q=${task.id}`)).body)).toEqual([]);
+  });
+
+  it('answers at most limit tasks with the total, and refuses an empty q or a limit outside 1 to 200', async () => {
+    const own = await newProject(engine);
+    for (const title of ['Wombat one', 'Wombat two', 'Wombat three']) await engine.createTask(own.id, { title }, AGENT);
+
+    const { body } = await get(target, '/api/tasks/search?q=wombat&limit=2');
+    expect(idsOf(body)).toHaveLength(2);
+    expect(body.total).toBe(3);
+    for (const query of ['', '?q=%20%20', '?q=wombat&limit=0', '?q=wombat&limit=201', '?q=wombat&project=x'])
+      expect((await get(target, `/api/tasks/search${query}`)).status, query).toBe(400);
+  });
+});
+
 describe('GET /api/changes', () => {
   it('returns every change after a sequence number, and where to ask next', async () => {
     const all = await get(target, `/api/changes?after=0&limit=200&project=${project.id}`);
