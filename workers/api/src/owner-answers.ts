@@ -8,6 +8,7 @@
  * waiting on it land together or not at all.
  */
 import {
+  markedStep,
   TASK_LIMITS,
   type Json,
   type JsonObject,
@@ -15,8 +16,8 @@ import {
   type Task,
   type TaskComment,
   type TaskFieldChanges,
+  type StepMarking,
   type TaskResolution,
-  type TaskStep,
   type TaskWrite,
 } from '@ntasks/domain';
 import { listed } from './args.ts';
@@ -637,35 +638,6 @@ export function approvalWrite(
   return draft.write();
 }
 
-/** What a person records on one step of a request that they do steps. A field left out stays as it is. */
-export interface StepMarking {
-  /** The step's place in the request, from 1. */
-  readonly step: number;
-  /** true ticks the step, false unticks it. */
-  readonly done?: boolean;
-  /** Their note on the step, such as a value the agent asked for; null takes it off. */
-  readonly note?: string | null;
-  /** Why they stopped at this step; null says they are past it. */
-  readonly stuck?: string | null;
-}
-
-/** The step as `marking` leaves it, marked as `deciding` says. A tick clears
- * a stuck mark and a stuck mark clears a tick: a step is to do, done or stuck. */
-function marked(step: TaskStep, marking: StepMarking, deciding: Deciding): TaskStep {
-  const { actor: by, at } = deciding;
-  const app = deciding.app === undefined ? {} : { app: deciding.app };
-  let next = step;
-  if (marking.done === true && next.done === null) next = { ...next, done: { by, ...app, at }, stuck: null };
-  if (marking.done === false && next.done !== null) next = { ...next, done: null };
-  if (marking.note === null && next.note !== null) next = { ...next, note: null };
-  if (typeof marking.note === 'string' && next.note?.text !== marking.note)
-    next = { ...next, note: { by, ...app, at, text: marking.note } };
-  if (marking.stuck === null && next.stuck !== null) next = { ...next, stuck: null };
-  if (typeof marking.stuck === 'string' && (next.stuck?.reason !== marking.stuck || next.done !== null))
-    next = { ...next, done: null, stuck: { by, ...app, at, reason: marking.stuck } };
-  return next;
-}
-
 /**
  * A person's marks on one step of a request that they do steps, in any
  * order. When every step is ticked, the request closes as done with them as
@@ -691,7 +663,11 @@ export function stepWrite(
       `${task.id} has steps 1 to ${steps.length}.`,
       'step',
     );
-  const next = marked(step, marking, deciding);
+  const next = markedStep(step, marking, {
+    by: deciding.actor,
+    ...(deciding.app === undefined ? {} : { app: deciding.app }),
+    at: deciding.at,
+  });
   if (next === step) return null;
   const all = steps.map((entry, index) => (index === marking.step - 1 ? next : entry));
   const draft = new Draft(task);
