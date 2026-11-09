@@ -934,6 +934,8 @@ export interface MaintenanceInput extends Surroundings {
   /** The owner a relayed answer names as giving it, as a pick's chooser and an
    * owner-performed action's performer: the person the sender acts for, else the sender. */
   readonly owner: string;
+  /** The person the sender acts for; null for a sender that acts for nobody, as a service does. */
+  readonly person: string | null;
   readonly at: string;
 }
 
@@ -1065,10 +1067,16 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
   /** The owner answer's own effect on the task, applied after the dependents'. */
   let answer: (() => void) | null = null;
   if (op.action === 'accepted') {
+    // Only a person accepts a task over its criteria, so a sender acting for nobody has no acceptance to relay.
+    if (input.person === null)
+      return refuseAnswer(
+        'action',
+        `accepted records the acceptance of the person you act for, and you act for nobody; the person closes ${task.id} with Done, my call in the web app.`,
+      );
     if (!closed) {
       decisionClose(task, input, 'task');
       const acceptance = {
-        by: input.owner,
+        by: input.person,
         relayed: { by: actor, source: op.source!, quote: op.quote! },
         criteria: acceptedCriteria(task, op.met!, 'met'),
       };
@@ -1467,6 +1475,7 @@ export async function reconcileTask(
       ...(duplicate === null ? {} : { duplicate }),
       actor: actor.name,
       owner: context.principal.person ?? actor.name,
+      person: context.principal.person ?? null,
       at: context.now(),
     });
   });

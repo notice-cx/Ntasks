@@ -74,6 +74,7 @@ protocol appears in neither table.
 | AUTH-10 | `workers/api/test/api/http-writes.test.ts` › "refuses fields that break their rules, a project it cannot reach and one it may only read" |
 | AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-11 | `workers/api/test/api/owner-answers.test.ts` › "closes the task as done, accepted by the owner and relayed by the agent, each criterion met or waived" |
+| AUTH-11 | `workers/api/test/api/owner-answers.test.ts` › "refuses one from a sender that acts for no person, such as a service, writing nothing" |
 | AUTH-11 | `workers/api/test/api/owner-answers.test.ts` › "opens the task again on the owner’s dispute, tells the waiting task, and refuses the disputed source" |
 | AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "needs an approval or an acceptance an agent recorded" |
 | INV-1 | `workers/api/test/api/write-tools.test.ts` › "lets exactly one of two agents claiming at once take the task (rule 1)" |

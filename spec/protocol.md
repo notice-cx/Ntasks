@@ -651,11 +651,12 @@ over its criteria ([3.10](#310-acceptance-as-done)). A server MUST refuse an
 acceptance sent directly by an agent or a service, whatever it was granted,
 and MUST change nothing. A close as done by an agent or a service MUST NOT
 record a criterion as waived; it names its proof instead
-([INV-7](#inv-7)). Any sender MAY relay an acceptance a person gave
-elsewhere, as [AUTH-3](#auth-3) relays an answer: with the person's exact
-words, where they gave them, the proposal version shown to them and the
-criteria they found met. A server MUST record it with the person as `by`
-and the sender in `relayed`. A person MAY dispute an acceptance relayed for
+([INV-7](#inv-7)). A sender that acts for a person MAY relay an acceptance
+that person gave elsewhere, as [AUTH-3](#auth-3) relays an answer: with the
+person's exact words, where they gave them, the proposal version shown to
+them and the criteria they found met. A server MUST record it with the
+person as `by` and the sender in `relayed`, and MUST refuse a relay from a
+sender that acts for no person, such as a service. A person MAY dispute an acceptance relayed for
 them: the dispute MUST open the task again, keep the close in its history,
 tell each task waiting on it, and make the server refuse an answer relayed
 from the disputed source. Disputing it again changes nothing. A person's

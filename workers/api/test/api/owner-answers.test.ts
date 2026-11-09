@@ -925,6 +925,20 @@ describe('acceptances an agent relays', () => {
     expect(await current(project, work.id)).toEqual(closed);
   });
 
+  it('refuses one from a sender that acts for no person, such as a service, writing nothing', async () => {
+    const service: Principal = Object.freeze({
+      id: 'service:credential-1/relay-agent',
+      name: 'service:installation/relay-agent',
+      scopes: [SCOPES.read, SCOPES.write],
+      projects: 'all',
+    });
+    const as = api({ principal: service, now: time.now, engine });
+    const { project, work } = await accepting();
+    const refused = await reconcile(project, work.id, accepted, as);
+    expect(refused.refused).toMatch(/^refused: action: /u);
+    expect(await current(project, work.id)).toMatchObject({ status: 'open', version: 1, metadata: {} });
+  });
+
   it('opens the task again on the owner’s dispute, tells the waiting task, and refuses the disputed source', async () => {
     const { project, work, launch } = await accepting();
     await answered(project, work.id, accepted);
