@@ -65,6 +65,7 @@ since, the answer is refused with `409`, `task_refused` and
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
 | Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |
+| Free a held task on the person's call | `POST /api/tasks/:id/release` | `projectId` ([AUTH-9](protocol.md#auth-9)) |
 | Dispute a relayed approval or acceptance | `POST /api/tasks/:id/dispute` | `projectId` |
 
 Each answers `{ task }`, the task as the decision left it, and records the

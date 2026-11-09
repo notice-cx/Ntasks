@@ -318,6 +318,8 @@ describe('list_tasks', () => {
     later.advance(2 * 60);
 
     expect([await stalled(quiet.id), await stalled(busy.id), await stalled(handed.id)]).toEqual([true, false, true]);
+    // Stalled is shown only: a day of quiet leaves the claim as it was.
+    expect(await own.engine.getTask(where.id, quiet.id)).toMatchObject({ status: 'in_progress', assignee: AGENT.name });
     expect((await list({ stalled: true })).map((task) => task.id).sort()).toEqual([quiet.id, handed.id].sort());
     const rows = await list({});
     expect(rows.find((row) => row.id === quiet.id)).toMatchObject({ stalled: true });

@@ -41,9 +41,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  "2026-11-09: request_human_action asks a person to do steps only they can do, each with its command apart from its text, which they tick off in the web app; a request's steps are on get_task as steps. reconcile_task records their report that they did them with owner_performed.",
   '2026-11-09: an ask to a person says what is waiting, why it is theirs, and the exact place to act (see Writing a task). Lint advises on a description whose first line repeats the title, and on an ask that names no place to act.',
   '2026-11-09: a person can close a task as done on their own call, waiving criteria of its acceptance; get_task shows it as closeAcceptance. When the owner does so in conversation, reconcile_task action accepted records it, with met: the criteria they found met. Only a person waives a criterion: close_task as done still names its proof.',
+  '2026-11-09: get_task and list_tasks name a task stalled: in progress, and its holder has done nothing on it for a day, or ever. list_tasks takes stalled: true to list them. A person frees one on their own call in the web app; an agent only with reconcile_task action release and its evidence.',
 ]);
 
 /** How a session starts. */
