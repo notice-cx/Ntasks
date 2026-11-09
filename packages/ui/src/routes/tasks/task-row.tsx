@@ -86,7 +86,7 @@ function RowPanel({ children }: { children: ReactNode }) {
  * unparks, for a ready task its estimate, for a task someone holds the helper they work through and when
  * they last wrote to it, and for a closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
-  const type = typeMarkFor(task.issueType, task.awaitType);
+  const type = typeMarkFor(task.issueType, task.awaitType, (task.steps ?? null) !== null);
   const labels = task.labels.filter((label) => label !== 'human').slice(0, 2);
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
@@ -283,9 +283,11 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
     project: task.project,
     proposalVersion: task.proposalVersion ?? null,
     choices: task.choices ?? null,
+    steps: task.steps ?? null,
     disabledReason: verbReason(
       capabilities,
-      writable && operationAvailable(capabilities, isGate(task) ? 'resolve' : 'respond'),
+      writable &&
+        operationAvailable(capabilities, askVerb(task) === 'do' ? 'step' : isGate(task) ? 'resolve' : 'respond'),
       UNAVAILABLE,
     ),
     chooseDisabledReason: verbReason(capabilities, writable && operationAvailable(capabilities, 'choose'), UNAVAILABLE),

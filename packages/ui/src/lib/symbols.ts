@@ -77,7 +77,18 @@ export function priorityBars(priority: number): 0 | 1 | 2 | 3 {
 
 // --- Type ---------------------------------------------------------------------
 
-export const TYPE_MARKS = ['task', 'bug', 'feature', 'epic', 'decision', 'approval', 'chore', 'gate', 'other'] as const;
+export const TYPE_MARKS = [
+  'task',
+  'bug',
+  'feature',
+  'epic',
+  'decision',
+  'approval',
+  'steps',
+  'chore',
+  'gate',
+  'other',
+] as const;
 export type TypeMark = (typeof TYPE_MARKS)[number];
 
 export const TYPE_MARK_LABELS: Readonly<Record<Exclude<TypeMark, 'other'>, string>> = Object.freeze({
@@ -87,19 +98,22 @@ export const TYPE_MARK_LABELS: Readonly<Record<Exclude<TypeMark, 'other'>, strin
   epic: 'Epic',
   decision: 'Decision',
   approval: 'Approval',
+  steps: 'Your steps',
   chore: 'Chore',
   gate: 'Gate',
 });
 
-/** A stored type as its mark. A gate a person answers is an Approval; any other gate waits on a system. */
-export function typeMarkFor(issueType: string, awaitType: string | null = null): TypeMark {
-  if (isGate({ issueType, awaitType })) return (awaitType ?? 'human') === 'human' ? 'approval' : 'gate';
+/** A stored type as its mark. A gate a person answers is an Approval, or with `steps` their steps to do; any
+ * other gate waits on a system. */
+export function typeMarkFor(issueType: string, awaitType: string | null = null, steps = false): TypeMark {
+  if (isGate({ issueType, awaitType }))
+    return (awaitType ?? 'human') !== 'human' ? 'gate' : steps ? 'steps' : 'approval';
   return (TYPE_MARKS as readonly string[]).includes(issueType) ? (issueType as TypeMark) : 'other';
 }
 
 /** A type in words; a type this build does not know is shown as itself. */
-export function typeLabel(issueType: string, awaitType: string | null = null): string {
-  const mark = typeMarkFor(issueType, awaitType);
+export function typeLabel(issueType: string, awaitType: string | null = null, steps = false): string {
+  const mark = typeMarkFor(issueType, awaitType, steps);
   return mark === 'other' ? issueType.charAt(0).toUpperCase() + issueType.slice(1) : TYPE_MARK_LABELS[mark];
 }
 

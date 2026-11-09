@@ -242,9 +242,13 @@ export function TaskFacts({
           )}
         </Fact>
         {task.assignee && !closed ? <WorkFacts task={task} nowMs={nowMs} /> : null}
-        <Fact label="Type" valueText={typeLabel(task.issueType, task.awaitType)}>
-          <TypeMark type={typeMarkFor(task.issueType, task.awaitType)} size={14} label={null} />
-          {typeLabel(task.issueType, task.awaitType)}
+        <Fact label="Type" valueText={typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}>
+          <TypeMark
+            type={typeMarkFor(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
+            size={14}
+            label={null}
+          />
+          {typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
         </Fact>
         <Fact label="Project" valueText={project.displayName}>
           <FactLink to={`${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`}>

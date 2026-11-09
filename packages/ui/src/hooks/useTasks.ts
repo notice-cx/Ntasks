@@ -16,6 +16,7 @@ import type {
   LiveTasksPayload,
   NewTask,
   ProjectFields,
+  StepMarking,
   TaskChoiceKey,
   TaskEdit,
   TaskProject,
@@ -297,6 +298,22 @@ export function useCommentOnTask() {
       text: string;
       idempotencyKey?: string;
     }) => api.comment(id, project, text, idempotencyKey === undefined ? undefined : { idempotencyKey }),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Records a person's tick, note or stuck mark on one step of a request to do steps, right away: a tick is undone by unticking. */
+export function useMarkStep() {
+  const api = useTasksApi();
+  const refresh = useTaskRefresh();
+  return useMutation({
+    mutationFn: ({
+      id,
+      project,
+      proposalVersion,
+      ...marking
+    }: { id: string; project: string; proposalVersion: string | null } & StepMarking) =>
+      api.markStep(id, project, marking, { proposalVersion }),
     onSuccess: () => refresh(),
   });
 }

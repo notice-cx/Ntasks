@@ -119,6 +119,8 @@ describe('the type mark', () => {
     expect(typeMarkFor('gate', null)).toBe('approval');
     expect(typeMarkFor('gate', 'timer')).toBe('gate');
     expect(typeLabel('gate', 'human')).toBe('Approval');
+    expect(typeMarkFor('gate', 'human', true)).toBe('steps');
+    expect(typeMarkFor('gate', 'timer', true)).toBe('gate');
   });
 
   it('keeps a type this build does not know as its own word', () => {

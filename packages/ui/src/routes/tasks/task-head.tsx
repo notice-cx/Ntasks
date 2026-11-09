@@ -196,6 +196,7 @@ export function ClosedSummary({
 /** What an answer chose, as its heading names it. */
 function answerHeading(answer: TaskAnswer, choices: TaskChoices | null): string {
   if (answer.option === 'approve') return 'Approved';
+  if (answer.option === 'done') return 'Done';
   if (answer.option === 'decline') return 'Declined';
   if (answer.option === null) return 'Answered';
   const label = choices?.options.find((option) => option.key === answer.option)?.label;
