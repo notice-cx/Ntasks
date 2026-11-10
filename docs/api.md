@@ -885,8 +885,9 @@ key.
 
 #### Work still in progress when its pull request merges
 
-A merge also closes the work it finishes when the agent that did it has
-stopped. Each task in progress whose work in hand names the pull request
+A merge into the repository's default branch also closes the work it
+finishes when the agent that did it has stopped. Each task in progress whose
+work in hand names the pull request
 (`pr` on `claim_task` or `comment_on_task`) closes as done before the merge
 moves anything:
 
@@ -986,7 +987,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 9.
+field can hold is added. This is version 10.
 
 | Version | Added |
 |---|---|
