@@ -5,6 +5,7 @@ import { App } from './App';
 import type { TasksApi } from './api/client';
 import { connect, originOf, sessionCookie, type TokenSource } from './api/connection';
 import { ThemeScope } from './components/ui/popover';
+import type { SidebarPlace } from './components/ui/shell';
 import { AppToaster } from './components/ui/toaster';
 import { appPaths } from './lib/paths';
 import { useResolvedTheme, type Theme } from './lib/theme';
@@ -42,6 +43,12 @@ export interface NtasksAppProps {
    * title.
    */
   onTitle?: (title: string) => void;
+  /**
+   * `beside` (the default) draws the sidebar beside the pages, and on a phone
+   * behind the Sidebar button. `sheet` keeps it behind that button at every
+   * width, for a host page that has its own navigation beside the app.
+   */
+  sidebar?: SidebarPlace;
 }
 
 /**
@@ -66,6 +73,7 @@ function Placed({
   theme = 'system',
   api,
   onTitle,
+  sidebar,
 }: NtasksAppProps) {
   const paths = useMemo(() => appPaths(basePath), [basePath]);
   const apiOrigin = given === undefined ? undefined : originOf(given);
@@ -85,7 +93,7 @@ function Placed({
   const app = (
     <Root theme={theme}>
       {/* A new Ntasks starts the app again, with none of the last one's reads. */}
-      <App key={apiOrigin} api={calls} paths={paths} signIn={current.signIn} onTitle={onTitle} />
+      <App key={apiOrigin} api={calls} paths={paths} signIn={current.signIn} onTitle={onTitle} sidebar={sidebar} />
     </Root>
   );
   if (inHostRoute) return app;

@@ -3,7 +3,7 @@
  * its public entry points only: the board under the host's `/tasks` route,
  * and every read sent to the Ntasks the host names, with the person's token.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createFixtureTasksApi } from '../src/fixture';
@@ -95,6 +95,29 @@ describe('a host page', () => {
     fireEvent.click(await screen.findByRole('link', { name: TASK }));
     expect(window.location.pathname).toBe('/tasks/web-b2r6');
     expect(await screen.findByRole('heading', { name: TASK })).toBeTruthy();
+  });
+
+  it('keeps its sidebar, with the source-code link, behind the Sidebar button when the host has its own navigation', async () => {
+    ntasks();
+    render(
+      <MemoryRouter initialEntries={['/tasks']}>
+        <Routes>
+          <Route
+            path="/tasks/*"
+            element={<NtasksApp apiOrigin={NTASKS} tokenSource={person()} basePath="/tasks" sidebar="sheet" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('link', { name: TASK });
+    const nav = screen.getByRole('navigation', { name: 'Ntasks' });
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Sidebar' }));
+    expect(nav.hasAttribute('data-open')).toBe(true);
+    const source = within(nav).getByRole('link', { name: 'Source code' });
+    expect(source.getAttribute('href')).toBe('https://github.com/notice-cx/Ntasks');
+    fireEvent.click(within(nav).getByRole('link', { name: 'Focus' }));
+    expect(nav.hasAttribute('data-open')).toBe(false);
   });
 
   it("calls the host's sign-in when the Ntasks answers that nobody is signed in", async () => {

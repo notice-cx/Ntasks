@@ -11,7 +11,7 @@ import { WorkspaceGate } from './components/WorkspaceGate';
 import { Button } from './components/ui/button';
 import { EmptyState } from './components/ui/empty-state';
 import { AppToaster } from './components/ui/toaster';
-import { AppShell, TopBar } from './components/ui/shell';
+import { AppShell, TopBar, type SidebarPlace } from './components/ui/shell';
 import { BoardsProvider } from './hooks/useBoard';
 import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
@@ -47,6 +47,7 @@ export function App({
   queryClient,
   onTitle,
   timeZone,
+  sidebar = 'beside',
 }: {
   api: TasksApi;
   paths: AppPaths;
@@ -56,6 +57,8 @@ export function App({
   onTitle?: (title: string) => void;
   /** The IANA time zone dates are shown in; the browser's when left out (`lib/dates.ts`). */
   timeZone?: string;
+  /** Where the sidebar sits (`AppShell`). */
+  sidebar?: SidebarPlace;
 }) {
   const [client] = useState(() => queryClient ?? newQueryClient());
   return (
@@ -68,7 +71,7 @@ export function App({
               <GivenTimeZone zone={timeZone}>
                 <Routes>
                   <Route element={<WorkspaceGate />}>
-                    <Route element={<Shell />}>
+                    <Route element={<Shell sidebar={sidebar} />}>
                       <Route index element={<TasksBoard />} />
                       <Route path="focus" element={<FocusRoute />} />
                       <Route path=":id" element={<TaskRoute />} />
@@ -113,7 +116,7 @@ function AccountTimeZone({ children }: { children: ReactNode }) {
  * work on any of them: `C` for a new task, `/` to search the board, `F` for
  * Focus and `L` for Live.
  */
-function Shell() {
+function Shell({ sidebar }: { sidebar: SidebarPlace }) {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const paths = usePaths();
@@ -132,7 +135,7 @@ function Shell() {
   return (
     <BoardsProvider>
       <AccountTimeZone>
-        <AppShell sidebar={<AppSidebar />}>
+        <AppShell sidebar={<AppSidebar />} place={sidebar}>
           <div className="page-arrive">
             {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
             <PageBoundary resetKey={pathname}>

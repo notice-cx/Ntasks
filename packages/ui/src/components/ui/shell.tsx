@@ -17,7 +17,15 @@ import {
 import { cn } from '../../lib/utils';
 import { IconButton } from './button';
 
+/**
+ * Where the sidebar sits: `beside` the page, as a sheet only on a phone, or a
+ * `sheet` at every width, for a host page that draws its own navigation
+ * beside the app.
+ */
+export type SidebarPlace = 'beside' | 'sheet';
+
 interface SidebarState {
+  place: SidebarPlace;
   open: boolean;
   setOpen: (open: boolean) => void;
   /** Closes the sheet and puts focus back on the button that opened it. */
@@ -30,17 +38,20 @@ const SidebarContext = createContext<SidebarState | null>(null);
 
 /**
  * The app's frame: a 236 px sidebar on Canvas and the page on Background,
- * divided by Border. On a phone the sidebar is hidden and the page takes the
- * width; the Sidebar button at the start of the page's `TopBar` opens it as
- * a sheet over the page. The sheet closes on Escape, on a press outside it,
- * on a link inside it, and when the browser goes back or forward.
+ * divided by Border. On a phone, and at every width when `place` is `sheet`,
+ * the sidebar is hidden and the page takes the width; the Sidebar button at
+ * the start of the page's `TopBar` opens it as a sheet over the page. The
+ * sheet closes on Escape, on a press outside it, on a link inside it, and
+ * when the browser goes back or forward.
  */
 export function AppShell({
   sidebar,
+  place = 'beside',
   children,
   className,
 }: {
   sidebar: ReactNode;
+  place?: SidebarPlace;
   children: ReactNode;
   className?: string;
 }) {
@@ -51,7 +62,10 @@ export function AppShell({
     setOpen(false);
     opener.current?.focus();
   }, []);
-  const state = useMemo(() => ({ open, setOpen, dismiss, sidebarId, opener }), [open, dismiss, sidebarId]);
+  const state = useMemo(
+    () => ({ place, open, setOpen, dismiss, sidebarId, opener }),
+    [place, open, dismiss, sidebarId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -71,17 +85,26 @@ export function AppShell({
 
   return (
     <SidebarContext.Provider value={state}>
-      <div className={cn('grid min-h-screen grid-cols-[236px_minmax(0,1fr)] bg-canvas max-sm:grid-cols-1', className)}>
+      <div
+        className={cn(
+          place === 'sheet'
+            ? 'min-h-full bg-background'
+            : 'grid min-h-screen grid-cols-[236px_minmax(0,1fr)] bg-canvas max-sm:grid-cols-1',
+          className,
+        )}
+      >
         {sidebar}
         {open ? (
           <div
             aria-hidden
-            className="fixed inset-0 z-40 bg-black/30 sm:hidden"
+            className={cn('fixed inset-0 z-40 bg-black/30', place === 'beside' && 'sm:hidden')}
             onClick={dismiss}
             data-sidebar-backdrop=""
           />
         ) : null}
-        <main className="min-w-0 border-l border-border bg-background max-sm:border-l-0">{children}</main>
+        <main className={cn('min-w-0 bg-background', place === 'beside' && 'border-l border-border max-sm:border-l-0')}>
+          {children}
+        </main>
       </div>
     </SidebarContext.Provider>
   );
@@ -91,6 +114,7 @@ export function AppShell({
 export function Sidebar({ className, children, onClick, ...props }: ComponentProps<'nav'>) {
   const shell = useContext(SidebarContext);
   const open = shell?.open ?? false;
+  const sheet = shell?.place === 'sheet';
   const nav = useRef<HTMLElement>(null);
   useEffect(() => {
     if (open) nav.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
@@ -101,10 +125,17 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
       id={shell?.sidebarId}
       data-open={open ? '' : undefined}
       className={cn(
-        'sticky top-0 flex h-screen flex-col gap-0.5 px-2.5 pt-2.5 pb-4',
-        open
-          ? 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-50 max-sm:h-auto max-sm:w-[min(280px,85vw)] max-sm:overflow-y-auto max-sm:bg-canvas max-sm:shadow-pop'
-          : 'max-sm:hidden',
+        'flex flex-col gap-0.5 px-2.5 pt-2.5 pb-4',
+        sheet
+          ? open
+            ? 'fixed inset-y-0 left-0 z-50 w-[min(280px,85vw)] overflow-y-auto bg-canvas shadow-pop'
+            : 'hidden'
+          : [
+              'sticky top-0 h-screen',
+              open
+                ? 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-50 max-sm:h-auto max-sm:w-[min(280px,85vw)] max-sm:overflow-y-auto max-sm:bg-canvas max-sm:shadow-pop'
+                : 'max-sm:hidden',
+            ],
         className,
       )}
       onClick={(event: MouseEvent<HTMLElement>) => {
@@ -119,7 +150,7 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
   );
 }
 
-/** The button that opens the sidebar on a phone; `TopBar` puts it first. Hidden on wider screens, where the sidebar always shows. */
+/** The button that opens the sidebar as a sheet; `TopBar` puts it first. Hidden on wider screens while the sidebar shows beside the page. */
 function SidebarOpener() {
   const shell = useContext(SidebarContext);
   if (!shell) return null;
@@ -130,7 +161,7 @@ function SidebarOpener() {
       icon={<PanelLeft aria-hidden />}
       aria-expanded={shell.open}
       aria-controls={shell.sidebarId}
-      className="-ms-1.5 sm:hidden"
+      className={cn('-ms-1.5', shell.place === 'beside' && 'sm:hidden')}
       onClick={() => shell.setOpen(!shell.open)}
     />
   );
