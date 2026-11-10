@@ -298,7 +298,7 @@ approve, merge or turn on auto-merge for a release pull request.
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
 [release-please](https://github.com/googleapis/release-please). It keeps one
-release pull request, titled `chore(main): release main`, for this package and
+release pull request, titled `chore: release main`, for this package and
 the `ntasks` command together, so the two never conflict. It lists each package
 with changes to release and its next version, and releases only those. While a
 `feat`, `fix`, `perf` or `revert` commit or a breaking change made since this
@@ -316,7 +316,7 @@ check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release main`, open the
+1. On the pull request `chore: release main`, open the
    **Files changed** tab, click **Awaiting approval** at the top right, then
    **Approve workflows to run**. GitHub holds the pull request's CI run until
    someone approves it, because a workflow, not a person, opened the pull

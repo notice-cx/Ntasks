@@ -157,10 +157,10 @@ with `--remote`, `wrangler secret put`, `wrangler login`, `pnpm run deploy`
 the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
 `--dry-run` included, since it reads the account, and requests to a deployed
 Worker. Publishing to npm is the owner's step too: `npm publish`, merging a
-release pull request, pushing a `v*` or `ui-v*` tag, and starting the Release
+release pull request, pushing an `ntasks-v*` or `ui-v*` tag, and starting the Release
 or the Release UI package workflow. A release is the owner approving the CI
 run of the one release pull request for both packages, titled
-`chore(main): release main`, merging that pull request, then pressing
+`chore: release main`, merging that pull request, then pressing
 **Approve and deploy** on each publish run it starts
 ([tools/cli](tools/cli/README.md#releasing),
 [packages/ui](packages/ui/README.md#releasing)). Agents never approve a release

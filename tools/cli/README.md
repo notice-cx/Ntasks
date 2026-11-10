@@ -84,7 +84,7 @@ approve, merge or turn on auto-merge for a release pull request.
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
 [release-please](https://github.com/googleapis/release-please). It keeps one
-release pull request, titled `chore(main): release main`, for this package and
+release pull request, titled `chore: release main`, for this package and
 `@notice-cx/ntasks-ui` together, so the two never conflict. It lists each
 package with changes to release and its next version, and releases only those.
 While `main` holds a `feat`, `fix`, `perf` or `revert` commit or a breaking
@@ -97,14 +97,14 @@ changes is under one of the folders `exclude-paths` lists in
 `release-please-config.json`: the website, the docs, the protocol, the skill,
 the workflows and the tools other than `tools/cli`.
 
-Merging the pull request creates the tag `v<version>` and its GitHub release,
+Merging the pull request creates the tag `ntasks-v<version>` and its GitHub release,
 then starts the Release workflow (`.github/workflows/release.yml`) on that tag.
 The workflow waits for the owner to approve the `npm` environment. It then
 checks and builds the repository and publishes `tools/cli/dist` to npm.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release main`, open the
+1. On the pull request `chore: release main`, open the
    **Files changed** tab, click **Awaiting approval** at the top right, then
    **Approve workflows to run**. GitHub holds the pull request's CI run until
    someone approves it, because a workflow, not a person, opened the pull
@@ -120,6 +120,6 @@ When more changes reach `main` before the pull request merges, release-please
 rebuilds it, and the new CI run waits for approval again: repeat step 1.
 
 To run a failed or rejected publish again, open **Actions**, choose
-**Release**, click **Run workflow**, pick the tag `v<version>` under **Use
+**Release**, click **Run workflow**, pick the tag `ntasks-v<version>` under **Use
 workflow from** and click **Run workflow**. The workflow stops if it is run on a
 branch, or on a tag that does not name the version in `tools/cli/package.json`.
