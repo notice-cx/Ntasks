@@ -29,6 +29,11 @@ export function convertedApp(ownerId: number): { readonly clientId: string; read
   };
 }
 
+/** The webhook secret GitHub hands back with the app a manifest code converts into. */
+export function convertedWebhookSecret(ownerId: number): string {
+  return `webhook-secret-of-${ownerId}-0123456789abcdef`;
+}
+
 /** What the Worker asked the stand-in, for the test that is running. */
 export interface GitHubCalls {
   /** Each token exchange's client id and secret, as `<id>:<secret>`. */
@@ -92,7 +97,7 @@ export function standInForGitHub(): GitHubCalls {
             owner: { id: Number(owner), login: `person-${owner}`, type: 'User' },
             client_id: app.clientId,
             client_secret: app.clientSecret,
-            webhook_secret: null,
+            webhook_secret: convertedWebhookSecret(Number(owner)),
             pem: '-----BEGIN RSA PRIVATE KEY-----\nstand-in\n-----END RSA PRIVATE KEY-----\n',
             html_url: `https://github.com/apps/ntasks-${owner}`,
           },

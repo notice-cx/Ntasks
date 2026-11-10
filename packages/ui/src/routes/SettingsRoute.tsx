@@ -1,8 +1,9 @@
 import { Copy } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { refusedField } from '../api/client';
-import type { ConnectedApp, GitHubWebhook, Workspace } from '../api/types';
+import type { ConnectedApp, GitHubAppStart, GitHubWebhook, Workspace } from '../api/types';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Button, IconButton } from '../components/ui/button';
 import { Field, FieldError, Input, Textarea } from '../components/ui/field';
@@ -12,6 +13,8 @@ import { WorkspaceIcon } from '../components/ui/symbols';
 import { useRetryKey } from '../hooks/useTasks';
 import {
   useApps,
+  useConnectGitHub,
+  useDisconnectGitHub,
   useGitHubWebhook,
   useRegisterApp,
   useRemoveApp,
@@ -19,6 +22,7 @@ import {
   useRenameWorkspace,
   useRevokeApp,
   useSaveGitHubWebhook,
+  useSetDeployCheck,
   useWorkspace,
 } from '../hooks/useWorkspace';
 import { copyText } from '../lib/clipboard';
@@ -262,34 +266,200 @@ function RegisterAppForm({ onDone }: { onDone: () => void }) {
 }
 
 /**
- * The workspace's GitHub webhook, for its owners: the address GitHub sends
- * to, the secret it signs each delivery with, and the deploy checks whose
- * success means a change is live. With it, GitHub moves a closed task to
- * Merged and Live without an agent reporting it.
+ * GitHub for the workspace, for its owners. Connect GitHub makes the
+ * workspace's GitHub App; installed on an account, it tells Ntasks when that
+ * account's pull requests merge and their deploys pass, so closed tasks move
+ * to Merged and Live without an agent reporting it. A webhook can also be set
+ * up by hand.
  */
 function GitHubWebhookSection() {
   const github = useGitHubWebhook();
+  const [params] = useSearchParams();
   let body: ReactNode;
   if (github.isError)
     body = (
       <ReadFailed
-        title="Couldn't load the GitHub webhook"
+        title="Couldn't load GitHub"
         error={github.error}
         retrying={github.isFetching}
         onRetry={() => void github.refetch()}
       />
     );
   else if (github.isPending) body = <PageSkeleton shape="page" />;
-  // A save gives the form the saved values to start from again.
-  else body = <GitHubWebhookForm key={github.data.updatedAt ?? 'none'} webhook={github.data} />;
+  else if (github.data.app !== null) body = <GitHubConnected github={github.data} />;
+  else body = <GitHubConnect github={github.data} retry={params.get('github') === 'retry'} />;
   return (
     <section aria-label="GitHub" className="flex flex-col gap-3 pt-2">
       <h2 className="m-0 text-label font-medium text-ink">GitHub</h2>
       <p className="m-0 text-label text-ink-2">
-        GitHub moves a closed task to Merged when its pull request merges, and to Live when a deploy check passes.
+        GitHub moves a closed task to Merged when its pull request merges, and to Live when its deploy passes.
       </p>
       {body}
     </section>
+  );
+}
+
+/** Posts the manifest to GitHub from this page, as GitHub's manifest flow takes it: a form, never a fetch. */
+function postToGitHub({ action, manifest }: GitHubAppStart): void {
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = action;
+  const field = document.createElement('input');
+  field.type = 'hidden';
+  field.name = 'manifest';
+  field.value = manifest;
+  form.append(field);
+  document.body.append(form);
+  form.submit();
+}
+
+/** Before the app is made: Connect GitHub, and the webhook set up by hand under its own heading. */
+function GitHubConnect({ github, retry }: { github: GitHubWebhook; retry: boolean }) {
+  const connect = useConnectGitHub();
+  return (
+    <div className="flex flex-col gap-3">
+      {retry ? (
+        <p role="status" className="m-0 text-label text-ink">
+          GitHub didn't finish connecting. Press Connect GitHub again.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="primary"
+          disabled={connect.isPending}
+          onClick={() =>
+            connect.mutate(undefined, {
+              onSuccess: postToGitHub,
+              onError: (error) => toast.error(error.message),
+            })
+          }
+        >
+          {connect.isPending ? 'Connecting…' : 'Connect GitHub'}
+        </Button>
+        <p className="m-0 text-meta text-ink-2">
+          GitHub makes an app for this workspace. Then install it on your account and your organizations.
+        </p>
+      </div>
+      <details className="group" open={github.updatedAt !== null}>
+        <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
+        <div className="pt-3">
+          {/* A save gives the form the saved values to start from again. */}
+          <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/** After the app is made: where it is installed, the links that install it, the deploys it detected, and Disconnect. */
+function GitHubConnected({ github }: { github: GitHubWebhook }) {
+  const app = github.app!;
+  const disconnect = useDisconnectGitHub();
+  const setCheck = useSetDeployCheck();
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="flex flex-col gap-4">
+      <Setting label="App">
+        <a href={app.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-ink underline">
+          {app.slug}
+        </a>
+      </Setting>
+      <div className="flex flex-col gap-1.5" data-github-installations="">
+        <span className="text-label font-medium text-ink-2">Installed on</span>
+        {github.installations.length === 0 ? (
+          <p className="m-0 text-label text-ink-3">No account yet.</p>
+        ) : (
+          <ul className="m-0 list-none overflow-hidden rounded-lg p-0 inset-ring inset-ring-border [&>li:last-child>div]:border-b-0">
+            {github.installations.map((installation) => (
+              <li key={installation.installationId}>
+                <Row className="ps-3 pe-2">
+                  <RowTitle>{installation.account}</RowTitle>
+                  <RowMeta>{installation.accountType === 'Organization' ? 'Organization' : 'Account'}</RowMeta>
+                </Row>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap gap-2 pt-1.5">
+          <Button asChild size="sm" variant="primary">
+            <a href={app.accountInstallUrl}>Install on your account</a>
+          </Button>
+          <Button asChild size="sm">
+            <a href={app.installUrl}>Install on an organization</a>
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5" data-github-deploys="">
+        <span className="text-label font-medium text-ink-2">Deploys</span>
+        {github.detected.length === 0 ? (
+          <p className="m-0 text-label text-ink-3">
+            None seen yet. A passing Workers Builds check or a production deployment shows here.
+          </p>
+        ) : (
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {github.detected.map((check) => (
+              <li key={check.name}>
+                <label className="flex items-center gap-2 text-label text-ink">
+                  <input
+                    type="checkbox"
+                    className="size-[15px] accent-accent"
+                    checked={
+                      setCheck.isPending && setCheck.variables.name === check.name ? setCheck.variables.on : check.on
+                    }
+                    disabled={setCheck.isPending}
+                    aria-label={`${check.name} counts as a deploy`}
+                    onChange={(event) =>
+                      setCheck.mutate(
+                        { name: check.name, on: event.target.checked },
+                        { onError: (error) => toast.error(error.message) },
+                      )
+                    }
+                  />
+                  <span className="min-w-0 truncate">{check.name}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {confirming ? (
+          <>
+            <span className="text-meta text-ink-2">The app's events are refused after this.</span>
+            <Button type="button" variant="ghost" disabled={disconnect.isPending} onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={disconnect.isPending}
+              data-confirm-disconnect=""
+              onClick={() =>
+                disconnect.mutate(undefined, {
+                  onSuccess: () => toast.success('Disconnected GitHub. Delete the app on its GitHub page too.'),
+                  onError: (error) => {
+                    setConfirming(false);
+                    toast.error(error.message);
+                  },
+                })
+              }
+            >
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" variant="ghost" onClick={() => setConfirming(true)}>
+            Disconnect
+          </Button>
+        )}
+      </div>
+      {/* A webhook set up by hand works beside the app: its owner can add, change or remove one at any time. */}
+      <details className="group">
+        <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
+        <div className="pt-3">
+          <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
+        </div>
+      </details>
+    </div>
   );
 }
 

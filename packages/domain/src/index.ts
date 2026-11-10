@@ -82,6 +82,7 @@ export type {
   CreateTaskInput,
   DefineFieldInput,
   DeliveryMove,
+  DeliveryOptions,
   DeliverySignal,
   FieldResult,
   LabelPage,
