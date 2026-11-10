@@ -24,6 +24,7 @@ import { createEngine } from '../engine/index.ts';
 import { checkMergedWork } from '../github-check.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { Refused } from '../refused.ts';
+import { closeMerged, type MergeCloses } from '../task-writes.ts';
 import { storeName, type Workspace } from '../workspaces.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
@@ -176,26 +177,30 @@ export class TaskStore extends DurableObject<Env> {
     return heldBy({ engine: this.tasks, principal });
   }
 
-  /** Moves the closed tasks a signal names, for `principal`, the workspace's
-   * GitHub webhook once the Worker checked a delivery's signature (github.ts),
-   * and names the projects `options` turned on as deploying. A refusal comes
-   * back as its sentence, since an error's class does not survive the call
-   * from the Worker. */
+  /** Answers a signal GitHub sent, for `principal`, the workspace's GitHub
+   * webhook once the Worker checked a delivery's signature (github.ts): a
+   * merge first closes the tasks in progress whose work names its pull
+   * request (closeMerged), which only GitHub's own word does; then the
+   * closed tasks it names move. Names the projects `options` turned on as
+   * deploying. A refusal comes back as its sentence, since an error's class
+   * does not survive the call from the Worker. */
   async deliver(
     signal: DeliverySignal,
     principal: Principal,
     options?: DeliveryOptions,
   ): Promise<
-    { readonly moved: readonly DeliveryMove[]; readonly turnedOn: readonly string[] } | { readonly refused: string }
+    | ({ readonly moved: readonly DeliveryMove[]; readonly turnedOn: readonly string[] } & MergeCloses)
+    | { readonly refused: string }
   > {
     try {
       const deployed = async () =>
         new Set((await this.tasks.listProjects()).filter((project) => project.deploys).map((project) => project.id));
       const before = options?.turnOnDeploys === undefined ? null : await deployed();
       const context = { engine: this.tasks, principal, now: () => new Date().toISOString() };
+      const closes = await closeMerged(context, signal);
       const moved = await reportDelivery(context, signal, undefined, options);
       const after = before === null ? null : await deployed();
-      return { moved, turnedOn: after === null ? [] : [...after].filter((id) => !before?.has(id)) };
+      return { moved, turnedOn: after === null ? [] : [...after].filter((id) => !before?.has(id)), ...closes };
     } catch (error) {
       if (error instanceof Refused) return { refused: error.detail };
       throw error;

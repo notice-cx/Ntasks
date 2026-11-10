@@ -386,7 +386,23 @@ async function drive(): Promise<readonly Sample[]> {
     },
     repository: { full_name: 'example/launch', default_branch: 'main' },
   };
+  // A merge closes the task in progress whose work names its pull request, and keeps one labelled keep-open.
+  const merging = await create({ title: 'Write the launch email' });
+  const optedOut = await create({ title: 'Write the launch emails', labels: ['keep-open'] });
+  for (const id of [merging, optedOut])
+    await tool(owner, 'claim_task', { task: id, pr: 'https://github.com/example/launch/pull/41' });
+  const merged = {
+    action: 'closed',
+    pull_request: {
+      html_url: 'https://github.com/example/launch/pull/41',
+      merged: true,
+      merge_commit_sha: 'd4e5f6a7b8c9',
+      base: { ref: 'main' },
+    },
+    repository: { full_name: 'example/launch', default_branch: 'main' },
+  };
   for (const [event, payload] of [
+    ['pull_request', merged],
     ['check_run', checkRun],
     ['ping', { hook_id: 1 }],
   ] as const) {
