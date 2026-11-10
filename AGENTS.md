@@ -58,7 +58,7 @@ Every feature and every change to an existing one meets all five:
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)). `docs/index.md` lists the pages in the order the website's sidebar shows them |
-| `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build; no merge or CI run deploys it, so the agent that merges a change to it publishes it ([below](#never-without-the-owners-explicit-approval), [apps/site/README.md](apps/site/README.md#publishing)) |
+| `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build, and its own Workers Builds connection publishes it on every merge that changes `apps/site/`, `docs/`, `spec/` or the lockfile ([apps/site/README.md](apps/site/README.md#publishing)) |
 | `spec/` | The Shared Work Protocol, a draft open contract for shared work that other tools can implement: its text, JSON Schemas, sample objects and the tests that check them. Its text is CC BY 4.0 and its schemas and tests Apache-2.0, apart from Ntasks's AGPL-3.0 code ([spec/README.md](spec/README.md)). A change to a rule Ntasks keeps updates the protocol and its appendix of tests |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, or
@@ -176,18 +176,15 @@ Two exceptions need no further approval:
   connected for task work ([Open work](#open-work)) read and change that
   maintainer's tasks. Any other request to that deployment, such as an API
   call by hand, a backup, a load or a credential change, still needs it.
-- **Publishing the website.** A merge to `main` that changes `docs/`,
-  `spec/` or `apps/site/` is published to ntasks.notice.cx right after it
-  lands, by the agent that merged it, without asking: `pnpm site:build`,
-  then `wrangler deploy` for the `ntasks-site` Worker, from a clean checkout
-  of `main`'s latest commit. After the deploy the agent reads `main`'s
-  latest commit again and, if it has moved, publishes again from the new
-  one. Two agents publishing at once can finish in either order, and an
-  older build deployed last is replaced this way, so the site ends on
-  `main`'s latest commit ([apps/site](apps/site/README.md#publishing)). The
-  agent records the Cloudflare version it deployed on the task. This covers
-  that Worker only; the app's Worker, D1, secrets and npm keep their
-  approvals.
+- **Publishing the website.** The `ntasks-site` Worker's own Workers Builds
+  connection publishes ntasks.notice.cx on every merge to `main` that
+  changes `apps/site/`, `docs/`, `spec/` or the lockfile, so a merge needs no
+  publish step and no task stays open for one. When its check `Workers
+  Builds: ntasks-site` fails on a commit, an agent may publish by hand
+  without asking: `pnpm site:build`, then `wrangler deploy` for the
+  `ntasks-site` Worker, from a clean checkout of `main`'s latest commit
+  ([apps/site](apps/site/README.md#publishing)). This covers that Worker
+  only; the app's Worker, D1, secrets and npm keep their approvals.
 
 ## Git
 
