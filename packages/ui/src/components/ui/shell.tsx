@@ -102,9 +102,12 @@ export function AppShell({
             data-sidebar-backdrop=""
           />
         ) : null}
-        <main className={cn('min-w-0 bg-background', place === 'beside' && 'border-l border-border max-sm:border-l-0')}>
-          {children}
-        </main>
+        {place === 'sheet' ? (
+          // A host page that draws its own navigation holds the one main landmark.
+          <div className="min-w-0 bg-background">{children}</div>
+        ) : (
+          <main className="min-w-0 border-l border-border bg-background max-sm:border-l-0">{children}</main>
+        )}
       </div>
     </SidebarContext.Provider>
   );
