@@ -632,6 +632,16 @@ when it is a commit's hexadecimal name, and `pr`), which the close clears. A
 close as done with neither leaves the task with no delivery, and a reopen
 clears it; the task's history keeps each delivery and each move.
 
+Only work that ships code waits for a merge, so two closes start no
+delivery:
+
+- A decision or an approval ships no code. Its close records no delivery,
+  and a pull request it names becomes its `link` when it names none. The same
+  holds for one filed as done with `create_task`.
+- A close that names `link`, and neither `commit` nor `pr`, shows its work by
+  that link, so the work details' commit and pull request start no delivery
+  either.
+
 A **signal** moves tasks on: `report_delivery` over MCP, or
 `POST /api/delivery` over HTTP, which takes the same fields. It names a
 `repository` (`owner/name`), a `stage` (`merged` or `live`), and pull

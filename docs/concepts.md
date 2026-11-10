@@ -240,7 +240,8 @@ first close and its evidence.
 ## Where a change is
 
 A task closed as done with a commit or a pull request has a **delivery**: the
-stage its change has reached.
+stage its change has reached. A decision or an approval ships no code, so it
+has none, and neither does a task closed with only a link.
 
 - **Built** when the task closes.
 - **Merged** once the change is merged.
