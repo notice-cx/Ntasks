@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.0](https://github.com/notice-cx/Ntasks/compare/ui-v0.2.0...ui-v0.3.0) (2026-11-10)
+
+
+### Features
+
+* a Time zone setting in Settings, saved with the account (one new database column) ([664c9fe](https://github.com/notice-cx/Ntasks/commit/664c9fe06767efeb2e19bec107df3fcd39951b5c))
+* a Time zone setting in Settings, saved with the person's account ([25a4e6b](https://github.com/notice-cx/Ntasks/commit/25a4e6bc1c3681169b1dc86a96456c8cfa752466))
+* add the Productivity page, a feed of each day's wins ([ae72a25](https://github.com/notice-cx/Ntasks/commit/ae72a255a2706c88056ab63fb8f82e9efef7683a))
+* **api:** list tasks in progress as active, quiet or stalled ([33cd751](https://github.com/notice-cx/Ntasks/commit/33cd7518b9f0037ad3ba4bfaf8adf3e263293894))
+* **api:** list tasks in progress as active, quiet or stalled ([2e41345](https://github.com/notice-cx/Ntasks/commit/2e41345208dbaba6ff624e804ceda7911f0dd4da))
+* **api:** say which files work touches and which PR merges first ([337bc58](https://github.com/notice-cx/Ntasks/commit/337bc5883df30bf04012acaa1ea3339d86877cad))
+* show a burn-down of open tasks on the Productivity page ([721d6bf](https://github.com/notice-cx/Ntasks/commit/721d6bfc53461571668cbb357b01bd89840ad535))
+* **ui:** draw a burn-down of open tasks on the Productivity page ([837413e](https://github.com/notice-cx/Ntasks/commit/837413e8f9cd583e0ac15481e2180c6f37755d6a))
+
+
+### Bug Fixes
+
+* cut the Productivity page's days at midnight in the viewer's time zone ([1940fbd](https://github.com/notice-cx/Ntasks/commit/1940fbd719365546a7cb2e8c839590d08bb16a3c))
+* cut the Productivity page's days at midnight in the viewer's time zone ([1cc51c6](https://github.com/notice-cx/Ntasks/commit/1cc51c628249e0e9aa2aa8e2b8d9b5a0748b8804))
+* **ui:** order an epic's closed tasks of the same close time as the Worker does ([ee47dd0](https://github.com/notice-cx/Ntasks/commit/ee47dd09defcb3f46e4596db4e06c8c6bdd0f634))
+
 ## [0.2.0](https://github.com/notice-cx/Ntasks/compare/ui-v0.1.0...ui-v0.2.0) (2026-11-10)
 
 
