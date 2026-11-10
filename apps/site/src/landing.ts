@@ -4,8 +4,8 @@ import '@fontsource-variable/stack-sans-notch/index.css';
 import './tokens.css';
 import './landing.css';
 
-// The landing page's theme switch, copy buttons and walkthrough tabs. The
-// page reads fully without this script.
+// The landing page's theme switch, copy buttons, walkthrough tabs and the
+// start of the Built to live diagram. The page reads fully without this script.
 
 // The key VitePress keeps the docs' theme choice under, so the landing page
 // and the docs show the same theme: 'dark', 'light', or 'auto' for the
@@ -81,6 +81,19 @@ async function copy(button: HTMLButtonElement): Promise<void> {
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
   button.addEventListener('click', () => void copy(button));
+}
+
+// The Built to live diagram plays only while it is on screen, so a reader
+// who scrolls to it sees it from Built.
+for (const flow of document.querySelectorAll<HTMLElement>('[data-flow]')) {
+  flow.dataset.paused = '';
+  new IntersectionObserver(
+    ([entry]) => {
+      if (entry?.isIntersecting) delete flow.dataset.paused;
+      else flow.dataset.paused = '';
+    },
+    { threshold: 0.35 },
+  ).observe(flow);
 }
 
 // The walkthrough tabs, as the ARIA tabs pattern describes: arrow keys,
