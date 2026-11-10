@@ -25,6 +25,18 @@ test('a link that leaves docs/ opens the file or folder on GitHub; a link betwee
   ]);
 });
 
+test('a link to a page of spec/ opens that page on the site, and to any other file of it on GitHub', () => {
+  const html = render(
+    '[a](../spec/protocol.md#inv-1) [b](../spec/README.md) [c](../spec/schemas/)',
+    'shared-work-protocol.md',
+  );
+  assert.deepEqual(hrefs(html), [
+    'https://ntasks.notice.cx/spec/protocol#inv-1',
+    'https://ntasks.notice.cx/spec/',
+    'https://github.com/notice-cx/Ntasks/tree/main/spec/schemas',
+  ]);
+});
+
 test("a heading's id is the one GitHub gives it, so links written for GitHub reach it", () => {
   const html = render(
     '## "Done" that isn\'t done\n\n## Changing `AUTH_SECRET`\n\n## Agents · and people\n\n## Agents · and people',

@@ -6,6 +6,9 @@ export const SITE_ORIGIN = 'https://ntasks.notice.cx';
 /** The path the docs are served under. */
 export const DOCS_BASE = '/docs/';
 
+/** The path the Shared Work Protocol, spec/, is served under. */
+export const SPEC_BASE = '/spec/';
+
 export const REPOSITORY = 'https://github.com/notice-cx/Ntasks';
 
 /** The branch that links to files outside docs/ open on GitHub. */

@@ -1,14 +1,16 @@
 # The Ntasks website
 
 The site at [ntasks.notice.cx](https://ntasks.notice.cx): the landing page at
-`/`, and the Markdown in [`docs/`](../../docs/) rendered as the docs at
-`/docs/`, with search, a sidebar and light and dark themes. Both take the look
-of [www.notice.cx](https://www.notice.cx), the Notice website this site
-belongs to: its paper palette in light, its night palette in dark, Inter, and
+`/`, the Markdown in [`docs/`](../../docs/) rendered as the docs at
+`/docs/`, and the Shared Work Protocol in [`spec/`](../../spec/) at
+`/spec/`, the last two with search, a sidebar and light and dark themes.
+All three take the look of [www.notice.cx](https://www.notice.cx), the
+Notice website this site belongs to: its paper palette in light, its night palette in dark, Inter, and
 the wordmark in Stack Sans Notch.
 
 | Path | Holds |
 |---|---|
+| `protocol/` | The Shared Work Protocol: VitePress reads `spec/` in place and serves it at `/spec/` with the docs' theme, and copies `spec/schemas/` to `/spec/v0/schemas/`, the address each schema's `$id` names |
 | `index.html`, `404.html`, `src/` | The landing page and the 404 page for addresses outside `/docs/`, built with Vite. The page's script runs the theme switch, the copy buttons and the walkthrough tabs; the page reads without it |
 | `.vitepress/` | The docs: [VitePress](https://vitepress.dev) reads `docs/` in place, with its default theme in those colours and fonts |
 | `lib/` | The rules both builds share: how the docs' Markdown renders, the sidebar, the link check |
@@ -25,6 +27,7 @@ From the repository root:
 ```sh
 pnpm site:build   # build into apps/site/dist/, then check every link
 pnpm site:dev     # serve the docs at http://localhost:5173/docs/ while you edit docs/
+pnpm --filter @ntasks/site run dev:spec   # serve the spec at http://localhost:5173/spec/ while you edit spec/
 ```
 
 `pnpm --filter @ntasks/site run dev:landing` serves the landing page while you
