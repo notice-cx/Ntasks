@@ -426,6 +426,13 @@ function Groups({
     age: formatAge(ageMs(now, task.updatedAt)),
     nowMs: now,
   });
+  // What waits on a person shows how long it has waited: an edit by an agent moves its last change, not its creation.
+  const waitingContextOf = (task: BoardTask): RowContext => {
+    const since = ageMs(now, task.createdAt);
+    const age = formatAge(since);
+    // A task with no creation time recorded shows `unknown` and no tip.
+    return { ...contextOf(task), age, ...(since === null ? {} : { ageTitle: `Created ${age} ago` }) };
+  };
   const marks = VIEW_GROUPS[view].filter((mark) => groups[mark].length > 0);
   const narrowed =
     narrowedByFields ||
@@ -479,7 +486,7 @@ function Groups({
               key={mark}
               asks={rows.slice(0, limit)}
               count={rows.length}
-              contextOf={contextOf}
+              contextOf={waitingContextOf}
               writable={(task) => projects.get(task.project)?.ok === true}
               more={more(mark, rows.length, limit)}
             />
@@ -526,7 +533,7 @@ function Groups({
             wait={wait}
             rows={rows.slice(0, limit)}
             count={rows.length}
-            contextOf={contextOf}
+            contextOf={wait === 'merge' ? waitingContextOf : contextOf}
             more={more(wait, rows.length, limit)}
           />
         );

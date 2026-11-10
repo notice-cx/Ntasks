@@ -67,3 +67,55 @@ describe('a project’s deploy setting', () => {
     expect(shown.disabled).toBe(true);
   });
 });
+
+describe('how long work has waited', () => {
+  /** The age at the end of a task's row, once its row is drawn. */
+  async function ageOf(id: string): Promise<HTMLElement> {
+    const row = await waitFor(() => {
+      const found = document.querySelector(`[data-task-row="${id}"]`);
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    return row.querySelector('[data-row-age]') as HTMLElement;
+  }
+
+  it('counts from when each task was created in Waiting for you and Waiting for merge, so an edit does not reset it', async () => {
+    const api = createFixtureTasksApi();
+    // Agents edit the text of work that waits; web-q8n5 was filed 5 days ago and web-k3m9.1 6 days ago.
+    await api.updateTask('web-q8n5', 'web', { title: 'Confirm the support address on the 404 page' });
+    await api.updateTask(BUILT, 'web', { title: 'Draw the new sign-in form' });
+    renderApp('/tasks?view=waiting', api);
+    const ask = await ageOf('web-q8n5');
+    expect(ask.textContent).toBe('5d');
+    expect(ask.getAttribute('title')).toBe('Created 5d ago');
+    expect((await ageOf(BUILT)).textContent).toBe('6d');
+  });
+
+  it('shows no tip when a waiting task has no creation time', async () => {
+    const api = createFixtureTasksApi();
+    api.state.tasks.find((entry) => entry.id === 'web-q8n5')!.createdAt = null;
+    renderApp('/tasks?view=waiting', api);
+    const ask = await ageOf('web-q8n5');
+    expect(ask.textContent).toBe('unknown');
+    expect(ask.getAttribute('title')).toBeNull();
+  });
+
+  it('counts from the last change in Waiting for deploy', async () => {
+    const api = createFixtureTasksApi();
+    await api.setDeploys('docs', true);
+    // docs-y5u2 was filed 6 days ago and merged 3 days ago.
+    renderApp('/tasks?view=waiting', api);
+    const age = await ageOf(MERGED);
+    expect(age.textContent).toBe('3d');
+    expect(age.getAttribute('title')).toBeNull();
+  });
+
+  it('counts from the last change in the other groups', async () => {
+    const api = createFixtureTasksApi();
+    await api.updateTask('web-t5w3', 'web', { title: 'Rename the Settings tab to Profile' });
+    renderApp('/tasks', api);
+    const age = await ageOf('web-t5w3');
+    expect(age.textContent).toMatch(/^\d+s$/);
+    expect(age.getAttribute('title')).toBeNull();
+  });
+});

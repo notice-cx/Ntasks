@@ -473,7 +473,9 @@ room beside it, on a held task `For page-rebuild-2` and
 ended, or where its change is: Built, Merged or Live, and `No proof` on work
 done without a commit, pull request or link) and badges,
 `RowSpacer`, then `RowActions`, the assignee's `Avatar` and `RowAge` (34 px,
-right-aligned), how long since the task last changed.
+right-aligned), how long since the task last changed. In Waiting for you and
+Waiting for merge it is how long since the task was created, so an edit does
+not reset how long it has waited, and its tip says so (`Created 3d ago`).
 
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
