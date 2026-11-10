@@ -203,7 +203,12 @@ export function standInForGitHub(): GitHubCalls {
         const names = calls.repositories.get(Number(reading)) ?? [
           ...new Set([...calls.pulls.keys()].map((key) => key.slice(0, key.indexOf('#')))),
         ];
-        return Response.json({ total_count: names.length, repositories: names.map((full_name) => ({ full_name })) });
+        const selection = calls.repositories.has(Number(reading)) ? 'selected' : 'all';
+        return Response.json({
+          total_count: names.length,
+          repository_selection: selection,
+          repositories: names.map((full_name) => ({ full_name })),
+        });
       }
       const pull = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/u.exec(url.href);
       if (pull) {

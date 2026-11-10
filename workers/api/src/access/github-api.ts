@@ -88,13 +88,14 @@ export async function installationToken(appJwt: string, installationId: number):
 export const REPOSITORY_PAGES = 2;
 
 /**
- * The repositories an installation reaches, as lowercase `owner/name`, read
- * with its token: `many` when it reaches more than REPOSITORY_PAGES pages of
- * them, which cannot be listed cheaply, and null when GitHub does not
+ * The repositories an installation reaches, read with its token: `all` for
+ * an installation on all of its account's repositories, which GitHub's first
+ * page says; for one on selected repositories, those it lists as lowercase
+ * `owner/name`, up to REPOSITORY_PAGES pages; null when GitHub does not
  * answer. Each page is one request.
  */
 export async function installationRepositories(token: string): Promise<{
-  readonly repositories: ReadonlySet<string> | 'many' | null;
+  readonly repositories: ReadonlySet<string> | 'all' | null;
   readonly requests: number;
 }> {
   const repositories = new Set<string>();
@@ -109,6 +110,7 @@ export async function installationRepositories(token: string): Promise<{
     }
     const body: unknown = await response.json().catch(() => null);
     const listed = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    if (listed.repository_selection === 'all') return { repositories: 'all', requests: page };
     const total = typeof listed.total_count === 'number' ? listed.total_count : 0;
     for (const repository of Array.isArray(listed.repositories) ? listed.repositories : []) {
       const name =
@@ -119,7 +121,8 @@ export async function installationRepositories(token: string): Promise<{
     }
     if (repositories.size >= total) return { repositories, requests: page };
   }
-  return { repositories: 'many', requests: REPOSITORY_PAGES };
+  // More selected repositories than the pages read: the ones listed are the ones asked about.
+  return { repositories, requests: REPOSITORY_PAGES };
 }
 
 /** A pull request as GitHub answers it: whether it merged, its merge commit, and the branch it merged into and the repository's default one. */

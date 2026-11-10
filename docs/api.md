@@ -773,10 +773,12 @@ the task, so the workspace's task store also asks GitHub itself, as the app:
 - when an owner installs the app, for the tasks already waiting for a merge,
   such as the ones closed before GitHub was connected.
 
-Each check lists the repositories each installation reaches, then reads the
-pull requests of the newest tasks waiting for a merge in them, and moves each
-one merged into its repository's default branch to `merged`, with its merge
-commit. It makes at most 45 requests to GitHub, within the free plan's 50
+Each check reads the pull requests of the newest tasks waiting for a merge in
+repositories an installation reaches, and moves each one merged into its
+repository's default branch to `merged`, with its merge commit. An
+installation on all of its account's repositories reaches every one; for an
+installation on selected repositories, the check lists them first, up to 200,
+and reads only pull requests in the ones listed. It makes at most 45 requests to GitHub, within the free plan's 50
 requests to other servers, so a check reads up to about 40 pull requests and
 the next close checks the rest. It signs in to GitHub with the app's private
 key.

@@ -73,10 +73,10 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
   // a repository an installation of selected repositories leaves out takes
   // no place among the ones asked about. Installations come in the order of
   // their newest waiting task, and stop where the budget would run out. One
-  // GitHub does not list is left for the next check; one that reaches too
-  // many repositories to list has every waiting task of its account read.
+  // on all of its account's repositories reaches every waiting task of that
+  // account; one GitHub does not list is left for the next check.
   let requests = 0;
-  const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | 'many' }>();
+  const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | 'all' }>();
   for (const installation of new Set(pulls.map((pull) => pull.installation))) {
     if (requests + 1 + REPOSITORY_PAGES >= REQUESTS) break;
     const token = await installationToken(jwt, installation);
@@ -90,7 +90,7 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
     const installation = reach.get(pull.installation);
     if (installation === undefined) return [];
     const { repositories } = installation;
-    return repositories === 'many' || repositories.has(pull.repository.toLowerCase())
+    return repositories === 'all' || repositories.has(pull.repository.toLowerCase())
       ? [{ ...pull, token: installation.token }]
       : [];
   });
