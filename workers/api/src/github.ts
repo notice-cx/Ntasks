@@ -30,6 +30,11 @@
  * "changes go live by a deploy" for the projects of the tasks it names, once
  * for each project, so an owner who turns it off again keeps it off.
  *
+ * A delivery that moves a task also has the workspace's task store ask GitHub
+ * a few seconds later about the merged tasks no delivery moved to live
+ * (github-check.ts): one whose deploy was reported before its merge, and one
+ * whose own build a later merge's deploy replaced.
+ *
  * Any other event is answered with why it moves nothing. A task never moves
  * back, and a task a merge closed is no longer in progress, so a delivery
  * that GitHub sends again moves and closes nothing twice.
@@ -37,6 +42,8 @@
  */
 import {
   addInstallation,
+  deployBranchOf,
+  deployOf,
   detectedOf,
   githubAppOf,
   hasInstallation,
@@ -44,7 +51,7 @@ import {
   isOwnerOnGitHub,
   recordDetected,
   removeInstallation,
-  type Detected,
+  type DeployNames,
 } from './access/github-app.ts';
 import { signInSecrets } from './access/config.ts';
 import { fromHex, sameBytes } from './access/crypto.ts';
@@ -104,24 +111,6 @@ function numberAt(payload: unknown, ...path: readonly string[]): number | undefi
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
-/** The names that count as deploys: the ones typed by hand, and the ones deliveries showed, each on or off. */
-export interface DeployNames {
-  readonly typed: readonly string[];
-  readonly detected: Detected['checks'];
-}
-
-/**
- * Whether a check run or deployment named `name` is a deploy: typed by hand,
- * or detected and not switched off. `looksLikeOne` says whether a name not
- * seen before is a deploy, which the delivery then records.
- */
-function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes' | 'new' | 'off' | 'no' {
-  if (names.typed.includes(name)) return 'yes';
-  const seen = names.detected.get(name);
-  if (seen !== undefined) return seen.on ? 'yes' : 'off';
-  return looksLikeOne ? 'new' : 'no';
-}
-
 /** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
 export type GitHubEvent =
   | { readonly signal: Args; readonly newDeploy?: string; readonly mergedBy?: string; readonly at?: string }
@@ -168,12 +157,10 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
       if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
-      if (branch === defaultBranch) return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
-      // GitHub keeps one check suite per app and commit, named for the branch first pushed with it: for a
-      // commit the merge queue landed, the queue's branch, which holds exactly that commit. A build there
-      // that started before the merge was a preview; only one started after it can be the deploy.
+      const kind = deployBranchOf(branch, defaultBranch);
+      if (kind === 'default') return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
       const startedAt = textAt(payload, 'check_run', 'started_at');
-      if (branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) !== true || startedAt === undefined)
+      if (kind === null || startedAt === undefined)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
       return { ...live(name, verdict, textAt(payload, 'check_run', 'head_sha')), mergedBy: startedAt };
     }

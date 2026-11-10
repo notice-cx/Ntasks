@@ -1,8 +1,10 @@
 /**
- * The calls Ntasks makes to GitHub's REST API as a workspace's GitHub App
+ * The calls Ntasks makes to GitHub's API as a workspace's GitHub App
  * (github-app.ts): a JSON Web Token signed with the app's private key
  * (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app),
- * exchanged for an installation's token, which reads a pull request. GitHub
+ * exchanged for an installation's token, which reads a pull request and
+ * whether one commit is in another's history from the REST API, and a
+ * commit's passing check runs from the GraphQL API. GitHub
  * hands the key over in PKCS #1 PEM, which Web Crypto does not import, so it
  * is wrapped as PKCS #8 first.
  */
@@ -182,4 +184,147 @@ export async function pullRequestState(
     base: typeof base.ref === 'string' ? base.ref : null,
     defaultBranch: typeof repo.default_branch === 'string' ? repo.default_branch : null,
   };
+}
+
+/** A time GitHub gives, as UTC ISO 8601 text, or null when it gives none that reads as one. */
+function timeOf(value: unknown): string | null {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/** What a read answers when GitHub did not answer it this time and may on another try: no response, a server error or too many requests. */
+export const RETRY = 'retry';
+
+/** Whether a read GitHub did not answer with 200 may be answered on another try. */
+function retryable(response: Response | null): boolean {
+  return response === null || response.status === 429 || response.status >= 500;
+}
+
+/** The value at `path` in an answer, or undefined when any step of it is missing. */
+function at(value: unknown, ...path: readonly string[]): unknown {
+  let found = value;
+  for (const key of path) {
+    if (found === null || typeof found !== 'object' || Array.isArray(found)) return undefined;
+    found = (found as Record<string, unknown>)[key];
+  }
+  return found;
+}
+
+/** A check run of a commit that passed: its name, the branch of its check suite, and when it started and completed. */
+export interface CheckRun {
+  readonly name: string;
+  /** The branch GitHub ran its check suite for, or null when it names none. */
+  readonly branch: string | null;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+}
+
+/** The check runs of a commit that passed, and its repository's default branch, which tells a deploy from a preview. */
+export interface PassedChecks {
+  readonly defaultBranch: string;
+  readonly runs: readonly CheckRun[];
+}
+
+/** The most check suites of a commit read, and the most passing runs of each, in one request. */
+const CHECK_SUITES = 50;
+const CHECK_RUNS = 50;
+
+// The REST API names a check run's suite by its id alone; the GraphQL API
+// gives the suite's branch with its runs, so one request answers all of it.
+const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    object(expression: $commit) {
+      ... on Commit {
+        checkSuites(last: ${CHECK_SUITES}) {
+          nodes {
+            branch { name }
+            checkRuns(last: ${CHECK_RUNS}, filterBy: { checkType: ALL, conclusions: [SUCCESS] }) {
+              nodes { name startedAt completedAt }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+/**
+ * The check runs of `commit` in `repository` that passed, up to CHECK_RUNS
+ * in each of up to CHECK_SUITES check suites, with the branch of each run's
+ * suite and the repository's default branch, read with an installation's
+ * token in one request; RETRY when GitHub may answer on another try, and
+ * null when it does not answer.
+ */
+export async function passedChecksOf(
+  token: string,
+  repository: string,
+  commit: string,
+): Promise<PassedChecks | typeof RETRY | null> {
+  const [owner = '', name = ''] = repository.split('/');
+  const response = await fetch(`${API}/graphql`, {
+    method: 'POST',
+    headers: {
+      'user-agent': HEADERS['user-agent'],
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ query: PASSED_CHECKS, variables: { owner, name, commit } }),
+  }).catch(() => null);
+  if (response?.status !== 200) {
+    await response?.body?.cancel();
+    return retryable(response) ? RETRY : null;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  // GraphQL answers a rate limit with 200 and an error of this type.
+  const errors = at(body, 'errors');
+  if (Array.isArray(errors) && errors.some((error) => at(error, 'type') === 'RATE_LIMITED')) return RETRY;
+  const defaultBranch = at(body, 'data', 'repository', 'defaultBranchRef', 'name');
+  if (typeof defaultBranch !== 'string') return null;
+  const suites = at(body, 'data', 'repository', 'object', 'checkSuites', 'nodes');
+  const runs = (Array.isArray(suites) ? suites : []).flatMap((suite: unknown) => {
+    const branch = at(suite, 'branch', 'name');
+    const nodes = at(suite, 'checkRuns', 'nodes');
+    return (Array.isArray(nodes) ? nodes : []).flatMap((run: unknown): CheckRun[] => {
+      const runName = at(run, 'name');
+      if (typeof runName !== 'string') return [];
+      return [
+        {
+          name: runName,
+          branch: typeof branch === 'string' ? branch : null,
+          startedAt: timeOf(at(run, 'startedAt')),
+          completedAt: timeOf(at(run, 'completedAt')),
+        },
+      ];
+    });
+  });
+  return { defaultBranch, runs };
+}
+
+/**
+ * Whether `commit` is in the history of `head` in `repository`, read with an
+ * installation's token in one request; RETRY when GitHub may answer on
+ * another try, and null when it does not answer. GitHub compares
+ * `head...commit`: `behind` or `identical` when it is.
+ */
+export async function inHistoryOf(
+  token: string,
+  repository: string,
+  head: string,
+  commit: string,
+): Promise<boolean | typeof RETRY | null> {
+  // Compared this way round, the answer lists only what `commit` adds after
+  // the two commits' merge base, which is nothing when it is in head's
+  // history, so the answer stays small however far apart they are.
+  const response = await fetch(`${API}/repos/${repository}/compare/${head}...${commit}?per_page=1`, {
+    headers: { ...HEADERS, authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (response?.status !== 200) {
+    await response?.body?.cancel();
+    return retryable(response) ? RETRY : null;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const status = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).status : null;
+  if (typeof status !== 'string') return null;
+  return status === 'behind' || status === 'identical';
 }

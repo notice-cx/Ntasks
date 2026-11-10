@@ -6,7 +6,7 @@
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import type { Task } from '@ntasks/domain';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { hex } from '../../src/access/crypto.ts';
 import type { TaskStore } from '../../src/store/index.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
@@ -15,6 +15,12 @@ import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userI
 import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from './github.ts';
 
 const github = standInForGitHub();
+
+// A close or a delivery sets the store's check for a few seconds later. Left
+// set, it could run once the stand-in no longer answers for GitHub.
+afterEach(async () => {
+  await runInDurableObject(store(), (_instance: TaskStore, state) => state.storage.deleteAlarm());
+});
 
 const APP_SECRET = convertedWebhookSecret(OWNER_GITHUB_ID);
 const SLUG = `ntasks-${OWNER_GITHUB_ID}`;
@@ -136,6 +142,22 @@ function passed(id: number, name: string, sha: string, branch = 'main', startedA
   };
 }
 
+/** A task of `projectId` closed with this pull request; answers its id. */
+async function closedWithPullRequest(
+  owner: Browser,
+  projectId: string,
+  number: number,
+  repo = REPOSITORY,
+): Promise<string> {
+  const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Ship the page' });
+  const id = created.body.id as string;
+  const pullRequest = `https://github.com/${repo}/pull/${number}`;
+  expect(
+    (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', pullRequest })).status,
+  ).toBe(200);
+  return id;
+}
+
 /** A project of the test workspace that does not deploy yet, and one task closed in it with this pull request. */
 async function taskWithPullRequest(
   owner: Browser,
@@ -143,13 +165,25 @@ async function taskWithPullRequest(
   repo = REPOSITORY,
 ): Promise<{ projectId: string; id: string }> {
   const projectId = await createProject('Site');
-  const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Ship the page' });
-  const id = created.body.id as string;
-  const pullRequest = `https://github.com/${repo}/pull/${number}`;
-  expect(
-    (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', pullRequest })).status,
-  ).toBe(200);
-  return { projectId, id };
+  return { projectId, id: await closedWithPullRequest(owner, projectId, number, repo) };
+}
+
+/** A project whose changes go live by a deploy, as an earlier deploy or its owner turned it on. */
+async function deployingProject(owner: Browser): Promise<string> {
+  const projectId = await createProject('Site');
+  expect((await inWorkspace(owner, 'PATCH', '/api/tasks/projects', { projectId, deploys: true })).status).toBe(200);
+  return projectId;
+}
+
+/** A merged pull request's event that names GitHub's merge time. */
+function mergedAt(id: number, number: number, mergeCommit: string, at: string) {
+  const event = merged(id, number, mergeCommit);
+  return { ...event, pull_request: { ...event.pull_request, merged_at: at } };
+}
+
+/** The time `ms` milliseconds before now, as GitHub writes one. */
+function ago(ms: number): string {
+  return new Date(Date.now() - ms).toISOString();
 }
 
 async function taskOf(projectId: string, id: string): Promise<Task> {
@@ -534,5 +568,194 @@ describe('work waiting for a merge GitHub already made', () => {
     expect((await taskOf(listed.projectId, listed.id)).delivery?.stage).toBe('merged');
     expect((await taskOf(notListed.projectId, notListed.id)).delivery?.stage).toBe('built');
     expect(github.pullReads).not.toContain(`${outside}#71`);
+  });
+});
+
+describe('merged work a deploy shipped that no delivery named', () => {
+  it('moves both merges to live when the host built only the second', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await createProject('Site');
+    const first = await closedWithPullRequest(owner, projectId, 80);
+    const second = await closedWithPullRequest(owner, projectId, 81);
+    const a = newCommit();
+    const b = newCommit();
+    github.histories.set(b, [a]);
+    await deliver('pull_request', merged(mine, 80, a));
+    await deliver('pull_request', merged(mine, 81, b));
+
+    // The deploy names only the commit it built.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', b))).body).toEqual({
+      moved: [{ id: second, stage: 'live' }],
+    });
+    expect((await taskOf(projectId, first)).delivery?.stage).toBe('merged');
+    // The store's check finds the first merge in the deployed commit's history.
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    const shipped = (await taskOf(projectId, second)).delivery;
+    expect((await taskOf(projectId, first)).delivery).toMatchObject({ stage: 'live', liveAt: shipped?.liveAt });
+    expect(github.apiRequests).toContain(`GET /repos/${REPOSITORY}/compare/${b}...${a}`);
+  });
+
+  it('leaves at merged a merge that is not in the deployed commit’s history', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await createProject('Site');
+    const elsewhere = await closedWithPullRequest(owner, projectId, 82);
+    const deployed = await closedWithPullRequest(owner, projectId, 83);
+    const c = newCommit();
+    const b = newCommit();
+    await deliver('pull_request', merged(mine, 82, c));
+    await deliver('pull_request', merged(mine, 83, b));
+    await deliver('check_run', passed(mine, 'Workers Builds: site', b));
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, deployed)).delivery?.stage).toBe('live');
+    expect((await taskOf(projectId, elsewhere)).delivery?.stage).toBe('merged');
+    // Its own merge commit has no deploy check either.
+    expect(github.apiRequests).toContain(`GET /repos/${REPOSITORY}/compare/${b}...${c}`);
+    expect(github.checkReads).toContain(c);
+  });
+
+  it('moves a task to live when its deploy was reported before its merge', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 84);
+    const merge = newCommit();
+    const startedAt = ago(90_000);
+    const completedAt = ago(60_000);
+
+    // No task names the deploy's commit until the merge event records it.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, 'main', startedAt))).body).toEqual({
+      moved: [],
+    });
+    github.checkRuns.set(merge, [
+      { name: 'Lint', conclusion: 'success', startedAt, completedAt },
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt },
+    ]);
+    expect((await deliver('pull_request', mergedAt(mine, 84, merge, ago(120_000)))).body).toEqual({
+      moved: [{ id, stage: 'merged' }],
+    });
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    // Live when the deploy completed.
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+  });
+
+  it('leaves at merged a task whose only deploy check started before its merge', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 85);
+    const merge = newCommit();
+    // A preview of the merge queue's branch, before the merge, and a check that is not a deploy, after it.
+    github.checkRuns.set(merge, [
+      {
+        name: 'Workers Builds: site',
+        conclusion: 'success',
+        startedAt: ago(180_000),
+        completedAt: ago(150_000),
+        branch: `gh-readonly-queue/main/pr-85-${merge}`,
+      },
+      { name: 'Lint', conclusion: 'success', startedAt: ago(60_000), completedAt: ago(30_000) },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 85, merge, ago(120_000)));
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    expect(github.checkReads).toContain(merge);
+  });
+
+  it('counts a deploy check on the merge queue’s branch after the merge, and not one on another branch', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const queued = await closedWithPullRequest(owner, projectId, 86);
+    const previewed = await closedWithPullRequest(owner, projectId, 87);
+    const landed = newCommit();
+    const branched = newCommit();
+    const deploy = { name: 'Workers Builds: site', conclusion: 'success' as const };
+    const completedAt = ago(30_000);
+    github.checkRuns.set(landed, [
+      { ...deploy, startedAt: ago(60_000), completedAt, branch: `gh-readonly-queue/main/pr-86-${landed}` },
+    ]);
+    // A preview build of a branch pushed at the merge commit, which a delivery of it would not count either.
+    github.checkRuns.set(branched, [{ ...deploy, startedAt: ago(60_000), completedAt, branch: 'preview' }]);
+    await deliver('pull_request', mergedAt(mine, 86, landed, ago(120_000)));
+    await deliver('pull_request', mergedAt(mine, 87, branched, ago(110_000)));
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, queued)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+    expect((await taskOf(projectId, previewed)).delivery?.stage).toBe('merged');
+    expect(github.checkReads).toEqual(expect.arrayContaining([landed, branched]));
+  });
+
+  it('keeps requests for a merged task’s deploy when open pull requests could take them all', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    // More tasks waiting on open pull requests than one check reads.
+    for (let number = 150; number < 195; number += 1) await closedWithPullRequest(owner, projectId, number);
+    const id = await closedWithPullRequest(owner, projectId, 200);
+    const merge = newCommit();
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt: ago(60_000), completedAt },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 200, merge, ago(120_000)));
+    github.apiRequests.length = 0;
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+    expect(github.apiRequests.length).toBeLessThanOrEqual(45);
+  });
+
+  it('runs the check again when GitHub fails to answer for a merged task’s deploy', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 88);
+    const merge = newCommit();
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt: ago(60_000), completedAt },
+    ]);
+    github.checkOutages.add(merge);
+    await deliver('pull_request', mergedAt(mine, 88, merge, ago(120_000)));
+
+    // Thrown, so the platform runs the alarm again.
+    await expect(runDurableObjectAlarm(store())).rejects.toThrow(/runs again/u);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    github.checkOutages.clear();
+    await runInDurableObject(store(), (instance: TaskStore) => instance.alarm());
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+  });
+
+  it('asks GitHub at most 45 times in one check', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    // Each merge takes two requests: whether the later live merge has it, then its own check runs.
+    const waiting: string[] = [];
+    for (let number = 100; number < 124; number += 1) {
+      waiting.push(await closedWithPullRequest(owner, projectId, number));
+      await deliver('pull_request', merged(mine, number, newCommit()));
+    }
+    await closedWithPullRequest(owner, projectId, 124);
+    const last = newCommit();
+    await deliver('pull_request', merged(mine, 124, last));
+    await deliver('check_run', passed(mine, 'Workers Builds: site', last));
+    github.apiRequests.length = 0;
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(github.apiRequests.length).toBe(45);
+    for (const id of waiting) expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
   });
 });
