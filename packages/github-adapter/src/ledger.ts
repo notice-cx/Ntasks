@@ -36,6 +36,8 @@ export interface TaskRecord {
   startedAt: string | null;
   closedAt: string | null;
   closedBy: string | null;
+  /** True while the task is an epic the adapter closed on its own (protocol.md STATE-22); absent on any other. */
+  closedOnItsOwn?: boolean;
   closeReason: string | null;
   closeLink: string | null;
   closeCommit: string | null;

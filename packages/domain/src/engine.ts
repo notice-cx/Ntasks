@@ -460,6 +460,8 @@ export interface WriteResult {
   readonly created: readonly Task[];
   /** The comment the write added to `task`, when it added one. */
   readonly comment?: TaskComment;
+  /** The epics the write closed or reopened on its own, deepest first, when it changed any (STATE-22). */
+  readonly epics?: readonly Task[];
   /** True when a retry returned the recorded answer and nothing was written. */
   readonly replayed: boolean;
 }

@@ -14,6 +14,8 @@ export type { SortDirection, SortFacts, TaskSort } from './sort.ts';
 export type { StepMarking } from './steps.ts';
 export { ACTOR_KINDS, actorIdentity, actorKey, modelIdentity, sameActor } from './actors.ts';
 export type { ActorIdentity, ActorKind, ModelIdentity } from './actors.ts';
+export { closedByNtasks, epicChange, epicCloseReason, epicResolution, KEEP_OPEN, NTASKS_ACTOR } from './epics.ts';
+export type { EpicCause, EpicChild, EpicFacts } from './epics.ts';
 export { releaseComment } from './release.ts';
 export type { FreedTask } from './release.ts';
 export { criteriaOf } from './criteria.ts';

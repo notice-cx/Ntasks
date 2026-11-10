@@ -3007,6 +3007,24 @@ describe('close_task on several tasks', () => {
     expect((await current(project, grandchild.id)).close).toMatchObject({ reason: 'Launched.', link });
   });
 
+  it('names the epic that closed itself with its last open task, and lists the tasks that waited on it as ready', async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Launch', type: 'epic' });
+    const last = await task(project, { title: 'Page', parentId: epic.id });
+    const next = await task(project, {
+      title: 'Announce it',
+      links: [{ direction: 'depends-on', taskId: epic.id, type: 'blocks' }],
+    });
+
+    const reply = await write<{ closedEpics: unknown; unblocked: unknown }>(target, 'close_task', {
+      task: last.id,
+      reason: 'Shipped in 4f2a9c1.',
+    });
+
+    expect(reply.closedEpics).toEqual([{ id: epic.id, resolution: 'done' }]);
+    expect(reply.unblocked).toEqual([{ id: next.id, title: 'Announce it' }]);
+  });
+
   it('shows nothing under an epic in a project the sender cannot reach, and finds the tasks under one named by key', async () => {
     const mine = await newProject(engine);
     const theirs = await newProject(engine);

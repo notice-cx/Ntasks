@@ -4,6 +4,7 @@
  * of each workspace with their project grants. They are managed through the
  * routes in routes.ts.
  */
+import { NTASKS_ACTOR } from '@ntasks/domain';
 import { workspaceStore, type StoreBinding } from '../store/index.ts';
 import type { Workspace } from '../workspaces.ts';
 import { hex, randomSecret, sha256 } from './crypto.ts';
@@ -256,6 +257,10 @@ export async function createServiceCredential(
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!NAME.test(name)) {
     throw new AccessRefused('invalid_request', 'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores');
+  }
+  // A service's actor is service:<name>, and Ntasks records its own changes as service:Ntasks (NTASKS_ACTOR).
+  if (`service:${name}`.toLowerCase() === NTASKS_ACTOR.toLowerCase()) {
+    throw new AccessRefused('invalid_request', `name ${name} is the one Ntasks records its own changes under`);
   }
   for (const choice of ['backup', 'restore'] as const) {
     if (input[choice] !== undefined && typeof input[choice] !== 'boolean') {

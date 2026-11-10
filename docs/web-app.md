@@ -20,7 +20,10 @@ close or title, either way, and the address keeps the order.
 epics, one line each, grouped by what they need: Waiting for you, Moving, Not
 moving, Every task done and No tasks. Each line shows how many of its tasks
 wait for you or are blocked, a bar of its tasks by status, its tasks done of
-all, and how many closed this week, counting its sub-epics' tasks too.
+all, and how many closed this week, counting its sub-epics' tasks too. An
+epic closes itself when its last task closes ([Epics](concepts.md#epics)), so
+Every task done lists only epics labelled `keep-open` and epics someone
+reopened.
 
 **Task page.** Markdown text, Done when, activity and the task's facts. A
 task in an epic also shows From the epic: the comments pinned on the epic

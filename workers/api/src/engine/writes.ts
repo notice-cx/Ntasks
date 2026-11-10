@@ -3,7 +3,12 @@
 // batch back when its versioned update matched no row or a link would close a
 // loop.
 import {
+  closedByNtasks,
+  epicChange,
+  epicCloseReason,
   guardRefusalOf,
+  KEEP_OPEN,
+  NTASKS_ACTOR,
   TASK_LIMITS,
   TaskRefused,
   WORK_DETAILS,
@@ -19,6 +24,7 @@ import {
   type DeliverySignal,
   type DeliveryStage,
   type DependencyType,
+  type EpicCause,
   type ExternalLink,
   type FieldResult,
   type FieldValue,
@@ -31,6 +37,8 @@ import {
   type TaskComment,
   type TaskEventKind,
   type TaskRefusal,
+  type TaskResolution,
+  type TaskStatus,
   type TaskStep,
   type TaskWork,
   type TaskWrite,
@@ -158,6 +166,49 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
 ORDER BY t.id`;
+
+/** The most times one write checks an epic as it climbs from the tasks it changes, so a parent chain that loops, as an import could leave, still ends. */
+const EPIC_CHECKS = 8;
+
+/** A task as a write leaves it, as far as the epic above it reads it. */
+interface Placed {
+  readonly parentId: string | null;
+  readonly closed: boolean;
+  readonly resolution: TaskResolution | null;
+}
+
+/** A task a write changes or files: where it stood, null for a new task, and where the write leaves it. */
+interface Moved extends Placed {
+  readonly id: string;
+  readonly before: { readonly parentId: string | null; readonly closed: boolean } | null;
+  /** Closed before and closed by this write too: a close that replaces Ntasks's own close of an epic. */
+  readonly closedAgain?: boolean;
+}
+
+/** Whether `write` takes the keep-open label off `current`, an epic it leaves open. */
+function unkeptBy(current: Task, write: check.CheckedWrite): boolean {
+  return (
+    (write.set.type ?? current.type) === 'epic' &&
+    current.labels.includes(KEEP_OPEN) &&
+    write.removeLabels.includes(KEEP_OPEN) &&
+    !write.addLabels.includes(KEEP_OPEN) &&
+    !movedBy(current, write).closed
+  );
+}
+
+/** Where `write` leaves `current`. */
+function movedBy(current: Task, write: check.CheckedWrite): Moved {
+  const wasClosed = current.status === 'closed';
+  const closed = write.close !== null || (wasClosed && !write.reopen);
+  return {
+    id: current.id,
+    before: { parentId: current.parentId, closed: wasClosed },
+    parentId: write.set.parentId !== undefined ? write.set.parentId : current.parentId,
+    closed,
+    resolution: write.close !== null ? write.close.resolution : closed ? (current.close?.resolution ?? null) : null,
+    closedAgain: wasClosed && write.close !== null,
+  };
+}
 
 /** Field values as history events record them: every value the task carries, by key in order. */
 function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
@@ -602,19 +653,22 @@ export class Writes {
     taskId: string,
     created: readonly string[],
     replayed: boolean,
+    epics: readonly string[] = [],
   ): Promise<WriteResult> {
-    const tasks = (await this.#reads.taskRows(projectId, [taskId, ...created])).map(toTask);
-    const task = tasks.find((candidate) => candidate.id === taskId) ?? refuse('not_found');
+    const tasks = (await this.#reads.taskRows(projectId, [taskId, ...created, ...epics])).map(toTask);
+    const found = (id: string) => tasks.find((candidate) => candidate.id === id) ?? refuse('not_found');
     return {
-      task,
-      created: created.map((id) => tasks.find((candidate) => candidate.id === id) ?? refuse('not_found')),
+      task: found(taskId),
+      created: created.map(found),
+      ...(epics.length === 0 ? {} : { epics: epics.map(found) }),
       replayed,
     };
   }
 
   /** A recorded write's answer as it stands now, with the comment it added, if any. */
   async #recordedResult(projectId: string, recorded: Record<string, Json>, taskId: string): Promise<WriteResult> {
-    const result = await this.#result(projectId, taskId, recorded.created as string[], true);
+    const epics = Array.isArray(recorded.epics) ? (recorded.epics as string[]) : [];
+    const result = await this.#result(projectId, taskId, recorded.created as string[], true, epics);
     if (typeof recorded.commentId !== 'string') return result;
     const comment = (await this.#reads.listComments(projectId, taskId)).find(
       (candidate) => candidate.id === recorded.commentId,
@@ -707,6 +761,195 @@ export class Writes {
     const found = new Map(results.map((row) => [row.id, row]));
     for (const id of taskIds) if (!found.has(id)) refuse('not_found', `There is no task ${id}.`);
     return found;
+  }
+
+  /**
+   * The statements that close or reopen, on their own, the epics a write
+   * leaves with every task directly under them closed or with one open again
+   * (epicChange), each recorded as Ntasks's change, climbing to the epic
+   * each one is under; and the ids of those epics, deepest first. An epic
+   * the write changes itself is among them only when the write takes its
+   * keep-open label off (`unkept`): otherwise whoever writes an epic decides
+   * it. The statements go after the write's own, in its batch, and fail it
+   * with version_conflict when the tasks under an epic changed since they
+   * were read, so the caller decides again.
+   */
+  async #epicsAfter(
+    projectId: string,
+    moved: readonly Moved[],
+    at: string,
+    unkept: readonly string[] = [],
+  ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
+    const written = new Set(moved.map((task) => task.id));
+    const left = new Map<string, Placed>(moved.map((task) => [task.id, task]));
+    // Each epic waits in the queue at most once, with the first cause that reached it.
+    const queue = new Map<string, EpicCause>(unkept.map((epicId) => [epicId, { kind: 'unkept' }]));
+    const visit = (epicId: string | null, cause: EpicCause) => {
+      if (epicId !== null && !written.has(epicId) && !queue.has(epicId)) queue.set(epicId, cause);
+    };
+    for (const task of moved) {
+      const { before } = task;
+      const movedOut = before !== null && before.parentId !== task.parentId;
+      if (before !== null && !movedOut && before.closed === task.closed && task.closedAgain !== true) continue;
+      if (movedOut) visit(before.parentId, { kind: 'moved-out', child: task.id });
+      // A task already closed that moves in closes nothing itself; it only completes the epic.
+      const kind = movedOut && before.closed && task.closed ? 'moved-in' : 'closed';
+      visit(task.parentId, { kind, child: task.id });
+    }
+    const checks = new Map<string, number>();
+    type EpicRow = {
+      readonly status: TaskStatus;
+      readonly parent_id: string | null;
+      readonly closed_by: string | null;
+      readonly assignee_for: string | null;
+      readonly work: string;
+      readonly kept: number;
+    };
+    const read = new Map<string, EpicRow | null>();
+    const decided = new Map<string, Placed & { readonly reason: string | null }>();
+    // One per epic, from its last check, which saw every change this write makes under it.
+    const guards = new Map<string, Statement>();
+    for (const [epicId, cause] of queue) {
+      queue.delete(epicId);
+      const count = (checks.get(epicId) ?? 0) + 1;
+      checks.set(epicId, count);
+      if (count > EPIC_CHECKS) continue;
+      if (!read.has(epicId)) {
+        read.set(
+          epicId,
+          await this.#db
+            .prepare(
+              `SELECT status, parent_id, closed_by, assignee_for, work,
+                 EXISTS (SELECT 1 FROM task_labels WHERE task_id = ?1 AND label = ?3) AS kept
+               FROM tasks WHERE id = ?1 AND project_id = ?2 AND type = 'epic'`,
+            )
+            .bind(epicId, projectId, KEEP_OPEN)
+            .first<EpicRow>(),
+        );
+      }
+      const epic = read.get(epicId);
+      if (epic === null || epic === undefined) continue;
+      const excluded = JSON.stringify([...left.keys()]);
+      const { results } = await this.#db
+        .prepare(
+          `SELECT status, resolution FROM tasks INDEXED BY tasks_by_parent
+           WHERE parent_id = ?1 AND id NOT IN (SELECT value FROM json_each(?2))`,
+        )
+        .bind(epicId, excluded)
+        .all<{ status: TaskStatus; resolution: TaskResolution | null }>();
+      const kept = cause.kind !== 'unkept' && epic.kept === 1;
+      // At the batch, the tasks under the epic that this write does not change, how they closed, and its label must be as read.
+      guards.set(
+        epicId,
+        this.#db
+          .prepare(
+            `INSERT INTO write_guard (ok, refusal)
+             SELECT count(*) = ?3 AND coalesce(sum(status <> 'closed'), 0) = ?4
+               AND coalesce(sum(status = 'closed' AND resolution NOT IN ('wont-do', 'no-longer-needed')), 0) = ?7
+               AND EXISTS (SELECT 1 FROM task_labels WHERE task_id = ?1 AND label = ?5) = ?6, 'version_conflict'
+             FROM tasks INDEXED BY tasks_by_parent WHERE parent_id = ?1 AND id NOT IN (SELECT value FROM json_each(?2))`,
+          )
+          .bind(
+            epicId,
+            excluded,
+            results.length,
+            results.filter((row) => row.status !== 'closed').length,
+            KEEP_OPEN,
+            kept ? 1 : 0,
+            results.filter(
+              (row) => row.status === 'closed' && row.resolution !== 'wont-do' && row.resolution !== 'no-longer-needed',
+            ).length,
+          ),
+      );
+      const children = [
+        ...results.map((row) => ({ closed: row.status === 'closed', resolution: row.resolution })),
+        ...[...left.values()].filter((task) => task.parentId === epicId),
+      ];
+      const standing = decided.get(epicId);
+      const change = epicChange(
+        {
+          type: 'epic',
+          status: standing === undefined ? epic.status : standing.closed ? 'closed' : 'open',
+          labels: kept ? [KEEP_OPEN] : [],
+          closedBy: standing === undefined ? epic.closed_by : standing.closed ? NTASKS_ACTOR : null,
+        },
+        children,
+      );
+      if (change === null) continue;
+      const placed = {
+        parentId: epic.parent_id,
+        closed: change !== 'reopen',
+        resolution: change === 'reopen' ? null : change.close,
+        reason: change === 'reopen' ? null : epicCloseReason(cause),
+      };
+      decided.set(epicId, placed);
+      left.set(epicId, placed);
+      visit(epic.parent_id, { kind: 'closed', child: epicId });
+    }
+    const statements: Statement[] = [...guards.values()];
+    const epics: string[] = [];
+    for (const [epicId, placed] of decided) {
+      const epic = read.get(epicId)!;
+      // An epic closed and opened again in one write is left as it was.
+      if (placed.closed === (epic.status === 'closed')) continue;
+      epics.push(epicId);
+      const actor: Actor = { name: NTASKS_ACTOR };
+      if (placed.closed) {
+        const work = JSON.parse(epic.work) as Record<string, unknown>;
+        statements.push(
+          this.#db
+            .prepare(
+              `UPDATE tasks SET status = 'closed', closed_at = ?1, close_reason = ?2, resolution = ?3,
+                 duplicate_of = NULL, closed_by = ?4, closed_model = NULL, close_link = NULL, close_acceptance = NULL,
+                 assignee_for = NULL, work = '{}', version = version + 1, updated_at = ?1
+               WHERE id = ?5 AND project_id = ?6 AND status <> 'closed'`,
+            )
+            .bind(at, placed.reason, placed.resolution, NTASKS_ACTOR, epicId, projectId),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          this.#eventAtVersion(epicId, 'closed', actor, at, {
+            status: 'closed',
+            close: {
+              at,
+              reason: placed.reason,
+              resolution: placed.resolution,
+              duplicateOf: null,
+              by: NTASKS_ACTOR,
+              model: null,
+              link: null,
+              acceptance: null,
+            },
+            // An epic the write changes may have taken a helper or work details in it, so both are recorded cleared.
+            ...(epic.assignee_for === null && !written.has(epicId) ? {} : { assigneeFor: null }),
+            ...(Object.keys(work).length === 0 && !written.has(epicId) ? {} : { work: {} }),
+          }),
+        );
+      } else {
+        statements.push(
+          this.#db
+            .prepare(
+              `UPDATE tasks SET status = 'open', closed_at = NULL, close_reason = NULL, resolution = NULL,
+                 duplicate_of = NULL, closed_by = NULL, closed_model = NULL, close_link = NULL, close_acceptance = NULL,
+                 ${DELIVERY_COLUMNS.map((column) => `${column} = NULL`).join(', ')},
+                 version = version + 1, updated_at = ?1
+               WHERE id = ?2 AND project_id = ?3 AND status = 'closed' AND closed_by = ?4`,
+            )
+            .bind(at, epicId, projectId, NTASKS_ACTOR),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          this.#eventAtVersion(epicId, 'reopened', actor, at, { status: 'open', close: null }),
+        );
+      }
+    }
+    return { statements, epics };
+  }
+
+  /** A history event of `taskId` at the version the batch leaves it at when the statement runs. */
+  #eventAtVersion(taskId: string, kind: TaskEventKind, actor: Actor, at: string, changes: JsonObject): Statement {
+    return this.#db
+      .prepare(
+        `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes)
+         SELECT id, project_id, version, ?2, ?3, ?4, ?5, ?6 FROM tasks WHERE id = ?1`,
+      )
+      .bind(taskId, kind, actor.name, actor.model ?? null, at, JSON.stringify(changes));
   }
 
   async createProject(input: CreateProjectInput): Promise<Project> {
@@ -862,6 +1105,15 @@ export class Writes {
         for (const [key, value] of Object.entries(checked)) if (value !== null) values.set(key, value);
       }
       const filed = filedState(fields, actor, at);
+      const placed: Moved = {
+        id,
+        before: null,
+        parentId: fields.parentId,
+        closed: filed.close !== null,
+        resolution: filed.close === null ? null : 'done',
+      };
+      const epicsAfter = fields.parentId === null ? null : await this.#epicsAfter(projectId, [placed], at);
+      const epics = epicsAfter?.epics ?? [];
       const statements: Statement[] = [
         ...this.#staleReceipt(retry),
         this.#insert('tasks', {
@@ -957,11 +1209,19 @@ export class Writes {
           filedBy: actor.name,
           filedModel: actor.model ?? null,
         }),
-        ...this.#receipt(retry, projectId, { taskId: id, created }, at, [id, ...created], true),
+        ...(epicsAfter?.statements ?? []),
+        ...this.#receipt(
+          retry,
+          projectId,
+          { taskId: id, created, ...(epics.length === 0 ? {} : { epics }) },
+          at,
+          [id, ...created],
+          true,
+        ),
       );
       try {
         await this.#db.batch(statements);
-        return await this.#result(projectId, id, created, false);
+        return await this.#result(projectId, id, created, false, epics);
       } catch (error) {
         if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
           lastFailure = 'version_conflict';
@@ -1002,15 +1262,20 @@ export class Writes {
     const at = this.#now();
     const commentId = write.comment === null ? null : crypto.randomUUID();
     const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId);
+    const moved = [movedBy(toTask(row), write)];
+    const unkept = unkeptBy(toTask(row), write) ? [taskId] : [];
     const others = await Promise.all(
       write.others.map(async (other) => {
         const found = rows.find((candidate) => candidate.id === other.taskId);
         if (found === undefined) refuse('not_found', `There is no task ${other.taskId}.`);
         if (found.version !== other.write.expectedVersion) refuse('version_conflict');
         const otherComment = other.write.comment === null ? null : crypto.randomUUID();
+        moved.push(movedBy(toTask(found), other.write));
+        if (unkeptBy(toTask(found), other.write)) unkept.push(other.taskId);
         return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
       }),
     );
+    const { statements: settled, epics } = await this.#epicsAfter(projectId, moved, at, unkept);
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const opens = write.requestApproval !== null || write.requestAction !== null;
@@ -1019,11 +1284,13 @@ export class Writes {
         taskId,
         created: gateId === null ? [] : [gateId],
         ...(commentId === null ? {} : { commentId }),
+        ...(epics.length === 0 ? {} : { epics }),
       };
       const statements: Statement[] = [
         ...this.#staleReceipt(retry),
         ...change(gateId),
         ...others.flatMap((other) => other(null)),
+        ...settled,
         ...this.#receipt(retry, projectId, recorded, at, [
           taskId,
           ...recorded.created,
@@ -1032,7 +1299,7 @@ export class Writes {
       ];
       try {
         await this.#db.batch(statements);
-        const result = await this.#result(projectId, taskId, recorded.created, false);
+        const result = await this.#result(projectId, taskId, recorded.created, false, epics);
         if (commentId === null || write.comment === null) return result;
         const comment: TaskComment = {
           id: commentId,
@@ -1083,7 +1350,8 @@ export class Writes {
       changes[field] = recorded;
     };
     const closed = current.status === 'closed';
-    if (write.close !== null && closed) refuse('invalid', 'The task is already closed.');
+    // An epic Ntasks closed on its own takes a close by whoever closes it now, with their reason.
+    if (write.close !== null && closed && !closedByNtasks(current)) refuse('invalid', 'The task is already closed.');
     if (write.reopen && !closed) refuse('invalid', 'Only a closed task can be reopened.');
     if (closed && !write.reopen && set.status !== undefined)
       refuse('invalid', 'Reopen a closed task before changing its status.');

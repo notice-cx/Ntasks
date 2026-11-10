@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { Access, AdapterConfig, ProjectConfig, SenderKind } from './config.ts';
+import { OWN_SERVICE, type Access, type AdapterConfig, type ProjectConfig, type SenderKind } from './config.ts';
 import { GitHub, labelName, type Issue } from './github.ts';
 import type { HistoryRecord, Ledger, LedgerData, LinkRecord, LinkType, TaskRecord } from './ledger.ts';
 import { invalid, refuse, Refused } from './refused.ts';
@@ -37,6 +37,11 @@ export const LINK_TYPES: readonly LinkType[] = [
 /** The link types that may join tasks of two projects; the rest stay inside one. */
 const ACROSS_PROJECTS: readonly LinkType[] = ['related', 'duplicates', 'supersedes', 'merges-after'];
 const PROOF_TYPES = ['task', 'bug', 'feature', 'chore'];
+/** The actor the adapter records the changes it makes on its own under, such as an epic it closes (protocol.md STATE-22). */
+export const OWN_ACTOR = `service:${OWN_SERVICE}`;
+/** The closes after which an epic whose tasks all closed so is no longer needed, rather than done. */
+const NOTHING_NEEDED = ['wont-do', 'no-longer-needed'];
+const closedLast = (child: string) => `Every task under this epic is closed; ${child} closed last.`;
 const WORK = ['session', 'worktree', 'branch', 'pr', 'commit', 'next'] as const;
 const HEX = /^[0-9a-f]{7,64}$/u;
 
@@ -463,6 +468,89 @@ export class Engine {
     this.event(draft, record, sender.actor, model, actions, fields);
   }
 
+  /** Records a change the adapter makes on its own: one version and one history event under OWN_ACTOR. */
+  private ownChange(
+    draft: LedgerData,
+    record: TaskRecord,
+    actions: readonly string[],
+    fields: Record<string, { old: unknown; new: unknown }>,
+  ): void {
+    record.version += 1;
+    record.updatedAt = this.now();
+    this.event(draft, record, OWN_ACTOR, null, actions, fields);
+  }
+
+  /**
+   * After a write that closed, reopened, filed or moved a task, or took an
+   * epic's keep-open label off: closes each epic `epics` names that it left
+   * with at least one task directly under it and every one closed, unless it
+   * is labelled keep-open, with that entry's reason, and reopens each the
+   * adapter closed that it left with one open; then checks the epic above
+   * each the same way (protocol.md STATE-22).
+   */
+  private async settleEpics(
+    draft: LedgerData,
+    epics: readonly { readonly id: string | null; readonly reason: string }[],
+  ): Promise<void> {
+    const queue = epics.flatMap(({ id, reason }) => (id === null ? [] : [{ id, reason }]));
+    for (let step = 0; queue.length > 0 && step < 64; step += 1) {
+      const { id, reason } = queue.shift()!;
+      const epic = draft.tasks[id];
+      if (epic === undefined || epic.type !== 'epic') continue;
+      const project = this.config.projects.find((each) => each.projectId === epic.projectId);
+      if (project === undefined) continue;
+      const children = Object.values(draft.tasks).filter((task) => task.parent === id);
+      const open = children.some((task) => task.status !== 'closed');
+      if (epic.status === 'closed') {
+        if (epic.closedOnItsOwn !== true || !open) continue;
+        await this.github.updateIssue(project.repository, epic.number, { state: 'open' });
+        const fields = this.apply(epic, {
+          status: 'open',
+          closedAt: null,
+          closedBy: null,
+          closedOnItsOwn: false,
+          closeReason: null,
+          closeLink: null,
+          closeCommit: null,
+          closePullRequest: null,
+          resolution: null,
+          duplicateOf: null,
+        });
+        this.ownChange(draft, epic, ['reopened'], fields);
+      } else {
+        if (children.length === 0 || open || epic.labels.includes('keep-open')) continue;
+        const resolution = children.every((task) => NOTHING_NEEDED.includes(task.resolution ?? ''))
+          ? 'no-longer-needed'
+          : 'done';
+        await this.github.updateIssue(project.repository, epic.number, {
+          state: 'closed',
+          state_reason: resolution === 'done' ? 'completed' : 'not_planned',
+        });
+        const at = this.now();
+        const fields = this.apply(epic, {
+          status: 'closed',
+          resolution,
+          closeReason: reason,
+          closeLink: null,
+          closeCommit: null,
+          closePullRequest: null,
+          closedAt: at,
+          closedBy: OWN_ACTOR,
+          closedOnItsOwn: true,
+          duplicateOf: null,
+          for: null,
+          work: {},
+        });
+        fields.close = {
+          old: null,
+          new: { at, reason, resolution, duplicateOf: null, by: OWN_ACTOR, model: null, link: null },
+        };
+        this.ownChange(draft, epic, ['closed'], fields);
+      }
+      if (epic.parent !== null) queue.push({ id: epic.parent, reason: closedLast(epic.id) });
+    }
+  }
+
   private githubLabels(project: ProjectConfig, labels: readonly string[]): string[] {
     return [...(project.label === undefined ? [] : [project.label]), ...labels];
   }
@@ -600,6 +688,7 @@ export class Engine {
           ]),
         ),
       );
+      await this.settleEpics(draft, [{ id: record.parent, reason: closedLast(record.id) }]);
       return {
         answer: {
           id: record.id,
@@ -689,6 +778,7 @@ export class Engine {
           Object.assign(set, {
             closedAt: null,
             closedBy: null,
+            ...(record.closedOnItsOwn === true ? { closedOnItsOwn: false } : {}),
             closeReason: null,
             closeLink: null,
             closeCommit: null,
@@ -725,8 +815,33 @@ export class Engine {
       if (closed && set.status !== undefined) githubChange.state = 'open';
       if (Object.keys(githubChange).length > 0)
         await this.github.updateIssue(project.repository, record.number, githubChange);
+      const before = record.parent;
       const fields = this.apply(record, set);
       this.changed(draft, record, sender, model, actions.length > 0 ? actions : ['updated'], fields);
+      if (fields.parent !== undefined || fields.status?.old === 'closed')
+        await this.settleEpics(draft, [
+          ...(before !== record.parent
+            ? [
+                {
+                  id: before,
+                  reason: `Every task under this epic is closed now that ${record.id}, the last one open, moved out of it.`,
+                },
+              ]
+            : []),
+          {
+            id: record.parent,
+            reason:
+              before !== record.parent && closed && record.status === 'closed'
+                ? `Every task under this epic is closed now that ${record.id}, already closed, moved into it.`
+                : closedLast(record.id),
+          },
+        ]);
+      const unkept =
+        (fields.labels?.old as string[] | undefined)?.includes('keep-open') && !record.labels.includes('keep-open');
+      if (unkept)
+        await this.settleEpics(draft, [
+          { id: record.id, reason: 'Every task under this epic is closed, and its keep-open label came off.' },
+        ]);
       const shown = Object.fromEntries(
         Object.keys(fields)
           .filter((name) => !['description', 'acceptance', 'notes', 'design'].includes(name))
@@ -775,7 +890,9 @@ export class Engine {
       };
       if (resolution !== 'done' && Object.values(proof).some((value) => value !== undefined))
         invalid(`commit, pr and link (only a close as done names its proof; this one is ${resolution})`);
-      if (record.status === 'closed') refuse(`${record.id} is already closed; get_task shows its close.`);
+      // An epic the adapter closed on its own takes a sender's close in place of its own (protocol.md STATE-22).
+      if (record.status === 'closed' && record.closedOnItsOwn !== true)
+        refuse(`${record.id} is already closed; get_task shows its close.`);
       if (record.assignee !== null && record.assignee !== sender.actor)
         refuse(`${record.id} is held by ${record.assignee}; only its holder closes it.`);
       if (record.labels.includes('human') && sender.kind !== 'person')
@@ -827,6 +944,7 @@ export class Engine {
         closePullRequest: resolution === 'done' ? (pr ?? null) : null,
         closedAt: at,
         closedBy: sender.actor,
+        ...(record.closedOnItsOwn === true ? { closedOnItsOwn: false } : {}),
         duplicateOf: duplicateOf ?? null,
         for: null,
         work: {},
@@ -849,6 +967,7 @@ export class Engine {
         fields.dependencies = { old: before, new: this.dependencies(draft, record.id) };
       }
       this.changed(draft, record, sender, model, ['closed'], fields);
+      await this.settleEpics(draft, [{ id: record.parent, reason: closedLast(record.id) }]);
       return {
         answer: {
           id: record.id,
