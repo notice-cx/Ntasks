@@ -10,6 +10,7 @@
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
 import type { SignInConfig } from './config.ts';
+import { sameBytes, sha256 } from './crypto.ts';
 import { acceptInvitations, githubAccountOf, isMember, mayJoin, type GitHubAccount } from './members.ts';
 import { NOT_INVITED } from './pages.ts';
 import {
@@ -22,6 +23,7 @@ import {
   OFFLINE_ACCESS,
   RESOURCE_NAME,
   SIGN_IN_PAGE,
+  appReference,
   mcpResource,
 } from './protocol.ts';
 import { CORE_TABLES, OAUTH_TABLES } from './tables.ts';
@@ -40,6 +42,13 @@ async function mayTakePart(db: D1Database, config: SignInConfig, account: GitHub
 interface AuthOptions {
   /** Check that the database matches the library's schema; tests only, since it reads the schema on each build. */
   readonly validateSchema?: boolean;
+  /**
+   * A service registering a connected app of its workspace, for the one
+   * request whose service credential was verified: the library takes that
+   * credential as RFC 7591's initial access token, stores the client as the
+   * workspace's app and lets it ask for a connected app's scopes.
+   */
+  readonly appRegistration?: { readonly token: string; readonly workspaceId: string };
 }
 
 /**
@@ -50,9 +59,11 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
   const resource = mcpResource(config.origin);
   const agentScopes = [...Object.keys(AGENT_SCOPES), OFFLINE_ACCESS];
   // Every scope a token may carry. A client that registers itself gets the
-  // agent scopes alone, so only a connected app, which an owner registers,
-  // can be granted tasks:decide.
+  // agent scopes alone, so only a connected app, which an owner or the
+  // workspace's own service registers, can be granted tasks:decide.
   const scopes = [...APP_SCOPES, OFFLINE_ACCESS];
+  const app = options.appRegistration;
+  const registrationScopes = app ? scopes : agentScopes;
   // The GitHub account this request's sign-in admitted, from the profile
   // GitHub just returned. Its invitations are accepted once its session is
   // made, when its user exists. An instance serves one request, so this holds
@@ -139,8 +150,15 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
         // MCP clients register themselves (RFC 7591) and must use PKCE.
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
-        clientRegistrationDefaultScopes: agentScopes,
-        clientRegistrationAllowedScopes: agentScopes,
+        clientRegistrationDefaultScopes: registrationScopes,
+        clientRegistrationAllowedScopes: registrationScopes,
+        // Only Ntasks names the reference that makes a client an app, never the request.
+        ...(app && {
+          validateInitialAccessToken: async ({ initialAccessToken }: { initialAccessToken: string }) =>
+            sameBytes(await sha256(initialAccessToken), await sha256(app.token))
+              ? { referenceId: appReference(app.workspaceId) }
+              : false,
+        }),
         clientRegistrationDefaultResources: [resource],
         clientRegistrationAllowedResources: [resource],
         clientRegistrationRequirePKCE: true,

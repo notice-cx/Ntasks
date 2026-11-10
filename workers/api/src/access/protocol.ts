@@ -47,8 +47,9 @@ export const OFFLINE_ACCESS = 'offline_access';
 
 /**
  * A connected app's OAuth client carries `ntasks-app:<workspace id>` as its
- * reference id. Only Ntasks writes the column: the library never takes it
- * from a registration request, so a client that registered itself cannot
+ * reference id. Only Ntasks names it, for an owner's registration (apps.ts
+ * markApp) or a service's (auth.ts appRegistration): the library never takes
+ * it from a registration request, so a client that registered itself cannot
  * claim to be a connected app.
  */
 const APP_REFERENCE = 'ntasks-app:';

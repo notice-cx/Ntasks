@@ -1,0 +1,17 @@
+{
+  "added": "`POST /api/auth/oauth2/register` with a service credential as the bearer token: registers a connected app of the credential's workspace from RFC 7591 client metadata, or answers the one already registered with the same name and redirect addresses",
+  "routes": {
+    "POST /api/auth/oauth2/register": {
+      "client_id": "string",
+      "client_name": "string",
+      "redirect_uris": "array",
+      "redirect_uris[]": "string",
+      "token_endpoint_auth_method": "string",
+      "grant_types": "array",
+      "grant_types[]": "string",
+      "response_types": "array",
+      "response_types[]": "string",
+      "scope": "string"
+    }
+  }
+}

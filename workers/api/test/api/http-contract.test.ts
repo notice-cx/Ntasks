@@ -543,6 +543,23 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/access/apps', '/api/access/apps');
   await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
   await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});
+  // A service registers its own app: once, then the same app again.
+  const host = (
+    (await service({ name: 'contract-host', grants: [{ projectId, access: 'read' }] })) as {
+      service: { token: string };
+    }
+  ).service;
+  for (let sent = 0; sent < 2; sent += 1) {
+    const registered = await call('/api/auth/oauth2/register', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Contract Tower',
+        redirect_uris: ['https://contract.example.com/signed-in'],
+      }),
+    });
+    await keep(samples, 'POST /api/auth/oauth2/register', '/api/auth/oauth2/register', registered);
+  }
   return samples;
 }
 

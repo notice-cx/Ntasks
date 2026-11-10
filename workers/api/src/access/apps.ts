@@ -1,12 +1,13 @@
 /**
- * Connected apps: OAuth clients that an owner of a workspace registers, such
- * as another product's web page that shows the workspace's tasks. A person
+ * Connected apps: OAuth clients that an owner of a workspace, or the
+ * workspace's own service with its credential, registers, such as another
+ * product's web page that shows the workspace's tasks. A person
  * who signs in to one through Ntasks lets it act as them in that workspace
  * (verify.ts). The OAuth provider stores the client; this module marks it as
  * the workspace's app, lists a workspace's apps, removes one, and answers
  * which origins may call the API from a browser.
  */
-import { appReference, appWorkspaceOf } from './protocol.ts';
+import { APP_SCOPES, appReference, appWorkspaceOf, OFFLINE_ACCESS } from './protocol.ts';
 
 /** An app's name: 1 to 64 letters, digits, spaces, dots, dashes or underscores, as a service credential's. */
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
@@ -36,13 +37,78 @@ export interface RegistrationRefused {
 export function appRegistrationOf(body: Readonly<Record<string, unknown>>): AppRegistration | RegistrationRefused {
   const unknown = Object.keys(body).filter((key) => key !== 'name' && key !== 'redirectUris');
   if (unknown.length > 0) return { detail: `unknown ${unknown.join(', ')}; send name and redirectUris` };
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!NAME.test(name)) {
-    return { detail: 'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores', field: 'name' };
+  return checkedRegistration(body.name, body.redirectUris, { name: 'name', redirectUris: 'redirectUris' });
+}
+
+/** The client metadata fields a service may send when it registers its app (RFC 7591 section 2). */
+const CLIENT_METADATA = new Set([
+  'client_name',
+  'redirect_uris',
+  'token_endpoint_auth_method',
+  'grant_types',
+  'response_types',
+  'scope',
+]);
+const APP_GRANTS: readonly string[] = ['authorization_code', 'refresh_token'];
+const APP_SCOPE_CHOICES: readonly string[] = [...APP_SCOPES, OFFLINE_ACCESS];
+
+/** A connected app a service registers: an owner's registration, with the scopes its client may ask for. */
+export interface ServiceAppRegistration extends AppRegistration {
+  readonly scope: readonly string[];
+}
+
+/**
+ * The RFC 7591 client metadata a service registers its connected app with,
+ * checked as an owner's registration is, or why it is refused. The app is a
+ * public client using the authorization code grant; scope, when sent, lists
+ * some of a connected app's scopes, and every one of them otherwise.
+ */
+export function serviceAppRegistrationOf(
+  body: Readonly<Record<string, unknown>>,
+): ServiceAppRegistration | RegistrationRefused {
+  const unknown = Object.keys(body).filter((key) => !CLIENT_METADATA.has(key));
+  if (unknown.length > 0) return { detail: `unknown ${unknown.join(', ')}; send client_name and redirect_uris` };
+  if (body.token_endpoint_auth_method !== undefined && body.token_endpoint_auth_method !== 'none') {
+    return { detail: 'a connected app is a public client: token_endpoint_auth_method is none' };
   }
-  const given = body.redirectUris;
+  if (body.grant_types !== undefined && !someOf(body.grant_types, APP_GRANTS)) {
+    return { detail: 'grant_types lists authorization_code and, for a refresh token, refresh_token' };
+  }
+  if (body.response_types !== undefined && !someOf(body.response_types, ['code'])) {
+    return { detail: 'response_types is ["code"]' };
+  }
+  const scope =
+    body.scope === undefined ? APP_SCOPE_CHOICES : typeof body.scope === 'string' ? body.scope.split(' ') : [];
+  if (!someOf(scope, APP_SCOPE_CHOICES)) return { detail: `scope lists some of ${APP_SCOPE_CHOICES.join(' ')}` };
+  const registration = checkedRegistration(body.client_name, body.redirect_uris, {
+    name: 'client_name',
+    redirectUris: 'redirect_uris',
+  });
+  return 'detail' in registration ? registration : { ...registration, scope: [...new Set(scope)] };
+}
+
+/** Whether a value is a non-empty array of distinct strings, each one of `allowed`. */
+function someOf(value: unknown, allowed: readonly string[]): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    new Set(value).size === value.length &&
+    value.every((item) => typeof item === 'string' && allowed.includes(item))
+  );
+}
+
+/** The checks every registration shares, its fields named as the request names them. */
+function checkedRegistration(
+  givenName: unknown,
+  given: unknown,
+  words: { readonly name: string; readonly redirectUris: string },
+): AppRegistration | RegistrationRefused {
+  const name = typeof givenName === 'string' ? givenName.trim() : '';
+  if (!NAME.test(name)) {
+    return { detail: `${words.name} is 1 to 64 letters, digits, spaces, dots, dashes or underscores`, field: 'name' };
+  }
   if (!Array.isArray(given) || given.length === 0 || given.length > MOST_REDIRECTS) {
-    return { detail: `redirectUris lists 1 to ${MOST_REDIRECTS} addresses`, field: 'redirectUris' };
+    return { detail: `${words.redirectUris} lists 1 to ${MOST_REDIRECTS} addresses`, field: 'redirectUris' };
   }
   let local = false;
   const redirectUris: string[] = [];
@@ -69,9 +135,58 @@ export function appRegistrationOf(body: Readonly<Record<string, unknown>>): AppR
     redirectUris.push(String(value));
   }
   if (new Set(redirectUris).size !== redirectUris.length) {
-    return { detail: 'redirectUris lists each address once', field: 'redirectUris' };
+    return { detail: `${words.redirectUris} lists each address once`, field: 'redirectUris' };
   }
   return { name, redirectUris, applicationType: local ? 'native' : 'web' };
+}
+
+/** A connected app as a registration answers it (RFC 7591 section 3.2.1). */
+export interface RegisteredClient {
+  readonly client_id: string;
+  readonly client_name: string;
+  readonly redirect_uris: readonly string[];
+  readonly token_endpoint_auth_method: 'none';
+  readonly grant_types: readonly string[];
+  readonly response_types: readonly string[];
+  readonly scope: string;
+}
+
+/**
+ * The workspace's enabled app with this name and these redirect addresses,
+ * in any order, as a registration answers it, or null: a service that
+ * registers its app again, such as after it lost the answer, gets the same one.
+ */
+export async function registeredApp(
+  db: D1Database,
+  workspaceId: string,
+  registration: AppRegistration,
+): Promise<RegisteredClient | null> {
+  const { results } = await db
+    .prepare(
+      `SELECT client_id, redirect_uris, scopes, grant_types, response_types FROM auth_oauth_client
+       WHERE reference_id = ? AND name = ? AND coalesce(disabled, 0) = 0
+       ORDER BY created_at DESC LIMIT 50`,
+    )
+    .bind(appReference(workspaceId), registration.name)
+    .all<{
+      client_id: string;
+      redirect_uris: string;
+      scopes: string | null;
+      grant_types: string | null;
+      response_types: string | null;
+    }>();
+  const wanted = [...registration.redirectUris].sort().join('\n');
+  const row = results.find((found) => stringsOf(found.redirect_uris).sort().join('\n') === wanted);
+  if (!row) return null;
+  return {
+    client_id: row.client_id,
+    client_name: registration.name,
+    redirect_uris: stringsOf(row.redirect_uris),
+    token_endpoint_auth_method: 'none',
+    grant_types: stringsOf(row.grant_types ?? '[]'),
+    response_types: stringsOf(row.response_types ?? '[]'),
+    scope: stringsOf(row.scopes ?? '[]').join(' '),
+  };
 }
 
 /** Marks a client the provider just created as a connected app of the workspace. */

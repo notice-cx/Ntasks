@@ -55,7 +55,16 @@ import {
   saveGitHubWebhook,
 } from './github-webhook.ts';
 import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
-import { appRegistrationOf, clientOf, isAppOf, listApps, markApp, removeApp } from './apps.ts';
+import {
+  appRegistrationOf,
+  clientOf,
+  isAppOf,
+  listApps,
+  markApp,
+  registeredApp,
+  removeApp,
+  serviceAppRegistrationOf,
+} from './apps.ts';
 import {
   agentAccessPage,
   appAccessPage,
@@ -78,9 +87,11 @@ import {
   PROTECTED_RESOURCE_METADATA_PATH,
   PUBLIC_AUTH_ROUTES,
   SIGN_IN_PAGE,
+  bearerToken,
   protectedResourceMetadata,
   scopeAccess,
 } from './protocol.ts';
+import { parseServiceToken } from './service-token.ts';
 import {
   convertManifest,
   endSetupCookie,
@@ -154,6 +165,8 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
     // Those limits count separately in each Cloudflare location; the daily
     // budget is counted in D1, which every location shares.
     if (url.pathname === REGISTER_PATH && request.method === 'POST') {
+      const service = serviceTokenOf(request);
+      if (service !== null) return await serviceRegistration(request, env, config, service);
       const fromAddress = await env.REGISTER_ADDRESS_LIMIT.limit({ key: address });
       if (!fromAddress.success) return json({ error: 'rate_limited' }, 429, { 'retry-after': '60' });
       const fromAll = await env.REGISTER_LIMIT.limit({ key: 'registrations' });
@@ -233,6 +246,69 @@ async function boundedText(request: Request): Promise<string> {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(bytes);
+}
+
+/** The service credential a request carries as its bearer token, or null for any other request. */
+function serviceTokenOf(request: Request): string | null {
+  const token = bearerToken(request.headers);
+  return typeof token === 'string' && parseServiceToken(token) !== null ? token : null;
+}
+
+/** A registration refused as RFC 7591 section 3.2.2 words it. */
+function registrationRefused(status: number, error: string, description: string): Response {
+  return json({ error, error_description: description }, status, { 'cache-control': 'no-store' });
+}
+
+/**
+ * POST /api/auth/oauth2/register with a service credential as RFC 7591's
+ * initial access token: registers a connected app of the credential's
+ * workspace, such as a NoticeOS Tower's page, from client metadata for a
+ * public PKCE client. The same name and redirect addresses again answer the
+ * app already registered. Each person still allows the app on the approval
+ * page before it acts as them; the credential itself never acts as a person.
+ */
+async function serviceRegistration(
+  request: Request,
+  env: AccessEnv,
+  config: SignInConfig,
+  token: string,
+): Promise<Response> {
+  const verification = await verifyRequest(request, env);
+  if (!verification.ok || verification.principal.kind !== 'service') {
+    return registrationRefused(401, 'invalid_token', 'the service credential is unknown or revoked');
+  }
+  const workspaceId = verification.principal.workspace.id;
+  const body = await jsonBody(request, 'client metadata');
+  if (typeof body === 'string') return registrationRefused(400, 'invalid_client_metadata', body);
+  const registration = serviceAppRegistrationOf(body);
+  if ('detail' in registration) {
+    const error = registration.field === 'redirectUris' ? 'invalid_redirect_uri' : 'invalid_client_metadata';
+    return registrationRefused(400, error, registration.detail);
+  }
+  const registered = await registeredApp(env.DB, workspaceId, registration);
+  if (registered) return json(registered, 200, { 'cache-control': 'no-store' });
+  const headers = new Headers({
+    'content-type': 'application/json',
+    accept: 'application/json',
+    authorization: `Bearer ${token}`,
+  });
+  const metadata = {
+    client_name: registration.name,
+    redirect_uris: [...registration.redirectUris],
+    application_type: registration.applicationType,
+    token_endpoint_auth_method: 'none',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    scope: registration.scope.join(' '),
+  };
+  const created = await createAuth(env.DB, config, { appRegistration: { token, workspaceId } }).handler(
+    new Request(config.origin + REGISTER_PATH, { method: 'POST', headers, body: JSON.stringify(metadata) }),
+  );
+  if (created.status !== 201) return created;
+  // Answered in Ntasks's own recorded shape, not the library's, which may grow on an upgrade.
+  await created.body?.cancel();
+  const app = await registeredApp(env.DB, workspaceId, registration);
+  return app ? json(app, 201, { 'cache-control': 'no-store' }) : json({ error: 'server_error' }, 500);
 }
 
 /** RFC 8414 metadata from the OAuth provider, the same at the root and at the issuer's path. */

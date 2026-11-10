@@ -167,6 +167,101 @@ describe('registering a connected app', () => {
   });
 });
 
+/** A service credential of the test workspace, made by its owner signed in to `owner`. */
+async function serviceOf(owner: Browser): Promise<{ id: string; token: string }> {
+  const projectId = await createProject('Served');
+  const made = await owner.fetch('/api/access/services', {
+    method: 'POST',
+    json: { name: `Example host ${crypto.randomUUID().slice(0, 8)}`, grants: [{ projectId, access: 'write' }] },
+    headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+  });
+  expect(made.status).toBe(201);
+  return (await made.json<{ service: { id: string; token: string } }>()).service;
+}
+
+/** Registers a client with RFC 7591 metadata, sending the service credential as the initial access token. */
+function registerAsService(token: string, metadata: Record<string, unknown>): Promise<Response> {
+  return call('/api/auth/oauth2/register', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(metadata),
+  });
+}
+
+describe('a service registering its own connected app', () => {
+  it('registers an app of its workspace once, which a person then allows and decides through', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const origin = newOrigin();
+    const redirect = `${origin}/tasks/signed-in`;
+
+    const first = await registerAsService(service.token, { client_name: 'NoticeOS Tower', redirect_uris: [redirect] });
+    expect(first.status).toBe(201);
+    const registered = await first.json<{ client_id: string; scope: string; token_endpoint_auth_method: string }>();
+    expect(registered).toMatchObject({ token_endpoint_auth_method: 'none' });
+    expect(registered.scope.split(' ').sort()).toEqual(EVERY_SCOPE.split(' ').sort());
+    const again = await registerAsService(service.token, { client_name: 'NoticeOS Tower', redirect_uris: [redirect] });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ client_id: registered.client_id, redirect_uris: [redirect] });
+    expect((await appsSeenBy(owner)).filter((listed) => listed.redirectUris.includes(redirect))).toEqual([
+      expect.objectContaining({ clientId: registered.client_id, name: 'NoticeOS Tower', connectedAt: null }),
+    ]);
+
+    const app = { clientId: registered.client_id, origin, redirect };
+    const tokens = await connectApp(owner, app);
+    const asked = await decision('Picked through a service-registered app');
+    const chose = await fromApp(app, tokens.access_token, `/api/tasks/${asked.taskId}/choose`, {
+      json: { projectId: asked.projectId, option: 'a' },
+    });
+    expect(chose.status).toBe(200);
+    const { task } = await taskRead(owner, asked);
+    expect(task).toMatchObject({ choice: { option: 'a', app: registered.client_id } });
+    expect((task.choice as { by: string }).by).not.toMatch(/^service:/u);
+  });
+
+  it.each([
+    [
+      'a redirect address an app may not use',
+      { redirect_uris: ['http://tower.example.com/tasks'] },
+      'invalid_redirect_uri',
+    ],
+    ['a client secret', { token_endpoint_auth_method: 'client_secret_basic' }, 'invalid_client_metadata'],
+    ['a scope a connected app never holds', { scope: 'tasks:read tasks:backup' }, 'invalid_client_metadata'],
+  ])('refuses %s', async (_, change, error) => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const refused = await registerAsService(service.token, {
+      client_name: 'NoticeOS Tower',
+      redirect_uris: [`${newOrigin()}/tasks/signed-in`],
+      ...change,
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ error, error_description: expect.any(String) as unknown });
+  });
+
+  it('refuses a revoked credential and registers nothing', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const revoked = await owner.fetch(`/api/access/services/${service.id}/revoke`, {
+      method: 'POST',
+      json: {},
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(revoked.status).toBe(200);
+    const redirect = `${newOrigin()}/tasks/signed-in`;
+    const refused = await registerAsService(service.token, {
+      client_name: 'NoticeOS Tower',
+      redirect_uris: [redirect],
+    });
+    expect(refused.status).toBe(401);
+    expect(await refused.json()).toMatchObject({ error: 'invalid_token' });
+    expect((await appsSeenBy(owner)).filter((listed) => listed.redirectUris.includes(redirect))).toEqual([]);
+  });
+});
+
 describe('a person signed in through a connected app', () => {
   it('is that person, in the app’s workspace, holding only the scopes they allowed', async () => {
     const browser = new Browser();
