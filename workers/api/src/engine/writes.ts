@@ -167,8 +167,8 @@ SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = match
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
 ORDER BY t.id`;
 
-/** The most epics one write checks as it climbs from the tasks it changes, so a parent chain that loops, as an import could leave, still ends. */
-const EPIC_CHECKS = 64;
+/** The most times one write checks an epic as it climbs from the tasks it changes, so a parent chain that loops, as an import could leave, still ends. */
+const EPIC_CHECKS = 8;
 
 /** A task as a write leaves it, as far as the epic above it reads it. */
 interface Placed {
@@ -181,6 +181,8 @@ interface Placed {
 interface Moved extends Placed {
   readonly id: string;
   readonly before: { readonly parentId: string | null; readonly closed: boolean } | null;
+  /** Closed before and closed by this write too: a close that replaces Ntasks's own close of an epic. */
+  readonly closedAgain?: boolean;
 }
 
 /** Whether `write` takes the keep-open label off `current`, an epic it leaves open. */
@@ -204,6 +206,7 @@ function movedBy(current: Task, write: check.CheckedWrite): Moved {
     parentId: write.set.parentId !== undefined ? write.set.parentId : current.parentId,
     closed,
     resolution: write.close !== null ? write.close.resolution : closed ? (current.close?.resolution ?? null) : null,
+    closedAgain: wasClosed && write.close !== null,
   };
 }
 
@@ -779,21 +782,21 @@ export class Writes {
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
     const written = new Set(moved.map((task) => task.id));
     const left = new Map<string, Placed>(moved.map((task) => [task.id, task]));
-    const queue: { readonly epicId: string; readonly cause: EpicCause }[] = unkept.map((epicId) => ({
-      epicId,
-      cause: { kind: 'unkept' },
-    }));
-    const visit = (epicId: string | null, child: string, movedOut: boolean) => {
-      if (epicId !== null && !written.has(epicId))
-        queue.push({ epicId, cause: { kind: movedOut ? 'moved-out' : 'closed', child } });
+    // Each epic waits in the queue at most once, with the first cause that reached it.
+    const queue = new Map<string, EpicCause>(unkept.map((epicId) => [epicId, { kind: 'unkept' }]));
+    const visit = (epicId: string | null, cause: EpicCause) => {
+      if (epicId !== null && !written.has(epicId) && !queue.has(epicId)) queue.set(epicId, cause);
     };
     for (const task of moved) {
       const { before } = task;
       const movedOut = before !== null && before.parentId !== task.parentId;
-      if (before !== null && !movedOut && before.closed === task.closed) continue;
-      if (movedOut) visit(before.parentId, task.id, true);
-      visit(task.parentId, task.id, false);
+      if (before !== null && !movedOut && before.closed === task.closed && task.closedAgain !== true) continue;
+      if (movedOut) visit(before.parentId, { kind: 'moved-out', child: task.id });
+      // A task already closed that moves in closes nothing itself; it only completes the epic.
+      const kind = movedOut && before.closed && task.closed ? 'moved-in' : 'closed';
+      visit(task.parentId, { kind, child: task.id });
     }
+    const checks = new Map<string, number>();
     type EpicRow = {
       readonly status: TaskStatus;
       readonly parent_id: string | null;
@@ -806,8 +809,11 @@ export class Writes {
     const decided = new Map<string, Placed & { readonly reason: string | null }>();
     // One per epic, from its last check, which saw every change this write makes under it.
     const guards = new Map<string, Statement>();
-    for (let step = 0; queue.length > 0 && step < EPIC_CHECKS; step += 1) {
-      const { epicId, cause } = queue.shift()!;
+    for (const [epicId, cause] of queue) {
+      queue.delete(epicId);
+      const count = (checks.get(epicId) ?? 0) + 1;
+      checks.set(epicId, count);
+      if (count > EPIC_CHECKS) continue;
       if (!read.has(epicId)) {
         read.set(
           epicId,
@@ -832,13 +838,14 @@ export class Writes {
         .bind(epicId, excluded)
         .all<{ status: TaskStatus; resolution: TaskResolution | null }>();
       const kept = cause.kind !== 'unkept' && epic.kept === 1;
-      // At the batch, the tasks under the epic that this write does not change, and its label, must be as read.
+      // At the batch, the tasks under the epic that this write does not change, how they closed, and its label must be as read.
       guards.set(
         epicId,
         this.#db
           .prepare(
             `INSERT INTO write_guard (ok, refusal)
              SELECT count(*) = ?3 AND coalesce(sum(status <> 'closed'), 0) = ?4
+               AND coalesce(sum(status = 'closed' AND resolution NOT IN ('wont-do', 'no-longer-needed')), 0) = ?7
                AND EXISTS (SELECT 1 FROM task_labels WHERE task_id = ?1 AND label = ?5) = ?6, 'version_conflict'
              FROM tasks INDEXED BY tasks_by_parent WHERE parent_id = ?1 AND id NOT IN (SELECT value FROM json_each(?2))`,
           )
@@ -849,6 +856,9 @@ export class Writes {
             results.filter((row) => row.status !== 'closed').length,
             KEEP_OPEN,
             kept ? 1 : 0,
+            results.filter(
+              (row) => row.status === 'closed' && row.resolution !== 'wont-do' && row.resolution !== 'no-longer-needed',
+            ).length,
           ),
       );
       const children = [
@@ -874,7 +884,7 @@ export class Writes {
       };
       decided.set(epicId, placed);
       left.set(epicId, placed);
-      visit(epic.parent_id, epicId, false);
+      visit(epic.parent_id, { kind: 'closed', child: epicId });
     }
     const statements: Statement[] = [...guards.values()];
     const epics: string[] = [];

@@ -31,6 +31,22 @@ async function reopen(tasks: TaskEngine, projectId: string, taskId: string) {
   return tasks.writeTask(projectId, taskId, { expectedVersion: current.version, reopen: true }, AGENT);
 }
 
+/** An engine whose next batch first runs the hook a test sets, as another write landing between a write's read and its batch. */
+function racedEngine() {
+  const inner = storeDatabase();
+  const race: { before: (() => Promise<unknown>) | null } = { before: null };
+  const db: Database = {
+    prepare: (sql) => inner.prepare(sql),
+    async batch(statements) {
+      const hook = race.before;
+      race.before = null;
+      if (hook) await hook();
+      return inner.batch(statements);
+    },
+  };
+  return { tasks: createEngine(db), inner, race };
+}
+
 /** An epic with `count` tasks under it. */
 async function epicWith(tasks: TaskEngine, projectId: string, count: number, epic: Partial<CreateTaskInput> = {}) {
   const made = await make(tasks, projectId, { title: 'Launch', type: 'epic', ...epic });
@@ -117,24 +133,11 @@ describe('an epic closes when its last open task does', () => {
   });
 
   it('decides again when another task under the epic closes between its read and its batch', async () => {
-    const inner = storeDatabase();
-    let beforeBatch: (() => Promise<void>) | null = null;
-    const db: Database = {
-      prepare: (sql) => inner.prepare(sql),
-      async batch(statements) {
-        const hook = beforeBatch;
-        beforeBatch = null;
-        if (hook) await hook();
-        return inner.batch(statements);
-      },
-    };
-    const tasks = createEngine(db);
+    const { tasks, race } = racedEngine();
     const project = await newProject(tasks);
     const { epic, children } = await epicWith(tasks, project.id, 2);
     // The other task closes after this write read it as open.
-    beforeBatch = async () => {
-      await close(tasks, project.id, children[1]!.id);
-    };
+    race.before = () => close(tasks, project.id, children[1]!.id);
 
     const before = await read(tasks, project.id, children[0]!.id);
     await expectRefusal(close(tasks, project.id, children[0]!.id), 'version_conflict');
@@ -146,6 +149,66 @@ describe('an epic closes when its last open task does', () => {
 
     await close(tasks, project.id, children[0]!.id);
     expect((await read(tasks, project.id, epic.id)).status).toBe('closed');
+  });
+
+  it('decides again when how another task under the epic closed changes between its read and its batch', async () => {
+    const { tasks, inner, race } = racedEngine();
+    const project = await newProject(tasks);
+    const { epic, children } = await epicWith(tasks, project.id, 2);
+    await close(tasks, project.id, children[0]!.id, 'wont-do');
+    // Read as won't do, the other task is done by the batch: the epic is done, not no longer needed.
+    race.before = () => inner.prepare("UPDATE tasks SET resolution = 'done', version = version + 1 WHERE id = ?1").bind(children[0]!.id).run();
+
+    await expectRefusal(close(tasks, project.id, children[1]!.id, 'wont-do'), 'version_conflict');
+    await close(tasks, project.id, children[1]!.id, 'wont-do');
+
+    expect((await read(tasks, project.id, epic.id)).close?.resolution).toBe('done');
+  });
+
+  it('closes the epics above the 70 tasks one write closes together', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const outer = await make(tasks, project.id, { title: 'Release', type: 'epic' });
+    const { epic, children } = await epicWith(tasks, project.id, 70, { parentId: outer.id });
+    const [first, ...rest] = children;
+
+    await tasks.writeTask(
+      project.id,
+      first!.id,
+      {
+        expectedVersion: 1,
+        close: { reason: 'Finished', resolution: 'done' },
+        others: rest.map((child) => ({
+          taskId: child.id,
+          expectedVersion: 1,
+          close: { reason: 'Finished', resolution: 'done' },
+        })),
+      },
+      AGENT,
+    );
+
+    for (const id of [epic.id, outer.id]) expect((await read(tasks, project.id, id)).status).toBe('closed');
+  });
+
+  it('closes an epic, naming the closed task that moved into it', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { epic, children } = await epicWith(tasks, project.id, 1);
+    await close(tasks, project.id, children[0]!.id);
+    await tasks.writeTask(
+      project.id,
+      epic.id,
+      { expectedVersion: (await read(tasks, project.id, epic.id)).version, reopen: true },
+      OWNER,
+    );
+    const finished = await make(tasks, project.id, { title: 'Written elsewhere' });
+    await close(tasks, project.id, finished.id);
+
+    await tasks.writeTask(project.id, finished.id, { expectedVersion: 2, set: { parentId: epic.id } }, AGENT);
+
+    const closed = await read(tasks, project.id, epic.id);
+    expect(closed.close).toMatchObject({ by: NTASKS_ACTOR, resolution: 'done' });
+    expect(closed.close?.reason).toMatch(new RegExp(`${finished.id}, already closed, moved into it`, 'u'));
   });
 
   it('closes an epic whose last open task moves out of it', async () => {
@@ -215,6 +278,33 @@ describe('an epic Ntasks closed', () => {
 
     expect(epics?.map((task) => task.id)).toEqual([epic.id]);
     expect((await read(tasks, project.id, epic.id)).status).toBe('open');
+  });
+
+  it('closes the epic above when a close by a person replaces its own close of an epic under it', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const outer = await make(tasks, project.id, { title: 'Release', type: 'epic' });
+    const inner = await make(tasks, project.id, { title: 'Docs', type: 'epic', parentId: outer.id });
+    const page = await make(tasks, project.id, { title: 'Write the page', parentId: inner.id });
+    await close(tasks, project.id, page.id);
+    await tasks.writeTask(
+      project.id,
+      outer.id,
+      { expectedVersion: (await read(tasks, project.id, outer.id)).version, reopen: true },
+      OWNER,
+    );
+
+    await tasks.writeTask(
+      project.id,
+      inner.id,
+      {
+        expectedVersion: (await read(tasks, project.id, inner.id)).version,
+        close: { reason: 'The docs shipped', resolution: 'done' },
+      },
+      OWNER,
+    );
+
+    expect(await read(tasks, project.id, outer.id)).toMatchObject({ status: 'closed', close: { by: NTASKS_ACTOR } });
   });
 
   it('takes a close by an agent in place of its own, which a reopened task then leaves closed', async () => {

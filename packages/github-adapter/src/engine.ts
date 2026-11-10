@@ -825,7 +825,13 @@ export class Engine {
                 },
               ]
             : []),
-          { id: record.parent, reason: closedLast(record.id) },
+          {
+            id: record.parent,
+            reason:
+              before !== record.parent && closed && record.status === 'closed'
+                ? `Every task under this epic is closed now that ${record.id}, already closed, moved into it.`
+                : closedLast(record.id),
+          },
         ]);
       const unkept =
         (fields.labels?.old as string[] | undefined)?.includes('keep-open') && !record.labels.includes('keep-open');

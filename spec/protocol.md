@@ -595,8 +595,9 @@ The close:
 
 - MUST record the actor the server records its own changes under as its
   closer, never the sender of the change ([AUTH-2](#auth-2)), with a reason
-  that names what closed it: the child that closed or moved out last, or the
-  removal of `keep-open`;
+  that names the change that closed it: the child that closed last, the
+  last open child moving out, a closed child moving in, or the removal of
+  `keep-open`;
 - is as `no-longer-needed` when every child closed as `wont-do` or
   `no-longer-needed`, and as `done` otherwise;
 - carries no proof ([INV-7](#inv-7)), clears the epic's work in hand
