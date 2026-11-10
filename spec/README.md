@@ -3,9 +3,8 @@
 **An open contract for shared work between people and AI agents. Draft,
 v0, 2026-11-09.**
 
-This folder holds the Shared Work Protocol: a draft specification of the
-record people and AI agents
-share when they work together: tasks, claims, decisions and approvals that
+The Shared Work Protocol is a draft specification of the record people and
+AI agents share when they work together: tasks, claims, decisions and approvals that
 only a person can give, proof that work is done, and where a finished
 change has reached. Any task tool, agent harness or adapter can implement
 it. Ntasks is its reference implementation, and the draft was extracted

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { docsSidebar, pageSummary } from '../lib/docs-index.ts';
 import { docsMarkdownOptions } from '../lib/markdown.ts';
-import { BRANCH, DESCRIPTION, DOCS_BASE, REPOSITORY, SITE_ORIGIN } from '../lib/site.ts';
+import { BRANCH, DESCRIPTION, DOCS_BASE, REPOSITORY, SITE_ORIGIN, SPEC_BASE } from '../lib/site.ts';
 import { iconHead, socialHead } from '../lib/social.ts';
 import { docsSchema } from '../lib/discovery.ts';
 
@@ -89,6 +89,7 @@ export default defineConfig({
     nav: [
       { text: 'Docs', link: '/', activeMatch: '^/docs/' },
       { text: 'Get started', link: '/deploy' },
+      { text: 'Spec', link: `${SITE_ORIGIN}${SPEC_BASE}`, target: '_self' },
     ],
     sidebar: docsSidebar(docsDir),
     socialLinks: [{ icon: 'github', link: REPOSITORY, ariaLabel: 'Ntasks on GitHub' }],
