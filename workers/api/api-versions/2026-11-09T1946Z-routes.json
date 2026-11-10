@@ -90,7 +90,7 @@
       "choice.label": "string",
       "choice.by": "string",
       "choice.at": "string",
-      "choice.note": "string"
+      "choice.note": "absent|string"
     },
     "card": {
       "valuePerMonth": "number",
