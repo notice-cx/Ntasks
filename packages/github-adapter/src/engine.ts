@@ -499,6 +499,17 @@ export class Engine {
         linked.set(id, (await this.tracked(sender, draft, id)).record);
       if (parent !== undefined && linked.get(parent)!.projectId !== project.projectId)
         refuse(`${parent} is in another project.`);
+      // Every rule is checked before the first GitHub call, so a refused task leaves no issue behind.
+      const discovered = (args.discovered_from as string[] | undefined) ?? [];
+      for (const id of [...dependsOn, ...blocks, ...discovered])
+        if (linked.get(id)!.projectId !== project.projectId)
+          refuse(`${id} is in another project; a link to it stays inside one.`);
+      for (const after of dependsOn)
+        for (const before of blocks)
+          if (this.waitsOn(draft, after, before))
+            refuse(
+              `${before} waiting on the new task, which waits on ${after}, would make them wait on each other in a loop.`,
+            );
       await this.ensureLabels(project, labels);
       const issue = await this.github.createIssue(project.repository, {
         title: args.title as string,

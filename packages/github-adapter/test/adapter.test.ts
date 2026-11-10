@@ -5,9 +5,12 @@
  * checks, so the passes are the adapter's own. What the suite cannot see,
  * the GitHub side of each write, is checked against the stand-in directly.
  */
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { DEFECTS, startBrokenServer, type Defect } from '../../../spec/conformance/fixtures/broken.ts';
 import { mcpApi } from '../../../spec/conformance/src/mcp.ts';
+import { McpConnection } from '../../../spec/conformance/src/transport.ts';
 import { runSuite } from '../../../spec/conformance/src/suite.ts';
 import { KNOWN_GAPS, startLocalAdapter } from '../conformance/local.ts';
 import { GitHub } from '../src/github.ts';
@@ -61,6 +64,31 @@ describe('the adapter', () => {
     60_000,
   );
 
+  it('files no issue for a task it refuses, such as one that would close a waiting loop', async () => {
+    const local = await startLocalAdapter();
+    try {
+      const agent = mcpApi(local.target, 'agent');
+      const github = new GitHub(local.githubApi!, local.githubToken);
+      const first = (await agent.create({ title: 'Ship the page' })).value!.id;
+      const second = (await agent.create({ title: 'Write the copy', dependsOn: [first] })).value!.id;
+      const issues = (await github.listIssues(local.repository)).length;
+      const connection = await new McpConnection(
+        new URL('/mcp', local.target.url),
+        local.target.senders.agent.headers,
+      ).initialize();
+      const refused = await connection.callTool('create_task', {
+        project: local.target.projects.main,
+        title: 'Review it',
+        depends_on: [second],
+        blocks: [first],
+      });
+      expect([refused.isError, refused.text.split('\n')[0]?.startsWith('refused:')]).toEqual([true, true]);
+      expect((await github.listIssues(local.repository)).length).toBe(issues);
+    } finally {
+      await local.close();
+    }
+  }, 60_000);
+
   it('keeps each task an issue people can read in GitHub, and takes up an issue filed there', async () => {
     const local = await startLocalAdapter();
     try {
@@ -112,4 +140,30 @@ describe('the adapter', () => {
       await local.close();
     }
   }, 60_000);
+});
+
+describe('the GitHub client', () => {
+  it('sends a read again after a server error, never a create, and answers a GitHub that does not answer as unavailable', async () => {
+    const seen: string[] = [];
+    const flaky = createServer((request, response) => {
+      seen.push(request.method ?? '');
+      const failing = seen.filter((method) => method === request.method).length === 1;
+      response.writeHead(failing ? 502 : 200, { 'content-type': 'application/json' });
+      response.end(failing ? '{}' : JSON.stringify({ number: 1, title: 'x', state: 'open', labels: [], user: null }));
+    });
+    await new Promise<void>((resolve) => flaky.listen(0, '127.0.0.1', resolve));
+    try {
+      const github = new GitHub(`http://127.0.0.1:${(flaky.address() as AddressInfo).port}`, 'token');
+      await expect(github.createIssue('example/site', { title: 'x', body: '', labels: [] })).rejects.toMatchObject({
+        status: 502,
+      });
+      expect((await github.getIssue('example/site', 1))?.number).toBe(1);
+      expect(seen).toEqual(['POST', 'GET', 'GET']);
+    } finally {
+      await new Promise((resolve) => flaky.close(resolve));
+    }
+    await expect(new GitHub('http://127.0.0.1:1', 'token').getIssue('example/site', 1)).rejects.toMatchObject({
+      status: 0,
+    });
+  }, 20_000);
 });

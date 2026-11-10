@@ -26,6 +26,10 @@ export interface IssueComment {
   readonly created_at: string;
 }
 
+/** How long one request to GitHub may take. */
+const REQUEST_MS = 30_000;
+
+/** A request GitHub refused or did not answer: status 0 when no answer came. */
 export class GitHubError extends Error {
   readonly status: number;
 
@@ -121,21 +125,31 @@ export class GitHub {
         if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
         this.lastWrite = Date.now();
       }
-      const response = await fetch(url, {
-        method,
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${this.token}`,
-          'x-github-api-version': '2022-11-28',
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        redirect: 'error',
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method,
+          headers: {
+            accept: 'application/vnd.github+json',
+            authorization: `Bearer ${this.token}`,
+            'x-github-api-version': '2022-11-28',
+            ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          redirect: 'error',
+          // Writes run one at a time, so a request that hangs would hold every later write.
+          signal: AbortSignal.timeout(REQUEST_MS),
+        });
+      } catch (error) {
+        throw new GitHubError(0, `GitHub did not answer ${method} ${new URL(url).pathname}: ${String(error)}`);
+      }
       if (response.ok) return response;
       const limited = response.status === 429 || (response.status === 403 && response.headers.has('retry-after'));
       const exhausted = response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0';
-      if ((limited || exhausted || response.status >= 500) && attempt < 3) {
+      // GitHub may have made an issue or a comment before a server error, so only reads and edits are sent again
+      // after one; a rate limit means GitHub did nothing, so any request is.
+      const again = limited || exhausted || (response.status >= 500 && method !== 'POST');
+      if (again && attempt < 3) {
         const after = Number(response.headers.get('retry-after') ?? '');
         const reset = Number(response.headers.get('x-ratelimit-reset') ?? '') * 1000 - Date.now();
         const wait = Number.isFinite(after) && after > 0 ? after * 1000 : reset > 0 ? reset : 1000 * 2 ** attempt;

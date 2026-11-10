@@ -75,7 +75,8 @@ On a binding, `-` means the binding offers no way to make the call the check
 tests, such as linking two tasks over HTTP, and `skipped` that it offers the
 call but the target names no sender the check needs for it, such as a person
 for the HTTP binding's approval. A check runs once on each binding
-the target offers. It arranges what it needs, such as a task waiting on an
+the target offers, except a check of one binding's own rule, such as
+MCP-3, which runs on that binding only. It arranges what it needs, such as a task waiting on an
 approval, through MCP when the server offers it, and through HTTP for the
 person; then it makes the call it tests through the binding under test.
 Where a rule says a refused write leaves nothing behind, the check reads the
