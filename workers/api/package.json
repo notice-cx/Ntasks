@@ -6,12 +6,14 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "postinstall": "node scripts/api-versions.ts",
+    "api-versions": "node scripts/api-versions.ts",
+    "dev": "node scripts/api-versions.ts && wrangler dev",
     "types": "wrangler types",
-    "typecheck": "wrangler types --check && tsc && tsc -p test && tsc -p test/node",
-    "test": "vitest run && node --test test/node/routing.ts test/node/migrations.ts test/node/provision.ts",
-    "build": "wrangler deploy --dry-run --outdir dist",
-    "deploy": "wrangler d1 migrations apply DB --remote < /dev/null && wrangler deploy"
+    "typecheck": "node scripts/api-versions.ts && wrangler types --check && tsc && tsc -p test && tsc -p test/node && tsc -p scripts",
+    "test": "vitest run && node --test test/node/routing.ts test/node/migrations.ts test/node/provision.ts test/node/api-versions.ts",
+    "build": "node scripts/api-versions.ts && wrangler deploy --dry-run --outdir dist",
+    "deploy": "node scripts/api-versions.ts && wrangler d1 migrations apply DB --remote < /dev/null && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.6.0",

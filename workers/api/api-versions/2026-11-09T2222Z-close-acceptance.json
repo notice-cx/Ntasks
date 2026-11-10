@@ -1,0 +1,23 @@
+{
+  "added": "`closeAcceptance` on a task, `POST /api/tasks/:id/accept`, and `accept` among a person's `operations` in `GET /api/tasks/capabilities`",
+  "shapes": {
+    "task": {
+      "closeAcceptance": "null|object",
+      "closeAcceptance.by": "string",
+      "closeAcceptance.app": "absent|string",
+      "closeAcceptance.relayed": "absent|object",
+      "closeAcceptance.relayed.by": "string",
+      "closeAcceptance.relayed.source": "string",
+      "closeAcceptance.relayed.quote": "string",
+      "closeAcceptance.criteria": "array",
+      "closeAcceptance.criteria[]": "object",
+      "closeAcceptance.criteria[].text": "string",
+      "closeAcceptance.criteria[].met": "boolean"
+    }
+  },
+  "routes": {
+    "POST /api/tasks/:id/accept": {
+      "task": "@task"
+    }
+  }
+}

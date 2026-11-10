@@ -1,0 +1,431 @@
+{
+  "added": "The routes that docs/api.md and docs/sign-in.md list",
+  "shapes": {
+    "task": {
+      "id": "string",
+      "title": "string",
+      "status": "string",
+      "priority": "number",
+      "issueType": "string",
+      "assignee": "null|string",
+      "updatedAt": "string",
+      "closedAt": "null|string",
+      "closedBy": "null|string",
+      "closedModel": "null|string",
+      "assigneeModel": "null|string",
+      "for": "null|string",
+      "work": "object",
+      "lastActivityAt": "null|string",
+      "parent": "null|string",
+      "deferUntil": "null|string",
+      "dueAt": "null|string",
+      "description": "string",
+      "acceptance": "string",
+      "notes": "string",
+      "design": "string",
+      "estimateMinutes": "null|number",
+      "labels": "array",
+      "labels[]": "string",
+      "ready": "boolean",
+      "dependencies": "array",
+      "externalLinks": "array",
+      "externalLinks[]": "object",
+      "externalLinks[].url": "string",
+      "externalLinks[].title": "string",
+      "externalLinks[].kind": "string",
+      "fields": "map",
+      "comments": "number",
+      "metadata": "map",
+      "createdAt": "string",
+      "startedAt": "null|string",
+      "closeReason": "null|string",
+      "closeLink": "null|string",
+      "proof": "null|string",
+      "awaitType": "null|string",
+      "choices": "null|object",
+      "choice": "null|object",
+      "answer": "null|object",
+      "card": "@card|null",
+      "cardShipped": "null|object",
+      "changeClass": "null|string",
+      "resolution": "null|string",
+      "duplicateOf": "null|string",
+      "delivery": "null|object",
+      "proposalVersion": "null|string",
+      "work.session": "absent|string",
+      "work.worktree": "absent|string",
+      "work.branch": "absent|string",
+      "work.pr": "absent|string",
+      "work.commit": "absent|string",
+      "work.next": "absent|string",
+      "delivery.stage": "string",
+      "delivery.commit": "null|string",
+      "delivery.pullRequest": "null|string",
+      "delivery.mergeCommit": "null|string",
+      "delivery.builtAt": "string",
+      "delivery.mergedAt": "null|string",
+      "delivery.liveAt": "null|string",
+      "cardShipped.card": "@card",
+      "cardShipped.closedAt": "string",
+      "dependencies[]": "object",
+      "dependencies[].id": "string",
+      "dependencies[].type": "string",
+      "dependencies[].title": "string",
+      "dependencies[].status": "string",
+      "answer.option": "null|string",
+      "answer.quote": "null|string",
+      "answer.source": "null|string",
+      "answer.recordedBy": "string",
+      "answer.relayed": "boolean",
+      "answer.proposalVersion": "string",
+      "answer.at": "string",
+      "answer.disputedBy": "null|string",
+      "choices.question": "string",
+      "choices.options": "array",
+      "choices.options[]": "object",
+      "choices.options[].key": "string",
+      "choices.options[].label": "string",
+      "choices.options[].recommended": "absent|boolean",
+      "choice.option": "string",
+      "choice.label": "string",
+      "choice.by": "string",
+      "choice.at": "string",
+      "choice.note": "string"
+    },
+    "card": {
+      "valuePerMonth": "number",
+      "likelihood": "number",
+      "reviewMinutes": "number",
+      "daysToSignal": "number",
+      "measurability": "string",
+      "buildMinutes": "absent|number",
+      "revenueFamily": "absent|string",
+      "durability": "absent|number",
+      "note": "absent|string",
+      "kill": "absent|object",
+      "kill.state": "string",
+      "kill.date": "string",
+      "by": "string",
+      "at": "string"
+    },
+    "comment": {
+      "id": "string",
+      "author": "string",
+      "text": "string",
+      "createdAt": "string"
+    },
+    "field": {
+      "key": "string",
+      "name": "string",
+      "type": "string",
+      "options": "array|null",
+      "options[]": "string",
+      "createdAt": "string",
+      "retiredAt": "null|string"
+    },
+    "project": {
+      "projectId": "string",
+      "logicalKey": "string",
+      "displayName": "string",
+      "prefix": "string"
+    },
+    "workspace": {
+      "workspaceId": "string",
+      "name": "string",
+      "role": "string"
+    },
+    "invitation": {
+      "invitationId": "string",
+      "githubLogin": "string",
+      "role": "string",
+      "createdAt": "string",
+      "expiresAt": "string"
+    },
+    "service": {
+      "id": "string",
+      "name": "string",
+      "createdAt": "string",
+      "revokedAt": "null|string",
+      "grants": "array",
+      "grants[]": "object",
+      "grants[].projectId": "string",
+      "grants[].access": "string",
+      "backup": "boolean",
+      "restore": "boolean"
+    }
+  },
+  "routes": {
+    "GET /api/version": {
+      "version": "number",
+      "oldest": "number"
+    },
+    "GET /api/access/me": {
+      "kind": "string",
+      "name": "string",
+      "deploymentAdmin": "boolean",
+      "projects": "array|string",
+      "projects[]": "object",
+      "projects[].workspaceId": "string",
+      "projects[].projectId": "string",
+      "projects[].access": "string"
+    },
+    "POST /api/tasks/projects": {
+      "project": "@project"
+    },
+    "PATCH /api/tasks/projects": {
+      "project": "@project",
+      "project.deploys": "boolean"
+    },
+    "POST /api/fields": {
+      "field": "@field"
+    },
+    "POST /api/fields/:key/retire": {
+      "field": "@field"
+    },
+    "POST /api/tasks": {
+      "id": "string",
+      "project": "string"
+    },
+    "PATCH /api/tasks/:id": {
+      "task": "@task"
+    },
+    "POST /api/tasks/:id/comments": {
+      "comment": "@comment"
+    },
+    "POST /api/tasks/:id/close": {
+      "task": "@task"
+    },
+    "POST /api/delivery": {
+      "moved": "array",
+      "moved[]": "object",
+      "moved[].id": "string",
+      "moved[].stage": "string"
+    },
+    "POST /api/tasks/:id/respond": {
+      "task": "@task"
+    },
+    "POST /api/tasks/:id/dismiss": {
+      "task": "@task"
+    },
+    "POST /api/tasks/:id/choose": {
+      "task": "@task"
+    },
+    "POST /api/gates/:id/resolve": {
+      "task": "@task"
+    },
+    "POST /api/tasks/:id/dispute": {
+      "task": "@task"
+    },
+    "GET /api/tasks/projects": {
+      "projects": "array",
+      "projects[]": "@project",
+      "projects[].deploys": "boolean"
+    },
+    "GET /api/tasks/capabilities": {
+      "live": "boolean",
+      "writable": "boolean",
+      "projectSelection": "boolean",
+      "operations": "array",
+      "operations[]": "string",
+      "editableFields": "array",
+      "editableFields[]": "string"
+    },
+    "GET /api/tasks": {
+      "project": "string",
+      "prefix": "string",
+      "repo": "string",
+      "readAt": "string",
+      "closedSince": "null|string",
+      "tasks": "array",
+      "tasks[]": "@task",
+      "epics": "array|null",
+      "epics[]": "object",
+      "epics[].id": "string",
+      "epics[].title": "string",
+      "epics[].status": "string",
+      "epics[].priority": "number",
+      "epics[].total": "number",
+      "epics[].closed": "number",
+      "epics[].eligibleForClose": "boolean",
+      "actors": "array",
+      "lastSeq": "number"
+    },
+    "GET /api/tasks?label": {
+      "project": "string",
+      "prefix": "string",
+      "repo": "string",
+      "readAt": "string",
+      "label": "string",
+      "tasks": "array",
+      "tasks[]": "@task",
+      "next": "null|string"
+    },
+    "GET /api/tasks/search": {
+      "readAt": "string",
+      "closedSince": "string",
+      "total": "number",
+      "tasks": "array",
+      "tasks[]": "@task",
+      "tasks[].project": "string"
+    },
+    "GET /api/tasks/:id": {
+      "project": "string",
+      "prefix": "string",
+      "repo": "string",
+      "readAt": "string",
+      "task": "@task",
+      "comments": "array",
+      "comments[]": "@comment",
+      "actors": "array",
+      "proposal": "string",
+      "proposalVersion": "string"
+    },
+    "GET /api/tasks/:id/history": {
+      "changes": "array",
+      "changes[]": "object",
+      "changes[].revision": "string",
+      "changes[].at": "string",
+      "changes[].actor": "string",
+      "changes[].model": "null|string",
+      "changes[].actions": "array",
+      "changes[].actions[]": "string",
+      "changes[].fields": "map"
+    },
+    "GET /api/changes": {
+      "events": "array",
+      "events[]": "object",
+      "events[].seq": "number",
+      "events[].taskId": "string",
+      "events[].projectId": "string",
+      "events[].version": "number",
+      "events[].kind": "string",
+      "events[].actor": "string",
+      "events[].model": "null|string",
+      "events[].at": "string",
+      "events[].changes": "map",
+      "lastSeq": "number"
+    },
+    "GET /api/fields": {
+      "project": "string",
+      "fields": "array",
+      "fields[]": "@field"
+    },
+    "GET /api/tasks/agent-stats": {
+      "readAt": "string",
+      "projects": "number",
+      "broken": "array",
+      "stats": "object",
+      "stats.workers": "array",
+      "stats.workers[]": "object",
+      "stats.workers[].id": "string",
+      "stats.workers[].name": "string",
+      "stats.workers[].inHand": "number",
+      "stats.workers[].blocked": "number",
+      "stats.workers[].days": "array",
+      "stats.workers[].days[]": "number",
+      "stats.workers[].week": "number",
+      "stats.workers[].lastWeek": "number",
+      "stats.workers[].medianHours": "null|number",
+      "stats.velocity": "object",
+      "stats.velocity.weeks": "array",
+      "stats.velocity.weeks[]": "object",
+      "stats.velocity.weeks[].start": "string",
+      "stats.velocity.weeks[].current": "boolean",
+      "stats.velocity.weeks[].counts": "map",
+      "stats.velocity.weeks[].total": "number",
+      "stats.velocity.keys": "array",
+      "stats.velocity.keys[]": "string",
+      "stats.velocity.names": "map",
+      "stats.race": "object",
+      "stats.race.from": "number",
+      "stats.race.to": "number",
+      "stats.race.players": "array",
+      "stats.race.players[]": "object",
+      "stats.race.players[].key": "string",
+      "stats.race.players[].name": "string",
+      "stats.race.players[].closes": "array",
+      "stats.race.players[].closes[]": "number",
+      "stats.race.players[].points": "number",
+      "stats.trophies": "array",
+      "stats.trophies[]": "object",
+      "stats.trophies[].key": "string",
+      "stats.trophies[].award": "string",
+      "stats.trophies[].holder": "string",
+      "stats.trophies[].value": "string",
+      "stats.trophies[].detail": "null|string",
+      "stats.week": "number",
+      "stats.lastWeek": "number",
+      "stats.inHand": "number",
+      "stats.blocked": "number",
+      "stats.medianHours": "null|number"
+    },
+    "GET /api/backup": {
+      "format": "string",
+      "takenAt": "string",
+      "migrations": "array",
+      "migrations[]": "string",
+      "table": "string",
+      "rows": "array",
+      "rows[]": "map",
+      "next": "null|string"
+    },
+    "POST /api/workspaces": {
+      "workspace": "@workspace"
+    },
+    "PATCH /api/workspaces": {
+      "workspace": "@workspace"
+    },
+    "GET /api/workspaces": {
+      "workspaces": "array",
+      "workspaces[]": "@workspace"
+    },
+    "POST /api/access/invitations": {
+      "invitation": "@invitation"
+    },
+    "GET /api/access/members": {
+      "members": "array",
+      "members[]": "object",
+      "members[].userId": "string",
+      "members[].name": "string",
+      "members[].githubLogin": "null|string",
+      "members[].role": "string",
+      "invitations": "array",
+      "invitations[]": "@invitation"
+    },
+    "POST /api/access/invitations/:id/revoke": {
+      "revoked": "boolean"
+    },
+    "POST /api/access/members/:id/remove": {
+      "removed": "boolean"
+    },
+    "GET /api/access/agents": {
+      "agents": "array",
+      "agents[]": "object",
+      "agents[].clientId": "string",
+      "agents[].name": "null|string",
+      "agents[].uri": "null|string",
+      "agents[].scopes": "array",
+      "agents[].scopes[]": "string",
+      "agents[].approvedAt": "string",
+      "agents[].grants": "array",
+      "agents[].grants[]": "object",
+      "agents[].grants[].workspaceId": "string",
+      "agents[].grants[].projectId": "string",
+      "agents[].grants[].access": "string"
+    },
+    "POST /api/access/agents/:id/revoke": {
+      "revoked": "boolean"
+    },
+    "POST /api/access/services": {
+      "service": "@service",
+      "service.token": "string"
+    },
+    "POST /api/access/services/:id/revoke": {
+      "revoked": "boolean"
+    },
+    "GET /api/access/services": {
+      "services": "array",
+      "services[]": "@service"
+    }
+  }
+}

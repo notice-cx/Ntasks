@@ -1,25 +1,30 @@
 // The HTTP API only adds (docs/api.md#versions): a route keeps every field of
 // its answer, with its type, at every later version, and every answer under
-// /api names the version. fixtures/http-api.json records the fields version
-// by version. This file sends every recorded route through the Worker as
+// /api names the version. Each file in api-versions/ records the fields one
+// version added. This file sends every recorded route through the Worker as
 // deployed, as the owner of the test workspace signed in to the web app, and
 // compares the answers with the record.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { hex } from '../../src/access/crypto.ts';
+import API_VERSIONS from '../../src/api-versions.generated.json';
 import { API_VERSION, API_VERSION_HEADER, OLDEST_API_VERSION } from '../../src/version.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { Browser, call, connectAgent, connectApp, meWithToken } from '../access/client.ts';
 import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from '../access/github.ts';
-import RECORD from '../fixtures/http-api.json';
 import { TEST_WORKSPACE } from '../store.ts';
 import { compare, expand, merge, observe, observed, withoutValue, type ContractVersion } from './contract.ts';
 
 standInForGitHub();
 
-// TypeScript reads each version of the JSON as its own type, which stops
-// overlapping ContractVersion once two versions record different fields.
-const CONTRACT = merge(RECORD as unknown as readonly ContractVersion[]);
+/** Each version's file, oldest first, as the Worker counts them. */
+const RECORD: readonly { readonly name: string; readonly version: ContractVersion }[] = await Promise.all(
+  API_VERSIONS.map(async (name) => ({
+    name,
+    version: ((await import(`../../api-versions/${name}.json`)) as { default: ContractVersion }).default,
+  })),
+);
+const CONTRACT = merge(RECORD.map(({ version }) => version));
 
 /** One answer a route gave. */
 interface Sample {
@@ -532,8 +537,16 @@ describe('the version', () => {
     expect((await call('/api/version', { method: 'POST' })).status).toBe(405);
   });
 
-  it('is the version the contract is recorded up to', () => {
+  it('is the number of versions recorded, each saying what it added and recording nothing else', () => {
+    expect(API_VERSION).toBe(RECORD.length);
     expect(CONTRACT.version).toBe(API_VERSION);
+    for (const { name, version } of RECORD) {
+      expect(typeof version.added === 'string' && version.added.trim() !== '', name).toBe(true);
+      expect(
+        Object.keys(version).filter((key) => !['added', 'shapes', 'routes'].includes(key)),
+        name,
+      ).toEqual([]);
+    }
   });
 
   it('names the version on every answer the contract records', async () => {
@@ -600,8 +613,8 @@ describe('the contract', () => {
   it('refuses a field recorded twice, so a later version cannot change its type', () => {
     expect(() =>
       merge([
-        { version: 1, routes: { 'GET /x': { id: 'string' } } },
-        { version: 2, routes: { 'GET /x': { id: 'number' } } },
+        { added: '`GET /x`', routes: { 'GET /x': { id: 'string' } } },
+        { added: '`id` as a number', routes: { 'GET /x': { id: 'number' } } },
       ]),
     ).toThrow('GET /x id is recorded twice');
   });
