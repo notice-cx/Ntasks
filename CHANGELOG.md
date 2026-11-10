@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.3.0](https://github.com/notice-cx/Ntasks/compare/v0.2.0...v0.3.0) (2026-11-10)
+
+
+### Features
+
+* a Time zone setting in Settings, saved with the account (one new database column) ([664c9fe](https://github.com/notice-cx/Ntasks/commit/664c9fe06767efeb2e19bec107df3fcd39951b5c))
+* a Time zone setting in Settings, saved with the person's account ([25a4e6b](https://github.com/notice-cx/Ntasks/commit/25a4e6bc1c3681169b1dc86a96456c8cfa752466))
+* add the Productivity page, a feed of each day's wins ([ae72a25](https://github.com/notice-cx/Ntasks/commit/ae72a255a2706c88056ab63fb8f82e9efef7683a))
+* **api:** ask GitHub whether waiting work already merged ([9b9552f](https://github.com/notice-cx/Ntasks/commit/9b9552febcf2de1d40e75277819221737bf20243))
+* **api:** close a task in progress when GitHub reports its pull request merged ([f9f2d57](https://github.com/notice-cx/Ntasks/commit/f9f2d575a236cf3468bd118b6677b5453297ab47))
+* **api:** close a task in progress when GitHub reports its pull request merged ([c63c540](https://github.com/notice-cx/Ntasks/commit/c63c540cfd51c1fbda151a8e64940e7cba7a3ed3))
+* **api:** count each day's open, created and closed tasks for a burn-down ([a7c4bac](https://github.com/notice-cx/Ntasks/commit/a7c4bac45a5f368d6649c9142c76632b5cd3bbcb))
+* **api:** list tasks in progress as active, quiet or stalled ([33cd751](https://github.com/notice-cx/Ntasks/commit/33cd7518b9f0037ad3ba4bfaf8adf3e263293894))
+* **api:** list tasks in progress as active, quiet or stalled ([2e41345](https://github.com/notice-cx/Ntasks/commit/2e41345208dbaba6ff624e804ceda7911f0dd4da))
+* **api:** say which files work touches and which PR merges first ([337bc58](https://github.com/notice-cx/Ntasks/commit/337bc5883df30bf04012acaa1ea3339d86877cad))
+* show a burn-down of open tasks on the Productivity page ([721d6bf](https://github.com/notice-cx/Ntasks/commit/721d6bfc53461571668cbb357b01bd89840ad535))
+* **site:** name the agents' activity filter in the two-loops showcase ([15595d1](https://github.com/notice-cx/Ntasks/commit/15595d1b958e761d4e18ccf0f3746631bad81123))
+* **site:** name the agents' activity filter in the two-loops showcase ([e90f620](https://github.com/notice-cx/Ntasks/commit/e90f620a0bee02c53cad8558abe6021748753bc3))
+* **site:** show the two loops, Built to Live and Active to Stalled ([c05a152](https://github.com/notice-cx/Ntasks/commit/c05a1527939cb5c5452fe7ed8991463c4a4ff6ee))
+* **site:** show the two loops, Built to Live and Active to Stalled ([fa6c252](https://github.com/notice-cx/Ntasks/commit/fa6c252ce6fdfea23ee8ded8d973d8a451974e00))
+* **spec:** define Active, Quiet and Stalled as protocol rules ([6189399](https://github.com/notice-cx/Ntasks/commit/6189399af778d339a072e70e910d37fff22bd7bb))
+* **spec:** define Active, Quiet and Stalled as protocol rules ([cc77fd2](https://github.com/notice-cx/Ntasks/commit/cc77fd2f30c12d6bcadfcc7954f59b847e132758))
+* **ui:** draw a burn-down of open tasks on the Productivity page ([837413e](https://github.com/notice-cx/Ntasks/commit/837413e8f9cd583e0ac15481e2180c6f37755d6a))
+
+
+### Bug Fixes
+
+* **api:** close nothing on a merge GitHub reports without its merge commit ([d82d2e4](https://github.com/notice-cx/Ntasks/commit/d82d2e436bcaad4660a47a5e5e6c7d6c9b96e279))
+* **api:** count a deploy of a commit the merge queue landed as live ([ba77c9b](https://github.com/notice-cx/Ntasks/commit/ba77c9b6e4b6b9037edffb7f7af46e621b9d62e5))
+* **api:** count a deploy of a commit the merge queue landed as live ([c995ea0](https://github.com/notice-cx/Ntasks/commit/c995ea0f4be65352aef791e42f171052d99d7bc9))
+* **api:** count a merge queue build as a deploy only after the merge ([b30f21b](https://github.com/notice-cx/Ntasks/commit/b30f21be00401921da6c74db73a28e785bd1655b))
+* **api:** list the API's versions when the script is started through a symbolic link ([0d1a38c](https://github.com/notice-cx/Ntasks/commit/0d1a38cedeaadd8e28a1ecac338dfec45d7fdda2))
+* **api:** record GitHub's merge time when the merge check finds a merge ([901636a](https://github.com/notice-cx/Ntasks/commit/901636a50b212284ddf7f35d146e9499b21d1baf))
+* **api:** record when GitHub merged, not when Ntasks heard of it ([c6a81ca](https://github.com/notice-cx/Ntasks/commit/c6a81ca16a1b46857c17f382d2d6a7aef254b569))
+* **api:** work out a read's activities at the readAt it names ([5719a31](https://github.com/notice-cx/Ntasks/commit/5719a31fa36b874e61e71e677978a1224d31cad2))
+* cut the Productivity page's days at midnight in the viewer's time zone ([1940fbd](https://github.com/notice-cx/Ntasks/commit/1940fbd719365546a7cb2e8c839590d08bb16a3c))
+* cut the Productivity page's days at midnight in the viewer's time zone ([1cc51c6](https://github.com/notice-cx/Ntasks/commit/1cc51c628249e0e9aa2aa8e2b8d9b5a0748b8804))
+* **github-adapter:** link to a task in a project the sender only reads ([85f9622](https://github.com/notice-cx/Ntasks/commit/85f9622840d4fbae39a858bd2366c611c8657c3e))
+* **site:** say a merge can close a task left in progress ([352b4c7](https://github.com/notice-cx/Ntasks/commit/352b4c77bf0371c415240ffa00b5604de74bec30))
+* **ui:** order an epic's closed tasks of the same close time as the Worker does ([ee47dd0](https://github.com/notice-cx/Ntasks/commit/ee47dd09defcb3f46e4596db4e06c8c6bdd0f634))
+
 ## [0.2.0](https://github.com/notice-cx/Ntasks/compare/v0.1.0...v0.2.0) (2026-11-10)
 
 
