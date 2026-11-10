@@ -60,7 +60,7 @@ protocol appears in neither table.
 | STATE-17 | `workers/api/test/api/read-tools.test.ts` › "shows a task its epic's pinned comments and what its closed siblings left, newest first and capped" |
 | STATE-17 | `workers/api/test/api/write-tools.test.ts` › "answers a claim on a task in an epic with the epic's pinned comments and its closed tasks' closes" |
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "closes the task whose work names the pull request as done by the merge, with its proof, at merged" |
-| STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "leaves in progress a task labelled keep-open, and an epic, saying why" |
+| STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "leaves in progress a task labelled keep-open, an epic and a task with open tasks under it, saying why" |
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "leaves in progress a task that waits on an open approval or a request to do steps" |
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "closes nothing when the pull request that merged is one no task names" |
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "closes a task once when GitHub sends the same merge again" |

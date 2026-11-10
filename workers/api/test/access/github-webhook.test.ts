@@ -424,24 +424,30 @@ describe('a merge GitHub reports, for work still in progress', () => {
     expect(history.filter((event) => event.kind === 'closed').map((event) => event.actor)).toEqual(['service:GitHub']);
   });
 
-  it('leaves in progress a task labelled keep-open, and an epic, saying why', async () => {
+  it('leaves in progress a task labelled keep-open, an epic and a task with open tasks under it, saying why', async () => {
     await ownerWithWebhook();
     const projectId = await deployingProject();
     const number = newNumber();
     const pr = `https://github.com/${REPOSITORY}/pull/${number}`;
     const optedOut = await heldNaming(projectId, pr, { labels: ['keep-open'] });
     const epic = await heldNaming(projectId, pr, { type: 'epic' });
+    const parent = await heldNaming(projectId, pr);
+    const child = await runInDurableObject(store(), async (instance: TaskStore) => {
+      const filed = await instance.tasks.createTask(projectId, { title: 'Build the rest', parentId: parent }, BUILDER);
+      return filed.task.id;
+    });
 
     const answer = await deliver('pull_request', mergedPullRequest(number, newCommit()));
     expect(answer.body).toEqual({ moved: [], kept: expect.any(Array) });
-    expect(answer.body.kept).toHaveLength(2);
+    expect(answer.body.kept).toHaveLength(3);
     expect(answer.body.kept).toEqual(
       expect.arrayContaining([
         { id: optedOut, why: expect.stringMatching(/labelled keep-open/u) },
         { id: epic, why: expect.stringMatching(/an epic/u) },
+        { id: parent, why: `it has open tasks under it: ${child}` },
       ]),
     );
-    for (const id of [optedOut, epic])
+    for (const id of [optedOut, epic, parent])
       expect(await taskOf(projectId, id)).toMatchObject({
         status: 'in_progress',
         assignee: 'agent:Builder',
