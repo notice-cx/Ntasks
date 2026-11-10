@@ -52,11 +52,15 @@ export function epicChange(
   return { close: epicResolution(children.map((child) => child.resolution ?? 'done')) };
 }
 
-/** The reason an epic's own close records: what closed or moved last. */
-export function epicCloseReason(childId: string, moved: boolean): string {
-  return moved
-    ? `Every task under this epic is closed now that ${childId}, the last one open, moved out of it.`
-    : `Every task under this epic is closed; ${childId} closed last.`;
+/** What made an epic close on its own: its last open child closed or moved out, or its keep-open label came off. */
+export type EpicCause = { readonly kind: 'closed' | 'moved-out'; readonly child: string } | { readonly kind: 'unkept' };
+
+/** The reason an epic's own close records: what closed or moved last, or the label that came off. */
+export function epicCloseReason(cause: EpicCause): string {
+  if (cause.kind === 'unkept') return `Every task under this epic is closed, and its ${KEEP_OPEN} label came off.`;
+  return cause.kind === 'moved-out'
+    ? `Every task under this epic is closed now that ${cause.child}, the last one open, moved out of it.`
+    : `Every task under this epic is closed; ${cause.child} closed last.`;
 }
 
 /** Whether Ntasks closed this task on its own, as it closes an epic whose last task closed. */

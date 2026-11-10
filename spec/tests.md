@@ -30,6 +30,8 @@ protocol appears in neither table.
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes as done in the same write, by Ntasks, naming the task that closed last, and clears its holder’s work" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes as done when any task under it closed as done, and as no longer needed when none shipped" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes a nested epic, then the epic above it when that was its last open task" |
+| STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes an epic in the write that takes its keep-open label off" |
+| STATE-22 | `workers/api/test/engine/epics.test.ts` › "decides again when another task under the epic closes between its read and its batch" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "with no task under it, even once its only task moves out" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "labelled keep-open" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "reopens, with the epic above it, when a task under it reopens" |

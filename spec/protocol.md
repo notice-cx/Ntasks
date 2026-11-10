@@ -583,10 +583,15 @@ its history keeps them ([INV-9](#inv-9)).
 closed, and a server SHOULD list the epics that can.
 
 **STATE-22.** <a id="state-22"></a>An epic is a container with no work of
-its own. When a change leaves an epic with at least one child and every
-child closed, the server MUST close the epic in the same transaction
-([INV-5](#inv-5)), whoever closed or moved the child: a sender, a person, a
-verified merge ([STATE-18](#state-18)) or a recorded answer. The close:
+its own. When a change to an epic's children (a close, a reopen, a new
+child, or a child moved in or out) or the removal of the epic's `keep-open`
+label leaves the epic with at least one child and every child closed, the
+server MUST close the epic in the same transaction ([INV-5](#inv-5)),
+whoever made the change: a sender, a person, a verified merge
+([STATE-18](#state-18)) or a recorded answer. A child is a task directly
+under the epic; an epic under it counts as one child. Two changes that each
+close one of an epic's last two open children MUST still leave it closed.
+The close:
 
 - MUST record the actor the server records its own changes under as its
   closer, never the sender of the change ([AUTH-2](#auth-2)), with a reason
@@ -602,10 +607,11 @@ this way. When the epic is a child of another epic, the server MUST then
 apply this rule to that epic in the same transaction. When a change leaves
 an epic the server closed this way with a child that is not closed, such
 as a reopened child or a new one, the server MUST reopen the epic in the
-same transaction, and then do the same for the epic above it. A sender's
-close of an epic the server closed this way MUST NOT be refused because the
-epic is closed: it replaces the server's close, and the epic then no longer
-reopens this way.
+same transaction, and then do the same for the epic above it. An epic a
+sender closed or reopened stays as the sender left it until one of these
+changes. A sender's close of an epic the server closed this way MUST NOT be
+refused because the epic is closed: it replaces the server's close, and the
+epic then no longer reopens this way.
 
 **STATE-15.** <a id="state-15"></a>An acceptance as done
 ([3.10](#310-acceptance-as-done)) MUST name the criteria the person found

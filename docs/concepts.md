@@ -178,8 +178,9 @@ otherwise. An epic under another epic closes the same way, and the
 one above it is checked next. When a child reopens, or an open task is filed
 under it, an epic Ntasks closed reopens. An epic with no children never
 closes on its own, and neither does one labelled `keep-open`, which its holder
-closes. Closing an epic that Ntasks closed records that close in place of
-Ntasks's, with its own reason and proof.
+closes or which closes once the label comes off. Closing an epic that Ntasks
+closed records that close in place of Ntasks's, with its own reason and
+proof.
 
 The children of an epic share what they learn through the epic:
 

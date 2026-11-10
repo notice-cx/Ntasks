@@ -3,7 +3,10 @@
 // change, and the write that opens one of them again reopens it.
 import { NTASKS_ACTOR, type CreateTaskInput, type Task, type TaskEngine, type TaskResolution } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { AGENT, engine, newProject, OWNER } from './helpers.ts';
+import type { Database } from '../../src/engine/database.ts';
+import { createEngine } from '../../src/engine/index.ts';
+import { storeDatabase } from '../store.ts';
+import { AGENT, engine, expectRefusal, newProject, OWNER } from './helpers.ts';
 
 async function make(tasks: TaskEngine, projectId: string, input: CreateTaskInput): Promise<Task> {
   return (await tasks.createTask(projectId, input, AGENT)).task;
@@ -90,6 +93,54 @@ describe('an epic closes when its last open task does', () => {
     const above = await read(tasks, project.id, outer.id);
     expect(above.close).toMatchObject({ resolution: 'no-longer-needed', by: NTASKS_ACTOR });
     expect(above.close?.reason).toContain(inner.id);
+  });
+
+  it('closes an epic in the write that takes its keep-open label off', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const { epic, children } = await epicWith(tasks, project.id, 1, { labels: ['keep-open'] });
+    await close(tasks, project.id, children[0]!.id);
+
+    const result = await tasks.writeTask(
+      project.id,
+      epic.id,
+      { expectedVersion: (await read(tasks, project.id, epic.id)).version, removeLabels: ['keep-open'] },
+      AGENT,
+    );
+
+    expect(result.epics?.map((task) => task.id)).toEqual([epic.id]);
+    expect(await read(tasks, project.id, epic.id)).toMatchObject({
+      status: 'closed',
+      labels: [],
+      close: { by: NTASKS_ACTOR, resolution: 'done' },
+    });
+  });
+
+  it('decides again when another task under the epic closes between its read and its batch', async () => {
+    const inner = storeDatabase();
+    let beforeBatch: (() => Promise<void>) | null = null;
+    const db: Database = {
+      prepare: (sql) => inner.prepare(sql),
+      async batch(statements) {
+        const hook = beforeBatch;
+        beforeBatch = null;
+        if (hook) await hook();
+        return inner.batch(statements);
+      },
+    };
+    const tasks = createEngine(db);
+    const project = await newProject(tasks);
+    const { epic, children } = await epicWith(tasks, project.id, 2);
+    // The other task closes after this write read it as open.
+    beforeBatch = async () => {
+      await close(tasks, project.id, children[1]!.id);
+    };
+
+    await expectRefusal(close(tasks, project.id, children[0]!.id), 'version_conflict');
+    expect((await read(tasks, project.id, children[0]!.id)).status).toBe('open');
+
+    await close(tasks, project.id, children[0]!.id);
+    expect((await read(tasks, project.id, epic.id)).status).toBe('closed');
   });
 
   it('closes an epic whose last open task moves out of it', async () => {

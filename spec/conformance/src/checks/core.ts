@@ -333,7 +333,7 @@ export const core: readonly Check[] = [
     rule: 'STATE-22',
     level: 'core',
     title:
-      'An epic the server closed reopens when a child reopens, and an epic with no children or labelled keep-open never closes on its own',
+      'An epic the server closed reopens when a child reopens, an epic with no children never closes on its own, and one labelled keep-open closes once the label comes off',
     async run(context) {
       const api = context.api();
       const epic = await file(context, { type: 'epic' });
@@ -347,6 +347,8 @@ export const core: readonly Check[] = [
       const keptChild = await file(context, { parent: kept });
       answered(await api.close(keptChild, { reason: 'Shipped', link: 'https://example.com/kept' }), 'closing');
       same((await taskOf(api, kept)).status, 'open', `the keep-open epic ${kept}'s status once ${keptChild} closed`);
+      answered(await api.update(kept, { removeLabels: ['keep-open'] }), `taking keep-open off ${kept}`);
+      same((await taskOf(api, kept)).status, 'closed', `${kept}'s status once its keep-open label came off`);
 
       const emptied = await file(context, { type: 'epic' });
       const moved = await file(context, { parent: emptied });

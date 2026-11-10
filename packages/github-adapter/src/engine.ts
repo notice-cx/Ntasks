@@ -41,6 +41,7 @@ const PROOF_TYPES = ['task', 'bug', 'feature', 'chore'];
 export const OWN_ACTOR = 'service:github-adapter';
 /** The closes after which an epic whose tasks all closed so is no longer needed, rather than done. */
 const NOTHING_NEEDED = ['wont-do', 'no-longer-needed'];
+const closedLast = (child: string) => `Every task under this epic is closed; ${child} closed last.`;
 const WORK = ['session', 'worktree', 'branch', 'pr', 'commit', 'next'] as const;
 const HEX = /^[0-9a-f]{7,64}$/u;
 
@@ -480,20 +481,20 @@ export class Engine {
   }
 
   /**
-   * After a write that closed, reopened, filed or moved `childId`, out of or
-   * into the epics `epics` names: closes each epic it left with at least one
-   * task under it and every one closed, unless it is labelled keep-open, and
-   * reopens each the adapter closed that it left with one open; then checks
-   * the epic above each the same way (protocol.md STATE-22).
+   * After a write that closed, reopened, filed or moved a task, or took an
+   * epic's keep-open label off: closes each epic `epics` names that it left
+   * with at least one task directly under it and every one closed, unless it
+   * is labelled keep-open, with that entry's reason, and reopens each the
+   * adapter closed that it left with one open; then checks the epic above
+   * each the same way (protocol.md STATE-22).
    */
   private async settleEpics(
     draft: LedgerData,
-    childId: string,
-    epics: readonly { readonly id: string | null; readonly movedOut: boolean }[],
+    epics: readonly { readonly id: string | null; readonly reason: string }[],
   ): Promise<void> {
-    const queue = epics.flatMap(({ id, movedOut }) => (id === null ? [] : [{ id, child: childId, movedOut }]));
+    const queue = epics.flatMap(({ id, reason }) => (id === null ? [] : [{ id, reason }]));
     for (let step = 0; queue.length > 0 && step < 64; step += 1) {
-      const { id, child, movedOut } = queue.shift()!;
+      const { id, reason } = queue.shift()!;
       const epic = draft.tasks[id];
       if (epic === undefined || epic.type !== 'epic') continue;
       const project = this.config.projects.find((each) => each.projectId === epic.projectId);
@@ -520,9 +521,6 @@ export class Engine {
         const resolution = children.every((task) => NOTHING_NEEDED.includes(task.resolution ?? ''))
           ? 'no-longer-needed'
           : 'done';
-        const reason = movedOut
-          ? `Every task under this epic is closed now that ${child}, the last one open, moved out of it.`
-          : `Every task under this epic is closed; ${child} closed last.`;
         await this.github.updateIssue(project.repository, epic.number, {
           state: 'closed',
           state_reason: resolution === 'done' ? 'completed' : 'not_planned',
@@ -547,7 +545,7 @@ export class Engine {
         };
         this.ownChange(draft, epic, ['closed'], fields);
       }
-      if (epic.parent !== null) queue.push({ id: epic.parent, child: epic.id, movedOut: false });
+      if (epic.parent !== null) queue.push({ id: epic.parent, reason: closedLast(epic.id) });
     }
   }
 
@@ -688,7 +686,7 @@ export class Engine {
           ]),
         ),
       );
-      await this.settleEpics(draft, record.id, [{ id: record.parent, movedOut: false }]);
+      await this.settleEpics(draft, [{ id: record.parent, reason: closedLast(record.id) }]);
       return {
         answer: {
           id: record.id,
@@ -818,9 +816,22 @@ export class Engine {
       const fields = this.apply(record, set);
       this.changed(draft, record, sender, model, actions.length > 0 ? actions : ['updated'], fields);
       if (fields.parent !== undefined || fields.status?.old === 'closed')
-        await this.settleEpics(draft, record.id, [
-          ...(before !== record.parent ? [{ id: before, movedOut: true }] : []),
-          { id: record.parent, movedOut: false },
+        await this.settleEpics(draft, [
+          ...(before !== record.parent
+            ? [
+                {
+                  id: before,
+                  reason: `Every task under this epic is closed now that ${record.id}, the last one open, moved out of it.`,
+                },
+              ]
+            : []),
+          { id: record.parent, reason: closedLast(record.id) },
+        ]);
+      const unkept =
+        (fields.labels?.old as string[] | undefined)?.includes('keep-open') && !record.labels.includes('keep-open');
+      if (unkept)
+        await this.settleEpics(draft, [
+          { id: record.id, reason: 'Every task under this epic is closed, and its keep-open label came off.' },
         ]);
       const shown = Object.fromEntries(
         Object.keys(fields)
@@ -946,7 +957,7 @@ export class Engine {
         fields.dependencies = { old: before, new: this.dependencies(draft, record.id) };
       }
       this.changed(draft, record, sender, model, ['closed'], fields);
-      await this.settleEpics(draft, record.id, [{ id: record.parent, movedOut: false }]);
+      await this.settleEpics(draft, [{ id: record.parent, reason: closedLast(record.id) }]);
       return {
         answer: {
           id: record.id,
