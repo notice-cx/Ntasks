@@ -12,6 +12,7 @@ import { signInSecrets } from './access/config.ts';
 import {
   appToken,
   installationRepositories,
+  installationSelection,
   installationToken,
   pullRequestState,
   REPOSITORY_PAGES,
@@ -78,10 +79,15 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
   let requests = 0;
   const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | 'all' }>();
   for (const installation of new Set(pulls.map((pull) => pull.installation))) {
-    if (requests + 1 + REPOSITORY_PAGES >= REQUESTS) break;
-    const token = await installationToken(jwt, installation);
-    requests += 1;
+    if (requests + 2 + REPOSITORY_PAGES >= REQUESTS) break;
+    const selection = await installationSelection(jwt, installation);
+    const token = selection === null ? null : await installationToken(jwt, installation);
+    requests += selection === null ? 1 : 2;
     if (token === null) continue;
+    if (selection === 'all') {
+      reach.set(installation, { token, repositories: 'all' });
+      continue;
+    }
     const listed = await installationRepositories(token);
     requests += listed.requests;
     if (listed.repositories !== null) reach.set(installation, { token, repositories: listed.repositories });

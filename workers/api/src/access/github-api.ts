@@ -84,18 +84,40 @@ export async function installationToken(appJwt: string, installationId: number):
   return typeof token === 'string' && token.length > 0 ? token : null;
 }
 
+/**
+ * Whether an installation is on all of its account's repositories or on
+ * selected ones, from its record (`GET /app/installations/{id}`, read with
+ * the app's token), which always carries it; null when GitHub does not
+ * answer.
+ */
+export async function installationSelection(
+  appJwt: string,
+  installationId: number,
+): Promise<'all' | 'selected' | null> {
+  const response = await fetch(`${API}/app/installations/${installationId}`, {
+    headers: { ...HEADERS, authorization: `Bearer ${appJwt}` },
+  }).catch(() => null);
+  if (response === null) return null;
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return null;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const selection =
+    body !== null && typeof body === 'object' ? (body as Record<string, unknown>).repository_selection : null;
+  return selection === 'all' || selection === 'selected' ? selection : null;
+}
+
 /** The most pages of an installation's repositories read, 100 to a page. */
 export const REPOSITORY_PAGES = 2;
 
 /**
- * The repositories an installation reaches, read with its token: `all` for
- * an installation on all of its account's repositories, which GitHub's first
- * page says; for one on selected repositories, those it lists as lowercase
- * `owner/name`, up to REPOSITORY_PAGES pages; null when GitHub does not
- * answer. Each page is one request.
+ * The selected repositories an installation reaches, read with its token, as
+ * lowercase `owner/name`: up to REPOSITORY_PAGES pages of them, or null when
+ * GitHub does not answer. Each page is one request.
  */
 export async function installationRepositories(token: string): Promise<{
-  readonly repositories: ReadonlySet<string> | 'all' | null;
+  readonly repositories: ReadonlySet<string> | null;
   readonly requests: number;
 }> {
   const repositories = new Set<string>();
@@ -110,7 +132,6 @@ export async function installationRepositories(token: string): Promise<{
     }
     const body: unknown = await response.json().catch(() => null);
     const listed = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-    if (listed.repository_selection === 'all') return { repositories: 'all', requests: page };
     const total = typeof listed.total_count === 'number' ? listed.total_count : 0;
     for (const repository of Array.isArray(listed.repositories) ? listed.repositories : []) {
       const name =

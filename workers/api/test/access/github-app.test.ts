@@ -452,7 +452,7 @@ describe('work waiting for a merge GitHub already made', () => {
     expect(github.pullReads).not.toContain(`${left}#61`);
   });
 
-  it('lists an installation’s repositories across pages, when GitHub leaves out its selection too', async () => {
+  it('lists the selected repositories of an installation across pages', async () => {
     const owner = await connected();
     const outside = 'example/elsewhere';
     const listed = await taskWithPullRequest(owner, 70);
@@ -461,10 +461,9 @@ describe('work waiting for a merge GitHub already made', () => {
     github.pulls.set(`${outside}#71`, { merged: true, mergeCommit: newCommit(), base: 'main' });
     await runDurableObjectAlarm(store());
 
-    // 150 repositories, the task's on the second page of 100, and no repository_selection.
+    // 150 selected repositories, the task's on the second page of 100.
     const mine = newInstallation();
     github.repositories.set(mine, [...Array.from({ length: 149 }, (_, i) => `example/repo-${i}`), REPOSITORY]);
-    github.omitSelection = true;
     await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID, 'example'));
     expect(await runDurableObjectAlarm(store())).toBe(true);
     expect((await taskOf(listed.projectId, listed.id)).delivery?.stage).toBe('merged');

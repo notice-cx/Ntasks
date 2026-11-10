@@ -109,8 +109,6 @@ export interface GitHubCalls {
   readonly repositories: Map<number, string[]>;
   /** Each pull request the Worker read, as `owner/name#number`. */
   readonly pullReads: string[];
-  /** Whether the list of an installation's repositories leaves out repository_selection, which GitHub's schema makes optional. */
-  omitSelection: boolean;
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -137,7 +135,6 @@ export function standInForGitHub(): GitHubCalls {
     installationTokens: [] as number[],
     repositories: new Map<number, string[]>(),
     pullReads: [] as string[],
-    omitSelection: false,
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -147,7 +144,6 @@ export function standInForGitHub(): GitHubCalls {
     calls.installationTokens.length = 0;
     calls.repositories.clear();
     calls.pullReads.length = 0;
-    calls.omitSelection = false;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -192,6 +188,14 @@ export function standInForGitHub(): GitHubCalls {
         request.headers.get('authorization') ?? '',
       );
       const id = user?.[1];
+      // An installation's record says whether it is on all of its account's repositories or on selected ones.
+      const record = /^https:\/\/api\.github\.com\/app\/installations\/(\d+)$/u.exec(url.href)?.[1];
+      if (record !== undefined && request.method === 'GET') {
+        const jwt = /^Bearer (.+)$/u.exec(request.headers.get('authorization') ?? '')?.[1] ?? '';
+        if (!(await signedByApp(jwt))) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const selection = calls.repositories.has(Number(record)) ? 'selected' : 'all';
+        return Response.json({ id: Number(record), repository_selection: selection });
+      }
       const installation = /^https:\/\/api\.github\.com\/app\/installations\/(\d+)\/access_tokens$/u.exec(
         url.href,
       )?.[1];
@@ -207,12 +211,10 @@ export function standInForGitHub(): GitHubCalls {
         const names = calls.repositories.get(Number(reading)) ?? [
           ...new Set([...calls.pulls.keys()].map((key) => key.slice(0, key.indexOf('#')))),
         ];
-        const selection = calls.repositories.has(Number(reading)) ? 'selected' : 'all';
         const perPage = Number(url.searchParams.get('per_page') ?? '30');
         const page = Number(url.searchParams.get('page') ?? '1');
         return Response.json({
           total_count: names.length,
-          ...(calls.omitSelection ? {} : { repository_selection: selection }),
           repositories: names.slice((page - 1) * perPage, page * perPage).map((full_name) => ({ full_name })),
         });
       }
