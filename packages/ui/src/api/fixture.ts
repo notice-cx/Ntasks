@@ -253,9 +253,10 @@ export function createFixtureTasksApi({
   function parentContext(task: FixtureTask): ParentContext | null {
     const parent = task.parent === null ? undefined : state.tasks.find((row) => row.id === task.parent);
     if (parent === undefined) return null;
+    // Newest first, then by id, as the Worker orders them, whatever order the seed lists them in.
     const pinned = (state.comments.get(parent.id) ?? [])
       .filter((comment) => comment.pinned === true)
-      .toReversed()
+      .toSorted((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))
       .map(({ id, author, text, createdAt }) => ({ id, author, text, createdAt }));
     const closed = state.tasks
       .filter((row) => row.parent === parent.id && row.id !== task.id && row.status === 'closed')
