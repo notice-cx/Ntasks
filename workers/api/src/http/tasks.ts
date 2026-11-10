@@ -18,6 +18,7 @@ import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
+import { WIN_HISTORY_DAYS, wins } from '../wins.ts';
 import { commentView, fieldView, historyView, parentView, proposalOf, proposalVersionOf, webTasks } from '../views.ts';
 import { projectView } from './delivery.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
@@ -48,6 +49,17 @@ function epicView(epic: EpicProgress) {
     closed: epic.closedChildren,
     eligibleForClose: epic.eligibleForClose,
   };
+}
+
+/** GET /api/tasks/wins?project=…&before=YYYY-MM-DD: the wins of seven days, of
+ * one project or every one the sender reaches; without before, the seven
+ * days up to today (src/wins.ts). */
+export async function winsRoute(context: ReadContext, url: URL): Promise<Response> {
+  const query = queryOf(url, ['project', 'before']);
+  const payload = await wins(context, query.project, query.before);
+  if (payload === null)
+    invalidRequest(`before must be a day as YYYY-MM-DD, from 7 to ${WIN_HISTORY_DAYS} days back, or left out`);
+  return json(payload);
 }
 
 /** GET /api/tasks/projects */

@@ -109,6 +109,8 @@ export type {
   TaskQuery,
   TaskRefusal,
   TaskWrite,
+  WinItem,
+  WinsRead,
   WorkItem,
   WriteResult,
 } from './engine.ts';

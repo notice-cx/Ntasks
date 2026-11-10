@@ -640,6 +640,49 @@
   },
   {
     "version": 9,
+    "shapes": {},
+    "routes": {
+      "GET /api/tasks/wins": {
+        "readAt": "string",
+        "from": "string",
+        "to": "string",
+        "earlier": "null|string",
+        "projects": "number",
+        "shippedBefore": "boolean",
+        "totals": "object",
+        "totals.shipped": "number",
+        "totals.decided": "number",
+        "totals.finished": "number",
+        "totals.approved": "number",
+        "days": "array",
+        "days[]": "object",
+        "days[].day": "string",
+        "days[].shipped": "number",
+        "days[].decided": "number",
+        "days[].finished": "number",
+        "wins": "array",
+        "wins[]": "object",
+        "wins[].kind": "string",
+        "wins[].at": "string",
+        "wins[].projectId": "string",
+        "wins[].stage": "absent|string",
+        "wins[].pullRequest": "absent|null|string",
+        "wins[].commit": "absent|null|string",
+        "wins[].tasks": "absent|array",
+        "wins[].tasks[]": "object",
+        "wins[].tasks[].id": "string",
+        "wins[].tasks[].title": "string",
+        "wins[].id": "absent|string",
+        "wins[].title": "absent|string",
+        "wins[].done": "absent|number",
+        "wins[].option": "absent|string",
+        "wins[].label": "absent|string",
+        "wins[].by": "absent|string"
+      }
+    }
+  },
+  {
+    "version": 10,
     "routes": {
       "POST /api/github/:workspaceId": {
         "closed": "absent|array",

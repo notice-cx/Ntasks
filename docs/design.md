@@ -227,8 +227,9 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
 `star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`,
-`building-2`, `arrow-up-down`, `arrow-up-narrow-wide` and
-`arrow-down-wide-narrow`.
+`building-2`, `arrow-up-down`, `arrow-up-narrow-wide`,
+`arrow-down-wide-narrow`, `chart-no-axes-column` and
+`git-commit-horizontal`.
 
 ## Symbols
 
@@ -740,6 +741,44 @@ many closed this week. A project with neither epics nor such tasks shows
 `EmptyState`'s No epics in this project; a search that matches no epic, No
 epics match this search with Clear search.
 
+### Productivity
+
+`/tasks/productivity` shows what people and agents got done that matters,
+day by day, from `GET /api/tasks/wins` ([Wins](api.md#wins)). A win is a
+change that merged or went live (a pull request counts once, however many
+tasks it closed), an answer a person gave to a task's choices, or an epic
+closed as done. Tasks closed are never counted, and nobody is ranked. The
+`TopBar` titled Productivity says Last 7 days (from 640 px wide) and ends
+with the project menu: All projects, then each project, the one in view
+ticked; a project chosen is kept in the address as `?project=`.
+
+Under the bar, the seven UTC days, today and the six before it, form a strip
+of cells (`ol`, named Wins by day). Each cell names its day (`Tue 10`) and its
+count of wins, then one bar: shipped in green (Done) under decided in Text
+2, each part as tall as its count against the busiest day, and above it a
+green ring for each epic finished. A day with no wins says Nothing in Text 3;
+it is never red. Today's cell is ringed in Accent. Under the strip, the
+week's counts beside their colour keys (shipped, decided, epics finished),
+the approvals closed as done in Text 3, and in Text 3 that days are in UTC,
+with the first day merges were recorded on when none shipped before.
+
+Then each day with wins, newest first, under a `GroupHeader` naming the day
+(`Tue, Nov 10`), its count and, from 640 px wide, its wins in words (`42
+shipped, 10 decided`). A day shows eight wins, then Show more, a `ghost`
+button with the count it adds. Each win is a `Row` ending in `RowAge`:
+
+| Win | Row |
+|---|---|
+| Shipped | The `git-merge` icon, its first task's `RowId` and title as a link, `and 2 more` when it closed more, the pull request's number as a link after `git-pull-request`, or else the commit's first seven characters after `git-commit-horizontal`, and Merged or Live |
+| Decided | The `split` icon, the Decision type's, `RowId`, the title as a link, `Chose` and the option's label, and the person's `Avatar` |
+| Epic finished | 48 px tall: the Done mark at 20 px, `RowId`, the title as a link in semibold, and `Epic finished · 33 tasks done` |
+
+At the foot, Show the 7 days before, a `ghost` button, reads the seven days
+before the oldest shown, back to eight weeks; there the foot says The feed
+reaches back 8 weeks. Seven days with no wins show `EmptyState`'s No wins in
+the last 7 days, and an earlier seven days with none a line in Text 3, No wins
+from Oct 28 to Nov 3.
+
 ### Projects, Members, Settings and the first workspace
 
 Projects and Members are lists of `Row`s under a `TopBar` whose primary
@@ -827,7 +866,7 @@ Each page sets the browser tab's title with `usePageTitle`
 last: a task's id then its title (`web-b2r6 · Fix the broken reset link …`),
 a view then its count then the one project in view (`Waiting for you (3) ·
 Example web app`), a search (`Search “sign-in”`), `Live (6)`, `Focus (2)`,
-`Settings`. What follows the first part is cut with an ellipsis so the title
+`Productivity · Example docs`, `Settings`. What follows the first part is cut with an ellipsis so the title
 before `— Ntasks` stays within 60 characters; the first part is never cut.
 `NtasksApp`'s `onTitle` receives the titles in place of the document, so a
 host keeps its own tab title.

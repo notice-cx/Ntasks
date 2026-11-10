@@ -7,7 +7,7 @@
  * goes up only when the owner removes something, to the first version
  * without it (docs/api.md#versions).
  */
-export const API_VERSION = 9;
+export const API_VERSION = 10;
 export const OLDEST_API_VERSION = 1;
 
 /** Every answer under /api carries API_VERSION in this header. */
