@@ -196,13 +196,14 @@ what each sender sent.
 | `service:<name>` | service | The name |
 | `person:<name>` | person | The name |
 | `visitor:<name>` | visitor | The name |
-| any other name | person, or agent when the server's imported names hold it | The name, or the product the imported name stands for |
+| any other name | person, or agent or service when the server's imported names hold it | The name, or the agent's product or the service the imported name stands for |
 
 A server MAY keep a list of **imported names**: names recorded before it
 prefixed actors, such as by a task hub its tasks were imported from, each
-with the product that wrote under it, as `codex/root` for Codex. The list
-MUST NOT give a person's kind to an agent, so no agent is shown as a
-person ([AUTH-2](#auth-2)).
+with the agent's product or the service that wrote under it, as
+`codex/root` for Codex and `beads` for the old task hub's own changes. The
+list MUST NOT give a person's kind to an agent or a service, so no agent or
+service is shown as a person ([AUTH-2](#auth-2)).
 
 A **model** likewise has an id and a display name, worked out from the words
 the sender gave, which the server keeps as given ([AUTH-2](#auth-2)). The id

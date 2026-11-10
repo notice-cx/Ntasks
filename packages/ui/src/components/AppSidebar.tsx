@@ -37,13 +37,18 @@ export function peopleOf(tasks: readonly BoardTask[], nowMs: number): Person[] {
     const key = actorKey(task.assignee);
     const known = people.get(key);
     people.set(key, {
-      actor: task.assignee,
+      actor: known?.actor ?? task.assignee,
       name: known?.name ?? actorLabel(task.assignee, task.actors),
       model: known?.model ?? claimedModel(task),
       live: (known?.live ?? false) || activeNow(task, nowMs),
     });
   }
   return [...people.values()].sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
+}
+
+/** Whether a filter's assignee, in any spelling, names this sender. */
+function sameSender(assignee: string | null, actor: string): boolean {
+  return assignee !== null && actorKey(assignee) === actorKey(actor);
 }
 
 /** The open workspace's name, which opens the menu of the others and its settings. */
@@ -179,9 +184,9 @@ export function AppSidebar() {
                   decorative
                 />
               }
-              active={onBoard && params.get('assignee') === person.actor}
+              active={onBoard && sameSender(params.get('assignee'), person.actor)}
             >
-              <Link to={`${paths.board}?assignee=${encodeURIComponent(person.actor)}`}>{person.name}</Link>
+              <Link to={`${paths.board}?assignee=${encodeURIComponent(actorKey(person.actor))}`}>{person.name}</Link>
             </NavItem>
           ))}
         </NavSection>
