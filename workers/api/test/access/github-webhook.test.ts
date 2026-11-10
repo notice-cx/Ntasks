@@ -424,6 +424,25 @@ describe('a merge GitHub reports, for work still in progress', () => {
     expect(history.filter((event) => event.kind === 'closed').map((event) => event.actor)).toEqual(['service:GitHub']);
   });
 
+  it('closes the epic above the task a merge closes when that was its last open task', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const epic = await runInDurableObject(store(), async (instance: TaskStore) => {
+      const filed = await instance.tasks.createTask(projectId, { title: 'Launch', type: 'epic' }, BUILDER);
+      return filed.task.id;
+    });
+    const last = await heldNaming(projectId, `https://github.com/${REPOSITORY}/pull/${number}`, { parentId: epic });
+
+    const answer = await deliver('pull_request', mergedPullRequest(number, newCommit()));
+
+    expect(answer.body.closed).toEqual([{ id: last }]);
+    expect(await taskOf(projectId, epic)).toMatchObject({
+      status: 'closed',
+      close: { resolution: 'done', by: 'service:Ntasks', reason: expect.stringContaining(last) },
+    });
+  });
+
   it('leaves in progress a task labelled keep-open, an epic and a task with open tasks under it, saying why', async () => {
     await ownerWithWebhook();
     const projectId = await deployingProject();

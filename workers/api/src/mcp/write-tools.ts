@@ -1600,7 +1600,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Close a task with the reason it is done, citing evidence, and pass commit, pr or link as its proof. ' +
       `tasks closes several with the same evidence, and with_children closes an epic's open tasks first; one call closes at most ${MANY} tasks in all. ` +
-      'The answer lists unblocked: tasks these closes made ready. ' +
+      'The answer lists unblocked: tasks these closes made ready, and closedEpics: the epics that closed themselves because their last open task closed. ' +
       'When nothing shipped, pass the resolution that says why; the reason still cites the evidence. ' +
       'An approval the task waits on must first be answered or retired. A declined action must not happen.',
     inputSchema: schema(
@@ -1657,16 +1657,28 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const withChildren = booleanArg(args, 'with_children') === true;
       const detail = detailArg(args);
       const closed: Task[] = [];
+      const epics = new Map<string, Task>();
       const close = async (taskId: string, retry: RetryRequest) => {
         const projectId = await projectFor(context, args, taskId);
         const { result } = await closeTask(context, projectId, taskId, closing, model, retry);
         closed.push(result.task);
+        for (const epic of result.epics ?? []) if (epic.status === 'closed') epics.set(epic.id, epic);
         return written(context, detail, result.task, closeShown(result.task), result.replayed);
+      };
+      /** What the closes left: the epics they closed on their own, apart from those the call closes itself, and the tasks now ready. */
+      const after = async () => {
+        const own = [...epics.values()].filter((epic) => !closed.some((task) => task.id === epic.id));
+        return {
+          ...(own.length === 0
+            ? {}
+            : { closedEpics: own.map((epic) => ({ id: epic.id, resolution: epic.close!.resolution })) }),
+          unblocked: await unblockedBy(context, [...closed, ...own]),
+        };
       };
       if (one && !withChildren) {
         return {
           ...(await close(ids[0]!, await retryRequest(context, 'close_task', args))),
-          unblocked: await unblockedBy(context, closed),
+          ...(await after()),
           ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
         };
       }
@@ -1702,7 +1714,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       ];
       return {
         results,
-        unblocked: await unblockedBy(context, closed),
+        ...(await after()),
         ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
       };
     },

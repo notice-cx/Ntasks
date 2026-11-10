@@ -8,6 +8,8 @@
  * one for a person.
  */
 import {
+  closedByNtasks,
+  KEEP_OPEN,
   TASK_LIMITS,
   TaskRefused,
   WORK_DETAILS,
@@ -730,7 +732,8 @@ export async function closeTask(
   const result = await changing(context, project, task, actor, retry, async (current) => {
     const id = current.id;
     if (isDecision(current)) throw decisionRefusal(id);
-    if (current.status === 'closed') throw closedRefusal(id);
+    // An epic Ntasks closed when its last task closed takes this close, with its reason and proof, in place of Ntasks's.
+    if (current.status === 'closed' && !closedByNtasks(current)) throw closedRefusal(id);
     if (current.assignee !== null && current.assignee !== actor.name) {
       const holder = current.assignee;
       throw refused(
@@ -784,9 +787,6 @@ export async function closeTask(
   });
   return { project, result };
 }
-
-/** The label that keeps a task in progress when the pull request its work names merges: its holder closes it. */
-export const KEEP_OPEN = 'keep-open';
 
 /** What a merge did to the tasks in progress whose work named its pull request. */
 export interface MergeCloses {

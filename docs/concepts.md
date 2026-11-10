@@ -168,8 +168,18 @@ graph itself to decide.
 An **epic** is a task whose work is done by its children. A child's id adds a
 number to its parent's: `web-a1b2` has the children `web-a1b2.1`, `web-a1b2.2`
 and so on. Work too large for one working session becomes an epic with
-children that each fit in one. An epic can close once all of its children are
-closed, and Ntasks lists the epics that can.
+children that each fit in one. An epic has no work of its own, so the write
+that closes its last open child closes the epic too, whoever or whatever
+closes that child: an agent, a person, a merge or a recorded answer. Its
+history names `service:Ntasks` as the closer, and its reason names the child
+that closed last. It closes as `done` when any of its children closed as
+done, and as `no-longer-needed` when every one closed as `wont-do` or
+`no-longer-needed`. An epic under another epic closes the same way, and the
+one above it is checked next. When a child reopens, or an open task is filed
+under it, an epic Ntasks closed reopens. An epic with no children never
+closes on its own, and neither does one labelled `keep-open`, which its holder
+closes. Closing an epic that Ntasks closed records that close in place of
+Ntasks's, with its own reason and proof.
 
 The children of an epic share what they learn through the epic:
 

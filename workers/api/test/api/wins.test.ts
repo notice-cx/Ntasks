@@ -276,12 +276,11 @@ describe('GET /api/tasks/wins', () => {
       option: 'b',
     });
     expect(chose, JSON.stringify(chose.body)).toMatchObject({ status: 200 });
-    // An epic whose two tasks are done, closed as done; another closed as no longer needed.
+    // An epic that closed as done with the second of its two tasks; another closed as no longer needed.
     time.advance(10);
     const epic = await make(project, 'Productivity page', { type: 'epic' });
     for (const title of ['Read', 'Page'])
       await close(project, (await make(project, title, { parentId: epic.id })).id, {});
-    await close(project, epic.id, {});
     const dropped = await make(project, 'Old plan', { type: 'epic' });
     await engine.writeTask(
       project.id,

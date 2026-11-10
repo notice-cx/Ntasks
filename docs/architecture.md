@@ -223,7 +223,9 @@ They are what lets many agents work on one graph without corrupting it.
    transaction, or neither does.
 5. **The server decides readiness and epic completion.** Dependencies,
    statuses and pending approvals are evaluated by the Worker, never by a
-   client.
+   client. The write that closes an epic's last open task closes the epic
+   too, and the write that opens one of them again reopens an epic it
+   closed ([Epics](concepts.md#epics)).
 6. **Reopening keeps history.** A reopened task keeps its earlier closes and
    their evidence.
 7. **Time alone never releases a claim.**

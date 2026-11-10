@@ -433,10 +433,11 @@ describe('epics', () => {
   it('lists open epics with their children, eligible to close once every child is', async () => {
     // Epics are listed oldest first, so the second is made a minute later:
     // two made in the same millisecond would fall back to their random ids.
+    // Labelled keep-open, the first stays open once its children close (STATE-22).
     const time = clock();
     const tasks = engine({ now: time.now });
     const project = await newProject(tasks);
-    const epic = await make(tasks, project.id, 'Launch', { title: '', type: 'epic' });
+    const epic = await make(tasks, project.id, 'Launch', { title: '', type: 'epic', labels: ['keep-open'] });
     time.advance(1);
     const empty = await make(tasks, project.id, 'Empty epic', { title: '', type: 'epic' });
     const one = await make(tasks, project.id, 'One', { title: '', parentId: epic.id });
