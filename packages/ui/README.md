@@ -38,6 +38,7 @@ const person: TokenSource = {
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
 | `onTitle` | none | Receives each page's title, such as `web-b2r6 · Fix the reset link — Ntasks`, in place of the app setting the document's title, so the host keeps its own tab title |
+| `sidebar` | `beside` | `beside` draws the app's sidebar beside its pages, and on a phone behind the Sidebar button at the start of each page's top bar. `sheet` keeps it behind that button at every width, for a host page with its own navigation beside the app; the pages then fill the host's area |
 
 ### Addresses
 
@@ -154,7 +155,7 @@ development build.
 
 | Import | Names |
 |---|---|
-| `@notice-cx/ntasks-ui` | `NtasksApp` and `NtasksAppProps`; `DesignGallery`, the design system's gallery, which needs no router and no sign-in; `TokenSource` and `sessionCookie`; `API_VERSION`; the types `TasksApi` and `Theme` |
+| `@notice-cx/ntasks-ui` | `NtasksApp` and `NtasksAppProps`; `DesignGallery`, the design system's gallery, which needs no router and no sign-in; `TokenSource` and `sessionCookie`; `API_VERSION`; the types `TasksApi`, `Theme` and `SidebarPlace` |
 | `@notice-cx/ntasks-ui/fixture` | `createFixtureTasksApi` and `FixtureOptions` |
 | `@notice-cx/ntasks-ui/styles.css` | The stylesheet |
 
@@ -353,4 +354,5 @@ Publishing is the owner's step
 
 AGPL-3.0-only, as all of Ntasks. The sidebar links to the source code, as
 AGPL-3.0 section 13 requires of a modified copy people use over a network.
-Keep that link in every version of the pages.
+Keep that link in every version of the pages; with `sidebar="sheet"` it is in
+the sheet the Sidebar button opens.
