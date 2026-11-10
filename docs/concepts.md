@@ -172,9 +172,8 @@ children that each fit in one. An epic has no work of its own, so the write
 that closes its last open child closes the epic too, whoever or whatever
 closes that child: an agent, a person, a merge or a recorded answer. Its
 history names `service:Ntasks` as the closer, and its reason names the child
-that closed last. It closes as `done` when any of its children closed as
-done, and as `no-longer-needed` when every one closed as `wont-do` or
-`no-longer-needed`. An epic under another epic closes the same way, and the
+that closed last. It closes as `no-longer-needed` when every one of its
+children closed as `wont-do` or `no-longer-needed`, and as `done` otherwise. An epic under another epic closes the same way, and the
 one above it is checked next. When a child reopens, or an open task is filed
 under it, an epic Ntasks closed reopens. An epic with no children never
 closes on its own, and neither does one labelled `keep-open`, which its holder
@@ -416,11 +415,11 @@ built for AI coding agents. Ntasks follows its task model: the dependency
 graph, ready work, claims, epics, decisions and approvals. It implements that
 model itself, in a Cloudflare Durable Object, instead of running Beads.
 
-| | Beads | Ntasks |
-|---|---|---|
-| Runs as | A command-line tool over a Dolt database | A Cloudflare Worker and a Durable Object with its own SQLite database |
-| Reached by | The `bd` command | HTTP and the Model Context Protocol |
-| Task ids | A prefix may contain hyphens, as in `web-app-a3f8e9` | A prefix has no hyphens, so it ends at the first one |
-| History | Dolt versions the whole database, with branches and merges | Each task records its own changes; there are no branches |
-| Claims | Can expire as leases | Last until released or the task closes |
-| Repeatable work | Templates for multi-step workflows (formulas and molecules) and short-lived tasks (wisps) | Not part of Ntasks |
+|                 | Beads                                                                                     | Ntasks                                                                |
+| --------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Runs as         | A command-line tool over a Dolt database                                                  | A Cloudflare Worker and a Durable Object with its own SQLite database |
+| Reached by      | The `bd` command                                                                          | HTTP and the Model Context Protocol                                   |
+| Task ids        | A prefix may contain hyphens, as in `web-app-a3f8e9`                                      | A prefix has no hyphens, so it ends at the first one                  |
+| History         | Dolt versions the whole database, with branches and merges                                | Each task records its own changes; there are no branches              |
+| Claims          | Can expire as leases                                                                      | Last until released or the task closes                                |
+| Repeatable work | Templates for multi-step workflows (formulas and molecules) and short-lived tasks (wisps) | Not part of Ntasks                                                    |
