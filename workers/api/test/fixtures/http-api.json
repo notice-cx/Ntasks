@@ -591,6 +591,42 @@
   },
   {
     "version": 7,
+    "shapes": {
+      "comment": {
+        "pinned": "boolean"
+      }
+    },
+    "routes": {
+      "GET /api/tasks/:id": {
+        "parent": "null|object",
+        "parent.id": "string",
+        "parent.title": "string",
+        "parent.type": "string",
+        "parent.status": "string",
+        "parent.pinned": "array",
+        "parent.pinned[]": "object",
+        "parent.pinned[].id": "string",
+        "parent.pinned[].author": "string",
+        "parent.pinned[].text": "string",
+        "parent.pinned[].createdAt": "string",
+        "parent.pinnedTotal": "number",
+        "parent.closedSiblings": "array",
+        "parent.closedSiblings[]": "object",
+        "parent.closedSiblings[].id": "string",
+        "parent.closedSiblings[].title": "string",
+        "parent.closedSiblings[].resolution": "string",
+        "parent.closedSiblings[].closedAt": "string",
+        "parent.closedSiblings[].closedBy": "null|string",
+        "parent.closedSiblings[].closeReason": "null|string",
+        "parent.closedSiblings[].commit": "null|string",
+        "parent.closedSiblings[].pullRequest": "null|string",
+        "parent.closedSiblings[].closeLink": "null|string",
+        "parent.closedSiblingsTotal": "number"
+      }
+    }
+  },
+  {
+    "version": 8,
     "shapes": {},
     "routes": {
       "GET /api/tasks/wins": {

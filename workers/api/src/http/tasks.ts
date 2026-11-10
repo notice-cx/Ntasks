@@ -19,7 +19,7 @@ import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
 import { WIN_HISTORY_DAYS, wins } from '../wins.ts';
-import { commentView, fieldView, historyView, proposalOf, proposalVersionOf, webTasks } from '../views.ts';
+import { commentView, fieldView, historyView, parentView, proposalOf, proposalVersionOf, webTasks } from '../views.ts';
 import { projectView } from './delivery.ts';
 import { invalidRequest, json, notFound, queryOf, wholeOf } from './respond.ts';
 import { DECISION_OPERATIONS, EDITABLE_FIELDS, WRITE_OPERATIONS } from './writes.ts';
@@ -275,15 +275,17 @@ async function taskIn(engine: TaskEngine, project: Project, taskId: string) {
   return (await engine.getTask(project.id, taskId)) ?? notFound(`no task ${taskId} in project ${project.id}`);
 }
 
-/** GET /api/tasks/:id?project=… */
+/** GET /api/tasks/:id?project=…: the task with its comments and, when it
+ * has a parent, what the parent holds for it (`parent`, null otherwise). */
 export async function taskRoute(context: ReadContext, url: URL, taskId: string): Promise<Response> {
   const { engine, now } = context;
   const query = queryOf(url, ['project']);
   const project = await projectOf(context, query.project);
-  const [task, comments, links] = await Promise.all([
+  const [task, comments, links, parent] = await Promise.all([
     taskIn(engine, project, taskId),
     engine.listComments(project.id, taskId),
     linksSeenBy(context),
+    engine.parentContext(project.id, taskId),
   ]);
   const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)]), proposalVersionOf(task)]);
   return json({
@@ -293,6 +295,7 @@ export async function taskRoute(context: ReadContext, url: URL, taskId: string):
     readAt: now(),
     task: view,
     comments: comments.map(commentView),
+    parent: parent === null ? null : parentView(parent),
     actors: [],
     proposal: proposalOf(task),
     proposalVersion,

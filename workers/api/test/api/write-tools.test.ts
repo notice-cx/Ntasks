@@ -184,6 +184,8 @@ describe('tools/list', () => {
       'update_task.model',
       'update_task.detail',
       'comment_on_task.tasks',
+      'comment_on_task.pin',
+      'comment_on_task.unpin',
       'comment_on_task.model',
       ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
       'comment_on_task.detail',
@@ -994,6 +996,54 @@ describe('claim_task', () => {
     });
     expect(reply).toEqual({ id, status: 'in_progress', assignee: WRITER.name, version: 2, replayed: false });
     expect(await current(project, id)).toMatchObject({ assigneeModel: 'model-x', startedAt: time.now() });
+  });
+
+  it("answers a claim on a task in an epic with the epic's pinned comments and its closed tasks' closes", async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Rebuild the pages', type: 'epic' });
+    const done = await task(project, { title: 'Rebuild the home page', parentId: epic.id });
+    await engine.writeTask(
+      project.id,
+      done.id,
+      {
+        expectedVersion: 1,
+        close: { reason: 'Merged; the header is shared now.', resolution: 'done', commit: 'a1b2c3d4' },
+      },
+      OWNER,
+    );
+    const fact = (
+      await engine.addComment(project.id, epic.id, 'Every page uses the shared header.', AGENT, undefined, {
+        pin: true,
+      })
+    ).comment;
+    const { id } = await task(project, { title: 'Rebuild the pricing page', parentId: epic.id });
+    const reply = await write<{ parent: Record<string, unknown> }>(target, 'claim_task', { task: id });
+    expect(reply).toMatchObject({ id, status: 'in_progress', assignee: WRITER.name });
+    expect(reply.parent).toEqual({
+      id: epic.id,
+      title: 'Rebuild the pages',
+      type: 'epic',
+      status: 'open',
+      pinned: [{ id: fact.id, author: AGENT.name, text: fact.text, createdAt: fact.createdAt }],
+      pinnedTotal: 1,
+      closedSiblings: [
+        {
+          id: done.id,
+          title: 'Rebuild the home page',
+          resolution: 'done',
+          closedAt: expect.any(String),
+          closedBy: OWNER.name,
+          closeReason: 'Merged; the header is shared now.',
+          commit: 'a1b2c3d4',
+          pullRequest: null,
+          closeLink: null,
+        },
+      ],
+      closedSiblingsTotal: 1,
+    });
+    // A task with no parent answers as before.
+    const alone = await task(project);
+    expect(await write(target, 'claim_task', { task: alone.id })).not.toHaveProperty('parent');
   });
 
   it('answers a retry with the same claim, and refuses the key for a different claim', async () => {
@@ -1903,7 +1953,7 @@ describe('comment_on_task', () => {
     const args = { project: project.id, task: id, text: 'Halfway.', idempotency_key: key(), detail: 'full' };
     const first = await write<{ comment: Record<string, unknown>; replayed: boolean }>(target, 'comment_on_task', args);
     expect(first).toEqual({
-      comment: { id: expect.any(String), author: WRITER.name, text: 'Halfway.', createdAt: time.now() },
+      comment: { id: expect.any(String), author: WRITER.name, text: 'Halfway.', createdAt: time.now(), pinned: false },
       replayed: false,
     });
     const again = await write<{ comment: Record<string, unknown>; replayed: boolean }>(target, 'comment_on_task', args);
@@ -1915,6 +1965,85 @@ describe('comment_on_task', () => {
     expect(
       await refusal(target, 'comment_on_task', { workspace: WORKSPACE.id, ...args, text: '', idempotency_key: key() }),
     ).toBe('invalid arguments: text (empty)');
+  });
+
+  it('pins a comment, and unpins earlier pinned comments of the same task, leaving its version', async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Rebuild the pages', type: 'epic' });
+    const first = await write<{ commentId: string; pinned?: boolean }>(target, 'comment_on_task', {
+      task: epic.id,
+      text: 'The header lives in one file.',
+      pin: true,
+    });
+    expect(first).toEqual({ task: epic.id, commentId: expect.any(String), pinned: true, replayed: false });
+    const plain = await write<{ commentId: string }>(target, 'comment_on_task', { task: epic.id, text: 'Noted.' });
+    expect(plain).not.toHaveProperty('pinned');
+    const second = await write<{ commentId: string }>(target, 'comment_on_task', {
+      task: epic.id,
+      text: 'The header lives in two files now.',
+      pin: true,
+      unpin: [first.commentId],
+    });
+    const comments = await engine.listComments(project.id, epic.id);
+    expect(Object.fromEntries(comments.map(({ id, pinned }) => [id, pinned]))).toEqual({
+      [first.commentId]: false,
+      [plain.commentId]: false,
+      [second.commentId]: true,
+    });
+    expect((await current(project, epic.id)).version).toBe(1);
+    // The history records who pinned and unpinned what.
+    const events = await engine.listHistory(project.id, epic.id, { limit: 10 });
+    expect(events[0]).toMatchObject({
+      kind: 'commented',
+      actor: WRITER.name,
+      version: 1,
+      changes: { commentId: second.commentId, pinned: true, unpinned: [first.commentId] },
+    });
+    const { changes } = await read<{ changes: { actor: string; fields: Record<string, unknown> }[] }>(
+      target,
+      'get_task_history',
+      { task: epic.id },
+    );
+    expect(changes[0]).toMatchObject({
+      actor: WRITER.name,
+      fields: {
+        comment: { old: null, new: 'The header lives in two files now.' },
+        pinned: { old: false, new: true },
+        unpinned: { old: null, new: [first.commentId] },
+      },
+    });
+
+    const refused = (args: Record<string, unknown>) =>
+      refusal(target, 'comment_on_task', { workspace: WORKSPACE.id, task: epic.id, text: 'Again.', ...args });
+    expect(await refused({ unpin: [first.commentId] })).toBe(
+      `invalid arguments: ${first.commentId} is not a pinned comment of ${epic.id}`,
+    );
+    expect(await refused({ unpin: [plain.commentId, 'no-such-comment'] })).toBe(
+      `invalid arguments: ${plain.commentId}, no-such-comment is not a pinned comment of ${epic.id}`,
+    );
+    expect(await refused({ pin: 'yes' })).toBe('invalid arguments: pin (true or false)');
+    expect(await refused({ task: undefined, tasks: [epic.id], unpin: [second.commentId] })).toBe(
+      'invalid arguments: unpin (a comment id names a comment of one task: name it with task)',
+    );
+    // A refused unpin leaves the comment pinned and adds no comment.
+    expect(await engine.listComments(project.id, epic.id)).toHaveLength(3);
+  });
+
+  it('pins a comment that also records work details, which the holder sends', async () => {
+    const project = await newProject(engine);
+    const epic = await task(project, { title: 'Rebuild the pages', type: 'epic' });
+    const { id } = await task(project, { title: 'Rebuild the home page', parentId: epic.id });
+    await write(target, 'claim_task', { task: id });
+    const said = await write<{ commentId: string; pinned?: boolean }>(target, 'comment_on_task', {
+      task: id,
+      text: 'The home page is done; the pricing page reuses it.',
+      next: 'Open the pull request.',
+      pin: true,
+    });
+    expect(said).toMatchObject({ pinned: true });
+    expect((await engine.listComments(project.id, id)).find((comment) => comment.id === said.commentId)).toMatchObject({
+      pinned: true,
+    });
   });
 });
 

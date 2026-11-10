@@ -9,6 +9,7 @@ import {
   isDeliveryStage,
   isTaskStatus,
   isTaskType,
+  PARENT_CONTEXT_LIMITS,
   TASK_LIMITS,
   TaskRefused,
   type BoardQuery,
@@ -18,6 +19,7 @@ import {
   type HeldTask,
   type LabelPage,
   type LabelQuery,
+  type ParentContext,
   type Project,
   type Task,
   type TaskComment,
@@ -26,11 +28,14 @@ import {
   type TaskFilters,
   type TaskPage,
   type TaskQuery,
+  type TaskStatus,
+  type TaskType,
   type WinsRead,
   type WorkItem,
 } from '@ntasks/domain';
 import {
   externalLinks,
+  toClosedSibling,
   toComment,
   toField,
   toEpic,
@@ -40,6 +45,7 @@ import {
   toTask,
   toWin,
   toWork,
+  type ClosedSiblingRow,
   type CommentRow,
   type EpicRow,
   type EventRow,
@@ -216,6 +222,23 @@ export function byUrgency(a: Task, b: Task): number {
  * labels, in lower case. SQLite's lower() folds ASCII letters only. */
 const SEARCHED_TEXT = `lower(t.id || char(10) || t.title || char(10) || t.description || char(10) || t.acceptance || char(10)
   || coalesce((SELECT group_concat(l.label, char(10)) FROM task_labels l WHERE l.task_id = t.id), ''))`;
+
+/** Orders text newest or largest first. */
+function compareDesc(a: string, b: string): number {
+  return a < b ? 1 : a > b ? -1 : 0;
+}
+
+/** The row parentContext reads: the parent, and its lists as JSON arrays with their totals. */
+interface ParentContextRow {
+  readonly id: string;
+  readonly title: string;
+  readonly type: TaskType;
+  readonly status: TaskStatus;
+  readonly pinned_total: number;
+  readonly pinned_json: string;
+  readonly closed_total: number;
+  readonly closed_json: string;
+}
 
 function invalid(message: string): never {
   throw new TaskRefused('invalid', message);
@@ -600,6 +623,55 @@ export class Reads {
       .bind(projectId, taskId)
       .all<CommentRow>();
     return results.map(toComment);
+  }
+
+  /**
+   * The task's parent, its newest pinned comments and its most recently
+   * closed other children, each list with its total, in one statement. Each
+   * list and count reads its own index entries (task_comments_pinned,
+   * tasks_closed_by_parent), so the parent's other comments and open
+   * children are never read.
+   */
+  async parentContext(projectId: string, taskId: string): Promise<ParentContext | null> {
+    const pinnedFrom = `FROM task_comments m INDEXED BY task_comments_pinned WHERE m.task_id = p.id AND m.pinned = 1`;
+    const closedFrom = `FROM tasks s INDEXED BY tasks_closed_by_parent
+      WHERE s.parent_id = p.id AND s.closed_at IS NOT NULL AND s.id <> t.id`;
+    const row = await this.#db
+      .prepare(
+        `SELECT p.id, p.title, p.type, p.status,
+           (SELECT count(*) ${pinnedFrom}) AS pinned_total,
+           (SELECT json_group_array(json_object('id', id, 'task_id', task_id, 'author', author, 'text', text,
+               'created_at', created_at, 'pinned', pinned))
+              FROM (SELECT m.* ${pinnedFrom} ORDER BY m.created_at DESC, m.id DESC LIMIT ?3)) AS pinned_json,
+           (SELECT count(*) ${closedFrom}) AS closed_total,
+           (SELECT json_group_array(json_object('id', id, 'title', title, 'resolution', resolution,
+               'closed_at', closed_at, 'closed_by', closed_by, 'close_reason', close_reason,
+               'delivery_commit', delivery_commit, 'delivery_pull_request', delivery_pull_request,
+               'close_link', close_link))
+              FROM (SELECT s.* ${closedFrom} ORDER BY s.closed_at DESC, s.id LIMIT ?4)) AS closed_json
+         FROM tasks t CROSS JOIN tasks p ON p.id = t.parent_id
+         WHERE t.id = ?2 AND t.project_id = ?1`,
+      )
+      .bind(projectId, taskId, PARENT_CONTEXT_LIMITS.pinned, PARENT_CONTEXT_LIMITS.closedSiblings)
+      .first<ParentContextRow>();
+    if (row === null) return null;
+    // json_group_array keeps no order SQLite promises, so each list is put back in its own.
+    const pinned = (JSON.parse(row.pinned_json) as CommentRow[])
+      .sort((a, b) => compareDesc(a.created_at, b.created_at) || compareDesc(a.id, b.id))
+      .map(toComment);
+    const closed = (JSON.parse(row.closed_json) as ClosedSiblingRow[])
+      .sort((a, b) => compareDesc(a.closed_at, b.closed_at) || compareDesc(b.id, a.id))
+      .map(toClosedSibling);
+    return {
+      id: row.id,
+      title: row.title,
+      type: row.type,
+      status: row.status,
+      pinned,
+      pinnedTotal: row.pinned_total,
+      closedSiblings: closed,
+      closedSiblingsTotal: row.closed_total,
+    };
   }
 
   async listHistory(projectId: string, taskId: string, limit: number, beforeSeq?: number): Promise<TaskEvent[]> {

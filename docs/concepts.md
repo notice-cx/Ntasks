@@ -166,6 +166,18 @@ and so on. Work too large for one working session becomes an epic with
 children that each fit in one. An epic can close once all of its children are
 closed, and Ntasks lists the epics that can.
 
+The children of an epic share what they learn through the epic:
+
+- A **pinned comment** on the epic holds a fact its other children need,
+  such as a file they all change, a number one of them took, or the order in
+  which their pull requests must merge. A comment is pinned when it is added.
+  A later comment on the same task can unpin it, for example when it corrects
+  the fact; the unpinned comment stays among the task's comments.
+- Reading one child, or claiming it, also shows its **parent**: the epic's
+  10 newest pinned comments and its 5 most recently closed children, each
+  with how it ended, its close reason and its proof, with how many of each
+  there are in all. Reading the epic itself shows all of its comments.
+
 ## Claiming a task
 
 To start a task, an agent or a person **claims** it: the task becomes
@@ -331,7 +343,9 @@ acceptance of a task as done can be disputed the same way.
 ## History and comments
 
 Every change to a task is recorded with who made it and when. **Comments** add
-notes and evidence while the work moves.
+notes and evidence while the work moves. A comment is never edited or deleted;
+the one change it takes is being unpinned ([Epics](#epics)), which its task's
+history records.
 
 ## Retrying safely
 

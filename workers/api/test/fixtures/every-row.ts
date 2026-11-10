@@ -1,6 +1,6 @@
 // A task store holding a row of every kind: two projects, tasks of every type
 // and state with a child whose parent's id sorts after its own, every link
-// type, an external link, labels, comments, history, custom fields, a held
+// type, an external link, labels, comments pinned and not, history, custom fields, a held
 // task's work details, a request's steps, a person's acceptance and a retry
 // record. The backup and load tests share it.
 import type { BackupRows, TaskRow } from '@ntasks/domain';
@@ -217,7 +217,10 @@ export const ROWS: BackupRows = {
       created_by: null,
     },
   ],
-  task_comments: [{ id: 'k-0001', task_id: 'acme-a1', author: 'owner', text: 'Looks right.', created_at: LATER }],
+  task_comments: [
+    { id: 'k-0001', task_id: 'acme-a1', author: 'owner', text: 'Looks right.', created_at: LATER, pinned: 0 },
+    { id: 'k-0002', task_id: 'acme-a1', author: 'agent-a', text: 'The plan holds.', created_at: LATER, pinned: 1 },
+  ],
   task_events: [
     ...TASKS.map((row, index) => ({
       seq: index + 1,

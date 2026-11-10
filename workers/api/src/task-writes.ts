@@ -13,6 +13,7 @@ import {
   type ActionRequest,
   type Actor,
   type ApprovalRequest,
+  type CommentPins,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -843,6 +844,7 @@ export async function commentOnTask(
   retryRequest?: RetryRequest,
   update?: WorkArgs,
   model?: string,
+  pins?: CommentPins,
 ): Promise<{ readonly project: Project; readonly comment: TaskComment; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -855,7 +857,7 @@ export async function commentOnTask(
       const refusal = notHolding(current, actor);
       if (refusal !== null) throw refusal;
       // Details that change nothing leave the version as a plain comment does.
-      return { expectedVersion: current.version, set: update, comment: text };
+      return { expectedVersion: current.version, set: update, comment: text, ...(pins === undefined ? {} : { pins }) };
     });
     if (result.comment === undefined) throw unavailable(retry !== undefined);
     return { project, comment: result.comment, replayed: result.replayed };
@@ -867,6 +869,7 @@ export async function commentOnTask(
       text,
       actorOf(context.principal, model),
       retry,
+      pins,
     );
     return { project, comment, replayed };
   } catch (error) {

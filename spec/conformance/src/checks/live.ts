@@ -1,7 +1,32 @@
 /** The checks of the Live work level: work in hand, and what a connecting agent is told. */
-import { NotOffered } from '../api.ts';
-import { answered, expect, same, snapshot, type Check } from '../check.ts';
-import { actorOf, file, taskOf } from './steps.ts';
+import { NotOffered, type Api, type ParentContext } from '../api.ts';
+import { answered, expect, refused, same, snapshot, unchanged, type Check } from '../check.ts';
+import { actorOf, commitName, file, taskOf } from './steps.ts';
+
+/**
+ * Comments on `task` with `pin` and `unpin`, and answers the new comment's
+ * id: the one the write answers, or else the newest comment of the task's
+ * read with this text. Each check comments on a task it filed, so the text
+ * names one comment.
+ */
+async function pinned(api: Api, task: string, text: string, unpin?: readonly string[]): Promise<string> {
+  const written = answered(
+    await api.comment(task, text, { pin: true, ...(unpin === undefined ? {} : { unpin }) }),
+    `pinning a comment on ${task}`,
+  );
+  if (written.commentId !== undefined) return written.commentId;
+  const comments = answered(await api.read(task), `reading ${task}`).comments;
+  const id = comments.filter((comment) => comment.text === text).at(-1)?.id;
+  if (id === undefined) throw new NotOffered(api.binding, "answer a new comment's id, in the write or the task's read");
+  return id;
+}
+
+/** The parent context a read of `task` answers, which must be there. */
+async function parentOf(api: Api, task: string): Promise<ParentContext> {
+  const read = answered(await api.read(task), `reading ${task}`);
+  if (read.parent === null) throw new Error(`a read of ${task}, which has a parent, answers no parent context`);
+  return read.parent;
+}
 
 export const live: readonly Check[] = [
   {
@@ -117,6 +142,90 @@ export const live: readonly Check[] = [
       const [first, second] = [told.indexOf(newer), told.indexOf(older)];
       expect(first >= 0 && second >= 0, 'the instructions leave out a task the agent holds');
       expect(first < second, `${older} is listed before ${newer}, which was active more recently`);
+    },
+  },
+  {
+    id: 'state-17-parent-context',
+    rule: 'STATE-17',
+    level: 'live',
+    title:
+      "A read of a child, and a claim of it, show its parent's pinned comments and its closed siblings' closes, with the totals",
+    async run(context) {
+      const api = context.api();
+      const epic = await file(context, { type: 'epic', title: context.unique('epic') });
+      const done = await file(context, { parent: epic, title: context.unique('done child') });
+      const commit = commitName();
+      answered(await api.close(done, { reason: 'Merged; the header is shared now.', commit }), `closing ${done}`);
+      answered(await api.comment(epic, 'An ordinary note.'), `commenting on ${epic}`);
+      const fact = await pinned(api, epic, 'Every page shares the header.');
+      const child = await file(context, { parent: epic, title: context.unique('open child') });
+      const parent = await parentOf(api, child);
+      same(parent.id, epic, `the parent ${child}'s read names`);
+      same(
+        parent.pinned.map((comment) => [comment.id, comment.text]),
+        [[fact, 'Every page shares the header.']],
+        `the pinned comments ${child}'s read shows`,
+      );
+      same(parent.pinnedTotal, 1, `the pinned comments ${child}'s read counts`);
+      same(
+        parent.closedSiblings.map((sibling) => [sibling.id, sibling.resolution, sibling.closeReason, sibling.commit]),
+        [[done, 'done', 'Merged; the header is shared now.', commit]],
+        `the closed siblings ${child}'s read shows`,
+      );
+      same(parent.closedSiblingsTotal, 1, `the closed siblings ${child}'s read counts`);
+      const alone = await file(context);
+      same(answered(await api.read(alone), `reading ${alone}`).parent, null, `the parent context of ${alone}`);
+      if (context.binding !== 'mcp') return;
+      const claimed = answered(await api.claim(child), `claiming ${child}`);
+      same(
+        claimed.parent?.pinned.map((comment) => comment.id),
+        [fact],
+        `the pinned comments ${child}'s claim shows`,
+      );
+      same(
+        claimed.parent?.closedSiblings.map((sibling) => sibling.id),
+        [done],
+        `the closed siblings ${child}'s claim shows`,
+      );
+    },
+  },
+  {
+    id: 'state-17-unpin',
+    rule: 'STATE-17',
+    level: 'live',
+    title:
+      "A later comment unpins a pinned one, leaving the task's version; unpinning a comment that is not pinned is refused",
+    async run(context) {
+      const api = context.api();
+      const epic = await file(context, { type: 'epic', title: context.unique('epic') });
+      const child = await file(context, { parent: epic, title: context.unique('child') });
+      const before = answered(await api.update(epic, { title: context.unique('renamed epic') }), 'renaming');
+      const wrong = await pinned(api, epic, 'The launch is on Monday.');
+      const right = await pinned(api, epic, 'The launch is on Tuesday.', [wrong]);
+      const parent = await parentOf(api, child);
+      same(
+        parent.pinned.map((comment) => comment.id),
+        [right],
+        `the pinned comments ${child}'s read shows after one is unpinned`,
+      );
+      same(parent.pinnedTotal, 1, `the pinned comments ${child}'s read counts after one is unpinned`);
+      const comments = answered(await api.read(epic), `reading ${epic}`).comments;
+      same(
+        comments.filter((comment) => comment.id === wrong).map((comment) => comment.pinned),
+        [false],
+        `${epic}'s unpinned comment`,
+      );
+      const history = JSON.stringify(answered(await api.history(epic), `reading ${epic}'s history`));
+      expect(history.includes(wrong), `${epic}'s history does not record which comment was unpinned`);
+      const snapshotted = await snapshot(api, epic);
+      refused(
+        await api.comment(epic, 'Unpin it again.', { unpin: [wrong] }),
+        `unpinning ${wrong}, which is no longer pinned`,
+      );
+      await unchanged(api, epic, snapshotted, 'a refused unpin');
+      if (before.version === null) return;
+      const after = answered(await api.update(epic, { title: context.unique('renamed again') }), 'renaming again');
+      same(after.version, before.version + 1, `${epic}'s version after pinning and unpinning`);
     },
   },
 ];

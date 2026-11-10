@@ -162,7 +162,8 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
 
 /**
  * Each read's most statements and rows read on this store. A read of one
- * task costs what that task and its links cost; a list costs about ten rows
+ * task costs what that task and its links cost, and one statement more for
+ * its parent's pinned comments and closed children; a list costs about ten rows
  * for each task it returns. The statements do not grow with the number of
  * projects. list_tasks reads the external links of the page it returns in a
  * statement of its own, after the board. Agent statistics read one row for
@@ -172,7 +173,7 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
  */
 const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
   'HTTP board, largest project': { statements: 5, rowsRead: 7_000 },
-  'HTTP task page': { statements: 3, rowsRead: 60 },
+  'HTTP task page': { statements: 4, rowsRead: 60 },
   'HTTP task history': { statements: 3, rowsRead: 60 },
   'HTTP change feed, 200 changes': { statements: 1, rowsRead: 250 },
   'HTTP label read, 12 tasks in the largest project': { statements: 2, rowsRead: 300 },
@@ -187,7 +188,7 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
   'list_tasks at a stage, largest project': { statements: 4, rowsRead: 1_000 },
   'HTTP board at a stage, largest project': { statements: 5, rowsRead: 1_000 },
-  get_task: { statements: 3, rowsRead: 60 },
+  get_task: { statements: 4, rowsRead: 60 },
   get_task_history: { statements: 3, rowsRead: 60 },
   'get_agent_stats, every project': { statements: 2, rowsRead: 800 },
   'HTTP agent stats, largest project': { statements: 2, rowsRead: 150 },
