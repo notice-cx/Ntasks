@@ -149,6 +149,13 @@ above the text in size: `#` is `text-heading`, `##` 16 / 24, and the rest
 ring; links and task ids are Accent text; a checklist's box is 15 px, ringed
 in Border strong, and filled in Accent with a white tick once ticked.
 
+An http or https address written out in a task's title, its text, a comment,
+a code block, inline code or a step's command is a link that opens in a new
+tab with no opener and no referrer (`LinkedText` in
+`src/components/ui/linked-text.tsx` for plain text). Its words stay as
+written, so a code block's Copy button copies them unchanged. No other
+scheme becomes a link.
+
 ## Spacing and radius
 
 Spacing is a 4 px grid: Tailwind's steps, where `1` is 4 px. The steps in use

@@ -31,6 +31,7 @@ import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolut
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Badge, Progress } from '../components/ui/badge';
+import { LinkedText } from '../components/ui/linked-text';
 import { Button, IconButton } from '../components/ui/button';
 import { OptionList } from '../components/ui/choice';
 import { EmptyState } from '../components/ui/empty-state';
@@ -437,7 +438,7 @@ function TaskPage({
       >
         <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 lg:col-start-1 max-md:pt-5')}>
           <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
-            {task.title}
+            <LinkedText text={task.title} />
           </h1>
           {panelBody ? (
             <div className="rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border" data-task-panel="">
