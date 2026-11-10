@@ -149,6 +149,7 @@ describe('tools/list', () => {
     expect(found.added).toEqual([
       'list_tasks.stage',
       'list_tasks.stalled',
+      'list_tasks.activity',
       'list_tasks.sort',
       'list_tasks.direction',
       'list_tasks.fields',

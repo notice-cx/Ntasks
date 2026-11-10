@@ -176,7 +176,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, `closeAcceptance` when it recorded one, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `met`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
-| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
+| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
@@ -1158,6 +1158,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
+| `GET /api/tasks` with `activity` | `project` and `activity`, a comma-separated list of `active`, `quiet` and `stalled`; optionally `status` naming `in_progress` and `field.<key>` | The board's answer, holding the project's tasks in progress in those groups of [activity](#work-in-hand), and `activities`, which counts the tasks in progress in each group. A board read with `status` naming `in_progress` answers `activities` too. `stage` is refused with `activity`. |
 | `GET /api/tasks/search` | `q`, 1 to 512 characters, and optionally `limit` (1 to 200, default 100) | `{ readAt, closedSince, total, tasks }`: the tasks of every project the sender reaches whose id, title, description, acceptance or labels hold every word of `q`, ignoring case, among the open ones and those closed in the last 7 days, most urgent first, as `list_tasks` searches with `query`. When `q` is a task id whose prefix names a project the sender reaches, that task comes first, closed at any time. Each task carries `project`, its project's key; `total` counts every match, and `tasks` holds the first `limit`. |
 | `GET /api/tasks/:id` | `project` | The task, its comments, its `proposal` and its `proposalVersion`, as `get_task` returns them ([recording an owner answer](#recording-an-owner-answer)), and `parent`: what its parent holds for it, or null when it has none ([above](#what-a-parent-holds-for-its-tasks)) |
 | `GET /api/tasks/:id/history` | `project`, optionally `limit` (1 to 200, default 100) | `{ changes }`, newest first |
@@ -1228,7 +1229,7 @@ work closed as done without proof ([above](#proof-of-work-done)), and null
 otherwise.
 
 A task answers its holder's work in hand as `for`, `work`,
-`lastActivityAt` and `stalled`, as `get_task` does.
+`lastActivityAt`, `stalled` and `activity`, as `get_task` does.
 
 ### Work in hand
 
@@ -1238,6 +1239,32 @@ done nothing on it for a day, or never recorded anything (`isStalled` in
 `stalled`, worked out at the time of the read; `list_tasks` names it only on a
 stalled task, and `stalled: true` lists only those. It is shown only: Ntasks
 never frees a claim because time passed.
+
+A task in progress has an **activity**, how recently its holder changed or
+commented on it, worked out at the time of the read (`activityOf` in
+[`packages/domain`](../packages/domain/src/task.ts)), and the Live page groups
+tasks by it:
+
+| Activity | The task in progress |
+|---|---|
+| `active` | Its holder changed or commented on it within the last hour |
+| `quiet` | Neither active nor stalled: its holder last did so more than an hour ago, and less than a day ago |
+| `stalled` | It is [stalled](#work-in-hand): held, with nothing from its holder for a day or ever |
+
+Every task read answers `activity`, null on a task that is not in progress.
+`list_tasks` with `activity` lists only the tasks in progress in those groups,
+and its answer's `activities` counts the tasks in progress in each group that
+its other filters match, before `activity` narrows them, so asking for some
+groups still shows the size of the others. `activities` is answered when
+`activity` is given or `status` names `in_progress`. An agent keeps watch on
+work in progress with:
+
+```json
+{ "activity": ["quiet", "stalled"] }
+```
+
+A quiet task may be done and not closed, such as one whose pull request
+merged; a stalled one has a holder that stopped, to pick up or free.
 
 NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the

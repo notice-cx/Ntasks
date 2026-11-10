@@ -460,6 +460,35 @@ export function isStalled(
   return !Number.isFinite(last) || Date.parse(now) - last >= STALLED_AFTER_MS;
 }
 
+/** How recently the holder of a task in progress worked on it, most recent first. */
+export const ACTIVITIES = ['active', 'quiet', 'stalled'] as const;
+export type Activity = (typeof ACTIVITIES)[number];
+
+export function isActivity(value: unknown): value is Activity {
+  return (ACTIVITIES as readonly unknown[]).includes(value);
+}
+
+/** A task in progress whose holder changed or commented on it within this long is active. */
+export const ACTIVE_WITHIN_MS = 60 * 60 * 1000;
+
+/**
+ * How recently the holder of a task worked on it at `now` (an ISO time):
+ * stalled as isStalled says, else active when its holder changed or
+ * commented on it within ACTIVE_WITHIN_MS, else quiet; null for a task that
+ * is not in progress. `stalled` is a server's isStalled as of its read, which
+ * a reader with its own clock keeps so the two never disagree.
+ */
+export function activityOf(
+  task: { readonly status: string; readonly assignee: string | null; readonly lastActivityAt?: string | null },
+  now: string,
+  stalled: boolean = isStalled(task, now),
+): Activity | null {
+  if (task.status !== 'in_progress') return null;
+  if (stalled) return 'stalled';
+  const last = Date.parse(task.lastActivityAt ?? '');
+  return Number.isFinite(last) && Date.parse(now) - last < ACTIVE_WITHIN_MS ? 'active' : 'quiet';
+}
+
 /** A task one holder holds, with what the holder recorded about the work in hand. */
 export interface HeldTask {
   readonly id: string;

@@ -1,0 +1,16 @@
+{
+  "added": "`activity` on a task, and on `GET /api/tasks` the `activity` filter and the `activities` count of tasks in progress in each group",
+  "shapes": {
+    "task": {
+      "activity": "null|string"
+    }
+  },
+  "routes": {
+    "GET /api/tasks": {
+      "activities": "absent|object",
+      "activities.active": "number",
+      "activities.quiet": "number",
+      "activities.stalled": "number"
+    }
+  }
+}
