@@ -828,9 +828,10 @@ function leftByHolder(task: Task, pullRequest: string): string {
  * merged signal names (STATE-18), with that pull request and the merge
  * commit as its proof, recording the sender as its closer. Only the GitHub
  * receiver calls it, once the Worker checked that GitHub sent the delivery
- * (github.ts): a signal a sender reports closes nothing. An epic, a person's
- * request, a task labelled keep-open and one that waits on an open request
- * or has open tasks under it stay as they are. Each task closes in its own
+ * (github.ts): a signal a sender reports closes nothing, and so does one
+ * that names no merge commit, since the merge commit is half the proof. An
+ * epic, a person's request, a task labelled keep-open and one that waits on
+ * an open request or has open tasks under it stay as they are. Each task closes in its own
  * write, so one that keeps changing leaves the others closed; GitHub's
  * delivery sent again closes it then.
  */
@@ -853,10 +854,13 @@ export async function closeMerged(context: WriteContext, signal: DeliverySignal)
     const project = projects.get(task.projectId);
     const pullRequest = task.work.pr === undefined ? null : pullRequestUrl(task.work.pr);
     if (project === undefined || pullRequest === null || !merged.has(pullRequest)) continue;
+    if (mergeCommit === undefined) {
+      kept.push({ id: task.id, why: 'GitHub named no merge commit, which a close by a merge records as its proof' });
+      continue;
+    }
     const reason =
-      `Closed by the merge of ${pullRequest}` +
-      (mergeCommit === undefined ? '' : ` as ${mergeCommit.slice(0, 7)}`) +
-      ", which GitHub reported; the task's work named that pull request.";
+      `Closed by the merge of ${pullRequest} as ${mergeCommit.slice(0, 7)}, which GitHub reported; ` +
+      "the task's work named that pull request.";
     const outcome: { why: string | null } = { why: null };
     try {
       await changing(context, project, task, actor, undefined, async (current) => {
@@ -868,11 +872,7 @@ export async function closeMerged(context: WriteContext, signal: DeliverySignal)
           close: {
             reason,
             resolution: 'done',
-            ...closeProof(
-              { pullRequest, ...(mergeCommit === undefined ? {} : { commit: mergeCommit }) },
-              current.type,
-              current.work,
-            ),
+            ...closeProof({ pullRequest, commit: mergeCommit }, current.type, current.work),
           },
           comment: leftByHolder(current, pullRequest),
           ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),

@@ -498,6 +498,22 @@ describe('a merge GitHub reports, for work still in progress', () => {
     expect(await taskOf(projectId, id)).toMatchObject({ status: 'in_progress', version: before.version });
   });
 
+  it('leaves in progress a task whose pull request merged when GitHub names no merge commit', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const pr = `https://github.com/${REPOSITORY}/pull/${number}`;
+    const id = await heldNaming(projectId, pr, {}, { commit: newCommit() });
+    const event = mergedPullRequest(number, newCommit());
+
+    const answer = await deliver('pull_request', {
+      ...event,
+      pull_request: { ...event.pull_request, merge_commit_sha: null },
+    });
+    expect(answer.body).toEqual({ moved: [], kept: [{ id, why: expect.stringMatching(/no merge commit/u) }] });
+    expect(await taskOf(projectId, id)).toMatchObject({ status: 'in_progress', work: { pr } });
+  });
+
   it('closes a task once when GitHub sends the same merge again', async () => {
     await ownerWithWebhook();
     const projectId = await deployingProject();

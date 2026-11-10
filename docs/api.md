@@ -859,8 +859,9 @@ key.
   `unknown_installation`. An installation removed or suspended in GitHub is
   forgotten.
 - A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
-  does, and a merge also with `closed` and `kept` when it closed or kept a
-  task in progress ([below](#work-still-in-progress-when-its-pull-request-merges)).
+  does, and a merge also with `closed` when it closed a task in progress and
+  `kept` when it left one in progress, each only when it lists a task
+  ([below](#work-still-in-progress-when-its-pull-request-merges)).
   When its event moves nothing, such as GitHub's `ping`, an
   installation, a pull request closed without merging, a check that is not a
   deploy, or another event, the answer also holds `ignored`, a sentence
@@ -905,7 +906,10 @@ moves anything:
   sent to `POST /api/delivery` or with `report_delivery` closes nothing.
 
 The answer lists the tasks the merge closed as `closed`, and each task it
-left in progress as `kept`, with `why`.
+left in progress as `kept`, with `why`. Each list is left out when it is
+empty, so an answer can hold either one, both or neither. A merge that GitHub
+reports with no merge commit closes nothing, and lists each such task under
+`kept`.
 
 #### Set up by hand
 

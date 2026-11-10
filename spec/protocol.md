@@ -520,7 +520,8 @@ signal a sender reports ([STATE-12](#state-12)) MUST NOT close a task. The
 close:
 
 - is as `done`, with the pull request and the merge commit as its proof,
-  and the same report then moves its delivery to `merged`;
+  and the same report then moves its delivery to `merged`. A report that
+  names no merge commit MUST NOT close a task;
 - MUST record the actor the server records the host's reports under as its
   closer, never the holder ([AUTH-2](#auth-2)), with a reason that names the
   pull request and the merge commit;
