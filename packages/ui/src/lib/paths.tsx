@@ -4,7 +4,8 @@ import { createContext, useContext, type ReactNode } from 'react';
  * The addresses of the app's pages. Every page sits under the base path the
  * host mounts the app at: the board is the base path itself, a task is
  * `<base>/<id>`, and the other pages are `<base>/focus`, `<base>/live`,
- * `<base>/projects`, `<base>/members` and `<base>/settings`. A task id
+ * `<base>/productivity`, `<base>/projects`, `<base>/members` and
+ * `<base>/settings`. A task id
  * always holds a hyphen, so none of those words is ever a task's address.
  */
 export interface AppPaths {
@@ -12,6 +13,7 @@ export interface AppPaths {
   readonly board: string;
   readonly focus: string;
   readonly live: string;
+  readonly productivity: string;
   readonly projects: string;
   readonly members: string;
   readonly settings: string;
@@ -38,6 +40,7 @@ export function appPaths(basePath: string): AppPaths {
     board,
     focus: under('focus'),
     live: under('live'),
+    productivity: under('productivity'),
     projects: under('projects'),
     members: under('members'),
     settings: under('settings'),

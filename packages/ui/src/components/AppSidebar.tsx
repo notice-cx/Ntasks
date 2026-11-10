@@ -1,4 +1,4 @@
-import { Activity, Folder, List, Search, Settings, Target, Users } from 'lucide-react';
+import { Activity, ChartNoAxesColumn, Folder, List, Search, Settings, Target, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from './ui/avatar';
 import { Count } from './ui/badge';
@@ -81,7 +81,7 @@ function WorkspaceSwitcher() {
 }
 
 /**
- * The app's navigation: the workspace, Waiting for you, Tasks, Live and Focus, then
+ * The app's navigation: the workspace, Waiting for you, Tasks, Live, Focus and Productivity, then
  * each project and each person or agent with open work, each a view of the
  * board, and at its foot the workspace's projects, members and settings and
  * the link to the source code.
@@ -141,6 +141,9 @@ export function AppSidebar() {
       </NavItem>
       <NavItem asChild icon={<Target aria-hidden />} active={pathname === paths.focus}>
         <Link to={paths.focus}>Focus</Link>
+      </NavItem>
+      <NavItem asChild icon={<ChartNoAxesColumn aria-hidden />} active={pathname === paths.productivity}>
+        <Link to={paths.productivity}>Productivity</Link>
       </NavItem>
       {board.available.length > 0 ? (
         <NavSection title="Projects">
