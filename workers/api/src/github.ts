@@ -138,9 +138,10 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
   if (repository === undefined || defaultBranch === undefined)
     return { ignored: 'an event without its repository and default branch moves no task' };
   const commits = (sha: string | undefined) => (sha === undefined ? [] : [sha]);
+  // A deploy with no name, such as a production deployment to an unnamed environment, counts and is not listed.
   const live = (name: string, verdict: 'yes' | 'new', sha: string | undefined): GitHubEvent => ({
     signal: { repository, stage: 'live', commits: commits(sha) },
-    ...(verdict === 'new' ? { newDeploy: name } : {}),
+    ...(verdict === 'new' && name !== '' ? { newDeploy: name } : {}),
   });
   switch (event) {
     case 'pull_request': {
@@ -293,13 +294,18 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);
     throw error;
   }
+  // Recorded before the move, so a delivery GitHub sends again finds it listed whatever happens after.
+  if (event.newDeploy !== undefined) await recordDetected(env.DB, workspaceId, { checks: [event.newDeploy] });
   const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
     turnOnDeploys: { except: detected.projects },
   });
   if ('refused' in answer) return json({ error: 'unavailable', detail: answer.refused }, 503);
-  await recordDetected(env.DB, workspaceId, {
-    checks: event.newDeploy === undefined ? [] : [event.newDeploy],
-    projects: answer.turnedOn,
-  });
+  try {
+    await recordDetected(env.DB, workspaceId, { projects: answer.turnedOn });
+  } catch {
+    // The tasks moved, so GitHub is told so; a project left unrecorded can be
+    // turned on once more by a later deploy, after its owner turned it off.
+    console.error('github: the projects a deploy turned on were not recorded', workspaceId);
+  }
   return json({ moved: movedView(answer.moved) }, 200);
 }

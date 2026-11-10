@@ -330,9 +330,11 @@ export async function recordDetected(
          ON CONFLICT (workspace_id, kind, name) DO NOTHING`,
       )
       .bind(workspaceId, kind, name, at);
+  // The table holds names of 1 to 255 characters; GitHub's run and environment names fit, and any other is left out.
+  const fits = (name: string) => name.length >= 1 && name.length <= 255;
   const statements = [
-    ...(found.checks ?? []).map((name) => statement('check', name)),
-    ...(found.projects ?? []).map((id) => statement('project', id)),
+    ...(found.checks ?? []).filter(fits).map((name) => statement('check', name)),
+    ...(found.projects ?? []).filter(fits).map((id) => statement('project', id)),
   ];
   if (statements.length > 0) await db.batch(statements);
 }

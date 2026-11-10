@@ -12,7 +12,7 @@ async function webhookForm(): Promise<HTMLElement> {
 }
 
 /** The fixture's first workspace, owned by the person, with a GitHub App made, installed on one organization, and one deploy seen. */
-function connectedApi() {
+function connectedApi(byHand = false) {
   const [example, ...rest] = fixtureWorkspaces(Date.now());
   const at = new Date().toISOString();
   return createFixtureTasksApi({
@@ -20,6 +20,7 @@ function connectedApi() {
       ? [
           {
             ...example,
+            ...(byHand ? { github: { secret: 'a'.repeat(40), deployChecks: ['deploy'], updatedAt: at } } : {}),
             githubApp: {
               slug: 'ntasks-example',
               createdAt: at,
@@ -54,6 +55,14 @@ describe('Connect GitHub on the Settings page', () => {
   it('says to press Connect GitHub again when GitHub did not finish', async () => {
     renderApp('/tasks/settings?github=retry', createFixtureTasksApi());
     expect(await screen.findByText("GitHub didn't finish connecting. Press Connect GitHub again.")).toBeTruthy();
+  });
+
+  it('keeps a webhook saved by hand reachable once the app is connected', async () => {
+    renderApp('/tasks/settings', connectedApi(true));
+    const section = await screen.findByRole('region', { name: 'GitHub' });
+    expect(await within(section).findByText('example-org')).toBeTruthy();
+    expect(within(section).getByText('Set up by hand')).toBeTruthy();
+    expect(await webhookForm()).toBeTruthy();
   });
 
   it('shows where the app is installed, links to install it, switches a deploy off and disconnects', async () => {

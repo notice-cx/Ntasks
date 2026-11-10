@@ -356,6 +356,28 @@ describe('the app’s deliveries', () => {
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
   });
 
+  it('counts a production deployment to an unnamed environment, and lists no name for it', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 37);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 37, merge));
+    const unnamed = {
+      installation: { id: mine },
+      deployment_status: { state: 'success' },
+      deployment: { sha: merge, production_environment: true },
+      repository,
+    };
+    expect(await deliver('deployment_status', unnamed)).toEqual({
+      status: 200,
+      body: { moved: [{ id, stage: 'live' }] },
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+    const { body } = await inWorkspace(owner, 'GET', '/api/access/github');
+    expect((body.github as { detected: { name: string }[] }).detected.map((check) => check.name)).not.toContain('');
+  });
+
   it('refuses the app’s deliveries once the owner disconnects it', async () => {
     const owner = await connected();
     expect(await deliver('ping', { zen: 'Speak like a human.', hook_id: 1 })).toMatchObject({ status: 200 });
