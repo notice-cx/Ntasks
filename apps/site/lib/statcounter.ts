@@ -9,7 +9,9 @@ const HOST = new URL(SITE_ORIGIN).hostname;
 /**
  * The counter, which the landing page's build and both VitePress builds put
  * before `</body>` on every page. Its script loads only at the site's own
- * address, so a local build or preview counts no visit.
+ * address, so a local build or preview counts no visit. The `<noscript>`
+ * image, which counts visitors without JavaScript, has no such check: a local
+ * preview opened with JavaScript off counts one.
  */
 export const statcounterHtml = `<script>
   if (location.hostname === ${JSON.stringify(HOST)}) {
@@ -36,7 +38,9 @@ export function withStatcounter(html: string): string {
  * seen, starting from `start`. The counter counts the page a visitor loads;
  * the docs and the spec then open their other pages in place, and their
  * router's hook also runs on the first load and on a jump to a heading on the
- * same page, which are not new pages.
+ * same page, which are not new pages. A page left before the counter's script
+ * loads is not counted: `record_pageview()` reads the current address, and the
+ * script counts the page open when it loads.
  */
 export function onNewPage(start: string, record: () => void): (path: string) => void {
   let last = start;
