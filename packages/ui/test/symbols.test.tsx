@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { LiveTask } from '@/api/types';
 import { Avatar, type AvatarSize } from '@/components/ui/avatar';
@@ -7,8 +7,9 @@ import { PriorityMark, StatusMark, TypeMark, WorkspaceIcon } from '@/components/
 import {
   avatarFace,
   initials,
-  priorityBars,
   priorityLabel,
+  priorityNumber,
+  priorityTip,
   statusMarkFor,
   typeLabel,
   typeMarkFor,
@@ -103,13 +104,53 @@ describe('the priority mark', () => {
     expect(priorityLabel(9)).toBe('Lowest');
   });
 
-  it('fills three bars at High, two at Normal and one at Low', () => {
-    expect([0, 1, 2, 3, 4].map(priorityBars)).toEqual([0, 3, 2, 1, 0]);
+  it('writes P0 to P4 on its tag, and clamps anything outside', () => {
+    expect([-2, 0, 1, 2, 3, 4, 9].map(priorityNumber)).toEqual([0, 0, 1, 2, 3, 4, 4]);
+    expect(priorityTip(1)).toBe('Priority 1 · High');
+    render(<PriorityMark priority={9} />);
+    expect(screen.getByRole('button', { name: 'Lowest priority' }).textContent).toBe('P4');
   });
 
-  it('is named with its priority', () => {
-    render(<PriorityMark priority={0} />);
-    expect(screen.getByRole('img', { name: 'Top priority' })).toBeTruthy();
+  it('colours only Top and High', () => {
+    const { container } = render(
+      <>
+        {[0, 1, 2, 3, 4].map((priority) => (
+          <PriorityMark key={priority} priority={priority} label={null} />
+        ))}
+      </>,
+    );
+    const tags = [...container.querySelectorAll('[data-priority-mark]')];
+    expect(tags.map((tag) => /priority/.test(tag.className))).toEqual([true, true, false, false, false]);
+  });
+
+  it('shows its tooltip to a mouse at rest, to keyboard focus and to a press, and names itself', async () => {
+    render(<PriorityMark priority={1} />);
+    const tag = screen.getByRole('button', { name: 'High priority' });
+    const tooltip = () => screen.queryByRole('tooltip');
+
+    fireEvent.pointerEnter(tag, { pointerType: 'mouse' });
+    expect(tooltip()).toBeNull();
+    await waitFor(() => expect(tooltip()?.textContent).toBe('Priority 1 · High'));
+    expect(tag.getAttribute('aria-describedby')).toBe(tooltip()?.id);
+    fireEvent.pointerLeave(tag, { pointerType: 'mouse' });
+    await waitFor(() => expect(tooltip()).toBeNull());
+
+    fireEvent.focus(tag);
+    await waitFor(() => expect(tooltip()).not.toBeNull());
+    fireEvent.blur(tag);
+    await waitFor(() => expect(tooltip()).toBeNull());
+
+    fireEvent.pointerEnter(tag, { pointerType: 'touch' });
+    fireEvent.click(tag);
+    await waitFor(() => expect(tooltip()).not.toBeNull());
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await waitFor(() => expect(tooltip()).toBeNull());
+  });
+
+  it('is only drawn, with no button, beside words that say the same', () => {
+    const { container } = render(<PriorityMark priority={0} label={null} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(container.querySelector('[data-priority-mark="top"]')?.getAttribute('aria-hidden')).toBe('true');
   });
 });
 

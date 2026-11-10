@@ -15,6 +15,7 @@ import {
   type CustomField,
   type DefineFieldInput,
   type DeliveryMove,
+  type DeliveryOptions,
   type DeliverySignal,
   type DeliveryStage,
   type DependencyType,
@@ -739,12 +740,15 @@ export class Writes {
     projectIdsInput: readonly string[],
     signalInput: DeliverySignal,
     actorInput: Actor,
+    options: DeliveryOptions = {},
   ): Promise<DeliveryMove[]> {
     const actor = check.actor(actorInput);
     const signal = check.deliverySignal(signalInput);
     if (!Array.isArray(projectIdsInput) || !projectIdsInput.every((id) => typeof id === 'string'))
       check.invalid('projectIds must be project ids');
     if (projectIdsInput.length === 0) return [];
+    const turnOn = signal.stage === 'live' ? options.turnOnDeploys : undefined;
+    const kept = new Set(turnOn?.except ?? []);
     // Only a merge names its merge commit, and only when it names one commit.
     const mergeCommit = signal.stage === 'merged' && signal.commits.length === 1 ? signal.commits[0]! : null;
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
@@ -759,11 +763,19 @@ export class Writes {
       const at = this.#now();
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
+      const turnedOn = new Set<string>();
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
+        const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
+        if (turnsOn && !turnedOn.has(row.project_id)) {
+          turnedOn.add(row.project_id);
+          statements.push(
+            this.#db.prepare('UPDATE projects SET deploys = 1 WHERE id = ?1 AND deploys = 0').bind(row.project_id),
+          );
+        }
         // A project that does not deploy has nothing after merged.
-        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 ? 'merged' : signal.stage;
+        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 && !turnsOn ? 'merged' : signal.stage;
         if (STAGE_ORDER[stage] <= STAGE_ORDER[current.stage]) continue;
         const next: TaskDelivery = {
           ...current,

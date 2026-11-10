@@ -29,7 +29,7 @@ export function Row({
         'transition-colors duration-120 hover:bg-hover focus-within:bg-hover',
         'max-sm:gap-2.25 max-sm:px-4 max-sm:hover:bg-transparent',
         answer &&
-          'max-sm:h-auto max-sm:flex-wrap max-sm:items-start max-sm:gap-y-2 max-sm:pt-2.5 max-sm:pb-3 max-sm:[&>svg]:mt-0.75',
+          'max-sm:h-auto max-sm:flex-wrap max-sm:items-start max-sm:gap-y-2 max-sm:pt-2.5 max-sm:pb-3 max-sm:[&>svg]:mt-0.75 max-sm:[&>[data-priority-mark]]:mt-0.5',
         answer === 'wide' &&
           'sm:max-[1240px]:h-auto sm:max-[1240px]:flex-wrap sm:max-[1240px]:gap-y-1.5 sm:max-[1240px]:py-2',
         className,
@@ -107,9 +107,9 @@ export function RowAnswer({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-row-answer=""
       className={cn(
-        'flex items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:ps-11.75',
-        // Under the title: past the priority, id and status columns.
-        'group-data-[answer=wide]/row:sm:max-[1240px]:order-last group-data-[answer=wide]/row:sm:max-[1240px]:basis-full group-data-[answer=wide]/row:sm:max-[1240px]:ps-[142px]',
+        'flex items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:ps-13.75',
+        // Under the title: past the priority tag, the id and the status mark.
+        'group-data-[answer=wide]/row:sm:max-[1240px]:order-last group-data-[answer=wide]/row:sm:max-[1240px]:basis-full group-data-[answer=wide]/row:sm:max-[1240px]:ps-[150px]',
         className,
       )}
       {...props}

@@ -85,9 +85,10 @@ time on the step.
 
 [Ntasks's API reference](../docs/api.md#delivery) has a GitHub Actions
 workflow that sends both signals, and a
-[receiver for GitHub's webhook](../docs/api.md#from-a-github-webhook) that
+[receiver for GitHub's events](../docs/api.md#from-github) that
 sends them from GitHub's own events, signed with a secret instead of a
-sign-in.
+sign-in. A deploy it receives also marks the projects of the tasks it names
+as deploying, once for each project, before it moves them.
 
 ### Live work
 

@@ -8,6 +8,7 @@ const MARK: Readonly<Record<CheckResult['status'], string>> = {
   'not-run': 'skip',
   'known-gap': 'gap ',
   'gap-closed': 'FAIL',
+  'not-applicable': 'n/a ',
 };
 
 export function resultLine(result: CheckResult): string {
@@ -23,7 +24,7 @@ export function resultLine(result: CheckResult): string {
 export function formatReport(report: Report): string {
   const lines: string[] = [`Shared Work Protocol v0 conformance: ${report.target}`, ''];
   for (const result of report.results) lines.push(resultLine(result));
-  const attention = report.results.filter((result) => result.status !== 'passed');
+  const attention = report.results.filter((result) => !['passed', 'not-applicable'].includes(result.status));
   if (attention.length > 0) lines.push('');
   for (const result of attention) {
     lines.push(`${MARK[result.status]}  ${result.id} — ${result.title} (${result.section})`);

@@ -469,15 +469,54 @@ export interface ConnectedApp {
   connectedAt: string | null;
 }
 
-/** The workspace's GitHub webhook, as `GET /api/access/github` shows it to an owner: never its secret. */
+/** The workspace's GitHub connection, as `GET /api/access/github` shows it to an owner: never a secret. */
 export interface GitHubWebhook {
   /** Where GitHub sends deliveries: the webhook's Payload URL. */
   url: string;
-  /** Whether a secret is saved that deliveries can be checked against. */
+  /** Whether a secret is saved by hand that deliveries can be checked against. */
   secretSaved: boolean;
-  /** The check runs and deployment environments whose success means a change is live. */
+  /** The check runs and deployment environments typed by hand whose success means a change is live. */
   deployChecks: string[];
+  /** When the webhook set up by hand was last saved, or null when there is none. */
   updatedAt: string | null;
+  /** The workspace's GitHub App, made with Connect GitHub, or null before it is. */
+  app: GitHubApp | null;
+  /** Where an owner installed the app. */
+  installations: GitHubInstallation[];
+  /** The deploy checks deliveries showed, each counted or switched off. */
+  detected: DetectedDeploy[];
+}
+
+/** The workspace's GitHub App: its page, and where to install it. */
+export interface GitHubApp {
+  slug: string;
+  url: string;
+  createdAt: string;
+  /** GitHub's page that installs the app on an account the person picks, such as an organization. */
+  installUrl: string;
+  /** GitHub's page that installs the app on the person's own account. */
+  accountInstallUrl: string;
+}
+
+export interface GitHubInstallation {
+  installationId: number;
+  /** The GitHub account it is installed on, such as an organization's name. */
+  account: string;
+  accountType: string;
+  createdAt: string;
+}
+
+/** A check run or deployment environment that counted as a deploy, and whether it still counts. */
+export interface DetectedDeploy {
+  name: string;
+  on: boolean;
+  seenAt: string;
+}
+
+/** Where the browser posts the manifest that makes the workspace's GitHub App. */
+export interface GitHubAppStart {
+  action: string;
+  manifest: string;
 }
 
 /** What an owner saves with `POST /api/access/github`: a new secret, the deploy checks, or both. */
