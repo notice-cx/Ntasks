@@ -152,14 +152,15 @@ the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
 `--dry-run` included, since it reads the account, and requests to a deployed
 Worker. Publishing to npm is the owner's step too: `npm publish`, merging a
 release pull request, pushing a `v*` or `ui-v*` tag, and starting the Release
-or the Release UI package workflow. A release is the owner merging the
-package's release pull request, titled `chore(main): release ntasks <version>`
-or `chore(main): release @notice-cx/ntasks-ui <version>`, then pressing
-**Approve and deploy** on the publish run it starts
+or the Release UI package workflow. A release is the owner approving the CI
+run of the package's release pull request, titled
+`chore(main): release ntasks <version>` or
+`chore(main): release @notice-cx/ntasks-ui <version>`, merging that pull
+request, then pressing **Approve and deploy** on the publish run it starts
 ([tools/cli](tools/cli/README.md#releasing),
-[packages/ui](packages/ui/README.md#releasing)). Agents never merge a release
-pull request or turn on auto-merge for one, even where they may merge other
-pull requests. Prepare and verify the change
+[packages/ui](packages/ui/README.md#releasing)). Agents never approve a release
+pull request's workflow runs, merge one or turn on auto-merge for one, even
+where they may merge other pull requests. Prepare and verify the change
 locally first, then ask with the exact command, its target and its effect.
 Tests and CI never reach a deployed Worker, a remote database or npm.
 
