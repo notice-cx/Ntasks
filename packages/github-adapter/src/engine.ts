@@ -866,8 +866,19 @@ export class Engine {
   async link(sender: Sender, args: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.write(sender, 'link_tasks', args, async (draft, model) => {
       const from = (await this.tracked(sender, draft, args.task as string)).record;
-      const to = (await this.tracked(sender, draft, args.to as string)).record;
+      // As in Ntasks, the other task need only be readable: the link is the first task's. A link
+      // the other task holds is its own, so a sender who only reads its project cannot change it.
+      const target = await this.locate(sender, args.to as string, 'read', draft);
+      const writable = sender.projects.get(target.project.projectId) === 'write';
+      const to = writable
+        ? (await this.tracked(sender, draft, args.to as string)).record
+        : (target.record ?? this.fromIssue(target.project, target.issue!));
       if (from.id === to.id) invalid('to (another task)');
+      if (!writable && this.linksBetween(draft, from.id, to.id).some((link) => link.from === to.id))
+        refuse(
+          `${to.id} links to ${from.id}, and project ${target.project.key} is granted to you for reading only; ` +
+            'only a sender who may change it can change that link.',
+        );
       const crosses = from.projectId !== to.projectId;
       const before = { [from.id]: this.dependencies(draft, from.id), [to.id]: this.dependencies(draft, to.id) };
       let answer: Record<string, unknown>;
