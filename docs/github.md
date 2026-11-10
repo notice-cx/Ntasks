@@ -39,8 +39,8 @@ made, because anyone can install a public GitHub App.
 ## What moves a task
 
 A task starts at **Built** when an agent closes it as done with its pull
-request or commit ([Where a change is](concepts.md#where-a-change-is)).
-GitHub's events move it from there:
+request ([Where a change is](concepts.md#where-a-change-is)). GitHub's events
+move it from there:
 
 | On GitHub | The task moves to |
 |---|---|
@@ -49,9 +49,11 @@ GitHub's events move it from there:
 
 - **A deploy** is a passing check whose name starts with `Workers Builds:` or
   `Cloudflare Pages`, the checks Cloudflare's builds report, or a successful
-  deployment to the production environment. Settings lists each deploy it
-  has seen under **Deploys**, with a box that switches it off. A deploy
-  switched off moves no task.
+  deployment to the production environment. A check with another name counts
+  once it is typed under **Deploy checks** in **Set up by hand**
+  ([API](api.md#set-up-by-hand)). Settings lists each deploy it has seen
+  under **Deploys**, with a box that switches it off. A deploy switched off
+  moves no task.
 - **A project that deploys.** The first deploy seen for a project's tasks
   turns on **Changes go live by a deploy** for that project, on the Projects
   page. A project with no deploy, such as a library, stops at Merged. An
@@ -62,6 +64,25 @@ GitHub's events move it from there:
   for tasks already waiting for a merge, such as those closed before GitHub
   was connected.
 
+## When a task stays at a stage
+
+- **Closed with only a commit.** GitHub's events name the pull request and
+  its merge commit, so a task closed with a commit from its branch matches
+  neither. Close tasks with their pull request.
+- **One deploy shipped several merges.** A deploy names the one commit it
+  ran on, so it moves the task merged as that commit. Tasks merged before it
+  stay at Merged unless their own merge was deployed too.
+- **The deploy passed before the task closed.** The check after the close
+  asks GitHub only about the merge, so the task stops at Merged. Redeliver
+  the deploy's event from **Recent Deliveries** ([below](#check-that-it-works)).
+- **Many tasks waiting at once.** Each check reads up to about 40 pull
+  requests, newest first, within the free plan's limit on requests; the next
+  close checks the rest.
+
+In each case, a signal that names the pull request or commit moves the task:
+`report_delivery` from an agent, or `POST /api/delivery`
+([Delivery](api.md#delivery)).
+
 ## Check that it works
 
 Close a task with a pull request and merge the pull request. The task leaves
@@ -69,8 +90,10 @@ Close a task with a pull request and merge the pull request. The task leaves
 After its deploy passes, it shows Live.
 
 GitHub keeps each event the app sent, with Ntasks's answer, on the app's
-page on GitHub, under **Advanced**, **Recent Deliveries**. An event that
-moved nothing names why, such as a check that is not a deploy.
+page on GitHub, under **Advanced**, **Recent Deliveries**, where
+**Redeliver** sends one again. An event Ntasks set aside names why, such as
+a check that is not a deploy; one that matched no task answers with an empty
+`moved` list.
 
 ## Disconnect
 
