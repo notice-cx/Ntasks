@@ -3,6 +3,7 @@ import type { LiveTask } from '@/api/types';
 import { peopleOf } from '@/components/AppSidebar';
 import { groupRows, NO_FILTERS, readBoard } from '@/lib/board-read';
 import { isShortcut, statusMarkFor, statusMarkOfStored } from '@/lib/symbols';
+import { actorKey } from '@ntasks/domain';
 import { actorLabel, checklistCount, waitingOn, type BoardTask } from '@/lib/task-model';
 
 function task(fields: Partial<BoardTask>): BoardTask {
@@ -218,5 +219,27 @@ describe('one agent recorded under several names', () => {
       const read = readBoard([project], reads, { ...NO_FILTERS, assignee });
       expect(read.rows.map((row) => row.id).sort()).toEqual(['web-1', 'web-2', 'web-3', 'web-4']);
     }
+  });
+
+  it("keeps a service's agent whose name carries a client's label when filtered by its key", () => {
+    const actor = 'service:demo/Release Helper (ntasks)';
+    const labelled = new Map([
+      [
+        'web',
+        {
+          data: {
+            project: 'web',
+            prefix: 'web',
+            repo: '',
+            readAt: '2026-11-10T00:00:00Z',
+            tasks: [task({ id: 'web-7', assignee: actor })],
+            epics: [],
+          },
+          error: null,
+        },
+      ],
+    ]);
+    const read = readBoard([project], labelled, { ...NO_FILTERS, assignee: actorKey(actor) });
+    expect(read.rows.map((row) => row.id)).toEqual(['web-7']);
   });
 });

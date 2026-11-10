@@ -172,7 +172,7 @@ prefix names the sender's kind:
 | `service:<name>/<agent>` | A service acting for an agent it names |
 | `visitor:<name>` | A reader with no credential, who changes nothing |
 | `person:<name>` | A person whose own name starts with one of these prefixes |
-| any other name | A person |
+| any other name | A person, unless the server's imported names hold it as an agent or a service ([3.1.1](#311-display-names)) |
 
 **Provenance** is the actor, the model it named, and the time the server
 recorded. Every change carries it ([INV-12](#inv-12)). The work-in-hand
