@@ -352,6 +352,20 @@ export function deployOf(name: string, names: DeployNames, looksLikeOne: boolean
   return looksLikeOne ? 'new' : 'no';
 }
 
+/**
+ * Whether a passing deploy check, by the branch GitHub ran its check suite
+ * for, can be the deploy of its commit: one on the default branch is; one on
+ * the merge queue's branch is only when it started after the merge, since
+ * one that started before was a preview; one on any other branch is not.
+ * GitHub keeps one check suite per app and commit, named for the branch first
+ * pushed with it: for a commit the merge queue landed, the queue's branch,
+ * which holds exactly that commit.
+ */
+export function deployBranchOf(branch: string | null | undefined, defaultBranch: string): 'default' | 'queue' | null {
+  if (branch === defaultBranch) return 'default';
+  return branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) === true ? 'queue' : null;
+}
+
 /** Records what a delivery showed: a deploy check seen for the first time, and projects a deploy turned on. */
 export async function recordDetected(
   db: D1Database,

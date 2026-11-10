@@ -48,6 +48,8 @@ export interface StandInCheckRun {
   readonly conclusion: 'success' | 'failure';
   readonly startedAt: string;
   readonly completedAt: string;
+  /** The branch of its check suite; main when a test names none. */
+  readonly branch?: string;
 }
 
 let appKeys: Promise<CryptoKeyPair> | undefined;
@@ -120,9 +122,11 @@ export interface GitHubCalls {
   readonly pullReads: string[];
   /** The check runs of each commit, which a test sets; a commit not set has none. */
   readonly checkRuns: Map<string, StandInCheckRun[]>;
+  /** Each commit whose check runs the Worker read. */
+  readonly checkReads: string[];
   /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
   readonly histories: Map<string, string[]>;
-  /** Each request the Worker made to GitHub's REST API, as `<method> <path>`. */
+  /** Each request the Worker made to GitHub's API, as `<method> <path>`. */
   readonly apiRequests: string[];
 }
 
@@ -151,6 +155,7 @@ export function standInForGitHub(): GitHubCalls {
     repositories: new Map<number, string[]>(),
     pullReads: [] as string[],
     checkRuns: new Map<string, StandInCheckRun[]>(),
+    checkReads: [] as string[],
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
   };
@@ -163,6 +168,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.repositories.clear();
     calls.pullReads.length = 0;
     calls.checkRuns.clear();
+    calls.checkReads.length = 0;
     calls.histories.clear();
     calls.apiRequests.length = 0;
     appTokens.clear();
@@ -254,21 +260,34 @@ export function standInForGitHub(): GitHubCalls {
           base: { ref: found.base, repo: { full_name: pull[1], default_branch: 'main' } },
         });
       }
-      const runs = /^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/commits\/([0-9a-f]+)\/check-runs$/u.exec(
-        url.origin + url.pathname,
-      )?.[1];
-      if (runs !== undefined) {
+      // GitHub's GraphQL API, for the one query the Worker sends: a commit's passing check runs, by check suite.
+      if (url.href === 'https://api.github.com/graphql' && request.method === 'POST') {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
-        const listed = calls.checkRuns.get(runs) ?? [];
+        const { variables } = (await request.json()) as { variables: { commit: string } };
+        calls.checkReads.push(variables.commit);
+        const suites = new Map<string, StandInCheckRun[]>();
+        for (const run of calls.checkRuns.get(variables.commit) ?? []) {
+          const branch = run.branch ?? 'main';
+          suites.set(branch, [...(suites.get(branch) ?? []), run]);
+        }
         return Response.json({
-          total_count: listed.length,
-          check_runs: listed.map((run) => ({
-            name: run.name,
-            status: 'completed',
-            conclusion: run.conclusion,
-            started_at: run.startedAt,
-            completed_at: run.completedAt,
-          })),
+          data: {
+            repository: {
+              defaultBranchRef: { name: 'main' },
+              object: {
+                checkSuites: {
+                  nodes: [...suites].map(([branch, runs]) => ({
+                    branch: { name: branch },
+                    checkRuns: {
+                      nodes: runs
+                        .filter((run) => run.conclusion === 'success')
+                        .map((run) => ({ name: run.name, startedAt: run.startedAt, completedAt: run.completedAt })),
+                    },
+                  })),
+                },
+              },
+            },
+          },
         });
       }
       // GitHub's comparison of base...head: whether head is ahead of base, behind it, the same commit, or neither.

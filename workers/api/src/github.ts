@@ -42,6 +42,7 @@
  */
 import {
   addInstallation,
+  deployBranchOf,
   deployOf,
   detectedOf,
   githubAppOf,
@@ -156,12 +157,10 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
       if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
-      if (branch === defaultBranch) return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
-      // GitHub keeps one check suite per app and commit, named for the branch first pushed with it: for a
-      // commit the merge queue landed, the queue's branch, which holds exactly that commit. A build there
-      // that started before the merge was a preview; only one started after it can be the deploy.
+      const kind = deployBranchOf(branch, defaultBranch);
+      if (kind === 'default') return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
       const startedAt = textAt(payload, 'check_run', 'started_at');
-      if (branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) !== true || startedAt === undefined)
+      if (kind === null || startedAt === undefined)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
       return { ...live(name, verdict, textAt(payload, 'check_run', 'head_sha')), mergedBy: startedAt };
     }

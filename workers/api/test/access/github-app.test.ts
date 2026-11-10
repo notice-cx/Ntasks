@@ -615,7 +615,7 @@ describe('merged work a deploy shipped that no delivery named', () => {
     expect((await taskOf(projectId, elsewhere)).delivery?.stage).toBe('merged');
     // Its own merge commit has no deploy check either.
     expect(github.apiRequests).toContain(`GET /repos/${REPOSITORY}/compare/${b}...${c}`);
-    expect(github.apiRequests).toContain(`GET /repos/${REPOSITORY}/commits/${c}/check-runs`);
+    expect(github.checkReads).toContain(c);
   });
 
   it('moves a task to live when its deploy was reported before its merge', async () => {
@@ -653,14 +653,45 @@ describe('merged work a deploy shipped that no delivery named', () => {
     const merge = newCommit();
     // A preview of the merge queue's branch, before the merge, and a check that is not a deploy, after it.
     github.checkRuns.set(merge, [
-      { name: 'Workers Builds: site', conclusion: 'success', startedAt: ago(180_000), completedAt: ago(150_000) },
+      {
+        name: 'Workers Builds: site',
+        conclusion: 'success',
+        startedAt: ago(180_000),
+        completedAt: ago(150_000),
+        branch: `gh-readonly-queue/main/pr-85-${merge}`,
+      },
       { name: 'Lint', conclusion: 'success', startedAt: ago(60_000), completedAt: ago(30_000) },
     ]);
     await deliver('pull_request', mergedAt(mine, 85, merge, ago(120_000)));
 
     expect(await runDurableObjectAlarm(store())).toBe(true);
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
-    expect(github.apiRequests).toContain(`GET /repos/${REPOSITORY}/commits/${merge}/check-runs`);
+    expect(github.checkReads).toContain(merge);
+  });
+
+  it('counts a deploy check on the merge queue’s branch after the merge, and not one on another branch', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const queued = await closedWithPullRequest(owner, projectId, 86);
+    const previewed = await closedWithPullRequest(owner, projectId, 87);
+    const landed = newCommit();
+    const branched = newCommit();
+    const deploy = { name: 'Workers Builds: site', conclusion: 'success' as const };
+    const completedAt = ago(30_000);
+    github.checkRuns.set(landed, [
+      { ...deploy, startedAt: ago(60_000), completedAt, branch: `gh-readonly-queue/main/pr-86-${landed}` },
+    ]);
+    // A preview build of a branch pushed at the merge commit, which a delivery of it would not count either.
+    github.checkRuns.set(branched, [{ ...deploy, startedAt: ago(60_000), completedAt, branch: 'preview' }]);
+    await deliver('pull_request', mergedAt(mine, 86, landed, ago(120_000)));
+    await deliver('pull_request', mergedAt(mine, 87, branched, ago(110_000)));
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, queued)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+    expect((await taskOf(projectId, previewed)).delivery?.stage).toBe('merged');
+    expect(github.checkReads).toEqual(expect.arrayContaining([landed, branched]));
   });
 
   it('asks GitHub at most 45 times in one check', async () => {

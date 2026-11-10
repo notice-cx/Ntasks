@@ -1,9 +1,10 @@
 /**
- * The calls Ntasks makes to GitHub's REST API as a workspace's GitHub App
+ * The calls Ntasks makes to GitHub's API as a workspace's GitHub App
  * (github-app.ts): a JSON Web Token signed with the app's private key
  * (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app),
- * exchanged for an installation's token, which reads a pull request, a
- * commit's check runs and whether one commit is in another's history. GitHub
+ * exchanged for an installation's token, which reads a pull request and
+ * whether one commit is in another's history from the REST API, and a
+ * commit's passing check runs from the GraphQL API. GitHub
  * hands the key over in PKCS #1 PEM, which Web Crypto does not import, so it
  * is wrapped as PKCS #8 first.
  */
@@ -191,29 +192,71 @@ function timeOf(value: unknown): string | null {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
-/** A check run of a commit: its name, whether it completed with success, and when it started and completed. */
+/** The value at `path` in an answer, or undefined when any step of it is missing. */
+function at(value: unknown, ...path: readonly string[]): unknown {
+  let found = value;
+  for (const key of path) {
+    if (found === null || typeof found !== 'object' || Array.isArray(found)) return undefined;
+    found = (found as Record<string, unknown>)[key];
+  }
+  return found;
+}
+
+/** A check run of a commit that passed: its name, the branch of its check suite, and when it started and completed. */
 export interface CheckRun {
   readonly name: string;
-  readonly passed: boolean;
+  /** The branch GitHub ran its check suite for, or null when it names none. */
+  readonly branch: string | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
 }
 
-/** The most check runs of a commit read, in one request. */
-const CHECK_RUNS = 100;
+/** The check runs of a commit that passed, and its repository's default branch, which tells a deploy from a preview. */
+export interface PassedChecks {
+  readonly defaultBranch: string;
+  readonly runs: readonly CheckRun[];
+}
+
+/** The most check suites of a commit read, and the most passing runs of each, in one request. */
+const CHECK_SUITES = 50;
+const CHECK_RUNS = 50;
+
+// The REST API names a check run's suite by its id alone; the GraphQL API
+// gives the suite's branch with its runs, so one request answers all of it.
+const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    object(expression: $commit) {
+      ... on Commit {
+        checkSuites(last: ${CHECK_SUITES}) {
+          nodes {
+            branch { name }
+            checkRuns(last: ${CHECK_RUNS}, filterBy: { checkType: ALL, conclusions: [SUCCESS] }) {
+              nodes { name startedAt completedAt }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
 
 /**
- * The latest check runs of `commit` in `repository`, up to CHECK_RUNS, read
- * with an installation's token in one request; null when GitHub does not
- * answer.
+ * The check runs of `commit` in `repository` that passed, up to CHECK_RUNS
+ * in each of up to CHECK_SUITES check suites, with the branch of each run's
+ * suite and the repository's default branch, read with an installation's
+ * token in one request; null when GitHub does not answer.
  */
-export async function checkRunsOf(
-  token: string,
-  repository: string,
-  commit: string,
-): Promise<readonly CheckRun[] | null> {
-  const response = await fetch(`${API}/repos/${repository}/commits/${commit}/check-runs?per_page=${CHECK_RUNS}`, {
-    headers: { ...HEADERS, authorization: `Bearer ${token}` },
+export async function passedChecksOf(token: string, repository: string, commit: string): Promise<PassedChecks | null> {
+  const [owner = '', name = ''] = repository.split('/');
+  const response = await fetch(`${API}/graphql`, {
+    method: 'POST',
+    headers: {
+      'user-agent': HEADERS['user-agent'],
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ query: PASSED_CHECKS, variables: { owner, name, commit } }),
   }).catch(() => null);
   if (response === null) return null;
   if (response.status !== 200) {
@@ -221,21 +264,26 @@ export async function checkRunsOf(
     return null;
   }
   const body: unknown = await response.json().catch(() => null);
-  const runs = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).check_runs : null;
-  if (!Array.isArray(runs)) return null;
-  return runs.flatMap((entry: unknown) => {
-    if (entry === null || typeof entry !== 'object') return [];
-    const run = entry as Record<string, unknown>;
-    if (typeof run.name !== 'string') return [];
-    return [
-      {
-        name: run.name,
-        passed: run.status === 'completed' && run.conclusion === 'success',
-        startedAt: timeOf(run.started_at),
-        completedAt: timeOf(run.completed_at),
-      },
-    ];
+  const defaultBranch = at(body, 'data', 'repository', 'defaultBranchRef', 'name');
+  if (typeof defaultBranch !== 'string') return null;
+  const suites = at(body, 'data', 'repository', 'object', 'checkSuites', 'nodes');
+  const runs = (Array.isArray(suites) ? suites : []).flatMap((suite: unknown) => {
+    const branch = at(suite, 'branch', 'name');
+    const nodes = at(suite, 'checkRuns', 'nodes');
+    return (Array.isArray(nodes) ? nodes : []).flatMap((run: unknown): CheckRun[] => {
+      const runName = at(run, 'name');
+      if (typeof runName !== 'string') return [];
+      return [
+        {
+          name: runName,
+          branch: typeof branch === 'string' ? branch : null,
+          startedAt: timeOf(at(run, 'startedAt')),
+          completedAt: timeOf(at(run, 'completedAt')),
+        },
+      ];
+    });
   });
+  return { defaultBranch, runs };
 }
 
 /**

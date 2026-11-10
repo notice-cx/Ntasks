@@ -878,11 +878,12 @@ task moves to `live` when either of these is true:
   two commits shows the task's merge commit in that merge's history. This is
   the case when several pull requests merge within a minute and the host
   builds only the last. The task goes live at the time the later merge did.
-- A deploy check on the task's merge commit passed and started at or after
-  the merge. This is the case when GitHub delivers the deploy before the
-  merge event, or the task closed after its deploy. The task goes live at the
-  time the check completed. A deploy check that started before the merge was
-  a preview, and moves nothing.
+- A deploy check on the task's merge commit passed on the default branch or
+  the merge queue's branch, and started at or after the merge. This is the
+  case when GitHub delivers the deploy before the merge event, or the task
+  closed after its deploy. The task goes live at the time the check
+  completed. A deploy check that started before the merge was a preview, and
+  so is one on any other branch, as for a delivery: neither moves anything.
 
 A check makes at most 45 requests to GitHub, within the free plan's 50
 requests to other servers: two for each installation it reads through, and

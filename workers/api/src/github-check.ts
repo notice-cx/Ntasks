@@ -14,15 +14,16 @@ import { COMMIT_SHA, type DeliverySignal, type Task, type TaskEngine } from '@nt
 import { signInSecrets } from './access/config.ts';
 import {
   appToken,
-  checkRunsOf,
   inHistoryOf,
   installationRepositories,
   installationSelection,
   installationToken,
+  passedChecksOf,
   pullRequestState,
   REPOSITORY_PAGES,
 } from './access/github-api.ts';
 import {
+  deployBranchOf,
   deployOf,
   detectedOf,
   githubAppOf,
@@ -222,8 +223,9 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
  * first, making at most `budget` requests. A change is deployed when a later
  * merge in its repository is live and has it in its history, as when the
  * host built only the last of several merges in a row; or else when a deploy
- * check on its merge commit passed and started at or after its merge, as
- * when GitHub reported the deploy before the merge.
+ * check on its merge commit passed on the default branch or the merge
+ * queue's and started at or after its merge, as when GitHub reported the
+ * deploy before the merge.
  */
 async function moveDeployed(
   env: Env,
@@ -261,12 +263,13 @@ async function moveDeployed(
     }
     if (requests >= budget) break;
     requests += 1;
-    const runs = await checkRunsOf(token, change.repository, change.mergeCommit);
-    if (runs === null || runs.length === 0) continue;
+    const checks = await passedChecksOf(token, change.repository, change.mergeCommit);
+    if (checks === null || checks.runs.length === 0) continue;
     if (names === null) names = await deployNamesOf(env, secret, workspaceId);
     const known = names;
-    const deploys = runs.flatMap((run) => {
-      if (!run.passed || run.startedAt === null) return [];
+    const deploys = checks.runs.flatMap((run) => {
+      // On the default branch or the merge queue's, as a delivery of it counts it; a preview elsewhere moves nothing.
+      if (run.startedAt === null || deployBranchOf(run.branch, checks.defaultBranch) === null) return [];
       const verdict = deployOf(run.name, known, isDeployCheck(run.name));
       return verdict === 'yes' || verdict === 'new' ? [{ ...run, startedAt: run.startedAt, verdict }] : [];
     });
