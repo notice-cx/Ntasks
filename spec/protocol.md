@@ -774,7 +774,7 @@ the ones above it in this table.
 | Level | Objects | Rules | Operations |
 |---|---|---|---|
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
-| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step and acceptance as done; record a relayed answer or acceptance; retire a request with evidence |
+| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step, acceptance as done and free of a held task ([AUTH-9](#auth-9)); record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12 | Close with a commit or pull request; send a signal |
 | **Live work** | Work in hand | STATE-13, STATE-16, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request |
 

@@ -1,5 +1,5 @@
 /** The checks of the Core level (protocol.md section 7). */
-import { MissingSender, NotOffered, type HistoryEvent, type Outcome, type Written } from '../api.ts';
+import { NotOffered, type HistoryEvent, type Outcome, type Written } from '../api.ts';
 import { answered, expect, fail, refused, same, snapshot, unchanged, type Check } from '../check.ts';
 import { actorOf, file, linksTo, nextYear, taskOf, together } from './steps.ts';
 
@@ -342,40 +342,6 @@ export const core: readonly Check[] = [
       const task = await taskOf(other, id);
       same(task.status, 'open', `${id}'s status after the release`);
       same(task.assignee ?? null, null, `${id}'s holder after the release`);
-    },
-  },
-  {
-    id: 'auth-9-person-frees-on-their-call',
-    rule: 'AUTH-9',
-    level: 'core',
-    title:
-      'A person frees a task someone holds on their own call: nobody holds it, it is recorded as theirs, and what the holder left stays on it; a free naming another holder changes nothing',
-    async run(context) {
-      if (!context.target.senders.person) throw new MissingSender('person');
-      const person = context.api('person');
-      const id = await file(context);
-      answered(
-        await context.setup().claim(id, { work: { branch: 'free-me', next: 'Write the free test' } }),
-        `claiming ${id}`,
-      );
-      const before = await snapshot(context.api(), id);
-      refused(await context.api().decide(id, { kind: 'release' }), `an agent freeing ${id} as a person would`);
-      await unchanged(context.api(), id, before, "the agent's refused free");
-      const other = context.unique('earlier-holder');
-      refused(await person.decide(id, { kind: 'release', holder: other }), `freeing ${id} as held by ${other}`);
-      await unchanged(context.api(), id, before, `the free naming ${other}`);
-      answered(await person.decide(id, { kind: 'release' }), `the person freeing ${id}`);
-      const read = answered(await person.read(id), `reading ${id}`);
-      same([read.task.status, read.task.assignee ?? null], ['open', null], `${id}'s status and holder after the free`);
-      const freedBy = await actorOf(context, 'person');
-      const history = answered(await person.history(id), `reading ${id}'s history`);
-      expect(
-        history.some((event) => event.actor === freedBy && event.actions.some((action) => action !== 'commented')),
-        `${id}'s history does not record the person as freeing it`,
-      );
-      const kept = read.comments.map((comment) => comment.text).join('\n');
-      for (const left of ['free-me', 'Write the free test'])
-        expect(kept.includes(left), `${id} no longer shows ${left}, which its holder left`);
     },
   },
   {
