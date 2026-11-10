@@ -256,4 +256,10 @@ describe('the configuration', () => {
     expect(() => checkConfig(config({ senders: [sender, { ...sender, name: 'Other' }] }))).toThrow(/tokenSha256/u);
     expect(() => checkConfig(config({ senders: [{ ...sender, kind: 'Agent' as never }] }))).toThrow(/kind/u);
   });
+
+  it('refuses a service under the name the adapter records its own changes under', () => {
+    const service = { ...sender, kind: 'service', name: 'github-adapter' } as const;
+    expect(() => checkConfig(config({ senders: [service] }))).toThrow(/its own changes/u);
+    expect(() => checkConfig(config({ senders: [{ ...sender, name: 'github-adapter' }] }))).not.toThrow();
+  });
 });

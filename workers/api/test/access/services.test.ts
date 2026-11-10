@@ -197,6 +197,18 @@ describe('a service credential', () => {
     expect((await createService(browser, 'bad access', [{ projectId: project, access: 'admin' }])).status).toBe(400);
   });
 
+  it('refuses the name Ntasks records its own changes under, in any case', async () => {
+    const project = await createProject('Reserved');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+
+    for (const name of ['Ntasks', 'ntasks']) {
+      const refused = await createService(browser, name, [{ projectId: project, access: 'write' }]);
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ error: 'invalid_request' });
+    }
+  });
+
   it('may not be made by a service credential', async () => {
     const project = await createProject('Owned');
     const browser = new Browser();

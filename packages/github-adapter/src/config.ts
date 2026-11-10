@@ -7,6 +7,9 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+/** The service name the adapter records its own changes under: OWN_ACTOR is `service:` and this. */
+export const OWN_SERVICE = 'github-adapter';
+
 export type Access = 'read' | 'write';
 export type SenderKind = 'agent' | 'service' | 'person';
 
@@ -72,6 +75,9 @@ export function checkConfig(value: AdapterConfig): AdapterConfig {
   for (const sender of value.senders) {
     if (!(['agent', 'service', 'person'] as const).includes(sender.kind))
       fail(`${sender.name}: kind is agent, service or person`);
+    // The adapter records its own changes as this service, such as an epic it closes (engine.ts OWN_ACTOR).
+    if (sender.kind === 'service' && sender.name === OWN_SERVICE)
+      fail(`${sender.name}: the adapter records its own changes under this name; give the service another`);
     if (!/^[0-9a-f]{64}$/u.test(sender.tokenSha256)) fail(`${sender.name}: tokenSha256 is a SHA-256 in hexadecimal`);
     if (tokens.has(sender.tokenSha256)) fail(`${sender.name}: another sender has the same tokenSha256`);
     tokens.add(sender.tokenSha256);

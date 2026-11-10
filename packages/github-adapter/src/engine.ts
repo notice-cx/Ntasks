@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { Access, AdapterConfig, ProjectConfig, SenderKind } from './config.ts';
+import { OWN_SERVICE, type Access, type AdapterConfig, type ProjectConfig, type SenderKind } from './config.ts';
 import { GitHub, labelName, type Issue } from './github.ts';
 import type { HistoryRecord, Ledger, LedgerData, LinkRecord, LinkType, TaskRecord } from './ledger.ts';
 import { invalid, refuse, Refused } from './refused.ts';
@@ -38,7 +38,7 @@ export const LINK_TYPES: readonly LinkType[] = [
 const ACROSS_PROJECTS: readonly LinkType[] = ['related', 'duplicates', 'supersedes', 'merges-after'];
 const PROOF_TYPES = ['task', 'bug', 'feature', 'chore'];
 /** The actor the adapter records the changes it makes on its own under, such as an epic it closes (protocol.md STATE-22). */
-export const OWN_ACTOR = 'service:github-adapter';
+export const OWN_ACTOR = `service:${OWN_SERVICE}`;
 /** The closes after which an epic whose tasks all closed so is no longer needed, rather than done. */
 const NOTHING_NEEDED = ['wont-do', 'no-longer-needed'];
 const closedLast = (child: string) => `Every task under this epic is closed; ${child} closed last.`;
