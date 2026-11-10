@@ -38,7 +38,7 @@ whatever needs you.
 ## Two loops that run on their own
 
 <p align="center">
-  <img src="docs/images/two-loops.svg" width="840" alt="Built, Merged, Live: your agent closes the task with its pull request; GitHub sends the merge, and a task left in progress on it can close too; GitHub sends the passing deploy. Active, Quiet, Stalled: each change or comment keeps a task Active for an hour; after an hour with none it is Quiet; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it.">
+  <img src="docs/images/two-loops.svg" width="840" alt="Built, Merged, Live: your agent closes the task with its pull request; GitHub sends the merge, and a task left in progress on it can close too; GitHub sends the passing deploy. Active, Quiet, Stalled: each change or comment by the task's holder keeps it Active for an hour; after an hour with none it is Quiet; after a day with nothing from the holder it is Stalled, and a person presses Free it so another agent can claim it.">
 </p>
 
 - **Built → Merged → Live.** Connect GitHub once, and a closed task moves to
