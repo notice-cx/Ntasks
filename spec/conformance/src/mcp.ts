@@ -144,6 +144,23 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
       }
       return { ok: true, value: ids };
     },
+    stalled: async (project) => {
+      const ids: string[] = [];
+      let offset: number | undefined = 0;
+      for (let page = 0; offset !== undefined && page < 100; page += 1) {
+        const listed = await call('list_tasks', {
+          project: project ?? target.projects.main,
+          stalled: true,
+          limit: 200,
+          offset,
+        });
+        if (!listed.ok) return listed;
+        const value = listed.value as { tasks: { id: string }[]; nextOffset?: number | null };
+        ids.push(...value.tasks.map((task) => task.id));
+        offset = typeof value.nextOffset === 'number' ? value.nextOffset : undefined;
+      }
+      return { ok: true, value: ids };
+    },
     claim: (task, options = {}) =>
       map(call('claim_task', { task, ...work(options), ...writeOptions(options) }), written),
     claimByPullRequest: (pr, options = {}) =>

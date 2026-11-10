@@ -55,6 +55,7 @@ protocol appears in neither table.
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "closes with its own reason when the person gives none, and with no criteria on a task that has none" |
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "refuses a criterion the task lacks, an unread or stale proposal, a closed task, a request and a task waiting on one, writing nothing" |
 | STATE-15 | `workers/api/test/api/http-decisions.test.ts` › "is cleared by a reopen, whose history keeps it" |
+| STATE-16 | `workers/api/test/api/read-tools.test.ts` › "names a held task stalled once its holder has done nothing on it for a day, or ever, and lists only those with stalled" |
 | STATE-17 | `workers/api/test/api/write-tools.test.ts` › "pins a comment, and unpins earlier pinned comments of the same task, leaving its version" |
 | STATE-17 | `workers/api/test/api/read-tools.test.ts` › "shows a task its epic's pinned comments and what its closed siblings left, newest first and capped" |
 | STATE-17 | `workers/api/test/api/write-tools.test.ts` › "answers a claim on a task in an epic with the epic's pinned comments and its closed tasks' closes" |
@@ -78,6 +79,9 @@ protocol appears in neither table.
 | AUTH-8 | `workers/api/test/api/http-writes.test.ts` › "refuses a claim with other changes, a close by status, an assignee with spaces around it, and a human label taken off" |
 | AUTH-9 | `workers/api/test/api/owner-answers.test.ts` › "releases an assignment only with checked inactivity, keeps its progress, and loses to a new holder" |
 | AUTH-9 | `workers/api/test/api/owner-answers.test.ts` › "releases a dormant assignment and keeps blocked and deferred work as it was" |
+| AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "frees a task on the person’s call, keeping who held it and where the work stopped in a comment" |
+| AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "keeps a blocked task’s status, and refuses a task nobody holds and a closed one, writing nothing" |
+| AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "refuses a free naming the holder the page showed once another agent holds the task, writing nothing" |
 | AUTH-10 | `workers/api/test/api/write-tools.test.ts` › "refuses a project the sender may only read, and one it cannot reach as if it did not exist" |
 | AUTH-10 | `workers/api/test/api/http-writes.test.ts` › "refuses fields that break their rules, a project it cannot reach and one it may only read" |
 | AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
@@ -87,6 +91,7 @@ protocol appears in neither table.
 | AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "needs an approval or an acceptance an agent recorded" |
 | INV-1 | `workers/api/test/api/write-tools.test.ts` › "lets exactly one of two agents claiming at once take the task (rule 1)" |
 | INV-1 | `workers/api/test/engine/writes.test.ts` › "lets exactly one of two agents that read the same version claim the task, and records nothing for the other" |
+| INV-2 | `workers/api/test/api/read-tools.test.ts` › "names a held task stalled once its holder has done nothing on it for a day, or ever, and lists only those with stalled" |
 | INV-3 | `workers/api/test/engine/writes.test.ts` › "answers a repeated write with the same result, without a second change" |
 | INV-3 | `workers/api/test/engine/writes.test.ts` › "refuses a key reused for a different request, or in another project" |
 | INV-3 | `workers/api/test/api/write-tools.test.ts` › "answers a retry with the same claim, and refuses the key for a different claim" |
@@ -140,7 +145,7 @@ conformance -- --list` lists its checks by rule.
 | STATE-2 | That a server never sets `blocked` because of a link |
 | STATE-4 | A claim refused for a `deferred` task, and for one `in_progress` with nobody holding it ([OQ-3](open-questions.md#oq-3)) |
 | STATE-7 | A commit or a pull request refused on a close that is not `done`; only a link is tried |
-| INV-2 | That time alone never releases a claim ([OQ-2](open-questions.md#oq-2)) |
+| INV-2 | That no time longer than a day releases a claim: the test reads a claim a day after its last activity |
 | INV-4 | The `503` with `unavailable` over HTTP after the rereads run out |
 | INV-7 | That an approval closes without proof, and that each of bug, feature and chore needs it ([OQ-8](open-questions.md#oq-8)) |
 | INV-12 | The model recorded in a history event ([OQ-16](open-questions.md#oq-16)) |

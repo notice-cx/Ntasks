@@ -21,11 +21,13 @@ version would catch that, at the cost of more refusals.
 ### OQ-2
 
 **Should a server ever let a claim lapse?** <a id="oq-2"></a>
-([INV-2](protocol.md#inv-2)) Ntasks never releases a claim because time
-passed, unlike Beads, which can treat claims as leases. No Ntasks test
-proves that time alone never releases a claim. A server for unattended
-agents may want a lease; the protocol would then need to say how a lapse is
-recorded and who is told.
+([INV-2](protocol.md#inv-2)) Closed: no. A lease would free work whenever an
+agent's session goes quiet, though the agent may still be working, and
+another agent would then redo it. The protocol shows a quiet claim as
+stalled instead ([STATE-16](protocol.md#state-16)), and a person frees it on
+their own call or an agent frees it with evidence
+([AUTH-9](protocol.md#auth-9)). Beads can treat claims as leases; Ntasks
+never releases a claim because time passed.
 
 ### OQ-3
 
@@ -214,6 +216,16 @@ renumbers them, and an acceptance relayed by number depends on the
 proposal version it names. A list of criteria with stable ids would let a
 person tick them one by one before the close, and let a server check each
 one, at the cost of a second way to write what shows a task done.
+
+### OQ-25
+
+**Can a host tell the server that a session ended?** <a id="oq-25"></a>
+([AUTH-9](protocol.md#auth-9), [STATE-16](protocol.md#state-16)) An agent's
+host may know when the agent's session ends, such as Claude Code's
+SessionEnd hook. The host could tell the server, which could then record
+that the holder stopped, as the evidence AUTH-9 asks of an agent's release.
+The protocol would need to say who may send it, how a server trusts it, and
+whether it frees the task or only marks it.
 
 ### OQ-26
 

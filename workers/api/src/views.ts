@@ -6,6 +6,7 @@
  * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
  */
 import {
+  isStalled,
   lacksProof,
   type CustomField,
   type Json,
@@ -119,8 +120,8 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
   };
 }
 
-/** A task as the web app's pages read it. */
-export function webTask(task: Task) {
+/** A task as the web app's pages read it, at `now`, the time of the read. */
+export function webTask(task: Task, now: string) {
   return {
     id: task.id,
     title: titleOf(task),
@@ -141,6 +142,8 @@ export function webTask(task: Task) {
     work: task.work,
     /** When the assignee last changed or commented on the task. */
     lastActivityAt: task.lastActivityAt,
+    /** In progress, and its holder has done nothing on it for a day or ever (isStalled). Shown only. */
+    stalled: isStalled(task, now),
     parent: task.parentId,
     deferUntil: task.deferUntil,
     dueAt: task.dueAt,
@@ -189,18 +192,18 @@ export function webTask(task: Task) {
 /** Tasks as the web app's pages read them, each with `proposalVersion`: its
  * proposal's version while it waits on a person, which their answer names,
  * and null otherwise, so a long board hashes only the tasks someone answers. */
-export function webTasks(tasks: readonly Task[]) {
+export function webTasks(tasks: readonly Task[], now: string) {
   return Promise.all(
     tasks.map(async (task) => ({
-      ...webTask(task),
+      ...webTask(task, now),
       proposalVersion: waitsOnPerson(task) ? await proposalVersionOf(task) : null,
     })),
   );
 }
 
-/** A task in full, as get_task returns it. */
-export function mcpTask(task: Task) {
-  const web = webTask(task);
+/** A task in full, as get_task returns it, at `now`, the time of the read. */
+export function mcpTask(task: Task, now: string) {
+  const web = webTask(task, now);
   return {
     id: task.id,
     title: web.title,
@@ -211,6 +214,7 @@ export function mcpTask(task: Task) {
     for: task.assigneeFor,
     work: task.work,
     lastActivityAt: task.lastActivityAt,
+    stalled: web.stalled,
     labels: task.labels,
     parent: task.parentId,
     ready: task.ready,
@@ -250,8 +254,8 @@ export function mcpTask(task: Task) {
 /** A task as list_tasks shows it: enough to choose one, which get_task then
  * reads in full. Its long text (description, acceptance, notes and design) is
  * left out, and so is a field with no value, so a long page stays readable. */
-export function mcpSummary(task: Task): Record<string, unknown> {
-  const full = mcpTask(task);
+export function mcpSummary(task: Task, now: string): Record<string, unknown> {
+  const full = mcpTask(task, now);
   const row: Record<string, unknown> = {
     id: full.id,
     title: full.title,
@@ -261,6 +265,8 @@ export function mcpSummary(task: Task): Record<string, unknown> {
     assignee: full.assignee,
     for: full.for,
     lastActivityAt: full.lastActivityAt,
+    // Only a stalled task names it, so a page of tasks at work stays short.
+    stalled: full.stalled || null,
     labels: full.labels,
     parent: full.parent,
     ready: full.ready,
@@ -297,8 +303,8 @@ export type McpTaskField = keyof ReturnType<typeof mcpTask>;
 /** A task as a write's reply shows it unless asked for all of it: its id,
  * the fields `named` lists as get_task shows them, and its version, which
  * goes up with each change. */
-export function writtenView(task: Task, named: readonly McpTaskField[]): Record<string, unknown> {
-  const full: Partial<Record<McpTaskField, unknown>> = mcpTask(task);
+export function writtenView(task: Task, named: readonly McpTaskField[], now: string): Record<string, unknown> {
+  const full: Partial<Record<McpTaskField, unknown>> = mcpTask(task, now);
   return {
     id: task.id,
     ...Object.fromEntries([...new Set(named)].map((field) => [field, full[field] ?? null])),

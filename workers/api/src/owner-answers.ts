@@ -11,6 +11,8 @@ import {
   ACCEPTED_REASON,
   criteriaOf,
   markedStep,
+  releaseComment,
+  sameActor,
   TASK_LIMITS,
   type AcceptedCriterion,
   type Json,
@@ -177,12 +179,6 @@ const isRecord = (value: unknown): value is JsonObject =>
 const stringOf = (value: unknown): string => (typeof value === 'string' ? value : '');
 
 /** Beads' actor match, which NoticeOS kept: a run of `.`, `_` or `-` is one separator, and `--` another. */
-function canonicalActor(name: string): string {
-  return name.replace(/[._-]+/gu, (run) => (run === '--' ? '/' : '_'));
-}
-function sameActor(a: string, b: string): boolean {
-  return a === b || canonicalActor(a) === canonicalActor(b);
-}
 
 /** A recorded pick, read strictly; null for anything else. */
 interface RecordedPick {
@@ -870,6 +866,41 @@ function acceptanceDisputeWrite(
   return draft.write();
 }
 
+/**
+ * A person freeing a task someone holds, on their own call: nobody holds it
+ * then, a task in progress is open again, and a blocked or deferred one keeps
+ * its status, as after an agent's release. A comment keeps who freed it and
+ * where the work stopped. An agent frees a task only with reconcile_task's
+ * release, naming the holder and how it checked the holder stopped. `shown`
+ * is the holder the person's page showed: a task someone else took since is
+ * refused, so the press never frees a claim the person did not see.
+ */
+export function releaseWrite(task: Task, around: Surroundings, deciding: Deciding, shown?: string): TaskWrite | null {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  const holder = task.assignee;
+  if (holder === null)
+    throw new Refused(
+      'state',
+      `refused: nobody holds ${task.id}, so there is no claim to free.`,
+      `Nobody holds ${task.id}.`,
+    );
+  if (shown !== undefined && shown !== holder)
+    throw new Refused(
+      'state',
+      `refused: holder: ${holder} holds ${task.id} now, not ${shown}; read it again.`,
+      `${holder} took ${task.id} after this page showed it. Read it again; nothing was freed.`,
+      'holder',
+    );
+  const draft = new Draft(task);
+  draft.comment = releaseComment(
+    { id: task.id, holder, helper: task.assigneeFor, lastActivityAt: task.lastActivityAt, work: task.work },
+    around.comments,
+    deciding.actor,
+  );
+  draft.handBack(false, task.status !== 'in_progress');
+  return draft.write();
+}
+
 // ─── An owner answer an agent relays, and maintenance ─────────────────────────
 
 /** The checks of a disposition's arguments together, before any read. */
@@ -1314,8 +1345,8 @@ async function decide(
 export function notAPerson(): Refused {
   return new Refused(
     'forbidden',
-    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Record an existing owner answer with reconcile_task.',
-    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Answer it in the Ntasks web app.',
+    'refused: only a person signed in to the web app answers a decision, approves an approval, ticks a step, accepts a task as done or frees a task on their own call, or disputes an answer relayed for them. Record an existing owner answer, or release a holder that stopped with its evidence, with reconcile_task.',
+    'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done or frees a task on their own call, or disputes an answer relayed for them. Answer it in the Ntasks web app.',
   );
 }
 
@@ -1405,6 +1436,23 @@ export function markStep(
     (task, around, deciding) => stepWrite(task, marking, around, deciding),
     retry,
     shown,
+  );
+}
+
+/** A person freeing a task someone holds, on their own call (releaseWrite). */
+export function release(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  retry?: RetryRequest,
+  shown?: string,
+): Promise<Written> {
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, around, deciding) => releaseWrite(task, around, deciding, shown),
+    retry,
   );
 }
 

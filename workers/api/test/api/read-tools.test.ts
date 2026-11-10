@@ -286,6 +286,49 @@ describe('list_tasks', () => {
     expect(child).not.toHaveProperty('description');
   });
 
+  it('names a held task stalled once its holder has done nothing on it for a day, or ever, and lists only those with stalled', async () => {
+    const later = clock('2026-11-06T12:00:00.000Z');
+    const own = api({ now: later.now });
+    const where = await newProject(own.engine);
+    const make = async (title: string) => (await own.engine.createTask(where.id, { title }, OWNER)).task;
+    const quiet = await make('Rebuild the home page');
+    const busy = await make('Rebuild the pricing page');
+    const handed = await make('Rebuild the about page');
+    for (const task of [quiet, busy])
+      await own.engine.writeTask(
+        where.id,
+        task.id,
+        { expectedVersion: 1, set: { assignee: AGENT.name, status: 'in_progress' } },
+        AGENT,
+      );
+    // Given to an agent that never wrote to it: its holder has recorded nothing.
+    await own.engine.writeTask(
+      where.id,
+      handed.id,
+      { expectedVersion: 1, set: { assignee: 'agent:gone', status: 'in_progress' } },
+      OWNER,
+    );
+    const stalled = async (id: string) =>
+      (await read<{ task: { stalled: boolean } }>(own, 'get_task', { project: where.id, task: id })).task.stalled;
+    const list = async (args: Record<string, unknown>) =>
+      (await read<Listed>(own, 'list_tasks', { project: where.id, ...args })).tasks;
+
+    later.advance(23 * 60);
+    expect([await stalled(quiet.id), await stalled(busy.id), await stalled(handed.id)]).toEqual([false, false, true]);
+    await own.engine.addComment(where.id, busy.id, 'Still at it.', AGENT);
+    later.advance(2 * 60);
+
+    expect([await stalled(quiet.id), await stalled(busy.id), await stalled(handed.id)]).toEqual([true, false, true]);
+    // Stalled is shown only: a day of quiet leaves the claim as it was.
+    expect(await own.engine.getTask(where.id, quiet.id)).toMatchObject({ status: 'in_progress', assignee: AGENT.name });
+    expect((await list({ stalled: true })).map((task) => task.id).sort()).toEqual([quiet.id, handed.id].sort());
+    const rows = await list({});
+    expect(rows.find((row) => row.id === quiet.id)).toMatchObject({ stalled: true });
+    expect(rows.find((row) => row.id === busy.id)).not.toHaveProperty('stalled');
+    // A task nobody holds is never stalled, however long it waits.
+    expect(await stalled((await make('Write the launch post')).id)).toBe(false);
+  });
+
   it('narrows by readiness, status, assignee, labels, type, parent and words', async () => {
     expect(idsOf(await listed({ ready: true }))).toEqual([ids.blocker, ids.epic, ids.child]);
     expect(idsOf(await listed({ status: ['closed'] }))).toEqual([ids.closed]);

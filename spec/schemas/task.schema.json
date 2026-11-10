@@ -31,6 +31,10 @@
     "for": { "$ref": "claim.schema.json#/properties/for" },
     "work": { "$ref": "claim.schema.json#/$defs/workDetails" },
     "lastActivityAt": { "$ref": "claim.schema.json#/properties/lastActivityAt" },
+    "stalled": {
+      "description": "In progress and held, with no holder activity for the period the server states, or none recorded (STATE-16).",
+      "type": "boolean"
+    },
     "choices": { "oneOf": [{ "$ref": "choices.schema.json" }, { "type": "null" }] },
     "steps": {
       "description": "On a request to do steps, its steps (do-request.schema.json); null or left out on any other task.",

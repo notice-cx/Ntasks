@@ -103,7 +103,7 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
     repo: '',
     readAt: now(),
     label,
-    tasks: await webTasks(page.tasks.map(links.task)),
+    tasks: await webTasks(page.tasks.map(links.task), context.now()),
     next: page.next,
   });
 }
@@ -175,7 +175,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     repo: '',
     readAt: found.readAt,
     closedSince: found.closedSince,
-    tasks: await webTasks(found.tasks.map(links.task)),
+    tasks: await webTasks(found.tasks.map(links.task), context.now()),
     epics: epics?.map(epicView) ?? null,
     actors: [],
     lastSeq,
@@ -217,7 +217,7 @@ export async function searchRoute(context: ReadContext, url: URL): Promise<Respo
     ...(task ? [task] : []),
     ...(await withExternalLinks(engine, matched.slice(0, task ? limit - 1 : limit))),
   ];
-  const views = await webTasks(page.map(links.task));
+  const views = await webTasks(page.map(links.task), context.now());
   return json({
     readAt: found.readAt,
     closedSince: found.closedSince,
@@ -275,7 +275,7 @@ export async function taskRoute(context: ReadContext, url: URL, taskId: string):
     linksSeenBy(context),
     engine.parentContext(project.id, taskId),
   ]);
-  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)]), proposalVersionOf(task)]);
+  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)], now()), proposalVersionOf(task)]);
   return json({
     project: project.key,
     prefix: project.prefix,
@@ -326,14 +326,16 @@ export async function changesRoute(context: ReadContext, url: URL): Promise<Resp
 
 /** What a path under /api/tasks/:id names: its history, its comments, its
  * close, or a person's answer, pick, dismissal or dispute. */
-export type TaskPart = 'history' | 'comments' | 'close' | 'respond' | 'choose' | 'dismiss' | 'dispute' | 'accept';
+export type TaskPart =
+  'history' | 'comments' | 'close' | 'respond' | 'choose' | 'dismiss' | 'dispute' | 'accept' | 'release';
 
 /** The task id in /api/tasks/:id and the part of the task a path under it
  * names, or null for another path. */
 export function taskPath(pathname: string): { readonly taskId: string; readonly part: TaskPart | null } | null {
-  const match = /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close|respond|choose|dismiss|dispute|accept))?$/u.exec(
-    pathname,
-  );
+  const match =
+    /^\/api\/tasks\/([^/]+)(?:\/(history|comments|close|respond|choose|dismiss|dispute|accept|release))?$/u.exec(
+      pathname,
+    );
   if (!match || !isTaskId(match[1])) return null;
   return { taskId: match[1]!, part: (match[2] as TaskPart | undefined) ?? null };
 }

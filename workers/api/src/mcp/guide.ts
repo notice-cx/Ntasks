@@ -41,9 +41,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-09: a person can close a task as done on their own call, waiving criteria of its acceptance; get_task shows it as closeAcceptance. When the owner does so in conversation, reconcile_task action accepted records it, with met: the criteria they found met. Only a person waives a criterion: close_task as done still names its proof.',
   '2026-11-09: everything about a task goes on the task, as a comment or its fields, never in a separate note (workflow step 4).',
   "2026-11-09: comment_on_task with pin: true pins a comment. get_task and claim_task on a task in an epic show parent: the epic's pinned comments and its most recently closed tasks with each one's close reason and proof (workflow steps 3 and 4).",
+  '2026-11-09: get_task and list_tasks name a task stalled: in progress, and its holder has done nothing on it for a day, or ever. list_tasks takes stalled: true to list them. A person frees one on their own call in the web app; an agent only with reconcile_task action release and its evidence.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */

@@ -16,6 +16,7 @@ import {
   markedStep,
   PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
+  releaseComment,
   TASK_LIMITS,
   type TaskResolution,
 } from '@ntasks/domain';
@@ -717,6 +718,35 @@ export function createFixtureTasksApi({
       task.resolution = null;
       task.closeAcceptance = null;
       task.proof = null;
+      touch(task);
+    },
+    async release(id, key, shown) {
+      reach();
+      const task = find(id, key);
+      const holder = task.assignee;
+      if (task.status === 'closed' || holder === null) throw new ApiError(`Nobody holds ${id}.`, 409, 'task_refused');
+      if (holder !== shown)
+        throw new ApiError(
+          `${holder} took ${id} after this page showed it. Read it again; nothing was freed.`,
+          409,
+          'task_refused',
+        );
+      // Written before the work details go, as the Worker writes it.
+      const comment = releaseComment(
+        {
+          id,
+          holder,
+          helper: task.for ?? null,
+          lastActivityAt: task.lastActivityAt ?? null,
+          work: task.work ?? {},
+        },
+        state.comments.get(id) ?? [],
+        FIXTURE_ACTOR,
+      );
+      addComment(task, comment);
+      endWork(task);
+      task.assignee = null;
+      if (task.status === 'in_progress') task.status = 'open';
       touch(task);
     },
     async resolveGate(id, key, reason, options) {

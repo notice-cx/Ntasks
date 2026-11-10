@@ -130,6 +130,7 @@ cite.
 | Claim | Taking a task: it becomes `in_progress` and records its **holder**. |
 | Work in hand | What the holder records while working: its helper agent, session, worktree, branch, pull request, last tested commit and next step ([3.3](#33-claim-and-work-in-hand)). |
 | Last activity | When the holder last changed or commented on the task. |
+| Stalled | A task in progress whose holder has no activity for a period the server states, or none recorded ([STATE-16](#state-16)). It is shown only. |
 | Close | Ending a task with a **resolution** and a reason. |
 | Criterion | One line or list item of a task's `acceptance`, which says what shows the task done ([3.10](#310-acceptance-as-done)). |
 | Acceptance as done | A person closing a task as done on their own call, recording each criterion as met or **waived** ([3.10](#310-acceptance-as-done)). |
@@ -194,7 +195,7 @@ Schemas: [`task`](schemas/task.schema.json),
 | `parent` | The epic it belongs to |
 | `estimateMinutes` | How long the work should take |
 | `ready`, `awaitingHuman` | Whether someone can start it now, and whether it waits on a person, as the server worked them out |
-| `assignee`, `for`, `work`, `lastActivityAt` | Its claim ([3.3](#33-claim-and-work-in-hand)) |
+| `assignee`, `for`, `work`, `lastActivityAt`, `stalled` | Its claim ([3.3](#33-claim-and-work-in-hand)) |
 | `dependencies`, `externalLinks` | Its links ([3.5](#35-links)) |
 | `choices`, `choice`, `answer` | A decision's options, the pick and the recorded answer ([3.6](#36-decisions)) |
 | `deferUntil` | The time it is hidden from ready work until |
@@ -220,6 +221,13 @@ work in hand when it claims the task or comments on it:
 Each new value replaces the one before it. `lastActivityAt` is the time of
 the holder's latest change or comment on the task. It is shown only and
 never releases a claim ([INV-2](#inv-2)).
+
+**STATE-16.** <a id="state-16"></a>A server MUST mark a task `stalled` when
+it is in progress and held, and its holder has no activity for the period the
+server states, or none recorded; and only then. Ntasks's period is 24 hours.
+A server MUST work it out at the time of the read, MUST let a reader list
+only stalled tasks, and MUST NOT change the task because it is stalled
+([INV-2](#inv-2)): a person frees it ([AUTH-9](#auth-9)).
 
 **STATE-13.** <a id="state-13"></a>Only the holder MAY set `for` and
 `work`, and only while the task is not closed. A server MUST clear both in
@@ -666,10 +674,21 @@ a person has chosen. A link to or from a human request changes or goes only
 when the person decides; a new one MAY be added.
 
 **AUTH-9.** <a id="auth-9"></a>A sender other than the holder MAY release a
-task only by naming the holder exactly, stating that it checked the holder
-stopped working and how, and recording the progress the holder left. A task
-in progress becomes open; a blocked or deferred one keeps its status. The
-age of the last activity alone MUST NOT be accepted as that evidence.
+task only:
+
+- as a person with write access to its project, on their own call; the
+  server MUST record that the person freed it. When the person's free names
+  the holder they were shown, a server MUST refuse it while someone else
+  holds the task, and MUST change nothing; or
+- by naming the holder exactly, stating that it checked the holder stopped
+  working and how, and recording the progress the holder left. The age of
+  the last activity alone MUST NOT be accepted as that evidence.
+
+A task in progress becomes open; a blocked or deferred one keeps its
+status. Either way, a server MUST keep on the task what the holder left,
+since the release clears its work details ([STATE-13](#state-13)): its
+helper, its last activity, its work details and its last comment, such as
+in a comment the release adds.
 
 **AUTH-11.** <a id="auth-11"></a>Only a person MAY accept a task as done
 over its criteria ([3.10](#310-acceptance-as-done)). A server MUST refuse an
@@ -704,7 +723,9 @@ with nothing recorded for it.
 MUST NOT release a claim, give a task to someone else or let a claim expire
 because time passed, however old its last activity. A claim ends when its
 holder releases it, the task closes, or another sender releases it as
-[AUTH-9](#auth-9) allows ([OQ-2](open-questions.md#oq-2)).
+[AUTH-9](#auth-9) allows. A server MAY show that a claim has gone quiet
+([STATE-16](#state-16)); the protocol keeps no lease
+([OQ-2](open-questions.md#oq-2)).
 
 **INV-3. A retried write never repeats.** <a id="inv-3"></a>A write MAY
 carry an idempotency key: 8 to 128 letters, digits, dots, underscores,
@@ -775,9 +796,9 @@ the ones above it in this table.
 | Level | Objects | Rules | Operations |
 |---|---|---|---|
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
-| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step and acceptance as done; record a relayed answer or acceptance; retire a request with evidence |
+| **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step, acceptance as done and free of a held task ([AUTH-9](#auth-9)); record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12 | Close with a commit or pull request; send a signal |
-| **Live work** | Work in hand, pinned comments, parent context | STATE-13, STATE-17, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request; pin and unpin a comment; read a task's parent context |
+| **Live work** | Work in hand, pinned comments, parent context | STATE-13, STATE-16, STATE-17, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request; pin and unpin a comment; read a task's parent context |
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that

@@ -28,7 +28,7 @@ import { Button, IconButton } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
-import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
 import {
   fieldAvailable,
   operationAvailable,
@@ -40,6 +40,7 @@ import {
 } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
 import { ageMs, calendarDay, formatAge, formatMinutes } from '../../lib/format';
+import { activityOf } from '../../lib/live';
 import {
   isAgentActor,
   statusMarkFor,
@@ -107,6 +108,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const held = task.assignee !== null && task.status !== 'closed';
   const helper = held ? (task.for ?? null) : null;
   const active = held && task.lastActivityAt ? formatAge(ageMs(context.nowMs, task.lastActivityAt)) : null;
+  const stalled = held && activityOf(task, context.nowMs) === 'stalled';
   return (
     <>
       {type !== 'task' && type !== 'other' ? (
@@ -160,7 +162,12 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
           For <span className="text-ink-2">{helper}</span>
         </RowMeta>
       ) : null}
-      {active ? (
+      {stalled ? (
+        <RowMeta data-row-activity="stalled">
+          <ActivityMark activity="stalled" size={13} label={null} />
+          {active ? `Stalled, last active ${active} ago` : 'Stalled, nothing recorded'}
+        </RowMeta>
+      ) : active ? (
         <RowMeta data-row-activity="">
           <Activity aria-hidden />
           Active {active} ago
