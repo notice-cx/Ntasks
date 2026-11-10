@@ -336,7 +336,8 @@ it through a `blocks` link, as on an approval, and it grants no permission.
 
 Schema: [`delivery`](schemas/delivery.schema.json).
 
-A task closed as done with a commit or a pull request has a delivery:
+A task closed as done with a commit or a pull request has a delivery, unless
+it is a decision or an approval:
 
 | Stage | Means |
 |---|---|
@@ -570,8 +571,10 @@ stateDiagram-v2
 ```
 
 **STATE-12.** <a id="state-12"></a>A close as `done` that names a commit or
-a pull request MUST start the task's delivery at `built`. A commit or pull
-request the close leaves out MAY come from the holder's work details. A
+a pull request MUST start the task's delivery at `built`, unless the task is a
+decision or an approval, which ships no code and MUST start none. A commit or
+pull request the close leaves out MAY come from the holder's work details,
+unless the close names only a link. A
 signal names a repository, a stage (`merged` or `live`), and pull requests
 and commits; it moves each closed task whose pull request, commit or merge
 commit matches one it names, in the projects the sender may change:
@@ -781,7 +784,9 @@ offers custom fields. The levels are independent above
 Core: a server MAY claim Core and Delivery without Human decisions and
 approvals. How a server states the levels it claims is
 [OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
-[conformance suite](conformance/README.md) checks that claim.
+[conformance suite](conformance/README.md) checks that claim;
+[the spec's README](README.md#implementations) lists each server and the
+levels it passes.
 
 ## 8. Extensions
 
@@ -876,7 +881,8 @@ protocol version it implements is [OQ-18](open-questions.md#oq-18).
   is trusted as far as its sender's grant: only a sender that may change a
   project moves its tasks. A server SHOULD grant signals to a dedicated
   service credential, or take them from the code host's webhook only once
-  the delivery's signature checks out.
+  the delivery's signature checks out and, for an app anyone can install,
+  only from an installation the workspace's owner made.
 - **Retries and replays.** Idempotency keys are kept for each sender, so
   one sender cannot replay or block another's key. A replay returns the
   first answer with the task as it stands now.

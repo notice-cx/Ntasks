@@ -235,7 +235,7 @@ describe('the GitHub receiver', () => {
 
     for (const [run, reason] of [
       [checkRun(DEPLOY_CHECK, merge, { branch: 'preview' }), /default branch/u],
-      [checkRun('Lint', merge), /not among this workspace's deploy checks/u],
+      [checkRun('Lint', merge), /is not a deploy/u],
       [checkRun(DEPLOY_CHECK, merge, { conclusion: 'failure' }), /completed with success/u],
       [{ ...checkRun(DEPLOY_CHECK, merge), action: 'created' }, /completed with success/u],
     ] as const) {
@@ -366,7 +366,17 @@ describe('the GitHub webhook in Settings', () => {
 
     expect(await github('/api/access/github')).toEqual({
       status: 200,
-      body: { github: { url, secretSaved: false, deployChecks: [], updatedAt: null } },
+      body: {
+        github: {
+          url,
+          secretSaved: false,
+          deployChecks: [],
+          updatedAt: null,
+          app: null,
+          installations: [],
+          detected: [],
+        },
+      },
     });
     expect(await github('/api/access/github', { deployChecks: ['production'] })).toMatchObject({
       status: 400,
@@ -383,6 +393,9 @@ describe('the GitHub webhook in Settings', () => {
           secretSaved: true,
           deployChecks: ['Workers Builds: app', 'production'],
           updatedAt: expect.any(String),
+          app: null,
+          installations: [],
+          detected: [],
         },
       },
     });

@@ -105,7 +105,8 @@ export async function setupStateHolds(
   return sameBytes(await sha256(signature), expected);
 }
 
-function cookieValue(headers: Headers, name: string): string | null {
+/** The value of the cookie `name` the request carries, or null when it carries none. */
+export function cookieValue(headers: Headers, name: string): string | null {
   for (const part of (headers.get('cookie') ?? '').split(';')) {
     const separator = part.indexOf('=');
     if (separator > 0 && part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim();
@@ -127,6 +128,23 @@ export interface ConvertedApp {
  * does not answer with an app.
  */
 export async function convertManifest(code: string): Promise<ConvertedApp | null> {
+  const body = await manifestConversion(code);
+  if (body === null) return null;
+  const { client_id: clientId, client_secret: clientSecret, owner } = body;
+  const ownerId = owner !== null && typeof owner === 'object' ? (owner as Record<string, unknown>).id : undefined;
+  if (typeof clientId !== 'string' || clientId.length === 0) return null;
+  if (typeof clientSecret !== 'string' || clientSecret.length === 0) return null;
+  if (typeof ownerId !== 'number' || !Number.isSafeInteger(ownerId) || ownerId < 1) return null;
+  return { github: { clientId, clientSecret }, ownerId: String(ownerId) };
+}
+
+/**
+ * GitHub's answer to the exchange of a manifest's code
+ * (`POST /app-manifests/{code}/conversions`, which needs no token): the new
+ * app's fields as GitHub names them. Null when the code is malformed or
+ * GitHub does not answer with an app.
+ */
+export async function manifestConversion(code: string): Promise<Record<string, unknown> | null> {
   if (!/^[A-Za-z0-9_-]{1,128}$/u.test(code)) return null;
   let response: Response;
   try {
@@ -146,11 +164,5 @@ export async function convertManifest(code: string): Promise<ConvertedApp | null
     return null;
   }
   const body: unknown = await response.json().catch(() => null);
-  if (body === null || typeof body !== 'object') return null;
-  const { client_id: clientId, client_secret: clientSecret, owner } = body as Record<string, unknown>;
-  const ownerId = owner !== null && typeof owner === 'object' ? (owner as Record<string, unknown>).id : undefined;
-  if (typeof clientId !== 'string' || clientId.length === 0) return null;
-  if (typeof clientSecret !== 'string' || clientSecret.length === 0) return null;
-  if (typeof ownerId !== 'number' || !Number.isSafeInteger(ownerId) || ownerId < 1) return null;
-  return { github: { clientId, clientSecret }, ownerId: String(ownerId) };
+  return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
 }

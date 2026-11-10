@@ -6,6 +6,7 @@ import { file } from './steps.ts';
 export const bindings: readonly Check[] = [
   {
     id: 'mcp-1-held-tasks-lead-the-instructions',
+    binding: 'mcp',
     rule: 'MCP-1',
     level: 'live',
     title: "The held tasks come before any longer text, within the first 4,096 characters of the server's instructions",
@@ -21,6 +22,7 @@ export const bindings: readonly Check[] = [
   },
   {
     id: 'mcp-2-keyless-retry-answered-once',
+    binding: 'mcp',
     rule: 'MCP-2',
     level: 'core',
     strength: 'should',
@@ -36,6 +38,7 @@ export const bindings: readonly Check[] = [
   },
   {
     id: 'mcp-3-refusal-is-an-error-result',
+    binding: 'mcp',
     rule: 'MCP-3',
     level: 'core',
     title: 'A refused call answers a tool result marked as an error, and nothing of it is stored',
@@ -51,6 +54,7 @@ export const bindings: readonly Check[] = [
   },
   {
     id: 'http-1-refusal-carries-an-error-code',
+    binding: 'http',
     rule: 'HTTP-1',
     level: 'core',
     title: 'A refused request changes nothing, and its body carries an error code',

@@ -35,6 +35,19 @@ import {
   workspaceNameOf,
 } from './grants.ts';
 import {
+  convertGitHubApp,
+  endGitHubAppCookie,
+  githubAppLinks,
+  githubAppView,
+  gitHubAppStateOf,
+  githubIdOf,
+  removeGitHubApp,
+  saveGitHubApp,
+  setDeployCheck,
+  SETTINGS_PAGE,
+  startGitHubApp,
+} from './github-app.ts';
+import {
   githubWebhookSettingsOf,
   githubWebhookView,
   removeGitHubWebhook,
@@ -851,11 +864,15 @@ async function appsApi(
 }
 
 /**
- * The GitHub webhook of the request's workspace, for its owners: GET /github
- * shows where GitHub sends deliveries, whether a secret is saved and the
- * deploy checks, never the secret; POST /github saves a secret, deploy
- * checks or both; POST /github/remove removes the webhook. Null for any
- * other path.
+ * GitHub for the request's workspace, for its owners. GET /github shows the
+ * workspace's GitHub App, its installations and the deploy checks
+ * deliveries showed, with the webhook set up by hand: where GitHub sends
+ * deliveries, whether a secret is saved and the deploy checks typed, never
+ * a secret. POST /github/app starts Connect GitHub; GitHub returns the
+ * browser to GET /github/app/created, and POST /github/app/remove forgets
+ * the app. POST /github/checks switches a detected deploy check on or off.
+ * POST /github saves a webhook secret, typed deploy checks or both, and
+ * POST /github/remove removes that webhook. Null for any other path.
  */
 async function githubApi(
   request: Request,
@@ -864,22 +881,53 @@ async function githubApi(
   path: string,
   url: URL,
 ): Promise<Response | null> {
-  const show = path === '/github' && request.method === 'GET';
-  const save = path === '/github' && request.method === 'POST';
-  const remove = path === '/github/remove' && request.method === 'POST';
-  if (!show && !save && !remove) return null;
-  const owned = ownedWorkspace(request, principal, 'its GitHub webhook');
-  if (owned instanceof Response) return owned;
-  const workspaceId = owned.workspace.id;
+  const post = request.method === 'POST';
+  const route =
+    path === '/github' && request.method === 'GET'
+      ? 'show'
+      : path === '/github/app/created' && request.method === 'GET'
+        ? 'created'
+        : post && ['/github', '/github/remove', '/github/app', '/github/app/remove', '/github/checks'].includes(path)
+          ? path
+          : null;
+  if (route === null) return null;
   const secrets = signInSecrets(env);
   if (!secrets) return notConfigured(env);
-  if (remove) {
+  if (route === 'created') return githubAppCreated(request, env, principal, url, secrets.secret);
+  const owned = ownedWorkspace(request, principal, 'its GitHub connection');
+  if (owned instanceof Response) return owned;
+  const workspaceId = owned.workspace.id;
+  if (route === '/github/app') {
+    const started = await startGitHubApp(secrets.secret, url.origin, workspaceId, principal.userId);
+    return json({ action: started.action, manifest: started.manifest }, 200, { 'set-cookie': started.cookie });
+  }
+  if (route === '/github/app/remove') {
+    if (!(await removeGitHubApp(env.DB, workspaceId))) {
+      return json({ error: 'not_found', detail: 'this workspace has no GitHub App' }, 404);
+    }
+    return json({ removed: true }, 200);
+  }
+  if (route === '/github/remove') {
     if (!(await removeGitHubWebhook(env.DB, workspaceId))) {
       return json({ error: 'not_found', detail: 'this workspace has no GitHub webhook' }, 404);
     }
     return json({ removed: true }, 200);
   }
-  if (save) {
+  if (route === '/github/checks') {
+    const body = await jsonBody(request, 'deploy check');
+    if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+    const unknown = Object.keys(body).filter((key) => key !== 'name' && key !== 'on');
+    if (unknown.length > 0 || typeof body.name !== 'string' || typeof body.on !== 'boolean') {
+      return json({ error: 'invalid_request', detail: 'send name, a deploy check Settings lists, and on' }, 400);
+    }
+    if (!(await setDeployCheck(env.DB, workspaceId, body.name, body.on))) {
+      return json(
+        { error: 'not_found', detail: 'no delivery showed a deploy check with this name', field: 'name' },
+        404,
+      );
+    }
+  }
+  if (route === '/github') {
     const body = await jsonBody(request, 'webhook settings');
     if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
     const settings = githubWebhookSettingsOf(body);
@@ -895,7 +943,43 @@ async function githubApi(
       );
     }
   }
-  return json({ github: await githubWebhookView(env.DB, secrets.secret, workspaceId, url.origin) }, 200);
+  const [byHand, app] = await Promise.all([
+    githubWebhookView(env.DB, secrets.secret, workspaceId, url.origin),
+    githubAppView(env.DB, workspaceId, await githubIdOf(env.DB, principal.userId)),
+  ]);
+  return json({ github: { ...byHand, ...app } }, 200);
+}
+
+/**
+ * GET /github/app/created: where GitHub returns the browser once the person
+ * pressed Create GitHub App, with a code and the state Connect GitHub
+ * signed. It stores the app for the state's workspace, when the person
+ * signed in is that workspace's owner who started it, in this browser, and
+ * sends the browser on to install the app on their own GitHub account.
+ * Anything else returns them to Settings, which says to press Connect
+ * GitHub again.
+ */
+async function githubAppCreated(
+  request: Request,
+  env: AccessEnv,
+  principal: PersonPrincipal,
+  url: URL,
+  secret: string,
+): Promise<Response> {
+  const redirect = (location: string) =>
+    new Response(null, {
+      status: 302,
+      headers: { location, 'set-cookie': endGitHubAppCookie(url.origin), 'cache-control': 'no-store' },
+    });
+  const retry = redirect(`${url.origin}${SETTINGS_PAGE}?github=retry`);
+  const state = url.searchParams.get('state') ?? '';
+  const workspaceId = await gitHubAppStateOf(secret, url.origin, state, request.headers, principal.userId);
+  const owner = reachesOf(principal).some((reach) => reach.workspace.id === workspaceId && reach.role === 'owner');
+  if (workspaceId === null || !owner) return retry;
+  const app = await convertGitHubApp(url.searchParams.get('code') ?? '');
+  if (app === null) return retry;
+  await saveGitHubApp(env.DB, secret, workspaceId, app, principal.userId);
+  return redirect(githubAppLinks(app.slug, await githubIdOf(env.DB, principal.userId)).accountInstallUrl);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -23,6 +23,8 @@ export interface Check {
   readonly senders?: readonly Role[];
   /** Projects beyond `main`. */
   readonly projects?: readonly ('readOnly' | 'hidden')[];
+  /** For a rule of one binding: the check runs on that binding only, and applies to no server that lacks it. */
+  readonly binding?: BindingName;
   run(context: Context): Promise<void>;
 }
 

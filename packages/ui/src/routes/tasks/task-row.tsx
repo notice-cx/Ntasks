@@ -75,8 +75,10 @@ export interface RowContext {
   epicProgress: ReadonlyMap<string, { closed: number; total: number }>;
   /** Its project's read answered and this sign-in may write, so its actions can run. */
   actionable: boolean;
-  /** How long ago the task changed, as `40m`. */
+  /** How long ago the task changed, as `40m`, or in the waiting groups how long ago it was created. */
   age: string;
+  /** What `age` counts from, in words, where it is not the last change: `Created 3d ago`. */
+  ageTitle?: string;
   nowMs: number;
 }
 
@@ -261,7 +263,9 @@ export function TaskRow({ task, context }: { task: BoardTask; context: RowContex
           />
         </RowActions>
         <Holder task={task} />
-        <RowAge>{context.age}</RowAge>
+        <RowAge title={context.ageTitle} data-row-age="">
+          {context.age}
+        </RowAge>
       </Row>
       {form === 'park' ? <ParkForm task={task} onDone={() => setForm(null)} /> : null}
       {form === 'close' ? (
@@ -328,7 +332,9 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
             onCloseAs={closeAs.pick}
           />
         </RowActions>
-        <RowAge>{context.age}</RowAge>
+        <RowAge title={context.ageTitle} data-row-age="">
+          {context.age}
+        </RowAge>
       </Row>
       {box ? <RowPanel>{box}</RowPanel> : null}
       {closeAs.box ? <RowPanel>{closeAs.box}</RowPanel> : null}

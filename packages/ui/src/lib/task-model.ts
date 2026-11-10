@@ -72,8 +72,12 @@ export type DeliveryWait = 'merge' | 'deploy';
  * deploy while it is merged in a project whose changes go live by one; null
  * when it waits for nothing.
  */
-export function deliveryWait(task: Pick<LiveTask, 'status' | 'delivery'>, deploys: boolean): DeliveryWait | null {
-  if (task.status !== 'closed') return null;
+export function deliveryWait(
+  task: Pick<LiveTask, 'status' | 'delivery' | 'issueType'>,
+  deploys: boolean,
+): DeliveryWait | null {
+  // A decision and an approval ship no code, whatever an older close recorded.
+  if (task.status !== 'closed' || task.issueType === 'decision' || task.issueType === 'gate') return null;
   const stage = task.delivery?.stage;
   if (stage === 'built') return 'merge';
   return stage === 'merged' && deploys ? 'deploy' : null;
