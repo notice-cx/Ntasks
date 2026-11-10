@@ -7,6 +7,7 @@ import {
   COMMIT_SHA,
   TaskRefused,
   type DeliveryMove,
+  type DeliveryOptions,
   type DeliverySignal,
   type TaskResolution,
   type TaskWork,
@@ -143,6 +144,7 @@ export async function reportDelivery(
   context: WriteContext,
   signal: DeliverySignal,
   model?: string,
+  options?: DeliveryOptions,
 ): Promise<readonly DeliveryMove[]> {
   const { engine, principal } = context;
   const writable = (await engine.listProjects()).filter((project) => mayReach(principal, project.id, 'write'));
@@ -152,6 +154,7 @@ export async function reportDelivery(
       writable.map((project) => project.id),
       signal,
       model === undefined ? { name: principal.name } : { name: principal.name, model },
+      options,
     );
   } catch (error) {
     if (!(error instanceof TaskRefused)) throw error;

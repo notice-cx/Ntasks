@@ -9,6 +9,7 @@ import type {
   BackupRows,
   BackupTable,
   DeliveryMove,
+  DeliveryOptions,
   DeliverySignal,
   HeldTask,
   Project,
@@ -137,17 +138,25 @@ export class TaskStore extends DurableObject<Env> {
   }
 
   /** Moves the closed tasks a signal names, for `principal`, the workspace's
-   * GitHub webhook once the Worker checked a delivery's signature (github.ts).
-   * A refusal comes back as its sentence, since an error's class does not
-   * survive the call from the Worker. */
+   * GitHub webhook once the Worker checked a delivery's signature (github.ts),
+   * and names the projects `options` turned on as deploying. A refusal comes
+   * back as its sentence, since an error's class does not survive the call
+   * from the Worker. */
   async deliver(
     signal: DeliverySignal,
     principal: Principal,
-  ): Promise<{ readonly moved: readonly DeliveryMove[] } | { readonly refused: string }> {
+    options?: DeliveryOptions,
+  ): Promise<
+    { readonly moved: readonly DeliveryMove[]; readonly turnedOn: readonly string[] } | { readonly refused: string }
+  > {
     try {
-      return {
-        moved: await reportDelivery({ engine: this.tasks, principal, now: () => new Date().toISOString() }, signal),
-      };
+      const deployed = async () =>
+        new Set((await this.tasks.listProjects()).filter((project) => project.deploys).map((project) => project.id));
+      const before = options?.turnOnDeploys === undefined ? null : await deployed();
+      const context = { engine: this.tasks, principal, now: () => new Date().toISOString() };
+      const moved = await reportDelivery(context, signal, undefined, options);
+      const after = before === null ? null : await deployed();
+      return { moved, turnedOn: after === null ? [] : [...after].filter((id) => !before?.has(id)) };
     } catch (error) {
       if (error instanceof Refused) return { refused: error.detail };
       throw error;

@@ -662,7 +662,7 @@ includes `closed`, its answer carries `stages`: how many of the tasks it lists
 are `built`, `merged` and `live`.
 
 A repository's automation sends the signals in one of two ways: a
-[GitHub webhook](#from-a-github-webhook), which needs no workflow, or a
+[GitHub App or webhook](#from-github), which needs no workflow, or a
 workflow that calls `POST /api/delivery` with a
 [service credential](sign-in.md) granted the project for writing. This
 GitHub Actions workflow sends `merged` when a pull request merges and `live`
@@ -713,31 +713,70 @@ The merge commit the first job sends is the commit the push to `main`
 carries, so the `live` signal matches the tasks the merge moved. Ntasks's own
 repository sends no signals, since no deployment of it exists.
 
-### From a GitHub webhook
+### From GitHub
 
 GitHub can send the signals itself, so a task moves to `merged` and `live`
 when its pull request merges and its deploy passes, whether or not the agent
-that did the work is still running. A workspace's webhook sends its
-deliveries to `POST /api/github/<workspace id>`, and each becomes a signal
-for every project of the workspace:
+that did the work is still running. The workspace's owner connects GitHub
+once, on the web app's Settings page, under GitHub:
+
+1. Press **Connect GitHub**.
+2. On GitHub, press **Create GitHub App**. GitHub makes a GitHub App for the
+   workspace and sends the browser back to Ntasks, which keeps the app's
+   webhook secret and private key, and opens the app's install page for the
+   person's own GitHub account.
+3. Press **Install**, with **All repositories** chosen.
+
+Each organization takes one more install: in Settings, press **Install on
+an organization**, pick the organization, and press **Install**. No secret
+is copied, no webhook is added by hand, and no name is typed.
+
+The app reads pull requests, checks, deployments and the repository's
+metadata, and receives the `pull_request`, `check_run` and
+`deployment_status` events of every repository it is installed on, at
+`POST /api/github/<workspace id>`. Each becomes a signal for every project
+of the workspace:
 
 | GitHub event | Signal |
 |---|---|
 | `pull_request`, closed and merged into the repository's default branch | `merged`, naming the pull request and its merge commit |
-| `check_run`, completed with `success` on the default branch, whose name is one of the workspace's deploy checks | `live`, naming the commit the check ran on |
-| `deployment_status` with `success`, for a deployment whose environment is one of the deploy checks | `live`, naming the deployed commit |
+| `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on |
+| `deployment_status` with `success`, when it is a deploy | `live`, naming the deployed commit |
+
+A **deploy** is a check run whose name starts with `Workers Builds:` or
+`Cloudflare Pages`, the checks Cloudflare's builds report; a deployment to
+the production environment, which GitHub marks as `production_environment`
+or which is named `production`; or a name typed by hand
+([below](#set-up-by-hand)). The first time a deploy is seen, Settings lists
+its name under **Deploys**, with a box that switches it off; a deploy
+switched off moves no task.
+
+A deploy also turns on **Changes go live by a deploy** for the projects of
+the tasks it names, so their tasks go live without anyone ticking it. It does
+so once for each project: an owner who turns the setting off again on the
+Projects page keeps it off.
 
 - A delivery is read only when its `X-Hub-Signature-256` header is the
-  HMAC-SHA-256 of its body under the workspace's webhook secret, compared in
-  constant time. Without the header the answer is `401` with
-  `signature_required`. With a signature that does not match, for a
-  workspace with no secret saved or one that does not exist, it is `401`
-  with `bad_signature`, the same answer in each case.
+  HMAC-SHA-256 of its body under the app's webhook secret, or the secret
+  saved by hand, compared in constant time. Without the header the answer
+  is `401` with `signature_required`. With a signature that does not match,
+  for a workspace with no app and no secret or one that does not exist, it
+  is `401` with `bad_signature`, the same answer in each case.
+- Anyone can install a GitHub App made public, which an app must be to be
+  installed on an organization as well as an account. So the app's events
+  are read only from an installation that an owner of the workspace made:
+  GitHub's `installation` event names the GitHub account that made it, and
+  Ntasks records the installation when that account is one an owner signs in
+  with. Made by anyone else, it answers `403` with `not_an_owner`, and every
+  event from an installation not recorded answers `403` with
+  `unknown_installation`. An installation removed or suspended in GitHub is
+  forgotten.
 - A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
-  does. When its event moves nothing, such as GitHub's first `ping`, a pull
-  request closed without merging, a check that is not a deploy check, or
-  another event, the answer also holds `ignored`, a sentence saying why.
-  GitHub shows each answer under the webhook's Recent Deliveries.
+  does. When its event moves nothing, such as GitHub's `ping`, an
+  installation, a pull request closed without merging, a check that is not a
+  deploy, or another event, the answer also holds `ignored`, a sentence
+  saying why. GitHub shows each answer under the app's, or the webhook's,
+  Recent Deliveries.
 - Each move is recorded in the task's history under `service:GitHub`.
 - A task never moves back, so a delivery sent again, by GitHub or with
   Redeliver, moves nothing twice.
@@ -748,10 +787,16 @@ for every project of the workspace:
   tasks of the merges before it stay at `merged`.
 - A delivery is at most 1 MB, sent as `application/json` or as GitHub's form
   (`application/x-www-form-urlencoded`).
+- The app's webhook secret and private key are kept in D1, encrypted under a
+  key derived from `AUTH_SECRET`. After `AUTH_SECRET` changes they no longer
+  decrypt and every delivery is refused, until the owner presses
+  **Disconnect**, deletes the old app on its GitHub page and connects again.
 
-The workspace's owner sets the webhook up on the web app's Settings page,
-under GitHub, or with `POST /api/access/github`
-([Sign-in](sign-in.md#routes)):
+#### Set up by hand
+
+Where an app cannot be installed, a webhook added by hand sends the same
+events. The owner sets it up in Settings, under GitHub, **Set up by hand**,
+or with `POST /api/access/github` ([Sign-in](sign-in.md#routes)):
 
 - **Payload URL**: the address to enter in GitHub.
 - **Secret**: 32 to 255 letters, digits and punctuation, with no spaces.
@@ -759,10 +804,9 @@ under GitHub, or with `POST /api/access/github`
   it encrypted under a key derived from `AUTH_SECRET`, and never shows it
   again. After `AUTH_SECRET` changes, the saved secret no longer decrypts,
   every delivery is refused, and the owner saves the secret again.
-- **Deploy checks**: the names of the check runs, as a pull request's checks
-  list them, such as `Workers Builds: my-app`, or of the deployment
-  environments, such as `production`, whose success means a change is live.
-  At most 20. With none, deploys move nothing.
+- **Deploy checks**: names that count as a deploy besides the ones detected,
+  such as a check run named `deploy` or an environment named `live`. At
+  most 20.
 
 Then, in GitHub:
 
@@ -828,7 +872,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 5.
+field can hold is added. This is version 6.
 
 | Version | Added |
 |---|---|
@@ -836,7 +880,8 @@ field can hold is added. This is version 5.
 | 2 | [Connected apps](sign-in.md#connected-apps) |
 | 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 5 | `POST /api/github/:workspaceId` ([above](#from-a-github-webhook)), and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove` ([Sign-in](sign-in.md#routes)) |
+| 5 | `POST /api/github/:workspaceId` ([above](#from-github)), and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove` ([Sign-in](sign-in.md#routes)) |
+| 6 | `app`, `installations` and `detected` in `GET /api/access/github`, and `POST /api/access/github/app`, `POST /api/access/github/app/remove` and `POST /api/access/github/checks` ([Sign-in](sign-in.md#routes)) |
 
 | Where | What it holds |
 |---|---|
@@ -895,10 +940,12 @@ same change. A recorded field is never edited or removed, and the test
 refuses a field recorded twice.
 
 The record covers every HTTP route this page and
-[Sign-in](sign-in.md#routes) list, except two groups. The OAuth routes under
+[Sign-in](sign-in.md#routes) list, except three. The OAuth routes under
 `/api/auth` follow the OAuth standards. The routes under `/api/restore` take
 only rows made with the store's own migrations, so their bodies follow the
-store's tables rather than the API's version.
+store's tables rather than the API's version. `GET
+/api/access/github/app/created` answers a browser that GitHub sends back
+with a redirect, not JSON.
 
 ## The HTTP routes
 
@@ -942,7 +989,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks/:id/comments` | `projectId`, `text` | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
-| `POST /api/github/:workspaceId` | A GitHub webhook's delivery, signed with the workspace's webhook secret instead of signed in, as GitHub sends it | `{ moved }`, and `ignored` when it moves nothing ([from a GitHub webhook](#from-a-github-webhook)) |
+| `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |

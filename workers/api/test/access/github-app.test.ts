@@ -1,0 +1,371 @@
+// Connect GitHub through the Worker, from a fresh workspace: the owner makes
+// the workspace's GitHub App through GitHub's manifest flow, installs it, and
+// the installation's events move a closed task to merged and then live with
+// no deploy check typed and no project ticked. Events from an installation
+// no owner made are refused.
+import { runInDurableObject } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
+import type { Task } from '@ntasks/domain';
+import { describe, expect, it } from 'vitest';
+import { hex } from '../../src/access/crypto.ts';
+import type { TaskStore } from '../../src/store/index.ts';
+import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
+import { store, TEST_WORKSPACE } from '../store.ts';
+import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
+import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from './github.ts';
+
+standInForGitHub();
+
+const APP_SECRET = convertedWebhookSecret(OWNER_GITHUB_ID);
+const SLUG = `ntasks-${OWNER_GITHUB_ID}`;
+const REPOSITORY = 'example/site';
+const encoder = new TextEncoder();
+
+type Body = Record<string, unknown>;
+
+/** Sends `json` from `browser` in the test workspace and reads the answer. */
+async function inWorkspace(browser: Browser, method: string, path: string, json?: Body) {
+  const response = await browser.fetch(path, {
+    method,
+    ...(json === undefined ? {} : { json }),
+    headers: { [WORKSPACE_HEADER]: TEST_WORKSPACE.id },
+  });
+  return { status: response.status, body: await response.json<Body>() };
+}
+
+/** Presses Connect GitHub as `owner`: the action and manifest the browser posts to GitHub, and GitHub's state. */
+async function connect(owner: Browser) {
+  const started = await inWorkspace(owner, 'POST', '/api/access/github/app', {});
+  expect(started.status).toBe(200);
+  const action = new URL(started.body.action as string);
+  return {
+    action,
+    manifest: JSON.parse(started.body.manifest as string) as Body,
+    state: action.searchParams.get('state')!,
+  };
+}
+
+/** GitHub's return to Ntasks once the person pressed Create GitHub App. */
+function returnFromGitHub(browser: Browser, code: string, state: string): Promise<Response> {
+  return browser.fetch(`/api/access/github/app/created?code=${code}&state=${encodeURIComponent(state)}`);
+}
+
+/** The owner, signed in, with the workspace's app made through the manifest flow. */
+async function connected(): Promise<Browser> {
+  const owner = new Browser();
+  await owner.signInAsOwner();
+  const { state } = await connect(owner);
+  expect((await returnFromGitHub(owner, manifestCodeFor(OWNER_GITHUB_ID), state)).status).toBe(302);
+  return owner;
+}
+
+/** X-Hub-Signature-256 of `body` under `secret`, as GitHub signs a delivery. */
+async function signatureOf(secret: string, body: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'sign',
+  ]);
+  return `sha256=${hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body))))}`;
+}
+
+/** Sends one delivery from the app, signed with its webhook secret, and reads the answer. */
+async function deliver(event: string, payload: Body, secret = APP_SECRET): Promise<{ status: number; body: Body }> {
+  const body = JSON.stringify(payload);
+  const response = await call(`/api/github/${TEST_WORKSPACE.id}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-github-event': event,
+      'x-github-delivery': crypto.randomUUID(),
+      'x-hub-signature-256': await signatureOf(secret, body),
+    },
+    body,
+  });
+  return { status: response.status, body: await response.json<Body>() };
+}
+
+/** GitHub's installation event: `sender` installed the app on `account` as installation `id`. */
+function installation(id: number, action: string, sender: number, account = 'example') {
+  return {
+    action,
+    installation: { id, account: { login: account, type: 'Organization' } },
+    sender: { id: sender, login: `person-${sender}` },
+  };
+}
+
+/** An installation id no other test uses. */
+function newInstallation(): number {
+  return 1 + (crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000_000);
+}
+
+/** A commit's hexadecimal name, a new one each time. */
+function newCommit(): string {
+  return hex(crypto.getRandomValues(new Uint8Array(20)));
+}
+
+/** A delivery's repository, whose default branch is main. */
+const repository = { full_name: REPOSITORY, default_branch: 'main' };
+
+/** A merged pull request's event, from installation `id`. */
+function merged(id: number, number: number, mergeCommit: string) {
+  return {
+    action: 'closed',
+    installation: { id },
+    pull_request: {
+      html_url: `https://github.com/${REPOSITORY}/pull/${number}`,
+      merged: true,
+      merge_commit_sha: mergeCommit,
+      base: { ref: 'main' },
+    },
+    repository,
+  };
+}
+
+/** A check run that passed on main, from installation `id`. */
+function passed(id: number, name: string, sha: string) {
+  return {
+    action: 'completed',
+    installation: { id },
+    check_run: { name, head_sha: sha, conclusion: 'success', check_suite: { head_branch: 'main' } },
+    repository,
+  };
+}
+
+/** A project of the test workspace that does not deploy yet, and one task closed in it with this pull request. */
+async function taskWithPullRequest(owner: Browser, number: number): Promise<{ projectId: string; id: string }> {
+  const projectId = await createProject('Site');
+  const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Ship the page' });
+  const id = created.body.id as string;
+  const pullRequest = `https://github.com/${REPOSITORY}/pull/${number}`;
+  expect(
+    (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', pullRequest })).status,
+  ).toBe(200);
+  return { projectId, id };
+}
+
+async function taskOf(projectId: string, id: string): Promise<Task> {
+  const task = await runInDurableObject(store(), (instance: TaskStore) => instance.tasks.getTask(projectId, id));
+  if (!task) throw new Error(`no task ${id}`);
+  return task;
+}
+
+async function deploys(projectId: string): Promise<boolean | undefined> {
+  const projects = await runInDurableObject(store(), (instance: TaskStore) => instance.tasks.listProjects());
+  return projects.find((project) => project.id === projectId)?.deploys;
+}
+
+describe('Connect GitHub', () => {
+  it('makes the app from a manifest, stores its credentials encrypted and sends the owner on to install it', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const before = await inWorkspace(owner, 'GET', '/api/access/github');
+    expect(before.body).toMatchObject({ github: { app: null, installations: [], detected: [] } });
+
+    const { action, manifest, state } = await connect(owner);
+    expect(`${action.origin}${action.pathname}`).toBe('https://github.com/settings/apps/new');
+    expect(manifest).toMatchObject({
+      url: ORIGIN,
+      hook_attributes: { url: `${ORIGIN}/api/github/${TEST_WORKSPACE.id}`, active: true },
+      redirect_url: `${ORIGIN}/api/access/github/app/created`,
+      setup_url: `${ORIGIN}/tasks/settings`,
+      public: true,
+      default_permissions: { metadata: 'read', pull_requests: 'read', checks: 'read', deployments: 'read' },
+      default_events: ['pull_request', 'check_run', 'deployment_status'],
+    });
+    expect((manifest.name as string).length).toBeLessThanOrEqual(34);
+
+    const back = await returnFromGitHub(owner, manifestCodeFor(OWNER_GITHUB_ID), state);
+    expect(back.status).toBe(302);
+    expect(back.headers.get('location')).toBe(
+      `https://github.com/apps/${SLUG}/installations/new/permissions?target_id=${OWNER_GITHUB_ID}`,
+    );
+    const stored = await env.DB.prepare(
+      'SELECT app_id, slug, credentials FROM access_github_apps WHERE workspace_id = ?',
+    )
+      .bind(TEST_WORKSPACE.id)
+      .first<{ app_id: number; slug: string; credentials: string }>();
+    expect(stored).toMatchObject({ app_id: 9000 + OWNER_GITHUB_ID, slug: SLUG });
+    expect(stored?.credentials).not.toContain(APP_SECRET);
+    expect(stored?.credentials).not.toContain('PRIVATE KEY');
+    expect((await inWorkspace(owner, 'GET', '/api/access/github')).body).toMatchObject({
+      github: {
+        app: {
+          slug: SLUG,
+          url: `https://github.com/apps/${SLUG}`,
+          installUrl: `https://github.com/apps/${SLUG}/installations/new`,
+          accountInstallUrl: `https://github.com/apps/${SLUG}/installations/new/permissions?target_id=${OWNER_GITHUB_ID}`,
+        },
+        installations: [],
+      },
+    });
+  });
+
+  it('sends the browser back to Settings and stores nothing for a state from elsewhere or a code GitHub refuses', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    await inWorkspace(owner, 'POST', '/api/access/github/app/remove', {});
+    const { state } = await connect(owner);
+    const other = new Browser();
+    await other.signInAsOwner();
+    for (const [browser, code, given] of [
+      [other, manifestCodeFor(OWNER_GITHUB_ID), state],
+      [owner, manifestCodeFor(OWNER_GITHUB_ID), `${state}x`],
+      [owner, 'not-a-manifest-code', state],
+    ] as const) {
+      const back = await returnFromGitHub(browser, code, given);
+      expect(back.status).toBe(302);
+      expect(back.headers.get('location')).toBe(`${ORIGIN}/tasks/settings?github=retry`);
+    }
+    expect((await inWorkspace(owner, 'GET', '/api/access/github')).body).toMatchObject({ github: { app: null } });
+  });
+
+  it('is for the workspace’s owners alone', async () => {
+    const member = new Browser({ joinTestWorkspace: false });
+    await member.signInWithGitHub(1003);
+    await addMember(TEST_WORKSPACE, (await userIdOf(1003))!, 'member');
+    for (const path of ['/api/access/github/app', '/api/access/github/app/remove', '/api/access/github/checks']) {
+      expect(await inWorkspace(member, 'POST', path, {})).toMatchObject({ status: 403, body: { error: 'owner_only' } });
+    }
+  });
+});
+
+describe('the app’s deliveries', () => {
+  it('reads an installation an owner made and refuses one anyone else made', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    const theirs = newInstallation();
+    expect(await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID, 'example'))).toMatchObject({
+      status: 200,
+      body: { moved: [], ignored: expect.stringMatching(/example's repositories/u) },
+    });
+    expect(await deliver('installation', installation(theirs, 'created', 4242, 'stranger'))).toMatchObject({
+      status: 403,
+      body: { error: 'not_an_owner' },
+    });
+    expect((await inWorkspace(owner, 'GET', '/api/access/github')).body).toMatchObject({
+      github: { installations: [{ installationId: mine, account: 'example', accountType: 'Organization' }] },
+    });
+
+    const { projectId, id } = await taskWithPullRequest(owner, 31);
+    expect(await deliver('pull_request', merged(theirs, 31, newCommit()))).toMatchObject({
+      status: 403,
+      body: { error: 'unknown_installation' },
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
+
+    expect(await deliver('installation', installation(mine, 'deleted', OWNER_GITHUB_ID))).toMatchObject({
+      status: 200,
+    });
+    expect(await deliver('pull_request', merged(mine, 31, newCommit()))).toMatchObject({
+      status: 403,
+      body: { error: 'unknown_installation' },
+    });
+  });
+
+  it('moves a task to merged and then live, detecting the deploy check and turning the project on', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 32);
+    expect(await deploys(projectId)).toBe(false);
+    const merge = newCommit();
+
+    expect((await deliver('pull_request', merged(mine, 32, merge))).body).toEqual({ moved: [{ id, stage: 'merged' }] });
+    expect((await deliver('check_run', passed(mine, 'Lint', merge))).body).toMatchObject({
+      moved: [],
+      ignored: 'Lint is not a deploy',
+    });
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+    expect(await deploys(projectId)).toBe(true);
+    expect((await inWorkspace(owner, 'GET', '/api/access/github')).body).toMatchObject({
+      github: {
+        detected: expect.arrayContaining([{ name: 'Workers Builds: site', on: true, seenAt: expect.any(String) }]),
+      },
+    });
+  });
+
+  it('keeps a project off once its owner turns it off, and a deploy check off once switched off', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const first = await taskWithPullRequest(owner, 33);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 33, merge));
+    await deliver('check_run', passed(mine, 'Workers Builds: docs', merge));
+    expect(await deploys(first.projectId)).toBe(true);
+
+    // The owner turns the project off again: a later deploy leaves it off, and its task at merged.
+    expect(
+      (await inWorkspace(owner, 'PATCH', '/api/tasks/projects', { projectId: first.projectId, deploys: false })).status,
+    ).toBe(200);
+    const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId: first.projectId, title: 'Again' });
+    const again = created.body.id as string;
+    const pullRequest = `https://github.com/${REPOSITORY}/pull/34`;
+    await inWorkspace(owner, 'POST', `/api/tasks/${again}/close`, {
+      projectId: first.projectId,
+      reason: 'Done.',
+      pullRequest,
+    });
+    const second = newCommit();
+    await deliver('pull_request', merged(mine, 34, second));
+    await deliver('check_run', passed(mine, 'Workers Builds: docs', second));
+    expect(await deploys(first.projectId)).toBe(false);
+    expect((await taskOf(first.projectId, again)).delivery?.stage).toBe('merged');
+
+    // A switched-off check moves nothing.
+    const off = await inWorkspace(owner, 'POST', '/api/access/github/checks', {
+      name: 'Workers Builds: docs',
+      on: false,
+    });
+    expect(off.body).toMatchObject({
+      github: {
+        detected: expect.arrayContaining([expect.objectContaining({ name: 'Workers Builds: docs', on: false })]),
+      },
+    });
+    const third = await taskWithPullRequest(owner, 35);
+    const merge3 = newCommit();
+    await deliver('pull_request', merged(mine, 35, merge3));
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: docs', merge3))).body).toMatchObject({
+      moved: [],
+      ignored: expect.stringMatching(/switched off in Settings/u),
+    });
+    expect((await taskOf(third.projectId, third.id)).delivery?.stage).toBe('merged');
+    expect(
+      await inWorkspace(owner, 'POST', '/api/access/github/checks', { name: 'Never seen', on: false }),
+    ).toMatchObject({ status: 404, body: { field: 'name' } });
+  });
+
+  it('counts a successful deployment to production as a deploy, and one to preview as none', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 36);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 36, merge));
+    const deployment = (environment: string, production: boolean) => ({
+      installation: { id: mine },
+      deployment_status: { state: 'success' },
+      deployment: { environment, sha: merge, production_environment: production },
+      repository,
+    });
+    expect((await deliver('deployment_status', deployment('Preview', false))).body).toMatchObject({ moved: [] });
+    expect((await deliver('deployment_status', deployment('web', true))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+  });
+
+  it('refuses the app’s deliveries once the owner disconnects it', async () => {
+    const owner = await connected();
+    expect(await deliver('ping', { zen: 'Speak like a human.', hook_id: 1 })).toMatchObject({ status: 200 });
+    expect(await inWorkspace(owner, 'POST', '/api/access/github/app/remove', {})).toEqual({
+      status: 200,
+      body: { removed: true },
+    });
+    expect(await deliver('ping', { zen: 'Speak like a human.', hook_id: 1 })).toMatchObject({
+      status: 401,
+      body: { error: 'bad_signature' },
+    });
+  });
+});

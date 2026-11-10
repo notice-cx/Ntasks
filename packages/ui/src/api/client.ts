@@ -23,6 +23,9 @@ import type {
   ChangesPage,
   CloseOptions,
   ConnectedApp,
+  DetectedDeploy,
+  GitHubAppStart,
+  GitHubInstallation,
   GitHubWebhook,
   GitHubWebhookSettings,
   FieldFilters,
@@ -151,6 +154,12 @@ export interface TasksApi {
   saveGitHubWebhook(settings: GitHubWebhookSettings): Promise<GitHubWebhook>;
   /** Remove the webhook, after which GitHub's deliveries are refused; only the workspace's owners may. */
   removeGitHubWebhook(): Promise<void>;
+  /** Start Connect GitHub: where the browser posts the manifest that makes the workspace's GitHub App. */
+  connectGitHub(): Promise<GitHubAppStart>;
+  /** Forget the workspace's GitHub App, after which its events are refused. */
+  disconnectGitHub(): Promise<void>;
+  /** Count a detected deploy check as a deploy, or switch it off. */
+  setDeployCheck(name: string, on: boolean): Promise<GitHubWebhook>;
 }
 
 /** The calls made in one workspace. */
@@ -394,6 +403,8 @@ function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook 
   const row = isRecord(payload) ? payload.github : null;
   if (!isRecord(row) || typeof row.url !== 'string' || typeof row.secretSaved !== 'boolean')
     throw new UnreadableAnswer(unreadable);
+  const app = isRecord(row.app) ? row.app : null;
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
   return {
     url: row.url,
     secretSaved: row.secretSaved,
@@ -401,6 +412,34 @@ function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook 
       ? row.deployChecks.filter((name): name is string => typeof name === 'string')
       : [],
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : null,
+    app:
+      app === null || typeof app.slug !== 'string'
+        ? null
+        : {
+            slug: app.slug,
+            url: text(app.url),
+            createdAt: text(app.createdAt),
+            installUrl: text(app.installUrl),
+            accountInstallUrl: text(app.accountInstallUrl),
+          },
+    installations: (Array.isArray(row.installations) ? row.installations : []).flatMap(
+      (entry: unknown): GitHubInstallation[] =>
+        isRecord(entry) && typeof entry.installationId === 'number' && typeof entry.account === 'string'
+          ? [
+              {
+                installationId: entry.installationId,
+                account: entry.account,
+                accountType: text(entry.accountType),
+                createdAt: text(entry.createdAt),
+              },
+            ]
+          : [],
+    ),
+    detected: (Array.isArray(row.detected) ? row.detected : []).flatMap((entry: unknown): DetectedDeploy[] =>
+      isRecord(entry) && typeof entry.name === 'string' && typeof entry.on === 'boolean'
+        ? [{ name: entry.name, on: entry.on, seenAt: text(entry.seenAt) }]
+        : [],
+    ),
   };
 }
 
@@ -542,6 +581,9 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     githubWebhook: (signal) => scope().githubWebhook(signal),
     saveGitHubWebhook: (settings) => scope().saveGitHubWebhook(settings),
     removeGitHubWebhook: () => scope().removeGitHubWebhook(),
+    connectGitHub: () => scope().connectGitHub(),
+    disconnectGitHub: () => scope().disconnectGitHub(),
+    setDeployCheck: (name, on) => scope().setDeployCheck(name, on),
   };
 }
 
@@ -780,6 +822,22 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async removeGitHubWebhook() {
       await write('POST', '/api/access/github/remove', {}, 'The GitHub webhook');
+    },
+    async connectGitHub() {
+      const response = await write('POST', '/api/access/github/app', {}, 'Connect GitHub');
+      const unreadable = 'GitHub could not be connected: the answer could not be read.';
+      const answer = await answerJson(response, unreadable);
+      if (!isRecord(answer) || typeof answer.action !== 'string' || typeof answer.manifest !== 'string')
+        throw new UnreadableAnswer(unreadable);
+      return { action: answer.action, manifest: answer.manifest };
+    },
+    async disconnectGitHub() {
+      await write('POST', '/api/access/github/app/remove', {}, 'The GitHub App');
+    },
+    async setDeployCheck(name, on) {
+      const response = await write('POST', '/api/access/github/checks', { name, on }, name);
+      const unreadable = 'The deploy check was changed, but the answer could not be read.';
+      return readGitHubWebhook(await answerJson(response, unreadable), unreadable);
     },
   };
 }
