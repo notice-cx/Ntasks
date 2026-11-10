@@ -1,0 +1,13 @@
+{
+  "added": "`stalled` on a task, `POST /api/tasks/:id/release`, and `release` among a person's `operations` in `GET /api/tasks/capabilities`",
+  "shapes": {
+    "task": {
+      "stalled": "boolean"
+    }
+  },
+  "routes": {
+    "POST /api/tasks/:id/release": {
+      "task": "@task"
+    }
+  }
+}

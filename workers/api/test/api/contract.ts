@@ -1,9 +1,9 @@
 // The recorded contract of the HTTP API's answers, and how an answer is
-// compared with it. fixtures/http-api.json records, version by version, the
-// fields each route answers and the type of each, by path: `tasks[].title` is
-// the title of each task in `tasks`. A shared shape, such as a task, is
-// recorded once under `shapes` and named from a route as `@task`, or as
-// `@task|null` where the answer may be null instead.
+// compared with it. Each file in api-versions/ is one version: what it added,
+// and the fields it added to each route's answer, with the type of each, by
+// path: `tasks[].title` is the title of each task in `tasks`. A shared shape,
+// such as a task, is recorded once under `shapes` and named from a route as
+// `@task`, or as `@task|null` where the answer may be null instead.
 
 /** What a value is, as the contract names it. `map` is an object whose keys
  * are data, such as a task's custom field values: its entries are not fields.
@@ -13,8 +13,10 @@ export type ValueType = 'string' | 'number' | 'boolean' | 'null' | 'array' | 'ob
 /** Each path's allowed types, joined with `|`; `@name` among them is a shared shape. */
 export type Recorded = Readonly<Record<string, string>>;
 
+/** One file of api-versions/: one version of the API. */
 export interface ContractVersion {
-  readonly version: number;
+  /** What the version added, in one line of Markdown. */
+  readonly added: string;
   readonly shapes?: Readonly<Record<string, Recorded>>;
   readonly routes?: Readonly<Record<string, Recorded>>;
 }
@@ -51,8 +53,8 @@ export function observed(): Observed {
 
 const join = (at: string, key: string) => (at === '' ? key : `${at}.${key}`);
 
-/** The shapes and routes of every version merged, each path recorded once,
- * in versions numbered from 1 with none left out. */
+/** The shapes and routes of every version merged, each path recorded once.
+ * The versions are numbered from 1 in the order given. */
 export function merge(versions: readonly ContractVersion[]): {
   readonly version: number;
   readonly shapes: Readonly<Record<string, Recorded>>;
@@ -60,8 +62,7 @@ export function merge(versions: readonly ContractVersion[]): {
 } {
   const shapes: Record<string, Record<string, string>> = {};
   const routes: Record<string, Record<string, string>> = {};
-  versions.forEach((entry, index) => {
-    if (entry.version !== index + 1) throw new Error(`version ${entry.version} is recorded where ${index + 1} belongs`);
+  for (const entry of versions) {
     for (const [into, from] of [
       [shapes, entry.shapes ?? {}],
       [routes, entry.routes ?? {}],
@@ -74,7 +75,7 @@ export function merge(versions: readonly ContractVersion[]): {
         }
       }
     }
-  });
+  }
   return { version: versions.length, shapes, routes };
 }
 

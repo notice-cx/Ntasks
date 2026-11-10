@@ -1,0 +1,13 @@
+{
+  // The Node program that lists the API's versions, run as is by `node`,
+  // which strips its types. It gets Node's types and module rules, not the
+  // Worker's.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "erasableSyntaxOnly": true
+  },
+  "include": ["."]
+}
