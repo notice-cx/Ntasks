@@ -104,7 +104,7 @@ describe('GET /api/tasks?label=', () => {
     const refused = async (query: string) => (await get(target, path(query))).body.detail;
     for (const window of ['status=open', 'closedDays=30', 'stage=built'])
       expect(await refused(`label=handoff&${window}`)).toBe(
-        'a label read reads every status and every close: leave out status, closedDays and stage',
+        'a label read reads every status and every close: leave out status, closedDays, stage and activity',
       );
     expect(await refused('limit=5')).toBe('limit and after page a label read: label=');
     expect(await refused('label=handoff&after=not a task')).toBe(

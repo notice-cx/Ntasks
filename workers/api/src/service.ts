@@ -1,9 +1,12 @@
 /**
- * The reads the MCP tools and the HTTP routes share: a board, and a task's
- * whole history.
+ * The reads the MCP tools and the HTTP routes share: a board, its tasks in
+ * progress by activity, and a task's whole history.
  */
 import {
+  activityOf,
+  isActivity,
   TASK_LIMITS,
+  type Activity,
   type BoardQuery,
   type Task,
   type TaskEngine,
@@ -49,6 +52,37 @@ export async function board(
     ...(statuses.includes('closed') && closedSince !== null ? { closedSince: `${closedSince}T00:00:00.000Z` } : {}),
   });
   return { readAt, closedSince, tasks };
+}
+
+/** How many tasks in progress are in each group of activity. */
+export type ActivityCounts = Readonly<Record<Activity, number>>;
+
+/**
+ * The tasks of a board in the groups of activity `wanted` names at `now`, the
+ * time of the read, or all of them when it names none; and how many of the
+ * board's tasks in progress are in each group, before that narrowing, so a
+ * reader asking for some groups still sees the size of the others. Activity
+ * depends on the time of the read, so it narrows a board after the board is
+ * read, never in the read.
+ */
+export function byActivity(
+  tasks: readonly Task[],
+  wanted: readonly Activity[] | undefined,
+  now: string,
+): { readonly tasks: readonly Task[]; readonly activities: ActivityCounts } {
+  const activities: Record<Activity, number> = { active: 0, quiet: 0, stalled: 0 };
+  const kept: Task[] = [];
+  for (const task of tasks) {
+    const activity = activityOf(task, now);
+    if (activity !== null) activities[activity] += 1;
+    if (wanted === undefined || (activity !== null && wanted.includes(activity))) kept.push(task);
+  }
+  return { tasks: kept, activities };
+}
+
+/** Whether `list` names groups of activity, at least one and each once. */
+export function isActivityList(list: unknown): list is Activity[] {
+  return Array.isArray(list) && list.length > 0 && new Set(list).size === list.length && list.every(isActivity);
 }
 
 /** These tasks, read from a board without their external links, with their

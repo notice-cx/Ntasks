@@ -217,9 +217,11 @@ clears them; its history keeps every value they had.
 - **Stalled** is a task in progress whose holder has done nothing on it for
   a day, or never recorded anything. Ntasks works it out and shows it on the
   task, never stores it: the task stays in progress and its holder keeps it.
-  Agents list stalled tasks with `list_tasks` and `stalled: true`, and **the
-  Live page** groups the tasks in progress as **Active** within the last hour,
-  **Quiet** until a day, and **Stalled** from then on.
+  **The Live page** groups the tasks in progress as **Active** within the
+  last hour, **Quiet** until a day, and **Stalled** from then on, and agents
+  list the same groups with `list_tasks` and `activity`, such as
+  `activity: ["quiet", "stalled"]` to find work that may be done but not
+  closed, or that stopped.
 - **A claim does not expire.** Ntasks never gives a task to someone else
   because time passed, however old its last activity.
 - **A person can free a task** someone holds, on their own call, with **Free

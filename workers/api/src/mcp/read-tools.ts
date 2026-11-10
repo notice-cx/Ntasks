@@ -6,6 +6,7 @@
  * runs (server.ts).
  */
 import {
+  ACTIVITIES,
   DELIVERY_STAGES,
   isStalled,
   isTaskStatus,
@@ -22,7 +23,15 @@ import {
 } from '@ntasks/domain';
 import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
-import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
+import {
+  allEvents,
+  board,
+  byActivity,
+  CLOSED_DAYS,
+  CLOSED_HISTORY_DAYS,
+  isActivityList,
+  withExternalLinks,
+} from '../service.ts';
 import type { Workspace } from '../workspaces.ts';
 import {
   childView,
@@ -152,6 +161,16 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         description:
           'true: only tasks in progress whose holder has done nothing on them for a day, or ever: work to pick up again, or to propose freeing.',
       },
+      activity: {
+        type: 'array',
+        minItems: 1,
+        uniqueItems: true,
+        items: { type: 'string', enum: ACTIVITIES },
+        description:
+          'Only tasks in progress whose holder worked on them this recently: active (changed or commented on within the hour), ' +
+          'quiet (not within the hour) or stalled (nothing for a day, or ever). ["quiet","stalled"] lists work that may be done ' +
+          "but not closed, or stopped. Each task in progress names its activity, and the answer's activities counts the tasks in each group.",
+      },
       assignee: {
         type: 'string',
         maxLength: TASK_LIMITS.actor,
@@ -236,7 +255,17 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       }
       if (stage !== undefined && !asked.includes('closed'))
         refuse("invalid arguments: status (a stage is a closed task's: include closed, or leave status out)");
-      const statuses = stage === undefined ? asked : ['closed'];
+      const activity = args.activity;
+      if (activity !== undefined && !isActivityList(activity))
+        refuse(`invalid arguments: activity (one or more of ${ACTIVITIES.join(', ')}, each once)`);
+      if (activity !== undefined && stage !== undefined)
+        refuse("invalid arguments: activity (a stage is a closed task's and an activity one in progress: name one)");
+      if (activity !== undefined && !asked.includes('in_progress'))
+        refuse(
+          'invalid arguments: status (an activity is a task in progress: include in_progress, or leave status out)',
+        );
+      // In progress alone, when an activity is asked for: few tasks, read by the index on project and status.
+      const statuses = stage !== undefined ? ['closed'] : activity !== undefined ? ['in_progress'] : asked;
       // Closed tasks are counted by stage when the call asks for them by status or by stage.
       const counted = stage !== undefined || (args.status !== undefined && asked.includes('closed'));
       const stageCounts = (tasks: readonly Task[]) =>
@@ -247,6 +276,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
               ),
             }
           : {};
+      // Tasks in progress are counted by activity when the call asks for them by status or by activity.
+      const activityCounted = activity !== undefined || (args.status !== undefined && asked.includes('in_progress'));
       const ready = booleanArg(args, 'ready');
       const stalledOnly = booleanArg(args, 'stalled') === true;
       const query = textArg(args, 'query', 512, false, true);
@@ -270,8 +301,15 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const links = await linksSeenBy(context);
       const readAt = now();
       const summary = (task: Task) => mcpSummary(links.task(task), readAt);
-      // Stalled depends on the time of the read, so it narrows the board after it is read, never in the cached read.
-      const kept = (tasks: readonly Task[]) => (stalledOnly ? tasks.filter((task) => isStalled(task, readAt)) : tasks);
+      // Activity depends on the time of the read, so it narrows the board after it is read, never in the cached read.
+      const kept = (tasks: readonly Task[]) => {
+        const grouped = byActivity(
+          stalledOnly ? tasks.filter((task) => isStalled(task, readAt)) : tasks,
+          activity,
+          readAt,
+        );
+        return { tasks: grouped.tasks, ...(activityCounted ? { activities: grouped.activities } : {}) };
+      };
       if (args.project !== undefined) {
         const project = await projectOf(context, projectArg(args));
         const fields =
@@ -283,7 +321,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           closedDays,
           fields === undefined ? filters : { ...filters, fields },
           now,
-        ).then((read) => ({ ...read, tasks: kept(read.tasks) }));
+        ).then((read) => ({ ...read, ...kept(read.tasks) }));
         const page = await withExternalLinks(engine, ordered(found.tasks).slice(offset, offset + limit));
         return {
           project: project.key,
@@ -291,6 +329,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           closedSince: found.closedSince,
           total: found.tasks.length,
           ...stageCounts(found.tasks),
+          ...(found.activities === undefined ? {} : { activities: found.activities }),
           tasks: page.map(summary),
           nextOffset: nextOf(page.length, found.tasks.length),
         };
@@ -303,7 +342,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         board(engine, null, statuses as TaskStatus[], closedDays, filters, now),
       ]);
       const reached = new Set(reachable(principal, projects).map((project) => project.id));
-      const found = { ...everything, tasks: kept(everything.tasks.filter((task) => reached.has(task.projectId))) };
+      const found = { ...everything, ...kept(everything.tasks.filter((task) => reached.has(task.projectId))) };
       const where = new Map(
         projects.map((project) => [
           project.id,
@@ -316,6 +355,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         closedSince: found.closedSince,
         total: found.tasks.length,
         ...stageCounts(found.tasks),
+        ...(found.activities === undefined ? {} : { activities: found.activities }),
         tasks: page.map((task) => ({ id: task.id, ...where.get(task.projectId), ...summary(task) })),
         nextOffset: nextOf(page.length, found.tasks.length),
       };

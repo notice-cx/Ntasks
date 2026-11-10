@@ -6,6 +6,7 @@
  * cardShipped, changeClass) read from the metadata keys NoticeOS writes.
  */
 import {
+  activityOf,
   isStalled,
   lacksProof,
   type CustomField,
@@ -122,6 +123,7 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
 
 /** A task as the web app's pages read it, at `now`, the time of the read. */
 export function webTask(task: Task, now: string) {
+  const stalled = isStalled(task, now);
   return {
     id: task.id,
     title: titleOf(task),
@@ -143,7 +145,9 @@ export function webTask(task: Task, now: string) {
     /** When the assignee last changed or commented on the task. */
     lastActivityAt: task.lastActivityAt,
     /** In progress, and its holder has done nothing on it for a day or ever (isStalled). Shown only. */
-    stalled: isStalled(task, now),
+    stalled,
+    /** On a task in progress, how recently its holder worked on it: active, quiet or stalled (activityOf); null otherwise. */
+    activity: activityOf(task, now, stalled),
     parent: task.parentId,
     deferUntil: task.deferUntil,
     dueAt: task.dueAt,
@@ -222,6 +226,7 @@ export function mcpTask(task: Task, now: string) {
     work: task.work,
     lastActivityAt: task.lastActivityAt,
     stalled: web.stalled,
+    activity: web.activity,
     labels: task.labels,
     parent: task.parentId,
     ready: task.ready,
@@ -275,6 +280,7 @@ export function mcpSummary(task: Task, now: string): Record<string, unknown> {
     lastActivityAt: full.lastActivityAt,
     // Only a stalled task names it, so a page of tasks at work stays short.
     stalled: full.stalled || null,
+    activity: full.activity,
     labels: full.labels,
     parent: full.parent,
     ready: full.ready,
