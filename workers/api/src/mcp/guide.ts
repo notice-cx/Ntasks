@@ -41,9 +41,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-09: get_task and list_tasks name a task stalled: in progress, and its holder has done nothing on it for a day, or ever. list_tasks takes stalled: true to list them. A person frees one on their own call in the web app; an agent only with reconcile_task action release and its evidence.',
   '2026-11-10: a task in progress whose work names a pr closes itself as done when GitHub reports that pull request merged into the default branch; label it keep-open when the pull request covers only part of it. Workflow step 5 lists the tasks that stay open.',
   '2026-11-10: claim_task and comment_on_task take touches, the files or other things your work changes, and answer overlaps: the other tasks in progress that change the same. link_tasks type merges-after records which pull request lands first; both tasks show it (workflow steps 3 and 6).',
+  '2026-11-10: list_tasks takes activity, one or more of active, quiet and stalled, to list tasks in progress by how recently their holder changed or commented on them: active within the hour, quiet after that, stalled after a day or with nothing recorded. Each names its activity, and the answer counts each group in activities. Workflow step 2 says how to keep watch.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
@@ -66,7 +66,7 @@ export const TASK_START =
 /** The order of task work, in the tools' own names: one call for each step. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '1. A session starts with the open tasks you hold, listed in these instructions with each one’s next step: carry them on first. list_projects names each project and the prefix that starts its task ids.',
-  '2. Choose: list_tasks with ready: true and no project lists work nothing blocks; get_task reads one in full, or several with tasks.',
+  '2. Choose: list_tasks with ready: true and no project lists work nothing blocks; get_task reads one in full, or several with tasks. Keep watch on work in progress with list_tasks activity: ["quiet","stalled"]: a quiet task may be done and not closed, such as one whose pull request merged, and a stalled one has a holder that stopped, to pick up or free (step 8).',
   "3. Start: claim_task, or claim_task with pr alone for the task that pull request names. Pass for, branch and pr when a helper agent works under you, and touches, the files or other things your work changes; the answer's overlaps names other work in progress that changes the same, so agree with its holder which pull request merges first. create_task with claim: true files new work and claims it. On a task in an epic, get_task and claim_task show parent: the facts the epic's tasks pinned for each other, and what its closed tasks left, with each one's close reason and proof; read them before you build.",
   `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. ${ON_THE_TASK} ${PIN_ON_THE_EPIC}`,
   "5. Finish: close_task with the evidence and its proof: commit, pr or link. A task in progress whose work names a pr closes itself as done when GitHub reports that pull request merged into the default branch. It stays in progress when it is an epic or a person's request, waits on an open approval or Do request, has open tasks under it, or is labelled keep-open, which a task gets when its pull request covers only part of it; one that stayed open is yours to close once all of its work is done. tasks closes several, with_children an epic and its open tasks; unblocked lists what is ready next. create_task with done files work already finished. After a merge or a deploy, report_delivery.",

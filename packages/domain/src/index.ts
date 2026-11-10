@@ -22,12 +22,16 @@ export type { ZoneDays } from './days.ts';
 export type { Criterion } from './criteria.ts';
 export {
   ACCEPTED_REASON,
+  ACTIVE_WITHIN_MS,
+  ACTIVITIES,
+  activityOf,
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
   DELIVERY_STAGES,
   DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   FIELD_TYPES,
+  isActivity,
   isDeliveryStage,
   isDependencyType,
   isExternalLinkKind,
@@ -52,6 +56,7 @@ export {
 } from './task.ts';
 export type {
   AcceptedCriterion,
+  Activity,
   ClosedSibling,
   CustomField,
   DeliveryStage,

@@ -22,6 +22,7 @@ import type { Principal } from '../../src/auth.ts';
 import {
   api,
   callTool,
+  get,
   grantedOnly,
   NOBODY,
   ORIGIN,
@@ -327,6 +328,113 @@ describe('list_tasks', () => {
     expect(rows.find((row) => row.id === busy.id)).not.toHaveProperty('stalled');
     // A task nobody holds is never stalled, however long it waits.
     expect(await stalled((await make('Write the launch post')).id)).toBe(false);
+  });
+
+  it('groups tasks in progress as active within the hour, quiet until a day and stalled after, and lists the groups asked for', async () => {
+    const later = clock('2026-11-06T12:00:00.000Z');
+    const own = api({ now: later.now });
+    const where = await newProject(own.engine);
+    const make = async (title: string) => (await own.engine.createTask(where.id, { title }, OWNER)).task.id;
+    const hold = (id: string, status: 'in_progress' | 'blocked' = 'in_progress') =>
+      own.engine.writeTask(where.id, id, { expectedVersion: 1, set: { assignee: AGENT.name, status } }, AGENT);
+    const dayAgo = await make('Rebuild the home page');
+    const hourAgo = await make('Rebuild the pricing page');
+    const recent = await make('Rebuild the about page');
+    const handed = await make('Rebuild the blog index');
+    const blocked = await make('Rebuild the contact page');
+    const waiting = await make('Write the launch post');
+    const done = await make('Fix the footer links');
+    await hold(dayAgo);
+    later.advance(23 * 60);
+    await hold(hourAgo);
+    later.advance(1);
+    await hold(recent);
+    await hold(blocked, 'blocked');
+    await own.engine.writeTask(
+      where.id,
+      done,
+      { expectedVersion: 1, close: { reason: 'Fixed.', resolution: 'done' } },
+      AGENT,
+    );
+    // Given to an agent that never wrote to it: its holder has recorded nothing.
+    await own.engine.writeTask(
+      where.id,
+      handed,
+      { expectedVersion: 1, set: { assignee: 'agent:gone', status: 'in_progress' } },
+      OWNER,
+    );
+    // A day after the first claim: the second was an hour ago to the minute, the third 59 minutes ago.
+    later.advance(59);
+    const list = (args: Record<string, unknown>) =>
+      read<Listed & { activities?: Record<string, number> }>(own, 'list_tasks', { project: where.id, ...args });
+    const activityOf = (answer: Listed) =>
+      Object.fromEntries(answer.tasks.map((task) => [task.id, task.activity ?? null]));
+
+    const everything = await list({});
+    expect(activityOf(everything)).toEqual({
+      [recent]: 'active',
+      [hourAgo]: 'quiet',
+      [dayAgo]: 'stalled',
+      [handed]: 'stalled',
+      // Not in progress: in no group, however recent its holder's last change.
+      [blocked]: null,
+      [waiting]: null,
+      [done]: null,
+    });
+    expect(everything).not.toHaveProperty('activities');
+    const task = async (id: string) =>
+      (await read<{ task: { activity: string | null } }>(own, 'get_task', { project: where.id, task: id })).task;
+    expect([(await task(recent)).activity, (await task(blocked)).activity]).toEqual(['active', null]);
+
+    const counts = { active: 1, quiet: 1, stalled: 2 };
+    const watch = await list({ activity: ['quiet', 'stalled'] });
+    expect(watch.tasks.map((row) => row.id).sort()).toEqual([hourAgo, dayAgo, handed].sort());
+    expect(watch).toMatchObject({ total: 3, activities: counts });
+    expect(await list({ activity: ['active'] })).toMatchObject({
+      total: 1,
+      tasks: [{ id: recent }],
+      activities: counts,
+    });
+    expect((await list({ status: ['in_progress', 'blocked'] })).activities).toEqual(counts);
+    // Across every project, the same groups narrow the read.
+    const anywhere = await read<Listed>(own, 'list_tasks', { activity: ['stalled'] });
+    expect(
+      anywhere.tasks
+        .filter((row) => row.projectId === where.id)
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual([dayAgo, handed].sort());
+    expect(anywhere).toHaveProperty('activities.stalled');
+
+    for (const activity of [[], ['busy'], ['quiet', 'quiet'], 'quiet'])
+      expect(await refusal(own, 'list_tasks', { project: where.id, activity })).toBe(
+        'invalid arguments: activity (one or more of active, quiet, stalled, each once)',
+      );
+    expect(await refusal(own, 'list_tasks', { project: where.id, activity: ['quiet'], status: ['open'] })).toBe(
+      'invalid arguments: status (an activity is a task in progress: include in_progress, or leave status out)',
+    );
+    expect(await refusal(own, 'list_tasks', { project: where.id, activity: ['quiet'], stage: 'merged' })).toBe(
+      "invalid arguments: activity (a stage is a closed task's and an activity one in progress: name one)",
+    );
+
+    // The web app's board reads the same groups over HTTP.
+    const board = async (query: string) => get(own, `/api/tasks?project=${where.id}${query}`);
+    const watched = await board('&activity=quiet,stalled');
+    expect(
+      Object.fromEntries(
+        (watched.body.tasks as { id: string; activity: string }[]).map((row) => [row.id, row.activity]),
+      ),
+    ).toEqual({ [hourAgo]: 'quiet', [dayAgo]: 'stalled', [handed]: 'stalled' });
+    expect(watched.body.activities).toEqual(counts);
+    expect((await board('&status=in_progress')).body.activities).toEqual(counts);
+    expect((await board('')).body).not.toHaveProperty('activities');
+    for (const query of [
+      '&activity=busy',
+      '&activity=quiet,quiet',
+      '&activity=quiet&status=open',
+      '&activity=quiet&stage=merged',
+    ])
+      expect((await board(query)).status, query).toBe(400);
   });
 
   it('narrows by readiness, status, assignee, labels, type, parent and words', async () => {
