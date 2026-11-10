@@ -48,12 +48,13 @@ Every feature and every change to an existing one meets all five:
 | `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
 | `wrangler.jsonc`, `.dev.vars.example` | The Worker's Cloudflare settings and the names of the secrets it requires, with their descriptions under `cloudflare.bindings` in the root `package.json`. They sit at the root because the Deploy to Cloudflare button reads them there; wrangler commands run in `workers/api` find them, and `.dev.vars` for local runs goes beside them |
 | `apps/web/` | The web app: the page that renders `@notice-cx/ntasks-ui` on the Worker's own origin. Its build in `dist/` is the Worker's static assets |
-| `packages/ui/` | The npm package `@notice-cx/ntasks-ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. The Release UI package workflow publishes it from a `ui-v*` tag ([its README](packages/ui/README.md)) |
+| `packages/ui/` | The npm package `@notice-cx/ntasks-ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. Merging its release pull request publishes it once the owner approves ([its README](packages/ui/README.md#releasing)) |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `packages/github-adapter/` | A Shared Work Protocol server over a GitHub repository's issues, at the protocol's core level: the MCP tools, a ledger for what GitHub cannot hold, and a stand-in for GitHub's API that its tests and CI run the conformance suite over ([its README](packages/github-adapter/README.md)) |
+| `release-please-config.json`, `.release-please-manifest.json` | The two npm packages release-please releases, with their tags, and the version each last released. The Release PRs workflow (`.github/workflows/release-please.yml`) keeps a release pull request for each from them |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires, and the tests of `install.sh`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, the seed of invented tasks, the provision of a deployment nobody signs in to, and the verifier |
-| `tools/cli/` | The npm package `ntasks`, published as `ntasks` from `tools/cli/dist`: the command `npx ntasks deploy`, which deploys the release the package holds to a Cloudflare account and updates it, and the build that bundles the Worker, the web app and the D1 migrations into the package. Its tests run the command against a stand-in for wrangler. The Release workflow publishes it from a version tag ([its README](tools/cli/README.md)) |
+| `tools/cli/` | The npm package `ntasks`, published as `ntasks` from `tools/cli/dist`: the command `npx ntasks deploy`, which deploys the release the package holds to a Cloudflare account and updates it, and the build that bundles the Worker, the web app and the D1 migrations into the package. Its tests run the command against a stand-in for wrangler. Merging its release pull request publishes it once the owner approves ([its README](tools/cli/README.md#releasing)) |
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)). `docs/index.md` lists the pages in the order the website's sidebar shows them |
@@ -149,9 +150,16 @@ with `--remote`, `wrangler secret put`, `wrangler login`, `pnpm run deploy`
 (it runs `wrangler d1 migrations apply --remote`, then `wrangler deploy`),
 the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
 `--dry-run` included, since it reads the account, and requests to a deployed
-Worker. Publishing to npm is the owner's step too: `npm publish`, and pushing
-a `v*` or `ui-v*` tag, which runs the Release or the Release UI package
-workflow. Prepare and verify the change
+Worker. Publishing to npm is the owner's step too: `npm publish`, merging a
+release pull request, pushing a `v*` or `ui-v*` tag, and starting the Release
+or the Release UI package workflow. A release is the owner merging the
+package's release pull request, titled `chore(main): release ntasks <version>`
+or `chore(main): release @notice-cx/ntasks-ui <version>`, then pressing
+**Approve and deploy** on the publish run it starts
+([tools/cli](tools/cli/README.md#releasing),
+[packages/ui](packages/ui/README.md#releasing)). Agents never merge a release
+pull request or turn on auto-merge for one, even where they may merge other
+pull requests. Prepare and verify the change
 locally first, then ask with the exact command, its target and its effect.
 Tests and CI never reach a deployed Worker, a remote database or npm.
 
@@ -170,7 +178,9 @@ switch it to another branch: make each change in its own
 and open the pull request from there. Never amend a commit, and never
 force-push a branch someone else has. Stage only the intended changes. Commit messages and pull request
 titles follow [Conventional Commits](CONTRIBUTING.md#commit-messages-and-pull-request-titles);
-maintainer work carries its task id in a `Refs:` footer.
+maintainer work carries its task id in a `Refs:` footer. Release pull
+requests, which release-please opens on `release-please--` branches, are the
+owner's to merge ([above](#never-without-the-owners-explicit-approval)).
 
 ## Open work
 

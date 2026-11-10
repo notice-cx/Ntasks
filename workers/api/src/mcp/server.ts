@@ -28,7 +28,8 @@ import { FIELD_TOOLS } from './field-tools.ts';
 import { GET_AGENT_STATS, RECONCILE_TASK } from './owner-tools.ts';
 import { REPORT_DELIVERY } from './delivery-tools.ts';
 
-export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' });
+// The ntasks release PR raises the version on the marked line.
+export const SERVER_INFO = Object.freeze({ name: 'ntasks', version: '0.1.0' }); // x-release-please-version
 
 /** The largest MCP message: a create_tasks call filing many long tasks fits. */
 const MCP_BYTES = 256 * 1024;
