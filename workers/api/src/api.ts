@@ -32,6 +32,7 @@ import {
   searchRoute,
   taskPath,
   taskRoute,
+  winsRoute,
   type ReadContext,
 } from './http/tasks.ts';
 import {
@@ -93,6 +94,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks/search': { GET: searchRoute },
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
+  '/api/tasks/wins': { GET: winsRoute },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
   '/api/delivery': { POST: deliveryRoute },

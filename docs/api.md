@@ -613,6 +613,41 @@ does not recognize, counts as `Other`. Approvals and epics are left out.
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
+## Wins
+
+`GET /api/tasks/wins` answers the Productivity page
+([`wins.ts`](../workers/api/src/wins.ts)): what a workspace got done that
+matters over seven days, day by day. A win is one of these:
+
+- **Shipped**: a change that reached merged or live ([delivery](#delivery)),
+  at the time it merged, or went live where no merge was recorded. A pull
+  request is one win however many tasks closed with it; a change with none
+  counts by its commit.
+- **Decided**: a person's answer to a task's choices, at the time they
+  answered, whether or not the task has closed since.
+- **Finished**: an epic closed as done, with how many of its direct children
+  closed as done.
+
+Approvals closed as done are counted in `totals.approved` and not listed. A
+close as won't do, duplicate, can't reproduce, already handled or no longer
+needed is never a win, and nothing counts tasks closed. A change that merges
+more than 28 days after its task closed is not found.
+
+Without `before`, the seven days are today and the six before it, in UTC.
+`before`, a day as `YYYY-MM-DD`, reads the seven days before it, back to 56
+days ago; `earlier` in each answer is the `before` that reads the seven days
+before those, and null at the oldest.
+
+| Field | Holds |
+|---|---|
+| `readAt`, `from`, `to` | When it was read, and the first instant and the instant after the last that it covers |
+| `earlier` | The `before` for the seven days before these, or null |
+| `projects` | How many projects were read |
+| `shippedBefore` | Whether any change in these projects shipped before `from`. When none did, merges may not have been recorded yet |
+| `totals` | `shipped`, `decided`, `finished` and `approved` over the seven days |
+| `days` | Each day, oldest first: `day` and its `shipped`, `decided` and `finished` |
+| `wins` | Every win, newest first. Each has `kind` (`shipped`, `decided` or `finished`), `at` and `projectId`. A shipped win has `stage` (`merged` or `live`), `pullRequest`, `commit` (null when it has a pull request) and `tasks`, each `{ id, title }`; a decided one `id`, `title`, `option`, `label` and `by`, the person who answered; a finished one `id`, `title` and `done` |
+
 ## Delivery
 
 A task's **delivery** says where its change is, so a closed task shows
@@ -828,7 +863,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 5.
+field can hold is added. This is version 6.
 
 | Version | Added |
 |---|---|
@@ -837,6 +872,7 @@ field can hold is added. This is version 5.
 | 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 5 | `POST /api/github/:workspaceId` ([above](#from-a-github-webhook)), and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove` ([Sign-in](sign-in.md#routes)) |
+| 6 | `GET /api/tasks/wins` ([above](#wins)) |
 
 | Where | What it holds |
 |---|---|
@@ -925,6 +961,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
 | `GET /api/tasks/agent-stats` | optionally `project` | `{ readAt, projects, broken, stats }`, as `get_agent_stats` answers ([agent statistics](#agent-statistics)): of the project, or of every project the sender reaches |
+| `GET /api/tasks/wins` | optionally `project` and `before` | The wins of seven days ([wins](#wins)): of the project, or of every project the sender reaches |
 
 ### Writes
 
@@ -1188,6 +1225,9 @@ query:
 - agent statistics read one row for each task in progress, blocked or closed
   in the last eight weeks, in one statement over every project, however many
   tasks the projects hold;
+- the wins feed reads one row for each task not closed and each closed in the
+  last five weeks, in two statements over every project, and then the
+  children of the epics it finds finished;
 - the tasks a sender holds, which the instructions list when an agent
   connects, are one statement in each workspace it reaches, through the
   index of holders: a row for each task held;

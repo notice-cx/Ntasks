@@ -292,6 +292,23 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/changes', `/api/changes?after=0&project=${projectId}`);
   await as('GET /api/fields', `/api/fields?project=${projectId}`);
   await as('GET /api/tasks/agent-stats', `/api/tasks/agent-stats?project=${projectId}`);
+  // An epic finished, so the wins feed answers every kind of win: a change shipped, an answer and an epic.
+  const wrapUp = await create({ title: 'Wrap up the launch', type: 'epic' });
+  const recap = await create({ title: 'Write the recap', parent: wrapUp });
+  for (const id of [recap, wrapUp])
+    await as('POST /api/tasks/:id/close', task(id, '/close'), inProject({ reason: 'Done.' }));
+  // The pull request and the agent's commit closed above merge.
+  await as('POST /api/delivery', '/api/delivery', {
+    repository: 'example/launch',
+    stage: 'merged',
+    pullRequests: ['https://github.com/example/launch/pull/7'],
+    commits: ['c0ffee12'],
+  });
+  await as('GET /api/tasks/wins', '/api/tasks/wins');
+  // Back to the oldest days the feed reaches, where it offers no earlier ones.
+  let earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}`)).earlier;
+  while (typeof earlier === 'string')
+    earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&before=${earlier}`)).earlier;
   let next: unknown = null;
   do {
     next = (await as('GET /api/backup', next === null ? '/api/backup' : `/api/backup?page=${String(next)}`)).next;

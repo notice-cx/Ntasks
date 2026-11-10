@@ -26,6 +26,7 @@ import {
   type TaskFilters,
   type TaskPage,
   type TaskQuery,
+  type WinsRead,
   type WorkItem,
 } from '@ntasks/domain';
 import {
@@ -37,6 +38,7 @@ import {
   toHeld,
   toProject,
   toTask,
+  toWin,
   toWork,
   type CommentRow,
   type EpicRow,
@@ -45,6 +47,7 @@ import {
   type HeldRow,
   type ProjectRow,
   type TaskRow,
+  type WinRow,
   type WorkRow,
 } from './rows.ts';
 import type { Bindable, Database, Statement } from './database.ts';
@@ -367,6 +370,65 @@ export class Reads {
       .bind(JSON.stringify([...new Set(projectIds)]), instant(closedSince, 'closedSince'))
       .all<WorkRow>();
     return results.map(toWork);
+  }
+
+  /**
+   * The wins between ?2 and ?3: the tasks not closed whose choice a person
+   * answered then, through the (project_id, status) index, and the tasks
+   * closed from ?4 on that shipped then, were answered then, or are epics or
+   * approvals closed as done then, through the (project_id, closed_at) one.
+   * Beside them, whether any change shipped before ?2, which stops at the
+   * first such task the stage index holds. Then, for the epics, their
+   * children closed as done through the parent index.
+   */
+  async listWins(projectIds: readonly string[], from: string, to: string, closedSince: string): Promise<WinsRead> {
+    if (projectIds.length === 0) return { items: [], shippedBefore: false };
+    if (!projectIds.every((id) => typeof id === 'string')) invalid('projectIds must be project ids');
+    const columns = `t.id, t.project_id, t.type, t.title, t.status, t.resolution, t.closed_at, t.closed_by,
+      t.closed_model, t.choice, t.delivery_pull_request, t.delivery_commit, t.delivery_merge_commit,
+      t.delivery_stage, t.merged_at, t.live_at`;
+    const answered = `(t.choice IS NOT NULL AND json_extract(t.choice, '$.at') >= ?2 AND json_extract(t.choice, '$.at') < ?3)`;
+    const shipped = 'coalesce(t.merged_at, t.live_at)';
+    const args: Bindable[] = [
+      JSON.stringify([...new Set(projectIds)]),
+      instant(from, 'from'),
+      instant(to, 'to'),
+      instant(closedSince, 'closedSince'),
+    ];
+    const [found, before] = await this.#db.batch<WinRow | { shipped_before: number }>([
+      this.#db
+        .prepare(
+          `SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_status
+             ON t.project_id = wanted.value WHERE t.status IN ${NOT_CLOSED} AND ${answered}
+           UNION ALL
+           SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_closed
+             ON t.project_id = wanted.value WHERE t.closed_at >= ?4 AND (${answered}
+               OR (${shipped} >= ?2 AND ${shipped} < ?3)
+               OR (t.closed_at >= ?2 AND t.closed_at < ?3 AND t.resolution = 'done' AND t.type IN ('epic', 'gate')))`,
+        )
+        .bind(...args),
+      this.#db
+        .prepare(
+          `SELECT EXISTS (SELECT 1 FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_stage
+             ON t.project_id = wanted.value WHERE t.delivery_stage IN ('merged', 'live') AND ${shipped} < ?2) AS shipped_before`,
+        )
+        .bind(args[0]!, args[1]!),
+    ]);
+    const rows = found!.results as WinRow[];
+    const epics = rows.filter((row) => row.type === 'epic' && row.resolution === 'done').map((row) => row.id);
+    const done = new Map<string, number>();
+    if (epics.length > 0) {
+      const { results } = await this.#db
+        .prepare(
+          `SELECT t.parent_id AS epic, count(*) AS done FROM ${among('?1')} CROSS JOIN tasks t INDEXED BY tasks_by_parent
+             ON t.parent_id = wanted.id WHERE t.status = 'closed' AND t.resolution = 'done' GROUP BY t.parent_id`,
+        )
+        .bind(JSON.stringify(epics))
+        .all<{ epic: string; done: number }>();
+      for (const row of results) done.set(row.epic, row.done);
+    }
+    const shippedBefore = (before!.results[0] as { shipped_before: number } | undefined)?.shipped_before === 1;
+    return { items: rows.map((row) => toWin(row, done.get(row.id) ?? 0)), shippedBefore };
   }
 
   /** The open tasks one holder holds, through the assignee index: one entry

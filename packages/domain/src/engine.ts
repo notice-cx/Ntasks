@@ -368,6 +368,38 @@ export interface WorkItem {
   readonly closedModel: string | null;
 }
 
+/** What the wins feed reads of one task (workers/api/src/wins.ts): a change
+ * merged or live, a person's answer to its choices, or an epic or an approval
+ * closed as done. No description or comments. */
+export interface WinItem {
+  readonly id: string;
+  readonly projectId: string;
+  readonly type: TaskType;
+  readonly title: string;
+  readonly status: TaskStatus;
+  readonly resolution: TaskResolution | null;
+  readonly closedAt: string | null;
+  readonly closedBy: string | null;
+  readonly closedModel: string | null;
+  /** The option a person chose, as the task records it, with `at` and `by`. */
+  readonly choice: JsonObject | null;
+  readonly pullRequest: string | null;
+  readonly commit: string | null;
+  readonly mergeCommit: string | null;
+  readonly stage: DeliveryStage | null;
+  readonly mergedAt: string | null;
+  readonly liveAt: string | null;
+  /** For an epic closed as done: its direct children closed as done. 0 for any other task. */
+  readonly done: number;
+}
+
+/** The wins of a time span, and whether any change shipped before it. */
+export interface WinsRead {
+  readonly items: readonly WinItem[];
+  /** Whether a change in these projects reached merged or live before the span began. */
+  readonly shippedBefore: boolean;
+}
+
 /** A repository's word that pull requests or commits reached a stage. */
 export interface DeliverySignal {
   readonly stage: Exclude<DeliveryStage, 'built'>;
@@ -445,6 +477,15 @@ export interface TaskEngine {
    * progress or blocked or that closed at or after `closedSince`, in one
    * statement whatever the number of projects. */
   listWork(projectIds: readonly string[], closedSince: string): Promise<readonly WorkItem[]>;
+  /**
+   * The wins from `from` until `to` in these projects: changes that reached
+   * merged or live, answers a person gave to a task's choices, and epics and
+   * approvals closed as done. It reads the tasks not closed and the tasks
+   * closed from `closedSince` on through their indexes, so a change merged
+   * after its task closed is found while that close is at or after
+   * `closedSince`. Its cost follows that window, not the history.
+   */
+  listWins(projectIds: readonly string[], from: string, to: string, closedSince: string): Promise<WinsRead>;
   /** The open tasks `assignee` holds, in every project, most urgent first, in
    * one statement through the assignee index: its cost follows the tasks held. */
   listHeld(assignee: string): Promise<readonly HeldTask[]>;

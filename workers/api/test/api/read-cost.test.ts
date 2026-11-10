@@ -166,7 +166,9 @@ async function costOf(work: () => Promise<unknown>): Promise<Meter> {
  * for each task it returns. The statements do not grow with the number of
  * projects. list_tasks reads the external links of the page it returns in a
  * statement of its own, after the board. Agent statistics read one row for
- * each task in progress, blocked or closed in the last eight weeks.
+ * each task in progress, blocked or closed in the last eight weeks. The wins
+ * feed reads one row for each task not closed and each closed in the last
+ * five weeks, and the children of the epics it finds finished.
  */
 const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: number }> = {
   'HTTP board, largest project': { statements: 5, rowsRead: 7_000 },
@@ -189,6 +191,8 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   get_task_history: { statements: 3, rowsRead: 60 },
   'get_agent_stats, every project': { statements: 2, rowsRead: 800 },
   'HTTP agent stats, largest project': { statements: 2, rowsRead: 150 },
+  'HTTP wins, every project': { statements: 4, rowsRead: 2_000 },
+  'HTTP wins, largest project': { statements: 4, rowsRead: 700 },
 };
 
 describe('the cost of each read', () => {
@@ -218,6 +222,8 @@ describe('the cost of each read', () => {
       get_task_history: () => read(target, 'get_task_history', { project: big.id, task }),
       'get_agent_stats, every project': () => read(target, 'get_agent_stats'),
       'HTTP agent stats, largest project': () => get(target, `/api/tasks/agent-stats?project=${big.id}`),
+      'HTTP wins, every project': () => get(target, '/api/tasks/wins'),
+      'HTTP wins, largest project': () => get(target, `/api/tasks/wins?project=${big.id}`),
     };
     expect(Object.keys(reads)).toEqual(Object.keys(BUDGETS));
     const costs: Record<string, Meter> = {};
@@ -299,6 +305,7 @@ describe('the cost of each read', () => {
       'list_tasks search, every project': () => read(target, 'list_tasks', { query: 'seeded indexing' }),
       'HTTP search, every project': () => get(target, '/api/tasks/search?q=seeded%20indexing'),
       'list_tasks, largest project': () => read(target, 'list_tasks', { project: big.id }),
+      'HTTP wins, every project': () => get(target, '/api/tasks/wins'),
     };
     const measure = async () => {
       const measured: Record<string, { cost: Meter; answer: unknown }> = {};

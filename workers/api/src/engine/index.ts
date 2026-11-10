@@ -24,6 +24,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     getTask: (projectId, taskId) => reads.getTask(projectId, taskId),
     getTasks: (projectId, taskIds) => reads.getTasks(projectId, taskIds),
     listWork: (projectIds, closedSince) => reads.listWork(projectIds, closedSince),
+    listWins: (projectIds, from, to, closedSince) => reads.listWins(projectIds, from, to, closedSince),
     listHeld: (assignee) => reads.listHeld(assignee),
     findTasks: (projectId, taskIds) => reads.findTasks(projectId, taskIds),
     listTasks: (projectId, query) => reads.listTasks(projectId, query),
