@@ -157,7 +157,11 @@ describe('an epic closes when its last open task does', () => {
     const { epic, children } = await epicWith(tasks, project.id, 2);
     await close(tasks, project.id, children[0]!.id, 'wont-do');
     // Read as won't do, the other task is done by the batch: the epic is done, not no longer needed.
-    race.before = () => inner.prepare("UPDATE tasks SET resolution = 'done', version = version + 1 WHERE id = ?1").bind(children[0]!.id).run();
+    race.before = () =>
+      inner
+        .prepare("UPDATE tasks SET resolution = 'done', version = version + 1 WHERE id = ?1")
+        .bind(children[0]!.id)
+        .run();
 
     await expectRefusal(close(tasks, project.id, children[1]!.id, 'wont-do'), 'version_conflict');
     await close(tasks, project.id, children[1]!.id, 'wont-do');
