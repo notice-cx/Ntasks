@@ -129,13 +129,18 @@ flowchart LR
   D["web-4 · Write the guide<br/>ready"]
 ```
 
-Each arrow points from a task to the task that waits on it. Four more kinds
+Each arrow points from a task to the task that waits on it. Five more kinds
 of link record context without making anything wait:
 
 - **related** connects tasks about the same subject;
 - **discovered from** points a new task at the task whose work turned it up;
 - **duplicates** points a task at an earlier task for the same work;
-- **supersedes** points a task at the task it replaces.
+- **supersedes** points a task at the task it replaces;
+- **merges after** says a task's pull request lands only once the other
+  task's has, though both can be worked on at once.
+
+Both tasks show a link: the task that holds it among its dependencies, the
+other among its dependents.
 
 Two tasks hold at most one link: setting another kind, or the same kind the
 other way round, replaces it.
@@ -194,6 +199,11 @@ comments on it:
 - **session**, **worktree**, **branch**, **pr**, **commit** and **next**: a
   link to or id of the agent session doing the work, its worktree and branch,
   its pull request, the commit last tested, and the next step.
+- **touches**: the files or other things the work changes, such as a path, a
+  folder or a migration number. When another task in progress touches the
+  same, the claim or comment that records it says so, and the two holders
+  agree which pull request merges first with a **merges after** link. It is
+  advice: a claim is never refused for it.
 
 Each new value replaces the one before it. Releasing or closing the task
 clears them; its history keeps every value they had.

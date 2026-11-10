@@ -90,6 +90,31 @@ describe('the adapter', () => {
     }
   }, 60_000);
 
+  it('links a task to one in a project the sender only reads, and leaves that task’s own link to it alone', async () => {
+    const local = await startLocalAdapter();
+    try {
+      const agent = mcpApi(local.target, 'agent');
+      const person = mcpApi(local.target, 'person');
+      const readOnly = local.target.projects.readOnly;
+      const theirs = (await person.create({ project: readOnly, title: 'Change the shared schema' })).value!.id;
+      const mine = (await agent.create({ title: 'Read the new schema' })).value!.id;
+      expect((await agent.link(mine, theirs, 'merges-after')).ok).toBe(true);
+      const read = (await agent.read(theirs)).value!;
+      expect(read.task.dependents).toEqual([expect.objectContaining({ id: mine, type: 'merges-after' })]);
+      expect((await agent.link(mine, theirs, 'blocks')).refusal?.kind).toBe('refused');
+
+      const other = (await person.create({ project: readOnly, title: 'Rename the schema' })).value!.id;
+      expect((await person.link(other, mine, 'related')).ok).toBe(true);
+      const refused = await agent.link(mine, other, 'merges-after');
+      expect([refused.refusal?.kind, refused.refusal?.text.includes('reading only')]).toEqual(['refused', true]);
+      expect((await agent.read(mine)).value!.task.dependents).toEqual([
+        expect.objectContaining({ id: other, type: 'related' }),
+      ]);
+    } finally {
+      await local.close();
+    }
+  }, 60_000);
+
   it('names a task by one spelling of its issue number, and refuses an argument name the tool does not own', async () => {
     const local = await startLocalAdapter();
     try {

@@ -40,7 +40,7 @@ or prefix, since no query reads across stores.
 | `projects` | Each project's id, key, name and task id prefix, and whether its changes go live by a deploy (`deploys`) |
 | `tasks` | One row per task: its fields, its current close and delivery, its version |
 | `task_labels` | A task's labels, one row each |
-| `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
+| `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates`, `supersedes` and `merges-after` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
 | `custom_fields` | The custom fields each project defines: key, name, type, options, and when it was retired |
 | `task_comments` | Comments, in the order they were added, each marked when it is pinned |
@@ -60,7 +60,8 @@ task's estimate in whole minutes, or null when nobody estimated it.
 
 A task's work in hand is two columns of `tasks`: `assignee_for`, the helper
 agent its holder works through, and `work`, the details its holder recorded
-(`session`, `worktree`, `branch`, `pr`, `commit` and `next`) as one JSON
+(`session`, `worktree`, `branch`, `pr`, `commit` and `next`, and `touches`,
+a list of the files or other things the work changes) as one JSON
 object, so a new detail needs no new column (`WORK_DETAILS` and
 `WORK_LIMITS` in [`task.ts`](../packages/domain/src/task.ts)). The engine
 clears both in the write that releases the task, gives it to someone else or
@@ -71,7 +72,9 @@ the holder makes moves it without a write of its own.
 
 A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
 `duplicates` `web-1` means web-2 is the same work as web-1, filed again, and
-`web-3` `supersedes` `web-1` means web-3 replaces it. Only `blocks` holds a
+`web-3` `supersedes` `web-1` means web-3 replaces it, and `web-4`
+`merges-after` `web-1` means web-4's pull request lands only once web-1's
+has. Only `blocks` holds a
 task out of ready work. A task links to another task once, whatever the type.
 
 A task's external links are http or https URLs, kept as the URL standard

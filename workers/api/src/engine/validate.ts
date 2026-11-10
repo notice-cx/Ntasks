@@ -15,6 +15,7 @@ import {
   TASK_LIMITS,
   TASK_PRIORITY,
   TaskRefused,
+  TOUCHES_LIMITS,
   WORK_DETAILS,
   WORK_LIMITS,
   type ActionRequest,
@@ -40,6 +41,7 @@ import {
   type TaskFieldChanges,
   type TaskResolution,
   type TaskStep,
+  type TaskWork,
   type TaskWrite,
   type WorkDetail,
 } from '@ntasks/domain';
@@ -444,13 +446,22 @@ function line(value: unknown, field: string, max: number): string {
   return value;
 }
 
-/** Work details: each one line, a pull request an http or https URL. */
-function workDetails(value: unknown): Partial<Record<WorkDetail, string>> {
+/** Work details: each one line, a pull request an http or https URL, and
+ * `touches` a list of lines, each once. */
+function workDetails(value: unknown): TaskWork {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid('work must be an object');
-  const checked: Partial<Record<WorkDetail, string>> = {};
+  const checked: Partial<Record<WorkDetail, string>> & { touches?: readonly string[] } = {};
   for (const [key, detail] of Object.entries(value)) {
+    if (key === 'touches') {
+      if (!Array.isArray(detail) || detail.length > TOUCHES_LIMITS.entries)
+        invalid(`work.touches must be a list of at most ${TOUCHES_LIMITS.entries} paths or resources`);
+      checked.touches = [
+        ...new Set(detail.map((entry: unknown, index) => line(entry, `work.touches[${index}]`, TOUCHES_LIMITS.entry))),
+      ];
+      continue;
+    }
     if (!(WORK_DETAILS as readonly string[]).includes(key))
-      invalid(`work.${key} is not a work detail; they are ${either([...WORK_DETAILS])}`);
+      invalid(`work.${key} is not a work detail; they are ${either([...WORK_DETAILS, 'touches'])}`);
     const name = key as WorkDetail;
     if (name === 'pr')
       checked[name] =

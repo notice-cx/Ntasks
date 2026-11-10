@@ -167,6 +167,7 @@ async function drive(): Promise<readonly Sample[]> {
         pr: 'https://example.com/pull/1',
         commit: 'f00dfeed',
         next: 'Send the draft.',
+        touches: ['posts/launch.md'],
       },
     }),
   );
@@ -196,6 +197,7 @@ async function drive(): Promise<readonly Sample[]> {
     inProject({ reason: 'Filed twice.', resolution: 'duplicate', duplicateOf: post }),
   );
   await as('PATCH /api/tasks/:id', task(later), inProject({ defer: '2026-12-01' }));
+  await tool(owner, 'link_tasks', { task: date, to: post, type: 'merges-after' });
   const checked = (await tool(owner, 'create_task', { project: projectId, title: 'Check the links' })).id as string;
   await tool(owner, 'claim_task', { task: checked, model: 'claude-sonnet-5-5' });
   await tool(owner, 'close_task', {

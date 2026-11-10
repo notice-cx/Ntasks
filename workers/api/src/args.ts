@@ -12,6 +12,7 @@ import {
   TASK_PRIORITY,
   TASK_RESOLUTIONS,
   TASK_TYPES,
+  TOUCHES_LIMITS,
   WORK_DETAILS,
   WORK_LIMITS,
   type CommentPins,
@@ -524,8 +525,8 @@ export function setOrTakeOff(args: Args, names: readonly string[]): void {
   }
 }
 
-/** The arguments that name a holder's helper and work details: `for` and WORK_DETAILS. */
-export const WORK_ARGS: readonly string[] = Object.freeze(['for', ...WORK_DETAILS]);
+/** The arguments that name a holder's helper and work details: `for`, WORK_DETAILS and `touches`. */
+export const WORK_ARGS: readonly string[] = Object.freeze(['for', ...WORK_DETAILS, 'touches']);
 
 /**
  * The helper (`for`) and work details a claim or a comment names, each one
@@ -548,12 +549,24 @@ export function workArgs(args: Args, at = '', helperArgs: Args = args): WorkArgs
     return value;
   };
   const helper = line(helperArgs, 'for', 'for', TASK_LIMITS.helper);
-  const work: Partial<Record<WorkDetail, string>> = {};
+  const work: Partial<Record<WorkDetail, string>> & { touches?: string[] } = {};
   for (const detail of WORK_DETAILS) {
     const value = line(args, detail, `${at}${detail}`, WORK_LIMITS[detail]);
     if (value === undefined) continue;
     work[detail] =
       detail === 'pr' ? (httpUrl(value) ?? refuse(`invalid arguments: ${at}pr (an http or https URL)`)) : value;
+  }
+  const touches = args.touches;
+  if (touches !== undefined) {
+    if (!Array.isArray(touches) || touches.length > TOUCHES_LIMITS.entries)
+      refuse(
+        `invalid arguments: ${at}touches (a list of at most ${TOUCHES_LIMITS.entries} paths or resources; [] takes it off)`,
+      );
+    work.touches = touches.map(
+      (entry: unknown, index) =>
+        line({ entry }, 'entry', `${at}touches[${index}]`, TOUCHES_LIMITS.entry) ??
+        refuse(`invalid arguments: ${at}touches[${index}] (one line of 1 to ${TOUCHES_LIMITS.entry} characters)`),
+    );
   }
   if (helper === undefined && Object.keys(work).length === 0) return undefined;
   return { ...(helper === undefined ? {} : { assigneeFor: helper }), ...(Object.keys(work).length ? { work } : {}) };

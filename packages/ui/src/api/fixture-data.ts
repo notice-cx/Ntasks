@@ -156,6 +156,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
         branch: 'codex/sign-in-a11y',
         pr: 'https://github.example.com/example/web/pull/42',
         next: 'Announce the password error to screen readers',
+        touches: ['src/pages/sign-in/fields.ts'],
       },
       lastActivityAt: at(12 * 60_000),
       startedAt: at(3 * HOUR),

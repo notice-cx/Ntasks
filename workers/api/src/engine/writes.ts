@@ -164,11 +164,13 @@ function fieldMap(values: ReadonlyMap<string, FieldValue>): Json {
   return Object.fromEntries([...values].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
-/** Work details in WORK_DETAILS' order, so one set of details is stored and recorded one way. */
+/** Work details in WORK_DETAILS' order, then `touches`, so one set of details
+ * is stored and recorded one way. An empty `touches` takes the list off. */
 function workIn(details: TaskWork): TaskWork {
-  return Object.fromEntries(
-    WORK_DETAILS.flatMap((detail) => (details[detail] === undefined ? [] : [[detail, details[detail]]])),
-  );
+  return Object.fromEntries([
+    ...WORK_DETAILS.flatMap((detail) => (details[detail] === undefined ? [] : [[detail, details[detail]]])),
+    ...(details.touches === undefined || details.touches.length === 0 ? [] : [['touches', details.touches]]),
+  ]) as TaskWork;
 }
 
 /**

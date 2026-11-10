@@ -215,3 +215,33 @@ test('a store that holds comments keeps each unpinned, and lets a comment only b
   );
   db.close();
 });
+
+test('a store that holds links keeps each one when the links table takes merges-after', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0006_merge_order.sql');
+  assert.ok(index > 0, 'the merge order migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  const links = () =>
+    db
+      .prepare('SELECT task_id, depends_on_id, type, created_at, created_by FROM task_edges ORDER BY task_id')
+      .all()
+      .map((row) => ({ ...row }));
+  const before = links();
+
+  migrated(db, FILES.slice(index));
+
+  assert.deepEqual(links(), before, 'every link it held, unchanged');
+  const link = (task: string, type: string) =>
+    insert(db, 'task_edges', { task_id: task, depends_on_id: 'web-a1', type, created_at: LATER });
+  link('web-b2', 'merges-after');
+  assert.throws(() => link('web-a1.1', 'merges-before'), /CHECK constraint/u, 'a type the model does not have');
+  assert.throws(() => link('web-a1', 'related'), /CHECK constraint/u, 'a link onto itself');
+  assert.throws(() => link('web-none', 'related'), /FOREIGN KEY/u, 'a task that does not exist');
+  assert.ok(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'task_edges_by_dependency'").get(),
+    'the index of links by the task they name',
+  );
+  db.close();
+});

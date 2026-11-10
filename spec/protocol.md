@@ -196,7 +196,7 @@ Schemas: [`task`](schemas/task.schema.json),
 | `estimateMinutes` | How long the work should take |
 | `ready`, `awaitingHuman` | Whether someone can start it now, and whether it waits on a person, as the server worked them out |
 | `assignee`, `for`, `work`, `lastActivityAt`, `stalled` | Its claim ([3.3](#33-claim-and-work-in-hand)) |
-| `dependencies`, `externalLinks` | Its links ([3.5](#35-links)) |
+| `dependencies`, `dependents`, `externalLinks` | Its links, and the links other tasks hold onto it ([3.5](#35-links)) |
 | `choices`, `choice`, `answer` | A decision's options, the pick and the recorded answer ([3.6](#36-decisions)) |
 | `deferUntil` | The time it is hidden from ready work until |
 | `fields`, `metadata` | Custom field values and other systems' facts ([8](#8-extensions)) |
@@ -216,7 +216,11 @@ work in hand when it claims the task or comments on it:
   the work to an agent that cannot reach the server itself. The holder
   still holds the task.
 - `work`: `session`, `worktree`, `branch`, `pr`, `commit` (the commit last
-  tested) and `next` (the next step).
+  tested), `next` (the next step) and `touches`: a list of the files or
+  other things the work changes, such as a path, a folder or a migration
+  number. Two entries **meet** when they are the same path, or one is a
+  folder that holds the other; a leading `./` and a trailing `/` are
+  ignored.
 
 Each new value replaces the one before it. `lastActivityAt` is the time of
 the holder's latest change or comment on the task. It is shown only and
@@ -234,6 +238,14 @@ only stalled tasks, and MUST NOT change the task because it is stalled
 the write that releases the task, gives it to someone else or closes it,
 and its history keeps every value they had. Work details that change
 nothing MUST leave the task's version as it was.
+
+**STATE-19.** <a id="state-19"></a>A server MUST NOT refuse a claim or a
+write because another task touches the same files or other things. When a
+claim records `touches`, its answer MUST list, as `overlaps`, each other
+task of the project that is held and in progress or blocked whose `touches`
+meet them, with the entries that meet and the order a `merges-after` link
+between the two records, if any. A held task that is open or deferred is
+not at work, so it is left out.
 
 ### 3.4 Comment
 
@@ -277,14 +289,19 @@ A link between two tasks reads from the task that has it to the other one:
 | `discovered-from` | was found from the work of |
 | `duplicates` | is the same work as, filed later |
 | `supersedes` | replaces |
+| `merges-after` | merges after: its pull request lands only once the other's has |
 
-A task's `parent` is a field, not a link. An approval holds the task that
-waits on it through a `blocks` link ([3.7](#37-approval)).
+Only `blocks` holds a task out of ready work. A task's `parent` is a field,
+not a link. An approval holds the task that waits on it through a `blocks`
+link ([3.7](#37-approval)).
 
 **INV-11.** <a id="inv-11"></a>Two tasks MUST hold at most one link
 between them: setting another kind, or the same kind the other way round,
 replaces it. A server MUST refuse a `blocks` link or a parent that would
-make tasks wait on each other in a loop.
+make tasks wait on each other in a loop. A read of either task MUST show the
+link: the task that holds it among its `dependencies`, the other among its
+`dependents`, each entry with the other task's `id`, `title` and `status`
+and the link's `type`.
 
 An **external link** is a page outside the server that the work concerns:
 an http or https `url`, a `title`, and optionally a `kind`
@@ -825,7 +842,7 @@ the ones above it in this table.
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
 | **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step, acceptance as done and free of a held task ([AUTH-9](#auth-9)); record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12, STATE-18 | Close with a commit or pull request; send a signal |
-| **Live work** | Work in hand, pinned comments, parent context | STATE-13, STATE-16, STATE-17, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request; pin and unpin a comment; read a task's parent context |
+| **Live work** | Work in hand, pinned comments, parent context, overlaps | STATE-13, STATE-16, STATE-17, STATE-19, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request; pin and unpin a comment; read a task's parent context; answer overlaps on a claim |
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that

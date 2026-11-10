@@ -196,6 +196,17 @@ comment_on_task  { "task": "web-a1b2", "text": "Migration 0007 is taken by web-a
 `parent`, with the epic's pinned comments and its most recently closed
 tasks, each with its close reason and proof.
 
+When two tasks in progress change the same file, the claim says so, and the
+agents record which pull request lands first:
+
+```text
+claim_task  { "task": "web-a1b2.4", "touches": ["scripts/bundle-baseline.json"] }
+link_tasks  { "task": "web-a1b2.4", "to": "web-a1b2.2", "type": "merges-after" }
+```
+
+The claim's answer lists `web-a1b2.2` in `overlaps` when its holder recorded
+the same file; the link then shows on both tasks.
+
 `get_task_guide` gives the agent the rest: filing work, linking tasks,
 asking a person for a decision, an approval or steps to do, and the rules for
 [writing a task](concepts.md#writing-a-task). [The MCP endpoint](api.md#the-mcp-endpoint)

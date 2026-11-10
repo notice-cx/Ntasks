@@ -281,7 +281,12 @@ export async function changing(
 
 /** The link types that may name a task in another project the sender
  * reaches. They hold nothing out of ready work; every other link stays in the project. */
-const ACROSS_PROJECTS: readonly DependencyType[] = Object.freeze(['related', 'duplicates', 'supersedes']);
+const ACROSS_PROJECTS: readonly DependencyType[] = Object.freeze([
+  'related',
+  'duplicates',
+  'supersedes',
+  'merges-after',
+]);
 
 /** The task ids a new task or a change links to, each in its project. */
 async function linkTargets(

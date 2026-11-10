@@ -21,6 +21,7 @@ import {
   lacksProof,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
+  TOUCHES_LIMITS,
   WORK_LIMITS,
   type ApprovalRequest,
   type DependencyType,
@@ -105,6 +106,7 @@ import {
 import { reachable } from '../auth.ts';
 import { linksSeenBy, projectOf } from '../lookup.ts';
 import { commentView, mcpTask, parentView, writtenView, type McpTaskField } from '../views.ts';
+import { overlapsOf } from '../overlaps.ts';
 import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
@@ -184,6 +186,14 @@ const WORK = Object.freeze({
     maxLength: WORK_LIMITS.next,
     description:
       'The next step, in one line. Each of these replaces the value before it, and closing or releasing the task clears them.',
+  },
+  touches: {
+    type: 'array',
+    maxItems: TOUCHES_LIMITS.entries,
+    items: { type: 'string', maxLength: TOUCHES_LIMITS.entry },
+    description:
+      'The files or other things this work changes, such as a path, a folder or a migration number. Replaces the list before it; [] takes it off. ' +
+      'The answer lists in overlaps the other tasks in progress whose touches meet these.',
   },
 });
 const TASK_IDS = (description: string) => ({
@@ -1426,7 +1436,9 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Assign an open task to yourself and start it. Fails if someone else holds it. ' +
       'Without task, pr names it: the open task whose work details or pull-request link name that pull request. ' +
-      "A task in an epic answers parent as get_task does: the epic's pinned comments and its most recently closed tasks.",
+      "A task in an epic answers parent as get_task does: the epic's pinned comments and its most recently closed tasks. " +
+      'With touches, overlaps lists the other tasks in progress that change the same files: agree with their holders which ' +
+      'pull request merges first, and record it with link_tasks type merges-after. It never refuses the claim.',
     inputSchema: schema({
       project: PROJECT,
       task: { ...TASK, description: 'The task id, such as abc-1x2. Leave it out to claim by pr.' },
@@ -1448,11 +1460,16 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const retry = await retryRequest(context, 'claim_task', args);
       const projectId = await projectFor(context, args, taskId);
       const { result } = await updateTask(context, projectId, taskId, { claim: true, ...work }, model, retry);
-      const [answer, parent] = await Promise.all([
+      const [answer, parent, overlaps] = await Promise.all([
         written(context, detail, result.task, ['status', 'assignee', ...workShown(work)], result.replayed),
         result.task.parentId === null ? null : context.engine.parentContext(result.task.projectId, result.task.id),
+        overlapsOf(context, result.task),
       ]);
-      return parent === null ? answer : { ...answer, parent: parentView(parent) };
+      return {
+        ...answer,
+        ...(parent === null ? {} : { parent: parentView(parent) }),
+        ...(overlaps.length === 0 ? {} : { overlaps }),
+      };
     },
   },
   UPDATE_TASK,
@@ -1461,7 +1478,8 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       `Add a comment to a task, or the same comment to up to ${MANY} with tasks, such as one check that covers them all. ` +
       "pin: true pins it: a comment pinned on an epic shows on each of the epic's tasks when one is read or claimed, " +
-      'so pin there the facts its other tasks need. unpin takes pinned comments of the task off, such as ones this corrects.',
+      'so pin there the facts its other tasks need. unpin takes pinned comments of the task off, such as ones this corrects. ' +
+      'With touches, the answer lists in overlaps the other tasks in progress that change the same files.',
     inputSchema: schema(
       {
         project: PROJECT,
@@ -1500,10 +1518,25 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         refuse('invalid arguments: unpin (a comment id names a comment of one task: name it with task)');
       const comment = async (taskId: string, retry: RetryRequest) => {
         const projectId = await projectFor(context, args, taskId);
-        const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, work, model, pins);
-        return detail === 'full'
-          ? { comment: commentView(comment), replayed }
-          : { task: taskId, commentId: comment.id, ...(comment.pinned ? { pinned: true } : {}), replayed };
+        const { project, comment, replayed } = await commentOnTask(
+          context,
+          projectId,
+          taskId,
+          text,
+          retry,
+          work,
+          model,
+          pins,
+        );
+        // Only a comment that records touches is checked against the other work in progress.
+        const touched = work?.work?.touches === undefined ? null : await context.engine.getTask(project.id, taskId);
+        const overlaps = touched === null ? [] : await overlapsOf(context, touched);
+        return {
+          ...(detail === 'full'
+            ? { comment: commentView(comment), replayed }
+            : { task: taskId, commentId: comment.id, ...(comment.pinned ? { pinned: true } : {}), replayed }),
+          ...(overlaps.length === 0 ? {} : { overlaps }),
+        };
       };
       if (one) return comment(ids[0]!, await retryRequest(context, 'comment_on_task', args));
       await bindCall(context, 'comment_on_task', args, ids);
@@ -1524,15 +1557,17 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     description:
       'Set the one link between two tasks, replacing the kind it had, or remove it with remove: true. ' +
       'type names how task links to to: blocks (task waits on to and is not ready until to closes), related, ' +
-      "discovered-from (task was found from to's work), duplicates (task is the same work as to, filed later) or " +
-      'supersedes (task replaces to). A link to or from a person’s decision changes only when the person decides.',
+      "discovered-from (task was found from to's work), duplicates (task is the same work as to, filed later), " +
+      "supersedes (task replaces to) or merges-after (task's pull request merges only once to's has; both stay ready). " +
+      'Both tasks show the link: task among its dependencies, to among its dependents. ' +
+      'A link to or from a person’s decision changes only when the person decides.',
     inputSchema: schema(
       {
         project: PROJECT,
         task: TASK,
         to: {
           type: 'string',
-          description: 'The other task id. related, duplicates and supersedes may name another project.',
+          description: 'The other task id. related, duplicates, supersedes and merges-after may name another project.',
         },
         type: { type: 'string', enum: DEPENDENCY_TYPES, description: 'How task links to to.' },
         remove: { type: 'boolean', description: 'true removes the link between the two, whichever way it points.' },

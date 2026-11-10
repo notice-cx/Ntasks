@@ -210,7 +210,7 @@ export async function updateRoute(
   const details = body.work === undefined ? {} : body.work;
   if (details === null || typeof details !== 'object' || Array.isArray(details))
     refuse('invalid arguments: work (an object of work details)');
-  only(details as Args, WORK_DETAILS);
+  only(details as Args, [...WORK_DETAILS, 'touches']);
   const fields: TaskChange = {
     ...workArgs(details as Args, 'work.', body),
     claim: body.claim === true ? true : undefined,

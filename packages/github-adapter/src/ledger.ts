@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
-export type LinkType = 'blocks' | 'related' | 'discovered-from' | 'duplicates' | 'supersedes';
+export type LinkType = 'blocks' | 'related' | 'discovered-from' | 'duplicates' | 'supersedes' | 'merges-after';
 
 export interface TaskRecord {
   readonly id: string;

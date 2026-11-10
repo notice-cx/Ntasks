@@ -36,7 +36,7 @@ it alone writes, holds what GitHub cannot.
 | The holder, the helper, work in hand | — | Each field. Agents and services are not GitHub users, so no assignee is set |
 | A comment | An issue comment, ending in a line naming its sender, such as `— agent:Claude Code` | The sender, by the comment's id |
 | A close's reason, resolution and proof | A comment giving the resolution, the reason and the proof | Each field |
-| Links (`blocks`, `related`, `discovered-from`, `duplicates`, `supersedes`) and a parent | — | Each link, one between two tasks |
+| Links (`blocks`, `related`, `discovered-from`, `duplicates`, `supersedes`, `merges-after`) and a parent | — | Each link, one between two tasks. A read of either task shows it: among `dependencies` on the task that holds it, among `dependents` on the other. A link across projects needs only read access to the other task |
 | Version, history, retry keys | — | Every change, its actor, model and time, and each write's first answer by its key |
 
 Every write goes through one GitHub token, so GitHub names the token's

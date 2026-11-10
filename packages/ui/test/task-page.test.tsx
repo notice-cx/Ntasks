@@ -55,6 +55,7 @@ describe('a task page', () => {
     expect(fact('Last activity').textContent).toContain('12m');
     expect(fact('Next step').textContent).toContain('Announce the password error to screen readers');
     expect(fact('Branch').textContent).toContain('codex/sign-in-a11y');
+    expect(fact('Touches').textContent).toContain('src/pages/sign-in/fields.ts');
     expect(within(fact('Pull request')).getByRole('link').getAttribute('href')).toBe(
       'https://github.example.com/example/web/pull/42',
     );
@@ -70,6 +71,25 @@ describe('a task page', () => {
     expect(closed.querySelector('[data-closed-sibling="web-k3m9.1"]')?.textContent).toContain(
       'the form renders its fields and errors',
     );
+  });
+
+  it('lists the closed tasks that closed at the same time lowest id first, as the Worker does', async () => {
+    const api = createFixtureTasksApi();
+    const closed = task(api, 'web-k3m9.1');
+    if (!closed) throw new Error('The seed has no web-k3m9.1');
+    const at = '2999-01-01T00:00:00.000Z';
+    for (const id of ['web-k3m9.9', 'web-k3m9.4', 'web-k3m9.8', 'web-k3m9.5', 'web-k3m9.7', 'web-k3m9.6']) {
+      api.state.tasks.push({ ...structuredClone(closed), id, closedAt: at });
+    }
+    const { parent } = await api.task('web-k3m9.2', 'web');
+    expect(parent?.closedSiblings.map((sibling) => sibling.id)).toEqual([
+      'web-k3m9.4',
+      'web-k3m9.5',
+      'web-k3m9.6',
+      'web-k3m9.7',
+      'web-k3m9.8',
+    ]);
+    expect(parent?.closedSiblingsTotal).toBe(7);
   });
 
   it('marks a pinned comment among the comments of the task it is pinned on', async () => {
@@ -674,5 +694,41 @@ describe("a task's links", () => {
       'Document',
     ]);
     expect(groups[1]?.rows).toEqual([{ kind: 'task', id: 'web-h1', title: 'Task web-h1', status: 'open' }]);
+  });
+
+  it('names the order two pull requests merge in, from either task', () => {
+    const later = linkGroups(
+      {
+        id: 'web-m2',
+        dependencies: [{ id: 'web-m1', type: 'merges-after', title: 'First change', status: 'in_progress' }],
+        externalLinks: [],
+      },
+      [],
+    );
+    expect(later).toEqual([
+      { label: 'Merges after', rows: [{ kind: 'task', id: 'web-m1', title: 'First change', status: 'in_progress' }] },
+    ]);
+    const first = linkGroups({ id: 'web-m1', dependencies: [], externalLinks: [] }, [
+      other('web-m2', [{ id: 'web-m1', type: 'merges-after', title: null, status: null }]),
+    ]);
+    expect(first).toEqual([
+      { label: 'Merges before', rows: [{ kind: 'task', id: 'web-m2', title: 'Task web-m2', status: 'open' }] },
+    ]);
+    // The task's own dependents name a later task in another project, which its board does not hold.
+    const across = linkGroups(
+      {
+        id: 'web-m1',
+        dependencies: [],
+        externalLinks: [],
+        dependents: [{ id: 'docs-m3', type: 'merges-after', title: 'Document the header', status: 'open' }],
+      },
+      [],
+    );
+    expect(across).toEqual([
+      {
+        label: 'Merges before',
+        rows: [{ kind: 'task', id: 'docs-m3', title: 'Document the header', status: 'open' }],
+      },
+    ]);
   });
 });

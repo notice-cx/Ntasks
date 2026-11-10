@@ -26,7 +26,16 @@ export interface Sender {
 export const STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'closed'] as const;
 export const TYPES = ['task', 'bug', 'feature', 'chore', 'epic', 'decision', 'gate'] as const;
 export const RESOLUTIONS = ['done', 'wont-do', 'duplicate', 'cant-reproduce', 'already-handled', 'no-longer-needed'];
-export const LINK_TYPES: readonly LinkType[] = ['blocks', 'related', 'discovered-from', 'duplicates', 'supersedes'];
+export const LINK_TYPES: readonly LinkType[] = [
+  'blocks',
+  'related',
+  'discovered-from',
+  'duplicates',
+  'supersedes',
+  'merges-after',
+];
+/** The link types that may join tasks of two projects; the rest stay inside one. */
+const ACROSS_PROJECTS: readonly LinkType[] = ['related', 'duplicates', 'supersedes', 'merges-after'];
 const PROOF_TYPES = ['task', 'bug', 'feature', 'chore'];
 const WORK = ['session', 'worktree', 'branch', 'pr', 'commit', 'next'] as const;
 const HEX = /^[0-9a-f]{7,64}$/u;
@@ -189,6 +198,15 @@ export class Engine {
           type: link.type,
           title: data.tasks[link.to]?.title ?? '',
           status: this.statusOf(data, link.to),
+        })),
+      // The same links read from the other end, so both tasks show each one (protocol.md INV-11).
+      dependents: data.links
+        .filter((link) => link.to === record.id && this.canReach(sender, link.from))
+        .map((link) => ({
+          id: link.from,
+          type: link.type,
+          title: data.tasks[link.from]?.title ?? '',
+          status: this.statusOf(data, link.from),
         })),
       externalLinks: [],
       fields: {},
@@ -848,8 +866,19 @@ export class Engine {
   async link(sender: Sender, args: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.write(sender, 'link_tasks', args, async (draft, model) => {
       const from = (await this.tracked(sender, draft, args.task as string)).record;
-      const to = (await this.tracked(sender, draft, args.to as string)).record;
+      // As in Ntasks, the other task need only be readable: the link is the first task's. A link
+      // the other task holds is its own, so a sender who only reads its project cannot change it.
+      const target = await this.locate(sender, args.to as string, 'read', draft);
+      const writable = sender.projects.get(target.project.projectId) === 'write';
+      const to = writable
+        ? (await this.tracked(sender, draft, args.to as string)).record
+        : (target.record ?? this.fromIssue(target.project, target.issue!));
       if (from.id === to.id) invalid('to (another task)');
+      if (!writable && this.linksBetween(draft, from.id, to.id).some((link) => link.from === to.id))
+        refuse(
+          `${to.id} links to ${from.id}, and project ${target.project.key} is granted to you for reading only; ` +
+            'only a sender who may change it can change that link.',
+        );
       const crosses = from.projectId !== to.projectId;
       const before = { [from.id]: this.dependencies(draft, from.id), [to.id]: this.dependencies(draft, to.id) };
       let answer: Record<string, unknown>;
@@ -858,8 +887,7 @@ export class Engine {
         answer = { task: from.id, to: to.id, removed: true };
       } else {
         const type = args.type as LinkType;
-        if (crosses && !['related', 'duplicates', 'supersedes'].includes(type))
-          refuse(`a ${type} link stays inside one project.`);
+        if (crosses && !ACROSS_PROJECTS.includes(type)) refuse(`a ${type} link stays inside one project.`);
         const replaced = this.setLink(draft, from.id, to.id, type);
         answer = {
           task: from.id,

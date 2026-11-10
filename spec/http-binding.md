@@ -100,9 +100,9 @@ as deploying, once for each project, before it moves them.
 
 A task read answers its `for`, `work` and `lastActivityAt`, `pinned` on each
 comment, and `parent`, its parent context, or null when it has no parent
-([STATE-17](protocol.md#state-17)). A claim answers the task alone. Recording
-work details on a comment, claiming by pull request and the held-task list
-are MCP only.
+([STATE-17](protocol.md#state-17)). A claim answers the task alone, so a
+claim's `overlaps` ([STATE-19](protocol.md#state-19)), recording work details
+on a comment, claiming by pull request and the held-task list are MCP only.
 
 ### Outside the protocol
 

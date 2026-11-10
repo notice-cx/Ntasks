@@ -10,11 +10,11 @@
       "pattern": "^[a-z0-9]+-[a-z0-9]+(\\.[0-9]+)*$"
     },
     "linkType": {
-      "description": "blocks: the task waits on the other and is not ready until it closes. related: same subject. discovered-from: found from the other's work. duplicates: the same work, filed later. supersedes: replaces the other.",
-      "enum": ["blocks", "related", "discovered-from", "duplicates", "supersedes"]
+      "description": "blocks: the task waits on the other and is not ready until it closes. related: same subject. discovered-from: found from the other's work. duplicates: the same work, filed later. supersedes: replaces the other. merges-after: its pull request lands only once the other's has; neither waits.",
+      "enum": ["blocks", "related", "discovered-from", "duplicates", "supersedes", "merges-after"]
     },
     "taskLink": {
-      "description": "A link read from the task that has it: the task waits on, relates to, was found from, duplicates or supersedes the task named by id.",
+      "description": "A link read from the task that has it: the task waits on, relates to, was found from, duplicates, supersedes or merges after the task named by id. Among dependents, the same link read from the other end: id names the task that holds it.",
       "type": "object",
       "properties": {
         "id": { "$ref": "#/$defs/taskId" },

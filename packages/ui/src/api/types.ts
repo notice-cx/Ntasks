@@ -60,7 +60,7 @@ export interface TaskAnswer {
 export interface TaskDependency {
   /** The task on the other end. */
   id: string;
-  /** `blocks`, `parent-child`, `related`, `discovered-from`, `duplicates`, `supersedes`, or a type this build does not know. */
+  /** `blocks`, `parent-child`, `related`, `discovered-from`, `duplicates`, `supersedes`, `merges-after`, or a type this build does not know. */
   type: string;
   /** Present when the read carried it (a task's own read); null on a list row. */
   title: string | null;
@@ -167,6 +167,8 @@ export interface LiveTask {
   /** Someone can start it now, as the server worked it out. */
   ready: boolean;
   dependencies: TaskDependency[];
+  /** The links other tasks hold onto this one, in any project the reader reaches; a server without the API version in workers/api/api-versions/2026-11-10T0513Z-touches-merge-order.json leaves it out. */
+  dependents?: TaskDependency[];
   /** Ordered by URL, when the server sends them. */
   externalLinks?: TaskExternalLink[];
   /** The values of its project's custom fields, by field key, when the server sends them. */
@@ -352,7 +354,7 @@ export interface TaskComment {
   author: string;
   text: string;
   createdAt: string | null;
-  /** Pinned as a fact later work needs; a server before API version 5 leaves it out. */
+  /** Pinned as a fact later work needs; a server before API version 7 leaves it out. */
   pinned?: boolean;
 }
 
@@ -392,7 +394,7 @@ export interface LiveTaskDetail {
   comments: TaskComment[];
   /** The version of the task's proposal, whatever it waits on, when the server sends it: an acceptance names it. */
   proposalVersion?: string | null;
-  /** What its parent holds for it; null when it has none, and left out by a server before API version 5. */
+  /** What its parent holds for it; null when it has none, and left out by a server before API version 7. */
   parent?: ParentContext | null;
 }
 

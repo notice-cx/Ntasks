@@ -48,6 +48,11 @@
       "type": "array",
       "items": { "$ref": "link.schema.json#/$defs/taskLink" }
     },
+    "dependents": {
+      "description": "The links other tasks hold onto this one, each naming the task that holds it, such as a task that merges after this one.",
+      "type": "array",
+      "items": { "$ref": "link.schema.json#/$defs/taskLink" }
+    },
     "externalLinks": {
       "type": "array",
       "maxItems": 32,

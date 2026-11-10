@@ -67,6 +67,7 @@ protocol appears in neither table.
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "closes a task once when GitHub sends the same merge again" |
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "never closes a task in progress on a merge a sender reports through POST /api/delivery" |
 | STATE-17 | `workers/api/test/schema.test.ts` › "lets a pinned comment be unpinned, and never pins an unpinned one again" |
+| STATE-19 | `workers/api/test/api/write-tools.test.ts` › "lists the other work in progress that touches the same files, never refusing the claim" |
 | AUTH-1 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "keeps an agent named after the owner apart from the owner" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "marks an owner whose own name starts like an agent’s, so the two never meet" |
@@ -123,6 +124,7 @@ protocol appears in neither table.
 | INV-11 | `workers/api/test/api/write-tools.test.ts` › "sets the one link between two tasks, changing blocks to related in one call, and removes it" |
 | INV-11 | `workers/api/test/engine/ready.test.ts` › "refuses a blocks link that would close a loop, directly or through other tasks" |
 | INV-11 | `workers/api/test/engine/ready.test.ts` › "refuses a parent that would make a task its own ancestor" |
+| INV-11 | `workers/api/test/api/write-tools.test.ts` › "records which pull request merges first, on both tasks, holding neither out of ready work" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "reads its changes, newest first" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "names the closer and the claimer with the models they named" |
 | EXT-1 | `workers/api/test/engine/tasks.test.ts` › "merges metadata, removing a key set to null" |
