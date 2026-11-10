@@ -41,9 +41,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-10: a task in progress whose work names a pr closes itself as done when GitHub reports that pull request merged into the default branch; label it keep-open when the pull request covers only part of it. Workflow step 5 lists the tasks that stay open.',
   '2026-11-10: claim_task and comment_on_task take touches, the files or other things your work changes, and answer overlaps: the other tasks in progress that change the same. link_tasks type merges-after records which pull request lands first; both tasks show it (workflow steps 3 and 6).',
   '2026-11-10: list_tasks takes activity, one or more of active, quiet and stalled, to list tasks in progress by how recently their holder changed or commented on them: active within the hour, quiet after that, stalled after a day or with nothing recorded. Each names its activity, and the answer counts each group in activities. Workflow step 2 says how to keep watch.',
+  '2026-11-10: pass model as the id of the model you run as, such as claude-opus-5-5. Ntasks shows it by its name, Claude Opus 5.5, and shows each agent by its product, such as Claude Code, whatever name it signed in under.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */

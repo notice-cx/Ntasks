@@ -143,7 +143,7 @@ export const MODEL = Object.freeze({
   type: 'string',
   maxLength: TASK_LIMITS.actor,
   description:
-    'Optional: the name of the model you run as, as you would say it. The task records it beside your name, and the Agents page groups work by it.',
+    'Optional: the id of the model you run as, such as claude-opus-5-5 or gpt-6.1-sol. The task records it beside your name, shows it by its name, such as Claude Opus 5.5, and the Agents page groups work by it.',
 });
 export const IDEMPOTENCY = Object.freeze({
   type: 'string',

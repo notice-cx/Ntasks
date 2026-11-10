@@ -43,6 +43,7 @@ describe('canonical model identities', () => {
     ['gpt-5-3-codex-high', 'GPT-5.3 Codex'],
     ['models/gemini-2.5-flash-preview', 'Gemini 2.5 Flash'],
     ['o3-mini', 'o3 mini'],
+    ['claude-fable-5-1', 'Claude Fable 5.1'],
     ['build-verifier', 'Other'],
     ['claude-session', 'Other'],
     [null, 'Other'],
