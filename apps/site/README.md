@@ -58,7 +58,8 @@ file that does not exist. CI runs it on every pull request.
 ## Publishing
 
 A Workers Builds connection on the `ntasks-site` Worker publishes the site on
-every push to `main` that changes `apps/site/`, `docs/`, `spec/` or
+every push to `main` that changes `apps/site/`, `docs/`, `spec/`, the Notice
+logo and icons in `apps/web/public/brand/` that `vite.config.ts` copies, or
 `pnpm-lock.yaml`. It is separate from the app's connection, which reads the
 `wrangler.jsonc` at the repository root. Its settings, in the Cloudflare
 dashboard under the Worker's **Settings → Build**:
@@ -69,15 +70,17 @@ dashboard under the Worker's **Settings → Build**:
 | Root directory | `apps/site` |
 | Build command | `pnpm install --frozen-lockfile && pnpm build:site` |
 | Deploy command | `npx wrangler deploy` |
-| Build watch paths, include | `apps/site/*`, `docs/*`, `spec/*`, `pnpm-lock.yaml` |
+| Build watch paths, include | `apps/site/*`, `docs/*`, `spec/*`, `apps/web/public/brand/*`, `pnpm-lock.yaml` |
 
 Each build shows on its commit as the check `Workers Builds: ntasks-site`. A
 failing check means the site still serves the previous build.
 
-To publish by hand, such as after a failed build, run `wrangler deploy` from
-this folder on a clean checkout of `main`'s latest commit. The owner
-approved this publish for the site once; any other command that reaches
-Cloudflare still needs approval each time
+To publish by hand, such as after a failed build, run these two commands
+from the repository root of a clean checkout of `main`'s latest commit.
+After the deploy, if `main` has moved past that commit, publish again from
+the new one, so a hand publish never leaves an older build over a newer
+automatic one. The owner approved this publish for the site once; any other
+command that reaches Cloudflare still needs approval each time
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)):
 
 ```sh
