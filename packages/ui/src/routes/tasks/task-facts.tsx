@@ -15,16 +15,8 @@ import { Badge } from '../../components/ui/badge';
 import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
 import { fieldAvailable, useCapabilities, useProjectFields, useUpdateTask } from '../../hooks/useTasks';
 import { fieldEditable, httpUrl, parseFieldInput, toggledOptions } from '../../lib/custom-fields';
-import {
-  ageMs,
-  calendarDay,
-  fieldKeyName,
-  fieldValueText,
-  formatAge,
-  formatMinutes,
-  localDay,
-  parseMinutes,
-} from '../../lib/format';
+import { calendarDay, dayFrom, useTimeZone } from '../../lib/dates';
+import { ageMs, fieldKeyName, fieldValueText, formatAge, formatMinutes, parseMinutes } from '../../lib/format';
 import {
   isAgentActor,
   priorityLabel,
@@ -97,12 +89,13 @@ const PRIORITY_CHOICES: FactChoice[] = PRIORITY_LABELS.map((word, priority) => (
   mark: <PriorityMark priority={priority} label={null} />,
 }));
 
-function dayPresets(nowMs: number, today = false): FactChoice[] {
+/** Days a date's menu offers, counted from today in the person's time zone. */
+function dayPresets(nowMs: number, zone: string, today = false): FactChoice[] {
   return [
-    ...(today ? [{ label: 'Today', value: localDay(nowMs) }] : []),
-    { label: 'Tomorrow', value: localDay(nowMs, 1) },
-    { label: 'In a week', value: localDay(nowMs, 7) },
-    ...(today ? [] : [{ label: 'In a month', value: localDay(nowMs, 30) }]),
+    ...(today ? [{ label: 'Today', value: dayFrom(nowMs, zone) }] : []),
+    { label: 'Tomorrow', value: dayFrom(nowMs, zone, 1) },
+    { label: 'In a week', value: dayFrom(nowMs, zone, 7) },
+    ...(today ? [] : [{ label: 'In a month', value: dayFrom(nowMs, zone, 30) }]),
   ];
 }
 
@@ -146,6 +139,7 @@ export function TaskFacts({
   nowMs: number;
 }) {
   const paths = usePaths();
+  const zone = useTimeZone();
   const capabilities = useCapabilities();
   const save = useFieldSave(task.id, project.logicalKey);
   const closed = task.status === 'closed';
@@ -310,9 +304,11 @@ export function TaskFacts({
         {parked !== '' || can('defer') ? (
           <Fact
             label="Parked until"
-            valueText={parked === '' ? 'None' : calendarDay(parked, nowMs)}
+            valueText={parked === '' ? 'None' : calendarDay(parked, nowMs, zone)}
             muted={parked === ''}
-            editor={can('defer') ? { kind: 'date', value: parked, presets: dayPresets(nowMs), clear: 'Unpark' } : null}
+            editor={
+              can('defer') ? { kind: 'date', value: parked, presets: dayPresets(nowMs, zone), clear: 'Unpark' } : null
+            }
             onSave={(next) => save({ label: 'the parked date', edit: { defer: next }, undo: { defer: parked } })}
           >
             {parked === '' ? (
@@ -320,7 +316,7 @@ export function TaskFacts({
             ) : (
               <>
                 <Moon aria-hidden size={14} className="text-ink-3" />
-                <span className="nums">{calendarDay(parked, nowMs)}</span>
+                <span className="nums">{calendarDay(parked, nowMs, zone)}</span>
               </>
             )}
           </Fact>
@@ -328,11 +324,11 @@ export function TaskFacts({
         {due !== '' || can('dueAt') ? (
           <Fact
             label="Due"
-            valueText={due === '' ? NONE : calendarDay(due, nowMs)}
+            valueText={due === '' ? NONE : calendarDay(due, nowMs, zone)}
             muted={due === ''}
             editor={
               can('dueAt')
-                ? { kind: 'date', value: due, presets: dayPresets(nowMs), clear: NONE, field: 'Due date' }
+                ? { kind: 'date', value: due, presets: dayPresets(nowMs, zone), clear: NONE, field: 'Due date' }
                 : null
             }
             onSave={(next) =>
@@ -343,7 +339,7 @@ export function TaskFacts({
               })
             }
           >
-            {due === '' ? NONE : <span className="nums">{calendarDay(due, nowMs)}</span>}
+            {due === '' ? NONE : <span className="nums">{calendarDay(due, nowMs, zone)}</span>}
           </Fact>
         ) : null}
         {estimate !== null || can('estimateMinutes') ? (
@@ -415,7 +411,12 @@ function typedCheck(type: string): (text: string) => string | null {
 }
 
 /** The editor a custom field's type takes. A typed value is saved as its words; `CustomFieldFact` reads them back. */
-function customFieldEditor(field: TaskField, value: TaskFieldValue | undefined, nowMs: number): FactEditor | null {
+function customFieldEditor(
+  field: TaskField,
+  value: TaskFieldValue | undefined,
+  nowMs: number,
+  zone: string,
+): FactEditor | null {
   const clear = value === undefined ? [] : [{ value: '', label: NONE }];
   switch (field.type) {
     case 'single-choice':
@@ -436,7 +437,7 @@ function customFieldEditor(field: TaskField, value: TaskFieldValue | undefined, 
       return {
         kind: 'date',
         value: typeof value === 'string' ? value : '',
-        presets: dayPresets(nowMs, true),
+        presets: dayPresets(nowMs, zone, true),
         clear: NONE,
         field: field.name,
       };
@@ -478,15 +479,16 @@ function CustomFieldFact({
   /** Saves `next`; `before` is the value it replaces, which Undo puts back. */
   onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>;
 }) {
+  const zone = useTimeZone();
   const label = field?.name ?? fieldKeyName(fieldKey);
   const type = field?.type ?? null;
   const text =
     value === undefined
       ? NONE
       : type === 'date' && typeof value === 'string'
-        ? calendarDay(value, nowMs)
+        ? calendarDay(value, nowMs, zone)
         : fieldValueText(value);
-  const editor = editable && field ? customFieldEditor(field, value, nowMs) : null;
+  const editor = editable && field ? customFieldEditor(field, value, nowMs, zone) : null;
   // A multiple choice is saved whole, and its menu takes a second press before
   // the first save is read back, so each press builds on the value the last one sent.
   const sent = useRef(value);

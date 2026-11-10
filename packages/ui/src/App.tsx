@@ -17,6 +17,7 @@ import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
 import { COMPOSE_STATE, SEARCH_STATE } from './lib/page-state';
 import { PathsProvider, usePaths, type AppPaths } from './lib/paths';
+import { browserTimeZone, TimeZoneProvider } from './lib/dates';
 import { TitleProvider, usePageTitle } from './lib/page-title';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
@@ -44,6 +45,7 @@ export function App({
   signIn,
   queryClient,
   onTitle,
+  timeZone,
 }: {
   api: TasksApi;
   paths: AppPaths;
@@ -51,32 +53,37 @@ export function App({
   queryClient?: QueryClient;
   /** Receives each page's title in place of the document's title (`TitleProvider`). */
   onTitle?: (title: string) => void;
+  /** The IANA time zone dates are shown in; the browser's when left out (`lib/dates.ts`). */
+  timeZone?: string;
 }) {
   const [client] = useState(() => queryClient ?? newQueryClient());
+  const zone = timeZone ?? browserTimeZone();
   return (
     <QueryClientProvider client={client}>
       {/* Every icon is drawn at 16 px with a 1.75 stroke unless its control sizes it (docs/design.md). */}
       <LucideProvider size={16} strokeWidth={1.75}>
         <PathsProvider paths={paths}>
           <TitleProvider onTitle={onTitle}>
-            <TasksApiProvider api={api} signIn={signIn}>
-              <Routes>
-                <Route element={<WorkspaceGate />}>
-                  <Route element={<Shell />}>
-                    <Route index element={<TasksBoard />} />
-                    <Route path="focus" element={<FocusRoute />} />
-                    <Route path=":id" element={<TaskRoute />} />
-                    <Route path="live" element={<LiveRoute />} />
-                    <Route path="productivity" element={<ProductivityRoute />} />
-                    <Route path="projects" element={<ProjectsRoute />} />
-                    <Route path="members" element={<MembersRoute />} />
-                    <Route path="settings" element={<SettingsRoute />} />
-                    <Route path="*" element={<NoPage />} />
+            <TimeZoneProvider zone={zone}>
+              <TasksApiProvider api={api} signIn={signIn}>
+                <Routes>
+                  <Route element={<WorkspaceGate />}>
+                    <Route element={<Shell />}>
+                      <Route index element={<TasksBoard />} />
+                      <Route path="focus" element={<FocusRoute />} />
+                      <Route path=":id" element={<TaskRoute />} />
+                      <Route path="live" element={<LiveRoute />} />
+                      <Route path="productivity" element={<ProductivityRoute />} />
+                      <Route path="projects" element={<ProjectsRoute />} />
+                      <Route path="members" element={<MembersRoute />} />
+                      <Route path="settings" element={<SettingsRoute />} />
+                      <Route path="*" element={<NoPage />} />
+                    </Route>
                   </Route>
-                </Route>
-              </Routes>
-              <AppToaster />
-            </TasksApiProvider>
+                </Routes>
+                <AppToaster />
+              </TasksApiProvider>
+            </TimeZoneProvider>
           </TitleProvider>
         </PathsProvider>
       </LucideProvider>

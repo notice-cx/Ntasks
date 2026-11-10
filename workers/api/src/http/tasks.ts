@@ -6,6 +6,7 @@
 import {
   isDeliveryStage,
   isTaskId,
+  isTimeZone,
   isTaskStatus,
   TASK_LIMITS,
   TASK_STATUSES,
@@ -51,12 +52,15 @@ function epicView(epic: EpicProgress) {
   };
 }
 
-/** GET /api/tasks/wins?project=…&before=YYYY-MM-DD: the wins of seven days, of
- * one project or every one the sender reaches; without before, the seven
- * days up to today (src/wins.ts). */
+/** GET /api/tasks/wins?project=…&before=YYYY-MM-DD&timeZone=…: the wins of
+ * seven days, of one project or every one the sender reaches; without before,
+ * the seven days up to today; each day cut at midnight in timeZone, UTC when
+ * it names none (src/wins.ts). */
 export async function winsRoute(context: ReadContext, url: URL): Promise<Response> {
-  const query = queryOf(url, ['project', 'before']);
-  const payload = await wins(context, query.project, query.before);
+  const query = queryOf(url, ['project', 'before', 'timeZone']);
+  if (query.timeZone !== undefined && !isTimeZone(query.timeZone))
+    invalidRequest('timeZone must be an IANA time zone, such as America/Los_Angeles');
+  const payload = await wins(context, query.project, query.before, query.timeZone);
   if (payload === null)
     invalidRequest(`before must be a day as YYYY-MM-DD, from 7 to ${WIN_HISTORY_DAYS} days back, or left out`);
   return json(payload);

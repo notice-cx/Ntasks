@@ -19,15 +19,8 @@ import { usePageTitle } from '../lib/page-title';
 import { usePaths } from '../lib/paths';
 import { isAgentActor } from '../lib/symbols';
 import { cn } from '../lib/utils';
-import {
-  countsOf,
-  firstShipped,
-  pullRequestLabel,
-  winsByDay,
-  winsDayLabel,
-  winsDayRule,
-  winsDayShort,
-} from '../lib/wins';
+import { dayIn, dayLabel, useTimeZone, weekdayDay } from '../lib/dates';
+import { countsOf, firstShipped, pullRequestLabel, winsByDay, winsDayRule } from '../lib/wins';
 
 /** The wins a day shows before Show more. */
 const DAY_SHOWN = 8;
@@ -46,6 +39,7 @@ const BAR_SCALE_LEAST = 4;
 export function ProductivityRoute() {
   const api = useTasksApi();
   const now = useNow();
+  const zone = useTimeZone();
   const [params, setParams] = useSearchParams();
   const project = params.get('project') ?? undefined;
   const projects = useTaskProjects();
@@ -53,8 +47,8 @@ export function ProductivityRoute() {
   const wins = useInfiniteQuery({
     // An object, so no project's key, which is text, can name the same query;
     // under the boards', so whatever reads every board again reads it again too.
-    queryKey: ['tasks', { wins: project ?? null }],
-    queryFn: ({ pageParam, signal }) => api.wins({ project, before: pageParam ?? undefined }, signal),
+    queryKey: ['tasks', { wins: project ?? null, zone }],
+    queryFn: ({ pageParam, signal }) => api.wins({ project, before: pageParam ?? undefined, timeZone: zone }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last: WinsPage) => last.earlier,
     staleTime: 15_000,
@@ -87,7 +81,7 @@ export function ProductivityRoute() {
     const shippedFrom = firstShipped(pages);
     body = (
       <>
-        <DayStrip days={first.days} today={dayOf(now)} />
+        <DayStrip days={first.days} today={dayIn(now, zone)} />
         <div
           className="flex flex-wrap items-center gap-x-4.5 gap-y-1 px-6 pb-3.5 text-sm font-normal text-ink-2 max-sm:px-4"
           data-wins-summary=""
@@ -102,13 +96,11 @@ export function ProductivityRoute() {
           <span className="nums text-ink-3">
             and {formatInt(first.totals.approved)} {first.totals.approved === 1 ? 'approval' : 'approvals'}
           </span>
-          <span className="text-meta text-ink-3" data-wins-note="">
-            {shippedFrom !== null
-              ? `Merges are recorded from ${winsDayLabel(shippedFrom)}. Days are in UTC.`
-              : first.shippedBefore || first.totals.shipped > 0
-                ? 'Days are in UTC.'
-                : 'No merges recorded yet. Days are in UTC.'}
-          </span>
+          {shippedFrom !== null || (!first.shippedBefore && first.totals.shipped === 0) ? (
+            <span className="text-meta text-ink-3" data-wins-note="">
+              {shippedFrom !== null ? `Merges are recorded from ${dayLabel(shippedFrom)}.` : 'No merges recorded yet.'}
+            </span>
+          ) : null}
         </div>
         {pages.map((page, index) => (
           <WinsFeed key={page.from} page={page} nowMs={now} first={index === 0} />
@@ -170,8 +162,6 @@ export function ProductivityRoute() {
   );
 }
 
-const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 /** The colour key beside each count under the strip. */
 function Legend({ tone, count, label }: { tone: 'shipped' | 'decided' | 'finished'; count: number; label: string }) {
   return (
@@ -213,11 +203,11 @@ function DayStrip({ days, today }: { days: readonly WinsDay[]; today: string }) 
               'flex min-w-0 flex-col gap-1.5 rounded-[10px] px-2.5 pt-2 pb-2.5 inset-ring inset-ring-border max-sm:px-1.25',
               day.day === today && 'inset-ring-[1.5px] inset-ring-accent',
             )}
-            aria-label={`${winsDayLabel(day.day)}: ${total === 0 ? 'nothing' : winsDayRule(day)}`}
+            aria-label={`${dayLabel(day.day)}: ${total === 0 ? 'nothing' : winsDayRule(day)}`}
             data-wins-day={day.day}
           >
             <span className="flex items-baseline justify-between gap-1 text-xs text-ink-3 max-sm:justify-center">
-              <b className="truncate text-label font-semibold text-ink max-sm:hidden">{winsDayShort(day.day)}</b>
+              <b className="truncate text-label font-semibold text-ink max-sm:hidden">{weekdayDay(day.day)}</b>
               {/* A phone has room for the date alone; the cell's name says the day in full. */}
               <b className="hidden text-xs font-semibold text-ink max-sm:block">{Number(day.day.slice(8))}</b>
               <span className="nums max-sm:hidden">{total > 0 ? formatInt(total) : ''}</span>
@@ -258,13 +248,13 @@ function DayStrip({ days, today }: { days: readonly WinsDay[]; today: string }) 
 /** One read's wins under their days, newest first; a day with many shows eight, then Show more. */
 function WinsFeed({ page, nowMs, first }: { page: WinsPage; nowMs: number; first: boolean }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const days = winsByDay(page.wins);
+  // The server cut these days in the zone it names; an older server names none and cut them in UTC.
+  const days = winsByDay(page.wins, page.timeZone ?? 'UTC');
   if (days.length === 0) {
     if (first) return <EmptyState icon={<ChartNoAxesColumn />} title="No wins in the last 7 days" className="py-12" />;
     return (
       <div className="flex h-9 items-center border-b border-border px-6 text-meta text-ink-3 max-sm:px-4">
-        No wins from {winsDayLabel(page.from.slice(0, 10))} to{' '}
-        {winsDayLabel(page.days.at(-1)?.day ?? page.from.slice(0, 10))}
+        No wins from {dayLabel(page.days[0]?.day ?? '')} to {dayLabel(page.days.at(-1)?.day ?? '')}
       </div>
     );
   }
@@ -274,9 +264,9 @@ function WinsFeed({ page, nowMs, first }: { page: WinsPage; nowMs: number; first
         const shown = open.has(day) ? wins : wins.slice(0, DAY_SHOWN);
         const more = wins.length - shown.length;
         return (
-          <section key={day} aria-label={winsDayLabel(day)} data-wins-group={day}>
+          <section key={day} aria-label={dayLabel(day)} data-wins-group={day}>
             <GroupHeader
-              label={winsDayLabel(day)}
+              label={dayLabel(day)}
               count={wins.length}
               end={
                 <span className="text-meta font-normal text-ink-3 max-sm:hidden">{winsDayRule(countsOf(wins))}</span>

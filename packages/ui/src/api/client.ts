@@ -97,8 +97,8 @@ export interface TasksApi {
   changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
   /** Seven days of wins: changes shipped, answers given and epics finished, in one project or every one this
    * sign-in reaches. Without `before`, today and the six days before it; with it (YYYY-MM-DD), the seven
-   * days before that day. */
-  wins(options: { project?: string; before?: string }, signal?: AbortSignal): Promise<WinsPage>;
+   * days before that day. Days run midnight to midnight in `timeZone`, an IANA zone. */
+  wins(options: { project?: string; before?: string; timeZone?: string }, signal?: AbortSignal): Promise<WinsPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -699,10 +699,11 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
     },
-    async wins({ project, before }, signal) {
+    async wins({ project, before, timeZone }, signal) {
       const params = new URLSearchParams();
       if (project !== undefined) params.set('project', await projectId(project, signal));
       if (before !== undefined) params.set('before', before);
+      if (timeZone !== undefined) params.set('timeZone', timeZone);
       const query = params.size > 0 ? `?${params}` : '';
       const page = await read<unknown>(`/api/tasks/wins${query}`, 'The wins', signal);
       if (!isRecord(page) || !Array.isArray(page.wins) || !Array.isArray(page.days) || !isRecord(page.totals)) {

@@ -16,6 +16,7 @@ export function renderApp(
   path: string,
   api: TasksApi = createFixtureTasksApi(),
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }),
+  timeZone?: string,
 ) {
   const view = render(
     <MemoryRouter initialEntries={[path]}>
@@ -24,7 +25,7 @@ export function renderApp(
           path="/tasks/*"
           element={
             <div data-ntasks="">
-              <App api={api} paths={appPaths('/tasks')} queryClient={queryClient} />
+              <App api={api} paths={appPaths('/tasks')} queryClient={queryClient} timeZone={timeZone} />
             </div>
           }
         />
