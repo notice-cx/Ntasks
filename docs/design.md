@@ -32,6 +32,10 @@ prefers. `pnpm screenshots design` captures it in both themes
   item and work in progress. Nothing else is that blue.
 - Amber means only Waiting for you. Red means only Blocked. Green means only
   Done. No other state, warning or error uses these colours.
+  One host exception: a host page that draws Precise beside alerts of its own
+  keeps amber for a warning and red for an error
+  on those alerts, always beside a word or a symbol that says the same. A
+  task's state there keeps the meanings above.
 - Plum means only a task's priority, and only Top and High: the work to do
   first.
 - Every action has a key, and the control shows it in a `Kbd`.
