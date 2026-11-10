@@ -1,6 +1,8 @@
 /** The checks of the Live work level: work in hand, and what a connecting agent is told. */
-import { NotOffered, type Api, type ParentContext } from '../api.ts';
-import { answered, expect, refused, same, snapshot, unchanged, type Check } from '../check.ts';
+import { isDeepStrictEqual } from 'node:util';
+import { ACTIVITIES, activityAt, type Activity, type ActivityCounts } from '../activity.ts';
+import { NotOffered, type ActivityList, type Api, type ParentContext, type Task } from '../api.ts';
+import { answered, expect, fail, refused, same, snapshot, unchanged, type Check, type Context } from '../check.ts';
 import { actorOf, commitName, file, taskOf } from './steps.ts';
 
 /**
@@ -19,6 +21,60 @@ async function pinned(api: Api, task: string, text: string, unpin?: readonly str
   const id = comments.filter((comment) => comment.text === text).at(-1)?.id;
   if (id === undefined) throw new NotOffered(api.binding, "answer a new comment's id, in the write or the task's read");
   return id;
+}
+
+/** Fails the check unless `task` has the activity STATE-20 gives it at `readAt`, the read time its answer names. */
+function judged(task: Task, readAt: string | null, what: string): void {
+  if (readAt === null) fail(`${what} names no readAt, the time its activities are worked out at`);
+  same(
+    task.activity ?? null,
+    activityAt(task, readAt, task.stalled === true),
+    `${what}: ${task.id}'s activity at readAt ${readAt}, with lastActivityAt ${String(task.lastActivityAt ?? null)}`,
+  );
+}
+
+/** The counts of a list by activity, which must name each of the three groups. */
+function countsOf(list: ActivityList, what: string): ActivityCounts {
+  if (list.counts === null) fail(`a list of ${what} counts no group`);
+  same(Object.keys(list.counts).sort(), [...ACTIVITIES].sort(), `the groups a list of ${what} counts`);
+  return list.counts;
+}
+
+/**
+ * Lists every group, and fails the check unless the answer's counts match
+ * its own tasks, each placed by the rule at its page's readAt rather than by
+ * the activity the server names; answers those counts.
+ */
+async function everyGroup(api: Api, what: string): Promise<ActivityCounts> {
+  const list = answered(await api.activity(ACTIVITIES), `listing ${what}`);
+  const counts = countsOf(list, what);
+  const ruled: Record<Activity, number> = { active: 0, quiet: 0, stalled: 0 };
+  for (const page of list.pages)
+    for (const task of page.tasks) {
+      if (page.readAt === null) fail(`a list of ${what} names no readAt`);
+      const group = activityAt(task, page.readAt, task.stalled === true);
+      if (group === null) fail(`a list of ${what} holds ${task.id}, which is not in progress`);
+      ruled[group] += 1;
+    }
+  same(counts, ruled, `the counts a list of ${what} answers, against its own tasks`);
+  return counts;
+}
+
+/**
+ * Files two tasks in progress: one the agent claims now, which is active,
+ * and one given to another agent that records nothing on it, which is
+ * stalled; and an open one, which has no activity.
+ */
+async function groups(context: Context): Promise<{ working: string; silent: string; waiting: string }> {
+  const holder = await actorOf(context, 'otherAgent');
+  const working = await file(context);
+  answered(await context.setup().claim(working), `claiming ${working}`);
+  const silent = await file(context);
+  answered(
+    await context.setup().update(silent, { assignee: holder, status: 'in_progress' }),
+    `giving ${silent} to ${holder}`,
+  );
+  return { working, silent, waiting: await file(context) };
 }
 
 /** The parent context a read of `task` answers, which must be there. */
@@ -48,6 +104,76 @@ export const live: readonly Check[] = [
       expect(listed.includes(quiet), `the stalled tasks leave out ${quiet}`);
       expect(!listed.includes(fresh), `the stalled tasks list ${fresh}, whose holder just claimed it`);
       same([stalled.status, stalled.assignee], ['in_progress', holder], `${quiet} after it read as stalled`);
+    },
+  },
+  {
+    id: 'state-20-activity-of-each-task',
+    rule: 'STATE-20',
+    level: 'live',
+    title:
+      'A task just claimed is active and one whose holder recorded nothing is stalled, each as of the read time the answer names, and a task not in progress has no activity',
+    async run(context) {
+      const api = context.api();
+      const { working, silent, waiting } = await groups(context);
+      const blocked = await file(context);
+      answered(await context.setup().claim(blocked), `claiming ${blocked}`);
+      answered(await context.setup().update(blocked, { status: 'blocked' }), `setting ${blocked} aside as blocked`);
+      const done = await file(context);
+      answered(await context.setup().claim(done), `claiming ${done}`);
+      answered(await context.setup().close(done, { reason: 'Done', link: 'https://example.com/done' }), 'closing');
+      const expected: Readonly<Record<string, Activity | null>> = {
+        [working]: 'active',
+        [silent]: 'stalled',
+        [waiting]: null,
+        [blocked]: null,
+        [done]: null,
+      };
+      for (const [id, activity] of Object.entries(expected)) {
+        const read = answered(await api.read(id), `reading ${id}`);
+        same(read.task.activity ?? null, activity, `${id}'s activity`);
+        judged(read.task, read.readAt, `a read of ${id}`);
+      }
+      const listed = answered(await api.activity(ACTIVITIES), 'listing the tasks in progress by activity');
+      for (const page of listed.pages) for (const task of page.tasks) judged(task, page.readAt, 'a list by activity');
+    },
+  },
+  {
+    id: 'state-21-lists-and-counts-by-activity',
+    rule: 'STATE-21',
+    level: 'live',
+    title:
+      'A list by activity holds the tasks in progress of the groups it names and no others, and counts every group, whichever it names, as its tasks show',
+    async run(context) {
+      const api = context.api();
+      const { working, silent, waiting } = await groups(context);
+      const before = await everyGroup(api, 'every group');
+      const lists: [readonly Activity[], readonly string[], readonly string[]][] = [
+        [['active'], [working], [silent, waiting]],
+        [['stalled'], [silent], [working, waiting]],
+        [['active', 'stalled'], [working, silent], [waiting]],
+      ];
+      const counted: [string, ActivityCounts][] = [];
+      for (const [named, holds, leaves] of lists) {
+        const what = `the ${named.join(' and ')} tasks`;
+        const list = answered(await api.activity(named), `listing ${what}`);
+        const ids = list.tasks.map((task) => task.id);
+        for (const id of holds) expect(ids.includes(id), `${what} leave out ${id}`);
+        for (const id of leaves) expect(!ids.includes(id), `${what} list ${id}`);
+        const counts = countsOf(list, what);
+        same(
+          list.tasks.length,
+          named.reduce((sum, group) => sum + counts[group], 0),
+          `the tasks a list of ${what} holds, against its counts`,
+        );
+        counted.push([what, counts]);
+      }
+      // A task can change group between two reads, so each list's counts match a list of every group read before or after it.
+      const after = await everyGroup(api, 'every group again');
+      for (const [what, counts] of counted)
+        expect(
+          isDeepStrictEqual(counts, before) || isDeepStrictEqual(counts, after),
+          `a list of ${what} counts ${JSON.stringify(counts)}, but every group counted ${JSON.stringify(before)} before it and ${JSON.stringify(after)} after it`,
+        );
     },
   },
   {

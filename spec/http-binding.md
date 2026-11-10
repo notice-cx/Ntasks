@@ -1,6 +1,6 @@
 # 12. The HTTP binding
 
-Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-10.
 
 The HTTP binding is the set of JSON routes through which the server's own
 interface and other programs reach a server. Each route below is one that
@@ -96,11 +96,13 @@ as deploying, once for each project, before it moves them.
 | Contract operation | Route | Body |
 |---|---|---|
 | Record work in hand on a claim | `PATCH /api/tasks/:id` | `claim: true`, `for`, and `work` with the details `claim_task` takes |
+| List by activity | `GET /api/tasks` with `activity` | `project`, and `activity`: one or more of `active`, `quiet` and `stalled`, separated by commas. The answer counts each group in `activities` ([STATE-21](protocol.md#state-21)) |
 | Pin and unpin a comment | `POST /api/tasks/:id/comments` | `projectId`, `text`, and either or both of `pin: true`, which pins the new comment, and `unpin`, the ids of the task's pinned comments to unpin |
 
-A task read answers its `for`, `work` and `lastActivityAt`, `pinned` on each
-comment, and `parent`, its parent context, or null when it has no parent
-([STATE-17](protocol.md#state-17)). A claim answers the task alone, so a
+A task read answers its `for`, `work`, `lastActivityAt` and `activity`, as
+of the answer's `readAt` ([STATE-20](protocol.md#state-20)), `pinned` on
+each comment, and `parent`, its parent context, or null when it has no
+parent ([STATE-17](protocol.md#state-17)). A claim answers the task alone, so a
 claim's `overlaps` ([STATE-19](protocol.md#state-19)), recording work details
 on a comment, claiming by pull request and the held-task list are MCP only.
 

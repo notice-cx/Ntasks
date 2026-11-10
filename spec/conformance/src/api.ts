@@ -5,6 +5,7 @@
  * does not offer throws `NotOffered`, which the runner records instead of a
  * failure.
  */
+import type { Activity, ActivityCounts } from './activity.ts';
 import type { BindingName, SenderRole } from './target.ts';
 
 export type Role = SenderRole;
@@ -92,6 +93,10 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly closeAcceptance?: Acceptance | null;
   /** In progress and held, with no holder activity for the server's period, or none recorded (STATE-16). */
   readonly stalled?: boolean;
+  /** When the holder last changed or commented on the task. */
+  readonly lastActivityAt?: string | null;
+  /** On a task in progress, how recently its holder worked on it as of the read (STATE-20). */
+  readonly activity?: string | null;
 };
 
 /** A close as done on a person's call: each criterion met or waived, and who passed it on. */
@@ -172,6 +177,18 @@ export interface TaskRead {
   readonly proposalVersion: string | null;
   /** Null when the task has no parent, or the server answers none. */
   readonly parent: ParentContext | null;
+  /** The time of the read the answer names, or null when it names none. */
+  readonly readAt: string | null;
+}
+
+/** A list of tasks in progress by activity (STATE-21). */
+export interface ActivityList {
+  /** Each page of the answer, with the read time it names, or null when it names none: each page is its own read. */
+  readonly pages: readonly { readonly readAt: string | null; readonly tasks: readonly Task[] }[];
+  /** Every page's tasks. */
+  readonly tasks: readonly Task[];
+  /** How many tasks in progress the first page counts in each group, or null when it counts none. */
+  readonly counts: ActivityCounts | null;
 }
 
 export interface HistoryEvent {
@@ -334,6 +351,8 @@ export interface Api {
   ready(project?: string): Promise<Outcome<readonly string[]>>;
   /** The ids of the project's stalled tasks. */
   stalled(project?: string): Promise<Outcome<readonly string[]>>;
+  /** The project's tasks in progress in `groups` of activity, every page of them (STATE-21). */
+  activity(groups: readonly Activity[], project?: string): Promise<Outcome<ActivityList>>;
   claim(
     task: string,
     options?: WriteOptions & { readonly work?: WorkDetails; readonly for?: string },

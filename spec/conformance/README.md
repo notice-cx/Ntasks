@@ -145,6 +145,7 @@ within a test run:
 | Rule | Not checked |
 |---|---|
 | [INV-2](../protocol.md#inv-2) | A claim's state after more than two seconds without activity |
+| [STATE-20](../protocol.md#state-20) | A task that is quiet, or one at the one-hour boundary, which no run lasts long enough to reach. The [cases at a fixed clock](#cases-at-a-fixed-clock) hold them instead, and the checks hold every task a server answers to the same rule at the `readAt` its answer names |
 | [INV-4](../protocol.md#inv-4) | The answer when the server gives up after rereading a task that kept changing, which a client cannot cause on purpose |
 | [INV-5](../protocol.md#inv-5) | That a write changing several tasks commits as one, which needs a failure partway through |
 | [INV-6](../protocol.md#inv-6) | Deleting a task, an event or a comment: no binding offers a deletion to try. The check reads earlier history and comments again and compares them |
@@ -154,6 +155,21 @@ within a test run:
 | [EXT-1](../protocol.md#ext-1) | Metadata a server does not take: a server MAY limit the keys a write takes, so a refused key passes |
 | [EXT-2](../protocol.md#ext-2) | Custom fields, which no level requires |
 | [VER-1](../protocol.md#ver-1) to [VER-3](../protocol.md#ver-3) | Rules of the document and its schemas; [`../test/schemas.test.ts`](../test/schemas.test.ts) checks the schemas' `$id`s |
+
+## Cases at a fixed clock
+
+[`cases/activity.json`](cases/activity.json) holds tasks as a read answers
+them at one fixed `readAt`, on a server whose stall period is
+`stalledAfterMs`, each with the `stalled` ([STATE-16](../protocol.md#state-16))
+and `activity` ([STATE-20](../protocol.md#state-20)) a server must answer:
+each group, the one-hour and stall-period boundaries, a held task with no
+recorded activity, and tasks that are not in progress. An implementation
+runs its own rule against them in its own tests, at that clock.
+[`src/activity.ts`](src/activity.ts) is the suite's copy of the rule, which
+the checks judge a server's answers by, and
+[`../test/activity.test.ts`](../test/activity.test.ts) runs it against the
+cases. Ntasks runs its rule against them in
+`packages/domain/test/activity.test.ts`.
 
 ## Adding a check
 

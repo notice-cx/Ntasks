@@ -1,0 +1,86 @@
+{
+  "description": "STATE-20 and STATE-16 at a fixed clock: each case is a task as a read answers it, at readAt, on a server whose stall period is stalledAfterMs, with the stalled and activity a server must answer for it. A task that is not in progress has activity null.",
+  "rules": ["STATE-20", "STATE-16"],
+  "readAt": "2026-11-10T12:00:00.000Z",
+  "stalledAfterMs": 86400000,
+  "cases": [
+    {
+      "name": "active: its holder commented ten minutes before the read",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-10T11:50:00.000Z" },
+      "stalled": false,
+      "activity": "active"
+    },
+    {
+      "name": "active: one millisecond inside the hour",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-10T11:00:00.001Z" },
+      "stalled": false,
+      "activity": "active"
+    },
+    {
+      "name": "quiet: exactly one hour before the read",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-10T11:00:00.000Z" },
+      "stalled": false,
+      "activity": "quiet"
+    },
+    {
+      "name": "quiet: three hours before the read",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-10T09:00:00.000Z" },
+      "stalled": false,
+      "activity": "quiet"
+    },
+    {
+      "name": "quiet: one millisecond inside the stall period",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-09T12:00:00.001Z" },
+      "stalled": false,
+      "activity": "quiet"
+    },
+    {
+      "name": "stalled: exactly the stall period before the read",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-09T12:00:00.000Z" },
+      "stalled": true,
+      "activity": "stalled"
+    },
+    {
+      "name": "stalled: three days before the read",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": "2026-11-07T12:00:00.000Z" },
+      "stalled": true,
+      "activity": "stalled"
+    },
+    {
+      "name": "stalled: held, and its holder has recorded nothing",
+      "task": { "status": "in_progress", "assignee": "agent:builder", "lastActivityAt": null },
+      "stalled": true,
+      "activity": "stalled"
+    },
+    {
+      "name": "none: open, changed a minute before the read",
+      "task": { "status": "open", "assignee": null, "lastActivityAt": "2026-11-10T11:59:00.000Z" },
+      "stalled": false,
+      "activity": null
+    },
+    {
+      "name": "none: open, with nothing recorded",
+      "task": { "status": "open", "assignee": null, "lastActivityAt": null },
+      "stalled": false,
+      "activity": null
+    },
+    {
+      "name": "none: blocked and held, its holder active a minute before the read",
+      "task": { "status": "blocked", "assignee": "agent:builder", "lastActivityAt": "2026-11-10T11:59:00.000Z" },
+      "stalled": false,
+      "activity": null
+    },
+    {
+      "name": "none: deferred and held, its holder silent for three days",
+      "task": { "status": "deferred", "assignee": "agent:builder", "lastActivityAt": "2026-11-07T12:00:00.000Z" },
+      "stalled": false,
+      "activity": null
+    },
+    {
+      "name": "none: closed a minute before the read",
+      "task": { "status": "closed", "assignee": null, "lastActivityAt": "2026-11-10T11:59:00.000Z" },
+      "stalled": false,
+      "activity": null
+    }
+  ]
+}

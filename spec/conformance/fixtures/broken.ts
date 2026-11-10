@@ -21,6 +21,11 @@ export const DEFECTS = {
   'proof-dropped': 'drops the commit, pull request and link of a close as done (INV-7)',
   'models-dropped': 'drops the model each write names (INV-12)',
   'held-tasks-hidden': 'tells a connecting agent nothing of the tasks it holds (INV-10)',
+  'activity-misread': 'answers every task in progress as active, whatever its last activity (STATE-20)',
+  'activity-filter-ignored':
+    'drops the groups of activity a list names, so it lists and counts as if it named none (STATE-21)',
+  'activity-miscounted':
+    'counts one quiet task more than a list by activity holds, leaving its tasks as they are (STATE-21)',
 } as const;
 export type Defect = keyof typeof DEFECTS;
 
@@ -75,9 +80,15 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     return reply.result?.structuredContent?.proposalVersion ?? args.proposal_version;
   };
 
+  /** A list's counts of activity, with the defect applied. */
+  const readCounts = (counts: unknown): void => {
+    if (defect === 'activity-miscounted' && isObject(counts)) counts.quiet = Number(counts.quiet) + 1;
+  };
+
   /** A task as a read answers it, with the defect applied. */
   const readTask = (task: unknown): void => {
     if (defect === 'relays-unmarked' && isObject(task) && isObject(task.answer)) task.answer.relayed = false;
+    if (defect === 'activity-misread' && isObject(task) && task.status === 'in_progress') task.activity = 'active';
   };
 
   const mcp = async (
@@ -96,6 +107,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
         for (const proof of ['commit', 'pr', 'link']) delete args[proof];
       if (defect === 'stale-answers-accepted' && tool === 'reconcile_task')
         args.proposal_version = await currentProposal(headers, args);
+      if (defect === 'activity-filter-ignored' && tool === 'list_tasks') delete args.activity;
     }
     const answer = await forward('POST', mcpPath!, headers, JSON.stringify(message));
     if (!answer.type.includes('application/json')) return answer;
@@ -113,8 +125,11 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
         result.structuredContent = won;
       }
     }
-    if (tool === 'get_task' && isObject(result.structuredContent)) {
+    if ((tool === 'get_task' || tool === 'list_tasks') && isObject(result.structuredContent)) {
       readTask(result.structuredContent.task);
+      if (Array.isArray(result.structuredContent.tasks))
+        for (const task of result.structuredContent.tasks) readTask(task);
+      readCounts(result.structuredContent.activities);
       result.content = [{ type: 'text', text: JSON.stringify(result.structuredContent) }];
     }
     return { ...answer, text: JSON.stringify(reply) };
@@ -157,7 +172,13 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
       if (defect === 'proof-dropped' && /\/close$/u.test(route) && (json.resolution ?? 'done') === 'done')
         for (const proof of ['commit', 'pullRequest', 'link']) delete json[proof];
     }
-    const answer = await forward(method, path, headers, json === null ? body : JSON.stringify(json));
+    let sent = path;
+    if (defect === 'activity-filter-ignored' && method === 'GET' && route === '/tasks') {
+      const url = new URL(path, backend.url);
+      url.searchParams.delete('activity');
+      sent = `${url.pathname}${url.search}`;
+    }
+    const answer = await forward(method, sent, headers, json === null ? body : JSON.stringify(json));
     if (defect === 'two-claims-win' && method === 'PATCH' && json?.claim === true && answer.status === 409) {
       const detail = (JSON.parse(answer.text) as { detail?: string }).detail ?? '';
       if (/held by|holds it/u.test(detail)) {
@@ -169,6 +190,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
       const value = JSON.parse(answer.text) as Json;
       readTask(value.task);
       if (Array.isArray(value.tasks)) for (const task of value.tasks) readTask(task);
+      readCounts(value.activities);
       return { ...answer, text: JSON.stringify(value) };
     }
     return answer;

@@ -139,13 +139,14 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
     engine.listLabelled(project.id, { label, limit, ...(query.after === undefined ? {} : { after: query.after }) }),
     linksSeenBy(context),
   ]);
+  const readAt = now();
   return json({
     project: project.key,
     prefix: project.prefix,
     repo: '',
-    readAt: now(),
+    readAt,
     label,
-    tasks: await webTasks(page.tasks.map(links.task), context.now()),
+    tasks: await webTasks(page.tasks.map(links.task), readAt),
     next: page.next,
   });
 }
@@ -291,7 +292,7 @@ export async function searchRoute(context: ReadContext, url: URL): Promise<Respo
     ...(task ? [task] : []),
     ...(await withExternalLinks(engine, matched.slice(0, task ? limit - 1 : limit))),
   ];
-  const views = await webTasks(page.map(links.task), context.now());
+  const views = await webTasks(page.map(links.task), found.readAt);
   return json({
     readAt: found.readAt,
     closedSince: found.closedSince,
@@ -349,12 +350,13 @@ export async function taskRoute(context: ReadContext, url: URL, taskId: string):
     linksSeenBy(context),
     engine.parentContext(project.id, taskId),
   ]);
-  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)], now()), proposalVersionOf(task)]);
+  const readAt = now();
+  const [[view], proposalVersion] = await Promise.all([webTasks([links.task(task)], readAt), proposalVersionOf(task)]);
   return json({
     project: project.key,
     prefix: project.prefix,
     repo: '',
-    readAt: now(),
+    readAt,
     task: view,
     comments: comments.map(commentView),
     parent: parent === null ? null : parentView(parent),

@@ -3,8 +3,10 @@
  * tool call, with the tool's arguments as section 11.3 names them. A
  * person's own decisions have no MCP tool, so `decide` is not offered.
  */
+import type { ActivityCounts } from './activity.ts';
 import {
   NotOffered,
+  type ActivityList,
   type Api,
   type HistoryEvent,
   type Outcome,
@@ -119,11 +121,13 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
           comments?: TaskRead['comments'];
           proposalVersion?: string | null;
           parent?: ParentContext | null;
+          readAt?: string;
         }): TaskRead => ({
           task: value.task,
           comments: value.comments ?? [],
           proposalVersion: value.proposalVersion ?? null,
           parent: value.parent ?? null,
+          readAt: value.readAt ?? null,
         }),
       ),
     history: (task) =>
@@ -162,6 +166,32 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
         offset = typeof value.nextOffset === 'number' ? value.nextOffset : undefined;
       }
       return { ok: true, value: ids };
+    },
+    activity: async (groups, project) => {
+      // Every page, each with its own read time; the first names the counts.
+      const pages: ActivityList['pages'][number][] = [];
+      let counts: ActivityCounts | null = null;
+      let offset: number | undefined = 0;
+      for (let page = 0; offset !== undefined && page < 100; page += 1) {
+        const listed = await call('list_tasks', {
+          project: project ?? target.projects.main,
+          activity: groups,
+          limit: 200,
+          offset,
+        });
+        if (!listed.ok) return listed;
+        const value = listed.value as {
+          readAt?: string;
+          activities?: ActivityCounts;
+          tasks: Task[];
+          nextOffset?: number | null;
+        };
+        if (pages.length === 0) counts = value.activities ?? null;
+        pages.push({ readAt: value.readAt ?? null, tasks: value.tasks });
+        offset = typeof value.nextOffset === 'number' ? value.nextOffset : undefined;
+      }
+      const list: ActivityList = { pages, tasks: pages.flatMap((page) => page.tasks), counts };
+      return { ok: true, value: list };
     },
     claim: (task, options = {}) =>
       map(call('claim_task', { task, ...work(options), ...writeOptions(options) }), written),

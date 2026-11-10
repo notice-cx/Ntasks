@@ -6,8 +6,10 @@
  * offered; nor does a write name a model. A task's type may arrive as
  * `issueType`, the name the HTTP routes answer it under.
  */
+import type { ActivityCounts } from './activity.ts';
 import {
   NotOffered,
+  type ActivityList,
   type Api,
   type HistoryEvent,
   type Outcome,
@@ -150,6 +152,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
           comments: (value.comments ?? []) as TaskRead['comments'],
           proposalVersion: (value.proposalVersion ?? null) as string | null,
           parent: (value.parent ?? null) as ParentContext | null,
+          readAt: typeof value.readAt === 'string' ? value.readAt : null,
         }),
       ),
     history: (task) =>
@@ -168,6 +171,18 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
         (value.tasks as { id: string; stalled?: boolean }[])
           .filter((task) => task.stalled === true)
           .map((task) => task.id),
+      ),
+    activity: (groups, project) =>
+      map(
+        send('GET', '/tasks', { query: { project: project ?? target.projects.main, activity: groups.join(',') } }),
+        (value): ActivityList => {
+          const tasks = ((value.tasks ?? []) as Record<string, unknown>[]).map(taskOf);
+          return {
+            pages: [{ readAt: typeof value.readAt === 'string' ? value.readAt : null, tasks }],
+            tasks,
+            counts: (value.activities ?? null) as ActivityCounts | null,
+          };
+        },
       ),
     claim: (task, options = {}) =>
       map(
