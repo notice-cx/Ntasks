@@ -499,7 +499,7 @@ export class Engine {
         linked.set(id, (await this.tracked(sender, draft, id)).record);
       if (parent !== undefined && linked.get(parent)!.projectId !== project.projectId)
         refuse(`${parent} is in another project.`);
-      // Every rule is checked before the first GitHub call, so a refused task leaves no issue behind.
+      // Every rule is checked before the first GitHub write, so a refused task leaves no issue behind.
       const discovered = (args.discovered_from as string[] | undefined) ?? [];
       for (const id of [...dependsOn, ...blocks, ...discovered])
         if (linked.get(id)!.projectId !== project.projectId)
