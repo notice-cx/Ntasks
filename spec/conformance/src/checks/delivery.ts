@@ -85,6 +85,21 @@ export const delivery: readonly Check[] = [
     },
   },
   {
+    id: 'state-18-reported-merge-closes-nothing',
+    rule: 'STATE-18',
+    level: 'delivery',
+    title: 'A merged signal a sender reports leaves a task in progress whose work names the pull request as it was',
+    async run(context) {
+      const pr = `https://github.com/${repositoryOf(context)}/pull/${Date.now() % 1000000}`;
+      const id = await file(context);
+      answered(await context.setup().claim(id, { work: { pr } }), `claiming ${id} with a pull request`);
+      const holder = (await taskOf(context.api(), id)).assignee;
+      await signal(context, 'merged', { pullRequests: [pr], commits: [commitName()] });
+      const task = await taskOf(context.api(), id);
+      same([task.status, task.assignee, task.work?.pr], ['in_progress', holder, pr], `${id} after the merged signal`);
+    },
+  },
+  {
     id: 'state-12-reopen-clears-delivery',
     rule: 'STATE-12',
     level: 'delivery',

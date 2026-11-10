@@ -250,6 +250,21 @@ acceptance given elsewhere, as it records an answer
 ([Who can answer](#who-can-answer)), and the person can dispute it: the task
 opens again, and the tasks waiting on it are told to wait.
 
+### Closed by a merge
+
+A task someone holds is closed by its holder. When GitHub reports that a pull
+request merged, though, a task in progress whose work in hand names that pull
+request closes as done, even after the agent that held it has stopped. Its
+proof is the pull request and the merge commit, its history names
+`service:GitHub` as the closer, and a comment keeps the holder's last branch
+and next step. An epic, a person's request, a task waiting on an open
+approval or request to do steps, and a task with open tasks under it stay in
+progress. A task whose pull request covers only part of its work carries the
+label `keep-open`, and its holder closes it. A merge reported by an agent or
+a workflow, rather than by GitHub, closes nothing.
+[API](api.md#work-still-in-progress-when-its-pull-request-merges) gives the
+rules.
+
 A closed task can be reopened. Reopening keeps its history, including the
 first close and its evidence.
 

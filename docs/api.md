@@ -791,6 +791,29 @@ the tasks it names, so their tasks go live without anyone ticking it. It does
 so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
+#### Work still in progress when its pull request merges
+
+A merge also closes the work it finishes when the agent that did it has
+stopped. Each task in progress whose work in hand names the pull request
+(`pr` on `claim_task` or `comment_on_task`) closes as done before the merge
+moves anything:
+
+- Its proof is the pull request and the merge commit, and the same delivery
+  then moves it to `merged`.
+- It is closed by `service:GitHub`, not by its holder, with a reason that
+  names the pull request and the merge commit. A comment keeps what the
+  holder's work in hand recorded, such as its branch and next step, since a
+  close clears it.
+- A task stays in progress when it is an epic, a person's request, labelled
+  `keep-open`, waiting on an approval or a request to do steps that is still
+  open, or has open tasks under it. Label a task `keep-open` when its pull
+  request covers only part of it; its holder then closes it.
+- Only a delivery Ntasks checked came from GitHub closes a task. A merge
+  sent to `POST /api/delivery` or with `report_delivery` closes nothing.
+
+The answer lists the tasks the merge closed as `closed`, and each task it
+left in progress as `kept`, with `why`.
+
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
   saved by hand, compared in constant time. Without the header the answer
@@ -807,14 +830,18 @@ Projects page keeps it off.
   `unknown_installation`. An installation removed or suspended in GitHub is
   forgotten.
 - A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
-  does. When its event moves nothing, such as GitHub's `ping`, an
+  does, and a merge also with `closed` and `kept` when it closed or kept a
+  task in progress ([above](#work-still-in-progress-when-its-pull-request-merges)).
+  When its event moves nothing, such as GitHub's `ping`, an
   installation, a pull request closed without merging, a check that is not a
   deploy, or another event, the answer also holds `ignored`, a sentence
   saying why. GitHub shows each answer under the app's, or the webhook's,
   Recent Deliveries.
-- Each move is recorded in the task's history under `service:GitHub`.
-- A task never moves back, so a delivery sent again, by GitHub or with
-  Redeliver, moves nothing twice.
+- Each move and each close is recorded in the task's history under
+  `service:GitHub`.
+- A task never moves back, and a task a merge closed is no longer in
+  progress, so a delivery sent again, by GitHub or with Redeliver, moves and
+  closes nothing twice.
 - A pull request's URL names its repository, so a merge moves only the tasks
   of that pull request, whichever repository sends it.
 - A deploy moves the tasks whose commit or merge commit is the commit it ran
@@ -919,6 +946,7 @@ field can hold is added. This is version 8.
 | 6 | `app`, `installations` and `detected` in `GET /api/access/github`, and `POST /api/access/github/app`, `POST /api/access/github/app/remove` and `POST /api/access/github/checks` ([Sign-in](sign-in.md#routes)) |
 | 7 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
 | 8 | `stalled` on a task, `POST /api/tasks/:id/release` ([below](#a-persons-decisions)), and `release` among a person's `operations` in `GET /api/tasks/capabilities` |
+| 9 | `closed` and `kept` in the answer of `POST /api/github/:workspaceId` ([above](#work-still-in-progress-when-its-pull-request-merges)) |
 
 | Where | What it holds |
 |---|---|
@@ -1026,7 +1054,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
-| `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
+| `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, `closed` and `kept` when a merge closed or kept work in progress, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |

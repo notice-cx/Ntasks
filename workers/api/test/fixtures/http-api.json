@@ -637,5 +637,19 @@
         "task": "@task"
       }
     }
+  },
+  {
+    "version": 9,
+    "routes": {
+      "POST /api/github/:workspaceId": {
+        "closed": "absent|array",
+        "closed[]": "object",
+        "closed[].id": "string",
+        "kept": "absent|array",
+        "kept[]": "object",
+        "kept[].id": "string",
+        "kept[].why": "string"
+      }
+    }
   }
 ]

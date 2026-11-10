@@ -12,7 +12,11 @@
  * and report_delivery send (delivery.ts), for every project of the workspace:
  *
  * - `pull_request` closed and merged into the default branch: `merged`,
- *   naming the pull request and its merge commit;
+ *   naming the pull request and its merge commit. It first closes, as done,
+ *   each task in progress whose work names that pull request, unless it is
+ *   an epic or a person's request, is labelled keep-open, waits on an open
+ *   request or has open tasks under it (closeMerged in task-writes.ts);
+ *   the answer lists the tasks it closed and the ones it kept, with why;
  * - `check_run` completed with success on the default branch, when it is a
  *   deploy: `live`, naming its commit;
  * - `deployment_status` success, when it is a deploy: `live`, naming the
@@ -27,7 +31,8 @@
  * for each project, so an owner who turns it off again keeps it off.
  *
  * Any other event is answered with why it moves nothing. A task never moves
- * back, so a delivery that GitHub sends again moves nothing twice.
+ * back, and a task a merge closed is no longer in progress, so a delivery
+ * that GitHub sends again moves and closes nothing twice.
  * docs/api.md#from-github describes the setup.
  */
 import {
@@ -307,5 +312,12 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     // turned on once more by a later deploy, after its owner turned it off.
     console.error('github: the projects a deploy turned on were not recorded', workspaceId);
   }
-  return json({ moved: movedView(answer.moved) }, 200);
+  return json(
+    {
+      moved: movedView(answer.moved),
+      ...(answer.closed.length === 0 ? {} : { closed: answer.closed }),
+      ...(answer.kept.length === 0 ? {} : { kept: answer.kept }),
+    },
+    200,
+  );
 }

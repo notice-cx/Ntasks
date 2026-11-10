@@ -5,7 +5,7 @@
 // Settings (POST /api/access/github).
 import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import type { Task } from '@ntasks/domain';
+import type { CreateTaskInput, Task, TaskWork, TaskWrite } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import { hex, randomSecret } from '../../src/access/crypto.ts';
 import type { TaskStore } from '../../src/store/index.ts';
@@ -345,6 +345,189 @@ describe('the GitHub receiver', () => {
       expect(answer.body.ignored).toMatch(reason);
     }
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
+  });
+});
+
+describe('a merge GitHub reports, for work still in progress', () => {
+  const BUILDER = Object.freeze({ name: 'agent:Builder', model: 'example-model' });
+
+  /** A task `BUILDER` holds in progress, its work naming `pr` and `work`'s other details. */
+  async function heldNaming(
+    projectId: string,
+    pr: string,
+    task: Partial<CreateTaskInput> = {},
+    work: TaskWork = {},
+  ): Promise<string> {
+    return runInDurableObject(store(), async (instance: TaskStore) => {
+      const filed = await instance.tasks.createTask(projectId, { title: 'Build it', claim: true, ...task }, BUILDER);
+      const { id, version } = filed.task;
+      await instance.tasks.writeTask(
+        projectId,
+        id,
+        { expectedVersion: version, set: { work: { ...work, pr } } },
+        BUILDER,
+      );
+      return id;
+    });
+  }
+
+  /** Writes `write` to the task as `BUILDER`, at the version it has now, and answers what the write made. */
+  async function asBuilder(projectId: string, id: string, write: Omit<TaskWrite, 'expectedVersion'>) {
+    const { version } = await taskOf(projectId, id);
+    return runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.writeTask(projectId, id, { expectedVersion: version, ...write }, BUILDER),
+    );
+  }
+
+  it('closes the task whose work names the pull request as done by the merge, with its proof, at merged', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const tested = newCommit();
+    const id = await heldNaming(
+      projectId,
+      `https://github.com/Example/App/pull/${number}/files`,
+      {},
+      {
+        branch: 'claude/build-it',
+        commit: tested,
+        next: 'Close the task once the merge queue merges it',
+      },
+    );
+    const merge = newCommit();
+
+    const answer = await deliver('pull_request', mergedPullRequest(number, merge));
+    expect(answer).toMatchObject({ status: 200, body: { moved: [{ id, stage: 'merged' }], closed: [{ id }] } });
+    expect(answer.body.kept).toBeUndefined();
+    const task = await taskOf(projectId, id);
+    const pullRequest = `https://github.com/example/app/pull/${number}`;
+    expect(task).toMatchObject({
+      status: 'closed',
+      close: {
+        resolution: 'done',
+        by: 'service:GitHub',
+        reason: expect.stringContaining(`${pullRequest} as ${merge.slice(0, 7)}`),
+      },
+      work: {},
+      delivery: { stage: 'merged', pullRequest, commit: merge, mergeCommit: merge },
+    });
+    const [comment] = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.listComments(projectId, id),
+    );
+    expect(comment).toMatchObject({ author: 'service:GitHub' });
+    for (const left of ['agent:Builder', 'branch: claude/build-it', `commit: ${tested}`, 'next: Close the task once'])
+      expect(comment?.text).toContain(left);
+    const history = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.listHistory(projectId, id, { limit: 10 }),
+    );
+    expect(history[0]).toMatchObject({ kind: 'updated', actor: 'service:GitHub', changes: { delivery: {} } });
+    expect(history.filter((event) => event.kind === 'closed').map((event) => event.actor)).toEqual(['service:GitHub']);
+  });
+
+  it('leaves in progress a task labelled keep-open, and an epic, saying why', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const pr = `https://github.com/${REPOSITORY}/pull/${number}`;
+    const optedOut = await heldNaming(projectId, pr, { labels: ['keep-open'] });
+    const epic = await heldNaming(projectId, pr, { type: 'epic' });
+
+    const answer = await deliver('pull_request', mergedPullRequest(number, newCommit()));
+    expect(answer.body).toEqual({ moved: [], kept: expect.any(Array) });
+    expect(answer.body.kept).toHaveLength(2);
+    expect(answer.body.kept).toEqual(
+      expect.arrayContaining([
+        { id: optedOut, why: expect.stringMatching(/labelled keep-open/u) },
+        { id: epic, why: expect.stringMatching(/an epic/u) },
+      ]),
+    );
+    for (const id of [optedOut, epic])
+      expect(await taskOf(projectId, id)).toMatchObject({
+        status: 'in_progress',
+        assignee: 'agent:Builder',
+        work: { pr },
+      });
+  });
+
+  it('leaves in progress a task that waits on an open approval or a request to do steps', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const pr = `https://github.com/${REPOSITORY}/pull/${number}`;
+    const approving = await heldNaming(projectId, pr);
+    const [approval] = (await asBuilder(projectId, approving, { requestApproval: { reason: 'Deploy to production.' } }))
+      .created;
+    const doing = await heldNaming(projectId, pr);
+    const [steps] = (
+      await asBuilder(projectId, doing, {
+        requestAction: { title: 'Rotate the key', context: 'The key expires.', steps: [{ text: 'Rotate it.' }] },
+      })
+    ).created;
+
+    const answer = await deliver('pull_request', mergedPullRequest(number, newCommit()));
+    expect(answer.body.closed).toBeUndefined();
+    expect(answer.body.kept).toEqual(
+      expect.arrayContaining([
+        { id: approving, why: `it waits on ${approval!.id}, still open` },
+        { id: doing, why: `it waits on ${steps!.id}, still open` },
+      ]),
+    );
+    for (const id of [approving, doing])
+      expect(await taskOf(projectId, id)).toMatchObject({ status: 'in_progress', work: { pr } });
+  });
+
+  it('closes nothing when the pull request that merged is one no task names', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const id = await heldNaming(projectId, `https://github.com/${REPOSITORY}/pull/${number}`);
+    const before = await taskOf(projectId, id);
+
+    for (const event of [
+      mergedPullRequest(number + 1, newCommit()),
+      mergedPullRequest(number, newCommit(), { repo: 'example/other' }),
+    ]) {
+      expect((await deliver('pull_request', event)).body).toEqual({ moved: [] });
+    }
+    expect(await taskOf(projectId, id)).toMatchObject({ status: 'in_progress', version: before.version });
+  });
+
+  it('closes a task once when GitHub sends the same merge again', async () => {
+    await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const id = await heldNaming(projectId, `https://github.com/${REPOSITORY}/pull/${number}`);
+    const event = mergedPullRequest(number, newCommit());
+    const delivery = crypto.randomUUID();
+
+    expect((await deliver('pull_request', event, { id: delivery })).body).toEqual({
+      moved: [{ id, stage: 'merged' }],
+      closed: [{ id }],
+    });
+    const closed = await taskOf(projectId, id);
+    expect((await deliver('pull_request', event, { id: delivery })).body).toEqual({ moved: [] });
+    expect((await taskOf(projectId, id)).version).toBe(closed.version);
+    const comments = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.listComments(projectId, id),
+    );
+    expect(comments).toHaveLength(1);
+  });
+
+  it('never closes a task in progress on a merge a sender reports through POST /api/delivery', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const number = newNumber();
+    const pr = `https://github.com/${REPOSITORY}/pull/${number}`;
+    const id = await heldNaming(projectId, pr);
+
+    const reported = await asOwner(owner, 'POST', '/api/delivery', {
+      repository: REPOSITORY,
+      stage: 'merged',
+      pullRequests: [number],
+      commits: [newCommit()],
+    });
+    expect(reported).toMatchObject({ status: 200, body: { moved: [] } });
+    expect(await taskOf(projectId, id)).toMatchObject({ status: 'in_progress', work: { pr } });
   });
 });
 

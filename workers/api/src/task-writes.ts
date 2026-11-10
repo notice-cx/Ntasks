@@ -10,6 +10,7 @@
 import {
   TASK_LIMITS,
   TaskRefused,
+  WORK_DETAILS,
   type ActionRequest,
   type Actor,
   type ApprovalRequest,
@@ -17,6 +18,7 @@ import {
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
+  type DeliverySignal,
   type DependencyType,
   type ExternalLink,
   type FieldValue,
@@ -34,8 +36,8 @@ import {
   type WriteResult,
 } from '@ntasks/domain';
 import { listed, type WorkArgs } from './args.ts';
-import { closeProof } from './delivery.ts';
-import type { Principal } from './auth.ts';
+import { closeProof, pullRequestUrl } from './delivery.ts';
+import { mayReach, type Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
 import {
@@ -776,6 +778,114 @@ export async function closeTask(
     };
   });
   return { project, result };
+}
+
+/** The label that keeps a task in progress when the pull request its work names merges: its holder closes it. */
+export const KEEP_OPEN = 'keep-open';
+
+/** What a merge did to the tasks in progress whose work named its pull request. */
+export interface MergeCloses {
+  readonly closed: readonly { readonly id: string }[];
+  /** Each task the merge left in progress, and why. */
+  readonly kept: readonly { readonly id: string; readonly why: string }[];
+}
+
+/** Why a merge of `pullRequest` leaves this task as it is, or null when it closes it. */
+async function keptByMerge(
+  context: WriteContext,
+  project: Project,
+  task: Task,
+  pullRequest: string,
+): Promise<string | null> {
+  const named = task.work.pr === undefined ? null : pullRequestUrl(task.work.pr);
+  if (task.status !== 'in_progress' || named !== pullRequest)
+    return 'it is no longer in progress with its work naming this pull request';
+  if (task.type === 'epic') return 'an epic closes once its tasks do, never by a merge';
+  if (isDecision(task)) return "it is a person's request, which only their answer closes";
+  if (task.labels.includes(KEEP_OPEN)) return `it is labelled ${KEEP_OPEN}, so its holder closes it`;
+  const gates = await openGates(context, project, task);
+  if (gates.length > 0) return `it waits on ${listed(gates.map((gate) => gate.id))}, still open`;
+  const children = await context.engine.listBoard(project.id, { statuses: OPEN_STATUSES, parentId: task.id });
+  if (children.length > 0) return `it has open tasks under it: ${listed(children.map((child) => child.id))}`;
+  return null;
+}
+
+/** The comment a merge's close adds, which keeps what the holder left, since the close clears its work details. */
+function leftByHolder(task: Task, pullRequest: string): string {
+  const details = WORK_DETAILS.flatMap((detail) =>
+    detail === 'pr' || task.work[detail] === undefined ? [] : [`- ${detail}: ${task.work[detail]}`],
+  );
+  return [
+    `GitHub reported that ${pullRequest} merged, so the merge closed this task rather than its holder, ` +
+      `${task.assignee ?? 'nobody'}. Reopen it if work remains. Its work in hand recorded:`,
+    ...(task.assigneeFor === null ? [] : [`- for: ${task.assigneeFor}`]),
+    ...(details.length > 0 ? details : ['- nothing besides the pull request']),
+  ].join('\n');
+}
+
+/**
+ * Closes as done each task in progress whose work names a pull request a
+ * merged signal names (STATE-18), with that pull request and the merge
+ * commit as its proof, recording the sender as its closer. Only the GitHub
+ * receiver calls it, once the Worker checked that GitHub sent the delivery
+ * (github.ts): a signal a sender reports closes nothing. An epic, a person's
+ * request, a task labelled keep-open and one that waits on an open request
+ * or has open tasks under it stay as they are. Each task closes in its own
+ * write, so one that keeps changing leaves the others closed; GitHub's
+ * delivery sent again closes it then.
+ */
+export async function closeMerged(context: WriteContext, signal: DeliverySignal): Promise<MergeCloses> {
+  if (signal.stage !== 'merged' || signal.pullRequests.length === 0) return { closed: [], kept: [] };
+  const merged = new Set(signal.pullRequests);
+  // As a delivery records it, only a signal that names one commit names the merge commit.
+  const mergeCommit = signal.commits.length === 1 ? signal.commits[0] : undefined;
+  const projects = new Map(
+    (await context.engine.listProjects())
+      .filter((project) => mayReach(context.principal, project.id, 'write'))
+      .map((project) => [project.id, project]),
+  );
+  if (projects.size === 0) return { closed: [], kept: [] };
+  const inProgress = await context.engine.listBoard(null, { statuses: ['in_progress'], withoutExternalLinks: true });
+  const actor = actorOf(context.principal, undefined);
+  const closed: { id: string }[] = [];
+  const kept: { id: string; why: string }[] = [];
+  for (const task of inProgress) {
+    const project = projects.get(task.projectId);
+    const pullRequest = task.work.pr === undefined ? null : pullRequestUrl(task.work.pr);
+    if (project === undefined || pullRequest === null || !merged.has(pullRequest)) continue;
+    const reason =
+      `Closed by the merge of ${pullRequest}` +
+      (mergeCommit === undefined ? '' : ` as ${mergeCommit.slice(0, 7)}`) +
+      ", which GitHub reported; the task's work named that pull request.";
+    const outcome: { why: string | null } = { why: null };
+    try {
+      await changing(context, project, task, actor, undefined, async (current) => {
+        outcome.why = await keptByMerge(context, project, current, pullRequest);
+        if (outcome.why !== null) return null;
+        const shipped = shippedCard(current.metadata, reason, context.now());
+        return {
+          expectedVersion: current.version,
+          close: {
+            reason,
+            resolution: 'done',
+            ...closeProof(
+              { pullRequest, ...(mergeCommit === undefined ? {} : { commit: mergeCommit }) },
+              current.type,
+              current.work,
+            ),
+          },
+          comment: leftByHolder(current, pullRequest),
+          ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
+        };
+      });
+    } catch (error) {
+      if (!(error instanceof Refused)) throw error;
+      outcome.why = error.detail;
+    }
+    if (outcome.why === null) closed.push({ id: task.id });
+    else kept.push({ id: task.id, why: outcome.why });
+  }
+  return { closed, kept };
 }
 
 /**
