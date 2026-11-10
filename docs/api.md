@@ -766,6 +766,18 @@ the tasks it names, so their tasks go live without anyone ticking it. It does
 so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
+A merge GitHub made before the task closed sends its event too early to move
+the task, so the workspace's task store also asks GitHub itself, as the app:
+
+- about 5 seconds after a task closes as done with a pull request;
+- when an owner installs the app, for the tasks already waiting for a merge,
+  such as the ones closed before GitHub was connected.
+
+Each check reads the pull request of up to 40 tasks waiting for a merge, in
+repositories an installation reaches, and moves each one merged into its
+repository's default branch to `merged`, with its merge commit. It signs in
+to GitHub with the app's private key.
+
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
   saved by hand, compared in constant time. Without the header the answer

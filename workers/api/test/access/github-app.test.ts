@@ -3,7 +3,7 @@
 // the installation's events move a closed task to merged and then live with
 // no deploy check typed and no project ticked. Events from an installation
 // no owner made are refused.
-import { runInDurableObject } from 'cloudflare:test';
+import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import type { Task } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ import { store, TEST_WORKSPACE } from '../store.ts';
 import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
 import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from './github.ts';
 
-standInForGitHub();
+const github = standInForGitHub();
 
 const APP_SECRET = convertedWebhookSecret(OWNER_GITHUB_ID);
 const SLUG = `ntasks-${OWNER_GITHUB_ID}`;
@@ -389,5 +389,42 @@ describe('the app’s deliveries', () => {
       status: 401,
       body: { error: 'bad_signature' },
     });
+  });
+});
+
+describe('work waiting for a merge GitHub already made', () => {
+  it('records merged shortly after a close names a pull request that already merged', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID, 'example'));
+    // The installation's own check: nothing of this test waits yet.
+    await runDurableObjectAlarm(store());
+    const merge = newCommit();
+    github.pulls.set(`${REPOSITORY}#50`, { merged: true, mergeCommit: merge, base: 'main' });
+
+    const { projectId, id } = await taskWithPullRequest(owner, 50);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'merged', mergeCommit: merge });
+    expect(github.installationTokens).toContain(mine);
+  });
+
+  it('moves work closed before the app was installed once an owner installs it, and only work merged into main', async () => {
+    const owner = await connected();
+    const merged = await taskWithPullRequest(owner, 51);
+    const open = await taskWithPullRequest(owner, 52);
+    const elsewhere = await taskWithPullRequest(owner, 53);
+    github.pulls.set(`${REPOSITORY}#51`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+    github.pulls.set(`${REPOSITORY}#52`, { merged: false, mergeCommit: null, base: 'main' });
+    github.pulls.set(`${REPOSITORY}#53`, { merged: true, mergeCommit: newCommit(), base: 'release' });
+    // The closes' check finds no installation to ask through.
+    await runDurableObjectAlarm(store());
+    expect((await taskOf(merged.projectId, merged.id)).delivery?.stage).toBe('built');
+
+    await deliver('installation', installation(newInstallation(), 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(merged.projectId, merged.id)).delivery?.stage).toBe('merged');
+    expect((await taskOf(open.projectId, open.id)).delivery?.stage).toBe('built');
+    expect((await taskOf(elsewhere.projectId, elsewhere.id)).delivery?.stage).toBe('built');
   });
 });
