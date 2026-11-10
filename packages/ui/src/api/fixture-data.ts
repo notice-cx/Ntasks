@@ -5,6 +5,8 @@
  */
 import type {
   ConnectedApp,
+  DetectedDeploy,
+  GitHubInstallation,
   LiveTask,
   TaskActor,
   TaskComment,
@@ -37,6 +39,13 @@ export interface FixtureWorkspace extends Workspace {
   apps?: ConnectedApp[];
   /** Its GitHub webhook, with the secret the Worker would keep encrypted; none when left out. */
   github?: { secret: string; deployChecks: string[]; updatedAt: string };
+  /** Its GitHub App, where it is installed and the deploy checks deliveries showed; none when left out. */
+  githubApp?: {
+    slug: string;
+    createdAt: string;
+    installations: GitHubInstallation[];
+    detected: DetectedDeploy[];
+  };
 }
 
 /** A workspace with no projects. */

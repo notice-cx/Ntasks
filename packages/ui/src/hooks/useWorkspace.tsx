@@ -221,3 +221,29 @@ export function useRemoveGitHubWebhook() {
     onSuccess: () => client.invalidateQueries({ queryKey: GITHUB_KEY }),
   });
 }
+
+/** Starts Connect GitHub: the browser then posts the manifest to GitHub, which makes the app. */
+export function useConnectGitHub() {
+  const api = useTasksApi();
+  return useMutation({ mutationFn: () => api.connectGitHub() });
+}
+
+/** Forgets the workspace's GitHub App, then reads the connection again. */
+export function useDisconnectGitHub() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.disconnectGitHub(),
+    onSuccess: () => client.invalidateQueries({ queryKey: GITHUB_KEY }),
+  });
+}
+
+/** Counts a detected deploy check, or switches it off, and keeps the answer as the read. */
+export function useSetDeployCheck() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, on }: { name: string; on: boolean }) => api.setDeployCheck(name, on),
+    onSuccess: (saved) => client.setQueryData(GITHUB_KEY, saved),
+  });
+}

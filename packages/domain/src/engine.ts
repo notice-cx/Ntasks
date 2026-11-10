@@ -409,6 +409,16 @@ export interface DeliverySignal {
   readonly commits: readonly string[];
 }
 
+/**
+ * How a signal treats the projects of the tasks it names. With
+ * `turnOnDeploys`, a `live` signal first marks each such project that does
+ * not deploy as one that does, unless `except` names it, so its tasks go
+ * live: a deploy its repository reported shows the project deploys.
+ */
+export interface DeliveryOptions {
+  readonly turnOnDeploys?: { readonly except: readonly string[] };
+}
+
 /** A task a signal moved, and the stage it moved to. */
 export interface DeliveryMove {
   readonly taskId: string;
@@ -550,7 +560,12 @@ export interface TaskEngine {
    * commit of each task it moves. Each move is a change with its history
    * (rules 2 and 4), all in one batch.
    */
-  reportDelivery(projectIds: readonly string[], signal: DeliverySignal, actor: Actor): Promise<readonly DeliveryMove[]>;
+  reportDelivery(
+    projectIds: readonly string[],
+    signal: DeliverySignal,
+    actor: Actor,
+    options?: DeliveryOptions,
+  ): Promise<readonly DeliveryMove[]>;
   /** Adds a comment. It does not change the task's version, so it never conflicts with a write. */
   addComment(projectId: string, taskId: string, text: string, actor: Actor, retry?: Retry): Promise<CommentResult>;
 }

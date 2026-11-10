@@ -10,7 +10,7 @@ import { hex } from '../../src/access/crypto.ts';
 import { API_VERSION, API_VERSION_HEADER, OLDEST_API_VERSION } from '../../src/version.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { Browser, call, connectAgent, connectApp, meWithToken } from '../access/client.ts';
-import { standInForGitHub } from '../access/github.ts';
+import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from '../access/github.ts';
 import RECORD from '../fixtures/http-api.json';
 import { TEST_WORKSPACE } from '../store.ts';
 import { compare, expand, merge, observe, observed, withoutValue, type ContractVersion } from './contract.ts';
@@ -346,9 +346,13 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/access/services', '/api/access/services');
 
   // GitHub's deliveries, signed with the secret the owner saves: one moves a task, and a ping moves none.
+  // The owner sets GitHub up in a browser of its own, so these sign-in routes count against another address's limit.
+  const hub = new Browser();
+  await hub.signInAsOwner();
+  const inHub = (route: string, path: string, json?: Body) => send(samples, hub, route, path, json);
   const secret = 'contract-webhook-secret-0123456789abcdef';
-  await as('GET /api/access/github', '/api/access/github');
-  await as('POST /api/access/github', '/api/access/github', { secret, deployChecks: ['Deploy'] });
+  await inHub('GET /api/access/github', '/api/access/github');
+  await inHub('POST /api/access/github', '/api/access/github', { secret, deployChecks: ['Deploy'] });
   const deployed = await create({ title: 'Deploy the launch page' });
   await as(
     'POST /api/tasks/:id/close',
@@ -382,7 +386,45 @@ async function drive(): Promise<readonly Sample[]> {
     });
     await keep(samples, 'POST /api/github/:workspaceId', path, delivery);
   }
-  await as('POST /api/access/github/remove', '/api/access/github/remove', {});
+  await inHub('POST /api/access/github/remove', '/api/access/github/remove', {});
+
+  // Connect GitHub: the workspace's app, an installation the owner made, and a deploy check it detected.
+  const started = await inHub('POST /api/access/github/app', '/api/access/github/app', {});
+  const state = new URL(started.action as string).searchParams.get('state') ?? '';
+  const created = await hub.fetch(
+    `/api/access/github/app/created?code=${manifestCodeFor(1001)}&state=${encodeURIComponent(state)}`,
+  );
+  if (created.status !== 302) throw new Error(`GitHub's return answered ${created.status}`);
+  const appDelivery = async (event: string, payload: Body) => {
+    const body = JSON.stringify(payload);
+    const path = `/api/github/${TEST_WORKSPACE.id}`;
+    const delivery = await call(path, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-github-event': event,
+        'x-hub-signature-256': await signed(convertedWebhookSecret(1001), body),
+      },
+      body,
+    });
+    await keep(samples, 'POST /api/github/:workspaceId', path, delivery);
+  };
+  await appDelivery('installation', {
+    action: 'created',
+    installation: { id: 77, account: { login: 'example', type: 'Organization' } },
+    sender: { id: 1001, login: 'person-1001' },
+  });
+  await appDelivery('check_run', {
+    ...checkRun,
+    installation: { id: 77 },
+    check_run: { ...checkRun.check_run, name: 'Workers Builds: launch' },
+  });
+  await inHub('GET /api/access/github', '/api/access/github');
+  await inHub('POST /api/access/github/checks', '/api/access/github/checks', {
+    name: 'Workers Builds: launch',
+    on: false,
+  });
+  await inHub('POST /api/access/github/app/remove', '/api/access/github/app/remove', {});
 
   // A connected app: the owner registers it, signs in through it and picks an option with its token.
   const registered = (
