@@ -75,6 +75,10 @@ are kept there:
   protocol does not allow ([INV-6](../../spec/protocol.md#inv-6)).
 - **One process owns a ledger file.** Two adapters over one ledger would not
   see each other's writes.
+- **A write GitHub takes but the ledger fails to save is not recovered.**
+  When saving the ledger file fails after GitHub accepted a write, such as on
+  a full disk, GitHub keeps the change without its ledger record, and the
+  same call sent again can file a second issue.
 - **Each project's tasks are listed from GitHub on every list**, so a
   repository with thousands of issues answers slowly.
 
