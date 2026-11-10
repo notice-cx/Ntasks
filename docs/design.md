@@ -752,15 +752,16 @@ closed as done. Tasks closed are never counted, and nobody is ranked. The
 with the project menu: All projects, then each project, the one in view
 ticked; a project chosen is kept in the address as `?project=`.
 
-Under the bar, the seven UTC days, today and the six before it, form a strip
+Under the bar, the seven days, today and the six before it in the person's
+time zone ([Dates](#dates)), form a strip
 of cells (`ol`, named Wins by day). Each cell names its day (`Tue 10`) and its
 count of wins, then one bar: shipped in green (Done) under decided in Text
 2, each part as tall as its count against the busiest day, and above it a
 green ring for each epic finished. A day with no wins says Nothing in Text 3;
 it is never red. Today's cell is ringed in Accent. Under the strip, the
 week's counts beside their colour keys (shipped, decided, epics finished),
-the approvals closed as done in Text 3, and in Text 3 that days are in UTC,
-with the first day merges were recorded on when none shipped before.
+the approvals closed as done in Text 3, and in Text 3 the first day merges
+were recorded on when none shipped before.
 
 Then each day with wins, newest first, under a `GroupHeader` naming the day
 (`Tue, Nov 10`), its count and, from 640 px wide, its wins in words (`42
@@ -858,6 +859,17 @@ Each action's key:
 | `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover, the composer or an open form |
+
+## Dates
+
+Every date a page shows is in the person's own time zone: the browser's, or
+the one the app is given (`timeZone` on `App`). `src/lib/dates.ts` is the one
+place that turns an instant into a day and a day into words, so a win at 6 pm
+in Los Angeles falls on that day there, not the next. A day is written as
+`Nov 6`, with the year when it is not this year's, or `Tue, Nov 10` where the
+weekday helps; how long ago something happened stays `2h`, `3d`.
+`packages/ui/test/productivity.test.tsx` fails when a page formats a date
+any other way.
 
 ## Page titles
 

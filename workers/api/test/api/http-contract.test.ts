@@ -317,6 +317,7 @@ async function drive(): Promise<readonly Sample[]> {
     commits: ['c0ffee12'],
   });
   await as('GET /api/tasks/wins', '/api/tasks/wins');
+  await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&timeZone=America/Los_Angeles`);
   // Back to the oldest days the feed reaches, where it offers no earlier ones.
   let earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}`)).earlier;
   while (typeof earlier === 'string')

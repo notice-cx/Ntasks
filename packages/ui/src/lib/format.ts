@@ -75,23 +75,3 @@ export function fieldValueText(value: string | number | boolean | readonly strin
   if (Array.isArray(value)) return value.join(', ');
   return String(value);
 }
-
-const DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-const DAY_YEAR = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-/** A calendar day `YYYY-MM-DD` as `Nov 6`, with the year when it is not this year's. */
-export function calendarDay(day: string, nowMs: number): string {
-  const [year, month, date] = day.split('-').map(Number);
-  if (year === undefined || month === undefined || date === undefined) return day;
-  const at = new Date(year, month - 1, date);
-  if (Number.isNaN(at.getTime())) return day;
-  return at.getFullYear() === new Date(nowMs).getFullYear() ? DAY.format(at) : DAY_YEAR.format(at);
-}
-
-/** The local calendar day of `ms`, `addDays` later, as `YYYY-MM-DD`. */
-export function localDay(ms: number, addDays = 0): string {
-  const at = new Date(ms);
-  at.setDate(at.getDate() + addDays);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
-}

@@ -1,35 +1,16 @@
 /**
  * What the Productivity page shows of the wins the server reads (docs/api.md,
- * "Wins"): the day each win falls on and the words for it. Days are UTC, as
- * the server counts them.
+ * "Wins"): the day each win falls on, in the person's time zone, and the
+ * words for it.
  */
 import type { Win, WinsDay, WinsPage } from '../api/types';
+import { dayIn } from './dates';
 
-const DAY_LABEL = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  timeZone: 'UTC',
-});
-const WEEKDAY = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' });
-
-/** A UTC day `YYYY-MM-DD` as `Tue, Nov 10`. */
-export function winsDayLabel(day: string): string {
-  const at = Date.parse(`${day}T00:00:00.000Z`);
-  return Number.isNaN(at) ? day : DAY_LABEL.format(at);
-}
-
-/** A UTC day `YYYY-MM-DD` as its weekday and date, `Tue 10`, for the strip of days. */
-export function winsDayShort(day: string): string {
-  const at = Date.parse(`${day}T00:00:00.000Z`);
-  return Number.isNaN(at) ? day : `${WEEKDAY.format(at)} ${Number(day.slice(8))}`;
-}
-
-/** The wins of each day that has any, newest day first, each day's newest win first. */
-export function winsByDay(wins: readonly Win[]): { day: string; wins: Win[] }[] {
+/** The wins of each day in `zone` that has any, newest day first, each day's newest win first. */
+export function winsByDay(wins: readonly Win[], zone: string): { day: string; wins: Win[] }[] {
   const days = new Map<string, Win[]>();
   for (const win of wins) {
-    const day = win.at.slice(0, 10);
+    const day = dayIn(Date.parse(win.at), zone);
     const list = days.get(day);
     if (list) list.push(win);
     else days.set(day, [win]);

@@ -658,14 +658,17 @@ close as won't do, duplicate, can't reproduce, already handled or no longer
 needed is never a win, and nothing counts tasks closed. A change that merges
 more than 28 days after its task closed is not found.
 
-Without `before`, the seven days are today and the six before it, in UTC.
-`before`, a day as `YYYY-MM-DD`, reads the seven days before it, back to 56
-days ago; `earlier` in each answer is the `before` that reads the seven days
-before those, and null at the oldest.
+Each day runs from midnight to midnight in `timeZone`, an IANA time zone
+such as `America/Los_Angeles`, or in UTC when the request names none; the web
+app sends the person's own. Without `before`, the seven days are today and
+the six before it. `before`, a day as `YYYY-MM-DD`, reads the seven days
+before it, back to 56 days ago; `earlier` in each answer is the `before` that
+reads the seven days before those, and null at the oldest.
 
 | Field | Holds |
 |---|---|
-| `readAt`, `from`, `to` | When it was read, and the first instant and the instant after the last that it covers |
+| `readAt`, `from`, `to` | When it was read, and the first instant and the instant after the last that it covers: midnights in `timeZone` |
+| `timeZone` | The time zone the days are cut in |
 | `earlier` | The `before` for the seven days before these, or null |
 | `projects` | How many projects were read |
 | `shippedBefore` | Whether any change in these projects shipped before `from`. When none did, merges may not have been recorded yet |
@@ -942,7 +945,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 9.
+field can hold is added. This is version 10.
 
 | Version | Added |
 |---|---|
@@ -955,6 +958,7 @@ field can hold is added. This is version 9.
 | 7 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
 | 8 | `stalled` on a task, `POST /api/tasks/:id/release` ([below](#a-persons-decisions)), and `release` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 9 | `GET /api/tasks/wins` ([above](#wins)) |
+| 10 | `timeZone` on `GET /api/tasks/wins`, as a parameter and in its answer ([above](#wins)) |
 
 | Where | What it holds |
 |---|---|
@@ -1045,7 +1049,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
 | `GET /api/tasks/agent-stats` | optionally `project` | `{ readAt, projects, broken, stats }`, as `get_agent_stats` answers ([agent statistics](#agent-statistics)): of the project, or of every project the sender reaches |
-| `GET /api/tasks/wins` | optionally `project` and `before` | The wins of seven days ([wins](#wins)): of the project, or of every project the sender reaches |
+| `GET /api/tasks/wins` | optionally `project`, `before` and `timeZone` | The wins of seven days ([wins](#wins)): of the project, or of every project the sender reaches |
 
 ### Writes
 

@@ -680,5 +680,14 @@
         "wins[].by": "absent|string"
       }
     }
+  },
+  {
+    "version": 10,
+    "shapes": {},
+    "routes": {
+      "GET /api/tasks/wins": {
+        "timeZone": "string"
+      }
+    }
   }
 ]

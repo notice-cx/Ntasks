@@ -37,20 +37,39 @@ describe('the days a read covers', () => {
 
   it('ends with today when it names no day, and offers the seven days before', () => {
     expect(winsWindow(now, undefined)).toEqual({
+      timeZone: 'UTC',
       from: '2026-11-04T00:00:00.000Z',
       to: '2026-11-11T00:00:00.000Z',
       earlier: '2026-11-04',
+      days: ['2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10'],
     });
-    expect(winsWindow(now, '2026-11-04')).toEqual({
+    expect(winsWindow(now, '2026-11-04')).toMatchObject({
       from: '2026-10-28T00:00:00.000Z',
       to: '2026-11-04T00:00:00.000Z',
       earlier: '2026-10-28',
     });
   });
 
+  it("cuts the days at midnight in the viewer's time zone", () => {
+    // 4:20 pm on 9 Nov in Los Angeles: today there is still 9 Nov.
+    expect(winsWindow(now, undefined, 'America/Los_Angeles')).toEqual({
+      timeZone: 'America/Los_Angeles',
+      from: '2026-11-03T08:00:00.000Z',
+      to: '2026-11-10T08:00:00.000Z',
+      earlier: '2026-11-03',
+      days: ['2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09'],
+    });
+    // Before 1 Nov, when Los Angeles left summer time, midnight was 7 am UTC.
+    expect(winsWindow(now, '2026-11-03', 'America/Los_Angeles')).toMatchObject({
+      from: '2026-10-27T07:00:00.000Z',
+      to: '2026-11-03T08:00:00.000Z',
+    });
+    expect(winsWindow(now, undefined, 'Asia/Tokyo')?.days.at(-1)).toBe('2026-11-10');
+  });
+
   it('reaches back eight weeks and no further, and refuses anything but a calendar day', () => {
     // Eight weeks of days up to and including today start on 16 Sep.
-    expect(winsWindow(now, '2026-09-23')).toEqual({
+    expect(winsWindow(now, '2026-09-23')).toMatchObject({
       from: '2026-09-16T00:00:00.000Z',
       to: '2026-09-23T00:00:00.000Z',
       earlier: null,
@@ -61,8 +80,21 @@ describe('the days a read covers', () => {
 });
 
 describe('what counts as a win', () => {
-  const window = { from: '2026-11-04T00:00:00.000Z', to: '2026-11-11T00:00:00.000Z' };
+  const window = winsWindow(Date.parse('2026-11-10T12:00:00.000Z'), undefined)!;
   const pr = 'https://github.com/example/app/pull/7';
+
+  it('puts a 6 pm win in Los Angeles under that day there, not the next', () => {
+    const local = winsWindow(Date.parse('2026-11-10T04:00:00.000Z'), undefined, 'America/Los_Angeles')!;
+    const chosen = { option: 'c', label: 'Wins feed', by: 'Person', at: '2026-11-10T02:00:00.000Z' };
+    const { days } = readWins([item('d-1', { type: 'decision', choice: chosen })], local);
+    expect(days.at(-1)).toEqual({ day: '2026-11-09', shipped: 0, decided: 1, finished: 0 });
+    expect(readWins([item('d-1', { type: 'decision', choice: chosen })], window).days.at(-1)).toEqual({
+      day: '2026-11-10',
+      shipped: 0,
+      decided: 1,
+      finished: 0,
+    });
+  });
 
   it('counts a pull request once, however many tasks closed with it, and a change live without a merge', () => {
     const { wins, totals } = readWins(
@@ -310,7 +342,10 @@ describe('GET /api/tasks/wins', () => {
     const earlier = await winsOf(target, `?project=${project.id}&before=${later.body.earlier}`);
     expect(earlier.body).toMatchObject({ shippedBefore: false, totals: { shipped: 1, decided: 1, finished: 1 } });
     expect(Date.parse(earlier.body.to) - Date.parse(earlier.body.from)).toBe(7 * DAY);
-    for (const query of ['before=2026-01-01', 'before=soon', 'status=open'])
+    const local = await winsOf(target, `?project=${project.id}&timeZone=America/Los_Angeles`);
+    expect(local.body).toMatchObject({ timeZone: 'America/Los_Angeles' });
+    expect(local.body.from.slice(11)).toMatch(/^0[78]:00:00\.000Z$/);
+    for (const query of ['before=2026-01-01', 'before=soon', 'status=open', 'timeZone=Mars/Olympus_Mons'])
       expect((await get(target, `/api/tasks/wins?project=${project.id}&${query}`)).status, query).toBe(400);
   });
 });

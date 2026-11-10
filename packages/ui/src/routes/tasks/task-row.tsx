@@ -39,7 +39,8 @@ import {
   verbReason,
 } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
-import { ageMs, calendarDay, formatAge, formatMinutes } from '../../lib/format';
+import { calendarDay, useTimeZone } from '../../lib/dates';
+import { ageMs, formatAge, formatMinutes } from '../../lib/format';
 import { activityOf } from '../../lib/live';
 import {
   isAgentActor,
@@ -100,7 +101,10 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
-  const until = mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs) : null;
+  const zone = useTimeZone();
+  // A park ends on the day the person picked, written as that day's start.
+  const until =
+    mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs, zone) : null;
   // An epic's size is its children's, which its progress shows.
   const sized = mark === 'open' && task.ready && task.issueType !== 'epic';
   const resolution = task.status === 'closed' && task.resolution && task.resolution !== 'done' ? task.resolution : null;

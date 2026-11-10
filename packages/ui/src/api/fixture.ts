@@ -10,7 +10,11 @@
  */
 import {
   ACCEPTED_REASON,
+  addDays,
   criteriaOf,
+  isDay,
+  isTimeZone,
+  zoneDays,
   isExternalLinkKind,
   isTaskId,
   markedStep,
@@ -512,17 +516,23 @@ export function createFixtureTasksApi({
         actors: FIXTURE_ACTORS,
       });
     },
-    async wins({ project: key, before } = {}) {
+    async wins({ project: key, before, timeZone = 'UTC' } = {}) {
       reach();
+      if (!isTimeZone(timeZone))
+        throw new ApiError('timeZone must be an IANA time zone, such as America/Los_Angeles.', 400, 'invalid_request');
       const projects = key === undefined ? state.projects : [project(key)];
       const ids = new Map(projects.map((row) => [row.logicalKey, row.projectId]));
-      // Seven UTC days ending before `before`, or with today; no further back than eight weeks, as the Worker.
-      const tomorrow = Math.floor(now() / DAY) * DAY + DAY;
-      const end = before === undefined ? tomorrow : Date.parse(`${before}T00:00:00.000Z`);
-      const start = end - WIN_DAYS * DAY;
-      const earliest = tomorrow - WIN_HISTORY_DAYS * DAY;
-      if (!Number.isFinite(end) || end > tomorrow || start < earliest)
+      // Seven days ending before `before`, or with today, cut at midnight in the zone; no further back than
+      // eight weeks, as the Worker.
+      const { dayIn, dayStart } = zoneDays(timeZone);
+      const tomorrow = addDays(dayIn(now()), 1);
+      const endDay = before ?? tomorrow;
+      const startDay = isDay(endDay) ? addDays(endDay, -WIN_DAYS) : '';
+      const earliest = addDays(tomorrow, -WIN_HISTORY_DAYS);
+      if (!isDay(endDay) || endDay > tomorrow || startDay < earliest)
         throw new ApiError('before must be a day as YYYY-MM-DD, from 7 to 56 days back.', 400, 'invalid_request');
+      const start = dayStart(startDay);
+      const end = dayStart(endDay);
       const within = (at: string | null | undefined): at is string =>
         typeof at === 'string' && Date.parse(at) >= start && Date.parse(at) < end;
       const tasks = state.tasks.filter((task) => ids.has(task.project));
@@ -580,21 +590,22 @@ export function createFixtureTasksApi({
       wins.push(...changes.values());
       wins.sort((a, b) => b.at.localeCompare(a.at));
       const days = Array.from({ length: WIN_DAYS }, (_, i) => ({
-        day: new Date(start + i * DAY).toISOString().slice(0, 10),
+        day: addDays(startDay, i),
         shipped: 0,
         decided: 0,
         finished: 0,
       }));
       for (const win of wins) {
-        const day = days.find((row) => row.day === win.at.slice(0, 10));
+        const day = days.find((row) => row.day === dayIn(Date.parse(win.at)));
         if (day) day[win.kind]++;
       }
       const count = (kind: Win['kind']) => wins.filter((win) => win.kind === kind).length;
       return copy({
         readAt: new Date(now()).toISOString(),
+        timeZone,
         from: new Date(start).toISOString(),
         to: new Date(end).toISOString(),
-        earlier: start - WIN_DAYS * DAY >= earliest ? new Date(start).toISOString().slice(0, 10) : null,
+        earlier: addDays(startDay, -WIN_DAYS) >= earliest ? startDay : null,
         projects: projects.length,
         shippedBefore: tasks.some((task) => {
           const delivery = task.delivery;

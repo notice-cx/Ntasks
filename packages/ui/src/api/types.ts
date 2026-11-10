@@ -309,9 +309,11 @@ export interface WinsDay {
 /** Seven days of wins (docs/api.md, "Wins"). */
 export interface WinsPage {
   readonly readAt: string;
-  /** The first instant covered, a UTC midnight. */
+  /** The time zone the days are cut in; an Ntasks older than API version 10 names none and cuts them in UTC. */
+  readonly timeZone?: string;
+  /** The first instant covered: the first day's midnight in `timeZone`. */
   readonly from: string;
-  /** The instant after the last covered, a UTC midnight. */
+  /** The instant after the last covered: the next day's midnight in `timeZone`. */
   readonly to: string;
   /** The `before` that reads the seven days before these, or null at the oldest the server keeps. */
   readonly earlier: string | null;

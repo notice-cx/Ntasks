@@ -7,7 +7,7 @@
  * or no longer needed is never one. Nothing here counts tasks closed, which
  * an agent can raise by splitting work.
  */
-import type { Project, WinItem } from '@ntasks/domain';
+import { addDays, isDay, zoneDays, type Project, type WinItem } from '@ntasks/domain';
 import { reachable } from './auth.ts';
 import { projectOf, type Reader } from './lookup.ts';
 
@@ -74,9 +74,11 @@ export interface WinsTotals {
 }
 export interface WinsPayload {
   readonly readAt: string;
-  /** The first instant the feed covers, a UTC midnight. */
+  /** The time zone the days are cut in, such as America/Los_Angeles. */
+  readonly timeZone: string;
+  /** The first instant the feed covers: the first day's midnight in `timeZone`. */
   readonly from: string;
-  /** The instant after the last it covers, a UTC midnight. */
+  /** The instant after the last it covers: the next day's midnight in `timeZone`. */
   readonly to: string;
   /** The `before` that reads the days before these, or null where they would start before the feed reaches. */
   readonly earlier: string | null;
@@ -92,35 +94,35 @@ export interface WinsPayload {
   readonly wins: readonly Win[];
 }
 
-const dayOf = (instant: string) => instant.slice(0, 10);
-const midnight = (ms: number) => Math.floor(ms / DAY) * DAY;
 const iso = (ms: number) => new Date(ms).toISOString();
 
-/** The span a read covers: the WIN_DAYS days before `before`, a UTC day, or
- * up to and including today when none is named. */
+/** The span a read covers: the WIN_DAYS days before `before`, or up to and
+ * including today when none is named, each day cut at midnight in `timeZone`. */
 export interface WinsWindow {
+  readonly timeZone: string;
   readonly from: string;
   readonly to: string;
   readonly earlier: string | null;
+  /** Each day, oldest first, as `YYYY-MM-DD`. */
+  readonly days: readonly string[];
 }
 
-/** The window ending before `before` (YYYY-MM-DD), or ending with today, as
- * of `nowMs`; null when `before` is no day the feed reaches. */
-export function winsWindow(nowMs: number, before: string | undefined): WinsWindow | null {
-  const tomorrow = midnight(nowMs) + DAY;
-  let end = tomorrow;
-  if (before !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/u.test(before)) return null;
-    end = Date.parse(`${before}T00:00:00.000Z`);
-    if (!Number.isFinite(end) || dayOf(iso(end)) !== before) return null;
-  }
-  const start = end - WIN_DAYS * DAY;
-  const earliest = tomorrow - WIN_HISTORY_DAYS * DAY;
+/** The window ending before `before` (YYYY-MM-DD), or ending with today, in
+ * `timeZone` as of `nowMs`; null when `before` is no day the feed reaches. */
+export function winsWindow(nowMs: number, before: string | undefined, timeZone = 'UTC'): WinsWindow | null {
+  const { dayIn, dayStart } = zoneDays(timeZone);
+  const tomorrow = addDays(dayIn(nowMs), 1);
+  const end = before ?? tomorrow;
+  if (!isDay(end)) return null;
+  const start = addDays(end, -WIN_DAYS);
+  const earliest = addDays(tomorrow, -WIN_HISTORY_DAYS);
   if (end > tomorrow || start < earliest) return null;
   return {
-    from: iso(start),
-    to: iso(end),
-    earlier: start - WIN_DAYS * DAY >= earliest ? dayOf(iso(start)) : null,
+    timeZone,
+    from: iso(dayStart(start)),
+    to: iso(dayStart(end)),
+    earlier: addDays(start, -WIN_DAYS) >= earliest ? start : null,
+    days: Array.from({ length: WIN_DAYS }, (_, i) => addDays(start, i)),
   };
 }
 
@@ -142,7 +144,7 @@ function answerOf(item: WinItem): { at: string; option: string; label: string; b
 /** The wins among `items` within `window`, as the feed shows them. */
 export function readWins(
   items: readonly WinItem[],
-  window: Pick<WinsWindow, 'from' | 'to'>,
+  window: Pick<WinsWindow, 'from' | 'to' | 'timeZone' | 'days'>,
 ): Pick<WinsPayload, 'totals' | 'days' | 'wins'> {
   const within = (at: string | null): at is string => at !== null && at >= window.from && at < window.to;
   const changes = new Map<string, { at: string; items: WinItem[] }>();
@@ -206,17 +208,11 @@ export function readWins(
     });
   }
   wins.sort((a, b) => b.at.localeCompare(a.at) || a.kind.localeCompare(b.kind) || idOf(a).localeCompare(idOf(b)));
-  const start = Date.parse(window.from);
-  const count = Math.round((Date.parse(window.to) - start) / DAY);
-  const days = Array.from({ length: count }, (_, i) => ({
-    day: dayOf(iso(start + i * DAY)),
-    shipped: 0,
-    decided: 0,
-    finished: 0,
-  }));
+  const days = window.days.map((day) => ({ day, shipped: 0, decided: 0, finished: 0 }));
   const byDay = new Map(days.map((day) => [day.day, day]));
+  const { dayIn } = zoneDays(window.timeZone);
   for (const win of wins) {
-    const day = byDay.get(dayOf(win.at));
+    const day = byDay.get(dayIn(Date.parse(win.at)));
     if (day) day[win.kind]++;
   }
   const total = (kind: Win['kind']) => wins.filter((win) => win.kind === kind).length;
@@ -232,15 +228,17 @@ const idOf = (win: Win) => (win.kind === 'shipped' ? win.tasks[0]!.id : win.id);
 /**
  * The wins of one project the sender reaches, or of every one it reaches,
  * over the WIN_DAYS days before `before` (YYYY-MM-DD), or up to now when it
- * names none. Null when `before` is no day the feed reaches.
+ * names none, the days cut at midnight in `timeZone`. Null when `before` is
+ * no day the feed reaches.
  */
 export async function wins(
   context: Reader & { readonly now: () => string },
   projectId: string | undefined,
   before: string | undefined,
+  timeZone = 'UTC',
 ): Promise<WinsPayload | null> {
   const readAt = context.now();
-  const window = winsWindow(Date.parse(readAt), before);
+  const window = winsWindow(Date.parse(readAt), before, timeZone);
   if (window === null) return null;
   const { engine, principal } = context;
   const projects: readonly Project[] =
@@ -254,7 +252,10 @@ export async function wins(
   );
   return {
     readAt,
-    ...window,
+    timeZone,
+    from: window.from,
+    to: window.to,
+    earlier: window.earlier,
     projects: projects.length,
     shippedBefore: read.shippedBefore,
     ...readWins(read.items, window),
