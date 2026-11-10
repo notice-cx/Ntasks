@@ -56,8 +56,9 @@ move it from there:
   checks**, in **Set up by hand** under GitHub in Settings, and saved. Saving
   needs a secret: press **Make a secret** only when none is saved, since a
   new one replaces it. With the app connected, nothing is added on GitHub. A
-  typed name isn't added to **Deploys**. Removing it stops it counting,
-  unless it is also a deploy by the rules above, which then counts as one
+  typed name isn't added to **Deploys**. To stop it counting, remove it, save,
+  and switch off its entry under **Deploys** if it has one. A name that is
+  also a deploy by the rules above still counts the first time it is seen
   ([API](api.md#set-up-by-hand)).
 - **A project that deploys.** The first deploy seen for a project's tasks
   turns on **Changes go live by a deploy** for that project, on the Projects
