@@ -47,12 +47,15 @@ export class GitHub {
   private readonly token: string;
   /** The least time between two writes, which GitHub's limits on creating content ask for. */
   private readonly spacing: number;
+  /** How long one request, its answer included, may take. */
+  private readonly timeout: number;
   private lastWrite = 0;
 
-  constructor(api: string, token: string, options: { readonly spacing?: number } = {}) {
+  constructor(api: string, token: string, options: { readonly spacing?: number; readonly timeout?: number } = {}) {
     this.api = api.replace(/\/$/u, '');
     this.token = token;
     this.spacing = options.spacing ?? 0;
+    this.timeout = options.timeout ?? REQUEST_MS;
   }
 
   createIssue(repository: string, issue: { title: string; body: string; labels: readonly string[] }): Promise<Issue> {
@@ -102,12 +105,28 @@ export class GitHub {
     }
   }
 
+  /**
+   * The answer's body. The request's timeout runs until the body is read, so
+   * a stall or a malformed body while reading is a GitHubError like a request
+   * that got no answer.
+   */
+  private async read(response: Response, method: string, url: string, as: 'json' | 'text'): Promise<unknown> {
+    try {
+      return as === 'json' ? ((await response.json()) as unknown) : await response.text();
+    } catch (error) {
+      throw new GitHubError(
+        0,
+        `GitHub's answer to ${method} ${new URL(url, this.api).pathname} could not be read: ${String(error)}`,
+      );
+    }
+  }
+
   private async pages(path: string): Promise<unknown[]> {
     const all: unknown[] = [];
     let next: string | null = `${this.api}${path}`;
     while (next !== null) {
       const response = await this.send('GET', next);
-      all.push(...((await response.json()) as unknown[]));
+      all.push(...((await this.read(response, 'GET', next, 'json')) as unknown[]));
       next = /<([^>]+)>;\s*rel="next"/u.exec(response.headers.get('link') ?? '')?.[1] ?? null;
     }
     return all;
@@ -115,7 +134,7 @@ export class GitHub {
 
   private async call(method: string, path: string, body?: unknown): Promise<unknown> {
     const response = await this.send(method, `${this.api}${path}`, body);
-    return response.status === 204 ? null : ((await response.json()) as unknown);
+    return response.status === 204 ? null : this.read(response, method, path, 'json');
   }
 
   private async send(method: string, url: string, body?: unknown): Promise<Response> {
@@ -138,7 +157,7 @@ export class GitHub {
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           redirect: 'error',
           // Writes run one at a time, so a request that hangs would hold every later write.
-          signal: AbortSignal.timeout(REQUEST_MS),
+          signal: AbortSignal.timeout(this.timeout),
         });
       } catch (error) {
         throw new GitHubError(0, `GitHub did not answer ${method} ${new URL(url).pathname}: ${String(error)}`);
@@ -159,7 +178,7 @@ export class GitHub {
           continue;
         }
       }
-      const text = await response.text();
+      const text = (await this.read(response, method, url, 'text')) as string;
       throw new GitHubError(
         response.status,
         `GitHub answered ${response.status} to ${method} ${new URL(url).pathname}: ${text.slice(0, 200)}`,

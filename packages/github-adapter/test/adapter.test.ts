@@ -143,7 +143,7 @@ describe('the adapter', () => {
 });
 
 describe('the GitHub client', () => {
-  it('sends a read again after a server error, never a create, and answers a GitHub that does not answer as unavailable', async () => {
+  it('sends a read again after a server error, never a create, and answers a GitHub that does not answer, or answers what it cannot read, as unavailable', async () => {
     const seen: string[] = [];
     const flaky = createServer((request, response) => {
       seen.push(request.method ?? '');
@@ -165,5 +165,21 @@ describe('the GitHub client', () => {
     await expect(new GitHub('http://127.0.0.1:1', 'token').getIssue('example/site', 1)).rejects.toMatchObject({
       status: 0,
     });
+    const stalling = createServer((request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      if (request.url?.endsWith('/1')) response.write('{"number": 1');
+      else response.end('{"number":');
+    });
+    await new Promise<void>((resolve) => stalling.listen(0, '127.0.0.1', resolve));
+    try {
+      const github = new GitHub(`http://127.0.0.1:${(stalling.address() as AddressInfo).port}`, 'token', {
+        timeout: 300,
+      });
+      for (const number of [1, 2])
+        await expect(github.getIssue('example/site', number), `issue ${number}`).rejects.toMatchObject({ status: 0 });
+    } finally {
+      stalling.closeAllConnections();
+      await new Promise((resolve) => stalling.close(resolve));
+    }
   }, 20_000);
 });
