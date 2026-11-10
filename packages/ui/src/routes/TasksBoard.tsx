@@ -403,8 +403,10 @@ function Groups({
   });
   // What waits on a person shows how long it has waited: an edit by an agent moves its last change, not its creation.
   const waitingContextOf = (task: BoardTask): RowContext => {
-    const age = formatAge(ageMs(now, task.createdAt));
-    return { ...contextOf(task), age, ageTitle: `Created ${age} ago` };
+    const since = ageMs(now, task.createdAt);
+    const age = formatAge(since);
+    // A task with no creation time recorded shows `unknown` and no tip.
+    return { ...contextOf(task), age, ...(since === null ? {} : { ageTitle: `Created ${age} ago` }) };
   };
   const marks = VIEW_GROUPS[view].filter((mark) => groups[mark].length > 0);
   const narrowed =

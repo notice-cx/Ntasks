@@ -91,6 +91,25 @@ describe('how long work has waited', () => {
     expect((await ageOf(BUILT)).textContent).toBe('6d');
   });
 
+  it('shows no tip when a waiting task has no creation time', async () => {
+    const api = createFixtureTasksApi();
+    api.state.tasks.find((entry) => entry.id === 'web-q8n5')!.createdAt = null;
+    renderApp('/tasks?view=waiting', api);
+    const ask = await ageOf('web-q8n5');
+    expect(ask.textContent).toBe('unknown');
+    expect(ask.getAttribute('title')).toBeNull();
+  });
+
+  it('counts from the last change in Waiting for deploy', async () => {
+    const api = createFixtureTasksApi();
+    await api.setDeploys('docs', true);
+    // docs-y5u2 was filed 6 days ago and merged 3 days ago.
+    renderApp('/tasks?view=waiting', api);
+    const age = await ageOf(MERGED);
+    expect(age.textContent).toBe('3d');
+    expect(age.getAttribute('title')).toBeNull();
+  });
+
   it('counts from the last change in the other groups', async () => {
     const api = createFixtureTasksApi();
     await api.updateTask('web-t5w3', 'web', { title: 'Rename the Settings tab to Profile' });
