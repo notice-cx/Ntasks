@@ -320,7 +320,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           statuses as TaskStatus[],
           closedDays,
           fields === undefined ? filters : { ...filters, fields },
-          now,
+          () => readAt,
         ).then((read) => ({ ...read, ...kept(read.tasks) }));
         const page = await withExternalLinks(engine, ordered(found.tasks).slice(offset, offset + limit));
         return {
@@ -339,7 +339,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       // Every project in one read, each task then naming its project.
       const [projects, everything] = await Promise.all([
         engine.listProjects(),
-        board(engine, null, statuses as TaskStatus[], closedDays, filters, now),
+        board(engine, null, statuses as TaskStatus[], closedDays, filters, () => readAt),
       ]);
       const reached = new Set(reachable(principal, projects).map((project) => project.id));
       const found = { ...everything, ...kept(everything.tasks.filter((task) => reached.has(task.projectId))) };
@@ -373,8 +373,10 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
     async run(context, args) {
       if (args.task !== undefined && args.tasks !== undefined)
         refuse('invalid arguments: task and tasks (name one task with task, or several with tasks)');
-      if (args.tasks === undefined)
-        return { ...(await oneTask(context, args, taskArg(args), true)), readAt: context.now() };
+      // One time for the whole answer: the activity of each task it holds is worked out at the readAt it names.
+      const readAt = context.now();
+      const at = { ...context, now: () => readAt };
+      if (args.tasks === undefined) return { ...(await oneTask(at, args, taskArg(args), true)), readAt };
       const value = args.tasks;
       if (!Array.isArray(value) || value.length < 1 || value.length > MANY)
         refuse(`invalid arguments: tasks (1–${MANY} task ids)`);
@@ -385,7 +387,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const tasks = await Promise.all(
         ids.map(async (id) => {
           try {
-            return await oneTask(context, args, id, false);
+            return await oneTask(at, args, id, false);
           } catch (error) {
             if (error instanceof Refused) return { id, error: error.message };
             // A fault's message can carry storage internals: only the tool's name is logged.
@@ -394,7 +396,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           }
         }),
       );
-      return { readAt: context.now(), tasks };
+      return { readAt, tasks };
     },
   },
   {
