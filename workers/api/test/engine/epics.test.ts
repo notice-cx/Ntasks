@@ -136,8 +136,13 @@ describe('an epic closes when its last open task does', () => {
       await close(tasks, project.id, children[1]!.id);
     };
 
+    const before = await read(tasks, project.id, children[0]!.id);
     await expectRefusal(close(tasks, project.id, children[0]!.id), 'version_conflict');
-    expect((await read(tasks, project.id, children[0]!.id)).status).toBe('open');
+    // The refused batch wrote nothing: not the task's close, nor the epic's.
+    expect(await read(tasks, project.id, children[0]!.id)).toMatchObject({ status: 'open', version: before.version });
+    expect((await read(tasks, project.id, epic.id)).status).toBe('open');
+    const [latest] = await tasks.listHistory(project.id, epic.id, { limit: 1 });
+    expect(latest?.kind).not.toBe('closed');
 
     await close(tasks, project.id, children[0]!.id);
     expect((await read(tasks, project.id, epic.id)).status).toBe('closed');

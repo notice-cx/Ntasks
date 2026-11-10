@@ -595,7 +595,8 @@ The close:
 
 - MUST record the actor the server records its own changes under as its
   closer, never the sender of the change ([AUTH-2](#auth-2)), with a reason
-  that names the child that closed last;
+  that names what closed it: the child that closed or moved out last, or the
+  removal of `keep-open`;
 - is as `no-longer-needed` when every child closed as `wont-do` or
   `no-longer-needed`, and as `done` otherwise;
 - carries no proof ([INV-7](#inv-7)), clears the epic's work in hand
@@ -608,8 +609,9 @@ apply this rule to that epic in the same transaction. When a change leaves
 an epic the server closed this way with a child that is not closed, such
 as a reopened child or a new one, the server MUST reopen the epic in the
 same transaction, and then do the same for the epic above it. An epic a
-sender closed or reopened stays as the sender left it until one of these
-changes. A sender's close of an epic the server closed this way MUST NOT be
+sender closed stays closed. An epic a sender reopened stays open until one
+of these changes closes it again. A sender's close of an epic the server
+closed this way MUST NOT be
 refused because the epic is closed: it replaces the server's close, and the
 epic then no longer reopens this way.
 
