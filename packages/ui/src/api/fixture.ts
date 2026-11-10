@@ -122,6 +122,8 @@ export function createFixtureTasksApi({
 } {
   const spaces = given ?? fixtureWorkspaces(now(), seed);
   let selected: string | null = spaces[0]?.workspaceId ?? null;
+  /** The time zone the person chose in Settings; null uses the browser's. */
+  let timeZone: string | null = null;
   let space: FixtureWorkspace | null = spaces[0] ?? null;
   let state = space?.seed ?? emptySeed();
   let made = 0;
@@ -440,7 +442,19 @@ export function createFixtureTasksApi({
     },
     async account() {
       reachServer();
-      return { name: FIXTURE_ACTOR, deploymentAdmin };
+      return { name: FIXTURE_ACTOR, deploymentAdmin, timeZone };
+    },
+    async setTimeZone(zone) {
+      reachServer();
+      if (zone !== null && !isTimeZone(zone))
+        throw new ApiError(
+          'timeZone is an IANA time zone, such as America/Los_Angeles.',
+          400,
+          'invalid_request',
+          'timeZone',
+        );
+      timeZone = zone;
+      return { name: FIXTURE_ACTOR, deploymentAdmin, timeZone };
     },
     async createWorkspace(name, options) {
       reachServer();

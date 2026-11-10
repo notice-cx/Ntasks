@@ -182,7 +182,7 @@ describe('a person', () => {
     expect(await as(cai, 'GET', '/api/workspaces', stale)).toEqual(await as(cai, 'GET', '/api/workspaces'));
     expect(await as(cai, 'GET', '/api/access/me', stale)).toEqual({
       status: 200,
-      body: { kind: 'person', name: 'Person 1004', deploymentAdmin: true, projects: 'all' },
+      body: { kind: 'person', name: 'Person 1004', deploymentAdmin: true, projects: 'all', timeZone: null },
     });
   });
 

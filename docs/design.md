@@ -803,7 +803,11 @@ Settings is one column under a `TopBar`: the workspace's 32 px icon beside
 one sentence in Text 2, then Name and ID. An owner's Name is a required
 `Field` with Save, the page's primary button, which stays disabled until the
 name changes; a refusal shows under the field. A member sees the name as
-words. ID is the id in `text-code` with a Copy ID `IconButton`.
+words. ID is the id in `text-code` with a Copy ID `IconButton`. Your time
+zone follows, a `Select` of every time zone the browser knows and UTC, led by
+Your browser’s with the browser's zone named; it applies to the person in
+every workspace, is saved with their account as soon as it is picked, and a
+toast names the zone dates now show in.
 
 A sign-in in no workspace sees a page of its own on Canvas, outside the
 frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New
@@ -862,8 +866,9 @@ Each action's key:
 
 ## Dates
 
-Every date a page shows is in the person's own time zone: the browser's, or
-the one the app is given (`timeZone` on `App`). `src/lib/dates.ts` is the one
+Every date a page shows is in the person's own time zone: the one the app is
+given (`timeZone` on `App`), else the one they chose under Your time zone in
+Settings, else their browser's. `src/lib/dates.ts` is the one
 place that turns an instant into a day and a day into words, so a win at 6 pm
 in Los Angeles falls on that day there, not the next. A day is written as
 `Nov 6`, with the year when it is not this year's, or `Tue, Nov 10` where the

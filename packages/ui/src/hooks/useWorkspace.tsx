@@ -70,6 +70,16 @@ export function useAccount(enabled: boolean) {
   });
 }
 
+/** Saves the time zone the person chose, or null for their browser's; the pages show dates in it at once. */
+export function useSetTimeZone() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (timeZone: string | null) => api.setTimeZone(timeZone),
+    onSuccess: (account) => client.setQueryData(ACCOUNT_KEY, account),
+  });
+}
+
 export function useCreateWorkspace() {
   const api = useTasksApi();
   return useMutation({

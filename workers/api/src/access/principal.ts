@@ -34,6 +34,8 @@ export interface PersonPrincipal {
   /** Whether they are a deployment admin, who may create workspaces: the setup page recorded them, or their GitHub id is in OWNER_GITHUB_IDS. Never through an app. */
   readonly admin: boolean;
   readonly memberships: readonly Membership[];
+  /** The time zone they chose in Settings, an IANA name; absent leaves it to their browser. */
+  readonly timeZone?: string;
   /** The connected app the person signed in to, when its token sent the
    * request; absent for their own browser session (`ownSession`). */
   readonly app?: ConnectedApp;

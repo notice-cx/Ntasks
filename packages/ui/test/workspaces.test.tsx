@@ -59,7 +59,9 @@ describe('the workspace switcher', () => {
     const { api, sent } = twoWorkspaceServer();
     const first = renderApp('/tasks', api);
     await sidebarLink('Example web app');
-    const before = sent.filter((request) => request.path !== '/api/workspaces');
+    // Who is signed in and their workspaces are read outside any workspace.
+    const unscoped = new Set(['/api/workspaces', '/api/access/me']);
+    const before = sent.filter((request) => !unscoped.has(request.path));
     expect(before.length).toBeGreaterThan(0);
     expect(new Set(before.map((request) => request.workspace))).toEqual(new Set([ONE]));
 
@@ -68,7 +70,7 @@ describe('the workspace switcher', () => {
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Example Labs' }));
     await sidebarLink('Example research');
     expect(screen.queryByRole('link', { name: 'Example web app' })).toBeNull();
-    const after = sent.filter((request) => request.path !== '/api/workspaces');
+    const after = sent.filter((request) => !unscoped.has(request.path));
     expect(after.map((request) => request.path)).toContain('/api/tasks');
     expect(new Set(after.map((request) => request.workspace))).toEqual(new Set([TWO]));
 

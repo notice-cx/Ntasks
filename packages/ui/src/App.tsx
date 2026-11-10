@@ -15,9 +15,10 @@ import { AppShell, TopBar } from './components/ui/shell';
 import { BoardsProvider } from './hooks/useBoard';
 import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
+import { useAccount } from './hooks/useWorkspace';
 import { COMPOSE_STATE, SEARCH_STATE } from './lib/page-state';
 import { PathsProvider, usePaths, type AppPaths } from './lib/paths';
-import { browserTimeZone, TimeZoneProvider } from './lib/dates';
+import { browserTimeZone, TimeZoneProvider, useGivenTimeZone } from './lib/dates';
 import { TitleProvider, usePageTitle } from './lib/page-title';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
@@ -57,15 +58,14 @@ export function App({
   timeZone?: string;
 }) {
   const [client] = useState(() => queryClient ?? newQueryClient());
-  const zone = timeZone ?? browserTimeZone();
   return (
     <QueryClientProvider client={client}>
       {/* Every icon is drawn at 16 px with a 1.75 stroke unless its control sizes it (docs/design.md). */}
       <LucideProvider size={16} strokeWidth={1.75}>
         <PathsProvider paths={paths}>
           <TitleProvider onTitle={onTitle}>
-            <TimeZoneProvider zone={zone}>
-              <TasksApiProvider api={api} signIn={signIn}>
+            <TasksApiProvider api={api} signIn={signIn}>
+              <GivenTimeZone zone={timeZone}>
                 <Routes>
                   <Route element={<WorkspaceGate />}>
                     <Route element={<Shell />}>
@@ -82,13 +82,30 @@ export function App({
                   </Route>
                 </Routes>
                 <AppToaster />
-              </TasksApiProvider>
-            </TimeZoneProvider>
+              </GivenTimeZone>
+            </TasksApiProvider>
           </TitleProvider>
         </PathsProvider>
       </LucideProvider>
     </QueryClientProvider>
   );
+}
+
+/** The time zone the app is given, which the person's own choice does not replace. */
+function GivenTimeZone({ zone, children }: { zone: string | undefined; children: ReactNode }) {
+  return zone === undefined ? children : <TimeZoneProvider zone={zone}>{children}</TimeZoneProvider>;
+}
+
+/**
+ * The time zone a workspace's pages show dates in: the one the app is given,
+ * else the one the person chose in Settings, else their browser's. It reads
+ * the account once a workspace is open, never while the sign-in decides.
+ */
+function AccountTimeZone({ children }: { children: ReactNode }) {
+  const given = useGivenTimeZone();
+  const account = useAccount(given === null);
+  if (given !== null) return children;
+  return <TimeZoneProvider zone={account.data?.timeZone ?? browserTimeZone()}>{children}</TimeZoneProvider>;
 }
 
 /**
@@ -114,22 +131,24 @@ function Shell() {
   useShortcut('l', () => void navigate(paths.live), pathname !== paths.live);
   return (
     <BoardsProvider>
-      <AppShell sidebar={<AppSidebar />}>
-        <div className="page-arrive">
-          {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
-          <PageBoundary resetKey={pathname}>
-            <Suspense
-              fallback={
-                <div className="p-6 max-sm:p-4">
-                  <PageSkeleton shape="list" />
-                </div>
-              }
-            >
-              <Outlet />
-            </Suspense>
-          </PageBoundary>
-        </div>
-      </AppShell>
+      <AccountTimeZone>
+        <AppShell sidebar={<AppSidebar />}>
+          <div className="page-arrive">
+            {/* Moving to another address tries again, without rebuilding a page that did not fail. */}
+            <PageBoundary resetKey={pathname}>
+              <Suspense
+                fallback={
+                  <div className="p-6 max-sm:p-4">
+                    <PageSkeleton shape="list" />
+                  </div>
+                }
+              >
+                <Outlet />
+              </Suspense>
+            </PageBoundary>
+          </div>
+        </AppShell>
+      </AccountTimeZone>
     </BoardsProvider>
   );
 }

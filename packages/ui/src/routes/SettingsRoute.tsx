@@ -1,17 +1,18 @@
 import { Copy } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { refusedField } from '../api/client';
 import type { ConnectedApp, GitHubAppStart, GitHubWebhook, Workspace } from '../api/types';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Button, IconButton } from '../components/ui/button';
-import { Field, FieldError, Input, Textarea } from '../components/ui/field';
+import { Field, FieldError, Input, Select, Textarea } from '../components/ui/field';
 import { Row, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
 import { TopBar } from '../components/ui/shell';
 import { WorkspaceIcon } from '../components/ui/symbols';
 import { useRetryKey } from '../hooks/useTasks';
 import {
+  useAccount,
   useApps,
   useConnectGitHub,
   useDisconnectGitHub,
@@ -23,9 +24,11 @@ import {
   useRevokeApp,
   useSaveGitHubWebhook,
   useSetDeployCheck,
+  useSetTimeZone,
   useWorkspace,
 } from '../hooks/useWorkspace';
 import { copyText } from '../lib/clipboard';
+import { browserTimeZone, timeZoneNames } from '../lib/dates';
 import { usePageTitle } from '../lib/page-title';
 
 /**
@@ -61,6 +64,7 @@ export default function SettingsRoute() {
             onClick={() => void copyText(workspace.workspaceId, 'the ID')}
           />
         </Setting>
+        <TimeZoneSetting />
         <ConnectedApps owner={workspace.role === 'owner'} />
         {workspace.role === 'owner' ? <GitHubWebhookSection /> : null}
       </div>
@@ -625,6 +629,43 @@ function Setting({ label, children }: { label: string; children: ReactNode }) {
     </div>
   );
 }
+
+/**
+ * The time zone every date is shown in, for the person signed in in every
+ * workspace: their browser's until they choose one. A choice is saved with
+ * their account as soon as it is picked.
+ */
+function TimeZoneSetting() {
+  const account = useAccount(true);
+  const save = useSetTimeZone();
+  const zones = useMemo(timeZoneNames, []);
+  const browser = browserTimeZone();
+  const chosen = account.data?.timeZone ?? '';
+  const failed = save.error === null ? null : save.error.message || 'The time zone was not saved.';
+  return (
+    <Field label="Your time zone" error={failed}>
+      <Select
+        value={chosen}
+        disabled={account.data === undefined || save.isPending}
+        onChange={(event) => {
+          const zone = event.target.value === '' ? null : event.target.value;
+          save.mutate(zone, { onSuccess: () => toast.success(`Dates now show in ${zoneName(zone ?? browser)}`) });
+        }}
+        data-time-zone=""
+      >
+        <option value="">Your browser’s: {zoneName(browser)}</option>
+        {zones.map((zone) => (
+          <option key={zone} value={zone}>
+            {zoneName(zone)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/** A time zone's IANA name as a person reads it: `America/Los Angeles`. */
+const zoneName = (zone: string) => zone.replaceAll('_', ' ');
 
 /** The name, required, saved with Save or Enter. A refusal shows under it. */
 function RenameForm({ workspace }: { workspace: Workspace }) {

@@ -22,6 +22,7 @@ describe('owner sign-in with GitHub', () => {
       name: `Person ${OWNER_GITHUB_ID}`,
       deploymentAdmin: true,
       projects: 'all',
+      timeZone: null,
     });
   });
 

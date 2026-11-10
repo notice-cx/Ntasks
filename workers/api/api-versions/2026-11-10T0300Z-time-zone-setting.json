@@ -1,0 +1,15 @@
+{
+  "added": "`timeZone` in `GET /api/access/me`, and `PATCH /api/access/me`, which saves a person's time zone",
+  "routes": {
+    "GET /api/access/me": {
+      "timeZone": "absent|null|string"
+    },
+    "PATCH /api/access/me": {
+      "kind": "string",
+      "name": "string",
+      "deploymentAdmin": "boolean",
+      "projects": "string",
+      "timeZone": "null|string"
+    }
+  }
+}
