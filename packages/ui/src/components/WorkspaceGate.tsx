@@ -23,6 +23,7 @@ import {
 import { NEW_PROJECT_STATE, SOURCE_URL } from '../lib/page-state';
 import { openingWorkspace, storedWorkspace, storeWorkspace } from '../lib/workspace-choice';
 import { usePaths } from '../lib/paths';
+import { usePageTitle } from '../lib/page-title';
 
 /**
  * Opens a workspace before any task page draws: the one chosen last in this
@@ -133,6 +134,7 @@ function Centered({ children }: { children: ReactNode }) {
 /** A deployment admin creates the first workspace; anyone else has none to open. */
 function FirstStep({ onCreated }: { onCreated: (workspace: Workspace) => void }) {
   const account = useAccount(true);
+  usePageTitle('New workspace');
   if (account.isPending) return <Loading />;
   if (account.isError) {
     // Without the account it is unknown whether this person may create a workspace.

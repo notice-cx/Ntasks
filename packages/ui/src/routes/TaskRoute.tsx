@@ -73,6 +73,7 @@ import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
+import { usePageTitle } from '../lib/page-title';
 
 const UNAVAILABLE = 'This sign-in cannot do this.';
 
@@ -95,6 +96,8 @@ export function TaskRoute() {
   const notFound =
     (catalog.data !== undefined && project === null) ||
     (detail.error instanceof ApiError && detail.error.status === 404);
+  // The id leads: people find a tab, a bookmark or a page in their history by it.
+  usePageTitle(id, notFound ? 'Not found' : task?.title);
   const path = (parent: { id: string; title: string | null } | null) => (
     <TaskPath
       id={id}

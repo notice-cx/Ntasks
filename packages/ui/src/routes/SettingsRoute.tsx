@@ -26,6 +26,7 @@ import {
   useWorkspace,
 } from '../hooks/useWorkspace';
 import { copyText } from '../lib/clipboard';
+import { usePageTitle } from '../lib/page-title';
 
 /**
  * The open workspace's name and id, its connected apps, and for an owner its
@@ -34,6 +35,7 @@ import { copyText } from '../lib/clipboard';
  * changes.
  */
 export default function SettingsRoute() {
+  usePageTitle('Settings');
   const { workspace } = useWorkspace();
   return (
     <>

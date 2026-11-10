@@ -38,6 +38,7 @@ import { EpicsSummary, EpicsView } from './tasks/epics-view';
 import { SortMenu } from './tasks/sort-menu';
 import { sorted, sortOf, sortParams, type PageSort } from '../lib/task-sort';
 import { TaskRow, type RowContext } from './tasks/task-row';
+import { usePageTitle } from '../lib/page-title';
 
 /** Tailwind's `max-sm`: below it the top bar has no room for the search field. */
 const PHONE = '(width < 40rem)';
@@ -58,6 +59,14 @@ const TABS: readonly { value: View; label: string }[] = [
   { value: 'done', label: 'Done' },
 ];
 const EPICS_TAB: { value: View; label: string } = { value: 'epics', label: 'Epics' };
+
+/** Each view of tasks by name, as the tab's title leads with it. */
+const VIEW_NAMES: Readonly<Record<TaskView, string>> = {
+  all: 'Tasks',
+  active: 'Active',
+  done: 'Done',
+  waiting: 'Waiting for you',
+};
 
 /** The groups each view of tasks shows, in order; Waiting for you is drawn by its own component. */
 const VIEW_GROUPS: Readonly<Record<TaskView, readonly StatusMarkKey[]>> = {
@@ -117,6 +126,22 @@ export function TasksBoard() {
         ? readEpics(epicsProject, board.statuses, board.held)
         : null,
     [epicsView, epicsProject, board.statuses, board.held],
+  );
+  // The tab's title: the view and its count, or the search, then the one project in view.
+  const viewCount = epicsView
+    ? (epics?.byId.size ?? 0)
+    : view === 'waiting'
+      ? board.inbox.length
+      : board.allTasks.filter((task) =>
+          view === 'done'
+            ? task.status === 'closed'
+            : task.status !== 'closed' && (view === 'all' || task.status !== 'deferred'),
+        ).length;
+  const viewName = epicsView ? 'Epics' : VIEW_NAMES[view];
+  const searched = filters.q.trim();
+  usePageTitle(
+    searched !== '' ? `Search “${searched}”` : board.loading ? viewName : `${viewName} (${formatInt(viewCount)})`,
+    epicsProject?.name,
   );
   const fieldDefinitions = useProjectFields(board.fieldProject).data?.fields ?? [];
   // A filter by custom field holds only while its project is the one in view.

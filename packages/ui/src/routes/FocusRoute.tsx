@@ -22,6 +22,7 @@ import { cn } from '../lib/utils';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { StepList } from './tasks/step-list';
 import { MarkdownText } from './tasks/task-markdown';
+import { usePageTitle } from '../lib/page-title';
 
 const UNAVAILABLE = 'This sign-in cannot answer it.';
 
@@ -67,6 +68,7 @@ export function FocusRoute() {
   const passed = ordered.length - pending.length;
   const current = pending[0] ?? null;
   const after = pending[1] ?? null;
+  usePageTitle(board.loading ? 'Focus' : `Focus (${pending.length})`);
   const shownIds = new Set(queue.map((task) => task.id));
   // Answered here and gone from the list while its Undo runs: still one of this sitting's decisions.
   const gone = [...handled].filter((id) => !shownIds.has(id)).length;

@@ -30,6 +30,7 @@ import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
 import { progressParts } from './tasks/epics-view';
+import { usePageTitle } from '../lib/page-title';
 
 /** The stalled tasks shown before Show more: the most recently stalled, where work is likeliest to resume. */
 const STALLED_SHOWN = 5;
@@ -78,6 +79,7 @@ export function LiveRoute() {
   const epicOf = (task: BoardTask): EpicSummary | null =>
     task.parent === null ? null : (epics.get(task.project)?.byId.get(task.parent) ?? null);
   const total = ACTIVITIES.reduce((sum, activity) => sum + groups[activity].length, 0);
+  usePageTitle(board.loading ? 'Live' : `Live (${formatInt(total)})`);
   const shown = board.readFailure === null && !board.loading && total > 0;
 
   function choose(ms: number) {
