@@ -49,11 +49,15 @@ move it from there:
 
 - **A deploy** is a passing check whose name starts with `Workers Builds:` or
   `Cloudflare Pages`, the checks Cloudflare's builds report, or a successful
-  deployment to the production environment. A check with another name counts
-  once it is typed under **Deploy checks** in **Set up by hand**
-  ([API](api.md#set-up-by-hand)). Settings lists each deploy it has seen
-  under **Deploys**, with a box that switches it off. A deploy switched off
-  moves no task.
+  deployment to the production environment. Settings lists each one it has
+  seen under **Deploys**, with a box that switches it off; a deploy switched
+  off moves no task.
+- **A check with another name** counts once it is typed under **Deploy
+  checks**, in **Set up by hand** under GitHub in Settings: press **Make a
+  secret**, type the name and press **Save**. With the app connected, nothing
+  is added on GitHub. A typed name always counts, isn't listed under
+  **Deploys**, and stops counting only when it is removed
+  ([API](api.md#set-up-by-hand)).
 - **A project that deploys.** The first deploy seen for a project's tasks
   turns on **Changes go live by a deploy** for that project, on the Projects
   page. A project with no deploy, such as a library, stops at Merged. An
@@ -74,14 +78,19 @@ move it from there:
   stay at Merged unless their own merge was deployed too.
 - **The deploy passed before the task closed.** The check after the close
   asks GitHub only about the merge, so the task stops at Merged. Redeliver
-  the deploy's event from **Recent Deliveries** ([below](#check-that-it-works)).
+  the deploy's event from **Recent Deliveries** ([below](#check-that-it-works)):
+  it moves the task to Live, and turns on **Changes go live by a deploy** for
+  its project when no deploy has before.
 - **Many tasks waiting at once.** Each check reads up to about 40 pull
-  requests, newest first, within the free plan's limit on requests; the next
-  close checks the rest.
+  requests, starting from the newest waiting task, within the free plan's
+  limit on requests. While many newer tasks wait, an older one can stay at
+  Built.
 
 In each case, a signal that names the pull request or commit moves the task:
 `report_delivery` from an agent, or `POST /api/delivery`
-([Delivery](api.md#delivery)).
+([Delivery](api.md#delivery)). A `live` signal moves a task to Live only in
+a project with **Changes go live by a deploy** turned on, on the Projects
+page; in any other project it stops at Merged.
 
 ## Check that it works
 
