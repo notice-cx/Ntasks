@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import type { MarkdownOptions, MarkdownRenderer } from 'vitepress';
-import { BRANCH, REPOSITORY } from './site.ts';
+import { BRANCH, REPOSITORY, SITE_ORIGIN, SPEC_BASE } from './site.ts';
 import { githubSlug } from './slug.ts';
 
 // The Markdown in docs/ is written to read well on GitHub. These rules render
@@ -13,6 +13,8 @@ export interface DocsMarkdownOptions {
   branch: string;
   /** The docs folder's path from the repository root. */
   docsDir: string;
+  /** Where a link goes on the site, or `undefined` to keep it; `docsLink` when left out. */
+  link?: (href: string, page: string) => string | undefined;
 }
 
 /**
@@ -38,6 +40,26 @@ export function linkLeavingDocs(href: string, page: string, options: DocsMarkdow
 // and the stylesheet shows the one for the site's theme.
 const PICTURE =
   /<picture>\s*<source\s+media="\(prefers-color-scheme:\s*dark\)"\s+srcset="([^"]+)"\s*\/?>\s*(<img\b[^>]*>)\s*<\/picture>/g;
+
+/**
+ * Where a link in docs/ goes on the site: a page of the Shared Work Protocol
+ * in spec/ to its page under /spec/, anything else as `linkLeavingDocs` says.
+ */
+export function docsLink(href: string, page: string, options: DocsMarkdownOptions): string | undefined {
+  const leaving = linkLeavingDocs(href, page, options);
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const inSpec =
+    leaving &&
+    new RegExp(`^${escape(options.repository)}/(?:blob|tree)/${escape(options.branch)}/spec(/[^#]*)?(#.*)?$`).exec(
+      leaving,
+    );
+  if (!inSpec) return leaving;
+  const path = inSpec[1] ?? '';
+  const hash = inSpec[2] ?? '';
+  if (path === '' || path === '/' || path === '/README.md') return `${SITE_ORIGIN}${SPEC_BASE}${hash}`;
+  if (/^\/[a-z-]+\.md$/.test(path)) return `${SITE_ORIGIN}${SPEC_BASE}${path.slice(1, -'.md'.length)}${hash}`;
+  return leaving;
+}
 
 // An image path with no scheme, no leading slash and no leading dot, such as
 // `images/board-light.webp`. Vue bundles an image only when its path starts
@@ -78,7 +100,7 @@ export function docsMarkdown(md: MarkdownRenderer, options: DocsMarkdownOptions)
       for (const token of [block, ...(block.children ?? [])]) {
         if (token.type === 'link_open') {
           const href = token.attrGet('href');
-          const leaving = href ? linkLeavingDocs(href, page, options) : undefined;
+          const leaving = href ? (options.link ?? ((to, from) => docsLink(to, from, options)))(href, page) : undefined;
           if (leaving) token.attrSet('href', leaving);
         } else if (token.type === 'html_block' || token.type === 'html_inline') {
           token.content = themeImages(token.content);

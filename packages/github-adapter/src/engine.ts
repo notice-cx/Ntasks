@@ -98,8 +98,10 @@ export class Engine {
     const record = data.tasks[id] ?? null;
     let issue: Issue | null = null;
     if (record === null) {
-      const number = Number(id.slice(id.indexOf('-') + 1));
-      if (!Number.isInteger(number) || number < 1) return missing();
+      // Only the issue number as GitHub writes it, so `web-01` or `web-1e0` never names issue 1 a second time.
+      const key = id.slice(id.indexOf('-') + 1);
+      if (!/^[1-9][0-9]*$/u.test(key)) return missing();
+      const number = Number(key);
       issue = await this.github.getIssue(project.repository, number);
       if (issue === null || (project.label !== undefined && !issue.labels.map(labelName).includes(project.label)))
         return missing();

@@ -17,12 +17,15 @@ import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
 import { COMPOSE_STATE, SEARCH_STATE } from './lib/page-state';
 import { PathsProvider, usePaths, type AppPaths } from './lib/paths';
+import { browserTimeZone, TimeZoneProvider } from './lib/dates';
+import { TitleProvider, usePageTitle } from './lib/page-title';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
 const TasksBoard = lazy(() => import('./routes/TasksBoard'));
 const TaskRoute = lazy(() => import('./routes/TaskRoute'));
 const FocusRoute = lazy(() => import('./routes/FocusRoute'));
 const LiveRoute = lazy(() => import('./routes/LiveRoute'));
+const ProductivityRoute = lazy(() => import('./routes/ProductivityRoute'));
 const ProjectsRoute = lazy(() => import('./routes/ProjectsRoute'));
 const MembersRoute = lazy(() => import('./routes/MembersRoute'));
 const SettingsRoute = lazy(() => import('./routes/SettingsRoute'));
@@ -41,35 +44,47 @@ export function App({
   paths,
   signIn,
   queryClient,
+  onTitle,
+  timeZone,
 }: {
   api: TasksApi;
   paths: AppPaths;
   signIn?: TokenSource['signIn'];
   queryClient?: QueryClient;
+  /** Receives each page's title in place of the document's title (`TitleProvider`). */
+  onTitle?: (title: string) => void;
+  /** The IANA time zone dates are shown in; the browser's when left out (`lib/dates.ts`). */
+  timeZone?: string;
 }) {
   const [client] = useState(() => queryClient ?? newQueryClient());
+  const zone = timeZone ?? browserTimeZone();
   return (
     <QueryClientProvider client={client}>
       {/* Every icon is drawn at 16 px with a 1.75 stroke unless its control sizes it (docs/design.md). */}
       <LucideProvider size={16} strokeWidth={1.75}>
         <PathsProvider paths={paths}>
-          <TasksApiProvider api={api} signIn={signIn}>
-            <Routes>
-              <Route element={<WorkspaceGate />}>
-                <Route element={<Shell />}>
-                  <Route index element={<TasksBoard />} />
-                  <Route path="focus" element={<FocusRoute />} />
-                  <Route path=":id" element={<TaskRoute />} />
-                  <Route path="live" element={<LiveRoute />} />
-                  <Route path="projects" element={<ProjectsRoute />} />
-                  <Route path="members" element={<MembersRoute />} />
-                  <Route path="settings" element={<SettingsRoute />} />
-                  <Route path="*" element={<NoPage />} />
-                </Route>
-              </Route>
-            </Routes>
-            <AppToaster />
-          </TasksApiProvider>
+          <TitleProvider onTitle={onTitle}>
+            <TimeZoneProvider zone={zone}>
+              <TasksApiProvider api={api} signIn={signIn}>
+                <Routes>
+                  <Route element={<WorkspaceGate />}>
+                    <Route element={<Shell />}>
+                      <Route index element={<TasksBoard />} />
+                      <Route path="focus" element={<FocusRoute />} />
+                      <Route path=":id" element={<TaskRoute />} />
+                      <Route path="live" element={<LiveRoute />} />
+                      <Route path="productivity" element={<ProductivityRoute />} />
+                      <Route path="projects" element={<ProjectsRoute />} />
+                      <Route path="members" element={<MembersRoute />} />
+                      <Route path="settings" element={<SettingsRoute />} />
+                      <Route path="*" element={<NoPage />} />
+                    </Route>
+                  </Route>
+                </Routes>
+                <AppToaster />
+              </TasksApiProvider>
+            </TimeZoneProvider>
+          </TitleProvider>
         </PathsProvider>
       </LucideProvider>
     </QueryClientProvider>
@@ -121,6 +136,7 @@ function Shell() {
 
 function NoPage() {
   const paths = usePaths();
+  usePageTitle('No page');
   return (
     <>
       <TopBar title="No page" />

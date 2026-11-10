@@ -176,7 +176,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, `closeAcceptance` when it recorded one, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `met`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
-| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
+| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
@@ -663,6 +663,44 @@ does not recognize, counts as `Other`. Approvals and epics are left out.
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
+## Wins
+
+`GET /api/tasks/wins` answers the Productivity page
+([`wins.ts`](../workers/api/src/wins.ts)): what a workspace got done that
+matters over seven days, day by day. A win is one of these:
+
+- **Shipped**: a change that reached merged or live ([delivery](#delivery)),
+  at the time it merged, or went live where no merge was recorded. A pull
+  request is one win however many tasks closed with it; a change with none
+  counts by its commit.
+- **Decided**: a person's answer to a task's choices, at the time they
+  answered, whether or not the task has closed since.
+- **Finished**: an epic closed as done, with how many of its direct children
+  closed as done.
+
+Approvals closed as done are counted in `totals.approved` and not listed. A
+close as won't do, duplicate, can't reproduce, already handled or no longer
+needed is never a win, and nothing counts tasks closed. A change that merges
+more than 28 days after its task closed is not found.
+
+Each day runs from midnight to midnight in `timeZone`, an IANA time zone
+such as `America/Los_Angeles`, or in UTC when the request names none; the web
+app sends the person's own. Without `before`, the seven days are today and
+the six before it. `before`, a day as `YYYY-MM-DD`, reads the seven days
+before it, back to 56 days ago; `earlier` in each answer is the `before` that
+reads the seven days before those, and null at the oldest.
+
+| Field | Holds |
+|---|---|
+| `readAt`, `from`, `to` | When it was read, and the first instant and the instant after the last that it covers: midnights in `timeZone` |
+| `timeZone` | The time zone the days are cut in |
+| `earlier` | The `before` for the seven days before these, or null |
+| `projects` | How many projects were read |
+| `shippedBefore` | Whether any change in these projects shipped before `from`. When none did, merges may not have been recorded yet |
+| `totals` | `shipped`, `decided`, `finished` and `approved` over the seven days |
+| `days` | Each day, oldest first: `day` and its `shipped`, `decided` and `finished` |
+| `wins` | Every win, newest first. Each has `kind` (`shipped`, `decided` or `finished`), `at` and `projectId`. A shipped win has `stage` (`merged` or `live`), `pullRequest`, `commit` (null when it has a pull request) and `tasks`, each `{ id, title }`; a decided one `id`, `title`, `option`, `label` and `by`, the person who answered; a finished one `id`, `title` and `done` |
+
 ## Delivery
 
 A task's **delivery** says where its change is, so a closed task shows
@@ -816,6 +854,23 @@ the tasks it names, so their tasks go live without anyone ticking it. It does
 so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
+A merge GitHub made before the task closed sends its event too early to move
+the task, so the workspace's task store also asks GitHub itself, as the app:
+
+- about 5 seconds after a task closes as done with a pull request;
+- when an owner installs the app, for the tasks already waiting for a merge,
+  such as the ones closed before GitHub was connected.
+
+Each check reads the pull requests of the newest tasks waiting for a merge in
+repositories an installation reaches, and moves each one merged into its
+repository's default branch to `merged`, with its merge commit. An
+installation on all of its account's repositories reaches every one; for an
+installation on selected repositories, the check lists them first, up to 200,
+and reads only pull requests in the ones listed. It makes at most 45 requests to GitHub, within the free plan's 50
+requests to other servers, so a check reads up to about 40 pull requests and
+the next close checks the rest. It signs in to GitHub with the app's private
+key.
+
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
   saved by hand, compared in constant time. Without the header the answer
@@ -832,14 +887,19 @@ Projects page keeps it off.
   `unknown_installation`. An installation removed or suspended in GitHub is
   forgotten.
 - A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
-  does. When its event moves nothing, such as GitHub's `ping`, an
+  does, and a merge also with `closed` when it closed a task in progress and
+  `kept` when it left one in progress, each only when it lists a task
+  ([below](#work-still-in-progress-when-its-pull-request-merges)).
+  When its event moves nothing, such as GitHub's `ping`, an
   installation, a pull request closed without merging, a check that is not a
   deploy, or another event, the answer also holds `ignored`, a sentence
   saying why. GitHub shows each answer under the app's, or the webhook's,
   Recent Deliveries.
-- Each move is recorded in the task's history under `service:GitHub`.
-- A task never moves back, so a delivery sent again, by GitHub or with
-  Redeliver, moves nothing twice.
+- Each move and each close is recorded in the task's history under
+  `service:GitHub`.
+- A task never moves back, and a task a merge closed is no longer in
+  progress, so a delivery sent again, by GitHub or with Redeliver, moves and
+  closes nothing twice.
 - A pull request's URL names its repository, so a merge moves only the tasks
   of that pull request, whichever repository sends it.
 - A deploy moves the tasks whose commit or merge commit is the commit it ran
@@ -851,6 +911,33 @@ Projects page keeps it off.
   key derived from `AUTH_SECRET`. After `AUTH_SECRET` changes they no longer
   decrypt and every delivery is refused, until the owner presses
   **Disconnect**, deletes the old app on its GitHub page and connects again.
+
+#### Work still in progress when its pull request merges
+
+A merge into the repository's default branch also closes the work it
+finishes when the agent that did it has stopped. Each task in progress whose
+work in hand names the pull request
+(`pr` on `claim_task` or `comment_on_task`) closes as done before the merge
+moves anything:
+
+- Its proof is the pull request and the merge commit, and the same delivery
+  then moves it to `merged`.
+- It is closed by `service:GitHub`, not by its holder, with a reason that
+  names the pull request and the merge commit. A comment keeps what the
+  holder's work in hand recorded, such as its branch and next step, since a
+  close clears it.
+- A task stays in progress when it is an epic, a person's request, labelled
+  `keep-open`, waiting on an approval or a request to do steps that is still
+  open, or has open tasks under it. Label a task `keep-open` when its pull
+  request covers only part of it; its holder then closes it.
+- Only a delivery Ntasks checked came from GitHub closes a task. A merge
+  sent to `POST /api/delivery` or with `report_delivery` closes nothing.
+
+The answer lists the tasks the merge closed as `closed`, and each task it
+left in progress as `kept`, with `why`. Each list is left out when it is
+empty, so an answer can hold either one, both or neither. A merge that GitHub
+reports with no merge commit closes nothing, and lists each such task under
+`kept`.
 
 #### Set up by hand
 
@@ -932,18 +1019,16 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 8.
+field can hold is added.
 
-| Version | Added |
-|---|---|
-| 1 | The routes this page and [Sign-in](sign-in.md#routes) list |
-| 2 | [Connected apps](sign-in.md#connected-apps) |
-| 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 5 | `POST /api/github/:workspaceId` ([above](#from-github)), and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove` ([Sign-in](sign-in.md#routes)) |
-| 6 | `app`, `installations` and `detected` in `GET /api/access/github`, and `POST /api/access/github/app`, `POST /api/access/github/app/remove` and `POST /api/access/github/checks` ([Sign-in](sign-in.md#routes)) |
-| 7 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
-| 8 | `dependents` on a task, `touches` among its `work`, and the link type `merges-after` ([above](#linking-two-tasks)) |
+Each version is one file in
+[`workers/api/api-versions/`](../workers/api/api-versions/), and the version
+is the number of files there. A file is named with the UTC time it was
+written, then what its version adds, such as
+`2026-11-10T0137Z-stalled-tasks.json`. In name order, the order GitHub lists
+them in, the files are versions 1, 2, 3 and on. Each file's `added` says what
+its version added, and the rest records the fields it added
+([below](#the-recorded-contract)).
 
 | Where | What it holds |
 |---|---|
@@ -974,6 +1059,19 @@ it has no special case for.
 The MCP tools keep their own contract ([above](#the-mcp-endpoint)); the version
 counts the HTTP routes.
 
+### The version a client asks for
+
+A client made for an addition asks for the version main has once that
+addition has merged, or a later one: the number of files in `api-versions/`
+then. Main only gains files, so every Ntasks built from main that answers
+that version or a later one was built after the addition merged, and has it.
+
+A file's place in name order can be lower than the first version that had
+it. Two additions open at the same time both merge, and when the one written
+first merges second, its file sorts before the other's: its place is one
+lower than the version main had when it merged, and the other's place moves
+up by one. The rule above never names a version too low.
+
 ### A change that would break a client
 
 Removing or renaming a route, a parameter or a field, or giving one another
@@ -985,9 +1083,9 @@ made for an earlier one finds out that it is too old.
 
 ### The recorded contract
 
-[`http-api.json`](../workers/api/test/fixtures/http-api.json) records, version
-by version, the fields each route answers and the type of each. A field
-several answers hold, such as a task, is recorded once, as a shape.
+Each file in `api-versions/` records the fields its version added to each
+route's answer, and the type of each. A field several answers hold, such as
+a task, is recorded once, as a shape. Together the files are the record.
 [`http-contract.test.ts`](../workers/api/test/api/http-contract.test.ts)
 signs in as a person, sends every route the record names through the Worker,
 and compares the answers with the record, so it fails when an answer:
@@ -995,11 +1093,43 @@ and compares the answers with the record, so it fails when an answer:
 - leaves out a recorded field, or gives it a type the record does not allow;
 - holds a field the record lacks. The failure names the line that records it.
 
-An addition is recorded in a new entry at the end of the record, with the
-next version, and `API_VERSION` in
-[`version.ts`](../workers/api/src/version.ts) is raised to that version in the
-same change. A recorded field is never edited or removed, and the test
-refuses a field recorded twice.
+A recorded field is never edited or removed, and the test refuses a field
+recorded twice.
+
+### Adding a version
+
+A change that adds to the HTTP API adds one file to `api-versions/`, and
+changes no other file's record and no number:
+
+1. Name the file with the current UTC time and what it adds, such as
+   `2026-11-12T0930Z-task-due-dates.json`. This prints the time:
+
+   ```bash
+   date -u +%Y-%m-%dT%H%MZ
+   ```
+
+2. Write `added`, one line saying what the version adds, and record each
+   field it adds, with the line the test's failure prints:
+
+   ```json
+   {
+     "added": "`stalled` on a task, `POST /api/tasks/:id/release`, and `release` among a person's `operations` in `GET /api/tasks/capabilities`",
+     "shapes": { "task": { "stalled": "boolean" } },
+     "routes": { "POST /api/tasks/:id/release": { "task": "@task" } }
+   }
+   ```
+
+The Worker counts the files, so the version goes up by one when the change
+merges, whichever other additions merge before or after it. Two changes
+that each add a version touch no line in common and merge in either order;
+[`api-versions.ts`](../workers/api/test/node/api-versions.ts) merges two such
+changes in both orders to show it.
+
+The Worker's bundler cannot list a folder, so
+[`scripts/api-versions.ts`](../workers/api/scripts/api-versions.ts) writes
+the files' names, in order, to `workers/api/src/api-versions.generated.json`,
+which git ignores. `pnpm install` runs it, and so do the Worker's build,
+`pnpm dev`, its deploy, its typecheck and its tests.
 
 The record covers every HTTP route this page and
 [Sign-in](sign-in.md#routes) list, except three. The OAuth routes under
@@ -1024,7 +1154,7 @@ misspelt filter fails instead of being ignored.
 | Route | Parameters | Answer |
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
-| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step` and `accept`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
+| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
@@ -1034,6 +1164,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/changes` | optionally `after` (default 0), `limit` (1 to 200, default 100) and `project` | `{ events, lastSeq }` |
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
 | `GET /api/tasks/agent-stats` | optionally `project` | `{ readAt, projects, broken, stats }`, as `get_agent_stats` answers ([agent statistics](#agent-statistics)): of the project, or of every project the sender reaches |
+| `GET /api/tasks/wins` | optionally `project`, `before` and `timeZone` | The wins of seven days ([wins](#wins)): of the project, or of every project the sender reaches |
 
 ### Writes
 
@@ -1051,7 +1182,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
-| `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
+| `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, `closed` and `kept` when a merge closed or kept work in progress, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |
@@ -1096,8 +1227,17 @@ none, the link its close named as `closeLink`, a person's acceptance as
 work closed as done without proof ([above](#proof-of-work-done)), and null
 otherwise.
 
-A task answers its holder's work in hand as `for`, `work` and
-`lastActivityAt`, as `get_task` does.
+A task answers its holder's work in hand as `for`, `work`,
+`lastActivityAt` and `stalled`, as `get_task` does.
+
+### Work in hand
+
+A task is **stalled** when it is in progress and held, and its holder has
+done nothing on it for a day, or never recorded anything (`isStalled` in
+[`packages/domain`](../packages/domain/src/task.ts)). Every task read answers
+`stalled`, worked out at the time of the read; `list_tasks` names it only on a
+stalled task, and `stalled: true` lists only those. It is shown only: Ntasks
+never frees a claim because time passed.
 
 NoticeOS answered a change, a comment and a close with its task client's own
 output; Ntasks answers them with the task or the comment, in the shapes the
@@ -1123,6 +1263,7 @@ and when.
 | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), at least one of `done` (`true` ticks it, `false` unticks it), `note` (at most 1,024 characters; `null` takes it off) and `stuck` (why the person stopped there, at most 1,024 characters; `null` says they are past it), and optionally `proposalVersion` | Records the person's marks on one step of a request to do steps, in any order: each mark holds the person, the time and, through a [connected app](sign-in.md#connected-apps), the app's client id as `app`. A tick clears the step's `stuck`, and `stuck` clears its tick; `done: true` with `stuck` is refused. `stuck` also comments on each task waiting on the request, naming the step and the reason. When every step is ticked, the request closes as `done` with the person as its closer, and each task waiting on it gets a comment to check the result; each labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label. A step's text and command never change. |
 | `POST /api/gates/:id/resolve` | `projectId`, and optionally `reason` and `proposalVersion` | Approves an approval: it closes as `done` with the reason, `Approved` when left out, and the tasks waiting on it are free of it. Each of them labelled `human` that is not a decision and offers no options goes back to ready work, open, unassigned and without the label, with a comment to keep within the approval, as after an approval an agent relays. The person's approval becomes the approval's recorded answer, so one an agent relayed before it can no longer be disputed. A request to do steps is refused: it takes ticks, not an approval. |
 | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria that are met, from 1, each once; `[]` when none is), `proposalVersion`, and optionally `reason` (at most 2,048 characters) | Accepts a task as done on the person's call ([Done on a person's call](#done-on-a-persons-call)): it closes as `done` with the reason, `Accepted as done` when left out, and `closeAcceptance` records the person and each criterion, met or waived. Another holder does not refuse it. `proposalVersion` is required, so the criteria recorded are the ones the person read. A number the task has no criterion at is refused with `400` and `field: "met"`; an approval, a request to do steps, a closed task, and a task that waits on an open approval or has children that are not closed are refused with `409`. |
+| `POST /api/tasks/:id/release` | `projectId`, `holder` (optional) | Frees a task someone holds, on the person's call: nobody holds it then, a task in progress is open again, and a blocked or deferred one keeps its status. A comment keeps who freed it and where the work stopped: the holder and its helper, its last activity, its work details and its last comment, cut to fit one comment. A task nobody holds, and a closed one, is refused with `409`. `holder` is the holder the person's page showed, which the web app always sends: a task someone else holds now is refused with `409` and nothing changes. An agent releases its own claim with `update_task`, sending `assignee: ""`, and `status: "open"` when the task is in progress, so a blocked or deferred one keeps its status; it frees a task someone else holds only with `reconcile_task` action `release` and its evidence. |
 | `POST /api/tasks/:id/dispute` | `projectId` | Withdraws an approval or an acceptance as done that an agent relayed with `reconcile_task`. On an acceptance, the task opens again with its close kept in its history, and it and each task waiting on it get a comment; a person's own acceptance is refused. On an approval: its record loses its permission and names who disputed it, the approval opens again, and it and each task waiting on it get a comment saying the recorded action must stop until a new approval. Disputing it again changes nothing, and tells the waiting tasks nothing again. Once the person approves it directly, a dispute of it is refused. |
 
 `proposalVersion` names the proposal version the person's page showed, as a
@@ -1301,6 +1442,9 @@ query:
 - agent statistics read one row for each task in progress, blocked or closed
   in the last eight weeks, in one statement over every project, however many
   tasks the projects hold;
+- the wins feed reads one row for each task not closed and each closed in the
+  last five weeks, in two statements over every project, and then the
+  children of the epics it finds finished;
 - the tasks a sender holds, which the instructions list when an agent
   connects, are one statement in each workspace it reaches, through the
   index of holders: a row for each task held;

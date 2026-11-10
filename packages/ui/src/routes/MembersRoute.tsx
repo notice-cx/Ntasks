@@ -17,6 +17,7 @@ import { useShortcut } from '../hooks/useShortcut';
 import { useRetryKey } from '../hooks/useTasks';
 import { useInvite, useIsOwner, useMembers, useRemoveMember, useRevokeInvitation } from '../hooks/useWorkspace';
 import { ageMs, formatAge } from '../lib/format';
+import { usePageTitle } from '../lib/page-title';
 
 const ROLE_WORDS: Readonly<Record<WorkspaceRole, string>> = { owner: 'Owner', member: 'Member' };
 
@@ -26,6 +27,7 @@ const ROLE_WORDS: Readonly<Record<WorkspaceRole, string>> = { owner: 'Owner', me
  * removes a member.
  */
 export default function MembersRoute() {
+  usePageTitle('Members');
   const owner = useIsOwner();
   const [inviting, setInviting] = useState(false);
   useShortcut('i', () => setInviting(true), owner && !inviting);

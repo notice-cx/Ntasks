@@ -1,25 +1,30 @@
 // The HTTP API only adds (docs/api.md#versions): a route keeps every field of
 // its answer, with its type, at every later version, and every answer under
-// /api names the version. fixtures/http-api.json records the fields version
-// by version. This file sends every recorded route through the Worker as
+// /api names the version. Each file in api-versions/ records the fields one
+// version added. This file sends every recorded route through the Worker as
 // deployed, as the owner of the test workspace signed in to the web app, and
 // compares the answers with the record.
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { hex } from '../../src/access/crypto.ts';
+import API_VERSIONS from '../../src/api-versions.generated.json';
 import { API_VERSION, API_VERSION_HEADER, OLDEST_API_VERSION } from '../../src/version.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { Browser, call, connectAgent, connectApp, meWithToken } from '../access/client.ts';
 import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from '../access/github.ts';
-import RECORD from '../fixtures/http-api.json';
 import { TEST_WORKSPACE } from '../store.ts';
 import { compare, expand, merge, observe, observed, withoutValue, type ContractVersion } from './contract.ts';
 
 standInForGitHub();
 
-// TypeScript reads each version of the JSON as its own type, which stops
-// overlapping ContractVersion once two versions record different fields.
-const CONTRACT = merge(RECORD as unknown as readonly ContractVersion[]);
+/** Each version's file, oldest first, as the Worker counts them. */
+const RECORD: readonly { readonly name: string; readonly version: ContractVersion }[] = await Promise.all(
+  API_VERSIONS.map(async (name) => ({
+    name,
+    version: ((await import(`../../api-versions/${name}.json`)) as { default: ContractVersion }).default,
+  })),
+);
+const CONTRACT = merge(RECORD.map(({ version }) => version));
 
 /** One answer a route gave. */
 interface Sample {
@@ -306,6 +311,24 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/changes', `/api/changes?after=0&project=${projectId}`);
   await as('GET /api/fields', `/api/fields?project=${projectId}`);
   await as('GET /api/tasks/agent-stats', `/api/tasks/agent-stats?project=${projectId}`);
+  // An epic finished, so the wins feed answers every kind of win: a change shipped, an answer and an epic.
+  const wrapUp = await create({ title: 'Wrap up the launch', type: 'epic' });
+  const recap = await create({ title: 'Write the recap', parent: wrapUp });
+  for (const id of [recap, wrapUp])
+    await as('POST /api/tasks/:id/close', task(id, '/close'), inProject({ reason: 'Done.' }));
+  // The pull request and the agent's commit closed above merge.
+  await as('POST /api/delivery', '/api/delivery', {
+    repository: 'example/launch',
+    stage: 'merged',
+    pullRequests: ['https://github.com/example/launch/pull/7'],
+    commits: ['c0ffee12'],
+  });
+  await as('GET /api/tasks/wins', '/api/tasks/wins');
+  await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&timeZone=America/Los_Angeles`);
+  // Back to the oldest days the feed reaches, where it offers no earlier ones.
+  let earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}`)).earlier;
+  while (typeof earlier === 'string')
+    earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&before=${earlier}`)).earlier;
   let next: unknown = null;
   do {
     next = (await as('GET /api/backup', next === null ? '/api/backup' : `/api/backup?page=${String(next)}`)).next;
@@ -366,7 +389,23 @@ async function drive(): Promise<readonly Sample[]> {
     },
     repository: { full_name: 'example/launch', default_branch: 'main' },
   };
+  // A merge closes the task in progress whose work names its pull request, and keeps one labelled keep-open.
+  const merging = await create({ title: 'Write the launch email' });
+  const optedOut = await create({ title: 'Write the launch emails', labels: ['keep-open'] });
+  for (const id of [merging, optedOut])
+    await tool(owner, 'claim_task', { task: id, pr: 'https://github.com/example/launch/pull/41' });
+  const merged = {
+    action: 'closed',
+    pull_request: {
+      html_url: 'https://github.com/example/launch/pull/41',
+      merged: true,
+      merge_commit_sha: 'd4e5f6a7b8c9',
+      base: { ref: 'main' },
+    },
+    repository: { full_name: 'example/launch', default_branch: 'main' },
+  };
   for (const [event, payload] of [
+    ['pull_request', merged],
     ['check_run', checkRun],
     ['ping', { hook_id: 1 }],
   ] as const) {
@@ -485,6 +524,10 @@ async function drive(): Promise<readonly Sample[]> {
     body: JSON.stringify(inProject({ met: [], proposalVersion: await shownOn(grants) })),
   });
   await keep(samples, 'POST /api/tasks/:id/accept', task(grants, '/accept'), acceptedInApp);
+  // A task the owner held and frees on their own call.
+  const freed = (await tool(owner, 'create_task', { project: projectId, title: 'Rebuild the home page' })).id as string;
+  await tool(owner, 'claim_task', { task: freed, next: 'Write the hero copy' });
+  await as('POST /api/tasks/:id/release', task(freed, '/release'), inProject());
   await as('GET /api/access/apps', '/api/access/apps');
   await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
   await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});
@@ -530,8 +573,16 @@ describe('the version', () => {
     expect((await call('/api/version', { method: 'POST' })).status).toBe(405);
   });
 
-  it('is the version the contract is recorded up to', () => {
+  it('is the number of versions recorded, each saying what it added and recording nothing else', () => {
+    expect(API_VERSION).toBe(RECORD.length);
     expect(CONTRACT.version).toBe(API_VERSION);
+    for (const { name, version } of RECORD) {
+      expect(typeof version.added === 'string' && version.added.trim() !== '', name).toBe(true);
+      expect(
+        Object.keys(version).filter((key) => !['added', 'shapes', 'routes'].includes(key)),
+        name,
+      ).toEqual([]);
+    }
   });
 
   it('names the version on every answer the contract records', async () => {
@@ -598,8 +649,8 @@ describe('the contract', () => {
   it('refuses a field recorded twice, so a later version cannot change its type', () => {
     expect(() =>
       merge([
-        { version: 1, routes: { 'GET /x': { id: 'string' } } },
-        { version: 2, routes: { 'GET /x': { id: 'number' } } },
+        { added: '`GET /x`', routes: { 'GET /x': { id: 'string' } } },
+        { added: '`id` as a number', routes: { 'GET /x': { id: 'number' } } },
       ]),
     ).toThrow('GET /x id is recorded twice');
   });

@@ -33,6 +33,7 @@ import {
   dismiss,
   dispute,
   markStep,
+  release,
   RESPONDED,
   respond,
   seen,
@@ -44,7 +45,7 @@ import { writeOf } from './writes.ts';
 
 /** The answer to a decision: the task as it stands after it. */
 async function decided(context: WriteContext, written: Written): Promise<Response> {
-  const [task] = await webTasks([await seen(context, written.result.task)]);
+  const [task] = await webTasks([await seen(context, written.result.task)], context.now());
   return json({ task });
 }
 
@@ -147,6 +148,20 @@ export async function acceptRoute(
     );
   const accepting = { met, ...(reason === undefined ? {} : { reason }) };
   return decided(context, await accept(context, projectId, taskId, accepting, retry(body), shown));
+}
+
+/** POST /api/tasks/:id/release: a person freeing a task someone holds, on their own call; `holder`, when sent, is the holder their page showed. */
+export async function releaseRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  taskId: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'release', { task: taskId });
+  only(body, ['projectId', 'holder']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  const holder = textArg(body, 'holder', TASK_LIMITS.actor, false);
+  return decided(context, await release(context, projectId, taskId, retry(body), holder));
 }
 
 /** POST /api/tasks/:id/dispute: a person withdrawing an approval or an acceptance an agent recorded for them. */

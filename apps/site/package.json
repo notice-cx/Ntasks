@@ -2,16 +2,17 @@
   "name": "@ntasks/site",
   "version": "0.0.0",
   "private": true,
-  "description": "The Ntasks website: the landing page, and the Markdown in docs/ rendered as the docs at /docs/.",
+  "description": "The Ntasks website: the landing page, the Markdown in docs/ rendered as the docs at /docs/, and the Shared Work Protocol in spec/ at /spec/.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vitepress dev",
     "dev:landing": "vite",
-    "build:site": "vite build && vitepress build && node scripts/check-links.ts",
+    "build:site": "vite build && vitepress build && vitepress build protocol && node scripts/check-links.ts",
     "preview": "wrangler dev",
     "typecheck": "tsc",
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --test \"test/*.test.ts\"",
+    "dev:spec": "vitepress dev protocol"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "5.3.0",

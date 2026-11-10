@@ -705,7 +705,8 @@ async function written(
   replayed: boolean,
 ): Promise<Record<string, unknown>> {
   const seen = detail === 'full' || named.includes('dependencies') ? (await linksSeenBy(context)).task(task) : task;
-  return detail === 'full' ? { task: mcpTask(seen), replayed } : { ...writtenView(seen, named), replayed };
+  const now = context.now();
+  return detail === 'full' ? { task: mcpTask(seen, now), replayed } : { ...writtenView(seen, named, now), replayed };
 }
 
 /** The fields of the task a claim's answer shows for the helper and work details it names. */
@@ -1398,7 +1399,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       for (const [index, { task, replayed, gate, done }] of filed) {
         results[index] = {
           index,
-          ...writtenView(task, filedShown(task)),
+          ...writtenView(task, filedShown(task), context.now()),
           replayed,
           ...(gate === undefined ? {} : { approval: approvalView(gate), held: true }),
           ...(done ? {} : lintIfAny(lintView(found, task.id, adviceOn(task)))),

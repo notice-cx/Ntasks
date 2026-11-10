@@ -37,6 +37,7 @@ const person: TokenSource = {
 | `basePath` | `/tasks` | The board's address, below the site's root; every other page is under it ([Addresses](#addresses)) |
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
+| `onTitle` | none | Receives each page's title, such as `web-b2r6 · Fix the reset link — Ntasks`, in place of the app setting the document's title, so the host keeps its own tab title |
 
 ### Addresses
 
@@ -101,7 +102,9 @@ every answer, and `GET /api/version` answers `{ version, oldest }` before
 anyone signs in ([The API, Versions](../../docs/api.md#versions)). An Ntasks
 whose `version` is lower than `API_VERSION` lacks something the pages read
 and needs an update; one whose `oldest` is higher than `API_VERSION` no
-longer answers this package's version.
+longer answers this package's version. When the pages start reading an
+addition, `API_VERSION` becomes the version main had once that addition
+merged ([The version a client asks for](../../docs/api.md#the-version-a-client-asks-for)).
 
 ### Styles
 
@@ -287,18 +290,58 @@ manifest.
 
 The package publishes to npm, at https://registry.npmjs.org, as
 `@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
-Pushing a tag `ui-v<version>` on a commit of `main`, such as `ui-v0.1.0`
-for the version in `package.json`, runs the Release UI package workflow
-(`.github/workflows/release-ui.yml`): it runs every check, the host check,
-then `npm publish --provenance` of the tarball `pnpm pack` writes. It signs
-in to npm with npm's trusted publisher for this repository when the package
-has one, and otherwise with the `NPM_TOKEN` secret, as the `ntasks`
-command's release does; the token must be allowed to publish to `notice-cx`.
-A trusted publisher must allow `npm publish` as well as `npm stage publish`:
-npm sets a new one to allow staging only, and the workflow publishes
-directly.
-Pushing the tag needs the owner's approval, and the `npm` environment holds
-the run until the owner approves it
+
+A release is the owner approving the CI run of the `@notice-cx/ntasks-ui`
+release pull request, merging the pull request, then pressing **Approve and
+deploy**. Agents never approve, merge or turn on auto-merge for a release pull
+request.
+
+After each push to `main`, the Release PRs workflow
+(`.github/workflows/release-please.yml`) runs
+[release-please](https://github.com/googleapis/release-please). While a
+`feat`, `fix`, `perf` or `revert` commit or a breaking change made since the
+last release changes a file under `packages/ui`, it keeps one pull request
+open, titled `chore(main): release @notice-cx/ntasks-ui <version>`. The pull
+request raises `version` in `package.json` and adds those commits to this
+folder's `CHANGELOG.md`. Before 1.0.0, a `feat` commit or a breaking change
+raises the minor version and any other commit the patch version
+(`release-please-config.json`).
+
+Merging the pull request creates the tag `ui-v<version>` and its GitHub
+release, then starts the Release UI package workflow
+(`.github/workflows/release-ui.yml`) on that tag. The workflow waits for the
+owner to approve the `npm` environment. It then runs every check, the host
+check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
+
+The owner's steps:
+
+1. On the pull request `chore(main): release @notice-cx/ntasks-ui <version>`, open the
+   **Files changed** tab, click **Awaiting approval** at the top right, then
+   **Approve workflows to run**. GitHub holds the pull request's CI run until
+   someone approves it, because a workflow, not a person, opened the pull
+   request.
+2. When its checks pass, click **Merge when ready**, then **Confirm merge when
+   ready**, at the bottom of the **Conversation** tab.
+3. When the Release UI package run waits for review (GitHub emails the owner), open it,
+   click **Review deployments**, tick **npm** and click **Approve and deploy**.
+
+When more changes reach `main` before the pull request merges, release-please
+rebuilds it, and the new CI run waits for approval again: repeat step 1.
+
+To run a failed or rejected publish again, open **Actions**, choose **Release
+UI package**, click **Run workflow**, pick the tag `ui-v<version>` under **Use
+workflow from** and click **Run workflow**. The workflow stops if it is run on
+a branch, or on a tag that does not name the version in `package.json`.
+
+The workflow signs in to npm with npm's trusted publisher for this repository
+when the package has one, and otherwise with the `NPM_TOKEN` secret, as the
+`ntasks` command's release does; the token must be allowed to publish to
+`notice-cx`. The trusted publisher names the workflow file `release-ui.yml` and
+the environment `npm`. The run that the Release PRs workflow starts is a run of
+`release-ui.yml` itself, not a workflow it calls, so it matches. A trusted
+publisher must allow `npm publish` as well as `npm stage publish`: npm sets a
+new one to allow staging only, and the workflow publishes directly.
+Publishing is the owner's step
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
 
 ## License

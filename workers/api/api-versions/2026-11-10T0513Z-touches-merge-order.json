@@ -1,0 +1,16 @@
+{
+  "added": "`dependents` on a task, `touches` among its `work`, and the link type `merges-after`",
+  "shapes": {
+    "task": {
+      "dependents": "array",
+      "dependents[]": "object",
+      "dependents[].id": "string",
+      "dependents[].type": "string",
+      "dependents[].title": "string",
+      "dependents[].status": "string",
+      "work.touches": "absent|array",
+      "work.touches[]": "string"
+    }
+  },
+  "routes": {}
+}

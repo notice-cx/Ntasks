@@ -23,7 +23,8 @@ import {
   type EpicSummary,
   type OpenTally,
 } from '../../lib/epics';
-import { ageMs, calendarDay, formatAge, formatInt, localDay } from '../../lib/format';
+import { calendarDay, dayIn, useTimeZone } from '../../lib/dates';
+import { ageMs, formatAge, formatInt } from '../../lib/format';
 import { usePaths } from '../../lib/paths';
 import { sorted, type PageSort } from '../../lib/task-sort';
 import { cn } from '../../lib/utils';
@@ -39,11 +40,11 @@ export function EpicMark({ state, label }: { state: EpicState; label?: string | 
 }
 
 /** "this week" as a day: `Nov 2`, or null when the read named no start. */
-export function sinceDay(since: string | null, nowMs: number): string | null {
+export function sinceDay(since: string | null, nowMs: number, zone: string): string | null {
   // The server names the day itself (`2026-11-02`); read as an instant it is UTC midnight, the day before west of UTC.
-  if (since !== null && /^\d{4}-\d{2}-\d{2}$/.test(since)) return calendarDay(since, nowMs);
+  if (since !== null && /^\d{4}-\d{2}-\d{2}$/.test(since)) return calendarDay(since, nowMs, zone);
   const at = since === null ? Number.NaN : Date.parse(since);
-  return Number.isNaN(at) ? null : calendarDay(localDay(at), nowMs);
+  return Number.isNaN(at) ? null : calendarDay(dayIn(at, zone), nowMs, zone);
 }
 
 /** What each group holds, in words. */
@@ -282,6 +283,7 @@ export function EpicsView({
   onClearSearch: () => void;
 }) {
   const paths = usePaths();
+  const zone = useTimeZone();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [closedOpen, setClosedOpen] = useState(false);
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -290,7 +292,7 @@ export function EpicsView({
     ? [...read.byId.values()].filter((summary) => matchesWords(summary, words)).sort(epicOrder)
     : read.epics;
   const looseOpen = openCount(read.loose.open);
-  const day = sinceDay(read.since, nowMs);
+  const day = sinceDay(read.since, nowMs, zone);
   const toggle = (id: string) =>
     setExpanded((current) => {
       const next = new Set(current);

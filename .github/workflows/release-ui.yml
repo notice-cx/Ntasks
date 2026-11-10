@@ -1,11 +1,13 @@
 name: Release UI package
 
-# Pushing a tag such as ui-v0.2.0 publishes the npm package @notice-cx/ntasks-ui, built
-# from packages/ui. The tag must name the version in packages/ui/package.json,
-# on a commit of main (packages/ui/README.md, "Releasing").
+# Publishes the npm package @notice-cx/ntasks-ui, built from packages/ui, from a
+# tag such as ui-v0.2.0. Merging the @notice-cx/ntasks-ui release pull request
+# creates the tag, and the Release PRs workflow (release-please.yml) starts
+# this workflow on it. The tag must name the version in
+# packages/ui/package.json, on a commit of main (packages/ui/README.md,
+# "Releasing").
 on:
-  push:
-    tags: ['ui-v*']
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -44,6 +46,10 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Check that the tag names packages/ui's version on a commit of main
         run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::Run this workflow on a tag such as ui-v0.2.0, not the branch $GITHUB_REF_NAME."
+            exit 1
+          fi
           version="$(node -p "require('./packages/ui/package.json').version")"
           if [ "$GITHUB_REF_NAME" != "ui-v$version" ]; then
             echo "::error::The tag $GITHUB_REF_NAME does not name the version in packages/ui/package.json, $version."

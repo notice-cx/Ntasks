@@ -51,7 +51,7 @@ a task again therefore claims it twice.
 |---|---|---|
 | Choose a workspace | `list_workspaces` | Each workspace the sender reaches, its role and scopes there, and the guide's version |
 | List projects | `list_projects` | `projectId`, `key`, `name`, `prefix`, `deploys` |
-| List tasks, ready work | `list_tasks` | Most urgent first: open tasks and those closed in the last 7 days. `ready: true` for ready work ([STATE-3](protocol.md#state-3)), `assignee: "me"` for the sender's own, `query` to search |
+| List tasks, ready work | `list_tasks` | Most urgent first: open tasks and those closed in the last 7 days. `ready: true` for ready work ([STATE-3](protocol.md#state-3)), `assignee: "me"` for the sender's own, `stalled: true` for stalled tasks ([STATE-16](protocol.md#state-16)), `query` to search |
 | Read a task | `get_task` | The task ([schema](schemas/task.schema.json)), its comments, its `proposal` and `proposalVersion`, and for an epic its `openChildren`. `tasks` reads up to 50 |
 | Read history | `get_task_history` | Each change newest first ([schema](schemas/history-event.schema.json)); `snapshots` for whole versions |
 | File | `create_task`, `create_tasks` | `claim: true` files it claimed; `done` files finished work closed as done, with its proof. `create_tasks` files up to 25, each refused or filed on its own |
@@ -60,7 +60,7 @@ a task again therefore claims it twice.
 | Comment | `comment_on_task` | `tasks` comments on up to 50 |
 | Link | `link_tasks` | Sets or, with `remove: true`, removes the one link between two tasks ([INV-11](protocol.md#inv-11)). Takes no key: asking again changes nothing |
 | Close | `close_task` | `resolution` (`done` when left out), `reason`, `duplicate_of`, and the proof `commit`, `pr` or `link`. `tasks` closes several and `with_children` an epic's open tasks first, at most 50 in all; the answer lists `unblocked` |
-| Release a task whose holder stopped | `reconcile_task`, action `release` | With `holder`, `inactive: true`, `activity_check` and `progress` ([AUTH-9](protocol.md#auth-9)) |
+| Release a task whose holder stopped | `reconcile_task`, action `release` | With `holder`, `inactive: true`, `activity_check` and `progress` ([AUTH-9](protocol.md#auth-9)). A person frees a task on their own call over HTTP |
 
 ### Human decisions and approvals
 
@@ -92,7 +92,7 @@ through the MCP endpoint is relayed, whoever sends it
 
 | Contract operation | Tool | Notes |
 |---|---|---|
-| Record work in hand | `claim_task`, `comment_on_task` with `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches` | From the holder only, while the task is open ([STATE-13](protocol.md#state-13)). With `touches`, the answer lists `overlaps` ([STATE-18](protocol.md#state-18)) |
+| Record work in hand | `claim_task`, `comment_on_task` with `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches` | From the holder only, while the task is open ([STATE-13](protocol.md#state-13)). With `touches`, the answer lists `overlaps` ([STATE-19](protocol.md#state-19)) |
 | Claim by pull request | `claim_task` with `pr` and no `task` | The open task whose work details or `pull-request` external link name that pull request |
 | Held tasks on connect | The server's instructions | [MCP-1](#mcp-1) |
 | Pin and unpin a comment | `comment_on_task` with `pin: true`, and `unpin` with the ids of the task's pinned comments | `unpin` with `task` only. Answers `pinned: true` when it pinned the comment ([STATE-17](protocol.md#state-17)) |

@@ -340,6 +340,17 @@ export function useMarkStep() {
   });
 }
 
+/** A person's free of a task someone holds, on their own call. */
+export function useReleaseTask() {
+  const api = useTasksApi();
+  const refresh = useTaskRefresh();
+  return useMutation({
+    mutationFn: ({ id, project, holder }: { id: string; project: string; holder: string }) =>
+      api.release(id, project, holder),
+    onSuccess: () => refresh(),
+  });
+}
+
 export function useDisputeTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();

@@ -442,6 +442,24 @@ export function lacksProof(task: Pick<Task, 'type' | 'close' | 'delivery'>): boo
   );
 }
 
+/** How long a held task in progress goes without its holder's activity before it is stalled. */
+export const STALLED_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a task is stalled at `now` (an ISO time): in progress and held, and
+ * its holder has done nothing on it for STALLED_AFTER_MS, or never recorded
+ * anything on it. It is shown only: time alone never frees a claim.
+ */
+export function isStalled(
+  task: { readonly status: string; readonly assignee: string | null; readonly lastActivityAt?: string | null },
+  now: string,
+): boolean {
+  if (task.status !== 'in_progress' || task.assignee === null) return false;
+  const last = Date.parse(task.lastActivityAt ?? '');
+  // A time that cannot be read records nothing, as no time does.
+  return !Number.isFinite(last) || Date.parse(now) - last >= STALLED_AFTER_MS;
+}
+
 /** A task one holder holds, with what the holder recorded about the work in hand. */
 export interface HeldTask {
   readonly id: string;

@@ -10,12 +10,17 @@
  */
 import {
   ACCEPTED_REASON,
+  addDays,
   criteriaOf,
+  isDay,
+  isTimeZone,
+  zoneDays,
   isExternalLinkKind,
   isTaskId,
   markedStep,
   PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
+  releaseComment,
   TASK_LIMITS,
   type TaskResolution,
 } from '@ntasks/domain';
@@ -44,6 +49,9 @@ import type {
   TaskField,
   TaskFieldValue,
   TaskProject,
+  Win,
+  WinTask,
+  ShippedWin,
   Workspace,
 } from './types';
 
@@ -77,6 +85,9 @@ const WORKSPACE_NAME_LIMIT = 128;
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
+/** The days one read of wins covers, and how far back they reach, as the Worker's (docs/api.md, "Wins"). */
+const WIN_DAYS = 7;
+const WIN_HISTORY_DAYS = 56;
 const DAY = 24 * 3_600_000;
 /** The most tasks a search answers, and the longest text it takes, as the Worker's search route. */
 const SEARCH_PAGE = 100;
@@ -505,6 +516,107 @@ export function createFixtureTasksApi({
         actors: FIXTURE_ACTORS,
       });
     },
+    async wins({ project: key, before, timeZone = 'UTC' } = {}) {
+      reach();
+      if (!isTimeZone(timeZone))
+        throw new ApiError('timeZone must be an IANA time zone, such as America/Los_Angeles.', 400, 'invalid_request');
+      const projects = key === undefined ? state.projects : [project(key)];
+      const ids = new Map(projects.map((row) => [row.logicalKey, row.projectId]));
+      // Seven days ending before `before`, or with today, cut at midnight in the zone; no further back than
+      // eight weeks, as the Worker.
+      const { dayIn, dayStart } = zoneDays(timeZone);
+      const tomorrow = addDays(dayIn(now()), 1);
+      const endDay = before ?? tomorrow;
+      const startDay = isDay(endDay) ? addDays(endDay, -WIN_DAYS) : '';
+      const earliest = addDays(tomorrow, -WIN_HISTORY_DAYS);
+      if (!isDay(endDay) || endDay > tomorrow || startDay < earliest)
+        throw new ApiError('before must be a day as YYYY-MM-DD, from 7 to 56 days back.', 400, 'invalid_request');
+      const start = dayStart(startDay);
+      const end = dayStart(endDay);
+      const within = (at: string | null | undefined): at is string =>
+        typeof at === 'string' && Date.parse(at) >= start && Date.parse(at) < end;
+      const tasks = state.tasks.filter((task) => ids.has(task.project));
+      const done = (task: FixtureTask) => task.status === 'closed' && (task.resolution ?? 'done') === 'done';
+      const wins: Win[] = [];
+      const changes = new Map<string, ShippedWin & { tasks: WinTask[] }>();
+      let approved = 0;
+      for (const task of tasks) {
+        const projectId = ids.get(task.project)!;
+        const delivery = task.delivery;
+        const shipped =
+          delivery && (delivery.stage === 'merged' || delivery.stage === 'live')
+            ? (delivery.mergedAt ?? delivery.liveAt)
+            : null;
+        if (delivery && within(shipped)) {
+          const change = `${projectId} ${delivery.pullRequest ?? delivery.mergeCommit ?? delivery.commit ?? task.id}`;
+          const found = changes.get(change);
+          if (found) found.tasks.push({ id: task.id, title: task.title });
+          else
+            changes.set(change, {
+              kind: 'shipped',
+              at: shipped,
+              projectId,
+              stage: delivery.stage,
+              pullRequest: delivery.pullRequest,
+              commit: delivery.pullRequest === null ? (delivery.mergeCommit ?? delivery.commit) : null,
+              tasks: [{ id: task.id, title: task.title }],
+            });
+        }
+        if (task.choice && within(task.choice.at))
+          wins.push({
+            kind: 'decided',
+            at: task.choice.at,
+            projectId,
+            id: task.id,
+            title: task.title,
+            option: task.choice.option,
+            label: task.choice.label,
+            by: task.choice.by,
+          });
+        if (done(task) && within(task.closedAt)) {
+          if (task.issueType === 'epic') {
+            const children = tasks.filter((child) => child.parent === task.id && done(child)).length;
+            wins.push({
+              kind: 'finished',
+              at: task.closedAt,
+              projectId,
+              id: task.id,
+              title: task.title,
+              done: children,
+            });
+          } else if (task.issueType === 'gate') approved++;
+        }
+      }
+      wins.push(...changes.values());
+      wins.sort((a, b) => b.at.localeCompare(a.at));
+      const days = Array.from({ length: WIN_DAYS }, (_, i) => ({
+        day: addDays(startDay, i),
+        shipped: 0,
+        decided: 0,
+        finished: 0,
+      }));
+      for (const win of wins) {
+        const day = days.find((row) => row.day === dayIn(Date.parse(win.at)));
+        if (day) day[win.kind]++;
+      }
+      const count = (kind: Win['kind']) => wins.filter((win) => win.kind === kind).length;
+      return copy({
+        readAt: new Date(now()).toISOString(),
+        timeZone,
+        from: new Date(start).toISOString(),
+        to: new Date(end).toISOString(),
+        earlier: addDays(startDay, -WIN_DAYS) >= earliest ? startDay : null,
+        projects: projects.length,
+        shippedBefore: tasks.some((task) => {
+          const delivery = task.delivery;
+          const at = delivery?.mergedAt ?? delivery?.liveAt ?? null;
+          return at !== null && Date.parse(at) < start;
+        }),
+        totals: { shipped: count('shipped'), decided: count('decided'), finished: count('finished'), approved },
+        days,
+        wins,
+      });
+    },
     async changes(after) {
       reach();
       const events = changes.filter((change) => change.seq > after).slice(0, 100);
@@ -717,6 +829,35 @@ export function createFixtureTasksApi({
       task.resolution = null;
       task.closeAcceptance = null;
       task.proof = null;
+      touch(task);
+    },
+    async release(id, key, shown) {
+      reach();
+      const task = find(id, key);
+      const holder = task.assignee;
+      if (task.status === 'closed' || holder === null) throw new ApiError(`Nobody holds ${id}.`, 409, 'task_refused');
+      if (holder !== shown)
+        throw new ApiError(
+          `${holder} took ${id} after this page showed it. Read it again; nothing was freed.`,
+          409,
+          'task_refused',
+        );
+      // Written before the work details go, as the Worker writes it.
+      const comment = releaseComment(
+        {
+          id,
+          holder,
+          helper: task.for ?? null,
+          lastActivityAt: task.lastActivityAt ?? null,
+          work: task.work ?? {},
+        },
+        state.comments.get(id) ?? [],
+        FIXTURE_ACTOR,
+      );
+      addComment(task, comment);
+      endWork(task);
+      task.assignee = null;
+      if (task.status === 'in_progress') task.status = 'open';
       touch(task);
     },
     async resolveGate(id, key, reason, options) {

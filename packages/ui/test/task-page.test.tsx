@@ -528,6 +528,60 @@ describe('a task page', () => {
     });
   });
 
+  describe('a stalled task', () => {
+    it('shows where its work stopped and frees it on the person’s call, keeping that in a comment', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks/web-w6n2', api);
+      const block = await screen.findByRole('region', { name: 'Where it stopped' });
+      expect(within(block).getByText('claude/sign-in-timing')).toBeTruthy();
+
+      fireEvent.click(await enabledButton('Free it', block));
+
+      await waitFor(() => expect(task(api, 'web-w6n2')).toMatchObject({ status: 'open', assignee: null }));
+      expect(api.state.comments.get('web-w6n2')?.at(-1)?.text).toContain('freed web-w6n2 on their own call');
+      expect(api.state.comments.get('web-w6n2')?.at(-1)?.text).toContain('- Branch: claude/sign-in-timing');
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Where it stopped' })).toBeNull());
+    });
+
+    it('frees only the claim it showed: a task another agent took meanwhile stays theirs', async () => {
+      const fixture = createFixtureTasksApi();
+      let freeing: Promise<void> | undefined;
+      const api = {
+        ...fixture,
+        release: (...args: Parameters<typeof fixture.release>) => (freeing = fixture.release(...args)),
+      };
+      renderApp('/tasks/web-w6n2', api);
+      const block = await screen.findByRole('region', { name: 'Where it stopped' });
+      const free = await enabledButton('Free it', block);
+      // Another agent claims it after the page drew, before the person presses.
+      Object.assign(task(api, 'web-w6n2')!, { assignee: 'agent:other' });
+
+      fireEvent.click(free);
+
+      await waitFor(() => expect(freeing).toBeDefined());
+      await expect(freeing).rejects.toBeInstanceOf(ApiError);
+      expect(task(api, 'web-w6n2')).toMatchObject({ status: 'in_progress', assignee: 'agent:other' });
+    });
+
+    it('is not shown while its holder works on it', async () => {
+      renderApp('/tasks/web-k3m9.2');
+      await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+      expect(screen.queryByRole('region', { name: 'Where it stopped' })).toBeNull();
+    });
+
+    it('leaves Free it off for a sign-in that may not free a task', async () => {
+      const limited = {
+        ...createFixtureTasksApi(),
+        capabilities: async () => ({ live: true, writable: true, operations: ['close', 'update'], reason: null }),
+      };
+      renderApp('/tasks/web-w6n2', limited);
+      const block = await screen.findByRole('region', { name: 'Where it stopped' });
+      await waitFor(() =>
+        expect((within(block).getByRole('button', { name: 'Free it' }) as HTMLButtonElement).disabled).toBe(true),
+      );
+    });
+  });
+
   it('shows a closed task as closed, with how it ended', async () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();

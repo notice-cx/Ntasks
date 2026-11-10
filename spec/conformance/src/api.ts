@@ -90,6 +90,8 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly duplicateOf?: string | null;
   readonly steps?: readonly Step[] | null;
   readonly closeAcceptance?: Acceptance | null;
+  /** In progress and held, with no holder activity for the server's period, or none recorded (STATE-16). */
+  readonly stalled?: boolean;
 };
 
 /** A close as done on a person's call: each criterion met or waived, and who passed it on. */
@@ -295,6 +297,8 @@ export type Decision =
   | { readonly kind: 'dismiss'; readonly reason?: string; readonly resolution?: string }
   | { readonly kind: 'approve'; readonly reason?: string; readonly proposalVersion?: string }
   | { readonly kind: 'dispute' }
+  /** Frees a task someone holds, on the person's own call (AUTH-9); `holder` is the holder the person was shown. */
+  | { readonly kind: 'release'; readonly holder?: string }
   | {
       readonly kind: 'accept';
       /** The numbers of the criteria the person found met, from 1. */
@@ -328,6 +332,8 @@ export interface Api {
   history(task: string): Promise<Outcome<readonly HistoryEvent[]>>;
   /** The ids of the project's ready tasks. */
   ready(project?: string): Promise<Outcome<readonly string[]>>;
+  /** The ids of the project's stalled tasks. */
+  stalled(project?: string): Promise<Outcome<readonly string[]>>;
   claim(
     task: string,
     options?: WriteOptions & { readonly work?: WorkDetails; readonly for?: string },

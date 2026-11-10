@@ -75,7 +75,47 @@ The tests in `test/` run the command against `test/fake-wrangler.ts`, a
 stand-in for wrangler and a Cloudflare account kept in a JSON file. They never
 reach Cloudflare.
 
-To release, raise `version` in `tools/cli/package.json` in a pull request.
-After it merges, a maintainer pushes the tag `v<version>` on that commit of
-`main`, and the Release workflow (`.github/workflows/release.yml`) checks and
-builds the repository and publishes `tools/cli/dist` to npm.
+### Releasing
+
+A release is the owner approving the CI run of the ntasks release pull
+request, merging the pull request, then pressing **Approve and deploy**. Agents
+never approve, merge or turn on auto-merge for a release pull request.
+
+After each push to `main`, the Release PRs workflow
+(`.github/workflows/release-please.yml`) runs
+[release-please](https://github.com/googleapis/release-please). While `main`
+holds a `feat`, `fix`, `perf` or `revert` commit or a breaking change made
+since the last release, it keeps one pull request open, titled
+`chore(main): release ntasks <version>`. The pull
+request raises `version` in `tools/cli/package.json` and in the MCP server's
+`SERVER_INFO`, and adds those commits to the root `CHANGELOG.md`. Before 1.0.0,
+a `feat` commit or a breaking change raises the minor version and any other
+commit the patch version. A commit counts for this package unless every file it
+changes is under one of the folders `exclude-paths` lists in
+`release-please-config.json`: the website, the docs, the protocol, the skill,
+the workflows and the tools other than `tools/cli`.
+
+Merging the pull request creates the tag `v<version>` and its GitHub release,
+then starts the Release workflow (`.github/workflows/release.yml`) on that tag.
+The workflow waits for the owner to approve the `npm` environment. It then
+checks and builds the repository and publishes `tools/cli/dist` to npm.
+
+The owner's steps:
+
+1. On the pull request `chore(main): release ntasks <version>`, open the
+   **Files changed** tab, click **Awaiting approval** at the top right, then
+   **Approve workflows to run**. GitHub holds the pull request's CI run until
+   someone approves it, because a workflow, not a person, opened the pull
+   request.
+2. When its checks pass, click **Merge when ready**, then **Confirm merge when
+   ready**, at the bottom of the **Conversation** tab.
+3. When the Release run waits for review (GitHub emails the owner), open it,
+   click **Review deployments**, tick **npm** and click **Approve and deploy**.
+
+When more changes reach `main` before the pull request merges, release-please
+rebuilds it, and the new CI run waits for approval again: repeat step 1.
+
+To run a failed or rejected publish again, open **Actions**, choose
+**Release**, click **Run workflow**, pick the tag `v<version>` under **Use
+workflow from** and click **Run workflow**. The workflow stops if it is run on a
+branch, or on a tag that does not name the version in `tools/cli/package.json`.

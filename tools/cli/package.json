@@ -1,6 +1,6 @@
 {
   "name": "@ntasks/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The ntasks command, published to npm as the package ntasks: `npx ntasks deploy` deploys Ntasks to a Cloudflare account and updates it.",
   "license": "AGPL-3.0-only",

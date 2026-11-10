@@ -269,9 +269,9 @@ describe('the Epics tab', () => {
 
   it('names the first day of the week as the server names it, whatever the time zone', () => {
     // A day alone, as the server sends it, is that calendar day, not the UTC midnight before it.
-    expect(sinceDay('2026-11-02', NOW)).toBe('Nov 2');
-    expect(sinceDay(null, NOW)).toBeNull();
-    expect(sinceDay('not a day', NOW)).toBeNull();
+    expect(sinceDay('2026-11-02', NOW, 'America/Los_Angeles')).toBe('Nov 2');
+    expect(sinceDay(null, NOW, 'UTC')).toBeNull();
+    expect(sinceDay('not a day', NOW, 'UTC')).toBeNull();
   });
 
   it('falls back to the task list when the project leaves the address', async () => {

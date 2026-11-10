@@ -43,6 +43,7 @@ import type {
   TaskField,
   TaskProject,
   TaskSearch,
+  WinsPage,
   TasksCapabilities,
   Workspace,
   WorkspaceMembers,
@@ -94,6 +95,10 @@ export interface TasksApi {
   fields(project: string, signal?: AbortSignal): Promise<ProjectFields>;
   /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
   changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
+  /** Seven days of wins: changes shipped, answers given and epics finished, in one project or every one this
+   * sign-in reaches. Without `before`, today and the six days before it; with it (YYYY-MM-DD), the seven
+   * days before that day. Days run midnight to midnight in `timeZone`, an IANA zone. */
+  wins(options: { project?: string; before?: string; timeZone?: string }, signal?: AbortSignal): Promise<WinsPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -126,6 +131,8 @@ export interface TasksApi {
   ): Promise<void>;
   /** Reopen an approval, or a task accepted as done, whose answer an agent recorded and the person disputes. */
   dispute(id: string, project: string): Promise<void>;
+  /** Free a task someone holds, on the person's own call: nobody holds it then, and a comment keeps where it stopped. Refused when someone other than `holder`, the holder the page showed, holds it now. */
+  release(id: string, project: string, holder: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Tick, untick, note or mark as stuck one step of a request to do steps. */
@@ -557,6 +564,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     search: (text, signal) => scope().search(text, signal),
     fields: (project, signal) => scope().fields(project, signal),
     changes: (after, signal) => scope().changes(after, signal),
+    wins: (options, signal) => scope().wins(options, signal),
     createTask: (input, options) => scope().createTask(input, options),
     updateTask: (id, project, edit, options) => scope().updateTask(id, project, edit, options),
     closeTask: (id, project, reason, options) => scope().closeTask(id, project, reason, options),
@@ -566,6 +574,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
     accept: (id, project, met, options) => scope().accept(id, project, met, options),
     dispute: (id, project) => scope().dispute(id, project),
+    release: (id, project, holder) => scope().release(id, project, holder),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
     markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
@@ -690,6 +699,18 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
     },
+    async wins({ project, before, timeZone }, signal) {
+      const params = new URLSearchParams();
+      if (project !== undefined) params.set('project', await projectId(project, signal));
+      if (before !== undefined) params.set('before', before);
+      if (timeZone !== undefined) params.set('timeZone', timeZone);
+      const query = params.size > 0 ? `?${params}` : '';
+      const page = await read<unknown>(`/api/tasks/wins${query}`, 'The wins', signal);
+      if (!isRecord(page) || !Array.isArray(page.wins) || !Array.isArray(page.days) || !isRecord(page.totals)) {
+        throw new UnreadableAnswer('The wins could not be read.');
+      }
+      return page as unknown as WinsPage;
+    },
     async search(text, signal) {
       const found = await read<unknown>(`/api/tasks/search?${new URLSearchParams({ q: text })}`, 'The search', signal);
       if (!isRecord(found) || !Array.isArray(found.tasks) || typeof found.total !== 'number') {
@@ -755,6 +776,9 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async dispute(id, project) {
       await act(id, project, 'dispute', {});
+    },
+    async release(id, project, holder) {
+      await act(id, project, 'release', { holder });
     },
     async resolveGate(id, project, reason, sending = {}) {
       const path = `/api/gates/${encodeURIComponent(id)}/resolve`;

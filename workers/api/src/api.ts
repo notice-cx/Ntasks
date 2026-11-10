@@ -17,6 +17,7 @@ import {
   chooseRoute,
   dismissRoute,
   disputeRoute,
+  releaseRoute,
   resolveRoute,
   respondRoute,
   stepRoute,
@@ -32,6 +33,7 @@ import {
   searchRoute,
   taskPath,
   taskRoute,
+  winsRoute,
   type ReadContext,
 } from './http/tasks.ts';
 import {
@@ -93,6 +95,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   '/api/tasks/search': { GET: searchRoute },
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
+  '/api/tasks/wins': { GET: winsRoute },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
   '/api/delivery': { POST: deliveryRoute },
@@ -137,6 +140,8 @@ function routesOf(pathname: string): Routes | null {
       return { POST: (context, url, request) => disputeRoute(context, url, request, taskId), scope: SCOPES.decide };
     case 'accept':
       return { POST: (context, url, request) => acceptRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'release':
+      return { POST: (context, url, request) => releaseRoute(context, url, request, taskId), scope: SCOPES.decide };
     default:
       return {
         GET: (context, url) => taskRoute(context, url, taskId),

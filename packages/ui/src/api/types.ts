@@ -205,6 +205,8 @@ export interface LiveTask {
   work?: TaskWork;
   /** When the assignee last changed or commented on the task, when the server sends it. */
   lastActivityAt?: string | null;
+  /** In progress and held, with no holder activity for a day or none recorded, as of the read, when the server sends it. */
+  stalled?: boolean;
 }
 
 /** An epic with its all-time child progress. */
@@ -252,6 +254,84 @@ export interface TaskSearch {
   /** How many tasks matched; `tasks` holds the most urgent of them. */
   total: number;
   tasks: FoundTask[];
+}
+
+/** A task a shipped change closed. */
+export interface WinTask {
+  readonly id: string;
+  readonly title: string;
+}
+
+/** A change that merged or went live: its pull request, or its commit when it has none, with the tasks it closed. */
+export interface ShippedWin {
+  readonly kind: 'shipped';
+  readonly at: string;
+  readonly projectId: string;
+  /** `merged`, `live`, or a stage this build does not know. */
+  readonly stage: string;
+  readonly pullRequest: string | null;
+  readonly commit: string | null;
+  readonly tasks: readonly WinTask[];
+}
+
+/** A person's answer to a task's choices. */
+export interface DecidedWin {
+  readonly kind: 'decided';
+  readonly at: string;
+  readonly projectId: string;
+  readonly id: string;
+  readonly title: string;
+  readonly option: string;
+  readonly label: string;
+  /** The person who answered. */
+  readonly by: string;
+}
+
+/** An epic closed as done, with how many of its tasks closed as done. */
+export interface FinishedWin {
+  readonly kind: 'finished';
+  readonly at: string;
+  readonly projectId: string;
+  readonly id: string;
+  readonly title: string;
+  readonly done: number;
+}
+
+export type Win = ShippedWin | DecidedWin | FinishedWin;
+
+/** One UTC day's wins, by kind. */
+export interface WinsDay {
+  /** YYYY-MM-DD. */
+  readonly day: string;
+  readonly shipped: number;
+  readonly decided: number;
+  readonly finished: number;
+}
+
+/** Seven days of wins (docs/api.md, "Wins"). */
+export interface WinsPage {
+  readonly readAt: string;
+  /** The time zone the days are cut in; an Ntasks older than API version 10 names none and cuts them in UTC. */
+  readonly timeZone?: string;
+  /** The first instant covered: the first day's midnight in `timeZone`. */
+  readonly from: string;
+  /** The instant after the last covered: the next day's midnight in `timeZone`. */
+  readonly to: string;
+  /** The `before` that reads the seven days before these, or null at the oldest the server keeps. */
+  readonly earlier: string | null;
+  readonly projects: number;
+  /** Whether any change shipped before `from`; when none did, merges may not have been recorded yet. */
+  readonly shippedBefore: boolean;
+  readonly totals: {
+    readonly shipped: number;
+    readonly decided: number;
+    readonly finished: number;
+    readonly approved: number;
+  };
+  /** Each day, oldest first. */
+  readonly days: readonly WinsDay[];
+  /** Every win, newest first. */
+  readonly wins: readonly Win[];
 }
 
 /** One change to a task, as the change feed lists it. */

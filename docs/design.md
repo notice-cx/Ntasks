@@ -227,8 +227,9 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
 `star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`,
-`building-2`, `arrow-up-down`, `arrow-up-narrow-wide` and
-`arrow-down-wide-narrow`.
+`building-2`, `arrow-up-down`, `arrow-up-narrow-wide`,
+`arrow-down-wide-narrow`, `chart-no-axes-column` and
+`git-commit-horizontal`.
 
 ## Symbols
 
@@ -264,8 +265,8 @@ task's last activity, when its holder last changed or commented on it:
 | Mark | Name | A task in progress shows it when |
 |---|---|---|
 | Blue disc in a faint blue ring | Active | its holder wrote to it within the last hour |
-| Blue ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than the Stalled after time |
-| Grey ring, half filled | Stalled | its holder has not written to it for the Stalled after time or more, or nothing is recorded |
+| Blue ring, half filled (the In progress mark) | Quiet | its holder last wrote to it an hour ago or more, and less than a day ago |
+| Grey ring, half filled | Stalled | its holder has not written to it for a day or more, or nothing is recorded: the server's rule, `isStalled` in `@ntasks/domain` |
 
 The marks differ in fill and lightness as well as colour, so they read apart
 without colour. They use Accent and greys only: amber, red and green keep
@@ -655,14 +656,20 @@ and survives Clear filters. The board holds every task it shows, so a new
 order reads nothing again; `list_tasks` takes the same orders as `sort` and
 `direction` (`@ntasks/domain`'s `taskComparator` is the one copy of the rule).
 
+### Where it stopped
+
+A stalled task's page shows, under its title, a block in the surface of a
+closed task's summary: a pause mark, Where it stopped, and how long its holder
+has done nothing on it; then the next step, branch, pull request and the
+holder's last comment, each on its own line; then Free it, a primary button,
+beside one line saying what freeing does. A board row of a stalled task says
+Stalled, with the holder's last activity, in place of Active.
+
 ### Live
 
 `/tasks/live` lists every task in progress under a `TopBar` titled Live. The bar
 holds each group's count after its activity mark (`6 active`, `3 quiet`,
-`50 stalled`, from 640 px wide) and, at its end, the Stalled after menu: a
-secondary button naming the time chosen, whose menu offers 4 hours, 1 day,
-3 days and 1 week with the one held ticked. The choice is kept in the
-browser's local storage, and 1 day is the default.
+`50 stalled`, from 640 px wide).
 
 The page is three groups, each a `GroupHeader` with its activity mark, its
 name, its count and, at its end from 640 px wide, what it holds in Text 3
@@ -733,6 +740,45 @@ open epic: how many wait for you and are blocked, how many are open, and how
 many closed this week. A project with neither epics nor such tasks shows
 `EmptyState`'s No epics in this project; a search that matches no epic, No
 epics match this search with Clear search.
+
+### Productivity
+
+`/tasks/productivity` shows what people and agents got done that matters,
+day by day, from `GET /api/tasks/wins` ([Wins](api.md#wins)). A win is a
+change that merged or went live (a pull request counts once, however many
+tasks it closed), an answer a person gave to a task's choices, or an epic
+closed as done. Tasks closed are never counted, and nobody is ranked. The
+`TopBar` titled Productivity says Last 7 days (from 640 px wide) and ends
+with the project menu: All projects, then each project, the one in view
+ticked; a project chosen is kept in the address as `?project=`.
+
+Under the bar, the seven days, today and the six before it in the person's
+time zone ([Dates](#dates)), form a strip
+of cells (`ol`, named Wins by day). Each cell names its day (`Tue 10`) and its
+count of wins, then one bar: shipped in green (Done) under decided in Text
+2, each part as tall as its count against the busiest day, and above it a
+green ring for each epic finished. A day with no wins says Nothing in Text 3;
+it is never red. Today's cell is ringed in Accent. Under the strip, the
+week's counts beside their colour keys (shipped, decided, epics finished),
+the approvals closed as done in Text 3, and in Text 3 the first day merges
+were recorded on when none shipped before.
+
+Then each day with wins, newest first, under a `GroupHeader` naming the day
+(`Tue, Nov 10`), its count and, from 640 px wide, its wins in words (`42
+shipped, 10 decided`). A day shows eight wins, then Show more, a `ghost`
+button with the count it adds. Each win is a `Row` ending in `RowAge`:
+
+| Win | Row |
+|---|---|
+| Shipped | The `git-merge` icon, its first task's `RowId` and title as a link, `and 2 more` when it closed more, the pull request's number as a link after `git-pull-request`, or else the commit's first seven characters after `git-commit-horizontal`, and Merged or Live |
+| Decided | The `split` icon, the Decision type's, `RowId`, the title as a link, `Chose` and the option's label, and the person's `Avatar` |
+| Epic finished | 48 px tall: the Done mark at 20 px, `RowId`, the title as a link in semibold, and `Epic finished · 33 tasks done` |
+
+At the foot, Show the 7 days before, a `ghost` button, reads the seven days
+before the oldest shown, back to eight weeks; there the foot says The feed
+reaches back 8 weeks. Seven days with no wins show `EmptyState`'s No wins in
+the last 7 days, and an earlier seven days with none a line in Text 3, No wins
+from Oct 28 to Nov 3.
 
 ### Projects, Members, Settings and the first workspace
 
@@ -813,6 +859,29 @@ Each action's key:
 | `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover, the composer or an open form |
+
+## Dates
+
+Every date a page shows is in the person's own time zone: the browser's, or
+the one the app is given (`timeZone` on `App`). `src/lib/dates.ts` is the one
+place that turns an instant into a day and a day into words, so a win at 6 pm
+in Los Angeles falls on that day there, not the next. A day is written as
+`Nov 6`, with the year when it is not this year's, or `Tue, Nov 10` where the
+weekday helps; how long ago something happened stays `2h`, `3d`.
+`packages/ui/test/productivity.test.tsx` fails when a page formats a date
+any other way.
+
+## Page titles
+
+Each page sets the browser tab's title with `usePageTitle`
+(`src/lib/page-title.tsx`), the most specific part first and `— Ntasks`
+last: a task's id then its title (`web-b2r6 · Fix the broken reset link …`),
+a view then its count then the one project in view (`Waiting for you (3) ·
+Example web app`), a search (`Search “sign-in”`), `Live (6)`, `Focus (2)`,
+`Productivity · Example docs`, `Settings`. What follows the first part is cut with an ellipsis so the title
+before `— Ntasks` stays within 60 characters; the first part is never cut.
+`NtasksApp`'s `onTitle` receives the titles in place of the document, so a
+host keeps its own tab title.
 
 ## Copy
 

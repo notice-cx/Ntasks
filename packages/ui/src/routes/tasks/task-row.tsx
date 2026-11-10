@@ -28,7 +28,7 @@ import { Button, IconButton } from '../../components/ui/button';
 import { Field, Input } from '../../components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
-import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
 import {
   fieldAvailable,
   operationAvailable,
@@ -39,7 +39,9 @@ import {
   verbReason,
 } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
-import { ageMs, calendarDay, formatAge, formatMinutes } from '../../lib/format';
+import { calendarDay, useTimeZone } from '../../lib/dates';
+import { ageMs, formatAge, formatMinutes } from '../../lib/format';
+import { activityOf } from '../../lib/live';
 import {
   isAgentActor,
   statusMarkFor,
@@ -99,7 +101,10 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
-  const until = mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs) : null;
+  const zone = useTimeZone();
+  // A park ends on the day the person picked, written as that day's start.
+  const until =
+    mark === 'parked' && task.deferUntil ? calendarDay(task.deferUntil.slice(0, 10), context.nowMs, zone) : null;
   // An epic's size is its children's, which its progress shows.
   const sized = mark === 'open' && task.ready && task.issueType !== 'epic';
   const resolution = task.status === 'closed' && task.resolution && task.resolution !== 'done' ? task.resolution : null;
@@ -107,6 +112,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const held = task.assignee !== null && task.status !== 'closed';
   const helper = held ? (task.for ?? null) : null;
   const active = held && task.lastActivityAt ? formatAge(ageMs(context.nowMs, task.lastActivityAt)) : null;
+  const stalled = held && activityOf(task, context.nowMs) === 'stalled';
   return (
     <>
       {type !== 'task' && type !== 'other' ? (
@@ -160,7 +166,12 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
           For <span className="text-ink-2">{helper}</span>
         </RowMeta>
       ) : null}
-      {active ? (
+      {stalled ? (
+        <RowMeta data-row-activity="stalled">
+          <ActivityMark activity="stalled" size={13} label={null} />
+          {active ? `Stalled, last active ${active} ago` : 'Stalled, nothing recorded'}
+        </RowMeta>
+      ) : active ? (
         <RowMeta data-row-activity="">
           <Activity aria-hidden />
           Active {active} ago

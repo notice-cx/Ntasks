@@ -1,0 +1,8 @@
+{
+  "added": "`timeZone` on `GET /api/tasks/wins`, as a parameter and in its answer: the days are cut at midnight in that time zone",
+  "routes": {
+    "GET /api/tasks/wins": {
+      "timeZone": "string"
+    }
+  }
+}

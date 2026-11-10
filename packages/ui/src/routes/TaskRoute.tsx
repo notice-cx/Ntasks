@@ -73,6 +73,7 @@ import {
 } from '../lib/task-model';
 import { ageMs, formatAge } from '../lib/format';
 import { usePaths } from '../lib/paths';
+import { activityOf } from '../lib/live';
 import { taskPrefix } from '../lib/task-path';
 import { cn } from '../lib/utils';
 import { AnswerForm } from './tasks/ask-actions';
@@ -81,7 +82,9 @@ import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
+import { WhereItStopped } from './tasks/where-it-stopped';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
+import { usePageTitle } from '../lib/page-title';
 
 const UNAVAILABLE = 'This sign-in cannot do this.';
 
@@ -104,6 +107,8 @@ export function TaskRoute() {
   const notFound =
     (catalog.data !== undefined && project === null) ||
     (detail.error instanceof ApiError && detail.error.status === 404);
+  // The id leads: people find a tab, a bookmark or a page in their history by it.
+  usePageTitle(id, notFound ? 'Not found' : task?.title);
   const path = (parent: { id: string; title: string | null } | null) => (
     <TaskPath
       id={id}
@@ -444,6 +449,17 @@ function TaskPage({
             <div className="rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border" data-task-panel="">
               {panelBody}
             </div>
+          ) : null}
+          {!closed && task.assignee && activityOf(task, nowMs) === 'stalled' ? (
+            <WhereItStopped
+              task={task}
+              heldBy={task.assignee}
+              holder={actorOf(task.assignee, null, actors).name}
+              comments={comments}
+              project={key}
+              nowMs={nowMs}
+              disabledReason={reasonFor(operationAvailable(capabilities, 'release'))}
+            />
           ) : null}
           {closed && !closedByPick ? (
             <ClosedSummary

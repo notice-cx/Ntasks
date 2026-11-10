@@ -12,8 +12,13 @@ export {
 } from './sort.ts';
 export type { SortDirection, SortFacts, TaskSort } from './sort.ts';
 export type { StepMarking } from './steps.ts';
+export { sameActor } from './actors.ts';
+export { releaseComment } from './release.ts';
+export type { FreedTask } from './release.ts';
 export { criteriaOf } from './criteria.ts';
 export { overlappingTouches } from './touches.ts';
+export { addDays, isDay, isTimeZone, zoneDays } from './days.ts';
+export type { ZoneDays } from './days.ts';
 export type { Criterion } from './criteria.ts';
 export {
   ACCEPTED_REASON,
@@ -27,12 +32,14 @@ export {
   isDependencyType,
   isExternalLinkKind,
   isFieldType,
+  isStalled,
   isTaskResolution,
   isTaskStatus,
   isTaskType,
   lacksProof,
   PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
+  STALLED_AFTER_MS,
   TASK_EVENT_KINDS,
   TASK_LIMITS,
   TASK_PRIORITY,
@@ -106,6 +113,8 @@ export type {
   TaskQuery,
   TaskRefusal,
   TaskWrite,
+  WinItem,
+  WinsRead,
   WorkItem,
   WriteResult,
 } from './engine.ts';

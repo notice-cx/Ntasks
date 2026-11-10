@@ -1,0 +1,14 @@
+{
+  "added": "`closed` and `kept` in the answer of `POST /api/github/:workspaceId`: the tasks in progress a merge closed, and those it left in progress, with why",
+  "routes": {
+    "POST /api/github/:workspaceId": {
+      "closed": "absent|array",
+      "closed[]": "object",
+      "closed[].id": "string",
+      "kept": "absent|array",
+      "kept[]": "object",
+      "kept[].id": "string",
+      "kept[].why": "string"
+    }
+  }
+}

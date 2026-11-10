@@ -66,6 +66,7 @@ since, the answer is refused with `409`, `task_refused` and
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
 | Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
 | Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |
+| Free a held task on the person's call | `POST /api/tasks/:id/release` | `projectId`, optionally `holder`, the holder the person's page showed ([AUTH-9](protocol.md#auth-9)) |
 | Dispute a relayed approval or acceptance | `POST /api/tasks/:id/dispute` | `projectId` |
 
 Each answers `{ task }`, the task as the decision left it. An answer, a
@@ -100,7 +101,7 @@ as deploying, once for each project, before it moves them.
 A task read answers its `for`, `work` and `lastActivityAt`, `pinned` on each
 comment, and `parent`, its parent context, or null when it has no parent
 ([STATE-17](protocol.md#state-17)). A claim answers the task alone, so a
-claim's `overlaps` ([STATE-18](protocol.md#state-18)), recording work details
+claim's `overlaps` ([STATE-19](protocol.md#state-19)), recording work details
 on a comment, claiming by pull request and the held-task list are MCP only.
 
 ### Outside the protocol

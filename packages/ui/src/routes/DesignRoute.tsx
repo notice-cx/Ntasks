@@ -102,6 +102,7 @@ import {
 } from '../lib/symbols';
 import { cn } from '../lib/utils';
 import { DecisionAnswer } from './tasks/decision-card';
+import { usePageTitle } from '../lib/page-title';
 
 type Theme = 'system' | 'light' | 'dark';
 
@@ -246,6 +247,7 @@ const WORKSPACES = IDENTITY_HUES.map((hue, index) => {
 });
 
 export default function DesignRoute() {
+  usePageTitle('Design system');
   const [theme, setTheme] = useState<Theme>('system');
   return (
     <ThemeScope theme={theme} className="min-h-screen bg-canvas text-ink" data-design-gallery="">

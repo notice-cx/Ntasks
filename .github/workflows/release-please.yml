@@ -1,0 +1,58 @@
+name: Release PRs
+
+# After each push to main, release-please keeps one release pull request for
+# each npm package, with its next version and changelog, from the Conventional
+# Commits since its last release (release-please-config.json). Merging a
+# release pull request is the release: this workflow then creates its tag and
+# GitHub release, and starts the package's publish workflow on the tag, which
+# waits for the owner's approval of the npm environment.
+on:
+  push:
+    branches: [main]
+
+# One run at a time, in push order, so two runs never edit a release pull
+# request or tag a release together.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Update release pull requests and tag merged ones
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The release branches, tags and GitHub releases.
+      contents: write
+      # The release pull requests and their labels.
+      pull-requests: write
+      issues: write
+      # Starting the publish workflows with workflow_dispatch.
+      actions: write
+    steps:
+      # Actions are pinned to a commit; Dependabot proposes each new release.
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # A tag created with GITHUB_TOKEN starts no workflow, but a
+      # workflow_dispatch event sent with it does. The publish workflow runs on
+      # the tag as its own top-level run, so npm's trusted publisher, which
+      # names release.yml or release-ui.yml and the environment npm, matches it.
+      - name: Start the publish workflow for each new release
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTASKS_TAG: ${{ steps.release.outputs.tag_name }}
+          UI_TAG: ${{ steps.release.outputs['packages/ui--tag_name'] }}
+        run: |
+          if [ -n "$NTASKS_TAG" ]; then
+            gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$NTASKS_TAG"
+          fi
+          if [ -n "$UI_TAG" ]; then
+            gh workflow run release-ui.yml --repo "$GITHUB_REPOSITORY" --ref "$UI_TAG"
+          fi
