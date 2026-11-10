@@ -85,16 +85,16 @@ export async function installationToken(appJwt: string, installationId: number):
 }
 
 /** The most pages of an installation's repositories read, 100 to a page. */
-const REPOSITORY_PAGES = 2;
+export const REPOSITORY_PAGES = 2;
 
 /**
  * The repositories an installation reaches, as lowercase `owner/name`, read
- * with its token; null when GitHub does not answer, or the installation
- * reaches more than REPOSITORY_PAGES pages of them, and so cannot be listed
- * cheaply. Each page is one request.
+ * with its token: `many` when it reaches more than REPOSITORY_PAGES pages of
+ * them, which cannot be listed cheaply, and null when GitHub does not
+ * answer. Each page is one request.
  */
 export async function installationRepositories(token: string): Promise<{
-  readonly repositories: ReadonlySet<string> | null;
+  readonly repositories: ReadonlySet<string> | 'many' | null;
   readonly requests: number;
 }> {
   const repositories = new Set<string>();
@@ -119,7 +119,7 @@ export async function installationRepositories(token: string): Promise<{
     }
     if (repositories.size >= total) return { repositories, requests: page };
   }
-  return { repositories: null, requests: REPOSITORY_PAGES };
+  return { repositories: 'many', requests: REPOSITORY_PAGES };
 }
 
 /** A pull request as GitHub answers it: whether it merged, its merge commit, and the branch it merged into and the repository's default one. */

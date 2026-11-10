@@ -9,7 +9,13 @@
  */
 import { COMMIT_SHA, type TaskEngine } from '@ntasks/domain';
 import { signInSecrets } from './access/config.ts';
-import { appToken, installationRepositories, installationToken, pullRequestState } from './access/github-api.ts';
+import {
+  appToken,
+  installationRepositories,
+  installationToken,
+  pullRequestState,
+  REPOSITORY_PAGES,
+} from './access/github-api.ts';
 import { githubAppOf, installationsByAccount } from './access/github-app.ts';
 import { SCOPES, type Principal } from './auth.ts';
 import { reportDelivery } from './delivery.ts';
@@ -65,22 +71,26 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
   if (jwt === null) return 0;
   // Each installation's token, and the repositories it reaches, so a task in
   // a repository an installation of selected repositories leaves out takes
-  // no place among the ones asked about.
+  // no place among the ones asked about. Installations come in the order of
+  // their newest waiting task, and stop where the budget would run out. One
+  // GitHub does not list is left for the next check; one that reaches too
+  // many repositories to list has every waiting task of its account read.
   let requests = 0;
-  const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | null }>();
+  const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | 'many' }>();
   for (const installation of new Set(pulls.map((pull) => pull.installation))) {
+    if (requests + 1 + REPOSITORY_PAGES >= REQUESTS) break;
     const token = await installationToken(jwt, installation);
     requests += 1;
     if (token === null) continue;
     const listed = await installationRepositories(token);
     requests += listed.requests;
-    reach.set(installation, { token, repositories: listed.repositories });
+    if (listed.repositories !== null) reach.set(installation, { token, repositories: listed.repositories });
   }
   const readable = pulls.flatMap((pull) => {
     const installation = reach.get(pull.installation);
     if (installation === undefined) return [];
     const { repositories } = installation;
-    return repositories === null || repositories.has(pull.repository.toLowerCase())
+    return repositories === 'many' || repositories.has(pull.repository.toLowerCase())
       ? [{ ...pull, token: installation.token }]
       : [];
   });
