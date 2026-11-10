@@ -4,7 +4,7 @@
  * ask, and the order every list uses. Carried over from NoticeOS's task board
  * so both apps rank and word the same tasks the same way.
  */
-import { TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
+import { actorIdentity, modelIdentity, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
 import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices, TaskStep } from '../api/types';
 
 export const IN_PROGRESS = 'in_progress';
@@ -181,10 +181,12 @@ export function closeNote(
 export function actorLabel(actor: string, actors?: readonly TaskActor[]): string {
   const found = actors?.find((person) => person.principalId === actor);
   if (found?.displayName.trim()) return found.displayName;
-  // The API's own prefixes (docs/sign-in.md): `agent:<name>`, `person:<name>`,
-  // and `service:<credential>/<agent>` for the agent a service acts for.
-  const named = /^(?:agent|person):(.+)$/.exec(actor) ?? /^service:[^/]+\/(.+)$/.exec(actor);
-  return named?.[1] ?? actor;
+  return actorIdentity(actor).name;
+}
+
+/** A model as a reader is shown it, such as Claude Opus 5.5 for `claude-opus-5.5`; null when none was named. */
+export function modelLabel(model: string | null | undefined): string | null {
+  return modelIdentity(model)?.name ?? null;
 }
 
 /**
@@ -209,15 +211,15 @@ export function closeAttribution(
 ): { by: string; model: string | null } | null {
   if (task.status !== 'closed' || task.closedAt === null) return null;
   // The server's own fields describe the current close; the metadata keys may describe an earlier one.
-  if (task.closedBy) return { by: task.closedBy, model: task.closedModel ?? null };
+  if (task.closedBy) return { by: task.closedBy, model: modelLabel(task.closedModel) };
   const by = metadataText(task.metadata, CLOSED_BY);
   const at = Date.parse(metadataText(task.metadata, CLOSED_AT) ?? '');
   if (by === null || !Number.isFinite(at) || Math.abs(at - Date.parse(task.closedAt)) > SAME_CLOSE_MS) return null;
-  return { by, model: metadataText(task.metadata, CLOSED_MODEL) };
+  return { by, model: modelLabel(metadataText(task.metadata, CLOSED_MODEL)) };
 }
 
 export function claimedModel(task: Pick<LiveTask, 'metadata' | 'assigneeModel'>): string | null {
-  return task.assigneeModel ?? metadataText(task.metadata, CLAIMED_MODEL);
+  return modelLabel(task.assigneeModel ?? metadataText(task.metadata, CLAIMED_MODEL));
 }
 
 /** A board row: a task with the project key it was read from. */

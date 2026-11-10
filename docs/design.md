@@ -318,8 +318,9 @@ and its own word.
 (headings) or 40 px. `avatarFace` decides what it shows. An actor is an
 agent when the API records it as one (`agent:<name>`, or `service:<name>`
 and `service:<name>/<agent>` for a service and the agent it acts for; see
-[Sign-in](sign-in.md)), when it named a model, or when the caller passes
-`agent`. Only an agent gets a mark:
+[Sign-in](sign-in.md)) or its name is one the old task hub recorded for an
+agent, such as `codex/root`, when it named a model, or when the caller
+passes `agent`. Only an agent gets a mark:
 
 - **Claude**, an agent whose name or model mentions Claude or Anthropic: the
   Simple Icons Claude mark in `#D97757`, on a ringed circle.

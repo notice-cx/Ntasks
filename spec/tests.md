@@ -130,6 +130,9 @@ protocol appears in neither table.
 | INV-11 | `workers/api/test/api/write-tools.test.ts` › "records which pull request merges first, on both tasks, holding neither out of ready work" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "reads its changes, newest first" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "names the closer and the claimer with the models they named" |
+| INV-13 | `packages/domain/test/actors.test.ts` › "gives every actor in spec/naming.json its kind and display name: $actor" |
+| INV-13 | `packages/domain/test/actors.test.ts` › "keys an agent and a person of the same name apart, and every spelling of one agent together" |
+| INV-13 | `packages/domain/test/actors.test.ts` › "gives every model in spec/naming.json its id and display name: $model" |
 | EXT-1 | `workers/api/test/engine/tasks.test.ts` › "merges metadata, removing a key set to null" |
 | EXT-2 | `workers/api/test/engine/fields.test.ts` › "refuses a key the project has used, retired or not, and a definition that breaks a rule" |
 | EXT-2 | `workers/api/test/engine/fields.test.ts` › "takes no new values, keeps the values tasks carry and their history, and lets a value be taken off" |

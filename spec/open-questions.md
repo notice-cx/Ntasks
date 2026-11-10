@@ -147,7 +147,11 @@ person, will add a second way to answer directly.
 
 **Should a model be verified?** <a id="oq-16"></a>
 ([AUTH-2](protocol.md#auth-2)) The model is whatever the agent says it runs
-as. No test checks the model recorded in a history event.
+as. No test checks the model recorded in a history event. A server keeps
+the words given and works out the model's id and display name from them
+([3.1.1](protocol.md#311-display-names)), so different spellings of one
+model are shown and counted as one; a model no rule knows is shown as
+given.
 
 ### OQ-17
 

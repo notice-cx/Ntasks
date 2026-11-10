@@ -423,10 +423,17 @@ describe('the sidebar', () => {
     ).toBe('/tasks?project=web');
     // The agents by the names the read gives them, and the person by theirs.
     expect(within(sidebar).getByRole('link', { name: 'Codex' }).getAttribute('href')).toBe(
-      '/tasks?assignee=agent%3Acodex',
+      '/tasks?assignee=agent%3ACodex',
     );
     expect(within(sidebar).getByRole('link', { name: FIXTURE_ACTOR })).toBeTruthy();
     expect(sidebar.querySelector('[data-brand-mark="codex"]')).not.toBeNull();
+  });
+
+  it("marks an agent's row while the board is filtered to it, under any of its names", async () => {
+    renderApp('/tasks?assignee=codex');
+    await screen.findByRole('link', { name: 'Codex' });
+    const sidebar = screen.getByRole('navigation', { name: 'Ntasks' });
+    expect(within(sidebar).getByRole('link', { name: 'Codex' }).getAttribute('aria-current')).toBe('page');
   });
 
   it('opens the waiting view, which shows only what waits for you', async () => {

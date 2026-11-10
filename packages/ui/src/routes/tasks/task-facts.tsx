@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Layers, Moon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { TASK_LIMITS } from '@ntasks/domain';
+import { actorKey, TASK_LIMITS } from '@ntasks/domain';
 import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '../../api/types';
 import { Fact, LinkedFact, type FactChoice, type FactEditor } from '../../components/Fact';
 import { Avatar } from '../../components/ui/avatar';
@@ -108,6 +108,22 @@ const ESTIMATE_PRESETS: FactChoice[] = [30, 60, 120, 240, 480].map((minutes) => 
 /** The word a cleared value takes, as an absent fact reads. */
 const NONE = 'None';
 
+/**
+ * Who the assignee picker offers: one spelling for each sender a reader sees,
+ * the holder's own for the holder, else the one current sign-ins write (with
+ * a prefix) over an imported one.
+ */
+function oneSpellingEach(actors: readonly string[], holder: string | null): string[] {
+  const chosen = new Map<string, string>();
+  for (const actor of [...new Set(actors)].sort()) {
+    const key = actorKey(actor);
+    const kept = chosen.get(key);
+    if (kept === undefined || (!kept.includes(':') && actor.includes(':'))) chosen.set(key, actor);
+  }
+  if (holder) chosen.set(actorKey(holder), holder);
+  return [...chosen.values()].sort();
+}
+
 /** An actor as a menu draws them: their avatar, and their name. */
 function actorChoice(actor: string, actors: readonly TaskActor[] | undefined): FactChoice {
   const name = actorLabel(actor, actors);
@@ -153,9 +169,10 @@ export function TaskFacts({
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
   const helper = task.assignee ? (task.for ?? null) : null;
-  const people = [...new Set([...siblings.flatMap((row) => (row.assignee ? [row.assignee] : [])), task.assignee ?? ''])]
-    .filter(Boolean)
-    .sort();
+  const people = oneSpellingEach(
+    siblings.flatMap((row) => (row.assignee ? [row.assignee] : [])),
+    task.assignee,
+  );
 
   const labels = [...new Set([...siblings.flatMap((row) => row.labels), ...task.labels])].sort();
   const parked = (task.deferUntil ?? '').slice(0, 10);

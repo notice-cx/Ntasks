@@ -33,7 +33,7 @@ with how many more there are and the `list_tasks` call that lists them.
 | `workspace` | The workspace the call acts in, from `list_workspaces`. A sender that reaches one workspace may leave it out |
 | `project` | A project by its id, key or prefix. A tool that names a task takes the project from the task id's prefix |
 | `idempotency_key` | The caller's key for this change ([INV-3](protocol.md#inv-3)) |
-| `model` | The model the agent runs as, recorded beside its actor ([INV-12](protocol.md#inv-12)) |
+| `model` | The model the agent runs as, by its id such as `claude-opus-5-5`, recorded beside its actor as given ([INV-12](protocol.md#inv-12)) and shown by its display name ([3.1.1](protocol.md#311-display-names)) |
 | `detail` | `full` to answer with the whole task; left out, a write answers with the task's id, its `version` and the fields it changed |
 
 **MCP-2.** <a id="mcp-2"></a>A write sent without `idempotency_key` SHOULD
