@@ -3,6 +3,7 @@
  * functions. src/components/ui/symbols.tsx and avatar.tsx draw what these
  * return; docs/design.md lists every symbol and when it is used.
  */
+import { actorIdentity } from '@ntasks/domain';
 import type { LiveTask } from '../api/types';
 import { IDENTITY_HUES, type IdentityHue } from './design-tokens';
 import { IN_PROGRESS, isGate, PARKED, PRIORITY_BANDS, priorityBand, waitsOnPerson, waitsOnTask } from './task-model';
@@ -142,9 +143,10 @@ const CODEX = /codex|openai|\bgpt\b/i;
 const AGENT_ACTOR = /^(?:agent|service):/;
 const PERSON_ACTOR = /^person:/;
 
-/** Whether the API records this actor as an agent or a service rather than a person. */
+/** Whether this actor is an agent or a service rather than a person, as its prefix or an imported name says. */
 export function isAgentActor(actor: string): boolean {
-  return AGENT_ACTOR.test(actor);
+  const { kind } = actorIdentity(actor);
+  return kind === 'agent' || kind === 'service';
 }
 
 /**

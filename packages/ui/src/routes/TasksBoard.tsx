@@ -31,6 +31,7 @@ import { fieldMatches, filterValueText, isKnownFieldType } from '../lib/custom-f
 import { ageMs, fieldKeyName, formatAge, formatInt } from '../lib/format';
 import { composeRequested, COMPOSE_STATE, searchRequested } from '../lib/page-state';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, type StatusMark as StatusMarkKey } from '../lib/symbols';
+import { actorKey } from '@ntasks/domain';
 import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '../lib/task-model';
 import { WaitingGroup } from './tasks/ask-queue';
 import { DELIVERY_GROUPS, DeliveryGroup, useDeliveryWaits } from './tasks/delivery-groups';
@@ -83,12 +84,19 @@ function viewOf(value: string | null): View {
   return VIEWS.find((view) => view === value) ?? 'all';
 }
 
+/** The name of whoever a filter names, as one of their tasks shows them; a filter names them by any spelling. */
+function holderLabel(assignee: string, tasks: readonly BoardTask[]): string {
+  const held = tasks.find((task) => task.assignee !== null && actorKey(task.assignee) === actorKey(assignee));
+  return held?.assignee ? actorLabel(held.assignee, held.actors) : actorLabel(assignee);
+}
+
 /**
  * The board, at the base path itself: every project's tasks on one board,
  * grouped by status, with what waits for you first and answered in place.
  * The view, the search and the filters are the address, so a narrowed board
  * is a link; `?new=1` opens the composer.
  */
+
 export function TasksBoard() {
   const now = useNow();
   const [params, setParams] = useSearchParams();
@@ -585,9 +593,10 @@ function FilterMenu({
   const set =
     FILTER_NAMES.filter((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all')).length +
     Object.keys(fieldFilters).length;
+  // Keyed as assigneeCounts is: one option per sender, whatever names their tasks were recorded under.
   const names = new Map(
     board.allTasks.flatMap((task) =>
-      task.assignee ? [[task.assignee, actorLabel(task.assignee, task.actors)] as const] : [],
+      task.assignee ? [[actorKey(task.assignee), actorLabel(task.assignee, task.actors)] as const] : [],
     ),
   );
   // A retired field is offered while a filter by it holds, so its filter can be changed as well as cleared.
@@ -641,7 +650,10 @@ function FilterMenu({
           </Select>
         </Field>
         <Field label="Assignee">
-          <Select value={filters.assignee} onChange={(event) => onPick('assignee', event.target.value)}>
+          <Select
+            value={filters.assignee === 'all' ? 'all' : actorKey(filters.assignee)}
+            onChange={(event) => onPick('assignee', event.target.value)}
+          >
             <option value="all">Anyone</option>
             {[...board.assigneeCounts.keys()].sort().map((actor) => (
               <option key={actor} value={actor}>
@@ -778,10 +790,7 @@ function ActiveFilters({
   onClear: () => void;
 }) {
   const projectName = board.available.find((project) => project.key === filters.project)?.name ?? filters.project;
-  const assignee =
-    filters.assignee === 'all'
-      ? null
-      : actorLabel(filters.assignee, board.allTasks.find((task) => task.assignee === filters.assignee)?.actors);
+  const assignee = filters.assignee === 'all' ? null : holderLabel(filters.assignee, board.allTasks);
   const statusLabel =
     filters.status === 'closed'
       ? 'Done'

@@ -35,13 +35,16 @@ function task(fields: Partial<BoardTask>): BoardTask {
 const blocks = (id: string, status: string | null) => ({ id, type: 'blocks', title: null, status });
 
 describe("an actor's name", () => {
-  it('is the name the read gives it, else the name inside the API’s prefix', () => {
-    expect(actorLabel('agent:codex', [{ principalId: 'agent:codex', displayName: 'Codex' }])).toBe('Codex');
+  it('is the name the read gives it, else its display name', () => {
+    expect(actorLabel('agent:build-bot', [{ principalId: 'agent:build-bot', displayName: 'Build Bot' }])).toBe(
+      'Build Bot',
+    );
     expect(actorLabel('agent:build-bot')).toBe('build-bot');
+    expect(actorLabel('agent:Claude Code (ntasks)')).toBe('Claude Code');
     expect(actorLabel('service:noticeos/outcome-filer')).toBe('outcome-filer');
     expect(actorLabel('person:agent:x')).toBe('agent:x');
     expect(actorLabel('Example Owner')).toBe('Example Owner');
-    expect(actorLabel('service:noticeos')).toBe('service:noticeos');
+    expect(actorLabel('service:noticeos')).toBe('noticeos');
   });
 });
 
@@ -141,7 +144,7 @@ describe('the people in the sidebar', () => {
       now,
     );
     expect(people.map((person) => [person.name, person.live, person.model])).toEqual([
-      ['codex', true, 'codex-example'],
+      ['Codex', true, 'codex-example'],
       ['Example Owner', false, null],
       ['gemini', false, null],
     ]);
@@ -179,5 +182,41 @@ describe('a page key', () => {
     expect(isShortcut({ ...event, target: host }, 'c')).toBe(false);
     root.remove();
     host.remove();
+  });
+});
+
+describe('one agent recorded under several names', () => {
+  const spellings = ['claude', 'claude/fable-lead', 'agent:Claude Code (ntasks)', 'service:demo/claude'];
+  const held = spellings.map((assignee, index) =>
+    task({ id: `web-${index + 1}`, assignee, assigneeModel: index === 2 ? 'claude-opus-5.5' : null }),
+  );
+  const project = { projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web' };
+  const reads = new Map([
+    [
+      'web',
+      {
+        data: { project: 'web', prefix: 'web', repo: '', readAt: '2026-11-10T00:00:00Z', tasks: held, epics: [] },
+        error: null,
+      },
+    ],
+  ]);
+
+  it('is listed once in the sidebar, by its product, with its model by name', () => {
+    const people = peopleOf(
+      [...held, task({ id: 'web-9', assignee: 'Example Owner' })],
+      Date.parse('2026-11-10T12:00:00Z'),
+    );
+    expect(people.map((person) => [person.name, person.model])).toEqual([
+      ['Claude Code', 'Claude Opus 5.5'],
+      ['Example Owner', null],
+    ]);
+  });
+
+  it('is counted once in the assignee filter, and a filter by any of its names keeps all its tasks', () => {
+    expect([...readBoard([project], reads, NO_FILTERS).assigneeCounts]).toEqual([['agent:Claude Code', 4]]);
+    for (const assignee of ['agent:Claude Code', 'service:demo/claude']) {
+      const read = readBoard([project], reads, { ...NO_FILTERS, assignee });
+      expect(read.rows.map((row) => row.id).sort()).toEqual(['web-1', 'web-2', 'web-3', 'web-4']);
+    }
   });
 });

@@ -4,6 +4,7 @@
  * filters keep. A project whose read failed is named as such and counted as
  * missing, never as empty.
  */
+import { actorKey } from '@ntasks/domain';
 import type { FieldFilters, FoundTask, LiveTasksPayload, TaskProject } from '../api/types';
 import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
@@ -189,7 +190,7 @@ export function keptByFilters(
     (filters.status === 'all' || status === filters.status) &&
     (filters.priority === 'all' || priorityBand(task.priority) === filters.priority) &&
     (filters.label === '' || task.labels.some((label) => label.toLowerCase().includes(filters.label.toLowerCase()))) &&
-    (filters.assignee === 'all' || (task.assignee ?? '') === filters.assignee)
+    (filters.assignee === 'all' || (task.assignee !== null && actorKey(task.assignee) === actorKey(filters.assignee)))
   );
 }
 
@@ -227,7 +228,10 @@ export function readBoard(
   const priorityCounts = new Map<string, number>();
   const assigneeCounts = new Map<string, number>();
   for (const task of allTasks) {
-    if (task.assignee) assigneeCounts.set(task.assignee, (assigneeCounts.get(task.assignee) ?? 0) + 1);
+    if (task.assignee) {
+      const key = actorKey(task.assignee);
+      assigneeCounts.set(key, (assigneeCounts.get(key) ?? 0) + 1);
+    }
     if (!isWork(task)) continue;
     const status = filterStatus(task);
     if (status !== null) statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);

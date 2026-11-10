@@ -14,6 +14,7 @@ import { NO_FILTERS } from '../lib/board-read';
 import { activeNow } from '../lib/live';
 import { SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
 import { isAgentActor } from '../lib/symbols';
+import { actorKey } from '@ntasks/domain';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 
@@ -32,8 +33,10 @@ export function peopleOf(tasks: readonly BoardTask[], nowMs: number): Person[] {
   const people = new Map<string, Person>();
   for (const task of tasks) {
     if (!task.assignee || task.status === 'closed') continue;
-    const known = people.get(task.assignee);
-    people.set(task.assignee, {
+    // One row per sender a reader sees, whatever name each of its tasks was recorded under.
+    const key = actorKey(task.assignee);
+    const known = people.get(key);
+    people.set(key, {
       actor: task.assignee,
       name: known?.name ?? actorLabel(task.assignee, task.actors),
       model: known?.model ?? claimedModel(task),
