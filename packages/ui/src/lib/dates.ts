@@ -47,6 +47,18 @@ export function useTimeZone(): string {
   return useContext(TimeZone) ?? browserTimeZone();
 }
 
+/** The time zone set above, or null where none is. */
+export function useGivenTimeZone(): string | null {
+  return useContext(TimeZone);
+}
+
+/** Every time zone this browser knows, by IANA name, for a person to choose from. Browsers list the
+ * places' zones without UTC itself, which is offered too. */
+export function timeZoneNames(): readonly string[] {
+  const known = (Intl as { supportedValuesOf?: (key: 'timeZone') => string[] }).supportedValuesOf?.('timeZone') ?? [];
+  return [...new Set([...(known.length > 0 ? known : [browserTimeZone()]), 'UTC'])];
+}
+
 /** The day `addDays` days after the one `nowMs` falls on in `zone`: today, tomorrow, in a week. */
 export function dayFrom(nowMs: number, zone: string, add = 0): string {
   return addDays(dayIn(nowMs, zone), add);

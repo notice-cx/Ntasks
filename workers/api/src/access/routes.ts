@@ -8,6 +8,7 @@
  * here is in wrangler.jsonc's run_worker_first.
  */
 import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from '@better-auth/oauth-provider';
+import { isTimeZone } from '@ntasks/domain';
 import { lacking } from '../api.ts';
 import { SCOPES } from '../auth.ts';
 import { json } from '../http/respond.ts';
@@ -738,7 +739,8 @@ async function accessApi(request: Request, env: AccessEnv, url: URL): Promise<Re
   const principal = verification.principal;
   const path = url.pathname.slice(ACCESS_API.length);
   if (path === '/me') {
-    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+    if (request.method === 'PATCH') return await saveTimeZone(request, env, principal);
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, PATCH' });
     return json(describe(principal), 200);
   }
   // Managing access is a person's own act in their own browser, never an
@@ -1090,5 +1092,39 @@ function describe(principal: Principal): Record<string, unknown> {
             scopes: reach.scopes,
           },
         };
-  return { kind: principal.kind, name: principal.name, deploymentAdmin, projects, ...app };
+  const zone = principal.kind === 'person' ? { timeZone: principal.timeZone ?? null } : {};
+  return { kind: principal.kind, name: principal.name, deploymentAdmin, projects, ...zone, ...app };
+}
+
+/**
+ * PATCH /api/access/me saves the time zone a person chose in Settings, an
+ * IANA name, or forgets it with null so their browser's is used again. It
+ * answers as GET /api/access/me does. Only a person has one.
+ */
+async function saveTimeZone(request: Request, env: AccessEnv, principal: Principal): Promise<Response> {
+  if (principal.kind !== 'person') {
+    return json({ error: 'person_only', detail: 'only a person has a time zone, not an agent or a service' }, 403);
+  }
+  const body = await jsonBody(request, 'time zone');
+  if (typeof body === 'string') return json({ error: 'invalid_request', detail: body }, 400);
+  const unknown = Object.keys(body).filter((key) => key !== 'timeZone');
+  if (unknown.length > 0) {
+    return json({ error: 'invalid_request', detail: `unknown ${unknown.join(', ')}; send timeZone` }, 400);
+  }
+  const zone = body.timeZone;
+  if (zone !== null && !isTimeZone(zone)) {
+    return json(
+      {
+        error: 'invalid_request',
+        detail: 'timeZone is an IANA time zone, such as America/Los_Angeles, or null for the browser’s',
+        field: 'timeZone',
+      },
+      400,
+    );
+  }
+  await env.DB.prepare('UPDATE auth_user SET time_zone = ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(zone, new Date().toISOString(), principal.userId)
+    .run();
+  const { timeZone: _, ...rest } = principal;
+  return json(describe(zone === null ? rest : { ...rest, timeZone: zone }), 200);
 }

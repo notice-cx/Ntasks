@@ -945,7 +945,7 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 10.
+field can hold is added. This is version 11.
 
 | Version | Added |
 |---|---|
@@ -959,6 +959,7 @@ field can hold is added. This is version 10.
 | 8 | `stalled` on a task, `POST /api/tasks/:id/release` ([below](#a-persons-decisions)), and `release` among a person's `operations` in `GET /api/tasks/capabilities` |
 | 9 | `GET /api/tasks/wins` ([above](#wins)) |
 | 10 | `timeZone` on `GET /api/tasks/wins`, as a parameter and in its answer ([above](#wins)) |
+| 11 | `timeZone` in `GET /api/access/me`, and `PATCH /api/access/me`, which saves it ([Sign-in](sign-in.md#routes)) |
 
 | Where | What it holds |
 |---|---|

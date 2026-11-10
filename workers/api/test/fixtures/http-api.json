@@ -689,5 +689,21 @@
         "timeZone": "string"
       }
     }
+  },
+  {
+    "version": 11,
+    "shapes": {},
+    "routes": {
+      "GET /api/access/me": {
+        "timeZone": "absent|null|string"
+      },
+      "PATCH /api/access/me": {
+        "kind": "string",
+        "name": "string",
+        "deploymentAdmin": "boolean",
+        "projects": "string",
+        "timeZone": "null|string"
+      }
+    }
   }
 ]

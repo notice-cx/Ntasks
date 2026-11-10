@@ -208,6 +208,29 @@ describe("the viewer's time zone", () => {
     expect(groupOf(document.querySelector('[data-wins-row="decided"]'))).toBe('Tue, Nov 10');
   });
 
+  it('regroups the feed when the person chooses a time zone in Settings, and saves it with their account', async () => {
+    const api = answered();
+    renderApp('/tasks/settings', api);
+    const pick = async (zone: string) => {
+      const select = (await screen.findByLabelText('Your time zone')) as HTMLSelectElement;
+      await waitFor(() => expect(select.disabled).toBe(false));
+      fireEvent.change(select, { target: { value: zone } });
+      await waitFor(async () => expect((await api.account()).timeZone).toBe(zone));
+    };
+    const decidedDay = async () => {
+      fireEvent.click(screen.getByRole('link', { name: 'Productivity' }));
+      await screen.findByRole('list', { name: 'Wins by day' });
+      await waitFor(() => expect(document.querySelector('[data-wins-row="decided"]')).not.toBeNull());
+      return groupOf(document.querySelector('[data-wins-row="decided"]'));
+    };
+    await pick('America/Los_Angeles');
+    expect(await decidedDay()).toBe('Mon, Nov 9');
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    await pick('UTC');
+    await waitFor(async () => expect(await decidedDay()).toBe('Tue, Nov 10'));
+    // Two pages and a list of every time zone, rendered twice.
+  }, 20_000);
+
   it('every date the pages show goes through lib/dates.ts', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     // Days and their words come from lib/dates.ts; the fixture's invented data may build its own dates.

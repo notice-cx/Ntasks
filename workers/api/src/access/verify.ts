@@ -28,6 +28,7 @@
  * consent, a grant, a membership or a credential cuts the sender off at its
  * next request.
  */
+import { isTimeZone } from '@ntasks/domain';
 import { COOKIE_PREFIX } from './auth.ts';
 import { isSecure, originOf, signInSecrets, storedOrigin, type Secrets, type SignInSecrets } from './config.ts';
 import { base64url, fromHex, sameBytes, sha256, verifyCookieSignature } from './crypto.ts';
@@ -199,6 +200,12 @@ function personColumns(user: string): string {
          (SELECT origin FROM access_github_app) AS stored_origin`;
 }
 
+/** A person's chosen time zone, when it is one this runtime knows; a name a
+ * runtime update dropped leaves the choice to their browser again. */
+function timeZoneOf(zone: string | null): { timeZone?: string } {
+  return isTimeZone(zone) ? { timeZone: zone } : {};
+}
+
 /** The deployment's origin: the one the secrets name, else the stored app's as a query read it. */
 function originFrom(secrets: Secrets, stored: string | null): string | null {
   return secrets.app?.origin ?? originOf(stored);
@@ -273,7 +280,7 @@ async function verifySession(
   if (signature.length !== 44 || !(await verifyCookieSignature(token, signature, secrets.secret))) return null;
   const row = await db
     .prepare(
-      `SELECT s.user_id, u.name, ${personColumns('s.user_id')},
+      `SELECT s.user_id, u.name, u.time_zone, ${personColumns('s.user_id')},
          (SELECT json_group_array(json_array(m.workspace_id, w.name, m.role))
            FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
            WHERE m.user_id = s.user_id) AS memberships
@@ -284,6 +291,7 @@ async function verifySession(
     .first<{
       user_id: string;
       name: string;
+      time_zone: string | null;
       github_ids: string | null;
       recorded_admin: number;
       stored_origin: string | null;
@@ -302,6 +310,7 @@ async function verifySession(
     name: displayName(row.name, 'owner'),
     admin,
     memberships,
+    ...timeZoneOf(row.time_zone),
   });
   return { principal, origin };
 }
@@ -324,7 +333,7 @@ async function verifyOAuthToken(
   const row = await db
     .prepare(
       `SELECT t.client_id, t.user_id, t.scopes, t.resources, c.name AS client_name, c.reference_id,
-         u.name AS person_name,
+         u.name AS person_name, u.time_zone,
          (SELECT json_group_array(json_array(g.workspace_id, w.name, g.project_id, g.access))
            FROM access_agent_grants g
            JOIN workspace_members m ON m.workspace_id = g.workspace_id AND m.user_id = g.user_id
@@ -350,6 +359,7 @@ async function verifyOAuthToken(
       client_name: string | null;
       reference_id: string | null;
       person_name: string | null;
+      time_zone: string | null;
       grants: string | null;
       app_membership: string | null;
       github_ids: string | null;
@@ -389,6 +399,7 @@ function appPerson(
     readonly user_id: string;
     readonly client_name: string | null;
     readonly person_name: string | null;
+    readonly time_zone: string | null;
     readonly app_membership: string | null;
   },
   scopes: readonly string[],
@@ -402,6 +413,7 @@ function appPerson(
     name: displayName(row.person_name, 'owner'),
     admin: false,
     memberships,
+    ...timeZoneOf(row.time_zone),
     app: Object.freeze({
       clientId: row.client_id,
       name: displayName(row.client_name, 'app'),

@@ -79,6 +79,8 @@ export interface TasksApi {
   createWorkspace(name: string, options?: WriteOptions): Promise<Workspace>;
   /** Only the workspace's owners may rename it. */
   renameWorkspace(workspaceId: string, name: string, options?: WriteOptions): Promise<Workspace>;
+  /** Saves the time zone dates are shown in for the person signed in, an IANA name; null uses the browser's. */
+  setTimeZone(timeZone: string | null): Promise<Account>;
   capabilities(signal?: AbortSignal): Promise<TasksCapabilities>;
   projects(signal?: AbortSignal): Promise<readonly TaskProject[]>;
   /** One project's board: unfinished tasks and the last week's closes; with
@@ -172,7 +174,7 @@ export interface TasksApi {
 /** The calls made in one workspace. */
 type WorkspaceCalls = Omit<
   TasksApi,
-  'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace' | 'renameWorkspace'
+  'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace' | 'renameWorkspace' | 'setTimeZone'
 >;
 
 /** Where the owner signs in: the Worker's own page, outside this app. */
@@ -362,6 +364,8 @@ function readAccount(payload: unknown): Account {
   return {
     name: typeof payload.name === 'string' ? payload.name : '',
     deploymentAdmin: payload.deploymentAdmin === true,
+    // An Ntasks older than API version 11 names none.
+    timeZone: typeof payload.timeZone === 'string' ? payload.timeZone : null,
   };
 }
 
@@ -555,6 +559,10 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
       const unreadable = 'The workspace was renamed, but the answer could not be read.';
       const renamed = await answerJson(response, unreadable);
       return readWorkspace(isRecord(renamed) ? renamed.workspace : null, unreadable);
+    },
+    async setTimeZone(timeZone) {
+      const response = await writeJson(fetch, 'PATCH', '/api/access/me', { timeZone }, 'The time zone');
+      return readAccount(await answerJson(response, 'The time zone was saved, but the answer could not be read.'));
     },
     capabilities: (signal) => scope().capabilities(signal),
     projects: (signal) => scope().projects(signal),

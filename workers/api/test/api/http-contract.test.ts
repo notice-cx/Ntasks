@@ -87,6 +87,9 @@ async function drive(): Promise<readonly Sample[]> {
 
   await as('GET /api/version', '/api/version');
   await as('GET /api/access/me', '/api/access/me');
+  await as('PATCH /api/access/me', '/api/access/me', { timeZone: 'America/Los_Angeles' });
+  await as('GET /api/access/me', '/api/access/me');
+  await as('PATCH /api/access/me', '/api/access/me', { timeZone: null });
 
   const { project } = (await as('POST /api/tasks/projects', '/api/tasks/projects', {
     name: 'Contract',

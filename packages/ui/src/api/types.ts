@@ -499,6 +499,8 @@ export interface Account {
   name: string;
   /** One of the deployment's admins, who alone create workspaces. */
   deploymentAdmin: boolean;
+  /** The time zone the person chose in Settings, an IANA name; null uses the browser's. */
+  timeZone: string | null;
 }
 
 /** A new project, as `POST /api/tasks/projects` takes it. */
