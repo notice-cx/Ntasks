@@ -826,6 +826,63 @@ the tasks it names, so their tasks go live without anyone ticking it. It does
 so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
+A merge GitHub made before the task closed sends its event too early to move
+the task, so the workspace's task store also asks GitHub itself, as the app:
+
+- about 5 seconds after a task closes as done with a pull request;
+- when an owner installs the app, for the tasks already waiting for a merge,
+  such as the ones closed before GitHub was connected.
+
+Each check reads the pull requests of the newest tasks waiting for a merge in
+repositories an installation reaches, and moves each one merged into its
+repository's default branch to `merged`, with its merge commit. An
+installation on all of its account's repositories reaches every one; for an
+installation on selected repositories, the check lists them first, up to 200,
+and reads only pull requests in the ones listed. It makes at most 45 requests to GitHub, within the free plan's 50
+requests to other servers, so a check reads up to about 40 pull requests and
+the next close checks the rest. It signs in to GitHub with the app's private
+key.
+
+- A delivery is read only when its `X-Hub-Signature-256` header is the
+  HMAC-SHA-256 of its body under the app's webhook secret, or the secret
+  saved by hand, compared in constant time. Without the header the answer
+  is `401` with `signature_required`. With a signature that does not match,
+  for a workspace with no app and no secret or one that does not exist, it
+  is `401` with `bad_signature`, the same answer in each case.
+- Anyone can install a GitHub App made public, which an app must be to be
+  installed on an organization as well as an account. So the app's events
+  are read only from an installation that an owner of the workspace made:
+  GitHub's `installation` event names the GitHub account that made it, and
+  Ntasks records the installation when that account is one an owner signs in
+  with. Made by anyone else, it answers `403` with `not_an_owner`, and every
+  event from an installation not recorded answers `403` with
+  `unknown_installation`. An installation removed or suspended in GitHub is
+  forgotten.
+- A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
+  does, and a merge also with `closed` and `kept` when it closed or kept a
+  task in progress ([below](#work-still-in-progress-when-its-pull-request-merges)).
+  When its event moves nothing, such as GitHub's `ping`, an
+  installation, a pull request closed without merging, a check that is not a
+  deploy, or another event, the answer also holds `ignored`, a sentence
+  saying why. GitHub shows each answer under the app's, or the webhook's,
+  Recent Deliveries.
+- Each move and each close is recorded in the task's history under
+  `service:GitHub`.
+- A task never moves back, and a task a merge closed is no longer in
+  progress, so a delivery sent again, by GitHub or with Redeliver, moves and
+  closes nothing twice.
+- A pull request's URL names its repository, so a merge moves only the tasks
+  of that pull request, whichever repository sends it.
+- A deploy moves the tasks whose commit or merge commit is the commit it ran
+  on. A build that ships several merges at once names only the last, so the
+  tasks of the merges before it stay at `merged`.
+- A delivery is at most 1 MB, sent as `application/json` or as GitHub's form
+  (`application/x-www-form-urlencoded`).
+- The app's webhook secret and private key are kept in D1, encrypted under a
+  key derived from `AUTH_SECRET`. After `AUTH_SECRET` changes they no longer
+  decrypt and every delivery is refused, until the owner presses
+  **Disconnect**, deletes the old app on its GitHub page and connects again.
+
 #### Work still in progress when its pull request merges
 
 A merge also closes the work it finishes when the agent that did it has
@@ -848,46 +905,6 @@ moves anything:
 
 The answer lists the tasks the merge closed as `closed`, and each task it
 left in progress as `kept`, with `why`.
-
-- A delivery is read only when its `X-Hub-Signature-256` header is the
-  HMAC-SHA-256 of its body under the app's webhook secret, or the secret
-  saved by hand, compared in constant time. Without the header the answer
-  is `401` with `signature_required`. With a signature that does not match,
-  for a workspace with no app and no secret or one that does not exist, it
-  is `401` with `bad_signature`, the same answer in each case.
-- Anyone can install a GitHub App made public, which an app must be to be
-  installed on an organization as well as an account. So the app's events
-  are read only from an installation that an owner of the workspace made:
-  GitHub's `installation` event names the GitHub account that made it, and
-  Ntasks records the installation when that account is one an owner signs in
-  with. Made by anyone else, it answers `403` with `not_an_owner`, and every
-  event from an installation not recorded answers `403` with
-  `unknown_installation`. An installation removed or suspended in GitHub is
-  forgotten.
-- A signed delivery answers `200` with `{ moved }`, as `POST /api/delivery`
-  does, and a merge also with `closed` and `kept` when it closed or kept a
-  task in progress ([above](#work-still-in-progress-when-its-pull-request-merges)).
-  When its event moves nothing, such as GitHub's `ping`, an
-  installation, a pull request closed without merging, a check that is not a
-  deploy, or another event, the answer also holds `ignored`, a sentence
-  saying why. GitHub shows each answer under the app's, or the webhook's,
-  Recent Deliveries.
-- Each move and each close is recorded in the task's history under
-  `service:GitHub`.
-- A task never moves back, and a task a merge closed is no longer in
-  progress, so a delivery sent again, by GitHub or with Redeliver, moves and
-  closes nothing twice.
-- A pull request's URL names its repository, so a merge moves only the tasks
-  of that pull request, whichever repository sends it.
-- A deploy moves the tasks whose commit or merge commit is the commit it ran
-  on. A build that ships several merges at once names only the last, so the
-  tasks of the merges before it stay at `merged`.
-- A delivery is at most 1 MB, sent as `application/json` or as GitHub's form
-  (`application/x-www-form-urlencoded`).
-- The app's webhook secret and private key are kept in D1, encrypted under a
-  key derived from `AUTH_SECRET`. After `AUTH_SECRET` changes they no longer
-  decrypt and every delivery is refused, until the owner presses
-  **Disconnect**, deletes the old app on its GitHub page and connects again.
 
 #### Set up by hand
 

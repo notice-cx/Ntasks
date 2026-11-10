@@ -13,6 +13,7 @@ import type {
   DeliverySignal,
   HeldTask,
   Project,
+  Task,
   TaskEngine,
 } from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
@@ -20,6 +21,7 @@ import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
 import { reportDelivery } from '../delivery.ts';
 import { createEngine } from '../engine/index.ts';
+import { checkMergedWork } from '../github-check.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { Refused } from '../refused.ts';
 import { closeMerged, type MergeCloses } from '../task-writes.ts';
@@ -34,6 +36,14 @@ import { newMeter, objectDatabase, type Meter } from './sqlite.ts';
 /** The bindings a workspace's store is reached through. */
 export interface StoreBinding {
   readonly TASK_STORE: DurableObjectNamespace<TaskStore>;
+}
+
+/** How long after a close with a pull request the store asks GitHub whether it merged: a few closes in a row share one check. */
+const CHECK_DELAY_MS = 5_000;
+
+/** Whether a task waits for a merge of a pull request, which GitHub may already have made. */
+function waitsOnPullRequest(task: Task): boolean {
+  return task.delivery?.stage === 'built' && task.delivery.pullRequest !== null;
 }
 
 /** The task store of one workspace. Workspaces never share a store. */
@@ -64,7 +74,36 @@ export class TaskStore extends DurableObject<Env> {
 
   #newEngine(): TaskEngine {
     const now = () => new Date().toISOString();
-    return cachedReads(createEngine(objectDatabase(this.ctx.storage, this.meter), { now }), now);
+    const engine = cachedReads(createEngine(objectDatabase(this.ctx.storage, this.meter), { now }), now);
+    // A close as done with a pull request: GitHub may have merged it before the close.
+    const checked = async <R extends { readonly task: Task }>(result: R): Promise<R> => {
+      if (waitsOnPullRequest(result.task)) await this.#checkGitHubIn(CHECK_DELAY_MS);
+      return result;
+    };
+    return Object.freeze({
+      ...engine,
+      createTask: async (...args: Parameters<TaskEngine['createTask']>) => checked(await engine.createTask(...args)),
+      writeTask: async (...args: Parameters<TaskEngine['writeTask']>) => checked(await engine.writeTask(...args)),
+    } satisfies TaskEngine);
+  }
+
+  /** Sets the alarm that asks GitHub about waiting work `delay` milliseconds from now, unless one is set sooner. */
+  async #checkGitHubIn(delay: number): Promise<void> {
+    const at = Date.now() + delay;
+    const set = await this.ctx.storage.getAlarm();
+    if (set === null || set > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  /** Asks GitHub about the workspace's waiting work now, as when an owner installs the workspace's GitHub App (github.ts). */
+  async checkGitHub(): Promise<void> {
+    await this.#checkGitHubIn(0);
+  }
+
+  /** The alarm: asks GitHub whether the pull requests of work waiting for a merge merged (github-check.ts). */
+  override async alarm(): Promise<void> {
+    const name = this.ctx.id.name;
+    if (name === undefined || !name.startsWith('workspace:')) return;
+    await checkMergedWork(this.env, name.slice('workspace:'.length), this.tasks);
   }
 
   /** Loads an import from Beads, or a backup, into this store, which must

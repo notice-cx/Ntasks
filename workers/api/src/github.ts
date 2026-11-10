@@ -51,8 +51,8 @@ import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { notConfigured } from './access/verify.ts';
 import type { Args } from './args.ts';
-import { SCOPES, type Principal } from './auth.ts';
 import { movedView, signalArgs } from './delivery.ts';
+import { githubSender } from './github-check.ts';
 import { readBoundedBytes } from './http/json-body.ts';
 import { json } from './http/respond.ts';
 import { Refused } from './refused.ts';
@@ -64,16 +64,6 @@ const DELIVERY_BYTES = 1024 * 1024;
 const SIGNATURE = /^sha256=([0-9a-fA-F]{64})$/u;
 
 const encoder = new TextEncoder();
-
-/** The sender a verified delivery acts as: a service that may change every project of the workspace. */
-function githubSender(workspaceId: string): Principal {
-  return Object.freeze({
-    id: `github:${workspaceId}`,
-    name: 'service:GitHub',
-    scopes: [SCOPES.read, SCOPES.write],
-    projects: 'all',
-  });
-}
 
 /** Whether `expected` is the HMAC-SHA-256 of `body` under `secret`, compared in constant time. */
 async function signedWith(secret: string, body: Uint8Array, expected: Uint8Array): Promise<boolean> {
@@ -198,11 +188,13 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
 
 /**
  * Answers the app's installation event: an installation an owner of the
- * workspace made is recorded, and its repositories' events are read from
- * then on; one anyone else made is refused. A removed or suspended
- * installation is forgotten.
+ * workspace made is recorded, its repositories' events are read from then
+ * on, and the work already waiting for a merge is checked on GitHub; one
+ * anyone else made is refused. A removed or suspended installation is
+ * forgotten.
  */
-async function installationEvent(db: D1Database, workspaceId: string, payload: unknown): Promise<Response> {
+async function installationEvent(env: Env, workspaceId: string, payload: unknown): Promise<Response> {
+  const db = env.DB;
   const installationId = numberAt(payload, 'installation', 'id');
   const account = textAt(payload, 'installation', 'account', 'login');
   if (installationId === undefined || account === undefined)
@@ -231,6 +223,8 @@ async function installationEvent(db: D1Database, workspaceId: string, payload: u
     accountType: textAt(payload, 'installation', 'account', 'type') ?? 'User',
     installedBy: String(sender),
   });
+  // Work closed before the app was installed may have merged long ago.
+  await workspaceStore(env, workspaceId).checkGitHub();
   return json({ moved: [], ignored: `Ntasks reads events from ${account}'s repositories from now on` }, 200);
 }
 
@@ -276,7 +270,7 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     return json({ error: 'invalid_request', detail: 'the payload is not JSON' }, 400);
   }
   const name = request.headers.get('x-github-event');
-  if (fromApp && name === 'installation') return installationEvent(env.DB, workspaceId, payload);
+  if (fromApp && name === 'installation') return installationEvent(env, workspaceId, payload);
   if (fromApp && name !== 'ping') {
     const installationId = numberAt(payload, 'installation', 'id');
     if (installationId === undefined || !(await hasInstallation(env.DB, workspaceId, installationId))) {
