@@ -180,10 +180,14 @@ Two exceptions need no further approval:
   `spec/` or `apps/site/` is published to ntasks.notice.cx right after it
   lands, by the agent that merged it, without asking: `pnpm site:build`,
   then `wrangler deploy` for the `ntasks-site` Worker, from a clean checkout
-  of `main`'s latest commit, so one publish never rolls back another merged
-  change ([apps/site](apps/site/README.md#publishing)). The agent records
-  the Cloudflare version it deployed on the task. This covers that Worker
-  only; the app's Worker, D1, secrets and npm keep their approvals.
+  of `main`'s latest commit. After the deploy the agent reads `main`'s
+  latest commit again and, if it has moved, publishes again from the new
+  one. Two agents publishing at once can finish in either order, and an
+  older build deployed last is replaced this way, so the site ends on
+  `main`'s latest commit ([apps/site](apps/site/README.md#publishing)). The
+  agent records the Cloudflare version it deployed on the task. This covers
+  that Worker only; the app's Worker, D1, secrets and npm keep their
+  approvals.
 
 ## Git
 
