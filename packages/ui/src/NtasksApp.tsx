@@ -35,6 +35,13 @@ export interface NtasksAppProps {
    * `tokenSource`, such as `@notice-cx/ntasks-ui/fixture`'s.
    */
   api?: TasksApi;
+  /**
+   * Receives each page's title, such as `web-b2r6 · Fix the reset link —
+   * Ntasks`, in place of the document's title, so a host keeps its own tab
+   * title and may show this one in it. Left out, the app sets the document's
+   * title.
+   */
+  onTitle?: (title: string) => void;
 }
 
 /**
@@ -52,7 +59,14 @@ export function NtasksApp(props: NtasksAppProps) {
   );
 }
 
-function Placed({ apiOrigin: given, tokenSource, basePath = '/tasks', theme = 'system', api }: NtasksAppProps) {
+function Placed({
+  apiOrigin: given,
+  tokenSource,
+  basePath = '/tasks',
+  theme = 'system',
+  api,
+  onTitle,
+}: NtasksAppProps) {
   const paths = useMemo(() => appPaths(basePath), [basePath]);
   const apiOrigin = given === undefined ? undefined : originOf(given);
   const current = tokenSource ?? sessionCookie(apiOrigin);
@@ -71,7 +85,7 @@ function Placed({ apiOrigin: given, tokenSource, basePath = '/tasks', theme = 's
   const app = (
     <Root theme={theme}>
       {/* A new Ntasks starts the app again, with none of the last one's reads. */}
-      <App key={apiOrigin} api={calls} paths={paths} signIn={current.signIn} />
+      <App key={apiOrigin} api={calls} paths={paths} signIn={current.signIn} onTitle={onTitle} />
     </Root>
   );
   if (inHostRoute) return app;

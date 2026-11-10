@@ -17,6 +17,7 @@ import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
 import { COMPOSE_STATE, SEARCH_STATE } from './lib/page-state';
 import { PathsProvider, usePaths, type AppPaths } from './lib/paths';
+import { TitleProvider, usePageTitle } from './lib/page-title';
 
 // Each page's code arrives when it is first opened, so the first screen loads only its own.
 const TasksBoard = lazy(() => import('./routes/TasksBoard'));
@@ -41,11 +42,14 @@ export function App({
   paths,
   signIn,
   queryClient,
+  onTitle,
 }: {
   api: TasksApi;
   paths: AppPaths;
   signIn?: TokenSource['signIn'];
   queryClient?: QueryClient;
+  /** Receives each page's title in place of the document's title (`TitleProvider`). */
+  onTitle?: (title: string) => void;
 }) {
   const [client] = useState(() => queryClient ?? newQueryClient());
   return (
@@ -53,23 +57,25 @@ export function App({
       {/* Every icon is drawn at 16 px with a 1.75 stroke unless its control sizes it (docs/design.md). */}
       <LucideProvider size={16} strokeWidth={1.75}>
         <PathsProvider paths={paths}>
-          <TasksApiProvider api={api} signIn={signIn}>
-            <Routes>
-              <Route element={<WorkspaceGate />}>
-                <Route element={<Shell />}>
-                  <Route index element={<TasksBoard />} />
-                  <Route path="focus" element={<FocusRoute />} />
-                  <Route path=":id" element={<TaskRoute />} />
-                  <Route path="live" element={<LiveRoute />} />
-                  <Route path="projects" element={<ProjectsRoute />} />
-                  <Route path="members" element={<MembersRoute />} />
-                  <Route path="settings" element={<SettingsRoute />} />
-                  <Route path="*" element={<NoPage />} />
+          <TitleProvider onTitle={onTitle}>
+            <TasksApiProvider api={api} signIn={signIn}>
+              <Routes>
+                <Route element={<WorkspaceGate />}>
+                  <Route element={<Shell />}>
+                    <Route index element={<TasksBoard />} />
+                    <Route path="focus" element={<FocusRoute />} />
+                    <Route path=":id" element={<TaskRoute />} />
+                    <Route path="live" element={<LiveRoute />} />
+                    <Route path="projects" element={<ProjectsRoute />} />
+                    <Route path="members" element={<MembersRoute />} />
+                    <Route path="settings" element={<SettingsRoute />} />
+                    <Route path="*" element={<NoPage />} />
+                  </Route>
                 </Route>
-              </Route>
-            </Routes>
-            <AppToaster />
-          </TasksApiProvider>
+              </Routes>
+              <AppToaster />
+            </TasksApiProvider>
+          </TitleProvider>
         </PathsProvider>
       </LucideProvider>
     </QueryClientProvider>
@@ -121,6 +127,7 @@ function Shell() {
 
 function NoPage() {
   const paths = usePaths();
+  usePageTitle('No page');
   return (
     <>
       <TopBar title="No page" />

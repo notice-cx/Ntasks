@@ -814,6 +814,18 @@ Each action's key:
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover, the composer or an open form |
 
+## Page titles
+
+Each page sets the browser tab's title with `usePageTitle`
+(`src/lib/page-title.tsx`), the most specific part first and `— Ntasks`
+last: a task's id then its title (`web-b2r6 · Fix the broken reset link …`),
+a view then its count then the one project in view (`Waiting for you (3) ·
+Example web app`), a search (`Search “sign-in”`), `Live (6)`, `Focus (2)`,
+`Settings`. What follows the first part is cut with an ellipsis so the title
+before `— Ntasks` stays within 60 characters; the first part is never cut.
+`NtasksApp`'s `onTitle` receives the titles in place of the document, so a
+host keeps its own tab title.
+
 ## Copy
 
 - Controls carry labels, not sentences: buttons are verbs (Claim, Approve,

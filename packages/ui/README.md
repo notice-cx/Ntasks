@@ -37,6 +37,7 @@ const person: TokenSource = {
 | `basePath` | `/tasks` | The board's address, below the site's root; every other page is under it ([Addresses](#addresses)) |
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
+| `onTitle` | none | Receives each page's title, such as `web-b2r6 · Fix the reset link — Ntasks`, in place of the app setting the document's title, so the host keeps its own tab title |
 
 ### Addresses
 
