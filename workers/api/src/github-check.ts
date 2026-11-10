@@ -107,7 +107,10 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
     if (!state?.merged || state.base === null || state.base !== state.defaultBranch) continue;
     const merge = state.mergeCommit?.toLowerCase();
     const commits = merge !== undefined && COMMIT_SHA.test(merge) ? [merge] : [];
-    moved += (await reportDelivery(context, { stage: 'merged', pullRequests: [pull.url], commits })).length;
+    // GitHub's merge time, which tells a deploy that followed the merge from a preview before it.
+    const signal = { stage: 'merged' as const, pullRequests: [pull.url], commits };
+    moved += (await reportDelivery(context, state.mergedAt === null ? signal : { ...signal, at: state.mergedAt }))
+      .length;
   }
   return moved;
 }

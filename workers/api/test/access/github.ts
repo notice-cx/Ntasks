@@ -38,6 +38,7 @@ export function convertedWebhookSecret(ownerId: number): string {
 export interface StandInPull {
   readonly merged: boolean;
   readonly mergeCommit: string | null;
+  readonly mergedAt?: string;
   readonly base: string;
 }
 
@@ -228,6 +229,7 @@ export function standInForGitHub(): GitHubCalls {
           number: Number(pull[2]),
           merged: found.merged,
           merge_commit_sha: found.mergeCommit,
+          merged_at: found.mergedAt ?? null,
           base: { ref: found.base, repo: { full_name: pull[1], default_branch: 'main' } },
         });
       }

@@ -449,12 +449,14 @@ describe('work waiting for a merge GitHub already made', () => {
     // The installation's own check: nothing of this test waits yet.
     await runDurableObjectAlarm(store());
     const merge = newCommit();
-    github.pulls.set(`${REPOSITORY}#50`, { merged: true, mergeCommit: merge, base: 'main' });
+    const mergedAt = new Date(Date.now() - 300_000).toISOString();
+    github.pulls.set(`${REPOSITORY}#50`, { merged: true, mergeCommit: merge, base: 'main', mergedAt });
 
     const { projectId, id } = await taskWithPullRequest(owner, 50);
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
     expect(await runDurableObjectAlarm(store())).toBe(true);
-    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'merged', mergeCommit: merge });
+    // Merged as GitHub merged it, five minutes before the check asked.
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'merged', mergeCommit: merge, mergedAt });
     expect(github.installationTokens).toContain(mine);
   });
 

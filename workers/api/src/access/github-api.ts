@@ -150,6 +150,8 @@ export async function installationRepositories(token: string): Promise<{
 export interface PullRequestState {
   readonly merged: boolean;
   readonly mergeCommit: string | null;
+  /** When GitHub merged it, as ISO 8601 text, or null. */
+  readonly mergedAt: string | null;
   readonly base: string | null;
   readonly defaultBranch: string | null;
 }
@@ -176,6 +178,7 @@ export async function pullRequestState(
   return {
     merged: pull.merged === true,
     mergeCommit: typeof pull.merge_commit_sha === 'string' ? pull.merge_commit_sha : null,
+    mergedAt: typeof pull.merged_at === 'string' ? pull.merged_at : null,
     base: typeof base.ref === 'string' ? base.ref : null,
     defaultBranch: typeof repo.default_branch === 'string' ? repo.default_branch : null,
   };
