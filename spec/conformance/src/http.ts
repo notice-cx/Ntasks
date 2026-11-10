@@ -11,6 +11,7 @@ import {
   type Api,
   type HistoryEvent,
   type Outcome,
+  type ParentContext,
   type Project,
   type RefusalKind,
   type Role,
@@ -148,6 +149,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
           task: taskOf(value.task as Record<string, unknown>),
           comments: (value.comments ?? []) as TaskRead['comments'],
           proposalVersion: (value.proposalVersion ?? null) as string | null,
+          parent: (value.parent ?? null) as ParentContext | null,
         }),
       ),
     history: (task) =>
@@ -202,16 +204,25 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
         return notOffered('record work details on a comment');
       return map(
         send('POST', `/tasks/${encodeURIComponent(task)}/comments`, {
-          body: { projectId: projectId(task), text },
+          body: {
+            projectId: projectId(task),
+            text,
+            ...(options.pin === true ? { pin: true } : {}),
+            ...(options.unpin === undefined ? {} : { unpin: options.unpin }),
+          },
           ...(options.key === undefined ? {} : { key: options.key }),
           ...(options.model === undefined ? {} : { model: options.model }),
         }),
-        (value) => ({
-          id: task,
-          version: null,
-          replayed: typeof value.replayed === 'boolean' ? value.replayed : null,
-          raw: value,
-        }),
+        (value) => {
+          const comment = (value.comment ?? {}) as { id?: unknown };
+          return {
+            id: task,
+            version: null,
+            replayed: typeof value.replayed === 'boolean' ? value.replayed : null,
+            ...(typeof comment.id === 'string' ? { commentId: comment.id } : {}),
+            raw: value,
+          };
+        },
       );
     },
     close: (task, close, options = {}) =>

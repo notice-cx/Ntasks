@@ -26,6 +26,7 @@ import type {
   HeldTask,
   Json,
   JsonObject,
+  ParentContext,
   Project,
   Task,
   TaskAcceptance,
@@ -248,9 +249,23 @@ export interface TaskWrite {
   readonly reopen?: true;
   /** A comment added in the same change, such as the answer behind it. */
   readonly comment?: string;
+  /** How `comment` changes the task's pinned comments. Only with `comment`. */
+  readonly pins?: CommentPins;
   /** Changes to other tasks of the same project, in the same batch: a decision
    * on an approval that also tells, or hands back, the tasks waiting on it. */
   readonly others?: readonly OtherTaskWrite[];
+}
+
+/**
+ * How a new comment changes its task's pinned comments: it can be pinned
+ * itself, and unpin earlier pinned comments of the same task, such as facts
+ * it corrects. Pinning never changes the task's version, as a comment does not.
+ */
+export interface CommentPins {
+  /** Pins the new comment. */
+  readonly pin?: true;
+  /** Pinned comments of the task to unpin, by id; each must be pinned. At most TASK_LIMITS.unpin. */
+  readonly unpin?: readonly string[];
 }
 
 /**
@@ -259,7 +274,7 @@ export interface TaskWrite {
  * `version_conflict` when the task moved since. One that only adds a comment
  * leaves the task's version as it is, as `addComment` does.
  */
-export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'requestAction' | 'others'> {
+export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'requestAction' | 'others' | 'pins'> {
   readonly taskId: string;
 }
 
@@ -464,6 +479,11 @@ export interface TaskEngine {
    * so a cached read of it stays true until that time. */
   nextDeferralAfter(time: string): Promise<string | null>;
   listComments(projectId: string, taskId: string): Promise<readonly TaskComment[]>;
+  /** What the task's parent holds for it (ParentContext), cut to
+   * PARENT_CONTEXT_LIMITS; null when the task has no parent or the project
+   * holds no such task. Its cost follows the parent's pinned comments and
+   * children, not the parent's other comments or the project's size. */
+  parentContext(projectId: string, taskId: string): Promise<ParentContext | null>;
   /** The task's changes, newest first. */
   listHistory(
     projectId: string,
@@ -525,8 +545,16 @@ export interface TaskEngine {
     actor: Actor,
     options?: DeliveryOptions,
   ): Promise<readonly DeliveryMove[]>;
-  /** Adds a comment. It does not change the task's version, so it never conflicts with a write. */
-  addComment(projectId: string, taskId: string, text: string, actor: Actor, retry?: Retry): Promise<CommentResult>;
+  /** Adds a comment, pinning it or unpinning others as `pins` says. It does
+   * not change the task's version, so it never conflicts with a write. */
+  addComment(
+    projectId: string,
+    taskId: string,
+    text: string,
+    actor: Actor,
+    retry?: Retry,
+    pins?: CommentPins,
+  ): Promise<CommentResult>;
 }
 
 /**

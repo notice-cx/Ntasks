@@ -1,7 +1,7 @@
 // The MCP read tools, as an agent calls them: their results, the workspace
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
-import type { HeldTask, Project, TaskEngine } from '@ntasks/domain';
+import { PARENT_CONTEXT_LIMITS, type HeldTask, type Project, type TaskEngine } from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
@@ -481,7 +481,13 @@ describe('get_task', () => {
       metadata: {},
     });
     expect(answer.comments).toEqual([
-      { id: expect.any(String), author: OWNER.name, text: 'Half written.', createdAt: expect.any(String) },
+      {
+        id: expect.any(String),
+        author: OWNER.name,
+        text: 'Half written.',
+        createdAt: expect.any(String),
+        pinned: false,
+      },
     ]);
     expect(JSON.parse(answer.proposal)[0]).toBe(ids.child);
   });
@@ -521,6 +527,87 @@ describe('get_task', () => {
       { id: waiting.id, title: waiting.title, status: 'open', assignee: null, for: null, lastActivityAt: null },
     ]);
     expect(await read(target, 'get_task', { project: own.id, task: held.id })).not.toHaveProperty('openChildren');
+  });
+
+  it("shows a task its epic's pinned comments and what its closed siblings left, newest first and capped", async () => {
+    const own = await newProject(engine);
+    const epic = (await engine.createTask(own.id, { title: 'Rebuild the pages', type: 'epic' }, OWNER)).task;
+    const child = async (title: string) => (await engine.createTask(own.id, { title, parentId: epic.id }, OWNER)).task;
+    const reading = await child('Rebuild the home page');
+    await engine.addComment(own.id, epic.id, 'An ordinary comment, not pinned.', OWNER);
+    const pinned: string[] = [];
+    for (let fact = 1; fact <= PARENT_CONTEXT_LIMITS.pinned + 2; fact += 1) {
+      time.advance(1);
+      pinned.push(
+        (await engine.addComment(own.id, epic.id, `Fact ${fact}.`, AGENT, undefined, { pin: true })).comment.id,
+      );
+    }
+    time.advance(1);
+    // The newest fact corrects fact 1, which it unpins: fact 1 stays among the epic's comments only.
+    const correction = (
+      await engine.addComment(own.id, epic.id, 'Fact 1 was wrong.', AGENT, undefined, {
+        pin: true,
+        unpin: [pinned[0]!],
+      })
+    ).comment;
+    const closes = [
+      { reason: 'Merged.', resolution: 'done', commit: 'a1b2c3d4' },
+      { reason: 'Merged too.', resolution: 'done', pullRequest: 'https://example.com/pull/3' },
+      { reason: 'Shown in the notes.', resolution: 'done', link: 'https://example.com/notes' },
+      { reason: 'Nobody needs it.', resolution: 'wont-do' },
+    ] as const;
+    const closed = [];
+    for (let index = 0; index < PARENT_CONTEXT_LIMITS.closedSiblings + 2; index += 1) {
+      const sibling = await child(`Rebuild page ${index + 1}`);
+      time.advance(1);
+      await engine.writeTask(own.id, sibling.id, { expectedVersion: 1, close: closes[index % closes.length]! }, OWNER);
+      closed.push({ ...sibling, close: closes[index % closes.length]!, closedAt: time.now() });
+    }
+    await child('Rebuild the pricing page');
+
+    const answer = await read<{ parent: Record<string, unknown> }>(target, 'get_task', { task: reading.id });
+    const newestFacts = [correction.id, ...pinned.slice(1).reverse()].slice(0, PARENT_CONTEXT_LIMITS.pinned);
+    expect(answer.parent).toEqual({
+      id: epic.id,
+      title: epic.title,
+      type: 'epic',
+      status: 'open',
+      pinned: newestFacts.map((id) => ({
+        id,
+        author: AGENT.name,
+        text: id === correction.id ? 'Fact 1 was wrong.' : expect.stringMatching(/^Fact \d+\.$/u),
+        createdAt: expect.any(String),
+      })),
+      pinnedTotal: PARENT_CONTEXT_LIMITS.pinned + 2,
+      closedSiblings: closed
+        .toReversed()
+        .slice(0, PARENT_CONTEXT_LIMITS.closedSiblings)
+        .map((sibling) => ({
+          id: sibling.id,
+          title: sibling.title,
+          resolution: sibling.close.resolution,
+          closedAt: sibling.closedAt,
+          closedBy: OWNER.name,
+          closeReason: sibling.close.reason,
+          commit: 'commit' in sibling.close ? sibling.close.commit : null,
+          pullRequest: 'pullRequest' in sibling.close ? sibling.close.pullRequest : null,
+          closeLink: 'link' in sibling.close ? sibling.close.link : null,
+        })),
+      closedSiblingsTotal: PARENT_CONTEXT_LIMITS.closedSiblings + 2,
+    });
+    // On the epic itself, every comment shows, each saying whether it is pinned.
+    const onEpic = await read<{ comments: { id: string; pinned: boolean }[] }>(target, 'get_task', { task: epic.id });
+    expect(onEpic.comments.filter((comment) => comment.pinned).map((comment) => comment.id)).toEqual([
+      ...pinned.slice(1),
+      correction.id,
+    ]);
+    expect(onEpic.comments.find((comment) => comment.id === pinned[0])).toMatchObject({ pinned: false });
+    // A read of several tasks leaves each one's parent out; a task with no parent has none.
+    const many = await read<{ tasks: Record<string, unknown>[] }>(target, 'get_task', {
+      tasks: [reading.id, closed[0]!.id],
+    });
+    for (const one of many.tasks) expect(one).not.toHaveProperty('parent');
+    expect(onEpic).not.toHaveProperty('parent');
   });
 
   it('marks a ready task labelled human as waiting on a person', async () => {

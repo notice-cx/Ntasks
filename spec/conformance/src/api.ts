@@ -135,12 +135,34 @@ export interface Comment {
   readonly id?: string;
   readonly author: string;
   readonly text: string;
+  readonly pinned?: boolean;
+}
+
+/** One of a parent's other children that closed, as a parent context shows it. */
+export interface ClosedSibling {
+  readonly id: string;
+  readonly resolution: string;
+  readonly closeReason: string | null;
+  readonly commit: string | null;
+  readonly pullRequest: string | null;
+  readonly closeLink: string | null;
+}
+
+/** What a task's parent holds for it: its pinned comments and its closed children, with the totals. */
+export interface ParentContext {
+  readonly id: string;
+  readonly pinned: readonly Comment[];
+  readonly pinnedTotal: number;
+  readonly closedSiblings: readonly ClosedSibling[];
+  readonly closedSiblingsTotal: number;
 }
 
 export interface TaskRead {
   readonly task: Task;
   readonly comments: readonly Comment[];
   readonly proposalVersion: string | null;
+  /** Null when the task has no parent, or the server answers none. */
+  readonly parent: ParentContext | null;
 }
 
 export interface HistoryEvent {
@@ -165,6 +187,10 @@ export interface Written {
   readonly replayed: boolean | null;
   readonly status?: string;
   readonly assignee?: string | null;
+  /** A comment's id, when the write added one and the binding answers it. */
+  readonly commentId?: string;
+  /** A claim's answer of the task's parent context, when the binding answers one. */
+  readonly parent?: ParentContext | null;
   readonly raw: unknown;
 }
 
@@ -307,7 +333,14 @@ export interface Api {
   comment(
     task: string,
     text: string,
-    options?: WriteOptions & { readonly work?: WorkDetails; readonly for?: string },
+    options?: WriteOptions & {
+      readonly work?: WorkDetails;
+      readonly for?: string;
+      /** Pins the new comment. */
+      readonly pin?: boolean;
+      /** Pinned comments of the task to unpin, by id. */
+      readonly unpin?: readonly string[];
+    },
   ): Promise<Outcome<Written>>;
   close(task: string, close: Close, options?: WriteOptions): Promise<Outcome<Written>>;
   /** Sets the one link between two tasks, or removes it when `type` is null. */

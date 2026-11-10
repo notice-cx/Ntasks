@@ -95,6 +95,8 @@ through the MCP endpoint is relayed, whoever sends it
 | Record work in hand | `claim_task`, `comment_on_task` with `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next` | From the holder only, while the task is open ([STATE-13](protocol.md#state-13)) |
 | Claim by pull request | `claim_task` with `pr` and no `task` | The open task whose work details or `pull-request` external link name that pull request |
 | Held tasks on connect | The server's instructions | [MCP-1](#mcp-1) |
+| Pin and unpin a comment | `comment_on_task` with `pin: true`, and `unpin` with the ids of the task's pinned comments | `unpin` with `task` only. Answers `pinned: true` when it pinned the comment ([STATE-17](protocol.md#state-17)) |
+| Read a task's parent context | `get_task` of one task, and `claim_task` | `parent`, on a task that has one. A read of several with `tasks` leaves it out |
 
 ### Outside the protocol
 

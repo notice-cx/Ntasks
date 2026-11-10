@@ -11,6 +11,7 @@ import {
   type CustomField,
   type Json,
   type JsonObject,
+  type ParentContext,
   type Task,
   type TaskComment,
   type TaskEvent,
@@ -336,7 +337,42 @@ export function fieldView(field: CustomField) {
 }
 
 export function commentView(comment: TaskComment) {
-  return { id: comment.id, author: comment.author, text: comment.text, createdAt: comment.createdAt };
+  return {
+    id: comment.id,
+    author: comment.author,
+    text: comment.text,
+    createdAt: comment.createdAt,
+    pinned: comment.pinned,
+  };
+}
+
+/**
+ * What a task's parent holds for it, as get_task, claim_task and the task
+ * page read it: the parent's newest pinned comments and its most recently
+ * closed other children, each with how it ended and what proves it, and the
+ * totals of both, so a long epic stays a short answer.
+ */
+export function parentView(parent: ParentContext) {
+  return {
+    id: parent.id,
+    title: parent.title,
+    type: parent.type,
+    status: parent.status,
+    pinned: parent.pinned.map(({ id, author, text, createdAt }) => ({ id, author, text, createdAt })),
+    pinnedTotal: parent.pinnedTotal,
+    closedSiblings: parent.closedSiblings.map((sibling) => ({
+      id: sibling.id,
+      title: sibling.title,
+      resolution: sibling.resolution,
+      closedAt: sibling.closedAt,
+      closedBy: sibling.closedBy,
+      closeReason: sibling.reason,
+      commit: sibling.commit,
+      pullRequest: sibling.pullRequest,
+      closeLink: sibling.link,
+    })),
+    closedSiblingsTotal: parent.closedSiblingsTotal,
+  };
 }
 
 /** What a history event did, in the words get_task_history uses. */
@@ -404,6 +440,9 @@ export function historyView(events: readonly TaskEvent[], limit: number, snapsho
     const fields: Record<string, { old: Json; new: Json }> = {};
     if (event.kind === 'commented') {
       fields.comment = { old: null, new: event.changes.text ?? null };
+      // Who pinned a comment, or unpinned earlier ones, and which.
+      if (event.changes.pinned === true) fields.pinned = { old: false, new: true };
+      if (event.changes.unpinned !== undefined) fields.unpinned = { old: null, new: event.changes.unpinned };
     } else {
       for (const [field, value] of Object.entries(event.changes)) {
         fields[field] = { old: state[field] ?? null, new: value };

@@ -47,6 +47,7 @@ import {
   keyArg,
   labelsArg,
   modelArg,
+  pinsArg,
   priorityArg,
   projectArg,
   listed,
@@ -103,7 +104,7 @@ import {
 } from '../task-writes.ts';
 import { reachable } from '../auth.ts';
 import { linksSeenBy, projectOf } from '../lookup.ts';
-import { commentView, mcpTask, writtenView, type McpTaskField } from '../views.ts';
+import { commentView, mcpTask, parentView, writtenView, type McpTaskField } from '../views.ts';
 import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
@@ -1424,7 +1425,8 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
     name: 'claim_task',
     description:
       'Assign an open task to yourself and start it. Fails if someone else holds it. ' +
-      'Without task, pr names it: the open task whose work details or pull-request link name that pull request.',
+      'Without task, pr names it: the open task whose work details or pull-request link name that pull request. ' +
+      "A task in an epic answers parent as get_task does: the epic's pinned comments and its most recently closed tasks.",
     inputSchema: schema({
       project: PROJECT,
       task: { ...TASK, description: 'The task id, such as abc-1x2. Leave it out to claim by pr.' },
@@ -1446,19 +1448,38 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const retry = await retryRequest(context, 'claim_task', args);
       const projectId = await projectFor(context, args, taskId);
       const { result } = await updateTask(context, projectId, taskId, { claim: true, ...work }, model, retry);
-      return written(context, detail, result.task, ['status', 'assignee', ...workShown(work)], result.replayed);
+      const [answer, parent] = await Promise.all([
+        written(context, detail, result.task, ['status', 'assignee', ...workShown(work)], result.replayed),
+        result.task.parentId === null ? null : context.engine.parentContext(result.task.projectId, result.task.id),
+      ]);
+      return parent === null ? answer : { ...answer, parent: parentView(parent) };
     },
   },
   UPDATE_TASK,
   {
     name: 'comment_on_task',
-    description: `Add a comment to a task, or the same comment to up to ${MANY} with tasks, such as one check that covers them all.`,
+    description:
+      `Add a comment to a task, or the same comment to up to ${MANY} with tasks, such as one check that covers them all. ` +
+      "pin: true pins it: a comment pinned on an epic shows on each of the epic's tasks when one is read or claimed, " +
+      'so pin there the facts its other tasks need. unpin takes pinned comments of the task off, such as ones this corrects.',
     inputSchema: schema(
       {
         project: PROJECT,
         task: TASK,
         tasks: TASKS('comment on'),
         text: { type: 'string', maxLength: TASK_LIMITS.comment },
+        pin: {
+          type: 'boolean',
+          description:
+            "true pins this comment on its task. Pinned on an epic, it shows with each of the epic's tasks: a fact they need.",
+        },
+        unpin: {
+          type: 'array',
+          maxItems: TASK_LIMITS.unpin,
+          items: { type: 'string' },
+          description:
+            'Ids of pinned comments on this task to unpin, such as facts this comment corrects. They stay among its comments.',
+        },
         model: MODEL,
         ...WORK,
         idempotency_key: IDEMPOTENCY,
@@ -1474,12 +1495,15 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const model = modelArg(args);
       const work = workArgs(args);
       const detail = detailArg(args);
+      const pins = pinsArg(args);
+      if (!one && pins?.unpin !== undefined)
+        refuse('invalid arguments: unpin (a comment id names a comment of one task: name it with task)');
       const comment = async (taskId: string, retry: RetryRequest) => {
         const projectId = await projectFor(context, args, taskId);
-        const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, work, model);
+        const { comment, replayed } = await commentOnTask(context, projectId, taskId, text, retry, work, model, pins);
         return detail === 'full'
           ? { comment: commentView(comment), replayed }
-          : { task: taskId, commentId: comment.id, replayed };
+          : { task: taskId, commentId: comment.id, ...(comment.pinned ? { pinned: true } : {}), replayed };
       };
       if (one) return comment(ids[0]!, await retryRequest(context, 'comment_on_task', args));
       await bindCall(context, 'comment_on_task', args, ids);

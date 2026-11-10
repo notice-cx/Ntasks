@@ -29,6 +29,7 @@ import {
   instantArg,
   labelsArg,
   only,
+  pinsArg,
   priorityArg,
   projectArg,
   refuse,
@@ -243,7 +244,8 @@ export async function updateRoute(
   return json({ task });
 }
 
-/** POST /api/tasks/:id/comments: adds a comment. */
+/** POST /api/tasks/:id/comments: adds a comment, which `pin: true` pins and
+ * which unpins the task's pinned comments `unpin` names. */
 export async function commentRoute(
   context: WriteContext,
   url: URL,
@@ -251,10 +253,11 @@ export async function commentRoute(
   taskId: string,
 ): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'comment_on_task', { task: taskId });
-  only(body, ['projectId', 'text']);
+  only(body, ['projectId', 'text', 'pin', 'unpin']);
   const projectId = projectArg(body, 'projectId', 'http');
   const text = textArg(body, 'text', TASK_LIMITS.comment, true)!;
-  const { comment } = await commentOnTask(context, projectId, taskId, text, retry(body));
+  const pins = pinsArg(body);
+  const { comment } = await commentOnTask(context, projectId, taskId, text, retry(body), undefined, undefined, pins);
   return json({ comment: commentView(comment) });
 }
 

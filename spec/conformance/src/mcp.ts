@@ -8,6 +8,7 @@ import {
   type Api,
   type HistoryEvent,
   type Outcome,
+  type ParentContext,
   type Project,
   type Refusal,
   type RefusalKind,
@@ -65,6 +66,8 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
     replayed: typeof value.replayed === 'boolean' ? value.replayed : null,
     ...(typeof value.status === 'string' ? { status: value.status } : {}),
     ...('assignee' in value ? { assignee: value.assignee as string | null } : {}),
+    ...(typeof value.commentId === 'string' ? { commentId: value.commentId } : {}),
+    ...('parent' in value ? { parent: (value.parent ?? null) as ParentContext | null } : {}),
     raw: value,
   });
 
@@ -109,10 +112,16 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
     read: (task) =>
       map(
         call('get_task', { task }),
-        (value: { task: Task; comments?: TaskRead['comments']; proposalVersion?: string | null }): TaskRead => ({
+        (value: {
+          task: Task;
+          comments?: TaskRead['comments'];
+          proposalVersion?: string | null;
+          parent?: ParentContext | null;
+        }): TaskRead => ({
           task: value.task,
           comments: value.comments ?? [],
           proposalVersion: value.proposalVersion ?? null,
+          parent: value.parent ?? null,
         }),
       ),
     history: (task) =>
@@ -174,8 +183,16 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
         written,
       ),
     comment: (task, text, options = {}) =>
-      map(call('comment_on_task', { task, text, ...work(options), ...writeOptions(options) }), (value: object) =>
-        written({ id: task, ...value }),
+      map(
+        call('comment_on_task', {
+          task,
+          text,
+          ...work(options),
+          ...(options.pin === true ? { pin: true } : {}),
+          ...(options.unpin === undefined ? {} : { unpin: options.unpin }),
+          ...writeOptions(options),
+        }),
+        (value: object) => written({ id: task, ...value }),
       ),
     close: (task, close, options) =>
       map(

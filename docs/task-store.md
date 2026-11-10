@@ -43,7 +43,7 @@ or prefix, since no query reads across stores.
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates` and `supersedes` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
 | `custom_fields` | The custom fields each project defines: key, name, type, options, and when it was retired |
-| `task_comments` | Comments, in the order they were added |
+| `task_comments` | Comments, in the order they were added, each marked when it is pinned |
 | `task_events` | Every change to every task, in order |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
@@ -148,7 +148,8 @@ These hold whatever code writes to the database. Each has a test in
 - Every update of a task raises its `version` by exactly one.
 - A task keeps its id, its project and its creation time.
 - Tasks, their history and their comments are never deleted, and history and
-  comments are never edited.
+  comments are never edited. The one change a comment takes is being
+  unpinned, and a comment once unpinned is never pinned again.
 - A project prefix has no hyphen, and a task never depends on itself.
 - A custom field keeps its project, key, type and options, stays retired once
   retired, and is never deleted. A choice field has options and no other
@@ -179,8 +180,12 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 - **Reads:** `getTask`, `getTasks`, `findTasks`, `listTasks`, `listBoard`,
   `listEpics`, `listLabelled`, `listExternalLinks`, `listFields`, `listWork`,
-  `listComments`, `listHistory`, `listChanges`, `lint` and `recordedWrite`.
-  `listTasks` and `listBoard` take filters by custom field values.
+  `listComments`, `parentContext`, `listHistory`, `listChanges`, `lint` and
+  `recordedWrite`. `listTasks` and `listBoard` take filters by custom field
+  values. `parentContext` reads, in one statement, a task's parent, the
+  parent's newest pinned comments through `task_comments_pinned`, and its most
+  recently closed other children through `tasks_closed_by_parent`, with the
+  totals of each.
   `listWork` reads, for the projects named, the tasks in progress or blocked
   and those closed from a time, with only the columns agent statistics count:
   one statement, through the `(project_id, status)` and

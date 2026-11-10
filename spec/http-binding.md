@@ -96,10 +96,13 @@ as deploying, once for each project, before it moves them.
 | Contract operation | Route | Body |
 |---|---|---|
 | Record work in hand on a claim | `PATCH /api/tasks/:id` | `claim: true`, `for`, and `work` with the details `claim_task` takes |
+| Pin and unpin a comment | `POST /api/tasks/:id/comments` | `projectId`, `text`, and either or both of `pin: true`, which pins the new comment, and `unpin`, the ids of the task's pinned comments to unpin |
 
-A task read answers its `for`, `work` and `lastActivityAt`. Recording work
-details on a comment, claiming by pull request and the held-task list are
-MCP only.
+A task read answers its `for`, `work` and `lastActivityAt`, `pinned` on each
+comment, and `parent`, its parent context, or null when it has no parent
+([STATE-17](protocol.md#state-17)). A claim answers the task alone. Recording
+work details on a comment, claiming by pull request and the held-task list
+are MCP only.
 
 ### Outside the protocol
 
