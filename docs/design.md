@@ -149,6 +149,13 @@ above the text in size: `#` is `text-heading`, `##` 16 / 24, and the rest
 ring; links and task ids are Accent text; a checklist's box is 15 px, ringed
 in Border strong, and filled in Accent with a white tick once ticked.
 
+An http or https address written out in a task's title, its text, a comment,
+a code block, inline code or a step's command is a link that opens in a new
+tab with no opener and no referrer (`LinkedText` in
+`src/components/ui/linked-text.tsx` for plain text). Its words stay as
+written, so a code block's Copy button copies them unchanged. No other
+scheme becomes a link.
+
 ## Spacing and radius
 
 Spacing is a 4 px grid: Tailwind's steps, where `1` is 4 px. The steps in use
@@ -211,8 +218,9 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
-`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`
-and `building-2`.
+`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`,
+`building-2`, `arrow-up-down`, `arrow-up-narrow-wide` and
+`arrow-down-wide-narrow`.
 
 ## Symbols
 
@@ -599,6 +607,21 @@ field is part of the address (`field.<key>=<value>`, as the API takes it),
 shows as a badge that clears it, and is dropped when another project is
 picked.
 
+The Sort menu (`src/routes/tasks/sort-menu.tsx`), a secondary button before
+Filter, in every view of the board and on the Epics view, orders each group's
+rows by Priority, Created, Last change, Closed or Title, with the one chosen
+ticked, then its two directions in its own words: Most urgent first or Least
+urgent first, Newest first or Oldest first, A to Z or Z to A. A dated sort
+reads newest first until told otherwise; a task without the date it reads,
+such as an open task by Closed, comes last either way; a tie keeps the most
+urgent first, then the oldest. The button names the order chosen after an
+arrow showing its direction, or reads Sort while each list keeps its own
+order, which Default order brings back. The order is part of the address
+(`sort=created&dir=asc`, the direction only when it is not the sort's own)
+and survives Clear filters. The board holds every task it shows, so a new
+order reads nothing again; `list_tasks` takes the same orders as `sort` and
+`direction` (`@ntasks/domain`'s `taskComparator` is the one copy of the rule).
+
 ### Where it stopped
 
 A stalled task's page shows, under its title, a block in the surface of a
@@ -664,7 +687,7 @@ the epic, testing these in order (`epicState` in `src/lib/epics.ts`):
 This week is the board's own window of closes, which starts seven days back;
 the Moving and Not moving headings name its first day ("A task done since
 Nov 2"). Each group's heading carries its mark, its name, its count and, from
-640 px wide, that rule. In a group, the highest priority comes first, then
+640 px wide, that rule. In a group, unless the Sort menu names another order, the highest priority comes first, then
 the latest change.
 
 An epic's line is a `Row`: a chevron that shows and hides its sub-epics when

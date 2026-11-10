@@ -11,6 +11,9 @@
  *   which remove scripts, event-handler attributes, inline styles and every
  *   address that is not http(s), mailto or relative;
  * - a link to another site opens in a new tab with no opener and no referrer;
+ * - an http or https address written inside code, a block or inline, is a
+ *   link too, its words unchanged, so a block's Copy button copies them as
+ *   written; no other scheme becomes a link;
  * - an image on another site is not loaded, so viewing a task tells that site
  *   nothing; it shows as a link to the image instead.
  *
@@ -42,8 +45,10 @@ import yaml from 'highlight.js/lib/languages/yaml';
 import { Check, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CopyButton } from '../../components/ui/copy-button';
+import { LINK_CLASS as LINK } from '../../components/ui/linked-text';
 import { usePaths, type AppPaths } from '../../lib/paths';
 import { cn } from '../../lib/utils';
+import { webAddresses } from '../../lib/web-links';
 import { TaskPrefixes } from './task-prefixes';
 
 export { TaskPrefixesProvider } from './task-prefixes';
@@ -54,10 +59,6 @@ const LANGUAGES = { bash, css, diff, javascript, json, markdown, python, sql, ty
 
 const TASK_ID = /\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b/g;
 const LABELLED = /^(\s*)(WHAT|WHY|WHERE|FIX|HOW):\s*/;
-
-/** A link in task text, in Accent text, underlined while pointed at. */
-const LINK =
-  'text-accent-text no-underline underline-offset-3 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-accent';
 
 // ---------------------------------------------------------------------------
 // Checklists: counted and ticked from the same reading of the Markdown that
@@ -210,6 +211,70 @@ const rehypeTaskText: Plugin<[{ prefixes: ReadonlySet<string>; taskPath: AppPath
     parent.children = children;
   };
   return (tree) => visit(tree, false);
+};
+
+/**
+ * Web addresses inside code, a block or inline, as links. It runs after the
+ * highlighter has split a block into tokens, so an address that runs over
+ * several tokens is linked piece by piece, each piece to the whole address.
+ * Prose needs none of this: GitHub's Markdown already links a bare address.
+ */
+const rehypeLinkCode: Plugin<[], HastRoot> = () => {
+  const linkCode = (code: Element) => {
+    const pieces: { node: Text; start: number }[] = [];
+    let length = 0;
+    const collect = (parent: Element) => {
+      for (const child of parent.children) {
+        if (child.type === 'text') {
+          pieces.push({ node: child, start: length });
+          length += child.value.length;
+        } else if (child.type === 'element' && child.tagName !== 'a') collect(child);
+      }
+    };
+    collect(code);
+    const whole = pieces.map((piece) => piece.node.value).join('');
+    const addresses = webAddresses(whole);
+    if (addresses.length === 0) return;
+    const replaced = new Map<Text, ElementContent[]>();
+    for (const { node, start } of pieces) {
+      const end = start + node.value.length;
+      const out: ElementContent[] = [];
+      let at = start;
+      for (const address of addresses) {
+        if (address.end <= at || address.start >= end) continue;
+        const from = Math.max(address.start, at);
+        const to = Math.min(address.end, end);
+        if (from > at) out.push(text(whole.slice(at, from)));
+        out.push({
+          type: 'element',
+          tagName: 'a',
+          properties: { href: address.href },
+          children: [text(whole.slice(from, to))],
+        });
+        at = to;
+      }
+      if (out.length === 0) continue;
+      if (at < end) out.push(text(whole.slice(at, end)));
+      replaced.set(node, out);
+    }
+    const rebuild = (parent: Element) => {
+      parent.children = parent.children.flatMap((child): ElementContent[] => {
+        if (child.type === 'text') return replaced.get(child) ?? [child];
+        if (child.type === 'element' && child.tagName !== 'a') rebuild(child);
+        return [child];
+      });
+    };
+    rebuild(code);
+  };
+  const visit = (parent: HastRoot | Element) => {
+    // Markdown makes no doctype, so a root's children are an element's kinds.
+    for (const child of parent.children as ElementContent[]) {
+      if (child.type !== 'element' || child.tagName === 'a') continue;
+      if (child.tagName === 'code') linkCode(child);
+      else visit(child);
+    }
+  };
+  return (tree) => visit(tree);
 };
 
 // ---------------------------------------------------------------------------
@@ -495,6 +560,7 @@ export function MarkdownText({
             [rehypeSanitize, defaultSchema],
             [rehypeTaskText, { prefixes, taskPath: paths.task }],
             [rehypeHighlight, { languages: LANGUAGES, detect: false }],
+            rehypeLinkCode,
           ]}
           components={COMPONENTS}
         >

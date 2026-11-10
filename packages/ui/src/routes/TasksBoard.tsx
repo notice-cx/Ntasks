@@ -35,6 +35,8 @@ import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '../li
 import { WaitingGroup } from './tasks/ask-queue';
 import { DELIVERY_GROUPS, DeliveryGroup, useDeliveryWaits } from './tasks/delivery-groups';
 import { EpicsSummary, EpicsView } from './tasks/epics-view';
+import { SortMenu } from './tasks/sort-menu';
+import { sorted, sortOf, sortParams, type PageSort } from '../lib/task-sort';
 import { TaskRow, type RowContext } from './tasks/task-row';
 
 /** Tailwind's `max-sm`: below it the top bar has no room for the search field. */
@@ -95,6 +97,7 @@ export function TasksBoard() {
     fields: fieldFiltersOf(params),
   };
   const asked = viewOf(params.get('view'));
+  const sort = sortOf(params);
   const composing = params.get('new') === '1' || composeRequested(location.state);
   // A filter by custom field narrows the server's read to the tasks holding the value, which would shrink every
   // epic's counts; the Epics view reads the whole project and keeps those filters in the address for the task views.
@@ -152,9 +155,24 @@ export function TasksBoard() {
     setParams(next, { replace: true });
   }
 
-  /** Clears the search and the filters, keeping the view of tasks; Epics, being one project's, goes with the project. */
+  /** Clears the search and the filters, keeping the view of tasks and the sort; Epics, being one project's, goes with the project. */
   function clearFilters() {
-    setParams(asked === 'all' || asked === 'epics' ? {} : { view: asked }, { replace: true });
+    const kept = new URLSearchParams(asked === 'all' || asked === 'epics' ? {} : { view: asked });
+    for (const name of ['sort', 'dir']) {
+      const value = params.get(name);
+      if (value !== null) kept.set(name, value);
+    }
+    setParams(kept, { replace: true });
+  }
+
+  /** Puts the sort chosen in the address; each list's own order takes none. */
+  function pickSort(next: PageSort | null) {
+    const query = new URLSearchParams(params);
+    for (const [name, value] of Object.entries(sortParams(next))) {
+      if (value === '') query.delete(name);
+      else query.set(name, value);
+    }
+    setParams(query, { replace: true });
   }
 
   function openComposer() {
@@ -203,6 +221,7 @@ export function TasksBoard() {
           setPhoneSearch(!phoneSearch);
         }}
       />
+      <SortMenu sort={sort} onPick={pickSort} />
       {epicsView ? null : (
         <FilterMenu
           board={board}
@@ -253,7 +272,7 @@ export function TasksBoard() {
       epics === null ? (
         <EmptyState icon={<CircleAlert />} title="This project's tasks could not be read" />
       ) : (
-        <EpicsView read={epics} q={filters.q} nowMs={now} onClearSearch={() => setParam('q', '')} />
+        <EpicsView read={epics} q={filters.q} sort={sort} nowMs={now} onClearSearch={() => setParam('q', '')} />
       );
   } else {
     body = (
@@ -265,6 +284,7 @@ export function TasksBoard() {
         onClear={clearFilters}
         hides={hides}
         now={now}
+        sort={sort}
       />
     );
   }
@@ -362,6 +382,7 @@ function Groups({
   onClear,
   hides,
   now,
+  sort,
 }: {
   board: Board;
   view: TaskView;
@@ -371,6 +392,8 @@ function Groups({
   onClear: () => void;
   hides: (id: string, fetchedAt: number | null) => boolean;
   now: number;
+  /** The order chosen in the Sort menu; null keeps each group's own. */
+  sort: PageSort | null;
 }) {
   // A search opens Done too, since a pasted id is often a closed task's; each keeps its own folds.
   const searched = filters.q.trim() !== '';
@@ -391,6 +414,8 @@ function Groups({
     board.held,
   );
   groups.waiting = [...inbox, ...groups.waiting];
+  if (sort !== null)
+    for (const mark of Object.keys(groups) as StatusMarkKey[]) groups[mark] = sorted(groups[mark], sort);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
   const contextOf = (task: BoardTask): RowContext => ({
@@ -493,7 +518,7 @@ function Groups({
         );
       })}
       {deliveryGroups.map(({ wait }) => {
-        const rows = delivery[wait];
+        const rows = sorted(delivery[wait], sort);
         const limit = shown[wait] ?? PAGE_ROWS;
         return (
           <DeliveryGroup

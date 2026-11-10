@@ -1,6 +1,16 @@
 export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
+export {
+  byDefaultOrder,
+  DEFAULT_SORT_DIRECTIONS,
+  isSortDirection,
+  isTaskSort,
+  SORT_DIRECTIONS,
+  TASK_SORTS,
+  taskComparator,
+} from './sort.ts';
+export type { SortDirection, SortFacts, TaskSort } from './sort.ts';
 export type { StepMarking } from './steps.ts';
 export { sameActor } from './actors.ts';
 export { releaseComment } from './release.ts';

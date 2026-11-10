@@ -372,6 +372,50 @@ describe('list_tasks', () => {
     expect([last.nextOffset, idsOf(last)]).toEqual([null, [ids.closed, ids.bug]]);
   });
 
+  it('sorts by title, dates or priority, either way, with ties most urgent first, before it cuts a page', async () => {
+    expect(idsOf(await listed({ sort: 'title' }))).toEqual([
+      ids.blocker,
+      ids.closed,
+      ids.bug,
+      ids.epic,
+      ids.blocked,
+      ids.child,
+    ]);
+    // Dates read newest first unless asked otherwise.
+    expect(idsOf(await listed({ sort: 'created' }))).toEqual([
+      ids.closed,
+      ids.bug,
+      ids.blocked,
+      ids.blocker,
+      ids.child,
+      ids.epic,
+    ]);
+    expect(idsOf(await listed({ sort: 'created', direction: 'asc' }))[0]).toBe(ids.epic);
+    // Only one is closed; the open ones follow most urgent first.
+    expect(idsOf(await listed({ sort: 'closed' }))).toEqual([
+      ids.closed,
+      ids.blocker,
+      ids.epic,
+      ids.child,
+      ids.blocked,
+      ids.bug,
+    ]);
+    // A direction alone reads priority that way; a tie keeps the oldest first.
+    expect(idsOf(await listed({ direction: 'desc' }))).toEqual([
+      ids.bug,
+      ids.blocked,
+      ids.closed,
+      ids.epic,
+      ids.child,
+      ids.blocker,
+    ]);
+    const page = await listed({ sort: 'created', limit: 2, offset: 2 });
+    expect([page.total, page.nextOffset, idsOf(page)]).toEqual([6, 4, [ids.blocked, ids.blocker]]);
+    expect(await refusal(target, 'list_tasks', { project: project.id, sort: 'size' })).toBe(
+      'invalid arguments: sort (one of priority, created, updated, closed, title)',
+    );
+  });
+
   it('reads every project when it names none, each task naming its project', async () => {
     const list = await read<Listed>(target, 'list_tasks', { query: 'guide', limit: 200 });
     const elsewhere = list.tasks.find((task) => task.id === ids.elsewhere);
