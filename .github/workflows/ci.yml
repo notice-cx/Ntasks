@@ -50,6 +50,9 @@ jobs:
       # repository's Worker, which wrangler's test harness runs on the runner.
       # It reaches no deployed Ntasks and no Cloudflare account.
       - run: pnpm --filter @ntasks/spec run conformance:ntasks
+      # The same suite's core level against the GitHub Issues adapter, over a
+      # stand-in for GitHub's API: no GitHub token, and nothing reaches GitHub.
+      - run: pnpm --filter @ntasks/github-adapter run conformance
       - run: pnpm build
       # The npm package @notice-cx/ntasks-ui, from the build above: its tarball installed,
       # from the file, into an empty Vite and React project that typechecks,

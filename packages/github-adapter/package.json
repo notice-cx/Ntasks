@@ -1,0 +1,19 @@
+{
+  "name": "@ntasks/github-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Shared Work Protocol server over a GitHub repository's issues: the protocol's MCP tools, with what GitHub cannot hold kept in a ledger of its own.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "start": "node src/main.ts",
+    "conformance": "node conformance/run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}
