@@ -77,17 +77,19 @@ reach Cloudflare.
 
 ### Releasing
 
-A release is the owner approving the CI run of the ntasks release pull
-request, merging the pull request, then pressing **Approve and deploy**. Agents
-never approve, merge or turn on auto-merge for a release pull request.
+A release is the owner approving the CI run of the release pull request,
+merging the pull request, then pressing **Approve and deploy**. Agents never
+approve, merge or turn on auto-merge for a release pull request.
 
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
-[release-please](https://github.com/googleapis/release-please). While `main`
-holds a `feat`, `fix`, `perf` or `revert` commit or a breaking change made
-since the last release, it keeps one pull request open, titled
-`chore(main): release ntasks <version>`. The pull
-request raises `version` in `tools/cli/package.json` and in the MCP server's
+[release-please](https://github.com/googleapis/release-please). It keeps one
+release pull request, titled `chore: release main`, for this package and
+`@notice-cx/ntasks-ui` together, so the two never conflict. It lists each
+package with changes to release and its next version, and releases only those.
+While `main` holds a `feat`, `fix`, `perf` or `revert` commit or a breaking
+change made since ntasks's last release, the pull request includes ntasks: it
+raises `version` in `tools/cli/package.json` and in the MCP server's
 `SERVER_INFO`, and adds those commits to the root `CHANGELOG.md`. Before 1.0.0,
 a `feat` commit or a breaking change raises the minor version and any other
 commit the patch version. A commit counts for this package unless every file it
@@ -95,27 +97,35 @@ changes is under one of the folders `exclude-paths` lists in
 `release-please-config.json`: the website, the docs, the protocol, the skill,
 the workflows and the tools other than `tools/cli`.
 
-Merging the pull request creates the tag `v<version>` and its GitHub release,
-then starts the Release workflow (`.github/workflows/release.yml`) on that tag.
+When the pull request lists ntasks, merging it creates the tag
+`ntasks-v<version>` and its GitHub release, then starts the Release workflow
+(`.github/workflows/release.yml`) on that tag. A pull request that lists only
+`@notice-cx/ntasks-ui` starts no Release run; its steps are in
+[packages/ui](../../packages/ui/README.md#releasing).
 The workflow waits for the owner to approve the `npm` environment. It then
 checks and builds the repository and publishes `tools/cli/dist` to npm.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release ntasks <version>`, open the
+1. On the pull request `chore: release main`, open the
    **Files changed** tab, click **Awaiting approval** at the top right, then
    **Approve workflows to run**. GitHub holds the pull request's CI run until
    someone approves it, because a workflow, not a person, opened the pull
    request.
 2. When its checks pass, click **Merge when ready**, then **Confirm merge when
    ready**, at the bottom of the **Conversation** tab.
-3. When the Release run waits for review (GitHub emails the owner), open it,
-   click **Review deployments**, tick **npm** and click **Approve and deploy**.
+3. When the pull request lists ntasks, its Release run waits for review
+   (GitHub emails the owner): open it, click **Review deployments**, tick
+   **npm** and click **Approve and deploy**. When the pull request also
+   releases `@notice-cx/ntasks-ui`, its Release UI package run waits the same
+   way.
 
 When more changes reach `main` before the pull request merges, release-please
 rebuilds it, and the new CI run waits for approval again: repeat step 1.
 
 To run a failed or rejected publish again, open **Actions**, choose
-**Release**, click **Run workflow**, pick the tag `v<version>` under **Use
-workflow from** and click **Run workflow**. The workflow stops if it is run on a
-branch, or on a tag that does not name the version in `tools/cli/package.json`.
+**Release**, click **Run workflow**, pick the tag `ntasks-v<version>` under **Use
+workflow from** and click **Run workflow**. Releases up to 0.3.0 use the tag
+`v<version>` instead, such as `v0.3.0`: the workflow at those tags checks that
+name. The workflow stops if it is run on a branch, or on a tag that does not
+name the version in `tools/cli/package.json`.

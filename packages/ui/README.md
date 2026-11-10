@@ -291,39 +291,44 @@ manifest.
 The package publishes to npm, at https://registry.npmjs.org, as
 `@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
 
-A release is the owner approving the CI run of the `@notice-cx/ntasks-ui`
-release pull request, merging the pull request, then pressing **Approve and
-deploy**. Agents never approve, merge or turn on auto-merge for a release pull
-request.
+A release is the owner approving the CI run of the release pull request,
+merging the pull request, then pressing **Approve and deploy**. Agents never
+approve, merge or turn on auto-merge for a release pull request.
 
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
-[release-please](https://github.com/googleapis/release-please). While a
-`feat`, `fix`, `perf` or `revert` commit or a breaking change made since the
-last release changes a file under `packages/ui`, it keeps one pull request
-open, titled `chore(main): release @notice-cx/ntasks-ui <version>`. The pull
-request raises `version` in `package.json` and adds those commits to this
+[release-please](https://github.com/googleapis/release-please). It keeps one
+release pull request, titled `chore: release main`, for this package and
+the `ntasks` command together, so the two never conflict. It lists each package
+with changes to release and its next version, and releases only those. While a
+`feat`, `fix`, `perf` or `revert` commit or a breaking change made since this
+package's last release changes a file under `packages/ui`, the pull request
+includes it: it raises `version` in `package.json` and adds those commits to this
 folder's `CHANGELOG.md`. Before 1.0.0, a `feat` commit or a breaking change
 raises the minor version and any other commit the patch version
 (`release-please-config.json`).
 
-Merging the pull request creates the tag `ui-v<version>` and its GitHub
-release, then starts the Release UI package workflow
-(`.github/workflows/release-ui.yml`) on that tag. The workflow waits for the
+When the pull request lists `@notice-cx/ntasks-ui`, merging it creates the tag
+`ui-v<version>` and its GitHub release, then starts the Release UI package
+workflow (`.github/workflows/release-ui.yml`) on that tag. A pull request that
+lists only `ntasks` starts no Release UI package run; its steps are in
+[tools/cli](../../tools/cli/README.md#releasing). The workflow waits for the
 owner to approve the `npm` environment. It then runs every check, the host
 check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release @notice-cx/ntasks-ui <version>`, open the
+1. On the pull request `chore: release main`, open the
    **Files changed** tab, click **Awaiting approval** at the top right, then
    **Approve workflows to run**. GitHub holds the pull request's CI run until
    someone approves it, because a workflow, not a person, opened the pull
    request.
 2. When its checks pass, click **Merge when ready**, then **Confirm merge when
    ready**, at the bottom of the **Conversation** tab.
-3. When the Release UI package run waits for review (GitHub emails the owner), open it,
-   click **Review deployments**, tick **npm** and click **Approve and deploy**.
+3. When the pull request lists `@notice-cx/ntasks-ui`, its Release UI package
+   run waits for review (GitHub emails the owner): open it, click **Review
+   deployments**, tick **npm** and click **Approve and deploy**. When the pull
+   request also releases `ntasks`, its Release run waits the same way.
 
 When more changes reach `main` before the pull request merges, release-please
 rebuilds it, and the new CI run waits for approval again: repeat step 1.

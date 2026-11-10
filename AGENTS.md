@@ -51,7 +51,7 @@ Every feature and every change to an existing one meets all five:
 | `packages/ui/` | The npm package `@notice-cx/ntasks-ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. Merging its release pull request publishes it once the owner approves ([its README](packages/ui/README.md#releasing)) |
 | `packages/domain/` | The task model: formats and rules shared by every part. No runtime dependencies and no platform's globals |
 | `packages/github-adapter/` | A Shared Work Protocol server over a GitHub repository's issues, at the protocol's core level: the MCP tools, a ledger for what GitHub cannot hold, and a stand-in for GitHub's API that its tests and CI run the conformance suite over ([its README](packages/github-adapter/README.md)) |
-| `release-please-config.json`, `.release-please-manifest.json` | The two npm packages release-please releases, with their tags, and the version each last released. The Release PRs workflow (`.github/workflows/release-please.yml`) keeps a release pull request for each from them |
+| `release-please-config.json`, `.release-please-manifest.json` | The two npm packages release-please releases, with their tags, and the version each last released. The Release PRs workflow (`.github/workflows/release-please.yml`) keeps one release pull request for both from them |
 | `tools/lint/` | The tests that `pnpm lint` reports the mistakes it exists to catch, the test that no `wrangler.jsonc` names a secret in `vars`, the test that the Deploy to Cloudflare button asks for every secret `wrangler.jsonc` requires, and the tests of `install.sh`. The lint configuration itself is `eslint.config.js` at the root |
 | `tools/migrate/` | The export from a Beads hub on Dolt, the import into the task store, a backup of a task store and its restore, the load into an empty deployed store, the seed of invented tasks, the provision of a deployment nobody signs in to, and the verifier |
 | `tools/cli/` | The npm package `ntasks`, published as `ntasks` from `tools/cli/dist`: the command `npx ntasks deploy`, which deploys the release the package holds to a Cloudflare account and updates it, and the build that bundles the Worker, the web app and the D1 migrations into the package. Its tests run the command against a stand-in for wrangler. Merging its release pull request publishes it once the owner approves ([its README](tools/cli/README.md#releasing)) |
@@ -157,12 +157,11 @@ with `--remote`, `wrangler secret put`, `wrangler login`, `pnpm run deploy`
 the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
 `--dry-run` included, since it reads the account, and requests to a deployed
 Worker. Publishing to npm is the owner's step too: `npm publish`, merging a
-release pull request, pushing a `v*` or `ui-v*` tag, and starting the Release
+release pull request, pushing an `ntasks-v*` or `ui-v*` tag, and starting the Release
 or the Release UI package workflow. A release is the owner approving the CI
-run of the package's release pull request, titled
-`chore(main): release ntasks <version>` or
-`chore(main): release @notice-cx/ntasks-ui <version>`, merging that pull
-request, then pressing **Approve and deploy** on the publish run it starts
+run of the one release pull request for both packages, titled
+`chore: release main`, merging that pull request, then pressing
+**Approve and deploy** on each publish run it starts
 ([tools/cli](tools/cli/README.md#releasing),
 [packages/ui](packages/ui/README.md#releasing)). Agents never approve a release
 pull request's workflow runs, merge one or turn on auto-merge for one, even

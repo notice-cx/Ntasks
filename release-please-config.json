@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
-  "separate-pull-requests": true,
+  "separate-pull-requests": false,
   "bump-minor-pre-major": true,
   "packages": {
     ".": {
       "release-type": "simple",
       "package-name": "ntasks",
       "component": "ntasks",
-      "include-component-in-tag": false,
-      "pull-request-title-pattern": "chore${scope}: release ntasks ${version}",
+      "include-component-in-tag": true,
+      "tag-separator": "-",
       "extra-files": [
         { "type": "json", "path": "tools/cli/package.json", "jsonpath": "$.version" },
         "workers/api/src/mcp/server.ts"
@@ -29,8 +29,7 @@
       "package-name": "@notice-cx/ntasks-ui",
       "component": "ui",
       "include-component-in-tag": true,
-      "tag-separator": "-",
-      "pull-request-title-pattern": "chore${scope}: release @notice-cx/ntasks-ui ${version}"
+      "tag-separator": "-"
     }
   }
 }
