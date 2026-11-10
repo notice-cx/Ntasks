@@ -11,6 +11,8 @@
 import {
   ACCEPTED_REASON,
   addDays,
+  burndownDays,
+  burndownWindow,
   criteriaOf,
   isDay,
   isTimeZone,
@@ -631,6 +633,38 @@ export function createFixtureTasksApi({
         totals: { shipped: count('shipped'), decided: count('decided'), finished: count('finished'), approved },
         days,
         wins,
+      });
+    },
+    async burndown({ project: key, timeZone = 'UTC' } = {}) {
+      reach();
+      if (!isTimeZone(timeZone))
+        throw new ApiError('timeZone must be an IANA time zone, such as America/Los_Angeles.', 400, 'invalid_request');
+      const projects = key === undefined ? state.projects : [project(key)];
+      const keys = new Set(projects.map((row) => row.logicalKey));
+      const covered = burndownWindow(now(), timeZone);
+      const from = Date.parse(covered.from);
+      const tasks = state.tasks.filter((task) => keys.has(task.project));
+      const closedAt = (task: FixtureTask) => (task.status === 'closed' ? task.closedAt : null);
+      // A task with no time of creation has no day to count on.
+      const items = tasks.flatMap((task) => {
+        const closed = closedAt(task);
+        if (task.createdAt === null || (closed !== null && Date.parse(closed) < from)) return [];
+        const resolution = task.status === 'closed' ? (task.resolution ?? 'done') : null;
+        return [{ createdAt: task.createdAt, closedAt: closed, resolution }];
+      });
+      const closedBefore = tasks.some((task) => {
+        const closed = closedAt(task);
+        return closed !== null && Date.parse(closed) < from;
+      });
+      // The fixture records no project's creation, so a project's first record is its oldest task.
+      const counted = burndownDays({ items, closedBefore }, [], covered);
+      return copy({
+        readAt: new Date(now()).toISOString(),
+        timeZone,
+        from: covered.from,
+        to: covered.to,
+        projects: projects.length,
+        ...counted,
       });
     },
     async changes(after) {

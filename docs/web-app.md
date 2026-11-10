@@ -53,7 +53,9 @@ for another agent to claim, keeping that record as a comment.
 **Productivity.** What you and your agents got done that matters, day by
 day: changes merged or live, decisions you answered and epics finished, with
 a strip of the last seven days at the top. It counts no tasks closed, and
-reads back eight weeks.
+reads back eight weeks. Under the strip, a chart of the last eight weeks
+shows the tasks open at the end of each day, with the tasks created and
+closed that day, so you can see whether the open work is shrinking.
 
 **Phone.**
 
