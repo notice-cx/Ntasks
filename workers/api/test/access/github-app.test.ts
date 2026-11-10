@@ -334,6 +334,24 @@ describe('the app’s deliveries', () => {
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
   });
 
+  it('counts a queue deploy that started in the same second as the merge', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 39);
+    const merge = newCommit();
+    // GitHub gives both times to the second. A merge queue merges only once its checks pass on the
+    // queue's branch, which takes minutes, so a preview there starts well before the merge, never in its second.
+    const second = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000).toISOString().replace('.000Z', 'Z');
+    const event = merged(mine, 39, merge);
+    await deliver('pull_request', { ...event, pull_request: { ...event.pull_request, merged_at: second } });
+    const queue = 'gh-readonly-queue/main/pr-39-0123abc';
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, second))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+  });
+
   it('keeps a project off once its owner turns it off, and a deploy check off once switched off', async () => {
     const owner = await connected();
     const mine = newInstallation();

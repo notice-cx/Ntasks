@@ -768,6 +768,8 @@ export class Writes {
         const current = deliveryOf(row);
         if (current === null) continue;
         // A deploy that started before the merge was a preview of the change, not the deploy that shipped it.
+        // One in the same second counts: GitHub gives both times to the second, and a merge queue merges
+        // only after its checks pass on its branch, so a preview there starts minutes before the merge.
         if (signal.mergedBy !== undefined && (current.mergedAt === null || current.mergedAt > signal.mergedBy))
           continue;
         const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
