@@ -27,7 +27,8 @@ export const statcounterHtml = `<script>
 
 /** A page with the counter before its `</body>`. */
 export function withStatcounter(html: string): string {
-  return html.replace('</body>', `${statcounterHtml}</body>`);
+  // A function, so a `$` in the counter is never read as a replacement pattern.
+  return html.replace('</body>', () => `${statcounterHtml}</body>`);
 }
 
 /**
