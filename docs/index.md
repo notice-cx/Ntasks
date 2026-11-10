@@ -20,6 +20,8 @@ these headings (apps/site/lib/docs-index.ts). List a new page here. -->
   and local development.
 - [Connect an agent](agents.md): the setup command, each agent by hand, and the
   Ntasks skill.
+- [Connect GitHub](github.md): the GitHub App that moves closed tasks to
+  merged and live, and what counts as a deploy.
 - [The web app](web-app.md): every page, with animated walkthroughs.
 
 ## Reference for contributors

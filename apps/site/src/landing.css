@@ -540,6 +540,374 @@ code {
   object-position: top;
 }
 
+/*
+  Built to live: a task card travels a track of three stages, Built, Merged
+  and Live, and each stage lights up as the card reaches it.
+
+  Two numbers draw every frame. --flow-p is how far the task has gone: 0 at
+  Built, 0.5 at Merged, 1 at Live. --flow-on fades the task's progress out
+  before the loop starts again. Without motion both stay 1, so the diagram
+  shows the finished state: the task is Live and every stage is lit.
+*/
+
+@property --flow-p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+
+@property --flow-on {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1;
+}
+
+.flow {
+  --flow-p: 1;
+  --flow-on: 1;
+  --gap: 32px;
+  --node: 40px;
+  /* How far each stage is reached, from 0 to 1, ramping in just before the card arrives. */
+  --merged: clamp(0, (var(--flow-p) - 0.46) * 25, 1);
+  --live: clamp(0, (var(--flow-p) - 0.96) * 25, 1);
+  margin: 72px 0 0;
+  padding: 44px 44px 48px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.flow-lane {
+  margin-bottom: 32px;
+}
+
+/* A task row's facts as a card: its id and stage, its title, its pull request and holder. */
+.flow-card {
+  position: relative;
+  left: calc(var(--flow-p) * (200% + 2 * var(--gap)) / 3);
+  display: grid;
+  gap: 4px;
+  width: min(300px, calc((100% - 2 * var(--gap)) / 3));
+  padding: 12px 14px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  opacity: var(--flow-on);
+}
+
+.flow-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+}
+
+.flow-card .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.flow-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.flow-tag {
+  display: grid;
+  margin-left: auto;
+}
+
+.flow-tag > span {
+  grid-area: 1 / 1;
+  justify-self: end;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.flow-tag > .tag-built {
+  border-color: var(--border-strong);
+  color: var(--ink-2);
+  opacity: calc(1 - var(--merged));
+}
+
+.flow-tag > .tag-merged {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  opacity: calc(var(--merged) - var(--live));
+}
+
+.flow-tag > .tag-live {
+  background: var(--accent);
+  color: var(--on-accent);
+  opacity: var(--live);
+}
+
+.flow-title {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.flow-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.flow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px var(--gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-built {
+  --reached: 1;
+  --fill: clamp(0, var(--flow-p) * 2, 1);
+}
+
+.step-merged {
+  --reached: var(--merged);
+  --fill: clamp(0, (var(--flow-p) - 0.5) * 2, 1);
+}
+
+.step-live {
+  --reached: var(--live);
+}
+
+.flow-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(var(--node) + 24px);
+}
+
+/* The track to the next stage, from this node's centre to the next one's. */
+.flow-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--node) / 2);
+  left: calc(var(--node) / 2);
+  width: calc(100% + var(--gap));
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.flow-fill {
+  position: absolute;
+  top: calc(var(--node) / 2 - 0.5px);
+  left: calc(var(--node) / 2);
+  width: calc((100% + var(--gap)) * var(--fill));
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: var(--flow-on);
+}
+
+/* The signal's head as it travels; the nodes cover it at either end. */
+.flow-fill::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.flow-node,
+.flow-node-on,
+.flow-ping {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.flow-node {
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: var(--node);
+  height: var(--node);
+  border: 1px solid var(--border-strong);
+  background: var(--canvas);
+  color: var(--ink-3);
+}
+
+.flow-node-on {
+  inset: -1px;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 0 0 5px var(--accent-soft);
+  opacity: calc(var(--reached) * var(--flow-on));
+}
+
+.flow-ping {
+  inset: -1px;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flow-step h3 {
+  font-size: 19px;
+  font-weight: 560;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+}
+
+.flow-by {
+  display: flex;
+  order: -1;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: color-mix(in srgb, var(--accent-text) calc(var(--reached) * var(--flow-on) * 100%), var(--ink-3));
+  font-size: 12px;
+  letter-spacing: 1.25px;
+  text-transform: uppercase;
+}
+
+.flow-by .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.flow-step p:last-child {
+  margin-top: 8px;
+  color: var(--ink-2);
+  line-height: 1.65;
+}
+
+/* The loop, 12 s: Built, then the card travels to Merged, then to Live, holds, and fades. */
+@media (prefers-reduced-motion: no-preference) {
+  .flow {
+    animation: flow 12s linear infinite;
+  }
+
+  .step-built .flow-ping {
+    animation: ping-built 12s linear infinite;
+  }
+
+  .step-merged .flow-ping {
+    animation: ping-merged 12s linear infinite;
+  }
+
+  .step-live .flow-ping {
+    animation: ping-live 12s linear infinite;
+  }
+
+  /* Off screen the diagram waits, so it starts from Built when it comes into view. */
+  .flow[data-paused],
+  .flow[data-paused] * {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes flow {
+  0% {
+    --flow-p: 0;
+    --flow-on: 0;
+  }
+  4% {
+    --flow-p: 0;
+    --flow-on: 1;
+  }
+  26% {
+    --flow-p: 0;
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  38% {
+    --flow-p: 0.5;
+  }
+  58% {
+    --flow-p: 0.5;
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  70% {
+    --flow-p: 1;
+  }
+  92% {
+    --flow-p: 1;
+    --flow-on: 1;
+  }
+  98% {
+    --flow-p: 1;
+    --flow-on: 0;
+  }
+  100% {
+    --flow-p: 0;
+    --flow-on: 0;
+  }
+}
+
+@keyframes ping-built {
+  0%,
+  4% {
+    opacity: 0;
+    scale: 1;
+  }
+  5% {
+    opacity: 0.7;
+    scale: 1;
+  }
+  15%,
+  100% {
+    opacity: 0;
+    scale: 1.9;
+  }
+}
+
+@keyframes ping-merged {
+  0%,
+  37% {
+    opacity: 0;
+    scale: 1;
+  }
+  38% {
+    opacity: 0.7;
+    scale: 1;
+  }
+  48%,
+  100% {
+    opacity: 0;
+    scale: 1.9;
+  }
+}
+
+@keyframes ping-live {
+  0%,
+  69% {
+    opacity: 0;
+    scale: 1;
+  }
+  70% {
+    opacity: 0.7;
+    scale: 1;
+  }
+  80%,
+  100% {
+    opacity: 0;
+    scale: 1.9;
+  }
+}
+
 /* Get started */
 
 .steps > li {
@@ -923,5 +1291,51 @@ code {
 
   .site-footer {
     padding-top: 48px;
+  }
+}
+
+/* The diagram stands upright: the stages one under another, the track down their left. */
+@media (max-width: 720px) {
+  .flow {
+    padding: 24px 20px 28px;
+  }
+
+  .flow-lane {
+    margin-bottom: 28px;
+  }
+
+  .flow-card {
+    left: 0;
+    width: 100%;
+  }
+
+  .flow-steps {
+    grid-template-columns: 1fr;
+    gap: var(--gap);
+  }
+
+  .flow-step {
+    min-height: var(--node);
+    padding: 11px 0 0 calc(var(--node) + 20px);
+  }
+
+  .flow-step:not(:last-child)::before {
+    width: 1px;
+    height: calc(100% + var(--gap));
+  }
+
+  .flow-fill {
+    top: calc(var(--node) / 2);
+    left: calc(var(--node) / 2 - 0.5px);
+    width: 2px;
+    height: calc((100% + var(--gap)) * var(--fill));
+  }
+
+  .flow-fill::after {
+    top: auto;
+    right: auto;
+    bottom: -4px;
+    left: 50%;
+    margin: 0 0 0 -4px;
   }
 }
