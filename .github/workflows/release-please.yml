@@ -1,11 +1,13 @@
 name: Release PRs
 
 # After each push to main, release-please keeps one release pull request for
-# each npm package, with its next version and changelog, from the Conventional
-# Commits since its last release (release-please-config.json). Merging a
-# release pull request is the release: this workflow then creates its tag and
-# GitHub release, and starts the package's publish workflow on the tag, which
-# waits for the owner's approval of the npm environment.
+# both npm packages, with each changed package's next version and changelog,
+# from the Conventional Commits since its last release
+# (release-please-config.json). One pull request means no two release pull
+# requests edit .release-please-manifest.json at once. Merging it is the
+# release: this workflow then creates each released package's tag and GitHub
+# release, and starts that package's publish workflow on its tag, which waits
+# for the owner's approval of the npm environment.
 on:
   push:
     branches: [main]
