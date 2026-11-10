@@ -759,12 +759,19 @@ export class Writes {
         )
         .all<StoredTaskRow & { readonly deploys: number }>();
       const at = this.#now();
+      // The time the change reached the stage, as the sender knows it, but never later than now.
+      const reached = signal.at !== undefined && signal.at < at ? signal.at : at;
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
+        // A deploy that started before the merge was a preview of the change, not the deploy that shipped it.
+        // One in the same second counts: GitHub gives both times to the second, and a merge queue merges
+        // only after its checks pass on its branch, so a preview there starts minutes before the merge.
+        if (signal.mergedBy !== undefined && (current.mergedAt === null || current.mergedAt > signal.mergedBy))
+          continue;
         const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
         if (turnsOn && !turnedOn.has(row.project_id)) {
           turnedOn.add(row.project_id);
@@ -779,8 +786,8 @@ export class Writes {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
-          mergedAt: stage === 'merged' ? at : current.mergedAt,
-          liveAt: stage === 'live' ? at : null,
+          mergedAt: stage === 'merged' ? reached : current.mergedAt,
+          liveAt: stage === 'live' ? reached : null,
         };
         statements.push(
           this.#db

@@ -121,11 +121,17 @@ function merged(id: number, number: number, mergeCommit: string) {
 }
 
 /** A check run that passed on main, from installation `id`. */
-function passed(id: number, name: string, sha: string) {
+function passed(id: number, name: string, sha: string, branch = 'main', startedAt = new Date().toISOString()) {
   return {
     action: 'completed',
     installation: { id },
-    check_run: { name, head_sha: sha, conclusion: 'success', check_suite: { head_branch: 'main' } },
+    check_run: {
+      name,
+      head_sha: sha,
+      conclusion: 'success',
+      started_at: startedAt,
+      check_suite: { head_branch: branch },
+    },
     repository,
   };
 }
@@ -289,6 +295,63 @@ describe('the app’s deliveries', () => {
     });
   });
 
+  it('counts a deploy of a commit the merge queue landed, and not a preview of it', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 38);
+    const merge = newCommit();
+    // GitHub merged two minutes before its event reached Ntasks; the merge time is GitHub's.
+    const mergedAt = new Date(Date.now() - 120_000).toISOString();
+    const event = merged(mine, 38, merge);
+    await deliver('pull_request', { ...event, pull_request: { ...event.pull_request, merged_at: mergedAt } });
+    expect((await taskOf(projectId, id)).delivery?.mergedAt).toBe(mergedAt);
+    const queue = 'gh-readonly-queue/main/pr-38-0123abc';
+    const beforeMerge = new Date(Date.now() - 180_000).toISOString();
+    const afterMerge = new Date(Date.now() - 60_000).toISOString();
+
+    // GitHub names a commit's check suite for the branch first pushed with it: the queue's, for a queued merge.
+    const otherQueue = passed(
+      mine,
+      'Workers Builds: site',
+      merge,
+      'gh-readonly-queue/release/pr-38-0123abc',
+      afterMerge,
+    );
+    expect((await deliver('check_run', otherQueue)).body).toMatchObject({
+      moved: [],
+      ignored: expect.stringMatching(/not the default branch/u),
+    });
+    // A build of the queue's branch that started before the merge was a preview, which ships nothing.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, beforeMerge))).body).toEqual({
+      moved: [],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    // One that started after GitHub's merge counts, even before Ntasks heard of the merge.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, afterMerge))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+  });
+
+  it('counts a queue deploy that started in the same second as the merge', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 39);
+    const merge = newCommit();
+    // GitHub gives both times to the second. A merge queue merges only once its checks pass on the
+    // queue's branch, which takes minutes, so a preview there starts well before the merge, never in its second.
+    const second = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000).toISOString().replace('.000Z', 'Z');
+    const event = merged(mine, 39, merge);
+    await deliver('pull_request', { ...event, pull_request: { ...event.pull_request, merged_at: second } });
+    const queue = 'gh-readonly-queue/main/pr-39-0123abc';
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, second))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+  });
+
   it('keeps a project off once its owner turns it off, and a deploy check off once switched off', async () => {
     const owner = await connected();
     const mine = newInstallation();
@@ -404,12 +467,14 @@ describe('work waiting for a merge GitHub already made', () => {
     // The installation's own check: nothing of this test waits yet.
     await runDurableObjectAlarm(store());
     const merge = newCommit();
-    github.pulls.set(`${REPOSITORY}#50`, { merged: true, mergeCommit: merge, base: 'main' });
+    const mergedAt = new Date(Date.now() - 300_000).toISOString();
+    github.pulls.set(`${REPOSITORY}#50`, { merged: true, mergeCommit: merge, base: 'main', mergedAt });
 
     const { projectId, id } = await taskWithPullRequest(owner, 50);
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
     expect(await runDurableObjectAlarm(store())).toBe(true);
-    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'merged', mergeCommit: merge });
+    // Merged as GitHub merged it, five minutes before the check asked.
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'merged', mergeCommit: merge, mergedAt });
     expect(github.installationTokens).toContain(mine);
   });
 
