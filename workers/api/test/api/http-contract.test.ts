@@ -217,21 +217,26 @@ async function drive(): Promise<readonly Sample[]> {
   await as('POST /api/tasks/:id/respond', task(decision, '/respond'), inProject({ response: 'Yes, Monday.' }));
   await as('POST /api/tasks/:id/dismiss', task(declined, '/dismiss'), inProject({ reason: 'Not this time.' }));
 
-  const choice = (
-    await tool(owner, 'create_task', {
-      project: projectId,
-      title: 'Pick the headline',
-      labels: ['human'],
-      choices: {
-        question: 'Which headline?',
-        options: [
-          { key: 'a', label: 'Launch day', recommended: true },
-          { key: 'b', label: 'It is here' },
-        ],
-      },
-    })
-  ).id as string;
+  const offer = async (title: string, question: string) =>
+    (
+      await tool(owner, 'create_task', {
+        project: projectId,
+        title,
+        labels: ['human'],
+        choices: {
+          question,
+          options: [
+            { key: 'a', label: 'Launch day', recommended: true },
+            { key: 'b', label: 'It is here' },
+          ],
+        },
+      })
+    ).id as string;
+  const choice = await offer('Pick the headline', 'Which headline?');
   await as('POST /api/tasks/:id/choose', task(choice, '/choose'), inProject({ option: 'a', note: 'Shorter.' }));
+  // A pick without a note answers no `choice.note`.
+  const unexplained = await offer('Pick the subtitle', 'Which subtitle?');
+  await as('POST /api/tasks/:id/choose', task(unexplained, '/choose'), inProject({ option: 'b' }));
 
   const deploy = (await tool(owner, 'create_task', { project: projectId, title: 'Deploy the post' })).id as string;
   const approval = idOf(

@@ -1146,7 +1146,10 @@ and compares the answers with the record, so it fails when an answer:
 - holds a field the record lacks. The failure names the line that records it.
 
 A recorded field is never edited or removed, and the test refuses a field
-recorded twice.
+recorded twice. One field was corrected after it was recorded: version 1
+recorded a pick's `choice.note` as always a string, but a pick made without
+a note has always answered no `note`. Version 1's file now records it as
+`absent|string`, which is what version 1 always answered.
 
 ### Adding a version
 
