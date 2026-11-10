@@ -20,6 +20,7 @@
 import type { TaskResolution } from '@ntasks/domain';
 import type {
   Account,
+  BurndownPage,
   ChangesPage,
   CloseOptions,
   ConnectedApp,
@@ -101,6 +102,9 @@ export interface TasksApi {
    * sign-in reaches. Without `before`, today and the six days before it; with it (YYYY-MM-DD), the seven
    * days before that day. Days run midnight to midnight in `timeZone`, an IANA zone. */
   wins(options: { project?: string; before?: string; timeZone?: string }, signal?: AbortSignal): Promise<WinsPage>;
+  /** The last eight weeks, day by day: the tasks open at each day's end, and those created and closed that day, in
+   * one project or every one this sign-in reaches. Days run midnight to midnight in `timeZone`, an IANA zone. */
+  burndown(options: { project?: string; timeZone?: string }, signal?: AbortSignal): Promise<BurndownPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -573,6 +577,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     fields: (project, signal) => scope().fields(project, signal),
     changes: (after, signal) => scope().changes(after, signal),
     wins: (options, signal) => scope().wins(options, signal),
+    burndown: (options, signal) => scope().burndown(options, signal),
     createTask: (input, options) => scope().createTask(input, options),
     updateTask: (id, project, edit, options) => scope().updateTask(id, project, edit, options),
     closeTask: (id, project, reason, options) => scope().closeTask(id, project, reason, options),
@@ -718,6 +723,16 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         throw new UnreadableAnswer('The wins could not be read.');
       }
       return page as unknown as WinsPage;
+    },
+    async burndown({ project, timeZone }, signal) {
+      const params = new URLSearchParams();
+      if (project !== undefined) params.set('project', await projectId(project, signal));
+      if (timeZone !== undefined) params.set('timeZone', timeZone);
+      const query = params.size > 0 ? `?${params}` : '';
+      const page = await read<unknown>(`/api/tasks/burndown${query}`, 'The open tasks by day', signal);
+      if (!isRecord(page) || !Array.isArray(page.days))
+        throw new UnreadableAnswer('The open tasks by day could not be read.');
+      return page as unknown as BurndownPage;
     },
     async search(text, signal) {
       const found = await read<unknown>(`/api/tasks/search?${new URLSearchParams({ q: text })}`, 'The search', signal);

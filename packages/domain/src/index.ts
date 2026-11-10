@@ -19,6 +19,8 @@ export { criteriaOf } from './criteria.ts';
 export { overlappingTouches } from './touches.ts';
 export { addDays, isDay, isTimeZone, zoneDays } from './days.ts';
 export type { ZoneDays } from './days.ts';
+export { BURNDOWN_DAYS, burndownDays, burndownWindow } from './burndown.ts';
+export type { BurndownDay, BurndownItem, BurndownRead, BurndownWindow } from './burndown.ts';
 export type { Criterion } from './criteria.ts';
 export {
   ACCEPTED_REASON,

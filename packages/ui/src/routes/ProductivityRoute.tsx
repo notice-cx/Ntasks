@@ -1,9 +1,10 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ChartNoAxesColumn, ChevronDown, GitCommitHorizontal, GitMerge, GitPullRequest, Split } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTasksApi } from '../api/context';
 import type { DecidedWin, FinishedWin, ShippedWin, Win, WinsDay, WinsPage } from '../api/types';
+import { BurndownChart } from '../components/BurndownChart';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Avatar } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
@@ -31,10 +32,11 @@ const BAR_SCALE_LEAST = 4;
 
 /**
  * Productivity, `<base>/productivity`: what you and your agents got done that
- * matters, day by day. A strip of the last seven days, then every win under
- * its day, newest first: changes shipped, answers you gave and epics
- * finished. It counts no tasks closed, and ranks nobody. Show the 7 days
- * before reads further back, to eight weeks.
+ * matters, day by day. A strip of the last seven days, then the open tasks of
+ * the last eight weeks, then every win under its day, newest first: changes
+ * shipped, answers you gave and epics finished. No win is a task closed, and
+ * nobody is ranked; the chart shows closes only as context for the open
+ * tasks. Show the 7 days before reads further back, to eight weeks.
  */
 export function ProductivityRoute() {
   const api = useTasksApi();
@@ -51,6 +53,14 @@ export function ProductivityRoute() {
     queryFn: ({ pageParam, signal }) => api.wins({ project, before: pageParam ?? undefined, timeZone: zone }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (last: WinsPage) => last.earlier,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
+  const burndown = useQuery({
+    queryKey: ['tasks', { burndown: project ?? null, zone }],
+    queryFn: ({ signal }) => api.burndown({ project, timeZone: zone }, signal),
+    // Another project's chart keeps the last one in place, dimmed, until it arrives.
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
     refetchOnWindowFocus: false,
   });
@@ -101,6 +111,27 @@ export function ProductivityRoute() {
               {shippedFrom !== null ? `Merges are recorded from ${dayLabel(shippedFrom)}.` : 'No merges recorded yet.'}
             </span>
           ) : null}
+        </div>
+        <div className="border-y border-border" data-burndown-section="">
+          {burndown.data !== undefined ? (
+            <div className={cn(burndown.isPlaceholderData && 'opacity-60')}>
+              <BurndownChart page={burndown.data} nowMs={now} zone={zone} />
+            </div>
+          ) : burndown.isError ? (
+            <div className="px-6 py-4 max-sm:px-4">
+              <ReadFailed
+                title="Couldn't load the open tasks"
+                error={burndown.error}
+                retrying={burndown.isFetching}
+                onRetry={() => void burndown.refetch()}
+              />
+            </div>
+          ) : (
+            <div className="px-6 py-4 max-sm:px-4" role="status">
+              <span className="sr-only">Loading…</span>
+              <div aria-hidden className="skeleton h-[313px] rounded-md" />
+            </div>
+          )}
         </div>
         {pages.map((page, index) => (
           <WinsFeed key={page.from} page={page} nowMs={now} first={index === 0} />

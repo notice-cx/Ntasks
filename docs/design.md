@@ -747,7 +747,8 @@ epics match this search with Clear search.
 day by day, from `GET /api/tasks/wins` ([Wins](api.md#wins)). A win is a
 change that merged or went live (a pull request counts once, however many
 tasks it closed), an answer a person gave to a task's choices, or an epic
-closed as done. Tasks closed are never counted, and nobody is ranked. The
+closed as done. No win is a task closed, and nobody is ranked; the chart of
+open tasks below shows closes only as context for the open work. The
 `TopBar` titled Productivity says Last 7 days (from 640 px wide) and ends
 with the project menu: All projects, then each project, the one in view
 ticked; a project chosen is kept in the address as `?project=`.
@@ -762,6 +763,37 @@ it is never red. Today's cell is ringed in Accent. Under the strip, the
 week's counts beside their colour keys (shipped, decided, epics finished),
 the approvals closed as done in Text 3, and in Text 3 the first day merges
 were recorded on when none shipped before.
+
+Between the counts and the feed, between two Border lines, Open tasks
+(`BurndownChart.tsx`, from `GET /api/tasks/burndown`,
+[Burn-down](api.md#burn-down)) shows the open workload of the last eight
+weeks for the project in view: context for the wins, not a score. Its
+heading says Last 8 weeks and ends with its key, on a line of its own on a
+phone: Open, Created, Done and Closed, not done. Under it, the open count now in
+`text-heading` and, in Text 3, how it changed since the first recorded day
+(`163 fewer than on Sep 16`). A line in Text 3 under that says today's
+tasks created and done, or the day pointed at, or stepped to with ← and →,
+Home and End once the chart has focus: `Sat, Oct 24: 12 open, 2 created, 4
+done`.
+
+The chart is two panels over one row of dates, each panel with its own
+scale, so no two measures share an axis:
+
+| Panel | Draws |
+|---|---|
+| Open, 112 px | The open count at each day's end as a 2 px line in Text, over a wash of it at 8%, on hairline gridlines at 0, half and the top of a whole-number scale; a dot at today |
+| Created and closed, 73 px | Each day's tasks created as a bar in Text 3 rising from a middle line in Border strong, and below it the tasks closed as done in green (Done), then the tasks closed any other way in Text 3 at 60%, 2 px apart. Both halves share one scale, so a day's inflow and outflow compare by length |
+
+The dates under the panels are today and each day a week before it, every
+other one on a phone. A day that ended before anything was recorded is a band
+in Surface across both panels, which says Not recorded where it spans eight
+days or more; the line starts after it, and the band is never drawn as zero.
+A project with no tasks in the eight weeks shows No tasks in the last 8 weeks
+in Text 3 instead of the chart. A visually hidden table, Open tasks by day,
+last 8 weeks, holds every day's counts for a screen reader. While it loads, a
+skeleton the chart's height holds its place; a failed read shows
+`ReadFailed` there, with Retry, and the wins stay; another project's chart
+keeps the last one dimmed until it arrives.
 
 Then each day with wins, newest first, under a `GroupHeader` naming the day
 (`Tue, Nov 10`), its count and, from 640 px wide, its wins in words (`42

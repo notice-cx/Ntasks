@@ -111,6 +111,8 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
       cached(JSON.stringify(['wins', projectIds, from, to, closedSince]), () =>
         engine.listWins(projectIds, from, to, closedSince),
       ),
+    listBurndown: (projectIds, from) =>
+      cached(JSON.stringify(['burndown', projectIds, from]), () => engine.listBurndown(projectIds, from)),
     latestChange: () => cached('latest-change', () => engine.latestChange()),
     createProject: writes(engine.createProject),
     setProjectDeploys: writes(engine.setProjectDeploys),

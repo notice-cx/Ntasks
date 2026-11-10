@@ -333,6 +333,9 @@ async function drive(): Promise<readonly Sample[]> {
   let earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}`)).earlier;
   while (typeof earlier === 'string')
     earlier = (await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&before=${earlier}`)).earlier;
+  // The project was made today, so its earlier days are not recorded and today's are.
+  await as('GET /api/tasks/burndown', '/api/tasks/burndown');
+  await as('GET /api/tasks/burndown', `/api/tasks/burndown?project=${projectId}&timeZone=America/Los_Angeles`);
   let next: unknown = null;
   do {
     next = (await as('GET /api/backup', next === null ? '/api/backup' : `/api/backup?page=${String(next)}`)).next;
@@ -343,6 +346,11 @@ async function drive(): Promise<readonly Sample[]> {
   };
   await as('PATCH /api/workspaces', '/api/workspaces', { workspaceId: workspace.workspaceId, name: 'Second, renamed' });
   await as('GET /api/workspaces', '/api/workspaces');
+  // A workspace with no project records no day at all.
+  const unrecorded = await owner.fetch('/api/tasks/burndown', {
+    headers: { [WORKSPACE_HEADER]: workspace.workspaceId },
+  });
+  await keep(samples, 'GET /api/tasks/burndown', '/api/tasks/burndown', unrecorded);
   await as('POST /api/access/invitations', '/api/access/invitations', { githubLogin: 'person-2201' });
   const revoked = (await as('POST /api/access/invitations', '/api/access/invitations', { githubLogin: 'person-2202' }))
     .invitation as { invitationId: string };

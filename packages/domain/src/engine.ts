@@ -14,6 +14,7 @@
  * docs/architecture.md ("Rules every change keeps") are the engine's
  * guarantees, and each method's comment names the ones it relies on.
  */
+import type { BurndownRead } from './burndown.ts';
 import type {
   CustomField,
   DeliveryStage,
@@ -523,6 +524,13 @@ export interface TaskEngine {
    * `closedSince`. Its cost follows that window, not the history.
    */
   listWins(projectIds: readonly string[], from: string, to: string, closedSince: string): Promise<WinsRead>;
+  /**
+   * What a burn-down from `from` counts in these projects (burndown.ts): the
+   * tasks not closed and those closed at or after `from`, each through its
+   * index, and whether any closed before it. Its cost follows the open tasks
+   * and that window, not the history.
+   */
+  listBurndown(projectIds: readonly string[], from: string): Promise<BurndownRead>;
   /** The open tasks `assignee` holds, in every project, most urgent first, in
    * one statement through the assignee index: its cost follows the tasks held. */
   listHeld(assignee: string): Promise<readonly HeldTask[]>;

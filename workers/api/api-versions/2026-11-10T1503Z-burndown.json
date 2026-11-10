@@ -1,0 +1,20 @@
+{
+  "added": "`GET /api/tasks/burndown`: the open tasks of each day of the last eight weeks, with the tasks created and closed that day, for the Productivity page",
+  "routes": {
+    "GET /api/tasks/burndown": {
+      "readAt": "string",
+      "timeZone": "string",
+      "from": "string",
+      "to": "string",
+      "projects": "number",
+      "recordedFrom": "null|string",
+      "days": "array",
+      "days[]": "object",
+      "days[].day": "string",
+      "days[].open": "null|number",
+      "days[].created": "null|number",
+      "days[].done": "null|number",
+      "days[].closedNotDone": "null|number"
+    }
+  }
+}

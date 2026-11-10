@@ -102,6 +102,32 @@ function taskAt(nowMs: number) {
   });
 }
 
+/**
+ * Earlier work for the burn-down: `count` tasks of `project`, each closed
+ * between 8 and `oldest` days before `nowMs`, so no board, which shows the
+ * last week's closes, lists them. Each lived up to a month, less for the
+ * latest, so the open count falls toward today's open tasks. One in eight
+ * closed without being done.
+ */
+function history(nowMs: number, project: string, count: number, oldest: number): FixtureTask[] {
+  const task = taskAt(nowMs);
+  const at = (ago: number) => new Date(nowMs - ago).toISOString();
+  const others = ['duplicate', 'wont-do', 'no-longer-needed'] as const;
+  return Array.from({ length: count }, (_, k) => {
+    // Spread over the days by multiplying with primes, so the history is the same on every run.
+    const closedAgo = 8 * DAY + (((k * 7919 + 11) % 1000) / 1000) * (oldest - 8) * DAY + ((k * 37) % 24) * HOUR;
+    const lived = Math.min(30 * (((k * 104729 + 11) % 997) / 997), 0.9 * (closedAgo / DAY - 8)) * DAY + 8 * HOUR;
+    return task(project, `${project}-h${k + 1}`, `Earlier task ${k + 1}`, {
+      status: 'closed',
+      createdAt: at(closedAgo + lived),
+      updatedAt: at(closedAgo),
+      closedAt: at(closedAgo),
+      closeReason: 'Finished.',
+      resolution: k % 8 === 3 ? others[k % 3]! : 'done',
+    });
+  });
+}
+
 export function fixtureSeed(nowMs: number): FixtureSeed {
   const at = (ago: number) => new Date(nowMs - ago).toISOString();
   const day = (ahead: number) => new Date(nowMs + ahead * DAY).toISOString().slice(0, 10);
@@ -396,6 +422,8 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       ...closed(6 * HOUR, CODEX, 'Updated the screenshots.', { proof: 'none' }),
     }),
   ];
+
+  tasks.push(...history(nowMs, 'web', 170, 54), ...history(nowMs, 'docs', 40, 21));
 
   const comments = new Map<string, TaskComment[]>([
     [

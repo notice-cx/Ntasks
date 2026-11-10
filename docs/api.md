@@ -701,6 +701,31 @@ reads the seven days before those, and null at the oldest.
 | `days` | Each day, oldest first: `day` and its `shipped`, `decided` and `finished` |
 | `wins` | Every win, newest first. Each has `kind` (`shipped`, `decided` or `finished`), `at` and `projectId`. A shipped win has `stage` (`merged` or `live`), `pullRequest`, `commit` (null when it has a pull request) and `tasks`, each `{ id, title }`; a decided one `id`, `title`, `option`, `label` and `by`, the person who answered; a finished one `id`, `title` and `done` |
 
+## Burn-down
+
+`GET /api/tasks/burndown` answers the Productivity page's chart of open
+tasks ([`burndown.ts`](../workers/api/src/burndown.ts), with the rule in
+[`@ntasks/domain`](../packages/domain/src/burndown.ts)): for each day of the
+last eight weeks, today included, the tasks created, closed as done and
+closed any other way that day, and the tasks still open at its end. It
+covers one project, or every project the sender reaches.
+
+A task is open from when it was created until it closes. A task records only
+its latest close, so a task reopened counts as open from its creation until
+it closes again, and only that close counts. A day that ends before the
+projects' first record holds null in every count, never zero: the first
+record is the earliest of the projects' creation, a task's creation, or any
+close before the eight weeks. Each day runs from midnight to midnight in
+`timeZone`, as in [wins](#wins).
+
+| Field | Holds |
+|---|---|
+| `readAt`, `from`, `to` | When it was read, the first day's midnight and tomorrow's midnight in `timeZone` |
+| `timeZone` | The time zone the days are cut in |
+| `projects` | How many projects were read |
+| `recordedFrom` | The first day with a record, or null when no day has one |
+| `days` | Each of the 56 days, oldest first: `day`, `open` (at the day's end; for today, now), `created`, `done` and `closedNotDone` (won't do, duplicate, can't reproduce, already handled or no longer needed), each null on a day not recorded |
+
 ## Delivery
 
 A task's **delivery** says where its change is, so a closed task shows
@@ -1166,6 +1191,7 @@ misspelt filter fails instead of being ignored.
 | `GET /api/fields` | `project` | `{ project, fields }`: the project's key and its custom fields, as `list_fields` lists them |
 | `GET /api/tasks/agent-stats` | optionally `project` | `{ readAt, projects, broken, stats }`, as `get_agent_stats` answers ([agent statistics](#agent-statistics)): of the project, or of every project the sender reaches |
 | `GET /api/tasks/wins` | optionally `project`, `before` and `timeZone` | The wins of seven days ([wins](#wins)): of the project, or of every project the sender reaches |
+| `GET /api/tasks/burndown` | optionally `project` and `timeZone` | The open, created and closed tasks of each day of the last eight weeks ([burn-down](#burn-down)): of the project, or of every project the sender reaches |
 
 ### Writes
 
@@ -1472,6 +1498,9 @@ query:
 - the wins feed reads one row for each task not closed and each closed in the
   last five weeks, in two statements over every project, and then the
   children of the epics it finds finished;
+- the burn-down reads one index entry for each task not closed and one row
+  for each closed in the last eight weeks, in two statements over every
+  project, however many tasks closed before then;
 - the tasks a sender holds, which the instructions list when an agent
   connects, are one statement in each workspace it reaches, through the
   index of holders: a row for each task held;

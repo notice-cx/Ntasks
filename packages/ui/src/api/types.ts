@@ -334,6 +334,35 @@ export interface WinsPage {
   readonly wins: readonly Win[];
 }
 
+/** One day of the burn-down. Every count is null on a day that ended before anything was recorded. */
+export interface BurndownDay {
+  /** YYYY-MM-DD. */
+  readonly day: string;
+  /** The tasks not closed at the day's end; for today, now. */
+  readonly open: number | null;
+  readonly created: number | null;
+  /** The tasks closed as done. */
+  readonly done: number | null;
+  /** The tasks closed any other way: won't do, duplicate, can't reproduce, already handled or no longer needed. */
+  readonly closedNotDone: number | null;
+}
+
+/** The last eight weeks of open, created and closed tasks (docs/api.md, "Burn-down"). */
+export interface BurndownPage {
+  readonly readAt: string;
+  /** The time zone the days are cut in. */
+  readonly timeZone: string;
+  /** The first day's midnight in `timeZone`. */
+  readonly from: string;
+  /** Tomorrow's midnight in `timeZone`. */
+  readonly to: string;
+  readonly projects: number;
+  /** The first day with a record, or null when none of these days has one. */
+  readonly recordedFrom: string | null;
+  /** Each day, oldest first. */
+  readonly days: readonly BurndownDay[];
+}
+
 /** One change to a task, as the change feed lists it. */
 export interface TaskChange {
   /** Orders every change in the installation. */
