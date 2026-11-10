@@ -60,9 +60,13 @@ Nothing publishes the site on its own. A merge to `main` deploys the app
 through the Workers Builds connection, which reads the app's
 `wrangler.jsonc` at the repository root; it never reads this folder's.
 
-Publishing is `wrangler deploy` from this folder, run by hand, and needs the
-owner's approval each time, like every other command that reaches
-Cloudflare ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)):
+Publishing is `wrangler deploy` from this folder, run by hand. Every merge
+to `main` that changes `docs/`, `spec/` or `apps/site/` is published right
+after it lands, from a clean checkout of `main`'s latest commit, so one
+publish carries every merged change and rolls none back. The owner approved
+this publish once for every such merge; any other command that reaches
+Cloudflare still needs approval each time
+([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)):
 
 ```sh
 pnpm site:build

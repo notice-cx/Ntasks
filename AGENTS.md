@@ -58,7 +58,7 @@ Every feature and every change to an existing one meets all five:
 | `tools/screenshots/` | `pnpm screenshots`: the pictures of the web app in the README and the docs, and with `walkthroughs` the animated walkthroughs of its features, drawn from the fixture app by a local Chrome. CI never runs it |
 | `install.sh`, `skills/ntasks/` | The command that connects a person's AI agents to Ntasks and installs the Ntasks skill, and the skill itself: the one copy of the standing rules an agent keeps. [Connect an agent](docs/agents.md) describes both. CI runs `shellcheck` on the script, which runs on the bash that macOS ships |
 | `docs/` | Why Ntasks, concepts, deploying and running it, the web app, architecture, the API, sign-in, the task store and the design system ([design.md](docs/design.md)). `docs/index.md` lists the pages in the order the website's sidebar shows them |
-| `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build; no merge or CI run deploys it ([apps/site/README.md](apps/site/README.md)) |
+| `apps/site/` | The website for ntasks.notice.cx: the landing page, and `docs/` rendered in place as the docs at `/docs/`. Its own `wrangler.jsonc` serves the build; no merge or CI run deploys it, so the agent that merges a change to it publishes it ([below](#never-without-the-owners-explicit-approval), [apps/site/README.md](apps/site/README.md#publishing)) |
 | `spec/` | The Shared Work Protocol, a draft open contract for shared work that other tools can implement: its text, JSON Schemas, sample objects and the tests that check them. Its text is CC BY 4.0 and its schemas and tests Apache-2.0, apart from Ntasks's AGPL-3.0 code ([spec/README.md](spec/README.md)). A change to a rule Ntasks keeps updates the protocol and its appendix of tests |
 
 A new workspace goes under `apps/`, `workers/`, `packages/` or `tools/`, or
@@ -170,11 +170,20 @@ where they may merge other pull requests. Prepare and verify the change
 locally first, then ask with the exact command, its target and its effect.
 Tests and CI never reach a deployed Worker, a remote database or npm.
 
-One exception: the task tools of the `ntasks` MCP server a maintainer
-connected for task work ([Open work](#open-work)) need no further approval to
-read and change that maintainer's tasks. Any other request to that deployment,
-such as an API call by hand, a backup, a load or a credential change, still
-needs it.
+Two exceptions need no further approval:
+
+- **Task tools.** The task tools of the `ntasks` MCP server a maintainer
+  connected for task work ([Open work](#open-work)) read and change that
+  maintainer's tasks. Any other request to that deployment, such as an API
+  call by hand, a backup, a load or a credential change, still needs it.
+- **Publishing the website.** A merge to `main` that changes `docs/`,
+  `spec/` or `apps/site/` is published to ntasks.notice.cx right after it
+  lands, by the agent that merged it, without asking: `pnpm site:build`,
+  then `wrangler deploy` for the `ntasks-site` Worker, from a clean checkout
+  of `main`'s latest commit, so one publish never rolls back another merged
+  change ([apps/site](apps/site/README.md#publishing)). The agent records
+  the Cloudflare version it deployed on the task. This covers that Worker
+  only; the app's Worker, D1, secrets and npm keep their approvals.
 
 ## Git
 
