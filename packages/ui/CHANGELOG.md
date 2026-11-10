@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/notice-cx/Ntasks/compare/ui-v0.3.0...ui-v0.4.0) (2026-11-10)
+
+
+### Features
+
+* show each agent under one name and each model by its name ([afad0eb](https://github.com/notice-cx/Ntasks/commit/afad0eb2b7b963a7de5d10cf31ce8d9e57a1ce2c))
+
 ## [0.3.0](https://github.com/notice-cx/Ntasks/compare/ui-v0.2.0...ui-v0.3.0) (2026-11-10)
 
 
