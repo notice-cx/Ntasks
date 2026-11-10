@@ -77,8 +77,9 @@ reach Cloudflare.
 
 ### Releasing
 
-A release is the owner merging the ntasks release pull request, then pressing
-**Approve and deploy**. Agents never merge a release pull request.
+A release is the owner approving the CI run of the ntasks release pull
+request, merging the pull request, then pressing **Approve and deploy**. Agents
+never approve, merge or turn on auto-merge for a release pull request.
 
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
@@ -101,10 +102,18 @@ checks and builds the repository and publishes `tools/cli/dist` to npm.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release ntasks <version>`, click **Merge
-   when ready**, then **Confirm merge when ready**.
-2. When the Release run waits for review (GitHub emails the owner), open it,
+1. On the pull request `chore(main): release ntasks <version>`, open the
+   **Files changed** tab, click **Awaiting approval** at the top right, then
+   **Approve workflows to run**. GitHub holds the pull request's CI run until
+   someone approves it, because a workflow, not a person, opened the pull
+   request.
+2. When its checks pass, click **Merge when ready**, then **Confirm merge when
+   ready**, at the bottom of the **Conversation** tab.
+3. When the Release run waits for review (GitHub emails the owner), open it,
    click **Review deployments**, tick **npm** and click **Approve and deploy**.
+
+When more changes reach `main` before the pull request merges, release-please
+rebuilds it, and the new CI run waits for approval again: repeat step 1.
 
 To run a failed or rejected publish again, open **Actions**, choose
 **Release**, click **Run workflow**, pick the tag `v<version>` under **Use

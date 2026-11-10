@@ -289,9 +289,10 @@ manifest.
 The package publishes to npm, at https://registry.npmjs.org, as
 `@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
 
-A release is the owner merging the `@notice-cx/ntasks-ui` release pull
-request, then pressing **Approve and deploy**. Agents never merge a release
-pull request.
+A release is the owner approving the CI run of the `@notice-cx/ntasks-ui`
+release pull request, merging the pull request, then pressing **Approve and
+deploy**. Agents never approve, merge or turn on auto-merge for a release pull
+request.
 
 After each push to `main`, the Release PRs workflow
 (`.github/workflows/release-please.yml`) runs
@@ -312,11 +313,18 @@ check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
 
 The owner's steps:
 
-1. On the pull request `chore(main): release @notice-cx/ntasks-ui <version>`,
-   click **Merge when ready**, then **Confirm merge when ready**.
-2. When the Release UI package run waits for review (GitHub emails the owner),
-   open it, click **Review deployments**, tick **npm** and click **Approve and
-   deploy**.
+1. On the pull request `chore(main): release @notice-cx/ntasks-ui <version>`, open the
+   **Files changed** tab, click **Awaiting approval** at the top right, then
+   **Approve workflows to run**. GitHub holds the pull request's CI run until
+   someone approves it, because a workflow, not a person, opened the pull
+   request.
+2. When its checks pass, click **Merge when ready**, then **Confirm merge when
+   ready**, at the bottom of the **Conversation** tab.
+3. When the Release UI package run waits for review (GitHub emails the owner), open it,
+   click **Review deployments**, tick **npm** and click **Approve and deploy**.
+
+When more changes reach `main` before the pull request merges, release-please
+rebuilds it, and the new CI run waits for approval again: repeat step 1.
 
 To run a failed or rejected publish again, open **Actions**, choose **Release
 UI package**, click **Run workflow**, pick the tag `ui-v<version>` under **Use
