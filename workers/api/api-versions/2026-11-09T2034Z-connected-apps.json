@@ -1,0 +1,40 @@
+{
+  "added": "Connected apps: `app` in `GET /api/access/me`, `answer.app` and `choice.app` on a task, and `POST /api/access/apps`, `GET /api/access/apps`, `POST /api/access/apps/:id/revoke` and `POST /api/access/apps/:id/remove`",
+  "shapes": {
+    "task": {
+      "answer.app": "null|string",
+      "choice.app": "absent|string"
+    },
+    "app": {
+      "clientId": "string",
+      "name": "string",
+      "redirectUris": "array",
+      "redirectUris[]": "string",
+      "createdAt": "null|string",
+      "connectedAt": "null|string"
+    }
+  },
+  "routes": {
+    "GET /api/access/me": {
+      "app": "absent|object",
+      "app.clientId": "string",
+      "app.name": "string",
+      "app.workspaceId": "string",
+      "app.scopes": "array",
+      "app.scopes[]": "string"
+    },
+    "POST /api/access/apps": {
+      "app": "@app"
+    },
+    "GET /api/access/apps": {
+      "apps": "array",
+      "apps[]": "@app"
+    },
+    "POST /api/access/apps/:id/revoke": {
+      "revoked": "boolean"
+    },
+    "POST /api/access/apps/:id/remove": {
+      "removed": "boolean"
+    }
+  }
+}

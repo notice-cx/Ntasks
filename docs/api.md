@@ -829,6 +829,23 @@ the tasks it names, so their tasks go live without anyone ticking it. It does
 so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
+A merge GitHub made before the task closed sends its event too early to move
+the task, so the workspace's task store also asks GitHub itself, as the app:
+
+- about 5 seconds after a task closes as done with a pull request;
+- when an owner installs the app, for the tasks already waiting for a merge,
+  such as the ones closed before GitHub was connected.
+
+Each check reads the pull requests of the newest tasks waiting for a merge in
+repositories an installation reaches, and moves each one merged into its
+repository's default branch to `merged`, with its merge commit. An
+installation on all of its account's repositories reaches every one; for an
+installation on selected repositories, the check lists them first, up to 200,
+and reads only pull requests in the ones listed. It makes at most 45 requests to GitHub, within the free plan's 50
+requests to other servers, so a check reads up to about 40 pull requests and
+the next close checks the rest. It signs in to GitHub with the app's private
+key.
+
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
   saved by hand, compared in constant time. Without the header the answer
@@ -945,20 +962,16 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added. This is version 10.
+field can hold is added.
 
-| Version | Added |
-|---|---|
-| 1 | The routes this page and [Sign-in](sign-in.md#routes) list |
-| 2 | [Connected apps](sign-in.md#connected-apps) |
-| 3 | `steps` on a task, `POST /api/gates/:id/steps` ([below](#a-persons-decisions)), and `step` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 4 | `closeAcceptance` on a task, `POST /api/tasks/:id/accept` ([below](#a-persons-decisions)), and `accept` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 5 | `POST /api/github/:workspaceId` ([above](#from-github)), and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove` ([Sign-in](sign-in.md#routes)) |
-| 6 | `app`, `installations` and `detected` in `GET /api/access/github`, and `POST /api/access/github/app`, `POST /api/access/github/app/remove` and `POST /api/access/github/checks` ([Sign-in](sign-in.md#routes)) |
-| 7 | `pinned` on a comment, `pin` and `unpin` on `POST /api/tasks/:id/comments`, and `parent` on `GET /api/tasks/:id` ([above](#what-a-parent-holds-for-its-tasks)) |
-| 8 | `stalled` on a task, `POST /api/tasks/:id/release` ([below](#a-persons-decisions)), and `release` among a person's `operations` in `GET /api/tasks/capabilities` |
-| 9 | `GET /api/tasks/wins` ([above](#wins)) |
-| 10 | `timeZone` on `GET /api/tasks/wins`, as a parameter and in its answer ([above](#wins)) |
+Each version is one file in
+[`workers/api/api-versions/`](../workers/api/api-versions/), and the version
+is the number of files there. A file is named with the UTC time it was
+written, then what its version adds, such as
+`2026-11-10T0137Z-stalled-tasks.json`. In name order, the order GitHub lists
+them in, the files are versions 1, 2, 3 and on. Each file's `added` says what
+its version added, and the rest records the fields it added
+([below](#the-recorded-contract)).
 
 | Where | What it holds |
 |---|---|
@@ -989,6 +1002,19 @@ it has no special case for.
 The MCP tools keep their own contract ([above](#the-mcp-endpoint)); the version
 counts the HTTP routes.
 
+### The version a client asks for
+
+A client made for an addition asks for the version main has once that
+addition has merged, or a later one: the number of files in `api-versions/`
+then. Main only gains files, so every Ntasks built from main that answers
+that version or a later one was built after the addition merged, and has it.
+
+A file's place in name order can be lower than the first version that had
+it. Two additions open at the same time both merge, and when the one written
+first merges second, its file sorts before the other's: its place is one
+lower than the version main had when it merged, and the other's place moves
+up by one. The rule above never names a version too low.
+
 ### A change that would break a client
 
 Removing or renaming a route, a parameter or a field, or giving one another
@@ -1000,9 +1026,9 @@ made for an earlier one finds out that it is too old.
 
 ### The recorded contract
 
-[`http-api.json`](../workers/api/test/fixtures/http-api.json) records, version
-by version, the fields each route answers and the type of each. A field
-several answers hold, such as a task, is recorded once, as a shape.
+Each file in `api-versions/` records the fields its version added to each
+route's answer, and the type of each. A field several answers hold, such as
+a task, is recorded once, as a shape. Together the files are the record.
 [`http-contract.test.ts`](../workers/api/test/api/http-contract.test.ts)
 signs in as a person, sends every route the record names through the Worker,
 and compares the answers with the record, so it fails when an answer:
@@ -1010,11 +1036,43 @@ and compares the answers with the record, so it fails when an answer:
 - leaves out a recorded field, or gives it a type the record does not allow;
 - holds a field the record lacks. The failure names the line that records it.
 
-An addition is recorded in a new entry at the end of the record, with the
-next version, and `API_VERSION` in
-[`version.ts`](../workers/api/src/version.ts) is raised to that version in the
-same change. A recorded field is never edited or removed, and the test
-refuses a field recorded twice.
+A recorded field is never edited or removed, and the test refuses a field
+recorded twice.
+
+### Adding a version
+
+A change that adds to the HTTP API adds one file to `api-versions/`, and
+changes no other file's record and no number:
+
+1. Name the file with the current UTC time and what it adds, such as
+   `2026-11-12T0930Z-task-due-dates.json`. This prints the time:
+
+   ```bash
+   date -u +%Y-%m-%dT%H%MZ
+   ```
+
+2. Write `added`, one line saying what the version adds, and record each
+   field it adds, with the line the test's failure prints:
+
+   ```json
+   {
+     "added": "`stalled` on a task, `POST /api/tasks/:id/release`, and `release` among a person's `operations` in `GET /api/tasks/capabilities`",
+     "shapes": { "task": { "stalled": "boolean" } },
+     "routes": { "POST /api/tasks/:id/release": { "task": "@task" } }
+   }
+   ```
+
+The Worker counts the files, so the version goes up by one when the change
+merges, whichever other additions merge before or after it. Two changes
+that each add a version touch no line in common and merge in either order;
+[`api-versions.ts`](../workers/api/test/node/api-versions.ts) merges two such
+changes in both orders to show it.
+
+The Worker's bundler cannot list a folder, so
+[`scripts/api-versions.ts`](../workers/api/scripts/api-versions.ts) writes
+the files' names, in order, to `workers/api/src/api-versions.generated.json`,
+which git ignores. `pnpm install` runs it, and so do the Worker's build,
+`pnpm dev`, its deploy, its typecheck and its tests.
 
 The record covers every HTTP route this page and
 [Sign-in](sign-in.md#routes) list, except three. The OAuth routes under
