@@ -227,3 +227,65 @@ describe('a project’s deploy setting', () => {
     expect(projects.find((listed) => listed.projectId === project.id)).toMatchObject({ deploys: true });
   });
 });
+
+describe('a close that ships no code', () => {
+  type Built = { tasks: { id: string }[] };
+  const waitingIn = async (project: Project) =>
+    (await read<Built>(target, 'list_tasks', { project: project.id, stage: 'built' })).tasks.map((task) => task.id);
+
+  it('starts no delivery when it names only a link, whatever its work details name', async () => {
+    const project = await deployingProject();
+    const { task } = await engine.createTask(project.id, { title: 'Pick a name' }, OWNER);
+    await write(target, 'claim_task', {
+      project: project.id,
+      task: task.id,
+      pr: 'https://github.com/example/app/pull/40',
+      commit: 'abc1234',
+      idempotency_key: key(),
+    });
+    await write(target, 'close_task', {
+      project: project.id,
+      task: task.id,
+      reason: 'Chosen; the notes say why.',
+      link: 'https://example.com/notes/naming',
+      idempotency_key: key(),
+    });
+    expect(await deliveryOf(project, task.id)).toBeUndefined();
+    expect(await waitingIn(project)).not.toContain(task.id);
+  });
+
+  it('starts no delivery for a decision, and keeps a pull request it names as its link', async () => {
+    const project = await deployingProject();
+    const { task } = await engine.createTask(project.id, { title: 'Choose the database', type: 'decision' }, OWNER);
+    const pr = 'https://github.com/example/app/pull/41';
+    await write(target, 'close_task', {
+      project: project.id,
+      task: task.id,
+      reason: 'D1, as the pull request records.',
+      pr,
+      commit: 'abc1235',
+      idempotency_key: key(),
+    });
+    const { task: closed } = await read<{ task: { delivery?: unknown; closeLink: string | null } }>(
+      target,
+      'get_task',
+      { project: project.id, task: task.id },
+    );
+    expect(closed.delivery).toBeUndefined();
+    expect(closed.closeLink).toBe(pr);
+    expect(await waitingIn(project)).not.toContain(task.id);
+  });
+
+  it('files a decision as done with no delivery', async () => {
+    const project = await deployingProject();
+    const filed = await write<{ id: string }>(target, 'create_task', {
+      project: project.id,
+      title: 'Keep the free plan',
+      type: 'decision',
+      done: { evidence: 'Decided in review.', commit: 'abc1236' },
+      idempotency_key: key(),
+    });
+    expect(await deliveryOf(project, filed.id)).toBeUndefined();
+    expect(await waitingIn(project)).not.toContain(filed.id);
+  });
+});

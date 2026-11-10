@@ -8,6 +8,7 @@ import {
   closeAttribution,
   closeAsReason,
   closeNote,
+  deliveryWait,
   inboxAsk,
   inboxOrder,
   waitsOnPerson,
@@ -318,5 +319,18 @@ describe('task Markdown', () => {
     expect(screen.queryByRole('link', { name: 'bad' })).toBeNull();
     expect(document.querySelector('[data-markdown] b')).toBeNull();
     expect(screen.queryByText(/<b>/)).toBeNull();
+  });
+});
+
+describe('what a closed task’s change waits for', () => {
+  const built = { status: 'closed' as const, delivery: { stage: 'built' as const } } as Pick<
+    LiveTask,
+    'status' | 'delivery'
+  >;
+
+  it('waits for a merge while built, but never for a decision or an approval', () => {
+    expect(deliveryWait({ ...built, issueType: 'task' }, true)).toBe('merge');
+    expect(deliveryWait({ ...built, issueType: 'decision' }, true)).toBeNull();
+    expect(deliveryWait({ ...built, issueType: 'gate' }, true)).toBeNull();
   });
 });

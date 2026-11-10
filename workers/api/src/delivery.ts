@@ -9,6 +9,7 @@ import {
   type DeliveryMove,
   type DeliverySignal,
   type TaskResolution,
+  type TaskType,
   type TaskWork,
 } from '@ntasks/domain';
 import { refuse, type Args } from './args.ts';
@@ -57,8 +58,9 @@ export interface ProofNames {
 
 /**
  * What a close as done records of what proves it: a commit and a pull
- * request, either of which starts the task's delivery at built, and a link,
- * a URL that shows work neither shows. They go with a close as done alone.
+ * request, either of which starts the task's delivery at built where
+ * closeProof says it ships code, and a link, a URL that shows work neither
+ * shows. They go with a close as done alone.
  */
 export function shippedArgs(
   args: Args,
@@ -136,6 +138,33 @@ export function shippedWith(
     ...(commit === undefined ? {} : { commit }),
     ...(pullRequest === undefined ? {} : { pullRequest }),
   };
+}
+
+/** The types whose work ships no code: a decision records a choice, and a gate an approval or steps a person did. */
+const SHIPS_NO_CODE: ReadonlySet<TaskType> = new Set(['decision', 'gate']);
+
+/**
+ * What a close as done records of its proof. A decision and an approval ship
+ * no code, so they start no delivery and never wait for a merge: a pull
+ * request either names becomes the close's link when it names none. A close
+ * that names a link, and neither a commit nor a pull request, shows its work
+ * by that link, so the work details' commit and pull request start no
+ * delivery either. Any other close records the commit and pull request it
+ * names or its holder recorded (shippedWith), and its link.
+ */
+export function closeProof(
+  given: { readonly commit?: string; readonly pullRequest?: string; readonly link?: string },
+  type: TaskType,
+  work: TaskWork,
+): { readonly commit?: string; readonly pullRequest?: string; readonly link?: string } {
+  if (SHIPS_NO_CODE.has(type)) {
+    const link = given.link ?? given.pullRequest;
+    return link === undefined ? {} : { link };
+  }
+  if (given.link !== undefined && given.commit === undefined && given.pullRequest === undefined) {
+    return { link: given.link };
+  }
+  return { ...shippedWith(given, work), ...(given.link === undefined ? {} : { link: given.link }) };
 }
 
 /** Moves the closed tasks a signal names, in the projects the sender may change. */
