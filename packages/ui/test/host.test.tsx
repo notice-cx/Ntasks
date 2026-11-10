@@ -110,6 +110,8 @@ describe('a host page', () => {
       </MemoryRouter>,
     );
     await screen.findByRole('link', { name: TASK });
+    // The host's page holds the one main landmark.
+    expect(screen.queryByRole('main')).toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Ntasks' });
     expect(nav.hasAttribute('data-open')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Sidebar' }));
