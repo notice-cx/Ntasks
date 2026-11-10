@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 480" width="840" height="480" role="img" aria-labelledby="title desc">
   <title id="title">Two loops Ntasks runs on its own</title>
-  <desc id="desc">Built, Merged, Live: your agent closes the task with its pull request (Built); GitHub sends the merge, and a task left in progress on that pull request closes too (Merged); GitHub sends the passing deploy of that merge (Live). Active, Quiet, Stalled: the holder's changes and comments keep a task in progress Active for an hour; after an hour with none it is Quiet and the agent still holds it; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it.</desc>
+  <desc id="desc">Built, Merged, Live: your agent closes the task with its pull request (Built); GitHub sends the merge, and a task left in progress on that pull request can close too (Merged); GitHub sends the passing deploy of that merge (Live). Active, Quiet, Stalled: the holder's changes and comments keep a task in progress Active for an hour; after an hour with none it is Quiet and the agent still holds it; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it.</desc>
   <style>
     svg {
       --bg: #f5f3ed; --panel: #ece9e1; --line: #d9d7cd; --track: #c2bfb3;
@@ -64,7 +64,7 @@
     <text class="by" x="301" y="148">BY GITHUB</text>
     <text class="stage" x="301" y="170">Merged</text>
     <text class="text" x="301" y="192">Sends the merge. A task left in</text>
-    <text class="text" x="301" y="209">progress on it closes too.</text>
+    <text class="text" x="301" y="209">progress on it can close too.</text>
   </g>
   <g>
     <circle class="node-ring" cx="576" cy="100" r="18"/><circle class="node" cx="576" cy="100" r="18"/>
