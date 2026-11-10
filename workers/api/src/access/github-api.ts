@@ -192,6 +192,14 @@ function timeOf(value: unknown): string | null {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
+/** What a read answers when GitHub did not answer it this time and may on another try: no response, a server error or too many requests. */
+export const RETRY = 'retry';
+
+/** Whether a read GitHub did not answer with 200 may be answered on another try. */
+function retryable(response: Response | null): boolean {
+  return response === null || response.status === 429 || response.status >= 500;
+}
+
 /** The value at `path` in an answer, or undefined when any step of it is missing. */
 function at(value: unknown, ...path: readonly string[]): unknown {
   let found = value;
@@ -245,9 +253,14 @@ const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!)
  * The check runs of `commit` in `repository` that passed, up to CHECK_RUNS
  * in each of up to CHECK_SUITES check suites, with the branch of each run's
  * suite and the repository's default branch, read with an installation's
- * token in one request; null when GitHub does not answer.
+ * token in one request; RETRY when GitHub may answer on another try, and
+ * null when it does not answer.
  */
-export async function passedChecksOf(token: string, repository: string, commit: string): Promise<PassedChecks | null> {
+export async function passedChecksOf(
+  token: string,
+  repository: string,
+  commit: string,
+): Promise<PassedChecks | typeof RETRY | null> {
   const [owner = '', name = ''] = repository.split('/');
   const response = await fetch(`${API}/graphql`, {
     method: 'POST',
@@ -258,12 +271,14 @@ export async function passedChecksOf(token: string, repository: string, commit: 
     },
     body: JSON.stringify({ query: PASSED_CHECKS, variables: { owner, name, commit } }),
   }).catch(() => null);
-  if (response === null) return null;
-  if (response.status !== 200) {
-    await response.body?.cancel();
-    return null;
+  if (response?.status !== 200) {
+    await response?.body?.cancel();
+    return retryable(response) ? RETRY : null;
   }
   const body: unknown = await response.json().catch(() => null);
+  // GraphQL answers a rate limit with 200 and an error of this type.
+  const errors = at(body, 'errors');
+  if (Array.isArray(errors) && errors.some((error) => at(error, 'type') === 'RATE_LIMITED')) return RETRY;
   const defaultBranch = at(body, 'data', 'repository', 'defaultBranchRef', 'name');
   if (typeof defaultBranch !== 'string') return null;
   const suites = at(body, 'data', 'repository', 'object', 'checkSuites', 'nodes');
@@ -288,25 +303,25 @@ export async function passedChecksOf(token: string, repository: string, commit: 
 
 /**
  * Whether `commit` is in the history of `head` in `repository`, read with an
- * installation's token in one request; null when GitHub does not answer.
- * GitHub compares `head...commit`: `behind` or `identical` when it is.
+ * installation's token in one request; RETRY when GitHub may answer on
+ * another try, and null when it does not answer. GitHub compares
+ * `head...commit`: `behind` or `identical` when it is.
  */
 export async function inHistoryOf(
   token: string,
   repository: string,
   head: string,
   commit: string,
-): Promise<boolean | null> {
+): Promise<boolean | typeof RETRY | null> {
   // Compared this way round, the answer lists only what `commit` adds after
   // the two commits' merge base, which is nothing when it is in head's
   // history, so the answer stays small however far apart they are.
   const response = await fetch(`${API}/repos/${repository}/compare/${head}...${commit}?per_page=1`, {
     headers: { ...HEADERS, authorization: `Bearer ${token}` },
   }).catch(() => null);
-  if (response === null) return null;
-  if (response.status !== 200) {
-    await response.body?.cancel();
-    return null;
+  if (response?.status !== 200) {
+    await response?.body?.cancel();
+    return retryable(response) ? RETRY : null;
   }
   const body: unknown = await response.json().catch(() => null);
   const status = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).status : null;

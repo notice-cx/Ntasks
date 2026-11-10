@@ -124,6 +124,8 @@ export interface GitHubCalls {
   readonly checkRuns: Map<string, StandInCheckRun[]>;
   /** Each commit whose check runs the Worker read. */
   readonly checkReads: string[];
+  /** The commits whose check runs GitHub fails to answer, with a server error, which a test sets. */
+  readonly checkOutages: Set<string>;
   /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
   readonly histories: Map<string, string[]>;
   /** Each request the Worker made to GitHub's API, as `<method> <path>`. */
@@ -156,6 +158,7 @@ export function standInForGitHub(): GitHubCalls {
     pullReads: [] as string[],
     checkRuns: new Map<string, StandInCheckRun[]>(),
     checkReads: [] as string[],
+    checkOutages: new Set<string>(),
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
   };
@@ -169,6 +172,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.pullReads.length = 0;
     calls.checkRuns.clear();
     calls.checkReads.length = 0;
+    calls.checkOutages.clear();
     calls.histories.clear();
     calls.apiRequests.length = 0;
     appTokens.clear();
@@ -265,6 +269,7 @@ export function standInForGitHub(): GitHubCalls {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
         const { variables } = (await request.json()) as { variables: { commit: string } };
         calls.checkReads.push(variables.commit);
+        if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
         const suites = new Map<string, StandInCheckRun[]>();
         for (const run of calls.checkRuns.get(variables.commit) ?? []) {
           const branch = run.branch ?? 'main';

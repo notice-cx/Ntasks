@@ -888,9 +888,13 @@ task moves to `live` when either of these is true:
 A check makes at most 45 requests to GitHub, within the free plan's 50
 requests to other servers: two for each installation it reads through, and
 up to two more to list one's selected repositories; one for each pull
-request; and one or two for each merged task. So a check reads
-up to about 40 pull requests and merged tasks, and the next check reads the
-rest. It signs in to GitHub with the app's private key.
+request; and one or two for each merged task. Merged tasks keep two
+requests each, up to half of what is left after the installations, so open
+pull requests cannot take every request. So a check reads up to about 40
+pull requests and merged tasks, and the next check reads the rest. When
+GitHub fails to answer a merged task's read, with no answer, a server error
+or a rate limit, the check runs again a few seconds later, up to six more
+times with a growing delay. It signs in to GitHub with the app's private key.
 
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret

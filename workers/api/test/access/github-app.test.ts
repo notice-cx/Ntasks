@@ -694,6 +694,49 @@ describe('merged work a deploy shipped that no delivery named', () => {
     expect(github.checkReads).toEqual(expect.arrayContaining([landed, branched]));
   });
 
+  it('keeps requests for a merged task’s deploy when open pull requests could take them all', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    // More tasks waiting on open pull requests than one check reads.
+    for (let number = 150; number < 195; number += 1) await closedWithPullRequest(owner, projectId, number);
+    const id = await closedWithPullRequest(owner, projectId, 200);
+    const merge = newCommit();
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt: ago(60_000), completedAt },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 200, merge, ago(120_000)));
+    github.apiRequests.length = 0;
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+    expect(github.apiRequests.length).toBeLessThanOrEqual(45);
+  });
+
+  it('runs the check again when GitHub fails to answer for a merged task’s deploy', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 88);
+    const merge = newCommit();
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt: ago(60_000), completedAt },
+    ]);
+    github.checkOutages.add(merge);
+    await deliver('pull_request', mergedAt(mine, 88, merge, ago(120_000)));
+
+    // Thrown, so the platform runs the alarm again.
+    await expect(runDurableObjectAlarm(store())).rejects.toThrow(/runs again/u);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    github.checkOutages.clear();
+    await runInDurableObject(store(), (instance: TaskStore) => instance.alarm());
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+  });
+
   it('asks GitHub at most 45 times in one check', async () => {
     const owner = await connected();
     const mine = newInstallation();

@@ -21,6 +21,7 @@ import {
   passedChecksOf,
   pullRequestState,
   REPOSITORY_PAGES,
+  RETRY,
 } from './access/github-api.ts';
 import {
   deployBranchOf,
@@ -45,6 +46,14 @@ import type { WriteContext } from './task-writes.ts';
  * plan.
  */
 const REQUESTS = 45;
+
+/** What a check did: how many tasks it moved, and whether GitHub missed a read that another try may answer. */
+export interface GitHubCheck {
+  readonly moved: number;
+  readonly retry: boolean;
+}
+
+const NOTHING: GitHubCheck = { moved: 0, retry: false };
 
 const DAY_MS = 86_400_000;
 /**
@@ -149,24 +158,25 @@ interface Reach {
  * installation of its app reaches: each task waiting for a merge of its pull
  * request moves to merged once GitHub merged it into the default branch, with
  * its merge commit; then each merged task of a project that deploys moves to
- * live once GitHub shows it deployed. Answers how many tasks it moved;
+ * live once GitHub shows it deployed. Answers how many tasks it moved, and
+ * whether a read of a merged task's deploy may be answered on another try;
  * nothing without an app or an installation.
  */
-export async function checkGitHubWork(env: Env, workspaceId: string, engine: TaskEngine): Promise<number> {
+export async function checkGitHubWork(env: Env, workspaceId: string, engine: TaskEngine): Promise<GitHubCheck> {
   const secrets = signInSecrets(env);
-  if (!secrets) return 0;
+  if (!secrets) return NOTHING;
   const app = await githubAppOf(env.DB, secrets.secret, workspaceId);
-  if (app === null) return 0;
+  if (app === null) return NOTHING;
   const installations = await installationsByAccount(env.DB, workspaceId);
-  if (installations.size === 0) return 0;
+  if (installations.size === 0) return NOTHING;
   const waiting = await engine.listBoard(null, { statuses: [], stages: ['built'], withoutExternalLinks: true });
   // Newest first: a pull request still open keeps waiting, and must not keep a task closed after it from being asked about.
   const newest = [...waiting].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   const pulls = newest.flatMap((task) => pullOf(task, installations) ?? []);
   let changes = await changesOf(engine, installations, Date.now());
-  if (pulls.length === 0 && changes.waiting.length === 0) return 0;
+  if (pulls.length === 0 && changes.waiting.length === 0) return NOTHING;
   const jwt = await appToken(app.appId, app.privateKey);
-  if (jwt === null) return 0;
+  if (jwt === null) return NOTHING;
   // Each installation's token, and the repositories it reaches, so a task in
   // a repository an installation of selected repositories leaves out takes
   // no place among the ones asked about. Installations come in the order of
@@ -196,11 +206,14 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
     return found.repositories === 'all' || found.repositories.has(pull.repository) ? found.token : null;
   };
   const context = { engine, principal: githubSender(workspaceId), now: () => new Date().toISOString() };
+  // Merged tasks waiting for a deploy keep two requests each, up to half of
+  // what is left, so pull requests still open cannot take all of it.
+  const reserved = Math.min(2 * changes.waiting.length, Math.floor((REQUESTS - requests) / 2));
   let merged = 0;
   for (const pull of pulls) {
     const token = tokenOf(pull);
     if (token === null) continue;
-    if (requests >= REQUESTS) break;
+    if (requests >= REQUESTS - reserved) break;
     requests += 1;
     const state = await pullRequestState(token, pull.repository, pull.number);
     if (!state?.merged || state.base === null || state.base !== state.defaultBranch) continue;
@@ -213,9 +226,8 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
   }
   // A task that just merged may have deployed before Ntasks heard of its merge.
   if (merged > 0) changes = await changesOf(engine, installations, Date.now());
-  return (
-    merged + (await moveDeployed(env, secrets.secret, workspaceId, context, changes, tokenOf, REQUESTS - requests))
-  );
+  const deployed = await moveDeployed(env, secrets.secret, workspaceId, context, changes, tokenOf, REQUESTS - requests);
+  return { moved: merged + deployed.moved, retry: deployed.retry };
 }
 
 /**
@@ -225,7 +237,8 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
  * host built only the last of several merges in a row; or else when a deploy
  * check on its merge commit passed on the default branch or the merge
  * queue's and started at or after its merge, as when GitHub reported the
- * deploy before the merge.
+ * deploy before the merge. Answers how many tasks it moved, and whether a
+ * read may be answered on another try.
  */
 async function moveDeployed(
   env: Env,
@@ -235,10 +248,11 @@ async function moveDeployed(
   changes: { readonly waiting: readonly Change[]; readonly live: readonly Change[] },
   tokenOf: (pull: Pull) => string | null,
   budget: number,
-): Promise<number> {
+): Promise<GitHubCheck> {
   let requests = 0;
   let names: DeployNames | null = null;
   let moved = 0;
+  let retry = false;
   const live = async (signal: Omit<DeliverySignal, 'stage' | 'pullRequests'>) => {
     moved += (await reportDelivery(context, { stage: 'live', pullRequests: [], ...signal })).length;
   };
@@ -255,7 +269,9 @@ async function moveDeployed(
     if (later !== undefined) {
       if (requests >= budget) break;
       requests += 1;
-      if (await inHistoryOf(token, change.repository, later.mergeCommit, change.mergeCommit)) {
+      const shipped = await inHistoryOf(token, change.repository, later.mergeCommit, change.mergeCommit);
+      if (shipped === RETRY) retry = true;
+      if (shipped === true) {
         // Live when the later merge went live, the deploy that shipped both.
         await live({ commits: [change.mergeCommit], ...(later.liveAt === null ? {} : { at: later.liveAt }) });
         continue;
@@ -264,7 +280,8 @@ async function moveDeployed(
     if (requests >= budget) break;
     requests += 1;
     const checks = await passedChecksOf(token, change.repository, change.mergeCommit);
-    if (checks === null || checks.runs.length === 0) continue;
+    if (checks === RETRY) retry = true;
+    if (checks === RETRY || checks === null || checks.runs.length === 0) continue;
     if (names === null) names = await deployNamesOf(env, secret, workspaceId);
     const known = names;
     const deploys = checks.runs.flatMap((run) => {
@@ -286,7 +303,7 @@ async function moveDeployed(
       ...(last.completedAt === null ? {} : { at: last.completedAt }),
     });
   }
-  return moved;
+  return { moved, retry };
 }
 
 /** The names that count as deploys, as the receiver reads them for a delivery (github.ts). */

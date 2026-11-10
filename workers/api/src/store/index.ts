@@ -103,7 +103,11 @@ export class TaskStore extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const name = this.ctx.id.name;
     if (name === undefined || !name.startsWith('workspace:')) return;
-    await checkGitHubWork(this.env, name.slice('workspace:'.length), this.tasks);
+    const checked = await checkGitHubWork(this.env, name.slice('workspace:'.length), this.tasks);
+    // An alarm that throws runs again, up to six times with a growing delay
+    // (developers.cloudflare.com/durable-objects/api/alarms/), so a deploy
+    // GitHub missed answering for is read again.
+    if (checked.retry) throw new Error('GitHub did not answer a read of merged work, so the check runs again');
   }
 
   /** Loads an import from Beads, or a backup, into this store, which must
