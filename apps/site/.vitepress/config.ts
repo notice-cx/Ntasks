@@ -5,6 +5,7 @@ import { docsSidebar, pageSummary } from '../lib/docs-index.ts';
 import { docsMarkdownOptions } from '../lib/markdown.ts';
 import { BRANCH, DESCRIPTION, DOCS_BASE, REPOSITORY, SITE_ORIGIN, SPEC_BASE } from '../lib/site.ts';
 import { iconHead, socialHead } from '../lib/social.ts';
+import { withStatcounter } from '../lib/statcounter.ts';
 import { docsSchema } from '../lib/discovery.ts';
 
 // The docs: the repository's docs/ folder, rendered in place and served
@@ -63,6 +64,8 @@ export default defineConfig({
       docsSchema(pageData.title || 'Ntasks docs', pageData.description, url),
     ];
   },
+  // Statcounter's no-script image belongs in the body, where `head` cannot put it.
+  transformHtml: withStatcounter,
   vite: {
     plugins: [
       {

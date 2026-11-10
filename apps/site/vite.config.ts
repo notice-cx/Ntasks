@@ -5,6 +5,7 @@ import { docsList } from './lib/landing-docs.ts';
 import { inlineMark } from './lib/mark.ts';
 import { DOCS_BASE } from './lib/site.ts';
 import { headHtml, iconHead, socialHead } from './lib/social.ts';
+import { withStatcounter } from './lib/statcounter.ts';
 import { landingSchema, llmsText } from './lib/discovery.ts';
 
 // The landing page, index.html, and the site's 404 page, built into dist/.
@@ -25,7 +26,7 @@ function landing(): Plugin {
     name: 'ntasks-landing',
     transformIndexHtml(html) {
       const mark = inlineMark(read('apps/web/public/brand/notice-icon.svg').toString(), 'mark');
-      return html
+      return withStatcounter(html)
         .replaceAll('<!--mark-->', mark)
         .replace('<!--social-head-->', headHtml([...socialHead, landingSchema]))
         .replace('<!--icons-->', headHtml(iconHead))

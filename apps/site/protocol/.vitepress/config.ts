@@ -5,6 +5,7 @@ import { defineConfig } from 'vitepress';
 import { pageSummary } from '../../lib/docs-index.ts';
 import { BRANCH, REPOSITORY, SITE_ORIGIN } from '../../lib/site.ts';
 import { iconHead } from '../../lib/social.ts';
+import { withStatcounter } from '../../lib/statcounter.ts';
 import { SCHEMAS_PATH, SPEC_BASE, specMarkdownOptions } from '../../lib/spec.ts';
 
 // The Shared Work Protocol: the repository's spec/ folder, rendered in place
@@ -49,6 +50,7 @@ export default defineConfig({
       ['meta', { property: 'og:url', content: url }],
     ];
   },
+  transformHtml: withStatcounter,
   buildEnd(site) {
     const schemas = join(specDir, 'schemas');
     const served = join(site.outDir, SCHEMAS_PATH.slice(SPEC_BASE.length));
