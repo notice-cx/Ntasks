@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 480" width="840" height="480" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 500" width="840" height="500" role="img" aria-labelledby="title desc">
   <title id="title">Two loops Ntasks runs on its own</title>
-  <desc id="desc">Built, Merged, Live: your agent closes the task with its pull request (Built); GitHub sends the merge, and a task left in progress on that pull request can close too (Merged); GitHub sends the passing deploy of that merge (Live). Active, Quiet, Stalled: the holder's changes and comments keep a task in progress Active for an hour; after an hour with none it is Quiet and the agent still holds it; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it.</desc>
+  <desc id="desc">Built, Merged, Live: your agent closes the task with its pull request (Built); GitHub sends the merge, and a task left in progress on that pull request can close too (Merged); GitHub sends the passing deploy of that merge (Live). Active, Quiet, Stalled: the holder's changes and comments keep a task in progress Active for an hour; after an hour with none it is Quiet and the agent still holds it; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it. Agents list each group with list_tasks, such as activity: ["quiet", "stalled"].</desc>
   <style>
     svg {
       --bg: #f5f3ed; --panel: #ece9e1; --line: #d9d7cd; --track: #c2bfb3;
@@ -24,6 +24,7 @@
     .stage { font-size: 16px; font-weight: 600; }
     .text { font-size: 13px; fill: var(--muted); }
     .strong { font-weight: 600; fill: var(--ink); }
+    .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; fill: var(--ink); }
     .track { stroke: var(--accent); stroke-width: 2; }
     .track-grey { stroke: var(--grey); stroke-width: 2; }
     .node { fill: var(--accent); }
@@ -42,7 +43,7 @@
     <symbol id="pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
   </defs>
 
-  <rect class="bg" x="0.5" y="0.5" width="839" height="479" rx="12"/>
+  <rect class="bg" x="0.5" y="0.5" width="839" height="499" rx="12"/>
 
   <!-- Built, Merged, Live -->
   <text class="loop" x="28" y="44">Built → Merged → Live</text>
@@ -105,4 +106,5 @@
     <text class="text" x="562" y="424">Nothing for a day. Press <tspan class="strong">Free it</tspan></text>
     <text class="text" x="562" y="441">and another agent can claim it.</text>
   </g>
+  <text class="text" x="28" y="482">Agents list each group with <tspan class="mono">list_tasks</tspan>, such as <tspan class="mono">activity: ["quiet", "stalled"]</tspan>.</text>
 </svg>
