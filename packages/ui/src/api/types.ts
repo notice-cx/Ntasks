@@ -167,7 +167,7 @@ export interface LiveTask {
   /** Someone can start it now, as the server worked it out. */
   ready: boolean;
   dependencies: TaskDependency[];
-  /** The links other tasks hold onto this one, in any project the reader reaches; a server before API version 7 leaves it out. */
+  /** The links other tasks hold onto this one, in any project the reader reaches; a server without the API version in workers/api/api-versions/2026-11-10T0513Z-touches-merge-order.json leaves it out. */
   dependents?: TaskDependency[];
   /** Ordered by URL, when the server sends them. */
   externalLinks?: TaskExternalLink[];
@@ -354,7 +354,7 @@ export interface TaskComment {
   author: string;
   text: string;
   createdAt: string | null;
-  /** Pinned as a fact later work needs; a server before API version 5 leaves it out. */
+  /** Pinned as a fact later work needs; a server before API version 7 leaves it out. */
   pinned?: boolean;
 }
 
@@ -394,7 +394,7 @@ export interface LiveTaskDetail {
   comments: TaskComment[];
   /** The version of the task's proposal, whatever it waits on, when the server sends it: an acceptance names it. */
   proposalVersion?: string | null;
-  /** What its parent holds for it; null when it has none, and left out by a server before API version 5. */
+  /** What its parent holds for it; null when it has none, and left out by a server before API version 7. */
   parent?: ParentContext | null;
 }
 
