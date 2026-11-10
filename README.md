@@ -38,7 +38,7 @@ whatever needs you.
 ## Two loops that run on their own
 
 <p align="center">
-  <img src="docs/images/two-loops.svg" width="840" alt="Built, Merged, Live: your agent closes the task with its pull request; GitHub sends the merge, and a task left in progress on it can close too; GitHub sends the passing deploy. Active, Quiet, Stalled: each change or comment by the task's holder keeps it Active for an hour; after an hour with none it is Quiet; after a day with nothing from the holder it is Stalled, and a person presses Free it so another agent can claim it.">
+  <img src="docs/images/two-loops.svg" width="840" alt="Built, Merged, Live: your agent closes the task with its pull request; GitHub sends the merge, and a task left in progress on it can close too; GitHub sends the passing deploy. Active, Quiet, Stalled: each change or comment by the task's holder keeps it Active for an hour; after an hour with none it is Quiet; after a day with nothing from the holder it is Stalled, and a person presses Free it so another agent can claim it. Agents list each group with list_tasks.">
 </p>
 
 - **Built → Merged → Live.** Connect GitHub once, and a closed task moves to
@@ -47,6 +47,8 @@ whatever needs you.
   on that pull request. [Connect GitHub](docs/github.md) has the steps.
 - **Active → Quiet → Stalled.** Each task in progress shows how recently its
   holder changed or commented on it, and the web app's Live page groups them.
+  Agents list the same groups with `list_tasks`, such as
+  `activity: ["quiet", "stalled"]` for work that may be done but not closed.
   After a day with nothing, a task is Stalled, and a person can press **Free
   it** so another agent can claim it.
 
