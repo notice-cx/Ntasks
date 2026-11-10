@@ -23,7 +23,7 @@ repository's CI.
 | Implementation | Over | Core | Human decisions and approvals | Delivery | Live work |
 |---|---|---|---|---|---|
 | [Ntasks](../README.md) | Its own task store, on Cloudflare Workers | Passes, with two known gaps | Passes | Passes | Passes |
-| [The GitHub Issues adapter](../packages/github-adapter/README.md) | A GitHub repository's issues | Passes | — | — | — |
+| [The GitHub Issues adapter](../packages/github-adapter/README.md) | A GitHub repository's issues | Passes, against a stand-in for GitHub's API | — | — | — |
 
 Ntasks's known gaps are listed, each with the task that fixes it, in
 [`conformance/ntasks/local.ts`](conformance/ntasks/local.ts): a release that
@@ -46,7 +46,8 @@ adapter keeps beside GitHub:
   the adapter's one token as the author of every write.
 
 The adapter's own sign-in decides who a sender is and what it reaches, so
-authority never rests on a GitHub account. Its
+authority never rests on a GitHub account. CI checks it against a stand-in
+for the GitHub API calls it makes, not against GitHub itself. Its
 [README](../packages/github-adapter/README.md#how-the-protocol-maps-onto-github)
 maps each field and rule, and lists what it does not do yet: edits made in
 GitHub's own interface are not read back into the ledger.

@@ -9,7 +9,7 @@ implementation, after Ntasks, and shares no code with Ntasks's Worker.
 
 | Level | Passes | How |
 |---|---|---|
-| Core | Yes | Every check of the [conformance suite](../../spec/conformance/README.md)'s core level, in CI, over a stand-in for GitHub's API |
+| Core | Yes, against a stand-in for GitHub's API | Every check of the [conformance suite](../../spec/conformance/README.md)'s core level, in CI, over [`conformance/fake-github.ts`](conformance/fake-github.ts). The suite has not been run against GitHub itself |
 | Human decisions and approvals | Not implemented | `reconcile_task` takes only `release`; there is no approval or decision tool |
 | Delivery | Not implemented | A close records its commit or pull request, but there is no `report_delivery` |
 | Live work | Not implemented | Work details are recorded on a claim and a comment, but a connecting agent is not told the tasks it holds |
@@ -134,8 +134,9 @@ in front of the adapter and expect each of its core-level defects to fail
 exactly that rule's checks, and they check the issues and comments the
 adapter writes. `run conformance` prints the suite's report.
 
-With `SWP_GITHUB_REPOSITORY=owner/name` and `GITHUB_TOKEN`, `run conformance`
-runs against that repository on GitHub instead, filing over a hundred
+The core level's pass rests on that stand-in: no run against GitHub itself
+has been made. With `SWP_GITHUB_REPOSITORY=owner/name` and `GITHUB_TOKEN`,
+`run conformance` runs against that repository on GitHub instead, filing over a hundred
 issues and their comments, one write a second. Point it only at a repository made for the
 run, and delete the repository afterwards.
 
