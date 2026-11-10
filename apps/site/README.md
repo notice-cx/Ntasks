@@ -11,7 +11,7 @@ the wordmark in Stack Sans Notch.
 | Path | Holds |
 |---|---|
 | `protocol/` | The Shared Work Protocol: VitePress reads `spec/` in place and serves it at `/spec/` with the docs' theme, and copies `spec/schemas/` to `/spec/v0/schemas/`, the address each schema's `$id` names |
-| `index.html`, `404.html`, `src/` | The landing page and the 404 page for addresses outside `/docs/`, built with Vite. The page's script runs the theme switch, the copy buttons and the walkthrough tabs, and starts the Built to live diagram when it scrolls into view; the page reads without it. The diagram itself is CSS in `src/landing.css` |
+| `index.html`, `404.html`, `src/` | The landing page and the 404 page for addresses outside `/docs/`, built with Vite. The page's script runs the theme switch, the copy buttons and the walkthrough tabs, and starts each loop diagram when it scrolls into view; the page reads without it. The diagrams themselves are CSS in `src/landing.css` |
 | `.vitepress/` | The docs: [VitePress](https://vitepress.dev) reads `docs/` in place, with its default theme in those colours and fonts |
 | `lib/` | The rules both builds share: how the docs' Markdown renders, the sidebar, the link check |
 | `src/tokens.css` | The colours and fonts both builds use, taken from www.notice.cx |

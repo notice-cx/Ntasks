@@ -80,14 +80,22 @@
   letter-spacing: -1px;
 }
 
+/* Beside a sidebar the theme cuts the title at the sidebar's edge. The spec's
+   "Shared Work Protocol" in the wordmark is a few pixels wider than that, and
+   there is room for it before the search button. */
+@media (min-width: 960px) {
+  .VPNavBar .VPNavBarTitle.has-sidebar {
+    max-width: none;
+  }
+
+  .VPNavBar .VPNavBarTitle .title > span {
+    overflow: visible;
+  }
+}
+
 .VPNavBarMenuLink {
   font-size: 14px;
   font-weight: 450;
-}
-
-.VPNavBar.has-sidebar .content-body,
-.VPNavBar .divider-line {
-  background-color: var(--background);
 }
 
 /* The sidebar: groups labelled the way www.notice.cx labels its sections. */

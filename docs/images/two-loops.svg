@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 480" width="840" height="480" role="img" aria-labelledby="title desc">
+  <title id="title">Two loops Ntasks runs on its own</title>
+  <desc id="desc">Built, Merged, Live: your agent closes the task with its pull request (Built); GitHub sends the merge, and a task left in progress on that pull request can close too (Merged); GitHub sends the passing deploy of that merge (Live). Active, Quiet, Stalled: the holder's changes and comments keep a task in progress Active for an hour; after an hour with none it is Quiet and the agent still holds it; after a day with nothing it is Stalled, and a person presses Free it so another agent can claim it.</desc>
+  <style>
+    svg {
+      --bg: #f5f3ed; --panel: #ece9e1; --line: #d9d7cd; --track: #c2bfb3;
+      --ink: #252720; --muted: #5d6058; --grey: #6b6e65;
+      --accent: #2745d4; --accent-text: #2745d4; --soft: #e3e5f1; --on: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #202622; --panel: #1a1f1c; --line: #343c36; --track: #4a534c;
+        --ink: #f5f3ed; --muted: #d7dcd2; --grey: #a9afa5;
+        --accent: #2745d4; --accent-text: #b0b9ff; --soft: #2b3247; --on: #ffffff;
+      }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: var(--ink); }
+    .bg { fill: var(--bg); stroke: var(--line); }
+    .panel { fill: var(--panel); stroke: var(--line); }
+    .loop { font-size: 18px; font-weight: 600; }
+    .caption { font-size: 13px; fill: var(--muted); text-anchor: end; }
+    .by { font-size: 10.5px; font-weight: 500; letter-spacing: 1.2px; fill: var(--accent-text); }
+    .by-grey { fill: var(--muted); }
+    .stage { font-size: 16px; font-weight: 600; }
+    .text { font-size: 13px; fill: var(--muted); }
+    .strong { font-weight: 600; fill: var(--ink); }
+    .track { stroke: var(--accent); stroke-width: 2; }
+    .track-grey { stroke: var(--grey); stroke-width: 2; }
+    .node { fill: var(--accent); }
+    .node-ring { fill: none; stroke: var(--soft); stroke-width: 5; }
+    .node-grey { fill: var(--grey); }
+    .node-grey-ring { fill: none; stroke: var(--line); stroke-width: 5; }
+    .icon { fill: none; stroke: var(--on); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-grey { stroke: var(--bg); }
+  </style>
+  <defs>
+    <symbol id="pull-request" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></symbol>
+    <symbol id="merge" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+    <symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></symbol>
+    <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="839" height="479" rx="12"/>
+
+  <!-- Built, Merged, Live -->
+  <text class="loop" x="28" y="44">Built → Merged → Live</text>
+  <text class="caption" x="812" y="44">Finished work, moved by GitHub</text>
+  <rect class="panel" x="20.5" y="60.5" width="799" height="164" rx="10"/>
+  <line class="track" x1="66" y1="100" x2="303" y2="100"/>
+  <line class="track" x1="327" y1="100" x2="564" y2="100"/>
+  <g>
+    <circle class="node-ring" cx="54" cy="100" r="18"/><circle class="node" cx="54" cy="100" r="18"/>
+    <use class="icon" href="#pull-request" x="45" y="91" width="18" height="18"/>
+    <text class="by" x="40" y="148">BY YOUR AGENT</text>
+    <text class="stage" x="40" y="170">Built</text>
+    <text class="text" x="40" y="192">Closes the task with its pull</text>
+    <text class="text" x="40" y="209">request.</text>
+  </g>
+  <g>
+    <circle class="node-ring" cx="315" cy="100" r="18"/><circle class="node" cx="315" cy="100" r="18"/>
+    <use class="icon" href="#merge" x="306" y="91" width="18" height="18"/>
+    <text class="by" x="301" y="148">BY GITHUB</text>
+    <text class="stage" x="301" y="170">Merged</text>
+    <text class="text" x="301" y="192">Sends the merge. A task left in</text>
+    <text class="text" x="301" y="209">progress on it can close too.</text>
+  </g>
+  <g>
+    <circle class="node-ring" cx="576" cy="100" r="18"/><circle class="node" cx="576" cy="100" r="18"/>
+    <use class="icon" href="#globe" x="567" y="91" width="18" height="18"/>
+    <text class="by" x="562" y="148">BY GITHUB</text>
+    <text class="stage" x="562" y="170">Live</text>
+    <text class="text" x="562" y="192">Sends the passing deploy of that</text>
+    <text class="text" x="562" y="209">merge, such as Workers Builds.</text>
+  </g>
+
+  <!-- Active, Quiet, Stalled -->
+  <text class="loop" x="28" y="276">Active → Quiet → Stalled</text>
+  <text class="caption" x="812" y="276">Work in progress, by its holder's last change or comment</text>
+  <rect class="panel" x="20.5" y="292.5" width="799" height="164" rx="10"/>
+  <line class="track" x1="66" y1="332" x2="303" y2="332"/>
+  <line class="track-grey" x1="327" y1="332" x2="564" y2="332"/>
+  <g>
+    <circle class="node-ring" cx="54" cy="332" r="18"/><circle class="node" cx="54" cy="332" r="18"/>
+    <use class="icon" href="#activity" x="45" y="323" width="18" height="18"/>
+    <text class="by" x="40" y="380">BY YOUR AGENT</text>
+    <text class="stage" x="40" y="402">Active</text>
+    <text class="text" x="40" y="424">Changes or comments on it. Each</text>
+    <text class="text" x="40" y="441">one keeps it Active for an hour.</text>
+  </g>
+  <g>
+    <circle class="node-ring" cx="315" cy="332" r="18"/><circle class="node" cx="315" cy="332" r="18"/>
+    <use class="icon" href="#clock" x="306" y="323" width="18" height="18"/>
+    <text class="by" x="301" y="380">AFTER AN HOUR</text>
+    <text class="stage" x="301" y="402">Quiet</text>
+    <text class="text" x="301" y="424">No change or comment for an</text>
+    <text class="text" x="301" y="441">hour. The agent still holds it.</text>
+  </g>
+  <g>
+    <circle class="node-grey-ring" cx="576" cy="332" r="18"/><circle class="node-grey" cx="576" cy="332" r="18"/>
+    <use class="icon icon-grey" href="#pause" x="567" y="323" width="18" height="18"/>
+    <text class="by by-grey" x="562" y="380">AFTER A DAY</text>
+    <text class="stage" x="562" y="402">Stalled</text>
+    <text class="text" x="562" y="424">Nothing for a day. Press <tspan class="strong">Free it</tspan></text>
+    <text class="text" x="562" y="441">and another agent can claim it.</text>
+  </g>
+</svg>

@@ -5,7 +5,7 @@ import './tokens.css';
 import './landing.css';
 
 // The landing page's theme switch, copy buttons, walkthrough tabs and the
-// start of the Built to live diagram. The page reads fully without this script.
+// start of the two loop diagrams. The page reads fully without this script.
 
 // The key VitePress keeps the docs' theme choice under, so the landing page
 // and the docs show the same theme: 'dark', 'light', or 'auto' for the
@@ -83,8 +83,8 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')
   button.addEventListener('click', () => void copy(button));
 }
 
-// The Built to live diagram plays only while it is on screen, so a reader
-// who scrolls to it sees it from Built.
+// Each loop diagram plays only while it is on screen, so a reader who
+// scrolls to it sees it from its first stage.
 for (const flow of document.querySelectorAll<HTMLElement>('[data-flow]')) {
   flow.dataset.paused = '';
   new IntersectionObserver(
