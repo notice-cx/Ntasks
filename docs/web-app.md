@@ -40,8 +40,10 @@ reasons. A pinned comment is marked Pinned among its own task's comments.
 </picture>
 
 **Live.** Every task in progress, grouped by when its holder last changed or
-commented on it: Active, Quiet and Stalled. In each group a task sits under
-its epic, with the epic's progress bar.
+commented on it: Active, Quiet and Stalled, after a day without activity. In
+each group a task sits under its epic, with the epic's progress bar. A stalled
+task's page shows where its work stopped and **Free it**, which hands it back
+for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">

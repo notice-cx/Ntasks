@@ -500,6 +500,10 @@ async function drive(): Promise<readonly Sample[]> {
     body: JSON.stringify(inProject({ met: [], proposalVersion: await shownOn(grants) })),
   });
   await keep(samples, 'POST /api/tasks/:id/accept', task(grants, '/accept'), acceptedInApp);
+  // A task the owner held and frees on their own call.
+  const freed = (await tool(owner, 'create_task', { project: projectId, title: 'Rebuild the home page' })).id as string;
+  await tool(owner, 'claim_task', { task: freed, next: 'Write the hero copy' });
+  await as('POST /api/tasks/:id/release', task(freed, '/release'), inProject());
   await as('GET /api/access/apps', '/api/access/apps');
   await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
   await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});

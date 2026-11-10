@@ -11,7 +11,7 @@ const NOW = '2026-11-06T12:00:00.000Z';
 
 /** What reaches the browser: the Worker's answer, sent as JSON and parsed back. */
 function overTheWire(tasks: readonly Task[]): LiveTask[] {
-  return JSON.parse(JSON.stringify(tasks.map(webTask))) as LiveTask[];
+  return JSON.parse(JSON.stringify(tasks.map((task) => webTask(task, NOW)))) as LiveTask[];
 }
 
 function task(fields: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {

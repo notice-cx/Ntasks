@@ -627,6 +627,19 @@
   },
   {
     "version": 8,
+    "shapes": {
+      "task": {
+        "stalled": "boolean"
+      }
+    },
+    "routes": {
+      "POST /api/tasks/:id/release": {
+        "task": "@task"
+      }
+    }
+  },
+  {
+    "version": 9,
     "shapes": {},
     "routes": {
       "GET /api/tasks/wins": {

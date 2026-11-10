@@ -17,6 +17,7 @@ import {
   chooseRoute,
   dismissRoute,
   disputeRoute,
+  releaseRoute,
   resolveRoute,
   respondRoute,
   stepRoute,
@@ -139,6 +140,8 @@ function routesOf(pathname: string): Routes | null {
       return { POST: (context, url, request) => disputeRoute(context, url, request, taskId), scope: SCOPES.decide };
     case 'accept':
       return { POST: (context, url, request) => acceptRoute(context, url, request, taskId), scope: SCOPES.decide };
+    case 'release':
+      return { POST: (context, url, request) => releaseRoute(context, url, request, taskId), scope: SCOPES.decide };
     default:
       return {
         GET: (context, url) => taskRoute(context, url, taskId),

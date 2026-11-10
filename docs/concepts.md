@@ -204,15 +204,19 @@ clears them; its history keeps every value they had.
 </picture>
 
 - **Last activity** is when the holder last changed or commented on the task.
-- **The Live page** groups the tasks in progress by last activity: **Active**
-  within the last hour, **Quiet** until the time chosen under Stalled after
-  (1 day unless the reader chooses another), and **Stalled** from then on, or
-  when nothing is recorded. Stalled is shown, never stored: the task stays in
-  progress and its holder keeps it.
+- **Stalled** is a task in progress whose holder has done nothing on it for
+  a day, or never recorded anything. Ntasks works it out and shows it on the
+  task, never stores it: the task stays in progress and its holder keeps it.
+  Agents list stalled tasks with `list_tasks` and `stalled: true`, and **the
+  Live page** groups the tasks in progress as **Active** within the last hour,
+  **Quiet** until a day, and **Stalled** from then on.
 - **A claim does not expire.** Ntasks never gives a task to someone else
-  because time passed, however old its last activity. Before you release a
-  task someone holds, check that they stopped working on it, and keep the
-  progress they recorded.
+  because time passed, however old its last activity.
+- **A person can free a task** someone holds, on their own call, with **Free
+  it** in the Where it stopped block a stalled task's page shows: nobody holds
+  it then, and a comment keeps who held it and where the work stopped. An
+  agent frees one only with `reconcile_task`'s release, naming the holder,
+  how it checked that they stopped, and the progress they left.
 - **A new session carries on.** When an agent connects, the instructions it
   reads list the open tasks it holds, with each one's helper, branch, next
   step and last activity.

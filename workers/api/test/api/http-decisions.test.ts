@@ -4,12 +4,12 @@
 // them, how a retry is answered, and what each refusal says. The rules of a
 // pick and an answer are ported from NoticeOS's
 // scripts/hosted-task-command.test.mjs (choiceSteps and answerSteps).
-import type { Project, Task, TaskEngine } from '@ntasks/domain';
+import { TASK_LIMITS, WORK_DETAILS, WORK_LIMITS, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
 import { cachedReads } from '../../src/store/cache.ts';
-import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
+import { AGENT, clock, newProject, OTHER, OWNER } from '../engine/helpers.ts';
 import { storeDatabase } from '../store.ts';
 import { api, get, send, WRITER, type TestApi } from './helpers.ts';
 
@@ -98,13 +98,14 @@ describe('who may decide', () => {
         [`/api/gates/${steps}/steps`, { step: 1, done: true }],
         [`/api/gates/${steps}/steps`, { step: 2, stuck: 'Stopped here.' }],
         [`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown }],
+        [`/api/tasks/${work.id}/release`, {}],
       ] as const) {
         expect(await post(path, body, {}, as), path).toEqual({
           status: 403,
           body: {
             error: 'insufficient_scope',
             detail:
-              'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done on their own call or disputes an answer relayed for them. Answer it in the Ntasks web app.',
+              'Only a person signed in to Ntasks answers a decision, approves an approval, ticks a step, accepts a task as done or frees a task on their own call, or disputes an answer relayed for them. Answer it in the Ntasks web app.',
           },
         });
       }
@@ -129,6 +130,7 @@ describe('who may decide', () => {
       'dispute',
       'step',
       'accept',
+      'release',
     ]);
     const writer = api({ principal: WRITER, now: time.now, engine });
     expect((await get(writer, '/api/tasks/capabilities')).body.operations).toEqual([
@@ -604,6 +606,127 @@ describe('POST /api/tasks/:id/accept', () => {
       expect(await accept(id, { met: [] }), id).toMatchObject({ status: 409, body: { error: 'task_refused' } });
     expect(await current(waiting.id)).toMatchObject({ status: 'open', close: null });
     expect(await current(created[0]!.id)).toMatchObject({ status: 'open', close: null });
+  });
+});
+
+describe('POST /api/tasks/:id/release', () => {
+  /** A task AGENT claimed, with work details and a comment, then left. */
+  async function left(status: 'in_progress' | 'blocked' = 'in_progress') {
+    const { task: made } = await engine.createTask(project.id, { title: 'Rebuild the home page' }, OWNER);
+    await engine.writeTask(
+      project.id,
+      made.id,
+      {
+        expectedVersion: 1,
+        set: {
+          assignee: AGENT.name,
+          status,
+          assigneeFor: 'page-rebuild-2',
+          work: { branch: 'agent-a/home', pr: 'https://example.com/pull/7', next: 'Write the hero copy' },
+        },
+      },
+      AGENT,
+    );
+    await engine.addComment(project.id, made.id, 'Found the old layout\nin the theme.', AGENT);
+    return current(made.id);
+  }
+
+  it('frees a task on the person’s call, keeping who held it and where the work stopped in a comment', async () => {
+    const held = await left();
+    time.advance(5);
+
+    const freed = await post(`/api/tasks/${held.id}/release`, { holder: AGENT.name });
+
+    expect(freed.status).toBe(200);
+    expect(await current(held.id)).toMatchObject({ status: 'open', assignee: null, assigneeFor: null, work: {} });
+    const comment = (await texts(held.id)).find((text) =>
+      text.startsWith(`Person freed ${held.id} on their own call.`),
+    );
+    expect(comment).toBeDefined();
+    for (const line of [
+      `- Held by: ${AGENT.name} for page-rebuild-2`,
+      `- Last activity: ${held.lastActivityAt}`,
+      '- Next step: Write the hero copy',
+      '- Branch: agent-a/home',
+      '- Pull request: https://example.com/pull/7',
+      'Found the old layout in the theme.',
+    ])
+      expect(comment).toContain(line);
+    const [event] = (await engine.listHistory(project.id, held.id, { limit: 5 })).filter(
+      (entry) => entry.kind !== 'commented',
+    );
+    expect(event).toMatchObject({ actor: 'Person', changes: { assignee: null, status: 'open' } });
+  });
+
+  it('refuses a free naming the holder the page showed once another agent holds the task, writing nothing', async () => {
+    const shown = await left();
+    await engine.writeTask(
+      project.id,
+      shown.id,
+      { expectedVersion: shown.version, set: { assignee: null, status: 'open' } },
+      AGENT,
+    );
+    const taken = await engine.writeTask(
+      project.id,
+      shown.id,
+      { expectedVersion: shown.version + 1, set: { assignee: OTHER.name, status: 'in_progress' } },
+      OTHER,
+    );
+
+    expect(await post(`/api/tasks/${shown.id}/release`, { holder: AGENT.name })).toMatchObject({
+      status: 409,
+      body: { error: 'task_refused' },
+    });
+    expect(await current(shown.id)).toMatchObject({
+      status: 'in_progress',
+      assignee: OTHER.name,
+      version: taken.task.version,
+    });
+  });
+
+  it('frees a task whose holder left work details as long as they may be, cutting each to fit one comment', async () => {
+    const { task: made } = await engine.createTask(project.id, { title: 'Rebuild the pricing page' }, OWNER);
+    const long = (detail: keyof typeof WORK_LIMITS) =>
+      detail === 'pr' ? `https://example.com/${'p'.repeat(WORK_LIMITS.pr - 20)}` : 'w'.repeat(WORK_LIMITS[detail]);
+    await engine.writeTask(
+      project.id,
+      made.id,
+      {
+        expectedVersion: 1,
+        set: {
+          assignee: AGENT.name,
+          status: 'in_progress',
+          work: Object.fromEntries(WORK_DETAILS.map((detail) => [detail, long(detail)])),
+        },
+      },
+      AGENT,
+    );
+
+    const freed = await post(`/api/tasks/${made.id}/release`, {});
+
+    expect(freed.status).toBe(200);
+    const comment = (await texts(made.id)).find((text) => text.includes('on their own call'))!;
+    expect(comment.length).toBeLessThanOrEqual(TASK_LIMITS.comment);
+    expect(comment).toContain(`- Pull request: https://example.com/`);
+    // The task's history keeps each detail whole.
+    const history = await engine.listHistory(project.id, made.id, { limit: 10 });
+    expect(JSON.stringify(history)).toContain(long('session'));
+  });
+
+  it('keeps a blocked task’s status, and refuses a task nobody holds and a closed one, writing nothing', async () => {
+    const blocked = await left('blocked');
+    await post(`/api/tasks/${blocked.id}/release`, {});
+    expect(await current(blocked.id)).toMatchObject({ status: 'blocked', assignee: null });
+
+    const { task: free } = await engine.createTask(project.id, { title: 'Nobody holds this' }, OWNER);
+    const { task: done } = await engine.createTask(project.id, { title: 'Done', close: { reason: 'Shipped' } }, OWNER);
+    for (const id of [free.id, done.id]) {
+      expect(await post(`/api/tasks/${id}/release`, {}), id).toMatchObject({
+        status: 409,
+        body: { error: 'task_refused' },
+      });
+      expect((await current(id)).version, id).toBe(1);
+    }
   });
 });
 
