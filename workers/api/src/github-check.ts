@@ -22,7 +22,7 @@ import { reportDelivery } from './delivery.ts';
 const CHECKED = 40;
 
 /** A GitHub pull request's URL, as a task's delivery records it. */
-const PULL = /^https:\/\/github\.com\/([a-z0-9-]+)\/([a-z0-9._-]+)\/pull\/(\d{1,9})$/u;
+const PULL = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d{1,9})$/u;
 
 /** The sender GitHub's word acts as: a service that may change every project of the workspace. */
 export function githubSender(workspaceId: string): Principal {
@@ -48,10 +48,13 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
   const installations = await installationsByAccount(env.DB, workspaceId);
   if (installations.size === 0) return 0;
   const waiting = await engine.listBoard(null, { statuses: [], stages: ['built'], withoutExternalLinks: true });
-  const pulls = waiting.flatMap((task) => {
+  // Newest first: a pull request still open keeps waiting, and must not keep a task closed after it from being asked about.
+  const newest = [...waiting].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  const pulls = newest.flatMap((task) => {
     const url = task.delivery?.pullRequest ?? '';
     const [, owner = '', name = '', number = ''] = PULL.exec(url) ?? [];
-    const installation = installations.get(owner);
+    // GitHub logins ignore case; the task keeps its URL as written.
+    const installation = installations.get(owner.toLowerCase());
     return installation === undefined
       ? []
       : [{ url, repository: `${owner}/${name}`, number: Number(number), installation }];
