@@ -18,6 +18,7 @@ the wordmark in Stack Sans Notch.
 | `public/` | Headers, robots rules, social cards and favicon fallbacks, copied into the build as they are |
 | `design/` | The editable social-card layout and [image/export notes](design/README.md) |
 | `lib/social.ts`, `lib/discovery.ts` | Shared link-preview and favicon metadata, structured data, and the generated `llms.txt` documentation directory |
+| `lib/statcounter.ts` | The [Statcounter](https://statcounter.com) counter every page carries, with the project's id and security code. It counts each page a visitor opens, the docs' and spec's in-place page changes included, and loads only at ntasks.notice.cx, so a local build or preview counts no visit |
 | `wrangler.jsonc` | The Cloudflare Worker that serves the build. It has no script, only the files |
 
 ## Commands
