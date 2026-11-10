@@ -24,16 +24,20 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
  * branch, pull request and their last comment), then Free it, which a person
  * presses to hand the task back on their own call. The comment the free adds
  * keeps the same lines, since the holder's work details go with the claim.
+ * The free names the holder shown here, so it never frees a later claim.
  */
 export function WhereItStopped({
   task,
+  heldBy,
   holder,
   comments,
   project,
   nowMs,
   disabledReason,
 }: {
-  task: Pick<LiveTask, 'id' | 'assignee' | 'lastActivityAt' | 'work'>;
+  task: Pick<LiveTask, 'id' | 'lastActivityAt' | 'work'>;
+  /** The holder as the task names it. */
+  heldBy: string;
   /** The holder's name as the page shows it. */
   holder: string;
   comments: readonly TaskComment[];
@@ -44,8 +48,7 @@ export function WhereItStopped({
 }) {
   const release = useReleaseTask();
   const age = ageMs(nowMs, task.lastActivityAt);
-  const holderName = task.assignee;
-  const last = holderName === null ? undefined : comments.findLast((comment) => sameActor(comment.author, holderName));
+  const last = comments.findLast((comment) => sameActor(comment.author, heldBy));
   const pr = task.work?.pr ? httpUrl(task.work.pr) : null;
   return (
     <section
@@ -94,7 +97,7 @@ export function WhereItStopped({
           data-task-action="free"
           onClick={() =>
             release.mutate(
-              { id: task.id, project },
+              { id: task.id, project, holder: heldBy },
               {
                 onSuccess: () => toast.success(`Freed ${task.id}`),
                 onError: (error) => toast.error(error.message),

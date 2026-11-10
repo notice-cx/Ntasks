@@ -523,6 +523,26 @@ describe('a task page', () => {
       await waitFor(() => expect(screen.queryByRole('region', { name: 'Where it stopped' })).toBeNull());
     });
 
+    it('frees only the claim it showed: a task another agent took meanwhile stays theirs', async () => {
+      const fixture = createFixtureTasksApi();
+      let freeing: Promise<void> | undefined;
+      const api = {
+        ...fixture,
+        release: (...args: Parameters<typeof fixture.release>) => (freeing = fixture.release(...args)),
+      };
+      renderApp('/tasks/web-w6n2', api);
+      const block = await screen.findByRole('region', { name: 'Where it stopped' });
+      const free = await enabledButton('Free it', block);
+      // Another agent claims it after the page drew, before the person presses.
+      Object.assign(task(api, 'web-w6n2')!, { assignee: 'agent:other' });
+
+      fireEvent.click(free);
+
+      await waitFor(() => expect(freeing).toBeDefined());
+      await expect(freeing).rejects.toBeInstanceOf(ApiError);
+      expect(task(api, 'web-w6n2')).toMatchObject({ status: 'in_progress', assignee: 'agent:other' });
+    });
+
     it('is not shown while its holder works on it', async () => {
       renderApp('/tasks/web-k3m9.2');
       await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });

@@ -75,6 +75,7 @@ protocol appears in neither table.
 | AUTH-9 | `workers/api/test/api/owner-answers.test.ts` › "releases a dormant assignment and keeps blocked and deferred work as it was" |
 | AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "frees a task on the person’s call, keeping who held it and where the work stopped in a comment" |
 | AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "keeps a blocked task’s status, and refuses a task nobody holds and a closed one, writing nothing" |
+| AUTH-9 | `workers/api/test/api/http-decisions.test.ts` › "refuses a free naming the holder the page showed once another agent holds the task, writing nothing" |
 | AUTH-10 | `workers/api/test/api/write-tools.test.ts` › "refuses a project the sender may only read, and one it cannot reach as if it did not exist" |
 | AUTH-10 | `workers/api/test/api/http-writes.test.ts` › "refuses fields that break their rules, a project it cannot reach and one it may only read" |
 | AUTH-11 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |

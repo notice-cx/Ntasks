@@ -437,6 +437,7 @@ function TaskPage({
           {!closed && task.assignee && activityOf(task, nowMs) === 'stalled' ? (
             <WhereItStopped
               task={task}
+              heldBy={task.assignee}
               holder={actorOf(task.assignee, null, actors).name}
               comments={comments}
               project={key}

@@ -264,7 +264,7 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
                         { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
                       ]
                     : decision.kind === 'release'
-                      ? [`/tasks/${id}/release`, {}]
+                      ? [`/tasks/${id}/release`, { holder: decision.holder }]
                       : [`/tasks/${id}/dispute`, {}];
       return map(send('POST', path, { body: { projectId: project, ...body }, ...options }), (value) =>
         taskOf(value.task as Record<string, unknown>),

@@ -260,8 +260,8 @@ export type Decision =
   | { readonly kind: 'dismiss'; readonly reason?: string; readonly resolution?: string }
   | { readonly kind: 'approve'; readonly reason?: string; readonly proposalVersion?: string }
   | { readonly kind: 'dispute' }
-  /** Frees a task someone holds, on the person's own call (AUTH-9). */
-  | { readonly kind: 'release' }
+  /** Frees a task someone holds, on the person's own call (AUTH-9); `holder` is the holder the person was shown. */
+  | { readonly kind: 'release'; readonly holder?: string }
   | {
       readonly kind: 'accept';
       /** The numbers of the criteria the person found met, from 1. */

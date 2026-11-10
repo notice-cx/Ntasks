@@ -345,7 +345,8 @@ export function useReleaseTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
   return useMutation({
-    mutationFn: ({ id, project }: { id: string; project: string }) => api.release(id, project),
+    mutationFn: ({ id, project, holder }: { id: string; project: string; holder: string }) =>
+      api.release(id, project, holder),
     onSuccess: () => refresh(),
   });
 }

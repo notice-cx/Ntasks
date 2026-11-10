@@ -681,11 +681,17 @@ export function createFixtureTasksApi({
       task.proof = null;
       touch(task);
     },
-    async release(id, key) {
+    async release(id, key, shown) {
       reach();
       const task = find(id, key);
       const holder = task.assignee;
       if (task.status === 'closed' || holder === null) throw new ApiError(`Nobody holds ${id}.`, 409, 'task_refused');
+      if (holder !== shown)
+        throw new ApiError(
+          `${holder} took ${id} after this page showed it. Read it again; nothing was freed.`,
+          409,
+          'task_refused',
+        );
       // Written before the work details go, as the Worker writes it.
       const comment = releaseComment(
         {

@@ -653,7 +653,9 @@ when the person decides; a new one MAY be added.
 task only:
 
 - as a person with write access to its project, on their own call; the
-  server MUST record that the person freed it; or
+  server MUST record that the person freed it. When the person's free names
+  the holder they were shown, a server MUST refuse it while someone else
+  holds the task, and MUST change nothing; or
 - by naming the holder exactly, stating that it checked the holder stopped
   working and how, and recording the progress the holder left. The age of
   the last activity alone MUST NOT be accepted as that evidence.

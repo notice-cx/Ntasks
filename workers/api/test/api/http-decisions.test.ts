@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
 import { cachedReads } from '../../src/store/cache.ts';
-import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
+import { AGENT, clock, newProject, OTHER, OWNER } from '../engine/helpers.ts';
 import { storeDatabase } from '../store.ts';
 import { api, get, send, WRITER, type TestApi } from './helpers.ts';
 
@@ -635,7 +635,7 @@ describe('POST /api/tasks/:id/release', () => {
     const held = await left();
     time.advance(5);
 
-    const freed = await post(`/api/tasks/${held.id}/release`, {});
+    const freed = await post(`/api/tasks/${held.id}/release`, { holder: AGENT.name });
 
     expect(freed.status).toBe(200);
     expect(await current(held.id)).toMatchObject({ status: 'open', assignee: null, assigneeFor: null, work: {} });
@@ -656,6 +656,32 @@ describe('POST /api/tasks/:id/release', () => {
       (entry) => entry.kind !== 'commented',
     );
     expect(event).toMatchObject({ actor: 'Person', changes: { assignee: null, status: 'open' } });
+  });
+
+  it('refuses a free naming the holder the page showed once another agent holds the task, writing nothing', async () => {
+    const shown = await left();
+    await engine.writeTask(
+      project.id,
+      shown.id,
+      { expectedVersion: shown.version, set: { assignee: null, status: 'open' } },
+      AGENT,
+    );
+    const taken = await engine.writeTask(
+      project.id,
+      shown.id,
+      { expectedVersion: shown.version + 1, set: { assignee: OTHER.name, status: 'in_progress' } },
+      OTHER,
+    );
+
+    expect(await post(`/api/tasks/${shown.id}/release`, { holder: AGENT.name })).toMatchObject({
+      status: 409,
+      body: { error: 'task_refused' },
+    });
+    expect(await current(shown.id)).toMatchObject({
+      status: 'in_progress',
+      assignee: OTHER.name,
+      version: taken.task.version,
+    });
   });
 
   it('frees a task whose holder left work details as long as they may be, cutting each to fit one comment', async () => {

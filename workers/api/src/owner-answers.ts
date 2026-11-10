@@ -871,9 +871,11 @@ function acceptanceDisputeWrite(
  * then, a task in progress is open again, and a blocked or deferred one keeps
  * its status, as after an agent's release. A comment keeps who freed it and
  * where the work stopped. An agent frees a task only with reconcile_task's
- * release, naming the holder and how it checked the holder stopped.
+ * release, naming the holder and how it checked the holder stopped. `shown`
+ * is the holder the person's page showed: a task someone else took since is
+ * refused, so the press never frees a claim the person did not see.
  */
-export function releaseWrite(task: Task, around: Surroundings, deciding: Deciding): TaskWrite | null {
+export function releaseWrite(task: Task, around: Surroundings, deciding: Deciding, shown?: string): TaskWrite | null {
   if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
   const holder = task.assignee;
   if (holder === null)
@@ -881,6 +883,13 @@ export function releaseWrite(task: Task, around: Surroundings, deciding: Decidin
       'state',
       `refused: nobody holds ${task.id}, so there is no claim to free.`,
       `Nobody holds ${task.id}.`,
+    );
+  if (shown !== undefined && shown !== holder)
+    throw new Refused(
+      'state',
+      `refused: holder: ${holder} holds ${task.id} now, not ${shown}; read it again.`,
+      `${holder} took ${task.id} after this page showed it. Read it again; nothing was freed.`,
+      'holder',
     );
   const draft = new Draft(task);
   draft.comment = releaseComment(
@@ -1436,8 +1445,15 @@ export function release(
   projectId: string,
   taskId: string,
   retry?: RetryRequest,
+  shown?: string,
 ): Promise<Written> {
-  return decide(context, projectId, taskId, (task, around, deciding) => releaseWrite(task, around, deciding), retry);
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, around, deciding) => releaseWrite(task, around, deciding, shown),
+    retry,
+  );
 }
 
 /** A person accepting a task as done on their own call (acceptanceWrite). */
