@@ -13,6 +13,7 @@ import {
   TASK_LIMITS,
   TaskRefused,
   type BoardQuery,
+  type BurndownRead,
   type ChangePage,
   type CustomField,
   type EpicProgress,
@@ -28,6 +29,7 @@ import {
   type TaskFilters,
   type TaskPage,
   type TaskQuery,
+  type TaskResolution,
   type TaskStatus,
   type TaskType,
   type WinsRead,
@@ -452,6 +454,47 @@ export class Reads {
     }
     const shippedBefore = (before!.results[0] as { shipped_before: number } | undefined)?.shipped_before === 1;
     return { items: rows.map((row) => toWin(row, done.get(row.id) ?? 0)), shippedBefore };
+  }
+
+  /**
+   * What a burn-down from ?2 counts: when each task not closed was created,
+   * which the (project_id, status) index holds, so no task row is read; and
+   * when each task closed from ?2 on was created and closed, and how, through
+   * the (project_id, closed_at) one. Beside them, whether any task closed
+   * before ?2, which stops at the first the closed index holds.
+   */
+  async listBurndown(projectIds: readonly string[], from: string): Promise<BurndownRead> {
+    if (projectIds.length === 0) return { items: [], closedBefore: false };
+    if (!projectIds.every((id) => typeof id === 'string')) invalid('projectIds must be project ids');
+    const args: Bindable[] = [JSON.stringify([...new Set(projectIds)]), instant(from, 'from')];
+    type Row = { created_at: string; closed_at: string | null; resolution: TaskResolution | null };
+    const [found, before] = await this.#db.batch<Row | { closed_before: number }>([
+      this.#db
+        .prepare(
+          `SELECT t.created_at, NULL AS closed_at, NULL AS resolution
+             FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_status
+             ON t.project_id = wanted.value WHERE t.status IN ${NOT_CLOSED}
+           UNION ALL
+           SELECT t.created_at, t.closed_at, t.resolution
+             FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_closed
+             ON t.project_id = wanted.value WHERE t.closed_at >= ?2`,
+        )
+        .bind(...args),
+      this.#db
+        .prepare(
+          `SELECT EXISTS (SELECT 1 FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_closed
+             ON t.project_id = wanted.value WHERE t.closed_at < ?2) AS closed_before`,
+        )
+        .bind(...args),
+    ]);
+    return {
+      items: (found!.results as Row[]).map((row) => ({
+        createdAt: row.created_at,
+        closedAt: row.closed_at,
+        resolution: row.resolution,
+      })),
+      closedBefore: (before!.results[0] as { closed_before: number } | undefined)?.closed_before === 1,
+    };
   }
 
   /** The open tasks one holder holds, through the assignee index: one entry

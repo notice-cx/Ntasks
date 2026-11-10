@@ -24,6 +24,7 @@ import {
 } from './http/decisions.ts';
 import {
   boardRoute,
+  burndownRoute,
   capabilities,
   changesRoute,
   fieldsRoute,
@@ -96,6 +97,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
   '/api/tasks/wins': { GET: winsRoute },
+  '/api/tasks/burndown': { GET: burndownRoute },
   '/api/changes': { GET: changesRoute },
   '/api/fields': { GET: fieldsRoute, POST: defineFieldRoute },
   '/api/delivery': { POST: deliveryRoute },

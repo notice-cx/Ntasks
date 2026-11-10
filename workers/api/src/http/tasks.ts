@@ -16,6 +16,7 @@ import {
   type TaskStatus,
 } from '@ntasks/domain';
 import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
+import { burndown } from '../burndown.ts';
 import { linksSeenBy } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import { fieldFiltersOf } from '../task-writes.ts';
@@ -64,6 +65,17 @@ export async function winsRoute(context: ReadContext, url: URL): Promise<Respons
   if (payload === null)
     invalidRequest(`before must be a day as YYYY-MM-DD, from 7 to ${WIN_HISTORY_DAYS} days back, or left out`);
   return json(payload);
+}
+
+/** GET /api/tasks/burndown?project=…&timeZone=…: the open tasks of each day of
+ * the last eight weeks, with the tasks created and closed that day, of one
+ * project or every one the sender reaches; each day cut at midnight in
+ * timeZone, UTC when it names none (src/burndown.ts). */
+export async function burndownRoute(context: ReadContext, url: URL): Promise<Response> {
+  const query = queryOf(url, ['project', 'timeZone']);
+  if (query.timeZone !== undefined && !isTimeZone(query.timeZone))
+    invalidRequest('timeZone must be an IANA time zone, such as America/Los_Angeles');
+  return json(await burndown(context, query.project, query.timeZone));
 }
 
 /** GET /api/tasks/projects */
