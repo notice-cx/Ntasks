@@ -158,7 +158,10 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
       if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
-      if (branch !== defaultBranch)
+      // GitHub keeps one check suite per app and commit, named for the branch first pushed with it:
+      // for a commit landed by the merge queue, that is the queue's branch, which holds exactly that commit.
+      const onDefault = branch === defaultBranch || branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) === true;
+      if (!onDefault)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
       return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
     }

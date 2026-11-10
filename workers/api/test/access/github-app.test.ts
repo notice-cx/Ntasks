@@ -121,11 +121,11 @@ function merged(id: number, number: number, mergeCommit: string) {
 }
 
 /** A check run that passed on main, from installation `id`. */
-function passed(id: number, name: string, sha: string) {
+function passed(id: number, name: string, sha: string, branch = 'main') {
   return {
     action: 'completed',
     installation: { id },
-    check_run: { name, head_sha: sha, conclusion: 'success', check_suite: { head_branch: 'main' } },
+    check_run: { name, head_sha: sha, conclusion: 'success', check_suite: { head_branch: branch } },
     repository,
   };
 }
@@ -287,6 +287,25 @@ describe('the app’s deliveries', () => {
         detected: expect.arrayContaining([{ name: 'Workers Builds: site', on: true, seenAt: expect.any(String) }]),
       },
     });
+  });
+
+  it('counts a deploy of a commit the merge queue landed on the default branch', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const { projectId, id } = await taskWithPullRequest(owner, 38);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 38, merge));
+
+    // GitHub names a commit's check suite for the branch first pushed with it: the queue's, for a queued merge.
+    const otherQueue = passed(mine, 'Workers Builds: site', merge, 'gh-readonly-queue/release/pr-38-0123abc');
+    expect((await deliver('check_run', otherQueue)).body).toMatchObject({
+      moved: [],
+      ignored: expect.stringMatching(/not the default branch/u),
+    });
+    const queued = passed(mine, 'Workers Builds: site', merge, 'gh-readonly-queue/main/pr-38-0123abc');
+    expect((await deliver('check_run', queued)).body).toEqual({ moved: [{ id, stage: 'live' }] });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
   });
 
   it('keeps a project off once its owner turns it off, and a deploy check off once switched off', async () => {
