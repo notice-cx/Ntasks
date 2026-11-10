@@ -641,5 +641,21 @@ describe("a task's links", () => {
     expect(first).toEqual([
       { label: 'Merges before', rows: [{ kind: 'task', id: 'web-m2', title: 'Task web-m2', status: 'open' }] },
     ]);
+    // The task's own dependents name a later task in another project, which its board does not hold.
+    const across = linkGroups(
+      {
+        id: 'web-m1',
+        dependencies: [],
+        externalLinks: [],
+        dependents: [{ id: 'docs-m3', type: 'merges-after', title: 'Document the header', status: 'open' }],
+      },
+      [],
+    );
+    expect(across).toEqual([
+      {
+        label: 'Merges before',
+        rows: [{ kind: 'task', id: 'docs-m3', title: 'Document the header', status: 'open' }],
+      },
+    ]);
   });
 });

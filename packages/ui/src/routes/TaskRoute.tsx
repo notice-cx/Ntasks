@@ -926,7 +926,7 @@ type LinkRow =
 
 /** The task's links in groups, each named once: what it waits on, what it holds back, the rest, then pages outside. */
 export function linkGroups(
-  task: Pick<LiveTask, 'id' | 'dependencies' | 'externalLinks'>,
+  task: Pick<LiveTask, 'id' | 'dependencies' | 'externalLinks' | 'dependents'>,
   siblings: readonly Pick<LiveTask, 'id' | 'title' | 'status' | 'dependencies'>[],
 ): { label: string; rows: LinkRow[] }[] {
   const groups = new Map<string, LinkRow[]>();
@@ -938,12 +938,20 @@ export function linkGroups(
       : (LINK_WORDS[edge.type] ?? edge.type.charAt(0).toUpperCase() + edge.type.slice(1).replace(/-/g, ' '));
     add(label, { kind: 'task', id: edge.id, title: edge.title, status: edge.status });
   }
-  for (const other of siblings) {
-    if (other.dependencies.some((edge) => isBlockingLink(edge.type) && edge.id === task.id))
-      add('Holds back', { kind: 'task', id: other.id, title: other.title, status: other.status });
-    // The other end of a merges-after link: that task's pull request lands after this one's.
-    if (other.dependencies.some((edge) => edge.type === 'merges-after' && edge.id === task.id))
-      add('Merges before', { kind: 'task', id: other.id, title: other.title, status: other.status });
+  // The other end of a link: the task's own dependents, which reach across projects, or, from a
+  // server that sends none, the links its board's tasks hold onto it.
+  const theirs =
+    task.dependents ??
+    siblings.flatMap((other) =>
+      other.dependencies
+        .filter((edge) => edge.id === task.id)
+        .map((edge) => ({ id: other.id, type: edge.type, title: other.title, status: other.status })),
+    );
+  for (const edge of theirs) {
+    const row: LinkRow = { kind: 'task', id: edge.id, title: edge.title, status: edge.status };
+    if (isBlockingLink(edge.type)) add('Holds back', row);
+    // That task's pull request lands after this one's.
+    if (edge.type === 'merges-after') add('Merges before', row);
   }
   for (const link of task.externalLinks ?? []) {
     add(EXTERNAL_WORDS[link.kind ?? ''] ?? 'Link', {
