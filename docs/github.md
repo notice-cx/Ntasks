@@ -53,10 +53,11 @@ move it from there:
   seen under **Deploys**, with a box that switches it off; a deploy switched
   off moves no task.
 - **A check with another name** counts once it is typed under **Deploy
-  checks**, in **Set up by hand** under GitHub in Settings: press **Make a
-  secret**, type the name and press **Save**. With the app connected, nothing
-  is added on GitHub. A typed name always counts, isn't listed under
-  **Deploys**, and stops counting only when it is removed
+  checks**, in **Set up by hand** under GitHub in Settings, and saved. Saving
+  needs a secret: press **Make a secret** only when none is saved, since a
+  new one replaces it. With the app connected, nothing is added on GitHub. A
+  typed name isn't listed under **Deploys**; to stop it counting, remove it,
+  and switch off any entry of the same name under **Deploys**
   ([API](api.md#set-up-by-hand)).
 - **A project that deploys.** The first deploy seen for a project's tasks
   turns on **Changes go live by a deploy** for that project, on the Projects
@@ -78,9 +79,10 @@ move it from there:
   stay at Merged unless their own merge was deployed too.
 - **The deploy passed before the task closed.** The check after the close
   asks GitHub only about the merge, so the task stops at Merged. Redeliver
-  the deploy's event from **Recent Deliveries** ([below](#check-that-it-works)):
-  it moves the task to Live, and turns on **Changes go live by a deploy** for
-  its project when no deploy has before.
+  the deploy's event from **Recent Deliveries** ([below](#check-that-it-works))
+  to move it to Live. The event turns on **Changes go live by a deploy** for
+  a project no deploy has turned it on for; where an owner turned it off,
+  turn it on again on the Projects page first.
 - **Many tasks waiting at once.** Each check reads up to about 40 pull
   requests, starting from the newest waiting task, within the free plan's
   limit on requests. While many newer tasks wait, an older one can stay at
