@@ -40,6 +40,7 @@ import type {
   TaskField,
   TaskProject,
   TaskSearch,
+  WinsPage,
   TasksCapabilities,
   Workspace,
   WorkspaceMembers,
@@ -91,6 +92,10 @@ export interface TasksApi {
   fields(project: string, signal?: AbortSignal): Promise<ProjectFields>;
   /** Every change after sequence number `after`, in every project this sign-in reaches, oldest first. */
   changes(after: number, signal?: AbortSignal): Promise<ChangesPage>;
+  /** Seven days of wins: changes shipped, answers given and epics finished, in one project or every one this
+   * sign-in reaches. Without `before`, today and the six days before it; with it (YYYY-MM-DD), the seven
+   * days before that day. */
+  wins(options: { project?: string; before?: string }, signal?: AbortSignal): Promise<WinsPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
@@ -518,6 +523,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     search: (text, signal) => scope().search(text, signal),
     fields: (project, signal) => scope().fields(project, signal),
     changes: (after, signal) => scope().changes(after, signal),
+    wins: (options, signal) => scope().wins(options, signal),
     createTask: (input, options) => scope().createTask(input, options),
     updateTask: (id, project, edit, options) => scope().updateTask(id, project, edit, options),
     closeTask: (id, project, reason, options) => scope().closeTask(id, project, reason, options),
@@ -647,6 +653,17 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     async task(id, project, signal) {
       const params = new URLSearchParams({ project: await projectId(project, signal) });
       return read<LiveTaskDetail>(`${taskPath(id)}?${params}`, `Task ${id}`, signal);
+    },
+    async wins({ project, before }, signal) {
+      const params = new URLSearchParams();
+      if (project !== undefined) params.set('project', await projectId(project, signal));
+      if (before !== undefined) params.set('before', before);
+      const query = params.size > 0 ? `?${params}` : '';
+      const page = await read<unknown>(`/api/tasks/wins${query}`, 'The wins', signal);
+      if (!isRecord(page) || !Array.isArray(page.wins) || !Array.isArray(page.days) || !isRecord(page.totals)) {
+        throw new UnreadableAnswer('The wins could not be read.');
+      }
+      return page as unknown as WinsPage;
     },
     async search(text, signal) {
       const found = await read<unknown>(`/api/tasks/search?${new URLSearchParams({ q: text })}`, 'The search', signal);

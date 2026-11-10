@@ -41,6 +41,9 @@ import type {
   TaskField,
   TaskFieldValue,
   TaskProject,
+  Win,
+  WinTask,
+  ShippedWin,
   Workspace,
 } from './types';
 
@@ -74,6 +77,9 @@ const WORKSPACE_NAME_LIMIT = 128;
 
 /** How far back a board's closed tasks reach. */
 const CLOSED_DAYS = 7;
+/** The days one read of wins covers, and how far back they reach, as the Worker's (docs/api.md, "Wins"). */
+const WIN_DAYS = 7;
+const WIN_HISTORY_DAYS = 56;
 const DAY = 24 * 3_600_000;
 /** The most tasks a search answers, and the longest text it takes, as the Worker's search route. */
 const SEARCH_PAGE = 100;
@@ -465,6 +471,100 @@ export function createFixtureTasksApi({
         tasks,
         epics: null,
         actors: FIXTURE_ACTORS,
+      });
+    },
+    async wins({ project: key, before } = {}) {
+      reach();
+      const projects = key === undefined ? state.projects : [project(key)];
+      const ids = new Map(projects.map((row) => [row.logicalKey, row.projectId]));
+      // Seven UTC days ending before `before`, or with today; no further back than eight weeks, as the Worker.
+      const tomorrow = Math.floor(now() / DAY) * DAY + DAY;
+      const end = before === undefined ? tomorrow : Date.parse(`${before}T00:00:00.000Z`);
+      const start = end - WIN_DAYS * DAY;
+      const earliest = tomorrow - WIN_HISTORY_DAYS * DAY;
+      if (!Number.isFinite(end) || end > tomorrow || start < earliest)
+        throw new ApiError('before must be a day as YYYY-MM-DD, from 7 to 56 days back.', 400, 'invalid_request');
+      const within = (at: string | null | undefined): at is string =>
+        typeof at === 'string' && Date.parse(at) >= start && Date.parse(at) < end;
+      const tasks = state.tasks.filter((task) => ids.has(task.project));
+      const done = (task: FixtureTask) => task.status === 'closed' && (task.resolution ?? 'done') === 'done';
+      const wins: Win[] = [];
+      const changes = new Map<string, ShippedWin & { tasks: WinTask[] }>();
+      let approved = 0;
+      for (const task of tasks) {
+        const projectId = ids.get(task.project)!;
+        const delivery = task.delivery;
+        const shipped =
+          delivery && (delivery.stage === 'merged' || delivery.stage === 'live')
+            ? (delivery.mergedAt ?? delivery.liveAt)
+            : null;
+        if (delivery && within(shipped)) {
+          const change = `${projectId} ${delivery.pullRequest ?? delivery.mergeCommit ?? delivery.commit ?? task.id}`;
+          const found = changes.get(change);
+          if (found) found.tasks.push({ id: task.id, title: task.title });
+          else
+            changes.set(change, {
+              kind: 'shipped',
+              at: shipped,
+              projectId,
+              stage: delivery.stage,
+              pullRequest: delivery.pullRequest,
+              commit: delivery.pullRequest === null ? (delivery.mergeCommit ?? delivery.commit) : null,
+              tasks: [{ id: task.id, title: task.title }],
+            });
+        }
+        if (task.choice && within(task.choice.at))
+          wins.push({
+            kind: 'decided',
+            at: task.choice.at,
+            projectId,
+            id: task.id,
+            title: task.title,
+            option: task.choice.option,
+            label: task.choice.label,
+            by: task.choice.by,
+          });
+        if (done(task) && within(task.closedAt)) {
+          if (task.issueType === 'epic') {
+            const children = tasks.filter((child) => child.parent === task.id && done(child)).length;
+            wins.push({
+              kind: 'finished',
+              at: task.closedAt,
+              projectId,
+              id: task.id,
+              title: task.title,
+              done: children,
+            });
+          } else if (task.issueType === 'gate') approved++;
+        }
+      }
+      wins.push(...changes.values());
+      wins.sort((a, b) => b.at.localeCompare(a.at));
+      const days = Array.from({ length: WIN_DAYS }, (_, i) => ({
+        day: new Date(start + i * DAY).toISOString().slice(0, 10),
+        shipped: 0,
+        decided: 0,
+        finished: 0,
+      }));
+      for (const win of wins) {
+        const day = days.find((row) => row.day === win.at.slice(0, 10));
+        if (day) day[win.kind]++;
+      }
+      const count = (kind: Win['kind']) => wins.filter((win) => win.kind === kind).length;
+      return copy({
+        readAt: new Date(now()).toISOString(),
+        from: new Date(start).toISOString(),
+        to: new Date(end).toISOString(),
+        earlier: start - WIN_DAYS * DAY >= earliest ? new Date(start).toISOString().slice(0, 10) : null,
+        projects: projects.length,
+        shippedBefore: tasks.some((task) => {
+          const delivery = task.delivery;
+          const at = delivery?.mergedAt ?? delivery?.liveAt ?? null;
+          return at !== null && Date.parse(at) < start;
+        }),
+        totals: { shipped: count('shipped'), decided: count('decided'), finished: count('finished'), approved },
+        days,
+        wins,
       });
     },
     async changes(after) {

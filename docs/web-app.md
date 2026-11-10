@@ -45,6 +45,11 @@ its epic, with the epic's progress bar.
   <img src="images/live-light.webp" width="800" alt="The Live page: 1 active, 1 quiet and 1 stalled at the top beside Stalled after 1 day, then the Active, Quiet and Stalled groups, each row with its task's next step, pull request or branch, helper, holder and how long since the holder's last change.">
 </picture>
 
+**Productivity.** What you and your agents got done that matters, day by
+day: changes merged or live, decisions you answered and epics finished, with
+a strip of the last seven days at the top. It counts no tasks closed, and
+reads back eight weeks.
+
 **Phone.**
 
 <picture>

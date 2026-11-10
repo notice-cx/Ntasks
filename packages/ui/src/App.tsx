@@ -23,6 +23,7 @@ const TasksBoard = lazy(() => import('./routes/TasksBoard'));
 const TaskRoute = lazy(() => import('./routes/TaskRoute'));
 const FocusRoute = lazy(() => import('./routes/FocusRoute'));
 const LiveRoute = lazy(() => import('./routes/LiveRoute'));
+const ProductivityRoute = lazy(() => import('./routes/ProductivityRoute'));
 const ProjectsRoute = lazy(() => import('./routes/ProjectsRoute'));
 const MembersRoute = lazy(() => import('./routes/MembersRoute'));
 const SettingsRoute = lazy(() => import('./routes/SettingsRoute'));
@@ -61,6 +62,7 @@ export function App({
                   <Route path="focus" element={<FocusRoute />} />
                   <Route path=":id" element={<TaskRoute />} />
                   <Route path="live" element={<LiveRoute />} />
+                  <Route path="productivity" element={<ProductivityRoute />} />
                   <Route path="projects" element={<ProjectsRoute />} />
                   <Route path="members" element={<MembersRoute />} />
                   <Route path="settings" element={<SettingsRoute />} />
