@@ -49,13 +49,13 @@ const IMPORTED_SERVICES: Names = [[/^beads$/iu, 'Old task hub']];
 const CLIENT_SUFFIX = /(?:\s+\([^()]*\))+$/u;
 
 /**
- * An agent's display name: the name without its client's labels, as the
- * product it spells when it spells one. Every display name maps to itself,
- * so an actor's key reads back as the same key.
+ * An agent's display name: the product its name spells, with or without the
+ * labels a client adds, as in `Claude Code (ntasks)`; else the name as
+ * registered, so `Worker (EU)` and `Worker (US)` stay apart. Every display
+ * name maps to itself, so an actor's key reads back as the same key.
  */
 function agentName(name: string, ...tables: readonly Names[]): string {
-  const bare = name.replace(CLIENT_SUFFIX, '') || name;
-  return lookUp(bare, ...tables) ?? bare;
+  return lookUp(name, ...tables) ?? lookUp(name.replace(CLIENT_SUFFIX, ''), ...tables) ?? name;
 }
 
 function lookUp(name: string, ...tables: readonly Names[]): string | null {
@@ -68,8 +68,8 @@ function lookUp(name: string, ...tables: readonly Names[]): string | null {
 
 /**
  * The kind of sender an actor is and the name to show it by. The prefix
- * names the kind (section 3.1). An agent is shown by its product, without
- * the labels its client adds; a service acting for an agent as that agent;
+ * names the kind (section 3.1). An agent is shown by its product, whatever
+ * labels its client adds; a service acting for an agent as that agent;
  * and a bare name the old task hub recorded for an agent as that agent.
  * Every other name is shown as recorded.
  */

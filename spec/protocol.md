@@ -191,7 +191,7 @@ what each sender sent.
 
 | Actor | Kind | Display name |
 |---|---|---|
-| `agent:<name>` | agent | The product the name spells, such as Claude Code or Codex, without a trailing label in parentheses that its client adds when it registers, as in `Claude Code (ntasks)`; else the name without that label |
+| `agent:<name>` | agent | The product the name spells, such as Claude Code or Codex, also when its client adds a label in parentheses as it registers, as in `Claude Code (ntasks)`; else the name as registered |
 | `service:<name>/<agent>` | agent | The agent's display name |
 | `service:<name>` | service | The name |
 | `person:<name>` | person | The name |
