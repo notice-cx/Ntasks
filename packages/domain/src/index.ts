@@ -12,7 +12,8 @@ export {
 } from './sort.ts';
 export type { SortDirection, SortFacts, TaskSort } from './sort.ts';
 export type { StepMarking } from './steps.ts';
-export { sameActor } from './actors.ts';
+export { ACTOR_KINDS, actorIdentity, actorKey, modelIdentity, sameActor } from './actors.ts';
+export type { ActorIdentity, ActorKind, ModelIdentity } from './actors.ts';
 export { releaseComment } from './release.ts';
 export type { FreedTask } from './release.ts';
 export { criteriaOf } from './criteria.ts';

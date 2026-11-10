@@ -121,6 +121,7 @@ cite.
 | Service | A program with its own credential, such as a repository's automation. A service may act for an agent it names. |
 | Actor | The name a server records for the sender of a change ([3.1](#31-actor-and-provenance)). |
 | Model | The AI model an agent says it runs as, recorded beside its actor. |
+| Display name | The name a reader is shown for an actor or a model, worked out from it ([3.1.1](#311-display-names)). |
 | Workspace | The set of projects, people, agents and services that work together. A request acts in one workspace; nothing reaches across two. |
 | Project | The tasks of one body of work, such as one repository. Its **prefix** starts every task id in it. |
 | Task | One piece of work ([3.2](#32-task)). |
@@ -177,6 +178,42 @@ prefix names the sender's kind:
 recorded. Every change carries it ([INV-12](#inv-12)). The work-in-hand
 detail `session` records which agent session made a change while it held
 the task.
+
+#### 3.1.1 Display names
+
+Schema: [`actor-identity`](schemas/actor-identity.schema.json).
+
+A reader is shown each actor by its **display name**. An actor's
+**identity** is its id, its kind and that name. The id is the actor as the
+server recorded it, which never changes ([INV-6](#inv-6)); the kind and the
+name are worked out from it each time it is shown, so the record keeps
+what each sender sent.
+
+| Actor | Kind | Display name |
+|---|---|---|
+| `agent:<name>` | agent | The product the name spells, such as Claude Code or Codex, without a trailing label in parentheses that its client adds when it registers, as in `Claude Code (ntasks)`; else the name without that label |
+| `service:<name>/<agent>` | agent | The agent's display name |
+| `service:<name>` | service | The name |
+| `person:<name>` | person | The name |
+| `visitor:<name>` | visitor | The name |
+| any other name | person, or agent when the server's imported names hold it | The name, or the product the imported name stands for |
+
+A server MAY keep a list of **imported names**: names recorded before it
+prefixed actors, such as by a task hub its tasks were imported from, each
+with the product that wrote under it, as `codex/root` for Codex. The list
+MUST NOT give a person's kind to an agent, so no agent is shown as a
+person ([AUTH-2](#auth-2)).
+
+A **model** likewise has an id and a display name, worked out from the words
+the sender gave, which the server keeps as given ([AUTH-2](#auth-2)). The id
+is the maker's own name for the model with any transport prefix, date or
+effort level dropped, such as `claude-opus-5-5`, and the display name is
+how the maker writes it, such as Claude Opus 5.5: `Opus 5.5`,
+`claude-opus-5.5` and `Claude Opus 5.5` all name that one model. A model
+no rule knows has no id and is shown as given.
+
+[`naming.json`](naming.json) lists actors and models with the identity
+each is shown by; Ntasks's rule passes every one.
 
 ### 3.2 Task
 
@@ -830,6 +867,13 @@ there are and how to list them.
 **INV-12. Every change names who made it.** <a id="inv-12"></a>A server
 MUST record with each change its actor, its time and the model the sender
 named, and return them in the task's history.
+
+**INV-13. One name for one sender.** <a id="inv-13"></a>A client that shows
+an actor or a model SHOULD show it by its display name
+([3.1.1](#311-display-names)). A client that counts, lists or filters work
+by who holds it MUST treat actors with the same kind and display name as
+one, so one agent is listed once whatever name it signed in under, and
+MUST keep actors of different kinds apart.
 
 ## 7. Conformance levels
 

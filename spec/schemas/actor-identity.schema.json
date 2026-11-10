@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntasks.notice.cx/spec/v0/schemas/actor-identity.schema.json",
+  "title": "Actor identity",
+  "description": "Who an actor is, as a reader is shown it: the actor the server recorded, which never changes; its kind; and its display name, worked out from the actor each time it is shown. An agent's display name is its product, such as Claude Code, without the label its client adds when it registers. Section 3.1.1 of the protocol.",
+  "type": "object",
+  "properties": {
+    "id": { "$ref": "actor.schema.json" },
+    "kind": { "enum": ["person", "agent", "service", "visitor"] },
+    "name": { "type": "string", "minLength": 1, "maxLength": 128 }
+  },
+  "required": ["id", "kind", "name"],
+  "additionalProperties": false
+}
