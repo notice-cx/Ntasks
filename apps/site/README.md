@@ -57,18 +57,31 @@ file that does not exist. CI runs it on every pull request.
 
 ## Publishing
 
-Nothing publishes the site on its own. A merge to `main` deploys the app
-through the Workers Builds connection, which reads the app's
-`wrangler.jsonc` at the repository root; it never reads this folder's.
+A Workers Builds connection on the `ntasks-site` Worker publishes the site on
+every push to `main` that changes `apps/site/`, `docs/`, `spec/`, the Notice
+logo and icons in `apps/web/public/brand/` that `vite.config.ts` copies, or
+`pnpm-lock.yaml`. It is separate from the app's connection, which reads the
+`wrangler.jsonc` at the repository root. Its settings, in the Cloudflare
+dashboard under the Worker's **Settings → Build**:
 
-Publishing is `wrangler deploy` from this folder, run by hand. Every merge
-to `main` that changes `docs/`, `spec/` or `apps/site/` is published right
-after it lands, from a clean checkout of `main`'s latest commit. After the
+| Setting | Value |
+|---|---|
+| Git repository | `notice-cx/Ntasks`, branch `main` |
+| Root directory | `apps/site` |
+| Build command | `pnpm install --frozen-lockfile && pnpm build:site` |
+| Deploy command | `npx wrangler deploy` |
+| Build watch paths, include | `apps/site/*`, `docs/*`, `spec/*`, `apps/web/public/brand/*`, `pnpm-lock.yaml` |
+
+Each build shows on its commit as the check `Workers Builds: ntasks-site`. A
+failing check means the site still serves the previous build.
+
+When that check fails, publish by hand: run these two commands from the
+repository root of a clean checkout of `main`'s latest commit. After the
 deploy, if `main` has moved past that commit, publish again from the new
-one: two publishes running at once can finish in either order, and this
-leaves the site on `main`'s latest commit. The owner approved this publish
-once for every such merge; any other command that reaches Cloudflare still
-needs approval each time
+one, so a hand publish never leaves an older build over a newer automatic
+one. The owner approved this hand publish for a failed build; any other
+publish, and any other command that reaches Cloudflare, still needs approval
+each time
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)):
 
 ```sh
