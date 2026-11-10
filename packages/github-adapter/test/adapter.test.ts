@@ -13,6 +13,7 @@ import { mcpApi } from '../../../spec/conformance/src/mcp.ts';
 import { McpConnection } from '../../../spec/conformance/src/transport.ts';
 import { runSuite } from '../../../spec/conformance/src/suite.ts';
 import { KNOWN_GAPS, startLocalAdapter } from '../conformance/local.ts';
+import { checkConfig, type AdapterConfig } from '../src/config.ts';
 import { GitHub } from '../src/github.ts';
 
 /** The defects whose checks the core level holds, and those checks. */
@@ -84,6 +85,32 @@ describe('the adapter', () => {
       });
       expect([refused.isError, refused.text.split('\n')[0]?.startsWith('refused:')]).toEqual([true, true]);
       expect((await github.listIssues(local.repository)).length).toBe(issues);
+    } finally {
+      await local.close();
+    }
+  }, 60_000);
+
+  it('names a task by one spelling of its issue number, and refuses an argument name the tool does not own', async () => {
+    const local = await startLocalAdapter();
+    try {
+      const agent = mcpApi(local.target, 'agent');
+      const id = (await agent.create({ title: 'Count the visits' })).value!.id;
+      const [prefix, number] = id.split('-') as [string, string];
+      for (const alias of [`${prefix}-0${number}`, `${prefix}-${number}.0`, `${prefix}-${number}e0`]) {
+        const claimed = await agent.claim(alias);
+        expect([alias, claimed.ok, claimed.refusal?.kind]).toEqual([alias, false, 'refused']);
+      }
+      expect((await agent.claim(id)).ok).toBe(true);
+      const connection = await new McpConnection(
+        new URL('/mcp', local.target.url),
+        local.target.senders.agent.headers,
+      ).initialize();
+      for (const args of [{ title: 'x', toString: 1 }, JSON.parse('{"title": "x", "__proto__": {}}') as object]) {
+        const answer = await connection.callTool('create_task', { project: local.target.projects.main, ...args });
+        expect([answer.isError, answer.text.split('\n')[0]?.startsWith('invalid arguments: unknown argument')]).toEqual(
+          [true, true],
+        );
+      }
     } finally {
       await local.close();
     }
@@ -182,4 +209,26 @@ describe('the GitHub client', () => {
       await new Promise((resolve) => stalling.close(resolve));
     }
   }, 20_000);
+});
+
+describe('the configuration', () => {
+  const token = 'a'.repeat(64);
+  const project = { projectId: 'p1', key: 'web', name: 'Website', prefix: 'web', repository: 'example/site' };
+  const sender = { kind: 'agent', name: 'Claude', tokenSha256: token, projects: { p1: 'write' } } as const;
+  const config = (change: Partial<AdapterConfig>): AdapterConfig => ({
+    githubApi: 'https://api.github.com',
+    ledger: null,
+    projects: [project],
+    senders: [sender],
+    ...change,
+  });
+
+  it('refuses two projects with one id, two senders with one token, and a kind it does not know', () => {
+    expect(() => checkConfig(config({}))).not.toThrow();
+    expect(() => checkConfig(config({ projects: [project, { ...project, prefix: 'web2', key: 'web2' }] }))).toThrow(
+      /projectId p1/u,
+    );
+    expect(() => checkConfig(config({ senders: [sender, { ...sender, name: 'Other' }] }))).toThrow(/tokenSha256/u);
+    expect(() => checkConfig(config({ senders: [{ ...sender, kind: 'Agent' as never }] }))).toThrow(/kind/u);
+  });
 });

@@ -110,7 +110,8 @@ export function checkArgs(
     throw new Refused('invalid', 'invalid arguments: the arguments are a JSON object');
   const all = { ...COMMON, ...specs };
   for (const name of Object.keys(args)) {
-    if (all[name] !== undefined) continue;
+    // Own names only: `toString` and `__proto__` are inherited, not arguments.
+    if (Object.hasOwn(all, name)) continue;
     const likely = Object.keys(all).sort((a, b) => distance(name, a) - distance(name, b))[0];
     throw new Refused('invalid', `invalid arguments: unknown argument ${name}; this tool takes ${likely}`);
   }
