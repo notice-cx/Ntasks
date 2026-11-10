@@ -49,15 +49,15 @@ move it from there:
 
 - **A deploy** is a passing check whose name starts with `Workers Builds:` or
   `Cloudflare Pages`, the checks Cloudflare's builds report, or a successful
-  deployment to the production environment. Settings lists each one it has
-  seen under **Deploys**, with a box that switches it off; a deploy switched
-  off moves no task.
+  deployment to the production environment. Each one counts from the first
+  time it is seen, and Settings then lists it under **Deploys**, with a box
+  that switches it off for later events.
 - **A check with another name** counts once it is typed under **Deploy
   checks**, in **Set up by hand** under GitHub in Settings, and saved. Saving
   needs a secret: press **Make a secret** only when none is saved, since a
   new one replaces it. With the app connected, nothing is added on GitHub. A
-  typed name isn't listed under **Deploys**; to stop it counting, remove it,
-  and switch off any entry of the same name under **Deploys**
+  typed name isn't added to **Deploys**. Removing it stops it counting,
+  unless it is also a deploy by the rules above, which then counts as one
   ([API](api.md#set-up-by-hand)).
 - **A project that deploys.** The first deploy seen for a project's tasks
   turns on **Changes go live by a deploy** for that project, on the Projects
@@ -80,7 +80,8 @@ move it from there:
 - **The deploy passed before the task closed.** The check after the close
   asks GitHub only about the merge, so the task stops at Merged. Redeliver
   the deploy's event from **Recent Deliveries** ([below](#check-that-it-works))
-  to move it to Live. The event turns on **Changes go live by a deploy** for
+  to move it to Live; GitHub keeps them for 3 days, and after that a signal
+  (below) does it. The event turns on **Changes go live by a deploy** for
   a project no deploy has turned it on for; where an owner turned it off,
   turn it on again on the Projects page first.
 - **Many tasks waiting at once.** Each check reads up to about 40 pull
