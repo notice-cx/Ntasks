@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/notice-cx/Ntasks/compare/v0.3.0...v0.4.0) (2026-11-10)
+
+
+### Features
+
+* show each agent under one name and each model by its name ([afad0eb](https://github.com/notice-cx/Ntasks/commit/afad0eb2b7b963a7de5d10cf31ce8d9e57a1ce2c))
+
+
+### Bug Fixes
+
+* **api:** move a merged task to live when a deploy shipped it unnamed ([0caf9c5](https://github.com/notice-cx/Ntasks/commit/0caf9c5f32f4572889e585410fa9d2198c65afda))
+
 ## [0.3.0](https://github.com/notice-cx/Ntasks/compare/v0.2.0...v0.3.0) (2026-11-10)
 
 
