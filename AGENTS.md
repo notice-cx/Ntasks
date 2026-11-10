@@ -45,7 +45,7 @@ Every feature and every change to an existing one meets all five:
 
 | Path | Owns |
 |---|---|
-| `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, and tests that run in workerd in `test/` |
+| `workers/api/` | The Worker and the task store: request handling, the task store object in `src/store/` with its schema in `src/store/migrations/`, D1's migrations in `migrations/`, the HTTP API's versions in `api-versions/`, one file each, and tests that run in workerd in `test/` |
 | `wrangler.jsonc`, `.dev.vars.example` | The Worker's Cloudflare settings and the names of the secrets it requires, with their descriptions under `cloudflare.bindings` in the root `package.json`. They sit at the root because the Deploy to Cloudflare button reads them there; wrangler commands run in `workers/api` find them, and `.dev.vars` for local runs goes beside them |
 | `apps/web/` | The web app: the page that renders `@notice-cx/ntasks-ui` on the Worker's own origin. Its build in `dist/` is the Worker's static assets |
 | `packages/ui/` | The npm package `@notice-cx/ntasks-ui`: the web app's pages as one React component, which `apps/web` and other sites render, its own invented tasks for development and tests, and the check that installs its packed tarball into an empty Vite and React project. Merging its release pull request publishes it once the owner approves ([its README](packages/ui/README.md#releasing)) |
@@ -105,7 +105,13 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   covered only when a test exercises it.
 - **Generated files are regenerated, never edited:**
   `workers/api/worker-configuration.d.ts` (`pnpm --filter @ntasks/api run
-  types`, after any `wrangler.jsonc` change) and `pnpm-lock.yaml`.
+  types`, after any `wrangler.jsonc` change) and `pnpm-lock.yaml`. Git
+  ignores `workers/api/src/api-versions.generated.json`, which install, the
+  Worker's builds and its tests write.
+- **An addition to the HTTP API adds one file to `workers/api/api-versions/`,**
+  named `<UTC time>-<what it adds>.json`, and edits no version number: the
+  Worker's version is the number of files, so parallel pull requests never
+  conflict over it ([Adding a version](docs/api.md#adding-a-version)).
 - **Migrations are append-only**
   ([task store](workers/api/src/store/migrations/README.md),
   [D1](workers/api/migrations/README.md)).
@@ -152,14 +158,15 @@ the `ntasks` command (`npx ntasks deploy`, or `tools/cli/dist/lib/bin.js`),
 `--dry-run` included, since it reads the account, and requests to a deployed
 Worker. Publishing to npm is the owner's step too: `npm publish`, merging a
 release pull request, pushing a `v*` or `ui-v*` tag, and starting the Release
-or the Release UI package workflow. A release is the owner merging the
-package's release pull request, titled `chore(main): release ntasks <version>`
-or `chore(main): release @notice-cx/ntasks-ui <version>`, then pressing
-**Approve and deploy** on the publish run it starts
+or the Release UI package workflow. A release is the owner approving the CI
+run of the package's release pull request, titled
+`chore(main): release ntasks <version>` or
+`chore(main): release @notice-cx/ntasks-ui <version>`, merging that pull
+request, then pressing **Approve and deploy** on the publish run it starts
 ([tools/cli](tools/cli/README.md#releasing),
-[packages/ui](packages/ui/README.md#releasing)). Agents never merge a release
-pull request or turn on auto-merge for one, even where they may merge other
-pull requests. Prepare and verify the change
+[packages/ui](packages/ui/README.md#releasing)). Agents never approve a release
+pull request's workflow runs, merge one or turn on auto-merge for one, even
+where they may merge other pull requests. Prepare and verify the change
 locally first, then ask with the exact command, its target and its effect.
 Tests and CI never reach a deployed Worker, a remote database or npm.
 

@@ -1,13 +1,15 @@
 /**
- * The HTTP API's version, the one copy of it. The API only adds: a route, a
- * parameter or a field of an answer is never renamed, removed or given
- * another type, so a client made for one version works with every later one.
- * API_VERSION goes up by one with each addition, which
- * test/fixtures/http-api.json records under the new version. OLDEST_API_VERSION
- * goes up only when the owner removes something, to the first version
- * without it (docs/api.md#versions).
+ * The HTTP API's version. The API only adds: a route, a parameter or a field
+ * of an answer is never renamed, removed or given another type, so a client
+ * made for one version works with every later one. Each addition is one file
+ * in ../api-versions/, which records the fields it added, and API_VERSION is
+ * how many files there are; scripts/api-versions.ts lists them in
+ * api-versions.generated.json. OLDEST_API_VERSION goes up only when the owner
+ * removes something, to the first version without it (docs/api.md#versions).
  */
-export const API_VERSION = 11;
+import API_VERSIONS from './api-versions.generated.json';
+
+export const API_VERSION = API_VERSIONS.length;
 export const OLDEST_API_VERSION = 1;
 
 /** Every answer under /api carries API_VERSION in this header. */

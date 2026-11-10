@@ -196,27 +196,45 @@ export async function removeGitHubApp(db: D1Database, workspaceId: string): Prom
 }
 
 /** The workspace's app as the receiver checks a delivery: its slug and webhook secret. */
+/** The workspace's app as the receiver checks a delivery and Ntasks calls GitHub: its id, slug, webhook secret and private key. */
 export interface GitHubApp {
+  readonly appId: number;
   readonly slug: string;
   readonly webhookSecret: string;
+  readonly privateKey: string;
 }
 
 /** The workspace's app, or null when it has none or its credentials no longer decrypt under this AUTH_SECRET. */
 export async function githubAppOf(db: D1Database, authSecret: string, workspaceId: string): Promise<GitHubApp | null> {
   const row = await db
-    .prepare('SELECT slug, credentials FROM access_github_apps WHERE workspace_id = ?')
+    .prepare('SELECT app_id, slug, credentials FROM access_github_apps WHERE workspace_id = ?')
     .bind(workspaceId)
-    .first<{ slug: string; credentials: string }>();
+    .first<{ app_id: number; slug: string; credentials: string }>();
   if (row === null) return null;
   try {
-    const parsed: unknown = JSON.parse(
+    const parsed = JSON.parse(
       await symmetricDecrypt({ key: await credentialsKey(authSecret), data: row.credentials }),
-    );
-    const webhookSecret = (parsed as Record<string, unknown> | null)?.webhookSecret;
-    return typeof webhookSecret === 'string' && webhookSecret.length > 0 ? { slug: row.slug, webhookSecret } : null;
+    ) as Record<string, unknown> | null;
+    const webhookSecret = parsed?.webhookSecret;
+    const privateKey = parsed?.privateKey;
+    if (typeof webhookSecret !== 'string' || webhookSecret.length === 0) return null;
+    if (typeof privateKey !== 'string' || privateKey.length === 0) return null;
+    return { appId: row.app_id, slug: row.slug, webhookSecret, privateKey };
   } catch {
     return null;
   }
+}
+
+/** The workspace's installations by the lowercase login of the account each is on. */
+export async function installationsByAccount(
+  db: D1Database,
+  workspaceId: string,
+): Promise<ReadonlyMap<string, number>> {
+  const { results } = await db
+    .prepare('SELECT installation_id, account FROM access_github_installations WHERE workspace_id = ?')
+    .bind(workspaceId)
+    .all<{ installation_id: number; account: string }>();
+  return new Map(results.map((row) => [row.account.toLowerCase(), row.installation_id]));
 }
 
 /** Whether the GitHub account `githubId` (a numeric id) belongs to an owner of the workspace. */

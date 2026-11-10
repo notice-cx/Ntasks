@@ -1,5 +1,10 @@
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
+import { writeApiVersions } from './scripts/api-versions.ts';
+
+// The Worker reads its version from this list, which a new file in
+// api-versions/ changes.
+writeApiVersions();
 
 export default defineConfig({
   plugins: [
