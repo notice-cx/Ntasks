@@ -444,6 +444,16 @@ chooses its own name when it registers and could choose a person's, so an
 actor that starts with `agent:` is always an agent and one that starts with
 `service:` always a service.
 
+The history keeps the actor as recorded. The web app and the agent tools
+show it by its display name (`actorIdentity` in
+`packages/domain/src/actors.ts`, the rule of
+[the protocol's section 3.1.1](../spec/protocol.md#311-display-names)): an
+agent by its product, without the label in parentheses its client adds when
+it registers, so `agent:Claude Code (ntasks)` shows as Claude Code; a
+service acting for an agent as that agent; and a name the old task hub
+recorded for an agent, such as `codex/root`, as that agent. A model shows by
+its name, so `claude-opus-5.5` shows as Claude Opus 5.5.
+
 ## The public workspace
 
 A deployment may let anyone read one of its workspaces without signing in,
