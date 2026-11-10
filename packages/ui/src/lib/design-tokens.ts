@@ -30,6 +30,10 @@ export const COLOUR_TOKENS: readonly ColourToken[] = [
   { variable: '--wait-soft', name: 'Waiting soft', role: 'Waiting group' },
   { variable: '--block', name: 'Blocked', role: 'Blocked only' },
   { variable: '--done', name: 'Success', role: 'Done' },
+  { variable: '--priority', name: 'Priority', role: 'The Top tag' },
+  { variable: '--on-priority', name: 'On priority', role: 'Text on Priority' },
+  { variable: '--priority-text', name: 'Priority text', role: 'The High tag' },
+  { variable: '--priority-soft', name: 'Priority soft', role: 'The High tag' },
 ];
 
 /** The tokens behind avatars and marks, set in both themes like the colours above. */
