@@ -265,14 +265,16 @@ export function createFixtureTasksApi({
   function parentContext(task: FixtureTask): ParentContext | null {
     const parent = task.parent === null ? undefined : state.tasks.find((row) => row.id === task.parent);
     if (parent === undefined) return null;
-    // Newest first, then by id, as the Worker orders them, whatever order the seed lists them in.
+    // Newest first, as the Worker orders them, whatever order the seed lists them in. At the same
+    // time, pinned comments go newest id first and closed tasks lowest id first, as the Worker's
+    // queries break those ties.
     const pinned = (state.comments.get(parent.id) ?? [])
       .filter((comment) => comment.pinned === true)
       .toSorted((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))
       .map(({ id, author, text, createdAt }) => ({ id, author, text, createdAt }));
     const closed = state.tasks
       .filter((row) => row.parent === parent.id && row.id !== task.id && row.status === 'closed')
-      .toSorted((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''));
+      .toSorted((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? '') || a.id.localeCompare(b.id));
     return {
       id: parent.id,
       title: parent.title,

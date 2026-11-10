@@ -73,6 +73,25 @@ describe('a task page', () => {
     );
   });
 
+  it('lists the closed tasks that closed at the same time lowest id first, as the Worker does', async () => {
+    const api = createFixtureTasksApi();
+    const closed = task(api, 'web-k3m9.1');
+    if (!closed) throw new Error('The seed has no web-k3m9.1');
+    const at = '2999-01-01T00:00:00.000Z';
+    for (const id of ['web-k3m9.9', 'web-k3m9.4', 'web-k3m9.8', 'web-k3m9.5', 'web-k3m9.7', 'web-k3m9.6']) {
+      api.state.tasks.push({ ...structuredClone(closed), id, closedAt: at });
+    }
+    const { parent } = await api.task('web-k3m9.2', 'web');
+    expect(parent?.closedSiblings.map((sibling) => sibling.id)).toEqual([
+      'web-k3m9.4',
+      'web-k3m9.5',
+      'web-k3m9.6',
+      'web-k3m9.7',
+      'web-k3m9.8',
+    ]);
+    expect(parent?.closedSiblingsTotal).toBe(7);
+  });
+
   it('marks a pinned comment among the comments of the task it is pinned on', async () => {
     renderApp('/tasks/web-k3m9');
     await screen.findByRole('heading', { level: 1, name: 'Ship the new sign-in page' });
