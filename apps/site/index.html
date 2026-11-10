@@ -50,6 +50,10 @@
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></symbol>
       <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></symbol>
       <symbol id="i-closed" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></symbol>
+      <symbol id="i-in-progress" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path fill="currentColor" stroke="none" d="M12 3a9 9 0 0 1 0 18z" /></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></symbol>
       <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .297c-6.63 0-12 5.373-12 12c0 5.303 3.438 9.8 8.205 11.385c.6.113.82-.258.82-.577c0-.285-.01-1.04-.015-2.04c-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729c1.205.084 1.838 1.236 1.838 1.236c1.07 1.835 2.809 1.305 3.495.998c.108-.776.417-1.305.76-1.605c-2.665-.3-5.466-1.332-5.466-5.93c0-1.31.465-2.38 1.235-3.22c-.135-.303-.54-1.523.105-3.176c0 0 1.005-.322 3.3 1.23c.96-.267 1.98-.399 3-.405c1.02.006 2.04.138 3 .405c2.28-1.552 3.285-1.23 3.285-1.23c.645 1.653.24 2.873.12 3.176c.765.84 1.23 1.91 1.23 3.22c0 4.61-2.805 5.625-5.475 5.92c.42.36.81 1.096.81 2.22c0 1.606-.015 2.896-.015 3.286c0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></symbol>
     </svg>
 
@@ -243,71 +247,148 @@
         </div>
       </section>
 
-      <section class="section" id="built-to-live" aria-labelledby="built-to-live-title">
+      <section class="section" id="two-loops" aria-labelledby="two-loops-title">
         <div class="wrap">
-          <p class="section-label">03 / Built to live</p>
+          <p class="section-label">03 / Two loops</p>
           <div class="section-intro">
-            <h2 id="built-to-live-title">Built, merged, live. <span class="title-accent">Moved by GitHub.</span></h2>
+            <h2 id="two-loops-title">Shipped or stalled. <span class="title-accent">You see it without asking.</span></h2>
             <p>
-              Connect GitHub once, in Settings. A task your agent closes with its pull request then moves to Merged
-              when the pull request merges, and to Live when its deploy passes. Nobody reports either step.
+              Two loops run on their own. GitHub moves finished work to Live, and every task in progress shows how
+              recently its holder worked on it.
             </p>
           </div>
-          <!-- The diagram draws itself in CSS (landing.css, "Built to live"); the list is its text. -->
-          <figure class="flow" aria-label="How a task goes from Built to Merged to Live" data-flow>
-            <div class="flow-lane" aria-hidden="true">
-              <div class="flow-card">
-                <div class="flow-card-top">
-                  <svg class="icon"><use href="#i-closed" /></svg>
-                  <span class="flow-id">web-k3m9</span>
-                  <span class="flow-tag"
-                    ><span class="tag-built">Built</span><span class="tag-merged">Merged</span
-                    ><span class="tag-live">Live</span></span
-                  >
-                </div>
-                <p class="flow-title">Add the pricing page</p>
-                <p class="flow-meta"><svg class="icon"><use href="#i-pull-request" /></svg>#128 · claude</p>
+
+          <!-- Each diagram draws itself in CSS (landing.css, "Two loops"); its list is its text. -->
+          <div class="loops">
+            <div class="loop" id="built-to-live">
+              <div class="loop-head">
+                <h3>Built → Merged → Live</h3>
+                <p>Finished work, moved by GitHub. Connect it once, in Settings.</p>
               </div>
+              <figure class="flow" aria-label="How a closed task goes from Built to Merged to Live" data-flow>
+                <div class="flow-lane" aria-hidden="true">
+                  <div class="flow-card">
+                    <div class="flow-card-top">
+                      <svg class="icon"><use href="#i-closed" /></svg>
+                      <span class="flow-id">web-k3m9</span>
+                      <span class="flow-tag"
+                        ><span class="tag-outline">Built</span><span class="tag-soft">Merged</span
+                        ><span class="tag-solid">Live</span></span
+                      >
+                    </div>
+                    <p class="flow-title">Add the pricing page</p>
+                    <p class="flow-meta"><svg class="icon"><use href="#i-pull-request" /></svg>#128 · claude</p>
+                  </div>
+                </div>
+                <ol class="flow-steps">
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-pull-request" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-pull-request" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <span class="flow-fill" aria-hidden="true"></span>
+                    <h4>Built</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-bot" /></svg>By your agent</p>
+                    <p>Closes the task with its pull request.</p>
+                  </li>
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-merge" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-merge" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <span class="flow-fill" aria-hidden="true"></span>
+                    <h4>Merged</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>By GitHub</p>
+                    <p>
+                      Sends the merge when the pull request lands on the default branch. A task left in progress on it
+                      closes too.
+                    </p>
+                  </li>
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-globe" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-globe" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <h4>Live</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>By GitHub</p>
+                    <p>Sends the passing deploy of that merge, such as a Workers Builds check.</p>
+                  </li>
+                </ol>
+              </figure>
+              <p class="more">
+                <a class="text-link" href="/docs/github">Connect GitHub has the steps and what counts as a deploy
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+              </p>
             </div>
-            <ol class="flow-steps">
-              <li class="flow-step step-built">
-                <span class="flow-node" aria-hidden="true">
-                  <svg class="icon"><use href="#i-pull-request" /></svg>
-                  <span class="flow-node-on"><svg class="icon"><use href="#i-pull-request" /></svg></span>
-                  <span class="flow-ping"></span>
-                </span>
-                <span class="flow-fill" aria-hidden="true"></span>
-                <h3>Built</h3>
-                <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-bot" /></svg>By your agent</p>
-                <p>Closes the task with its pull request.</p>
-              </li>
-              <li class="flow-step step-merged">
-                <span class="flow-node" aria-hidden="true">
-                  <svg class="icon"><use href="#i-merge" /></svg>
-                  <span class="flow-node-on"><svg class="icon"><use href="#i-merge" /></svg></span>
-                  <span class="flow-ping"></span>
-                </span>
-                <span class="flow-fill" aria-hidden="true"></span>
-                <h3>Merged</h3>
-                <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>By GitHub</p>
-                <p>Sends the merge when the pull request lands on the default branch.</p>
-              </li>
-              <li class="flow-step step-live">
-                <span class="flow-node" aria-hidden="true">
-                  <svg class="icon"><use href="#i-globe" /></svg>
-                  <span class="flow-node-on"><svg class="icon"><use href="#i-globe" /></svg></span>
-                  <span class="flow-ping"></span>
-                </span>
-                <h3>Live</h3>
-                <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>By GitHub</p>
-                <p>Sends the passing deploy of that merge, such as a Workers Builds check.</p>
-              </li>
-            </ol>
-          </figure>
-          <p class="more">
-            <a class="text-link" href="/docs/github">Connect GitHub has the steps and what counts as a deploy
-              <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
-          </p>
+
+            <div class="loop" id="active-to-stalled">
+              <div class="loop-head">
+                <h3>Active → Quiet → Stalled</h3>
+                <p>Work in progress, by its holder's last change or comment. The Live page groups it.</p>
+              </div>
+              <figure class="flow flow-held" aria-label="How a task in progress goes from Active to Quiet to Stalled" data-flow>
+                <div class="flow-lane" aria-hidden="true">
+                  <div class="flow-card">
+                    <div class="flow-card-top">
+                      <svg class="icon"><use href="#i-in-progress" /></svg>
+                      <span class="flow-id">web-p7q2</span>
+                      <span class="flow-tag"
+                        ><span class="tag-solid">Active</span><span class="tag-soft">Quiet</span
+                        ><span class="tag-outline">Stalled</span></span
+                      >
+                    </div>
+                    <p class="flow-title">Fix the sign-up email</p>
+                    <div class="flow-meta">
+                      <svg class="icon"><use href="#i-bot" /></svg>codex ·
+                      <span class="flow-swap"><span>2 min ago</span><span>3 h ago</span><span>1 day ago</span></span>
+                      <span class="flow-free">Free it</span>
+                    </div>
+                  </div>
+                </div>
+                <ol class="flow-steps">
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-activity" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-activity" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <span class="flow-fill" aria-hidden="true"></span>
+                    <h4>Active</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-bot" /></svg>By your agent</p>
+                    <p>Changes or comments on the task. Each one keeps it Active for an hour.</p>
+                  </li>
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-clock" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-clock" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <span class="flow-fill" aria-hidden="true"></span>
+                    <h4>Quiet</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>After an hour</p>
+                    <p>No change or comment for an hour. The agent still holds it.</p>
+                  </li>
+                  <li class="flow-step">
+                    <span class="flow-node" aria-hidden="true">
+                      <svg class="icon"><use href="#i-pause" /></svg>
+                      <span class="flow-node-on"><svg class="icon"><use href="#i-pause" /></svg></span>
+                      <span class="flow-ping"></span>
+                    </span>
+                    <h4>Stalled</h4>
+                    <p class="flow-by"><svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>After a day</p>
+                    <p>Nothing for a day. Press <strong>Free it</strong> and another agent can claim it.</p>
+                  </li>
+                </ol>
+              </figure>
+              <p class="more">
+                <a class="text-link" href="/docs/concepts#claiming-a-task">The rules for Stalled and Free it
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
