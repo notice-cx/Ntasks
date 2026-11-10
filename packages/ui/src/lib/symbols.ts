@@ -69,10 +69,14 @@ export function priorityLabel(priority: number): PriorityLabel {
   return PRIORITY_LABELS[PRIORITY_BANDS.indexOf(priorityBand(priority))] ?? 'Normal';
 }
 
-/** How many of the three bars a priority fills; Top draws its own mark and Lowest none. */
-export function priorityBars(priority: number): 0 | 1 | 2 | 3 {
-  const band = priorityBand(priority);
-  return band === 'high' ? 3 : band === 'normal' ? 2 : band === 'low' ? 1 : 0;
+/** The figure a priority's tag shows, 0 to 4: a priority outside takes the nearest band's. */
+export function priorityNumber(priority: number): number {
+  return PRIORITY_BANDS.indexOf(priorityBand(priority));
+}
+
+/** What a priority's tooltip says: its figure, which agents and the API use, and its word. */
+export function priorityTip(priority: number): string {
+  return `Priority ${priorityNumber(priority)} · ${priorityLabel(priority)}`;
 }
 
 // --- Type ---------------------------------------------------------------------

@@ -32,6 +32,8 @@ prefers. `pnpm screenshots design` captures it in both themes
   item and work in progress. Nothing else is that blue.
 - Amber means only Waiting for you. Red means only Blocked. Green means only
   Done. No other state, warning or error uses these colours.
+- Plum means only a task's priority, and only Top and High: the work to do
+  first.
 - Every action has a key, and the control shows it in a `Kbd`.
 - A row shows its task's id.
 
@@ -57,7 +59,7 @@ a hex value.
 | Surface | `--surface` | `#FAFAFB` | `#17181D` | Group headers, code, panels |
 | Hover | `--hover` | `#F1F1F4` | `#1D1E24` | A hovered row or item, the current sidebar item |
 | Border | `--border` | `#E8E8ED` | `#25262D` | Dividers, the edges of fields and buttons |
-| Border strong | `--border-strong` | `#D4D4DC` | `#363741` | Inactive marks (empty priority bars), keys |
+| Border strong | `--border-strong` | `#D4D4DC` | `#363741` | The Normal priority tag's ring, keys |
 | Text | `--ink` | `#17171C` | `#EDEDF1` | Titles, values |
 | Text 2 | `--ink-2` | `#474852` | `#B3B5BF` | Body, labels |
 | Text 3 | `--ink-3` | `#696B76` | `#8A8D98` | Ids, ages, counts, placeholders, icons in controls |
@@ -70,6 +72,10 @@ a hex value.
 | Waiting soft | `--wait-soft` | `#FDF5E6` | `#221C10` | The Waiting for you group's background |
 | Blocked | `--block` | `#D22F3D` | `#F2565F` | The Blocked mark |
 | Success | `--done` | `#1E8A4F` | `#46C486` | The Done mark, strings in code |
+| Priority | `--priority` | `#9429A5` | `#A441B3` | The Top priority tag |
+| On priority | `--on-priority` | `#FFFFFF` | `#FFFFFF` | The Top tag's figure |
+| Priority text | `--priority-text` | `#9429A5` | `#DE9BE9` | The High tag's figure |
+| Priority soft | `--priority-soft` | `#FCE9FE` | `#36193A` | The High tag's fill |
 
 The marks have four tokens of their own:
 
@@ -82,7 +88,9 @@ The marks have four tokens of their own:
 
 The identity palette gives each workspace's icon a colour of its own, and
 nothing but a workspace's icon uses it. Its six hues stay apart from Accent,
-amber, red and green, so none reads as a state, and each letter is at least
+amber, red and green, so none reads as a state. Fuchsia shares Priority's
+hue, and the two never meet: a workspace's icon shows in the sidebar, the
+workspace menu and Settings, where no priority tag does. Each letter is at least
 4.5:1 on its fill in both themes, which `packages/ui/test/design.test.tsx`
 checks. These tokens have no Tailwind names: `WorkspaceIcon` reads them with
 `var()`, so no other component can draw with them through a utility.
@@ -224,7 +232,8 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 
 ## Symbols
 
-Every symbol is an inline SVG coloured by tokens, so it follows the theme.
+Every symbol is coloured by tokens, so it follows the theme. Each is an
+inline SVG, apart from the priority tag, which is text.
 A mark that carries meaning on its own has an accessible name, such as
 "Blocked" or "High priority"; next to words that say the same, it takes
 `label={null}` and is hidden from screen readers.
@@ -264,17 +273,27 @@ their single meanings.
 
 ### Priority
 
-Signal bars, in greys only: priority ranks work and is not an alarm.
+A tag that says the priority's figure, P0 to P4: 22 by 16 px, 4 px corners,
+11 px semibold figures. Plum goes only to Top and High, the work to do first;
+the others are grey, and the figure tells every level apart without colour.
 
-| Priority | Word | Mark |
+| Priority | Word | Tag |
 |---|---|---|
-| 0 | Top | A filled square in Text with an exclamation mark |
-| 1 | High | Three bars filled |
-| 2 | Normal | Two of three bars filled |
-| 3 | Low | One of three bars filled |
-| 4 | Lowest | Three short dashes |
+| 0 | Top | `P0` in On priority on Priority |
+| 1 | High | `P1` in Priority text on Priority soft |
+| 2 | Normal | `P2` in Text 2, ringed in Border strong |
+| 3 | Low | `P3` in Text 3 |
+| 4 | Lowest | `P4` in Text 3 |
 
-A priority outside 0 to 4 takes the nearest word.
+A priority outside 0 to 4 takes the nearest figure and word.
+
+`PriorityMark` with a name is a button: its accessible name is the word ("High
+priority"), and its [tooltip](#tooltip-tooltiptsx) says the figure and the
+word, "Priority 1 · High". Pressing it shows the tooltip and does nothing else.
+With `label={null}`, beside the word in a fact or a menu, it is only drawn and
+takes no focus. `packages/ui/test/design.test.tsx` holds the Top and High
+tags' figures at 4.5:1 on their fills, and the Top tag at 3:1 on Background
+and Hover, in both themes.
 
 ### Type
 
@@ -375,6 +394,18 @@ region beside it says Copied for a screen reader. Where the browser cannot copy,
 toast says to copy it with the keyboard. Every code block in task text has
 one in its top-right corner, shown on hover, on keyboard focus and always on
 a device with a touch screen. A task page's path ends with one that copies the task's id.
+
+### Tooltip (`tooltip.tsx`)
+
+A short line about a control, above it, on Background with `shadow-pop`,
+6 px corners and `text-meta`. It shows after a mouse rests on the control for
+300 ms, while the control holds focus, and after a press, so a mouse, a
+keyboard and a touch screen all reach it. It hides when the mouse leaves,
+focus moves on, Escape is pressed or a press lands elsewhere, and it never
+takes focus. While it shows, it describes the control (`aria-describedby`);
+the control keeps its own name. The priority tag uses it. A control whose
+tooltip only repeats its name, such as an `IconButton`, keeps the browser's
+own (`title`).
 
 ### Kbd (`kbd.tsx`)
 
@@ -744,6 +775,7 @@ instead.
 | Button, field, menu item | 30 px (`sm` button 26 px) |
 | Key | 18 px |
 | Badge | 20 px |
+| Priority tag | 22 by 16 px |
 
 On a touch screen, buttons, fields, tabs and menu items grow one step.
 Below 640 px wide, the sidebar is hidden behind the top bar's Sidebar

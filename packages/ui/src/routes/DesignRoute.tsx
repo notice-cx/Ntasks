@@ -363,8 +363,7 @@ export default function DesignRoute() {
               <SymbolGrid columns={5}>
                 {PRIORITY_LABELS.map((word, priority) => (
                   <SymbolCell key={word} name={word}>
-                    <PriorityMark priority={priority} label={null} />
-                    <PriorityMark priority={priority} size={20} label={null} />
+                    <PriorityMark priority={priority} />
                   </SymbolCell>
                 ))}
               </SymbolGrid>
