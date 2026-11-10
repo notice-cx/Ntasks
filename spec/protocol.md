@@ -232,11 +232,12 @@ and its history keeps every value they had. Work details that change
 nothing MUST leave the task's version as it was.
 
 **STATE-18.** <a id="state-18"></a>A server MUST NOT refuse a claim or a
-write because another task touches the same. When a claim records
-`touches`, its answer MUST list, as `overlaps`, each other task of the
-project that is held and not closed whose `touches` meet them, with the
-entries that meet and the order a `merges-after` link between the two
-records, if any.
+write because another task touches the same files or other things. When a
+claim records `touches`, its answer MUST list, as `overlaps`, each other
+task of the project that is held and in progress or blocked whose `touches`
+meet them, with the entries that meet and the order a `merges-after` link
+between the two records, if any. A held task that is open or deferred is
+not at work, so it is left out.
 
 ### 3.4 Comment
 

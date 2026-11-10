@@ -15,7 +15,7 @@
         "commit": { "description": "The commit last tested.", "type": "string", "maxLength": 128 },
         "next": { "description": "The next step, in one line.", "type": "string", "maxLength": 512 },
         "touches": {
-          "description": "The files or other things the work changes, such as a path, a folder or a migration number. A claim that records them answers the other held tasks whose touches meet them (STATE-18).",
+          "description": "The files or other things the work changes, such as a path, a folder or a migration number. A claim that records them answers the other held tasks in progress or blocked whose touches meet them (STATE-18).",
           "type": "array",
           "maxItems": 16,
           "items": { "type": "string", "minLength": 1, "maxLength": 200 }
