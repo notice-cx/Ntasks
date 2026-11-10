@@ -1,0 +1,30 @@
+{
+  "added": "`POST /api/github/:workspaceId`, and `GET /api/access/github`, `POST /api/access/github` and `POST /api/access/github/remove`",
+  "shapes": {
+    "github": {
+      "url": "string",
+      "secretSaved": "boolean",
+      "deployChecks": "array",
+      "deployChecks[]": "string",
+      "updatedAt": "null|string"
+    }
+  },
+  "routes": {
+    "GET /api/access/github": {
+      "github": "@github"
+    },
+    "POST /api/access/github": {
+      "github": "@github"
+    },
+    "POST /api/access/github/remove": {
+      "removed": "boolean"
+    },
+    "POST /api/github/:workspaceId": {
+      "moved": "array",
+      "moved[]": "object",
+      "moved[].id": "string",
+      "moved[].stage": "string",
+      "ignored": "absent|string"
+    }
+  }
+}

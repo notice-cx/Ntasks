@@ -102,7 +102,9 @@ every answer, and `GET /api/version` answers `{ version, oldest }` before
 anyone signs in ([The API, Versions](../../docs/api.md#versions)). An Ntasks
 whose `version` is lower than `API_VERSION` lacks something the pages read
 and needs an update; one whose `oldest` is higher than `API_VERSION` no
-longer answers this package's version.
+longer answers this package's version. When the pages start reading an
+addition, `API_VERSION` becomes the version main had once that addition
+merged ([The version a client asks for](../../docs/api.md#the-version-a-client-asks-for)).
 
 ### Styles
 
