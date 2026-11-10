@@ -121,11 +121,17 @@ function merged(id: number, number: number, mergeCommit: string) {
 }
 
 /** A check run that passed on main, from installation `id`. */
-function passed(id: number, name: string, sha: string, branch = 'main') {
+function passed(id: number, name: string, sha: string, branch = 'main', startedAt = new Date().toISOString()) {
   return {
     action: 'completed',
     installation: { id },
-    check_run: { name, head_sha: sha, conclusion: 'success', check_suite: { head_branch: branch } },
+    check_run: {
+      name,
+      head_sha: sha,
+      conclusion: 'success',
+      started_at: startedAt,
+      check_suite: { head_branch: branch },
+    },
     repository,
   };
 }
@@ -289,22 +295,37 @@ describe('the app’s deliveries', () => {
     });
   });
 
-  it('counts a deploy of a commit the merge queue landed on the default branch', async () => {
+  it('counts a deploy of a commit the merge queue landed, and not a preview of it', async () => {
     const owner = await connected();
     const mine = newInstallation();
     await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
     const { projectId, id } = await taskWithPullRequest(owner, 38);
     const merge = newCommit();
     await deliver('pull_request', merged(mine, 38, merge));
+    const queue = 'gh-readonly-queue/main/pr-38-0123abc';
+    const beforeMerge = new Date(Date.now() - 60_000).toISOString();
+    const afterMerge = new Date(Date.now() + 60_000).toISOString();
 
     // GitHub names a commit's check suite for the branch first pushed with it: the queue's, for a queued merge.
-    const otherQueue = passed(mine, 'Workers Builds: site', merge, 'gh-readonly-queue/release/pr-38-0123abc');
+    const otherQueue = passed(
+      mine,
+      'Workers Builds: site',
+      merge,
+      'gh-readonly-queue/release/pr-38-0123abc',
+      afterMerge,
+    );
     expect((await deliver('check_run', otherQueue)).body).toMatchObject({
       moved: [],
       ignored: expect.stringMatching(/not the default branch/u),
     });
-    const queued = passed(mine, 'Workers Builds: site', merge, 'gh-readonly-queue/main/pr-38-0123abc');
-    expect((await deliver('check_run', queued)).body).toEqual({ moved: [{ id, stage: 'live' }] });
+    // A build of the queue's branch that started before the merge was a preview, which ships nothing.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, beforeMerge))).body).toEqual({
+      moved: [],
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, afterMerge))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
   });
 

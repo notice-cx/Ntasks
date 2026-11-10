@@ -422,6 +422,12 @@ export interface DeliverySignal {
   readonly pullRequests: readonly string[];
   /** Commits, each 7 to 64 lowercase hexadecimal characters (COMMIT_SHA). */
   readonly commits: readonly string[];
+  /**
+   * With live: only tasks recorded as merged at or before this time, as UTC
+   * ISO 8601 text. A deploy that started before a task's merge was a preview
+   * of it, not the deploy that shipped it.
+   */
+  readonly mergedBy?: string;
 }
 
 /**

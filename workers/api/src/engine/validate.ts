@@ -805,5 +805,11 @@ export function deliverySignal(value: DeliverySignal): DeliverySignal {
   const pullRequests = list(value.pullRequests, 'pullRequests', externalUrl);
   const commits = list(value.commits, 'commits', commitSha);
   if (pullRequests.length === 0 && commits.length === 0) invalid('a signal names a pull request or a commit');
-  return { stage: value.stage, pullRequests, commits };
+  if (value.mergedBy !== undefined && value.stage !== 'live') invalid('mergedBy goes with stage live');
+  return {
+    stage: value.stage,
+    pullRequests,
+    commits,
+    ...(value.mergedBy === undefined ? {} : { mergedBy: instant(value.mergedBy, 'mergedBy') }),
+  };
 }

@@ -810,7 +810,7 @@ of the workspace:
 | GitHub event | Signal |
 |---|---|
 | `pull_request`, closed and merged into the repository's default branch | `merged`, naming the pull request and its merge commit |
-| `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on. A commit the merge queue landed counts too: GitHub names its check suite for the queue's branch, `gh-readonly-queue/<default branch>/…` |
+| `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on. A commit the merge queue landed counts too: GitHub names its check suite for the queue's branch, `gh-readonly-queue/<default branch>/…`, and a build there counts only for tasks merged before it started, since one that started earlier was a preview |
 | `deployment_status` with `success`, when it is a deploy | `live`, naming the deployed commit |
 
 A **deploy** is a check run whose name starts with `Workers Builds:` or

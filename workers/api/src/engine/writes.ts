@@ -765,6 +765,9 @@ export class Writes {
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
+        // A deploy that started before the merge was a preview of the change, not the deploy that shipped it.
+        if (signal.mergedBy !== undefined && (current.mergedAt === null || current.mergedAt > signal.mergedBy))
+          continue;
         const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
         if (turnsOn && !turnedOn.has(row.project_id)) {
           turnedOn.add(row.project_id);

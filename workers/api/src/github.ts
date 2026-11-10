@@ -118,7 +118,8 @@ function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes
 }
 
 /** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
-export type GitHubEvent = { readonly signal: Args; readonly newDeploy?: string } | { readonly ignored: string };
+export type GitHubEvent =
+  { readonly signal: Args; readonly newDeploy?: string; readonly mergedBy?: string } | { readonly ignored: string };
 
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
@@ -158,12 +159,14 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
       if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
-      // GitHub keeps one check suite per app and commit, named for the branch first pushed with it:
-      // for a commit landed by the merge queue, that is the queue's branch, which holds exactly that commit.
-      const onDefault = branch === defaultBranch || branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) === true;
-      if (!onDefault)
+      if (branch === defaultBranch) return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
+      // GitHub keeps one check suite per app and commit, named for the branch first pushed with it: for a
+      // commit the merge queue landed, the queue's branch, which holds exactly that commit. A build there
+      // that started before the merge was a preview; only one started after it can be the deploy.
+      const startedAt = textAt(payload, 'check_run', 'started_at');
+      if (branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) !== true || startedAt === undefined)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
-      return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
+      return { ...live(name, verdict, textAt(payload, 'check_run', 'head_sha')), mergedBy: startedAt };
     }
     case 'deployment_status': {
       if (at(payload, 'deployment_status', 'state') !== 'success')
@@ -286,7 +289,10 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
   if ('ignored' in event) return json({ moved: [], ignored: event.ignored }, 200);
   let signal;
   try {
-    signal = signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' });
+    signal = {
+      ...signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
+      ...(event.mergedBy === undefined ? {} : { mergedBy: event.mergedBy }),
+    };
   } catch (error) {
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);
     throw error;
