@@ -452,15 +452,13 @@ function GitHubConnected({ github }: { github: GitHubWebhook }) {
           </Button>
         )}
       </div>
-      {/* A webhook saved by hand still sends deliveries, so its owner can still change or remove it. */}
-      {github.updatedAt !== null ? (
-        <details className="group">
-          <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
-          <div className="pt-3">
-            <GitHubWebhookForm key={github.updatedAt} webhook={github} />
-          </div>
-        </details>
-      ) : null}
+      {/* A webhook set up by hand works beside the app: its owner can add, change or remove one at any time. */}
+      <details className="group">
+        <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
+        <div className="pt-3">
+          <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
+        </div>
+      </details>
     </div>
   );
 }

@@ -79,7 +79,8 @@ describe('Connect GitHub on the Settings page', () => {
     expect(within(section).getByRole('link', { name: 'Install on an organization' }).getAttribute('href')).toBe(
       'https://github.com/apps/ntasks-example/installations/new',
     );
-    expect(within(section).queryByText('Set up by hand')).toBeNull();
+    // Set up by hand stays there, closed, for a webhook beside the app.
+    expect(within(section).getByText('Set up by hand').closest('details')?.open).toBe(false);
 
     fireEvent.click(within(section).getByRole('checkbox', { name: 'Workers Builds: site counts as a deploy' }));
     await waitFor(async () => expect((await api.githubWebhook()).detected[0]?.on).toBe(false));
