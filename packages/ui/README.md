@@ -287,18 +287,50 @@ manifest.
 
 The package publishes to npm, at https://registry.npmjs.org, as
 `@notice-cx/ntasks-ui`, under the owner's npm organization `notice-cx`.
-Pushing a tag `ui-v<version>` on a commit of `main`, such as `ui-v0.1.0`
-for the version in `package.json`, runs the Release UI package workflow
-(`.github/workflows/release-ui.yml`): it runs every check, the host check,
-then `npm publish --provenance` of the tarball `pnpm pack` writes. It signs
-in to npm with npm's trusted publisher for this repository when the package
-has one, and otherwise with the `NPM_TOKEN` secret, as the `ntasks`
-command's release does; the token must be allowed to publish to `notice-cx`.
-A trusted publisher must allow `npm publish` as well as `npm stage publish`:
-npm sets a new one to allow staging only, and the workflow publishes
-directly.
-Pushing the tag needs the owner's approval, and the `npm` environment holds
-the run until the owner approves it
+
+A release is the owner merging the `@notice-cx/ntasks-ui` release pull
+request, then pressing **Approve and deploy**. Agents never merge a release
+pull request.
+
+After each push to `main`, the Release PRs workflow
+(`.github/workflows/release-please.yml`) runs
+[release-please](https://github.com/googleapis/release-please). While a
+`feat`, `fix`, `perf` or `revert` commit or a breaking change made since the
+last release changes a file under `packages/ui`, it keeps one pull request
+open, titled `chore(main): release @notice-cx/ntasks-ui <version>`. The pull
+request raises `version` in `package.json` and adds those commits to this
+folder's `CHANGELOG.md`. Before 1.0.0, a `feat` commit or a breaking change
+raises the minor version and any other commit the patch version
+(`release-please-config.json`).
+
+Merging the pull request creates the tag `ui-v<version>` and its GitHub
+release, then starts the Release UI package workflow
+(`.github/workflows/release-ui.yml`) on that tag. The workflow waits for the
+owner to approve the `npm` environment. It then runs every check, the host
+check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
+
+The owner's steps:
+
+1. On the pull request `chore(main): release @notice-cx/ntasks-ui <version>`,
+   click **Merge when ready**, then **Confirm merge when ready**.
+2. When the Release UI package run waits for review (GitHub emails the owner),
+   open it, click **Review deployments**, tick **npm** and click **Approve and
+   deploy**.
+
+To run a failed or rejected publish again, open **Actions**, choose **Release
+UI package**, click **Run workflow**, pick the tag `ui-v<version>` under **Use
+workflow from** and click **Run workflow**. The workflow stops if it is run on
+a branch, or on a tag that does not name the version in `package.json`.
+
+The workflow signs in to npm with npm's trusted publisher for this repository
+when the package has one, and otherwise with the `NPM_TOKEN` secret, as the
+`ntasks` command's release does; the token must be allowed to publish to
+`notice-cx`. The trusted publisher names the workflow file `release-ui.yml` and
+the environment `npm`. The run that the Release PRs workflow starts is a run of
+`release-ui.yml` itself, not a workflow it calls, so it matches. A trusted
+publisher must allow `npm publish` as well as `npm stage publish`: npm sets a
+new one to allow staging only, and the workflow publishes directly.
+Publishing is the owner's step
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)).
 
 ## License
