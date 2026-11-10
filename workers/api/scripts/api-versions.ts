@@ -5,7 +5,7 @@
 // ignores: two pull requests that each add a version then add one file each
 // and edit no line in common. Installing, every build, dev run and deploy,
 // and the tests run it first.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /** A version's file name: the UTC time it was written, then what it adds, such as `2026-11-10T0137Z-stalled-tasks.json`. */
@@ -42,4 +42,9 @@ export function writeApiVersions(dir: string = VERSIONS_DIR, into: string = GENE
   return versions;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) writeApiVersions();
+// Node gives this module's real path but keeps the path it was started with
+// as given, which can run through a symbolic link: compare the real paths.
+const started = process.argv[1];
+if (started !== undefined && existsSync(started) && realpathSync(started) === fileURLToPath(import.meta.url)) {
+  writeApiVersions();
+}
