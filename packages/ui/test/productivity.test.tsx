@@ -104,6 +104,7 @@ describe('the Productivity page', () => {
     expect(screen.queryByText('Update the screenshots in the setup guide')).toBeNull();
     expect(screen.queryByText('Remove the old landing page')).toBeNull();
 
+    expect(document.title).toBe('Productivity — Ntasks');
     const nav = screen.getByRole('link', { name: 'Productivity' });
     expect(nav.getAttribute('href')).toBe('/tasks/productivity');
   });
@@ -156,6 +157,7 @@ describe('the Productivity page', () => {
     renderApp('/tasks/productivity?project=docs', api);
     await screen.findByRole('list', { name: 'Wins by day' });
     expect(screen.getByRole('button', { name: /Example docs/ })).not.toBeNull();
+    await waitFor(() => expect(document.title).toBe('Productivity · Example docs — Ntasks'));
     expect([...document.querySelectorAll('[data-wins-row]')].map((row) => row.textContent)).toEqual([
       expect.stringContaining('Fix the broken links in the README'),
     ]);

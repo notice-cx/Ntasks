@@ -17,9 +17,11 @@ import { useCreateProject, useIsOwner, useSetDeploys } from '../hooks/useWorkspa
 import { NO_FILTERS } from '../lib/board-read';
 import { newProjectRequested } from '../lib/page-state';
 import { usePaths } from '../lib/paths';
+import { usePageTitle } from '../lib/page-title';
 
 /** The workspace's projects, each a link to its board. An owner creates one with New project (`N`). */
 export default function ProjectsRoute() {
+  usePageTitle('Projects');
   const owner = useIsOwner();
   const board = useBoard(NO_FILTERS);
   const paths = usePaths();

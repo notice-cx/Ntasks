@@ -15,6 +15,7 @@ import { StatusMark } from '../components/ui/symbols';
 import { useNow } from '../hooks/useNow';
 import { useTaskProjects } from '../hooks/useTasks';
 import { ageMs, formatAge, formatInt } from '../lib/format';
+import { usePageTitle } from '../lib/page-title';
 import { usePaths } from '../lib/paths';
 import { isAgentActor } from '../lib/symbols';
 import { cn } from '../lib/utils';
@@ -61,6 +62,7 @@ export function ProductivityRoute() {
   });
   const pages = wins.data?.pages ?? [];
   const first = pages[0];
+  usePageTitle('Productivity', named?.displayName);
 
   function choose(key: string | null) {
     const next = new URLSearchParams(params);

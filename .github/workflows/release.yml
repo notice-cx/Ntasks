@@ -1,11 +1,12 @@
 name: Release
 
-# Pushing a tag such as v0.2.0 publishes the npm package ntasks, built from
-# tools/cli. The tag must name the version in tools/cli/package.json, on a
-# commit of main (tools/cli/README.md, "Build and release").
+# Publishes the npm package ntasks, built from tools/cli, from a tag such as
+# v0.2.0. Merging the ntasks release pull request creates the tag, and the
+# Release PRs workflow (release-please.yml) starts this workflow on it. The tag
+# must name the version in tools/cli/package.json, on a commit of main
+# (tools/cli/README.md, "Build and release").
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -44,6 +45,10 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Check that the tag names tools/cli's version on a commit of main
         run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::Run this workflow on a tag such as v0.2.0, not the branch $GITHUB_REF_NAME."
+            exit 1
+          fi
           version="$(node -p "require('./tools/cli/package.json').version")"
           if [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::The tag $GITHUB_REF_NAME does not name the version in tools/cli/package.json, $version."
