@@ -3,14 +3,22 @@ import { NotOffered, type Api, type ParentContext } from '../api.ts';
 import { answered, expect, refused, same, snapshot, unchanged, type Check } from '../check.ts';
 import { actorOf, commitName, file, taskOf } from './steps.ts';
 
-/** Comments on `task` with `pin` and `unpin`, and answers the new comment's id. */
+/**
+ * Comments on `task` with `pin` and `unpin`, and answers the new comment's
+ * id: the one the write answers, or else the newest comment of the task's
+ * read with this text. Each check comments on a task it filed, so the text
+ * names one comment.
+ */
 async function pinned(api: Api, task: string, text: string, unpin?: readonly string[]): Promise<string> {
   const written = answered(
     await api.comment(task, text, { pin: true, ...(unpin === undefined ? {} : { unpin }) }),
     `pinning a comment on ${task}`,
   );
-  if (written.commentId === undefined) throw new NotOffered(api.binding, "answer a new comment's id");
-  return written.commentId;
+  if (written.commentId !== undefined) return written.commentId;
+  const comments = answered(await api.read(task), `reading ${task}`).comments;
+  const id = comments.filter((comment) => comment.text === text).at(-1)?.id;
+  if (id === undefined) throw new NotOffered(api.binding, "answer a new comment's id, in the write or the task's read");
+  return id;
 }
 
 /** The parent context a read of `task` answers, which must be there. */
