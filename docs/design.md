@@ -747,7 +747,8 @@ epics match this search with Clear search.
 day by day, from `GET /api/tasks/wins` ([Wins](api.md#wins)). A win is a
 change that merged or went live (a pull request counts once, however many
 tasks it closed), an answer a person gave to a task's choices, or an epic
-closed as done. Tasks closed are never counted, and nobody is ranked. The
+closed as done. No win is a task closed, and nobody is ranked; the chart of
+open tasks below shows closes only as context for the open work. The
 `TopBar` titled Productivity says Last 7 days (from 640 px wide) and ends
 with the project menu: All projects, then each project, the one in view
 ticked; a project chosen is kept in the address as `?project=`.

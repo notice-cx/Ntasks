@@ -32,10 +32,11 @@ const BAR_SCALE_LEAST = 4;
 
 /**
  * Productivity, `<base>/productivity`: what you and your agents got done that
- * matters, day by day. A strip of the last seven days, then every win under
- * its day, newest first: changes shipped, answers you gave and epics
- * finished. It counts no tasks closed, and ranks nobody. Show the 7 days
- * before reads further back, to eight weeks.
+ * matters, day by day. A strip of the last seven days, then the open tasks of
+ * the last eight weeks, then every win under its day, newest first: changes
+ * shipped, answers you gave and epics finished. No win is a task closed, and
+ * nobody is ranked; the chart shows closes only as context for the open
+ * tasks. Show the 7 days before reads further back, to eight weeks.
  */
 export function ProductivityRoute() {
   const api = useTasksApi();
