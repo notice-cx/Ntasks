@@ -1588,12 +1588,12 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         commit: {
           type: 'string',
           description:
-            "With done: the commit that holds the change; left out, the commit your work details name. The task's delivery starts at built, and report_delivery moves it to merged and live.",
+            "With done: the commit that holds the change; left out, the commit your work details name, unless you name only link. The task's delivery starts at built, and report_delivery moves it to merged and live. A decision or an approval ships no code and records no delivery.",
         },
         pr: {
           type: 'string',
           description:
-            "With done: the pull request's URL; left out, the pr your work details name. The task's delivery starts at built, as with commit.",
+            "With done: the pull request's URL; left out, the pr your work details name, unless you name only link. The task's delivery starts at built, as with commit; on a decision or an approval it is kept as the link instead.",
         },
         link: {
           type: 'string',

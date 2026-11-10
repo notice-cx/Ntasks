@@ -252,7 +252,8 @@ first close and its evidence.
 ## Where a change is
 
 A task closed as done with a commit or a pull request has a **delivery**: the
-stage its change has reached.
+stage its change has reached. A decision or an approval ships no code, so it
+has none, and neither does a task closed with only a link.
 
 - **Built** when the task closes.
 - **Merged** once the change is merged.
@@ -262,7 +263,8 @@ A GitHub webhook, the repository's automation, or the agent that merges or
 deploys, sends a signal naming the pull requests or commits that merged or
 went live, and the tasks that carry them move to that stage. A task only moves forward. A
 project whose changes do not go live by a deploy, such as a library, stops at
-merged; the project's owner says which kind it is.
+merged; the project's owner says which kind it is, or a deploy that GitHub
+reports for one of its tasks says it the first time.
 
 The web app's **Waiting for you** list shows built work, which waits for a
 merge, and merged work of a project that deploys, which waits for a deploy.

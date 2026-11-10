@@ -7,7 +7,9 @@ from the web app's invented example data. Regenerate the pictures with
 
 ## Pages
 
-**Tasks board.** Waiting for you, answered on each row, then every task by status.
+**Tasks board.** Waiting for you, answered on each row, then every task by
+status. The Sort menu orders each group by priority, creation, last change,
+close or title, either way, and the address keeps the order.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.webp">

@@ -4,10 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each pull request combined with the latest main
+  # before merging, because a merge to main deploys the live Ntasks.
+  merge_group:
   workflow_dispatch:
 
 # A newer push to a pull request cancels the run it replaces. Every push to
-# main gets its own group and runs to the end.
+# main and every merge queue run gets its own group and runs to the end.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -47,6 +50,9 @@ jobs:
       # repository's Worker, which wrangler's test harness runs on the runner.
       # It reaches no deployed Ntasks and no Cloudflare account.
       - run: pnpm --filter @ntasks/spec run conformance:ntasks
+      # The same suite's core level against the GitHub Issues adapter, over a
+      # stand-in for GitHub's API: no GitHub token, and nothing reaches GitHub.
+      - run: pnpm --filter @ntasks/github-adapter run conformance
       - run: pnpm build
       # The npm package @notice-cx/ntasks-ui, from the build above: its tarball installed,
       # from the file, into an empty Vite and React project that typechecks,

@@ -19,10 +19,11 @@ import {
 } from 'lucide-react';
 import type { ReactElement, SVGProps } from 'react';
 import { ACTIVITY_LABELS, type Activity } from '../../lib/live';
-import { priorityBand } from '../../lib/task-model';
+import { priorityBand, type PriorityBand } from '../../lib/task-model';
 import {
-  priorityBars,
   priorityLabel,
+  priorityNumber,
+  priorityTip,
   STATUS_MARK_LABELS,
   TYPE_MARK_LABELS,
   workspaceMark,
@@ -31,6 +32,7 @@ import {
 } from '../../lib/symbols';
 import { cn } from '../../lib/utils';
 import { BLOSSOM_PATH, BLOSSOM_VIEWBOX, CLAUDE_ORANGE, CLAUDE_PATH, CLAUDE_VIEWBOX, GITHUB_PATH } from './brand-marks';
+import { Tooltip } from './tooltip';
 
 /** A mark's name for a screen reader, or `null` when words beside it already say it. */
 type Labelled = { label?: string | null };
@@ -144,50 +146,49 @@ export function ActivityMark({
   );
 }
 
-// --- Priority: signal bars; Top is a filled square ----------------------------
+// --- Priority: a tag that says P0 to P4 ---------------------------------------
 
-/** A priority, 0 (Top) to 4 (Lowest). Its colours are greys: priority ranks work, it is not an alarm. */
-export function PriorityMark({
-  priority,
-  size = 14,
-  label,
-  className,
-}: Labelled & { priority: number; size?: number; className?: string }) {
+/** Plum goes only to the work to do first: Top and High. */
+const PRIORITY_TONES: Readonly<Record<PriorityBand, string>> = {
+  top: 'bg-priority text-on-priority',
+  high: 'bg-priority-soft text-priority-text',
+  normal: 'inset-ring inset-ring-border-strong text-ink-2',
+  low: 'text-ink-3',
+  lowest: 'text-ink-3',
+};
+
+/**
+ * A priority, 0 (Top) to 4 (Lowest), as a 22 by 16 px tag that says P0 to
+ * P4. Named, it is a button whose tooltip says the figure and the word
+ * ("Priority 1 · High"); with `label={null}`, beside words that say the same,
+ * it is only drawn.
+ */
+export function PriorityMark({ priority, label, className }: Labelled & { priority: number; className?: string }) {
   const band = priorityBand(priority);
-  const filled = priorityBars(priority);
+  const look = cn(
+    'nums inline-grid h-4 w-5.5 shrink-0 place-items-center rounded-sm text-kbd font-semibold',
+    PRIORITY_TONES[band],
+    className,
+  );
+  const figure = `P${priorityNumber(priority)}`;
+  if (label === null) {
+    return (
+      <span aria-hidden className={look} data-priority-mark={band}>
+        {figure}
+      </span>
+    );
+  }
   return (
-    <svg
-      viewBox="0 0 14 14"
-      width={size}
-      height={size}
-      className={cn('block shrink-0', className)}
-      data-priority-mark={band}
-      {...a11y(label === undefined ? `${priorityLabel(priority)} priority` : label)}
-    >
-      {band === 'top' ? (
-        <>
-          <rect x="1" y="1" width="12" height="12" rx="3" className="fill-ink" />
-          <rect x="6.2" y="3.4" width="1.6" height="4.6" rx=".8" className="fill-background" />
-          <circle cx="7" cy="10" r=".95" className="fill-background" />
-        </>
-      ) : band === 'lowest' ? (
-        [0, 1, 2].map((i) => (
-          <rect key={i} x={1.5 + i * 4.25} y="6.25" width="2.5" height="1.5" rx=".75" className="fill-border-strong" />
-        ))
-      ) : (
-        [0, 1, 2].map((i) => (
-          <rect
-            key={i}
-            x={1.5 + i * 4.25}
-            y={10.5 - (i + 1) * 3}
-            width="2.5"
-            height={(i + 1) * 3}
-            rx=".8"
-            className={i < filled ? 'fill-ink-2' : 'fill-border-strong'}
-          />
-        ))
-      )}
-    </svg>
+    <Tooltip content={priorityTip(priority)}>
+      <button
+        type="button"
+        aria-label={label ?? `${priorityLabel(priority)} priority`}
+        className={cn(look, 'cursor-default outline-accent focus-visible:outline-2 focus-visible:outline-offset-2')}
+        data-priority-mark={band}
+      >
+        {figure}
+      </button>
+    </Tooltip>
   );
 }
 

@@ -25,6 +25,7 @@ import {
 } from '../../lib/epics';
 import { ageMs, calendarDay, formatAge, formatInt, localDay } from '../../lib/format';
 import { usePaths } from '../../lib/paths';
+import { sorted, type PageSort } from '../../lib/task-sort';
 import { cn } from '../../lib/utils';
 
 /** The mark of each group: the board's and the Live page's own marks, so none needs learning. */
@@ -148,6 +149,16 @@ export function EpicFacts({
   );
 }
 
+/** What a sort reads of an epic: its last change is its tasks' and sub-epics' too, and an open epic has no close. */
+function epicFacts(summary: EpicSummary) {
+  return { ...summary, updatedAt: summary.lastChangedAt, closedAt: null };
+}
+
+/** Epics in the order chosen in the Sort menu, or in the tab's own: priority, then the latest change. */
+function inOrder(epics: readonly EpicSummary[], sort: PageSort | null): EpicSummary[] {
+  return sort === null ? [...epics].sort(epicOrder) : sorted(epics, sort, epicFacts);
+}
+
 /** Indents for a sub-epic's line, by depth; deeper ones stop at the third. */
 const INDENTS = ['', 'ps-11 max-sm:ps-8', 'ps-17 max-sm:ps-12', 'ps-23 max-sm:ps-16'];
 
@@ -158,12 +169,14 @@ function EpicRow({
   expanded,
   onToggle,
   nowMs,
+  sort,
 }: {
   summary: EpicSummary;
   depth: number;
   expanded: ReadonlySet<string>;
   onToggle: (id: string) => void;
   nowMs: number;
+  sort: PageSort | null;
 }) {
   const paths = usePaths();
   const subs = summary.subEpics.length;
@@ -210,7 +223,7 @@ function EpicRow({
         <RowAge>{age === null ? '' : formatAge(age)}</RowAge>
       </Row>
       {open
-        ? summary.subEpics.map((sub) => (
+        ? inOrder(summary.subEpics, sort).map((sub) => (
             <EpicRow
               key={sub.id}
               summary={sub}
@@ -218,6 +231,7 @@ function EpicRow({
               expanded={expanded}
               onToggle={onToggle}
               nowMs={nowMs}
+              sort={sort}
             />
           ))
         : null}
@@ -256,11 +270,14 @@ function matchesWords(summary: EpicSummary, words: readonly string[]): boolean {
 export function EpicsView({
   read,
   q,
+  sort,
   nowMs,
   onClearSearch,
 }: {
   read: EpicsRead;
   q: string;
+  /** The order chosen in the Sort menu; null keeps the tab's own. */
+  sort: PageSort | null;
   nowMs: number;
   onClearSearch: () => void;
 }) {
@@ -302,7 +319,10 @@ export function EpicsView({
   return (
     <div className="pb-6" data-epics-view="">
       {EPIC_STATES.map((state) => {
-        const epics = listed.filter((summary) => summary.state === state);
+        const epics = inOrder(
+          listed.filter((summary) => summary.state === state),
+          sort,
+        );
         if (epics.length === 0) return null;
         return (
           <section key={state} aria-label={EPIC_STATE_LABELS[state]} data-epic-group={state}>
@@ -321,6 +341,7 @@ export function EpicsView({
                 expanded={expanded}
                 onToggle={toggle}
                 nowMs={nowMs}
+                sort={sort}
               />
             ))}
           </section>
@@ -336,7 +357,7 @@ export function EpicsView({
             onToggle={() => setClosedOpen(!closedOpen)}
           />
           {closedOpen
-            ? read.closed.map((epic) => (
+            ? sorted(read.closed, sort).map((epic) => (
                 <Row key={epic.id} data-epic-row={epic.id} data-epic-state="closed">
                   <span aria-hidden className="w-3.5 shrink-0" />
                   <PriorityMark priority={epic.priority} className="max-sm:hidden" />

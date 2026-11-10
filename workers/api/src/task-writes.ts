@@ -34,7 +34,7 @@ import {
   type WriteResult,
 } from '@ntasks/domain';
 import { listed, type WorkArgs } from './args.ts';
-import { shippedWith } from './delivery.ts';
+import { closeProof } from './delivery.ts';
 import type { Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
@@ -414,7 +414,7 @@ export async function createTask(
     metadata,
     ...(task.approval === undefined ? {} : { requestApproval: { reason: task.approval } }),
     ...(task.claim === true ? { claim: true as const } : {}),
-    ...(task.done === undefined ? {} : { close: closeOf(task.done) }),
+    ...(task.done === undefined ? {} : { close: closeOf(task.done, task.type ?? 'task') }),
   };
   const retry = await retryOf(context.principal, retryRequest);
   try {
@@ -683,22 +683,18 @@ export interface TaskClosing {
   readonly resolution?: TaskResolution;
   /** With duplicate: the task this one duplicates, in the same project. */
   readonly duplicateOf?: string;
-  /** What shipped, with done: either starts the task's delivery at built. One
-   * left out comes from the task's work details (shippedWith). */
+  /** What shipped, with done: either starts the task's delivery at built,
+   * except on a decision or an approval. One left out comes from the task's
+   * work details, unless the close names only a link (closeProof). */
   readonly commit?: string;
   readonly pullRequest?: string;
   /** With done: a URL that shows work no commit or pull request shows. */
   readonly link?: string;
 }
 
-/** A close's evidence and proof, as the engine takes them. */
-function closeOf(closing: Omit<TaskClosing, 'resolution' | 'duplicateOf'>) {
-  return {
-    reason: closing.reason,
-    ...(closing.commit === undefined ? {} : { commit: closing.commit }),
-    ...(closing.pullRequest === undefined ? {} : { pullRequest: closing.pullRequest }),
-    ...(closing.link === undefined ? {} : { link: closing.link }),
-  };
+/** A new task's close as done, its evidence and proof, as the engine takes them (closeProof). */
+function closeOf(closing: Omit<TaskClosing, 'resolution' | 'duplicateOf'>, type: TaskType) {
+  return { reason: closing.reason, ...closeProof(closing, type, {}) };
 }
 
 /** The proof a task closed as done without any is told it takes. */
@@ -772,8 +768,7 @@ export async function closeTask(
         reason: closing.reason,
         resolution,
         ...(duplicateOf === undefined ? {} : { duplicateOf }),
-        ...(resolution === 'done' ? shippedWith(closing, current.work) : {}),
-        ...(resolution === 'done' && closing.link !== undefined ? { link: closing.link } : {}),
+        ...(resolution === 'done' ? closeProof(closing, current.type, current.work) : {}),
       },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.

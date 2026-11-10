@@ -160,9 +160,10 @@ it is signed with the workspace's webhook secret.
 - **Visitors** send no credential and read one workspace, the deployment's
   public workspace, when it has one, such as a product demo's; they change
   nothing ([Sign-in](sign-in.md#the-public-workspace)).
-- **GitHub** sends a workspace's webhook deliveries, each signed with the
-  secret its owner saved, and moves closed tasks to merged and live
-  ([API](api.md#from-a-github-webhook)).
+- **GitHub** sends the deliveries of a workspace's GitHub App, which its
+  owner makes with Connect GitHub, each signed with the app's secret and
+  read only from installations an owner made, and moves closed tasks to
+  merged and live ([API](api.md#from-github)).
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
 how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
@@ -201,10 +202,10 @@ store. When a daily limit is reached, operations of that kind fail until
 - keeps CPU time per request low, because time spent waiting on the database
   does not count but parsing and serializing large answers does;
 - answers a GitHub delivery that moves nothing, such as a check that is not a
-  deploy check, after one D1 query that reads one row, without reaching the
-  task store. An organization's webhook sends two deliveries for each check
-  run of each repository, so it takes only the three events that can move a
-  task ([API](api.md#from-a-github-webhook)).
+  deploy, from D1 alone, in at most four queries of a few rows each, without
+  reaching the task store. A GitHub App installed on an organization sends
+  two deliveries for each check run of each repository, so it subscribes only
+  to the three events that can move a task ([API](api.md#from-github)).
 
 ## Rules every change keeps
 

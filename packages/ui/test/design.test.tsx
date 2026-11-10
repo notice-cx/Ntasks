@@ -92,6 +92,26 @@ describe('the tokens', () => {
     }
   });
 
+  // The Top tag's figure is text on Priority, the High tag's is Priority text
+  // on Priority soft; the Top tag is also a mark on Background and on a
+  // hovered row.
+  it('keeps the priority tags readable, in both themes', () => {
+    for (const [theme, css] of [
+      ['light', rule(':root,\n.light')],
+      ['dark', rule('.dark')],
+    ] as const) {
+      for (const [ink, fill, least] of [
+        ['on-priority', 'priority', 4.5],
+        ['priority-text', 'priority-soft', 4.5],
+        ['priority', 'background', 3],
+        ['priority', 'hover', 3],
+      ] as const) {
+        const [one, two] = [value(css, ink) ?? '', value(css, fill) ?? ''];
+        expect(contrast(one, two), `${ink} on ${fill} in ${theme}: ${one} on ${two}`).toBeGreaterThanOrEqual(least);
+      }
+    }
+  });
+
   it('gives every listed colour a Tailwind name', () => {
     for (const { variable } of [...COLOUR_TOKENS, ...MARK_TOKENS]) {
       expect(CSS).toContain(`--color-${variable.slice(2)}: var(${variable});`);

@@ -56,6 +56,6 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
     addComment: (projectId, taskId, text, actor, retry, pins) =>
       writes.addComment(projectId, taskId, text, actor, retry, pins),
-    reportDelivery: (projectIds, signal, actor) => writes.reportDelivery(projectIds, signal, actor),
+    reportDelivery: (projectIds, signal, actor, options) => writes.reportDelivery(projectIds, signal, actor, options),
   };
 }

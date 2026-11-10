@@ -9,8 +9,11 @@ import {
   DELIVERY_STAGES,
   isTaskStatus,
   isTaskType,
+  SORT_DIRECTIONS,
   TASK_LIMITS,
+  TASK_SORTS,
   TASK_STATUSES,
+  taskComparator,
   type Task,
   type TaskEngine,
   type TaskStatus,
@@ -88,6 +91,11 @@ export const TASKS = (verb: string) =>
 /** The most tasks one list_tasks call returns when it names no limit. */
 const PAGE = 50;
 
+/** What a sort reads of a task. */
+function sortFacts(task: Task) {
+  return { ...task, closedAt: task.close?.at ?? null };
+}
+
 export function schema(properties: Record<string, unknown>, required: readonly string[] = []): Record<string, unknown> {
   return { type: 'object', properties, required, additionalProperties: false };
 }
@@ -117,7 +125,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       'List tasks, most urgent first: every open one and those closed in the last 7 days, in one project or, ' +
       'with no project, in every project of the workspace, each then naming its project. ' +
       'Each is a summary, leaving out fields with no value; get_task reads one in full. Filters narrow it live, so search here ' +
-      'rather than keeping a copy. Answers a page at a time: pass nextOffset as offset for the next.',
+      'rather than keeping a copy. Answers a page at a time: pass nextOffset as offset for the next. ' +
+      'sort reads them in another order.',
     inputSchema: schema({
       project: {
         ...PROJECT,
@@ -166,6 +175,19 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         description: `At most this many (default ${PAGE}).`,
       },
       offset: { type: 'integer', minimum: 0, description: "Skip this many, from the previous answer's nextOffset." },
+      sort: {
+        type: 'string',
+        enum: TASK_SORTS,
+        description:
+          'Read them by priority, created, updated (last change), closed or title instead of most urgent first. ' +
+          'Ties keep the most urgent first; a task without the time a sort reads, such as an open task by closed, comes last.',
+      },
+      direction: {
+        type: 'string',
+        enum: SORT_DIRECTIONS,
+        description:
+          'asc or desc. Left out, priority reads most urgent first, title A to Z, and the dates newest first.',
+      },
       fields: {
         type: 'object',
         maxProperties: TASK_LIMITS.fields,
@@ -187,6 +209,13 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           : integerArg(args, 'closed_days', 1, CLOSED_HISTORY_DAYS, CLOSED_DAYS);
       const limit = integerArg(args, 'limit', 1, TASK_LIMITS.page, PAGE);
       const offset = integerArg(args, 'offset', 0, Number.MAX_SAFE_INTEGER, 0);
+      const sort = choiceArg(args, 'sort', TASK_SORTS);
+      const direction = choiceArg(args, 'direction', SORT_DIRECTIONS);
+      // The board is read whole, for its total, and most urgent first; another order sorts that read, and a page is cut from it.
+      const compare =
+        sort === undefined && direction === undefined ? null : taskComparator(sort ?? 'priority', direction);
+      const ordered = (tasks: readonly Task[]) =>
+        compare === null ? tasks : [...tasks].sort((a, b) => compare(sortFacts(a), sortFacts(b)));
       const assignee = textArg(args, 'assignee', TASK_LIMITS.actor, false);
       if (assignee !== undefined && (/[\r\n\t]/u.test(assignee) || assignee.trim() !== assignee))
         refuse('invalid arguments: assignee (a name on one line, or "me")');
@@ -245,7 +274,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           fields === undefined ? filters : { ...filters, fields },
           now,
         );
-        const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
+        const page = await withExternalLinks(engine, ordered(found.tasks).slice(offset, offset + limit));
         return {
           project: project.key,
           readAt: found.readAt,
@@ -271,7 +300,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           { project: project.key, projectId: project.id, projectName: project.name },
         ]),
       );
-      const page = await withExternalLinks(engine, found.tasks.slice(offset, offset + limit));
+      const page = await withExternalLinks(engine, ordered(found.tasks).slice(offset, offset + limit));
       return {
         readAt: found.readAt,
         closedSince: found.closedSince,

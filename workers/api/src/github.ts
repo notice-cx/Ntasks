@@ -1,23 +1,46 @@
 /**
- * The GitHub receiver: POST /api/github/<workspace id>, where a workspace's
- * GitHub webhook sends its deliveries, so a closed task moves to merged and
- * live without an agent reporting it. A delivery is read only when its
- * X-Hub-Signature-256 is the HMAC-SHA-256 of its body under the secret the
- * workspace's owner saved (access/github-webhook.ts). Its event then becomes
- * the signal POST /api/delivery and report_delivery send (delivery.ts), for
- * every project of the workspace:
+ * The GitHub receiver: POST /api/github/<workspace id>, where the
+ * workspace's GitHub App, or a webhook its owner set up by hand, sends its
+ * deliveries, so a closed task moves to merged and live without an agent
+ * reporting it. A delivery is read only when its X-Hub-Signature-256 is the
+ * HMAC-SHA-256 of its body under the app's webhook secret
+ * (access/github-app.ts) or the secret saved by hand
+ * (access/github-webhook.ts). An app's delivery is read only from an
+ * installation an owner of the workspace made: GitHub's installation event
+ * names who made it, and the receiver records the installation when that
+ * person is an owner. Its event then becomes the signal POST /api/delivery
+ * and report_delivery send (delivery.ts), for every project of the workspace:
  *
  * - `pull_request` closed and merged into the default branch: `merged`,
  *   naming the pull request and its merge commit;
- * - `check_run` completed with success on the default branch, whose name is
- *   one of the workspace's deploy checks: `live`, naming its commit;
- * - `deployment_status` success, for an environment named among the deploy
- *   checks: `live`, naming the deployed commit.
+ * - `check_run` completed with success on the default branch, when it is a
+ *   deploy: `live`, naming its commit;
+ * - `deployment_status` success, when it is a deploy: `live`, naming the
+ *   deployed commit.
+ *
+ * A check run is a deploy when its name starts with a hosting provider's
+ * deploy prefix, such as `Workers Builds:`; a deployment, when its
+ * environment is the production one; and either, when the owner typed its
+ * name by hand. The first time a deploy is seen, its name is recorded, and
+ * Settings lists it with a switch that turns it off. A deploy also turns on
+ * "changes go live by a deploy" for the projects of the tasks it names, once
+ * for each project, so an owner who turns it off again keeps it off.
  *
  * Any other event is answered with why it moves nothing. A task never moves
  * back, so a delivery that GitHub sends again moves nothing twice.
- * docs/api.md#from-a-github-webhook describes the setup.
+ * docs/api.md#from-github describes the setup.
  */
+import {
+  addInstallation,
+  detectedOf,
+  githubAppOf,
+  hasInstallation,
+  isDeployCheck,
+  isOwnerOnGitHub,
+  recordDetected,
+  removeInstallation,
+  type Detected,
+} from './access/github-app.ts';
 import { signInSecrets } from './access/config.ts';
 import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
@@ -80,17 +103,46 @@ function textAt(payload: unknown, ...path: readonly string[]): string | undefine
   return typeof value === 'string' ? value : undefined;
 }
 
-/** What an event says: the signal it sends, or why it sends none, as GitHub's list of deliveries shows it. */
-export type GitHubEvent = { readonly signal: Args } | { readonly ignored: string };
+/** The whole number at `path` in a payload, or undefined when it is missing or is not one. */
+function numberAt(payload: unknown, ...path: readonly string[]): number | undefined {
+  const value = at(payload, ...path);
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
 
-/** The signal an event sends, given the workspace's deploy checks. */
-export function readEvent(event: string | null, payload: unknown, deployChecks: readonly string[]): GitHubEvent {
+/** The names that count as deploys: the ones typed by hand, and the ones deliveries showed, each on or off. */
+export interface DeployNames {
+  readonly typed: readonly string[];
+  readonly detected: Detected['checks'];
+}
+
+/**
+ * Whether a check run or deployment named `name` is a deploy: typed by hand,
+ * or detected and not switched off. `looksLikeOne` says whether a name not
+ * seen before is a deploy, which the delivery then records.
+ */
+function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes' | 'new' | 'off' | 'no' {
+  if (names.typed.includes(name)) return 'yes';
+  const seen = names.detected.get(name);
+  if (seen !== undefined) return seen.on ? 'yes' : 'off';
+  return looksLikeOne ? 'new' : 'no';
+}
+
+/** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
+export type GitHubEvent = { readonly signal: Args; readonly newDeploy?: string } | { readonly ignored: string };
+
+/** The signal an event sends, given the names that count as deploys. */
+export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
   if (event === 'ping') return { ignored: 'GitHub reaches Ntasks. A merged pull request or a deploy moves tasks.' };
   const repository = textAt(payload, 'repository', 'full_name');
   const defaultBranch = textAt(payload, 'repository', 'default_branch');
   if (repository === undefined || defaultBranch === undefined)
     return { ignored: 'an event without its repository and default branch moves no task' };
   const commits = (sha: string | undefined) => (sha === undefined ? [] : [sha]);
+  // A deploy with no name, such as a production deployment to an unnamed environment, counts and is not listed.
+  const live = (name: string, verdict: 'yes' | 'new', sha: string | undefined): GitHubEvent => ({
+    signal: { repository, stage: 'live', commits: commits(sha) },
+    ...(verdict === 'new' && name !== '' ? { newDeploy: name } : {}),
+  });
   switch (event) {
     case 'pull_request': {
       if (at(payload, 'action') !== 'closed' || at(payload, 'pull_request', 'merged') !== true)
@@ -111,27 +163,70 @@ export function readEvent(event: string | null, payload: unknown, deployChecks: 
     case 'check_run': {
       if (at(payload, 'action') !== 'completed' || at(payload, 'check_run', 'conclusion') !== 'success')
         return { ignored: 'only a check run that completed with success moves a task' };
-      const name = textAt(payload, 'check_run', 'name');
-      if (name === undefined || !deployChecks.includes(name))
-        return { ignored: `${name ?? 'this check'} is not among this workspace's deploy checks` };
+      const name = textAt(payload, 'check_run', 'name') ?? '';
+      const verdict = deployOf(name, names, isDeployCheck(name));
+      if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
+      if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
       if (branch !== defaultBranch)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
-      return { signal: { repository, stage: 'live', commits: commits(textAt(payload, 'check_run', 'head_sha')) } };
+      return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
     }
     case 'deployment_status': {
       if (at(payload, 'deployment_status', 'state') !== 'success')
         return { ignored: 'only a successful deployment moves a task' };
-      const environment = textAt(payload, 'deployment', 'environment');
-      if (environment === undefined || !deployChecks.includes(environment))
-        return { ignored: `the ${environment ?? 'unnamed'} environment is not among this workspace's deploy checks` };
-      return { signal: { repository, stage: 'live', commits: commits(textAt(payload, 'deployment', 'sha')) } };
+      const environment = textAt(payload, 'deployment', 'environment') ?? '';
+      const production =
+        at(payload, 'deployment', 'production_environment') === true || /^production$/iu.test(environment);
+      const verdict = deployOf(environment, names, production);
+      if (verdict === 'off') return { ignored: `${environment} is switched off in Settings, so it moves no task` };
+      if (verdict === 'no')
+        return { ignored: `the ${environment || 'unnamed'} environment is not production, so it moves no task` };
+      return live(environment, verdict, textAt(payload, 'deployment', 'sha'));
     }
     default:
       return {
         ignored: `Ntasks reads pull_request, check_run and deployment_status events, not ${event ?? 'this one'}`,
       };
   }
+}
+
+/**
+ * Answers the app's installation event: an installation an owner of the
+ * workspace made is recorded, and its repositories' events are read from
+ * then on; one anyone else made is refused. A removed or suspended
+ * installation is forgotten.
+ */
+async function installationEvent(db: D1Database, workspaceId: string, payload: unknown): Promise<Response> {
+  const installationId = numberAt(payload, 'installation', 'id');
+  const account = textAt(payload, 'installation', 'account', 'login');
+  if (installationId === undefined || account === undefined)
+    return json({ error: 'invalid_request', detail: 'an installation event names its installation' }, 400);
+  const action = at(payload, 'action');
+  if (action === 'deleted' || action === 'suspend') {
+    await removeInstallation(db, workspaceId, installationId);
+    return json({ moved: [], ignored: `Ntasks no longer reads events from ${account}` }, 200);
+  }
+  if (action !== 'created' && action !== 'new_permissions_accepted' && action !== 'unsuspend')
+    return json({ moved: [], ignored: `an installation ${String(action)} moves no task` }, 200);
+  const sender = numberAt(payload, 'sender', 'id');
+  if (sender === undefined || !(await isOwnerOnGitHub(db, workspaceId, String(sender)))) {
+    const who = textAt(payload, 'sender', 'login') ?? 'this GitHub account';
+    return json(
+      {
+        error: 'not_an_owner',
+        detail: `${who} is not an owner of this workspace in Ntasks, so this installation's events are refused`,
+      },
+      403,
+    );
+  }
+  await addInstallation(db, workspaceId, {
+    installationId,
+    account,
+    accountType: textAt(payload, 'installation', 'account', 'type') ?? 'User',
+    installedBy: String(sender),
+  });
+  return json({ moved: [], ignored: `Ntasks reads events from ${account}'s repositories from now on` }, 200);
 }
 
 /** Answers one delivery to the receiver of `workspaceId`. */
@@ -152,14 +247,19 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
   }
   const secrets = signInSecrets(env);
   if (!secrets) return notConfigured(env);
-  // One answer for an unknown workspace, one with no webhook and a wrong
+  // One answer for an unknown workspace, one with no secret and a wrong
   // signature, so a caller without the secret learns nothing of which it is.
-  const webhook = await githubWebhookOf(env.DB, secrets.secret, workspaceId);
-  if (webhook === null || !(await signedWith(webhook.secret, body, fromHex(signature.toLowerCase())!))) {
+  const expected = fromHex(signature.toLowerCase())!;
+  const [app, webhook] = await Promise.all([
+    githubAppOf(env.DB, secrets.secret, workspaceId),
+    githubWebhookOf(env.DB, secrets.secret, workspaceId),
+  ]);
+  const fromApp = app !== null && (await signedWith(app.webhookSecret, body, expected));
+  if (!fromApp && (webhook === null || !(await signedWith(webhook.secret, body, expected)))) {
     return json(
       {
         error: 'bad_signature',
-        detail: "the signature does not match the secret saved in this workspace's Settings, or none is saved",
+        detail: "the signature does not match this workspace's GitHub App or the secret saved in Settings",
       },
       401,
     );
@@ -170,7 +270,22 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
   } catch {
     return json({ error: 'invalid_request', detail: 'the payload is not JSON' }, 400);
   }
-  const event = readEvent(request.headers.get('x-github-event'), payload, webhook.deployChecks);
+  const name = request.headers.get('x-github-event');
+  if (fromApp && name === 'installation') return installationEvent(env.DB, workspaceId, payload);
+  if (fromApp && name !== 'ping') {
+    const installationId = numberAt(payload, 'installation', 'id');
+    if (installationId === undefined || !(await hasInstallation(env.DB, workspaceId, installationId))) {
+      return json(
+        {
+          error: 'unknown_installation',
+          detail: 'no owner of this workspace installed the app here, so its events are refused',
+        },
+        403,
+      );
+    }
+  }
+  const detected = await detectedOf(env.DB, workspaceId);
+  const event = readEvent(name, payload, { typed: webhook?.deployChecks ?? [], detected: detected.checks });
   if ('ignored' in event) return json({ moved: [], ignored: event.ignored }, 200);
   let signal;
   try {
@@ -179,7 +294,18 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);
     throw error;
   }
-  const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId));
+  // Recorded before the move, so a delivery GitHub sends again finds it listed whatever happens after.
+  if (event.newDeploy !== undefined) await recordDetected(env.DB, workspaceId, { checks: [event.newDeploy] });
+  const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
+    turnOnDeploys: { except: detected.projects },
+  });
   if ('refused' in answer) return json({ error: 'unavailable', detail: answer.refused }, 503);
+  try {
+    await recordDetected(env.DB, workspaceId, { projects: answer.turnedOn });
+  } catch {
+    // The tasks moved, so GitHub is told so; a project left unrecorded can be
+    // turned on once more by a later deploy, after its owner turned it off.
+    console.error('github: the projects a deploy turned on were not recorded', workspaceId);
+  }
   return json({ moved: movedView(answer.moved) }, 200);
 }

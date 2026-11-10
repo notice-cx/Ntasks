@@ -35,7 +35,9 @@ export type CheckStatus =
   /** Failed as a gap the target lists, with its reason. */
   | 'known-gap'
   /** Passed, though the target lists it as a gap: the list is out of date. */
-  | 'gap-closed';
+  | 'gap-closed'
+  /** A rule of a binding the target does not offer. */
+  | 'not-applicable';
 
 export interface CheckResult {
   readonly id: string;
@@ -101,6 +103,21 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
   const results: CheckResult[] = [];
   let serial = 0;
   for (const check of selected) {
+    if (check.binding !== undefined && target.bindings[check.binding] === undefined) {
+      const result: CheckResult = {
+        id: check.id,
+        rule: check.rule,
+        section: sectionOf(check.rule),
+        level: check.level,
+        title: check.title,
+        status: 'not-applicable',
+        bindings: [],
+        detail: `the target offers no ${check.binding} binding`,
+      };
+      results.push(result);
+      options.onResult?.(result);
+      continue;
+    }
     const missing = [
       ...(check.senders ?? []).filter((role) => target.senders[role] === undefined).map((role) => `senders.${role}`),
       ...(check.projects ?? [])
@@ -109,7 +126,7 @@ export async function runSuite(target: Target, options: SuiteOptions = {}): Prom
     ];
     const bindings: BindingResult[] = [];
     if (missing.length === 0) {
-      for (const binding of offered) {
+      for (const binding of offered.filter((each) => check.binding === undefined || each === check.binding)) {
         const trace: string[] = [];
         const apis = new Map<string, Api>();
         const apiFor = (on: BindingName, role: Role): Api => {

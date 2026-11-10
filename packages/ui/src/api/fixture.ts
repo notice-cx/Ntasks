@@ -33,6 +33,7 @@ import {
 } from './fixture-data';
 import type {
   ConnectedApp,
+  GitHubWebhook,
   FieldFilters,
   LiveEpic,
   LiveTask,
@@ -887,16 +888,51 @@ export function createFixtureTasksApi({
       if (workspace.github === undefined) throw new ApiError('this workspace has no GitHub webhook', 404, 'not_found');
       delete workspace.github;
     },
+    /** Starts Connect GitHub. Nothing comes back from GitHub here: a workspace seeded with githubApp shows the app made. */
+    async connectGitHub() {
+      const workspace = owned();
+      return {
+        action: 'https://github.com/settings/apps/new?state=fixture',
+        manifest: JSON.stringify({ name: 'Ntasks fixture', url: webhookOf(workspace).url }),
+      };
+    },
+    async disconnectGitHub() {
+      const workspace = owned();
+      if (workspace.githubApp === undefined) throw new ApiError('this workspace has no GitHub App', 404, 'not_found');
+      delete workspace.githubApp;
+    },
+    async setDeployCheck(name, on) {
+      const workspace = owned();
+      const check = workspace.githubApp?.detected.find((entry) => entry.name === name);
+      if (check === undefined)
+        throw new ApiError('no delivery showed a deploy check with this name', 404, 'not_found', 'name');
+      check.on = on;
+      return webhookOf(workspace);
+    },
   };
 }
 
-/** The webhook as the Worker shows it: where GitHub sends, and never the secret. */
-function webhookOf(workspace: FixtureWorkspace) {
+/** The GitHub connection as the Worker shows it: where GitHub sends, the app, and never a secret. */
+function webhookOf(workspace: FixtureWorkspace): GitHubWebhook {
   const origin = globalThis.location?.origin ?? 'https://ntasks.example.com';
+  const app = workspace.githubApp;
+  const page = app === undefined ? null : `https://github.com/apps/${app.slug}`;
   return {
     url: `${origin}/api/github/${workspace.workspaceId}`,
     secretSaved: workspace.github !== undefined,
     deployChecks: [...(workspace.github?.deployChecks ?? [])],
     updatedAt: workspace.github?.updatedAt ?? null,
+    app:
+      app === undefined || page === null
+        ? null
+        : {
+            slug: app.slug,
+            url: page,
+            createdAt: app.createdAt,
+            installUrl: `${page}/installations/new`,
+            accountInstallUrl: `${page}/installations/new/permissions?target_id=1`,
+          },
+    installations: copy(app?.installations ?? []),
+    detected: copy(app?.detected ?? []),
   };
 }

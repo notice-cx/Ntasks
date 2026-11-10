@@ -556,6 +556,42 @@
   {
     "version": 6,
     "shapes": {
+      "github": {
+        "app": "null|object",
+        "app.slug": "string",
+        "app.url": "string",
+        "app.createdAt": "string",
+        "app.installUrl": "string",
+        "app.accountInstallUrl": "string",
+        "installations": "array",
+        "installations[]": "object",
+        "installations[].installationId": "number",
+        "installations[].account": "string",
+        "installations[].accountType": "string",
+        "installations[].createdAt": "string",
+        "detected": "array",
+        "detected[]": "object",
+        "detected[].name": "string",
+        "detected[].on": "boolean",
+        "detected[].seenAt": "string"
+      }
+    },
+    "routes": {
+      "POST /api/access/github/app": {
+        "action": "string",
+        "manifest": "string"
+      },
+      "POST /api/access/github/app/remove": {
+        "removed": "boolean"
+      },
+      "POST /api/access/github/checks": {
+        "github": "@github"
+      }
+    }
+  },
+  {
+    "version": 7,
+    "shapes": {
       "comment": {
         "pinned": "boolean"
       }

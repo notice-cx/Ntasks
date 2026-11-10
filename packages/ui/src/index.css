@@ -18,7 +18,8 @@
   below stand for that element, so nothing here styles a host's page.
 
   Amber (`wait`) means only "waiting for you" and red (`block`) means only
-  Blocked; nothing else uses either.
+  Blocked; nothing else uses either. Plum (`priority`) marks only a task's
+  priority, and only Top and High.
 
   The `identity-` colours are the identity palette, and only a workspace's
   icon uses it. They have no Tailwind names: WorkspaceIcon reads them with
@@ -48,6 +49,10 @@
   --wait-soft: #fdf5e6;
   --block: #d22f3d;
   --done: #1e8a4f;
+  --priority: #9429a5;
+  --on-priority: #ffffff;
+  --priority-text: #9429a5;
+  --priority-soft: #fce9fe;
   --avatar: #e3e3ea;
   --avatar-ink: #33343c;
   --mark-bg: #ffffff;
@@ -89,6 +94,10 @@
   --wait-soft: #221c10;
   --block: #f2565f;
   --done: #46c486;
+  --priority: #a441b3;
+  --on-priority: #ffffff;
+  --priority-text: #de9be9;
+  --priority-soft: #36193a;
   --avatar: #30313b;
   --avatar-ink: #e6e6ec;
   --mark-bg: #1b1c22;
@@ -131,6 +140,10 @@
   --color-wait-soft: var(--wait-soft);
   --color-block: var(--block);
   --color-done: var(--done);
+  --color-priority: var(--priority);
+  --color-on-priority: var(--on-priority);
+  --color-priority-text: var(--priority-text);
+  --color-priority-soft: var(--priority-soft);
   --color-avatar: var(--avatar);
   --color-avatar-ink: var(--avatar-ink);
   --color-mark-bg: var(--mark-bg);

@@ -1,6 +1,16 @@
 export { isTaskId } from './task-id.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
+export {
+  byDefaultOrder,
+  DEFAULT_SORT_DIRECTIONS,
+  isSortDirection,
+  isTaskSort,
+  SORT_DIRECTIONS,
+  TASK_SORTS,
+  taskComparator,
+} from './sort.ts';
+export type { SortDirection, SortFacts, TaskSort } from './sort.ts';
 export type { StepMarking } from './steps.ts';
 export { criteriaOf } from './criteria.ts';
 export type { Criterion } from './criteria.ts';
@@ -76,6 +86,7 @@ export type {
   CreateTaskInput,
   DefineFieldInput,
   DeliveryMove,
+  DeliveryOptions,
   DeliverySignal,
   FieldResult,
   LabelPage,

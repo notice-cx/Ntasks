@@ -1,13 +1,96 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureWorkspaces } from '@/api/fixture-data';
 import { enabledButton, renderApp } from './render';
 
-/** The webhook's form on the Settings page, once it shows. */
+/** The webhook's form on the Settings page, under Set up by hand, once it shows. */
 async function webhookForm(): Promise<HTMLElement> {
+  const byHand = (await screen.findByText('Set up by hand')).closest('details');
+  if (byHand && !byHand.open) fireEvent.click(within(byHand).getByText('Set up by hand'));
   return screen.findByRole('form', { name: 'GitHub webhook' });
 }
+
+/** The fixture's first workspace, owned by the person, with a GitHub App made, installed on one organization, and one deploy seen. */
+function connectedApi(byHand = false) {
+  const [example, ...rest] = fixtureWorkspaces(Date.now());
+  const at = new Date().toISOString();
+  return createFixtureTasksApi({
+    workspaces: example
+      ? [
+          {
+            ...example,
+            ...(byHand ? { github: { secret: 'a'.repeat(40), deployChecks: ['deploy'], updatedAt: at } } : {}),
+            githubApp: {
+              slug: 'ntasks-example',
+              createdAt: at,
+              installations: [
+                { installationId: 7, account: 'example-org', accountType: 'Organization', createdAt: at },
+              ],
+              detected: [{ name: 'Workers Builds: site', on: true, seenAt: at }],
+            },
+          },
+          ...rest,
+        ]
+      : rest,
+  });
+}
+
+describe('Connect GitHub on the Settings page', () => {
+  it('posts the manifest to GitHub from one button', async () => {
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    try {
+      renderApp('/tasks/settings', createFixtureTasksApi());
+      fireEvent.click(await enabledButton('Connect GitHub'));
+      await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+      const form = submit.mock.contexts[0] as HTMLFormElement;
+      expect(form.method).toBe('post');
+      expect(form.action).toBe('https://github.com/settings/apps/new?state=fixture');
+      expect((form.elements.namedItem('manifest') as HTMLInputElement).value).toContain('Ntasks fixture');
+    } finally {
+      submit.mockRestore();
+    }
+  });
+
+  it('says to press Connect GitHub again when GitHub did not finish', async () => {
+    renderApp('/tasks/settings?github=retry', createFixtureTasksApi());
+    expect(await screen.findByText("GitHub didn't finish connecting. Press Connect GitHub again.")).toBeTruthy();
+  });
+
+  it('keeps a webhook saved by hand reachable once the app is connected', async () => {
+    renderApp('/tasks/settings', connectedApi(true));
+    const section = await screen.findByRole('region', { name: 'GitHub' });
+    expect(await within(section).findByText('example-org')).toBeTruthy();
+    expect(within(section).getByText('Set up by hand')).toBeTruthy();
+    expect(await webhookForm()).toBeTruthy();
+  });
+
+  it('shows where the app is installed, links to install it, switches a deploy off and disconnects', async () => {
+    const api = connectedApi();
+    renderApp('/tasks/settings', api);
+    const section = await screen.findByRole('region', { name: 'GitHub' });
+    expect(await within(section).findByText('example-org')).toBeTruthy();
+    expect(within(section).getByRole('link', { name: 'ntasks-example' }).getAttribute('href')).toBe(
+      'https://github.com/apps/ntasks-example',
+    );
+    expect(within(section).getByRole('link', { name: 'Install on your account' }).getAttribute('href')).toBe(
+      'https://github.com/apps/ntasks-example/installations/new/permissions?target_id=1',
+    );
+    expect(within(section).getByRole('link', { name: 'Install on an organization' }).getAttribute('href')).toBe(
+      'https://github.com/apps/ntasks-example/installations/new',
+    );
+    // Set up by hand stays there, closed, for a webhook beside the app.
+    expect(within(section).getByText('Set up by hand').closest('details')?.open).toBe(false);
+
+    fireEvent.click(within(section).getByRole('checkbox', { name: 'Workers Builds: site counts as a deploy' }));
+    await waitFor(async () => expect((await api.githubWebhook()).detected[0]?.on).toBe(false));
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(section.querySelector('[data-confirm-disconnect]') as HTMLElement);
+    await waitFor(async () => expect((await api.githubWebhook()).app).toBeNull());
+    expect(await within(section).findByRole('button', { name: 'Connect GitHub' })).toBeTruthy();
+  });
+});
 
 describe('the GitHub webhook on the Settings page', () => {
   it('lets an owner make a secret, save it with deploy checks, change the checks alone and remove the webhook', async () => {

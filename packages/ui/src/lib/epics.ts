@@ -35,6 +35,7 @@ export interface EpicSummary {
   id: string;
   title: string;
   priority: number;
+  createdAt: string | null;
   /** The open epic it sits in, or null for an epic at the top of its project. */
   parent: string | null;
   /** Its tasks and its sub-epics' tasks that are not closed. */
@@ -185,6 +186,7 @@ export function readEpics(
       id: epic.id,
       title: epic.title,
       priority: epic.priority,
+      createdAt: epic.createdAt,
       parent,
       ...partial,
       lastChangedAt,
