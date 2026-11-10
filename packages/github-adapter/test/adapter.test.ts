@@ -13,8 +13,11 @@ import { mcpApi } from '../../../spec/conformance/src/mcp.ts';
 import { McpConnection } from '../../../spec/conformance/src/transport.ts';
 import { runSuite } from '../../../spec/conformance/src/suite.ts';
 import { KNOWN_GAPS, startLocalAdapter } from '../conformance/local.ts';
+import { startFakeGitHub } from '../conformance/fake-github.ts';
 import { checkConfig, type AdapterConfig } from '../src/config.ts';
+import { Engine, OWN_ACTOR, type Sender } from '../src/engine.ts';
 import { GitHub } from '../src/github.ts';
+import { Ledger } from '../src/ledger.ts';
 
 /** The defects whose checks the core level holds, and those checks. */
 const FAILS: Partial<Readonly<Record<Defect, readonly string[]>>> = {
@@ -192,6 +195,51 @@ describe('the adapter', () => {
       await local.close();
     }
   }, 60_000);
+});
+
+describe('an epic the adapter closed', () => {
+  it('reopens with its task, unless an older ledger records the close without marking it the adapter’s own', async () => {
+    const fake = await startFakeGitHub('token');
+    try {
+      const projectId = 'p1';
+      const config = checkConfig({
+        githubApi: fake.url,
+        ledger: null,
+        projects: [{ projectId, key: 'web', name: 'Website', prefix: 'web', repository: 'example/site' }],
+        senders: [],
+      });
+      const ledger = new Ledger(null);
+      const engine = new Engine(config, new GitHub(fake.url, 'token'), ledger);
+      const sender: Sender = {
+        id: 'a',
+        kind: 'agent',
+        actor: 'agent:Builder',
+        projects: new Map([[projectId, 'write']]),
+      };
+      const filed = async (args: Record<string, unknown>) => String((await engine.create(sender, args)).id);
+      const epicsWith = async () => {
+        const epic = await filed({ project: 'web', title: 'Launch', type: 'epic' });
+        const child = await filed({ project: 'web', title: 'Page', parent: epic });
+        await engine.close(sender, { task: child, reason: 'Shipped', link: 'https://example.com/page' });
+        expect(ledger.data.tasks[epic]).toMatchObject({ status: 'closed', closedBy: OWN_ACTOR, closedOnItsOwn: true });
+        return { epic, child };
+      };
+
+      const marked = await epicsWith();
+      await engine.update(sender, { task: marked.child, status: 'open' });
+      expect(ledger.data.tasks[marked.epic]!.status).toBe('open');
+
+      // Before the adapter marked its own closes, a service of its name could have closed an epic.
+      const older = await epicsWith();
+      await ledger.transaction((draft) => {
+        delete draft.tasks[older.epic]!.closedOnItsOwn;
+      });
+      await engine.update(sender, { task: older.child, status: 'open' });
+      expect(ledger.data.tasks[older.epic]!.status).toBe('closed');
+    } finally {
+      await fake.close();
+    }
+  });
 });
 
 describe('the GitHub client', () => {

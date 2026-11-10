@@ -502,12 +502,13 @@ export class Engine {
       const children = Object.values(draft.tasks).filter((task) => task.parent === id);
       const open = children.some((task) => task.status !== 'closed');
       if (epic.status === 'closed') {
-        if (epic.closedBy !== OWN_ACTOR || !open) continue;
+        if (epic.closedOnItsOwn !== true || !open) continue;
         await this.github.updateIssue(project.repository, epic.number, { state: 'open' });
         const fields = this.apply(epic, {
           status: 'open',
           closedAt: null,
           closedBy: null,
+          closedOnItsOwn: false,
           closeReason: null,
           closeLink: null,
           closeCommit: null,
@@ -535,6 +536,7 @@ export class Engine {
           closePullRequest: null,
           closedAt: at,
           closedBy: OWN_ACTOR,
+          closedOnItsOwn: true,
           duplicateOf: null,
           for: null,
           work: {},
@@ -776,6 +778,7 @@ export class Engine {
           Object.assign(set, {
             closedAt: null,
             closedBy: null,
+            ...(record.closedOnItsOwn === true ? { closedOnItsOwn: false } : {}),
             closeReason: null,
             closeLink: null,
             closeCommit: null,
@@ -888,7 +891,7 @@ export class Engine {
       if (resolution !== 'done' && Object.values(proof).some((value) => value !== undefined))
         invalid(`commit, pr and link (only a close as done names its proof; this one is ${resolution})`);
       // An epic the adapter closed on its own takes a sender's close in place of its own (protocol.md STATE-22).
-      if (record.status === 'closed' && !(record.type === 'epic' && record.closedBy === OWN_ACTOR))
+      if (record.status === 'closed' && record.closedOnItsOwn !== true)
         refuse(`${record.id} is already closed; get_task shows its close.`);
       if (record.assignee !== null && record.assignee !== sender.actor)
         refuse(`${record.id} is held by ${record.assignee}; only its holder closes it.`);
@@ -941,6 +944,7 @@ export class Engine {
         closePullRequest: resolution === 'done' ? (pr ?? null) : null,
         closedAt: at,
         closedBy: sender.actor,
+        ...(record.closedOnItsOwn === true ? { closedOnItsOwn: false } : {}),
         duplicateOf: duplicateOf ?? null,
         for: null,
         work: {},
