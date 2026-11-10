@@ -1,6 +1,6 @@
 # Appendix B. Open questions
 
-Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-10.
 
 Each question is a place where Ntasks's behavior is unclear, looks
 accidental, has no test, or is Ntasks's choice rather than something every

@@ -1,6 +1,6 @@
 # 11. The MCP tool profile
 
-Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-10.
 
 The MCP tool profile is a set of [MCP](https://modelcontextprotocol.io/specification/latest)
 tools through which an agent reaches a server. Each tool below is one that
@@ -93,6 +93,7 @@ through the MCP endpoint is relayed, whoever sends it
 | Contract operation | Tool | Notes |
 |---|---|---|
 | Record work in hand | `claim_task`, `comment_on_task` with `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches` | From the holder only, while the task is open ([STATE-13](protocol.md#state-13)). With `touches`, the answer lists `overlaps` ([STATE-19](protocol.md#state-19)) |
+| List by activity | `list_tasks` with `activity` | One or more of `active`, `quiet` and `stalled`: the tasks in progress in those groups, and `activities`, how many tasks in progress are in each of the three ([STATE-21](protocol.md#state-21)). Each task in progress that a read or a list answers names its `activity` as of the answer's `readAt` ([STATE-20](protocol.md#state-20)) |
 | Claim by pull request | `claim_task` with `pr` and no `task` | The open task whose work details or `pull-request` external link name that pull request |
 | Held tasks on connect | The server's instructions | [MCP-1](#mcp-1) |
 | Pin and unpin a comment | `comment_on_task` with `pin: true`, and `unpin` with the ids of the task's pinned comments | `unpin` with `task` only. Answers `pinned: true` when it pinned the comment ([STATE-17](protocol.md#state-17)) |

@@ -35,6 +35,10 @@
       "description": "In progress and held, with no holder activity for the period the server states, or none recorded (STATE-16).",
       "type": "boolean"
     },
+    "activity": {
+      "description": "On a task in progress, how recently its holder worked on it as of the read: active within the hour, stalled as STATE-16 says, else quiet (STATE-20). Null or left out on any other task.",
+      "enum": ["active", "quiet", "stalled", null]
+    },
     "choices": { "oneOf": [{ "$ref": "choices.schema.json" }, { "type": "null" }] },
     "steps": {
       "description": "On a request to do steps, its steps (do-request.schema.json); null or left out on any other task.",
@@ -171,6 +175,11 @@
         ]
       },
       "then": { "properties": { "for": { "type": "null" }, "work": { "maxProperties": 0 } } }
+    },
+    {
+      "description": "Only a task in progress has an activity (STATE-20).",
+      "if": { "properties": { "status": { "not": { "const": "in_progress" } } }, "required": ["status"] },
+      "then": { "properties": { "activity": { "type": "null" } } }
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Appendix A. Each rule and the Ntasks test that proves it
 
-Part of [the protocol](protocol.md). Draft, v0, 2026-11-09.
+Part of [the protocol](protocol.md). Draft, v0, 2026-11-10.
 
 Each row names a test in the Ntasks repository that exercises the rule
 today, by its file and its name. These tests run inside Ntasks against its
@@ -68,6 +68,9 @@ protocol appears in neither table.
 | STATE-18 | `workers/api/test/access/github-webhook.test.ts` › "never closes a task in progress on a merge a sender reports through POST /api/delivery" |
 | STATE-17 | `workers/api/test/schema.test.ts` › "lets a pinned comment be unpinned, and never pins an unpinned one again" |
 | STATE-19 | `workers/api/test/api/write-tools.test.ts` › "lists the other work in progress that touches the same files, never refusing the claim" |
+| STATE-20 | `workers/api/test/api/read-tools.test.ts` › "groups tasks in progress as active within the hour, quiet until a day and stalled after, and lists the groups asked for" |
+| STATE-20 | `packages/domain/test/activity.test.ts` › "gives every activity case of the protocol its activity" |
+| STATE-21 | `workers/api/test/api/read-tools.test.ts` › "groups tasks in progress as active within the hour, quiet until a day and stalled after, and lists the groups asked for" |
 | AUTH-1 | `workers/api/test/api/http-decisions.test.ts` › "only a person signed in to the web app, whatever an agent or a service was granted" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "keeps an agent named after the owner apart from the owner" |
 | AUTH-2 | `workers/api/test/access/approval.test.ts` › "marks an owner whose own name starts like an agent’s, so the two never meet" |

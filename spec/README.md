@@ -1,7 +1,7 @@
 # The Shared Work Protocol
 
 **An open contract for shared work between people and AI agents. Draft,
-v0, 2026-11-09.**
+v0, 2026-11-10.**
 
 The Shared Work Protocol is a draft specification of the record people and
 AI agents share when they work together: tasks, claims, decisions and approvals that
@@ -62,7 +62,7 @@ GitHub's own interface are not read back into the ledger.
 | [`open-questions.md`](open-questions.md) | Appendix B: the open questions |
 | [`schemas/`](schemas/) | A JSON Schema (draft 2020-12) for each object |
 | [`examples/`](examples/) | Sample objects for each schema: `examples/<schema>/` must validate, `examples/<schema>/invalid/` must not |
-| [`conformance/`](conformance/README.md) | The conformance suite: checks any server against each rule, by level, over MCP and HTTP, and runs against Ntasks in CI |
+| [`conformance/`](conformance/README.md) | The conformance suite: checks any server against each rule, by level, over MCP and HTTP, and runs against Ntasks in CI. Its [cases at a fixed clock](conformance/README.md#cases-at-a-fixed-clock) hold what no run lasts long enough to reach, for each implementation's own tests |
 | [`test/`](test/) | The tests that validate the samples, keep Appendix A true, and show that the conformance suite fails a server that breaks a rule |
 
 Start with sections 1 and 3 of [`protocol.md`](protocol.md), then the
