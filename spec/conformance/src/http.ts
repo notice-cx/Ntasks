@@ -175,11 +175,14 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
     activity: (groups, project) =>
       map(
         send('GET', '/tasks', { query: { project: project ?? target.projects.main, activity: groups.join(',') } }),
-        (value): ActivityList => ({
-          readAt: typeof value.readAt === 'string' ? value.readAt : null,
-          tasks: ((value.tasks ?? []) as Record<string, unknown>[]).map(taskOf),
-          counts: (value.activities ?? null) as ActivityCounts | null,
-        }),
+        (value): ActivityList => {
+          const tasks = ((value.tasks ?? []) as Record<string, unknown>[]).map(taskOf);
+          return {
+            pages: [{ readAt: typeof value.readAt === 'string' ? value.readAt : null, tasks }],
+            tasks,
+            counts: (value.activities ?? null) as ActivityCounts | null,
+          };
+        },
       ),
     claim: (task, options = {}) =>
       map(

@@ -59,6 +59,7 @@ const FAILS: Readonly<Record<Defect, readonly string[]>> = {
   ],
   'activity-misread': ['state-20-activity-of-each-task'],
   'activity-filter-ignored': ['state-21-lists-and-counts-by-activity'],
+  'activity-miscounted': ['state-21-lists-and-counts-by-activity'],
 };
 
 /** The rules each level lists in section 7's table, with ranges such as `STATE-1 to STATE-9` spelled out. */

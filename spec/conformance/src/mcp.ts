@@ -168,9 +168,9 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
       return { ok: true, value: ids };
     },
     activity: async (groups, project) => {
-      // Every page; the first names the read time and the counts.
-      const tasks: Task[] = [];
-      let first: { readAt?: string; activities?: ActivityCounts } | null = null;
+      // Every page, each with its own read time; the first names the counts.
+      const pages: ActivityList['pages'][number][] = [];
+      let counts: ActivityCounts | null = null;
       let offset: number | undefined = 0;
       for (let page = 0; offset !== undefined && page < 100; page += 1) {
         const listed = await call('list_tasks', {
@@ -186,11 +186,11 @@ export function mcpApi(target: Target, role: Role, trace?: Trace): Api {
           tasks: Task[];
           nextOffset?: number | null;
         };
-        first ??= value;
-        tasks.push(...value.tasks);
+        if (pages.length === 0) counts = value.activities ?? null;
+        pages.push({ readAt: value.readAt ?? null, tasks: value.tasks });
         offset = typeof value.nextOffset === 'number' ? value.nextOffset : undefined;
       }
-      const list: ActivityList = { readAt: first?.readAt ?? null, tasks, counts: first?.activities ?? null };
+      const list: ActivityList = { pages, tasks: pages.flatMap((page) => page.tasks), counts };
       return { ok: true, value: list };
     },
     claim: (task, options = {}) =>

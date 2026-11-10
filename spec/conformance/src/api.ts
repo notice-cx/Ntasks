@@ -183,10 +183,11 @@ export interface TaskRead {
 
 /** A list of tasks in progress by activity (STATE-21). */
 export interface ActivityList {
-  /** The time of the read the answer names, or null when it names none. */
-  readonly readAt: string | null;
+  /** Each page of the answer, with the read time it names, or null when it names none: each page is its own read. */
+  readonly pages: readonly { readonly readAt: string | null; readonly tasks: readonly Task[] }[];
+  /** Every page's tasks. */
   readonly tasks: readonly Task[];
-  /** How many tasks in progress are in each group, or null when the answer counts none. */
+  /** How many tasks in progress the first page counts in each group, or null when it counts none. */
   readonly counts: ActivityCounts | null;
 }
 

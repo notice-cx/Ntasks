@@ -24,6 +24,8 @@ export const DEFECTS = {
   'activity-misread': 'answers every task in progress as active, whatever its last activity (STATE-20)',
   'activity-filter-ignored':
     'drops the groups of activity a list names, so it lists and counts as if it named none (STATE-21)',
+  'activity-miscounted':
+    'counts one quiet task more than a list by activity holds, leaving its tasks as they are (STATE-21)',
 } as const;
 export type Defect = keyof typeof DEFECTS;
 
@@ -78,6 +80,11 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     return reply.result?.structuredContent?.proposalVersion ?? args.proposal_version;
   };
 
+  /** A list's counts of activity, with the defect applied. */
+  const readCounts = (counts: unknown): void => {
+    if (defect === 'activity-miscounted' && isObject(counts)) counts.quiet = Number(counts.quiet) + 1;
+  };
+
   /** A task as a read answers it, with the defect applied. */
   const readTask = (task: unknown): void => {
     if (defect === 'relays-unmarked' && isObject(task) && isObject(task.answer)) task.answer.relayed = false;
@@ -122,6 +129,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
       readTask(result.structuredContent.task);
       if (Array.isArray(result.structuredContent.tasks))
         for (const task of result.structuredContent.tasks) readTask(task);
+      readCounts(result.structuredContent.activities);
       result.content = [{ type: 'text', text: JSON.stringify(result.structuredContent) }];
     }
     return { ...answer, text: JSON.stringify(reply) };
@@ -182,6 +190,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
       const value = JSON.parse(answer.text) as Json;
       readTask(value.task);
       if (Array.isArray(value.tasks)) for (const task of value.tasks) readTask(task);
+      readCounts(value.activities);
       return { ...answer, text: JSON.stringify(value) };
     }
     return answer;
