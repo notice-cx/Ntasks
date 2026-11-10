@@ -286,6 +286,75 @@ export const core: readonly Check[] = [
     },
   },
   {
+    id: 'state-22-epic-closes-with-its-last-child',
+    rule: 'STATE-22',
+    level: 'core',
+    title:
+      "An epic closes with its last open child, under the server's own actor, as no longer needed only when no child was wanted, and a sender's close replaces that close",
+    async run(context) {
+      const api = context.api();
+      const epic = await file(context, { type: 'epic' });
+      const first = await file(context, { parent: epic });
+      const last = await file(context, { parent: epic });
+      answered(await context.setup().close(first, { reason: 'Not needed', resolution: 'wont-do' }), `closing ${first}`);
+      same((await taskOf(api, epic)).status, 'open', `${epic}'s status while ${last} is open`);
+      answered(await api.close(last, { reason: 'Shipped', link: 'https://example.com/shipped' }), `closing ${last}`);
+      const closed = await taskOf(api, epic);
+      same(
+        [closed.status, closed.resolution],
+        ['closed', 'done'],
+        `${epic}'s status and resolution once ${last} closed`,
+      );
+      expect(
+        String(closed.closeReason ?? '').includes(last),
+        `${epic}'s close reason does not name ${last}: ${String(closed.closeReason)}`,
+      );
+      const closeOf = async (id: string) =>
+        answered(await api.history(id), `reading ${id}'s history`).find((event) => event.actions.includes('closed'));
+      const [server, sender] = [await closeOf(epic), await closeOf(last)];
+      expect(server !== undefined, `${epic}'s history has no close`);
+      expect(server.actor !== sender?.actor, `${epic}'s close is recorded under the sender, ${server.actor}`);
+
+      const outer = await file(context, { type: 'epic' });
+      const inner = await file(context, { type: 'epic', parent: outer });
+      const page = await file(context, { parent: inner });
+      answered(await api.close(page, { reason: 'Dropped', resolution: 'wont-do' }), `closing ${page}`);
+      for (const id of [inner, outer]) {
+        const task = await taskOf(api, id);
+        same([task.status, task.resolution], ['closed', 'no-longer-needed'], `${id}'s status and resolution`);
+      }
+
+      answered(await api.close(epic, { reason: 'Every part shipped' }), `closing ${epic}, which the server closed`);
+      same((await taskOf(api, epic)).closeReason, 'Every part shipped', `${epic}'s close reason after the sender's`);
+    },
+  },
+  {
+    id: 'state-22-epic-reopens-or-stays-open',
+    rule: 'STATE-22',
+    level: 'core',
+    title:
+      'An epic the server closed reopens when a child reopens, and an epic with no children or labelled keep-open never closes on its own',
+    async run(context) {
+      const api = context.api();
+      const epic = await file(context, { type: 'epic' });
+      const child = await file(context, { parent: epic });
+      answered(await api.close(child, { reason: 'Shipped', link: 'https://example.com/shipped' }), `closing ${child}`);
+      same((await taskOf(api, epic)).status, 'closed', `${epic}'s status once ${child} closed`);
+      answered(await api.update(child, { status: 'open' }), `reopening ${child}`);
+      same((await taskOf(api, epic)).status, 'open', `${epic}'s status once ${child} reopened`);
+
+      const kept = await file(context, { type: 'epic', labels: ['keep-open'] });
+      const keptChild = await file(context, { parent: kept });
+      answered(await api.close(keptChild, { reason: 'Shipped', link: 'https://example.com/kept' }), 'closing');
+      same((await taskOf(api, kept)).status, 'open', `the keep-open epic ${kept}'s status once ${keptChild} closed`);
+
+      const emptied = await file(context, { type: 'epic' });
+      const moved = await file(context, { parent: emptied });
+      answered(await api.update(moved, { parent: '' }), `moving ${moved} out of ${emptied}`);
+      same((await taskOf(api, emptied)).status, 'open', `${emptied}'s status with no child left`);
+    },
+  },
+  {
     id: 'auth-2-actor-derived-from-sign-in',
     rule: 'AUTH-2',
     level: 'core',

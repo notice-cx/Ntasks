@@ -232,7 +232,7 @@ Schemas: [`task`](schemas/task.schema.json),
 | `type` | `task`, `bug`, `feature`, `chore`, `epic`, `decision` or `gate` |
 | `status` | `open`, `in_progress`, `blocked`, `deferred` or `closed` ([4.1](#41-status)) |
 | `priority` | `0`, the most urgent, to `4` |
-| `labels` | Words that group tasks. The label `human` marks a human request ([OQ-12](open-questions.md#oq-12)), and `keep-open` keeps a task in progress when its pull request merges ([STATE-18](#state-18)) |
+| `labels` | Words that group tasks. The label `human` marks a human request ([OQ-12](open-questions.md#oq-12)), and `keep-open` keeps a task in progress when its pull request merges ([STATE-18](#state-18)) and an epic open when its last child closes ([STATE-22](#state-22)) |
 | `parent` | The epic it belongs to |
 | `estimateMinutes` | How long the work should take |
 | `ready`, `awaitingHuman` | Whether someone can start it now, and whether it waits on a person, as the server worked them out |
@@ -582,6 +582,31 @@ its history keeps them ([INV-9](#inv-9)).
 **STATE-9.** <a id="state-9"></a>An epic MAY close once every child is
 closed, and a server SHOULD list the epics that can.
 
+**STATE-22.** <a id="state-22"></a>An epic is a container with no work of
+its own. When a change leaves an epic with at least one child and every
+child closed, the server MUST close the epic in the same transaction
+([INV-5](#inv-5)), whoever closed or moved the child: a sender, a person, a
+verified merge ([STATE-18](#state-18)) or a recorded answer. The close:
+
+- MUST record the actor the server records its own changes under as its
+  closer, never the sender of the change ([AUTH-2](#auth-2)), with a reason
+  that names the child that closed last;
+- is as `no-longer-needed` when every child closed as `wont-do` or
+  `no-longer-needed`, and as `done` otherwise;
+- carries no proof ([INV-7](#inv-7)), clears the epic's work in hand
+  ([STATE-13](#state-13)), and is not refused because someone holds the
+  epic or because of its acceptance.
+
+An epic with no children, and an epic labelled `keep-open`, MUST NOT close
+this way. When the epic is a child of another epic, the server MUST then
+apply this rule to that epic in the same transaction. When a change leaves
+an epic the server closed this way with a child that is not closed, such
+as a reopened child or a new one, the server MUST reopen the epic in the
+same transaction, and then do the same for the epic above it. A sender's
+close of an epic the server closed this way MUST NOT be refused because the
+epic is closed: it replaces the server's close, and the epic then no longer
+reopens this way.
+
 **STATE-15.** <a id="state-15"></a>An acceptance as done
 ([3.10](#310-acceptance-as-done)) MUST name the criteria the person found
 met, by number, and the proposal version shown to them. A server MUST
@@ -914,7 +939,7 @@ the ones above it in this table.
 
 | Level | Objects | Rules | Operations |
 |---|---|---|---|
-| **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
+| **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, STATE-22, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
 | **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step, acceptance as done and free of a held task ([AUTH-9](#auth-9)); record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12, STATE-18 | Close with a commit or pull request; send a signal |
 | **Live work** | Work in hand, activity, pinned comments, parent context, overlaps | STATE-13, STATE-16, STATE-17, STATE-19, STATE-20, STATE-21, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; list tasks in progress by activity; claim by pull request; pin and unpin a comment; read a task's parent context; answer overlaps on a claim |

@@ -26,6 +26,7 @@ export const DEFECTS = {
     'drops the groups of activity a list names, so it lists and counts as if it named none (STATE-21)',
   'activity-miscounted':
     'counts one quiet task more than a list by activity holds, leaving its tasks as they are (STATE-21)',
+  'epics-left-open': 'answers an epic the server closed on its own, with a reason no sender sent, as open (STATE-22)',
 } as const;
 export type Defect = keyof typeof DEFECTS;
 
@@ -80,6 +81,16 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     return reply.result?.structuredContent?.proposalVersion ?? args.proposal_version;
   };
 
+  /** Every close reason and evidence a sender sent through the proxy, so a close no sender sent stands out. */
+  const sentReasons = new Set<string>();
+  const recordReasons = (value: unknown): void => {
+    if (Array.isArray(value)) for (const entry of value) recordReasons(entry);
+    else if (isObject(value))
+      for (const [key, entry] of Object.entries(value))
+        if ((key === 'reason' || key === 'evidence') && typeof entry === 'string') sentReasons.add(entry);
+        else recordReasons(entry);
+  };
+
   /** A list's counts of activity, with the defect applied. */
   const readCounts = (counts: unknown): void => {
     if (defect === 'activity-miscounted' && isObject(counts)) counts.quiet = Number(counts.quiet) + 1;
@@ -89,6 +100,14 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
   const readTask = (task: unknown): void => {
     if (defect === 'relays-unmarked' && isObject(task) && isObject(task.answer)) task.answer.relayed = false;
     if (defect === 'activity-misread' && isObject(task) && task.status === 'in_progress') task.activity = 'active';
+    if (
+      defect === 'epics-left-open' &&
+      isObject(task) &&
+      task.type === 'epic' &&
+      task.status === 'closed' &&
+      !sentReasons.has(String(task.closeReason))
+    )
+      Object.assign(task, { status: 'open', resolution: null, closeReason: null });
   };
 
   const mcp = async (
@@ -100,6 +119,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     const tool = message.method === 'tools/call' ? String(params.name) : null;
     const args = isObject(params.arguments) ? params.arguments : {};
     if (tool !== null) {
+      recordReasons(args);
       if (defect === 'retries-repeat' && typeof args.idempotency_key === 'string')
         args.idempotency_key = `broken-${randomBytes(8).toString('hex')}`;
       if (defect === 'models-dropped') delete args.model;
@@ -143,6 +163,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
   ): Promise<{ status: number; type: string; text: string }> => {
     const route = path.slice(httpPath.length).split('?')[0] ?? '';
     const json = body === undefined || body === '' ? null : (JSON.parse(body) as Json);
+    recordReasons(json);
     const decision =
       /^\/(?:tasks\/[^/]+\/(?:choose|respond|dismiss|dispute|accept)|gates\/[^/]+\/(?:resolve|steps))$/u.test(route);
     if (defect === 'disputes-refused' && /\/dispute$/u.test(route))
