@@ -75,12 +75,13 @@ dashboard under the Worker's **Settings → Build**:
 Each build shows on its commit as the check `Workers Builds: ntasks-site`. A
 failing check means the site still serves the previous build.
 
-To publish by hand, such as after a failed build, run these two commands
-from the repository root of a clean checkout of `main`'s latest commit.
-After the deploy, if `main` has moved past that commit, publish again from
-the new one, so a hand publish never leaves an older build over a newer
-automatic one. The owner approved this publish for the site once; any other
-command that reaches Cloudflare still needs approval each time
+When that check fails, publish by hand: run these two commands from the
+repository root of a clean checkout of `main`'s latest commit. After the
+deploy, if `main` has moved past that commit, publish again from the new
+one, so a hand publish never leaves an older build over a newer automatic
+one. The owner approved this hand publish for a failed build; any other
+publish, and any other command that reaches Cloudflare, still needs approval
+each time
 ([AGENTS.md](../../AGENTS.md#never-without-the-owners-explicit-approval)):
 
 ```sh

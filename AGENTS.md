@@ -181,9 +181,10 @@ Two exceptions need no further approval:
   changes `apps/site/`, `docs/`, `spec/`, `apps/web/public/brand/` or the
   lockfile, so a merge needs no publish step and no task stays open for one.
   When its check `Workers Builds: ntasks-site` fails on a commit, an agent
-  may publish by hand without asking: `pnpm site:build`, then `wrangler
-  deploy` for the `ntasks-site` Worker, from a clean checkout of `main`'s
-  latest commit. After the deploy the agent reads `main`'s latest commit
+  may publish by hand without asking: from the repository root of a clean
+  checkout of `main`'s latest commit, `pnpm site:build`, then
+  `pnpm --filter @ntasks/site exec wrangler deploy` (a bare `wrangler deploy`
+  there reads the app's `wrangler.jsonc`). After the deploy the agent reads `main`'s latest commit
   again and, if it has moved, publishes again from the new one, so a hand
   publish never leaves an older build over a newer automatic one
   ([apps/site](apps/site/README.md#publishing)). This covers that Worker
