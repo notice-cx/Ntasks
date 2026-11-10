@@ -131,11 +131,15 @@ function passed(id: number, name: string, sha: string) {
 }
 
 /** A project of the test workspace that does not deploy yet, and one task closed in it with this pull request. */
-async function taskWithPullRequest(owner: Browser, number: number): Promise<{ projectId: string; id: string }> {
+async function taskWithPullRequest(
+  owner: Browser,
+  number: number,
+  repo = REPOSITORY,
+): Promise<{ projectId: string; id: string }> {
   const projectId = await createProject('Site');
   const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Ship the page' });
   const id = created.body.id as string;
-  const pullRequest = `https://github.com/${REPOSITORY}/pull/${number}`;
+  const pullRequest = `https://github.com/${repo}/pull/${number}`;
   expect(
     (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', pullRequest })).status,
   ).toBe(200);
@@ -426,5 +430,25 @@ describe('work waiting for a merge GitHub already made', () => {
     expect((await taskOf(merged.projectId, merged.id)).delivery?.stage).toBe('merged');
     expect((await taskOf(open.projectId, open.id)).delivery?.stage).toBe('built');
     expect((await taskOf(elsewhere.projectId, elsewhere.id)).delivery?.stage).toBe('built');
+  });
+
+  it('asks only about repositories an installation of selected repositories reaches', async () => {
+    const owner = await connected();
+    const left = 'example/private';
+    const selected = await taskWithPullRequest(owner, 60);
+    const leftOut = await taskWithPullRequest(owner, 61, left);
+    github.pulls.set(`${REPOSITORY}#60`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+    github.pulls.set(`${left}#61`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+    // The closes' check finds no installation to ask through.
+    await runDurableObjectAlarm(store());
+
+    const mine = newInstallation();
+    github.repositories.set(mine, [REPOSITORY]);
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(selected.projectId, selected.id)).delivery?.stage).toBe('merged');
+    expect((await taskOf(leftOut.projectId, leftOut.id)).delivery?.stage).toBe('built');
+    expect(github.pullReads).toContain(`${REPOSITORY}#60`);
+    expect(github.pullReads).not.toContain(`${left}#61`);
   });
 });

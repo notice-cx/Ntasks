@@ -105,6 +105,10 @@ export interface GitHubCalls {
   readonly pulls: Map<string, StandInPull>;
   /** Each installation an installation token was made for. */
   readonly installationTokens: number[];
+  /** The repositories an installation reaches, by its id, which a test sets; without one, every repository of `pulls`. */
+  readonly repositories: Map<number, string[]>;
+  /** Each pull request the Worker read, as `owner/name#number`. */
+  readonly pullReads: string[];
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -129,6 +133,8 @@ export function standInForGitHub(): GitHubCalls {
     conversions: [] as string[],
     pulls: new Map<string, StandInPull>(),
     installationTokens: [] as number[],
+    repositories: new Map<number, string[]>(),
+    pullReads: [] as string[],
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -136,6 +142,8 @@ export function standInForGitHub(): GitHubCalls {
     calls.conversions.length = 0;
     calls.pulls.clear();
     calls.installationTokens.length = 0;
+    calls.repositories.clear();
+    calls.pullReads.length = 0;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -189,10 +197,18 @@ export function standInForGitHub(): GitHubCalls {
         calls.installationTokens.push(Number(installation));
         return Response.json({ token: `installation-token-${installation}` }, { status: 201 });
       }
+      const reading = /^Bearer installation-token-(\d+)$/u.exec(request.headers.get('authorization') ?? '')?.[1];
+      if (url.origin + url.pathname === 'https://api.github.com/installation/repositories') {
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const names = calls.repositories.get(Number(reading)) ?? [
+          ...new Set([...calls.pulls.keys()].map((key) => key.slice(0, key.indexOf('#')))),
+        ];
+        return Response.json({ total_count: names.length, repositories: names.map((full_name) => ({ full_name })) });
+      }
       const pull = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/u.exec(url.href);
       if (pull) {
-        if (!/^Bearer installation-token-\d+$/u.test(request.headers.get('authorization') ?? ''))
-          return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        calls.pullReads.push(`${pull[1]}#${pull[2]}`);
         const found = calls.pulls.get(`${pull[1]}#${pull[2]}`);
         if (!found) return Response.json({ message: 'Not Found' }, { status: 404 });
         return Response.json({

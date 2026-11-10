@@ -9,17 +9,18 @@
  */
 import { COMMIT_SHA, type TaskEngine } from '@ntasks/domain';
 import { signInSecrets } from './access/config.ts';
-import { appToken, installationToken, pullRequestState } from './access/github-api.ts';
+import { appToken, installationRepositories, installationToken, pullRequestState } from './access/github-api.ts';
 import { githubAppOf, installationsByAccount } from './access/github-app.ts';
 import { SCOPES, type Principal } from './auth.ts';
 import { reportDelivery } from './delivery.ts';
 
 /**
- * The most waiting tasks one check asks GitHub about, each one request:
- * with the installation tokens, it stays within the 50 requests to other
- * servers that one invocation may make on the free plan.
+ * The most requests one check makes to GitHub: installation tokens, the
+ * pages of their repositories, then one for each waiting task's pull
+ * request. It stays within the 50 requests to other servers that one
+ * invocation may make on the free plan.
  */
-const CHECKED = 40;
+const REQUESTS = 45;
 
 /** A GitHub pull request's URL, as a task's delivery records it. */
 const PULL = /^https:\/\/github\.com\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d{1,9})$/u;
@@ -62,18 +63,31 @@ export async function checkMergedWork(env: Env, workspaceId: string, engine: Tas
   if (pulls.length === 0) return 0;
   const jwt = await appToken(app.appId, app.privateKey);
   if (jwt === null) return 0;
-  const tokens = new Map<number, Promise<string | null>>();
+  // Each installation's token, and the repositories it reaches, so a task in
+  // a repository an installation of selected repositories leaves out takes
+  // no place among the ones asked about.
+  let requests = 0;
+  const reach = new Map<number, { readonly token: string; readonly repositories: ReadonlySet<string> | null }>();
+  for (const installation of new Set(pulls.map((pull) => pull.installation))) {
+    const token = await installationToken(jwt, installation);
+    requests += 1;
+    if (token === null) continue;
+    const listed = await installationRepositories(token);
+    requests += listed.requests;
+    reach.set(installation, { token, repositories: listed.repositories });
+  }
+  const readable = pulls.flatMap((pull) => {
+    const installation = reach.get(pull.installation);
+    if (installation === undefined) return [];
+    const { repositories } = installation;
+    return repositories === null || repositories.has(pull.repository.toLowerCase())
+      ? [{ ...pull, token: installation.token }]
+      : [];
+  });
   const context = { engine, principal: githubSender(workspaceId), now: () => new Date().toISOString() };
   let moved = 0;
-  for (const pull of pulls.slice(0, CHECKED)) {
-    let token = tokens.get(pull.installation);
-    if (token === undefined) {
-      token = installationToken(jwt, pull.installation);
-      tokens.set(pull.installation, token);
-    }
-    const access = await token;
-    if (access === null) continue;
-    const state = await pullRequestState(access, pull.repository, pull.number);
+  for (const pull of readable.slice(0, Math.max(0, REQUESTS - requests))) {
+    const state = await pullRequestState(pull.token, pull.repository, pull.number);
     if (!state?.merged || state.base === null || state.base !== state.defaultBranch) continue;
     const merge = state.mergeCommit?.toLowerCase();
     const commits = merge !== undefined && COMMIT_SHA.test(merge) ? [merge] : [];

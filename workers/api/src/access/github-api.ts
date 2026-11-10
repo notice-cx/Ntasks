@@ -84,6 +84,44 @@ export async function installationToken(appJwt: string, installationId: number):
   return typeof token === 'string' && token.length > 0 ? token : null;
 }
 
+/** The most pages of an installation's repositories read, 100 to a page. */
+const REPOSITORY_PAGES = 2;
+
+/**
+ * The repositories an installation reaches, as lowercase `owner/name`, read
+ * with its token; null when GitHub does not answer, or the installation
+ * reaches more than REPOSITORY_PAGES pages of them, and so cannot be listed
+ * cheaply. Each page is one request.
+ */
+export async function installationRepositories(token: string): Promise<{
+  readonly repositories: ReadonlySet<string> | null;
+  readonly requests: number;
+}> {
+  const repositories = new Set<string>();
+  for (let page = 1; page <= REPOSITORY_PAGES; page += 1) {
+    const response = await fetch(`${API}/installation/repositories?per_page=100&page=${page}`, {
+      headers: { ...HEADERS, authorization: `Bearer ${token}` },
+    }).catch(() => null);
+    if (response === null) return { repositories: null, requests: page };
+    if (response.status !== 200) {
+      await response.body?.cancel();
+      return { repositories: null, requests: page };
+    }
+    const body: unknown = await response.json().catch(() => null);
+    const listed = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const total = typeof listed.total_count === 'number' ? listed.total_count : 0;
+    for (const repository of Array.isArray(listed.repositories) ? listed.repositories : []) {
+      const name =
+        repository !== null && typeof repository === 'object'
+          ? (repository as Record<string, unknown>).full_name
+          : undefined;
+      if (typeof name === 'string') repositories.add(name.toLowerCase());
+    }
+    if (repositories.size >= total) return { repositories, requests: page };
+  }
+  return { repositories: null, requests: REPOSITORY_PAGES };
+}
+
 /** A pull request as GitHub answers it: whether it merged, its merge commit, and the branch it merged into and the repository's default one. */
 export interface PullRequestState {
   readonly merged: boolean;
