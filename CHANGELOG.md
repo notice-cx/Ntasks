@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/notice-cx/Ntasks/compare/ntasks-v0.3.0...ntasks-v0.4.0) (2026-11-10)
+
+
+### Features
+
+* show each agent under one name and each model by its name ([afad0eb](https://github.com/notice-cx/Ntasks/commit/afad0eb2b7b963a7de5d10cf31ce8d9e57a1ce2c))
+* **ui:** let a host keep the sidebar behind its Sidebar button ([a4fbe1b](https://github.com/notice-cx/Ntasks/commit/a4fbe1b2a4b73f1dd930d729883e3242a2fe57ca))
+* **ui:** let a host keep the sidebar behind its Sidebar button ([7204792](https://github.com/notice-cx/Ntasks/commit/720479287d118ab52c59ee284773156c6b9fd3aa))
+
+
+### Bug Fixes
+
+* **api:** move a merged task to live when a deploy shipped it unnamed ([0caf9c5](https://github.com/notice-cx/Ntasks/commit/0caf9c5f32f4572889e585410fa9d2198c65afda))
+* **api:** record a pick's choice.note as absent or a string in version 1 ([270fc02](https://github.com/notice-cx/Ntasks/commit/270fc02c6f18a83d70c76cdaf3094d62cd41f959))
+* **api:** record a pick's choice.note as absent or a string in version 1 ([7012aab](https://github.com/notice-cx/Ntasks/commit/7012aabdb8adfffa5bc67bddf19231914dc41fef))
+
 ## [0.3.0](https://github.com/notice-cx/Ntasks/compare/v0.2.0...v0.3.0) (2026-11-10)
 
 
