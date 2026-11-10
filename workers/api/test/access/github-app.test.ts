@@ -301,10 +301,14 @@ describe('the app’s deliveries', () => {
     await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
     const { projectId, id } = await taskWithPullRequest(owner, 38);
     const merge = newCommit();
-    await deliver('pull_request', merged(mine, 38, merge));
+    // GitHub merged two minutes before its event reached Ntasks; the merge time is GitHub's.
+    const mergedAt = new Date(Date.now() - 120_000).toISOString();
+    const event = merged(mine, 38, merge);
+    await deliver('pull_request', { ...event, pull_request: { ...event.pull_request, merged_at: mergedAt } });
+    expect((await taskOf(projectId, id)).delivery?.mergedAt).toBe(mergedAt);
     const queue = 'gh-readonly-queue/main/pr-38-0123abc';
-    const beforeMerge = new Date(Date.now() - 60_000).toISOString();
-    const afterMerge = new Date(Date.now() + 60_000).toISOString();
+    const beforeMerge = new Date(Date.now() - 180_000).toISOString();
+    const afterMerge = new Date(Date.now() - 60_000).toISOString();
 
     // GitHub names a commit's check suite for the branch first pushed with it: the queue's, for a queued merge.
     const otherQueue = passed(
@@ -323,6 +327,7 @@ describe('the app’s deliveries', () => {
       moved: [],
     });
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    // One that started after GitHub's merge counts, even before Ntasks heard of the merge.
     expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, queue, afterMerge))).body).toEqual({
       moved: [{ id, stage: 'live' }],
     });

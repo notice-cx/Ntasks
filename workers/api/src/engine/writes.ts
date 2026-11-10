@@ -759,6 +759,8 @@ export class Writes {
         )
         .all<StoredTaskRow & { readonly deploys: number }>();
       const at = this.#now();
+      // The time the change reached the stage, as the sender knows it, but never later than now.
+      const reached = signal.at !== undefined && signal.at < at ? signal.at : at;
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
@@ -782,8 +784,8 @@ export class Writes {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
-          mergedAt: stage === 'merged' ? at : current.mergedAt,
-          liveAt: stage === 'live' ? at : null,
+          mergedAt: stage === 'merged' ? reached : current.mergedAt,
+          liveAt: stage === 'live' ? reached : null,
         };
         statements.push(
           this.#db

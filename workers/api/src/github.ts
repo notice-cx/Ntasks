@@ -119,7 +119,8 @@ function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes
 
 /** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
 export type GitHubEvent =
-  { readonly signal: Args; readonly newDeploy?: string; readonly mergedBy?: string } | { readonly ignored: string };
+  | { readonly signal: Args; readonly newDeploy?: string; readonly mergedBy?: string; readonly at?: string }
+  | { readonly ignored: string };
 
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
@@ -142,7 +143,10 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       if (base !== defaultBranch)
         return { ignored: `merged into ${base ?? 'another branch'}, not the default branch, so no task moves` };
       const url = textAt(payload, 'pull_request', 'html_url');
+      // GitHub's merge time, not this delivery's arrival: a deploy is told from a preview by it.
+      const mergedAt = textAt(payload, 'pull_request', 'merged_at');
       return {
+        ...(mergedAt === undefined ? {} : { at: mergedAt }),
         signal: {
           repository,
           stage: 'merged',
@@ -292,6 +296,7 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     signal = {
       ...signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
       ...(event.mergedBy === undefined ? {} : { mergedBy: event.mergedBy }),
+      ...(event.at === undefined ? {} : { at: event.at }),
     };
   } catch (error) {
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);

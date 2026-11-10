@@ -428,6 +428,12 @@ export interface DeliverySignal {
    * of it, not the deploy that shipped it.
    */
   readonly mergedBy?: string;
+  /**
+   * When the change reached the stage, as the sender knows it, such as the
+   * time GitHub merged a pull request, in UTC ISO 8601 text. Left out, or
+   * later than the signal's arrival, it is the arrival.
+   */
+  readonly at?: string;
 }
 
 /**

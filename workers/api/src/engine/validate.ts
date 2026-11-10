@@ -811,5 +811,6 @@ export function deliverySignal(value: DeliverySignal): DeliverySignal {
     pullRequests,
     commits,
     ...(value.mergedBy === undefined ? {} : { mergedBy: instant(value.mergedBy, 'mergedBy') }),
+    ...(value.at === undefined ? {} : { at: instant(value.at, 'at') }),
   };
 }
