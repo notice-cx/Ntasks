@@ -109,6 +109,8 @@ export interface GitHubCalls {
   readonly repositories: Map<number, string[]>;
   /** Each pull request the Worker read, as `owner/name#number`. */
   readonly pullReads: string[];
+  /** Whether the list of an installation's repositories leaves out repository_selection, which GitHub's schema makes optional. */
+  omitSelection: boolean;
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -135,6 +137,7 @@ export function standInForGitHub(): GitHubCalls {
     installationTokens: [] as number[],
     repositories: new Map<number, string[]>(),
     pullReads: [] as string[],
+    omitSelection: false,
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -144,6 +147,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.installationTokens.length = 0;
     calls.repositories.clear();
     calls.pullReads.length = 0;
+    calls.omitSelection = false;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -204,10 +208,12 @@ export function standInForGitHub(): GitHubCalls {
           ...new Set([...calls.pulls.keys()].map((key) => key.slice(0, key.indexOf('#')))),
         ];
         const selection = calls.repositories.has(Number(reading)) ? 'selected' : 'all';
+        const perPage = Number(url.searchParams.get('per_page') ?? '30');
+        const page = Number(url.searchParams.get('page') ?? '1');
         return Response.json({
           total_count: names.length,
-          repository_selection: selection,
-          repositories: names.map((full_name) => ({ full_name })),
+          ...(calls.omitSelection ? {} : { repository_selection: selection }),
+          repositories: names.slice((page - 1) * perPage, page * perPage).map((full_name) => ({ full_name })),
         });
       }
       const pull = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/u.exec(url.href);

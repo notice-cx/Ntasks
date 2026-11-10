@@ -451,4 +451,24 @@ describe('work waiting for a merge GitHub already made', () => {
     expect(github.pullReads).toContain(`${REPOSITORY}#60`);
     expect(github.pullReads).not.toContain(`${left}#61`);
   });
+
+  it('lists an installation’s repositories across pages, when GitHub leaves out its selection too', async () => {
+    const owner = await connected();
+    const outside = 'example/elsewhere';
+    const listed = await taskWithPullRequest(owner, 70);
+    const notListed = await taskWithPullRequest(owner, 71, outside);
+    github.pulls.set(`${REPOSITORY}#70`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+    github.pulls.set(`${outside}#71`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+    await runDurableObjectAlarm(store());
+
+    // 150 repositories, the task's on the second page of 100, and no repository_selection.
+    const mine = newInstallation();
+    github.repositories.set(mine, [...Array.from({ length: 149 }, (_, i) => `example/repo-${i}`), REPOSITORY]);
+    github.omitSelection = true;
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(listed.projectId, listed.id)).delivery?.stage).toBe('merged');
+    expect((await taskOf(notListed.projectId, notListed.id)).delivery?.stage).toBe('built');
+    expect(github.pullReads).not.toContain(`${outside}#71`);
+  });
 });
