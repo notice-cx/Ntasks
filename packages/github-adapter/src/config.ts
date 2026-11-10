@@ -59,9 +59,22 @@ export function checkConfig(value: AdapterConfig): AdapterConfig {
     prefixes.add(project.prefix);
     if (!REPOSITORY.test(project.repository)) fail(`${project.projectId}: repository is owner/name`);
   }
-  const ids = new Set(value.projects.map((project) => project.projectId));
+  const ids = new Set<string>();
+  const keys = new Set<string>();
+  for (const project of value.projects) {
+    if (ids.has(project.projectId)) fail(`another project has the projectId ${project.projectId}`);
+    if (keys.has(project.key)) fail(`${project.projectId}: another project has the key ${project.key}`);
+    ids.add(project.projectId);
+    keys.add(project.key);
+  }
+  // A sender's kind decides how its changes are recorded; a token signs in one sender only.
+  const tokens = new Set<string>();
   for (const sender of value.senders) {
+    if (!(['agent', 'service', 'person'] as const).includes(sender.kind))
+      fail(`${sender.name}: kind is agent, service or person`);
     if (!/^[0-9a-f]{64}$/u.test(sender.tokenSha256)) fail(`${sender.name}: tokenSha256 is a SHA-256 in hexadecimal`);
+    if (tokens.has(sender.tokenSha256)) fail(`${sender.name}: another sender has the same tokenSha256`);
+    tokens.add(sender.tokenSha256);
     for (const project of Object.keys(sender.projects))
       if (!ids.has(project)) fail(`${sender.name}: ${project} names no project`);
   }
