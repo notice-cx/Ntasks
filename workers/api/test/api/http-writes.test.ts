@@ -479,7 +479,9 @@ describe('POST /api/tasks/:id/comments', () => {
     );
     expect(first).toEqual({
       status: 200,
-      body: { comment: { id: expect.any(String), author: WRITER.name, text: 'Noted.', createdAt: time.now() } },
+      body: {
+        comment: { id: expect.any(String), author: WRITER.name, text: 'Noted.', createdAt: time.now(), pinned: false },
+      },
     });
     expect(
       await send(target, 'POST', `/api/tasks/${id}/comments`, { projectId: project.id, text: 'Noted.' }, headers),

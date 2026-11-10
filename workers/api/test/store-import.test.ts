@@ -220,6 +220,7 @@ describe('an import into the task store', () => {
         close_acceptance: null,
         ...row,
       })),
+      task_comments: ROWS.task_comments.map((row) => ({ pinned: 0, ...row })),
     };
     for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });

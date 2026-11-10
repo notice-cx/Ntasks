@@ -1,5 +1,6 @@
 // The database's rows, and how each becomes a record of the engine contract.
 import type {
+  ClosedSibling,
   CustomField,
   DeliveryStage,
   DependencyType,
@@ -129,6 +130,20 @@ export interface CommentRow {
   readonly author: string;
   readonly text: string;
   readonly created_at: string;
+  readonly pinned: number;
+}
+
+/** A closed child of a task's parent, as parentContext reads it. */
+export interface ClosedSiblingRow {
+  readonly id: string;
+  readonly title: string;
+  readonly resolution: TaskResolution;
+  readonly closed_at: string;
+  readonly closed_by: string | null;
+  readonly close_reason: string | null;
+  readonly delivery_commit: string | null;
+  readonly delivery_pull_request: string | null;
+  readonly close_link: string | null;
 }
 
 export interface EventRow {
@@ -264,7 +279,28 @@ export function toProject(row: ProjectRow): Project {
 }
 
 export function toComment(row: CommentRow): TaskComment {
-  return { id: row.id, taskId: row.task_id, author: row.author, text: row.text, createdAt: row.created_at };
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    author: row.author,
+    text: row.text,
+    createdAt: row.created_at,
+    pinned: row.pinned === 1,
+  };
+}
+
+export function toClosedSibling(row: ClosedSiblingRow): ClosedSibling {
+  return {
+    id: row.id,
+    title: row.title,
+    resolution: row.resolution,
+    closedAt: row.closed_at,
+    closedBy: row.closed_by,
+    reason: row.close_reason,
+    commit: row.delivery_commit,
+    pullRequest: row.delivery_pull_request,
+    link: row.close_link,
+  };
 }
 
 export function toEvent(row: EventRow): TaskEvent {

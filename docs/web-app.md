@@ -22,7 +22,10 @@ moving, Every task done and No tasks. Each line shows how many of its tasks
 wait for you or are blocked, a bar of its tasks by status, its tasks done of
 all, and how many closed this week, counting its sub-epics' tasks too.
 
-**Task page.** Markdown text, Done when, activity and the task's facts.
+**Task page.** Markdown text, Done when, activity and the task's facts. A
+task in an epic also shows From the epic: the comments pinned on the epic
+for its tasks, and the epic's most recently closed tasks with their close
+reasons. A pinned comment is marked Pinned among its own task's comments.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/task-dark.webp">

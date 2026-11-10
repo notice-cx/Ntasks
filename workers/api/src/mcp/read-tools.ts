@@ -23,7 +23,16 @@ import { reachable, type Principal } from '../auth.ts';
 import { linksSeenBy, projectOf, taskOf } from '../lookup.ts';
 import { allEvents, board, CLOSED_DAYS, CLOSED_HISTORY_DAYS, withExternalLinks } from '../service.ts';
 import type { Workspace } from '../workspaces.ts';
-import { childView, commentView, historyView, mcpSummary, mcpTask, proposalOf, proposalVersionOf } from '../views.ts';
+import {
+  childView,
+  commentView,
+  historyView,
+  mcpSummary,
+  mcpTask,
+  parentView,
+  proposalOf,
+  proposalVersionOf,
+} from '../views.ts';
 import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
 import {
   booleanArg,
@@ -304,14 +313,18 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
   },
   {
     name: 'get_task',
-    description: `Read one task with its comments, or up to ${MANY} with tasks.`,
+    description:
+      `Read one task with its comments, or up to ${MANY} with tasks. ` +
+      "One task in an epic also shows parent: the epic's pinned comments, facts its other tasks left for this one, " +
+      'and its most recently closed tasks, each with its close reason and proof.',
     inputSchema: schema({ project: PROJECT, task: TASK, tasks: TASKS('read') }),
     annotations: READ,
     scope: 'tasks:read',
     async run(context, args) {
       if (args.task !== undefined && args.tasks !== undefined)
         refuse('invalid arguments: task and tasks (name one task with task, or several with tasks)');
-      if (args.tasks === undefined) return { ...(await oneTask(context, args, taskArg(args))), readAt: context.now() };
+      if (args.tasks === undefined)
+        return { ...(await oneTask(context, args, taskArg(args), true)), readAt: context.now() };
       const value = args.tasks;
       if (!Array.isArray(value) || value.length < 1 || value.length > MANY)
         refuse(`invalid arguments: tasks (1–${MANY} task ids)`);
@@ -322,7 +335,7 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const tasks = await Promise.all(
         ids.map(async (id) => {
           try {
-            return await oneTask(context, args, id);
+            return await oneTask(context, args, id, false);
           } catch (error) {
             if (error instanceof Refused) return { id, error: error.message };
             // A fault's message can carry storage internals: only the tool's name is logged.
@@ -369,14 +382,18 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
 ]);
 
 /** One task as get_task reads it: in full, with its comments, the proposal an
- * answer is checked against and, for an epic, its open children with who works on each. */
-async function oneTask(context: ToolContext, args: Args, taskId: string) {
+ * answer is checked against and, for an epic, its open children with who
+ * works on each. Read alone, a task with a parent also shows what the parent
+ * holds for it; a read of many leaves that out, so siblings read together do
+ * not repeat their parent's. */
+async function oneTask(context: ToolContext, args: Args, taskId: string, alone: boolean) {
   const { engine } = context;
   const project = await projectOf(context, await projectFor(context, args, taskId));
-  const [task, comments, links] = await Promise.all([
+  const [task, comments, links, parent] = await Promise.all([
     taskOf(context, project, taskId),
     engine.listComments(project.id, taskId),
     linksSeenBy(context),
+    alone ? engine.parentContext(project.id, taskId) : null,
   ]);
   const children =
     task.type === 'epic'
@@ -389,6 +406,7 @@ async function oneTask(context: ToolContext, args: Args, taskId: string) {
   return {
     project: project.key,
     task: mcpTask(links.task(task)),
+    ...(parent === null ? {} : { parent: parentView(parent) }),
     ...(children === null ? {} : { openChildren: children.map(childView) }),
     comments: comments.map(commentView),
     proposal: proposalOf(task),

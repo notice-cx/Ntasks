@@ -18,11 +18,19 @@ import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ACCEPTED_REASON, type TaskResolution } from '@ntasks/domain';
 import { ApiError } from '../api/client';
-import type { LiveEpic, LiveTask, TaskActor, TaskChoiceKey, TaskComment, TaskProject } from '../api/types';
+import type {
+  LiveEpic,
+  LiveTask,
+  ParentContext,
+  TaskActor,
+  TaskChoiceKey,
+  TaskComment,
+  TaskProject,
+} from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { PageSkeleton, ReadFailed } from '../components/surface';
-import { Progress } from '../components/ui/badge';
+import { Badge, Progress } from '../components/ui/badge';
 import { LinkedText } from '../components/ui/linked-text';
 import { Button, IconButton } from '../components/ui/button';
 import { OptionList } from '../components/ui/choice';
@@ -63,6 +71,7 @@ import {
   RESOLUTION_LABELS,
   type NotDone,
 } from '../lib/task-model';
+import { ageMs, formatAge } from '../lib/format';
 import { usePaths } from '../lib/paths';
 import { taskPrefix } from '../lib/task-path';
 import { cn } from '../lib/utils';
@@ -124,6 +133,7 @@ export function TaskRoute() {
           path={path(task.parent ? { id: task.parent, title: parentTitle } : null)}
           fetchedAt={detail.dataUpdatedAt || null}
           comments={detail.data.comments}
+          parentContext={detail.data.parent ?? null}
           actors={detail.data.actors}
           shown={detail.data.proposalVersion ?? task.proposalVersion ?? null}
           parent={parent}
@@ -195,6 +205,7 @@ function TaskPage({
   path,
   fetchedAt,
   comments,
+  parentContext,
   actors,
   shown,
   parent,
@@ -210,6 +221,8 @@ function TaskPage({
   /** When this browser received the task's read, by its own clock. */
   fetchedAt: number | null;
   comments: TaskComment[];
+  /** What the task's parent holds for it, from the task's read; null when it has no parent. */
+  parentContext: ParentContext | null;
   actors: readonly TaskActor[] | undefined;
   /** The proposal version the task's read returned, which an acceptance names. */
   shown: string | null;
@@ -545,6 +558,7 @@ function TaskPage({
           {epic || siblings.some((row) => row.parent === task.id) ? (
             <EpicTasks epic={epic} tasks={siblings.filter((row) => row.parent === task.id)} />
           ) : null}
+          {parentContext ? <FromTheEpic parent={parentContext} actors={actors} nowMs={nowMs} /> : null}
           <Activity task={task} project={key} comments={comments} actors={actors} nowMs={nowMs} />
         </div>
       </div>
@@ -1183,6 +1197,76 @@ function EpicTasks({ epic, tasks }: { epic: LiveEpic | null; tasks: readonly Liv
   );
 }
 
+/**
+ * What the task's epic holds for it: the facts its tasks pinned for each
+ * other, newest first, and the tasks of the epic that closed, each with why
+ * and what proves it. Nothing shows while the epic holds neither.
+ */
+function FromTheEpic({
+  parent,
+  actors,
+  nowMs,
+}: {
+  parent: ParentContext;
+  actors: readonly TaskActor[] | undefined;
+  nowMs: number;
+}) {
+  const paths = usePaths();
+  if (parent.pinnedTotal === 0 && parent.closedSiblingsTotal === 0) return null;
+  const more = (shown: number, total: number) =>
+    total > shown ? (
+      <Link to={paths.task(parent.id)} className="text-sm text-accent-text no-underline hover:underline">
+        {total - shown} more on {parent.id}
+      </Link>
+    ) : null;
+  return (
+    <section aria-label="From the epic" className="flex flex-col gap-4" data-parent-context="">
+      <SectionHeading title="From the epic">
+        <Link to={paths.task(parent.id)} className="nums text-sm text-ink-3 no-underline hover:underline">
+          {parent.title}
+        </Link>
+      </SectionHeading>
+      {parent.pinned.length > 0 ? (
+        <div className="flex flex-col gap-2" data-parent-pinned="">
+          <h3 className="m-0 text-xs font-semibold text-ink-2">Pinned for its tasks</h3>
+          <ul className="m-0 flex list-none flex-col gap-3 p-0">
+            {parent.pinned.map((comment) => (
+              <li key={comment.id} className="flex flex-col gap-1" data-pinned-comment={comment.id}>
+                <MarkdownText source={comment.text} />
+                <span className="text-xs text-ink-3">
+                  {actorOf(comment.author, null, actors).name}
+                  {comment.createdAt ? ` · ${formatAge(ageMs(nowMs, comment.createdAt))}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {more(parent.pinned.length, parent.pinnedTotal)}
+        </div>
+      ) : null}
+      {parent.closedSiblings.length > 0 ? (
+        <div className="flex flex-col gap-2" data-parent-closed="">
+          <h3 className="m-0 text-xs font-semibold text-ink-2">Closed in this epic</h3>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {parent.closedSiblings.map((sibling) => (
+              <li key={sibling.id} className="flex flex-col" data-closed-sibling={sibling.id}>
+                <div className="flex min-h-8 items-center">
+                  <TaskLinkRow row={{ kind: 'task', id: sibling.id, title: sibling.title, status: 'closed' }} />
+                </div>
+                {sibling.closeReason ? (
+                  <div className="ps-6 text-sm text-ink-2">
+                    <MarkdownText source={sibling.closeReason} />
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {more(parent.closedSiblings.length, parent.closedSiblingsTotal)}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /** Filing, the claim, every comment and the close, oldest first, then the comment box. */
 function Activity({
   task,
@@ -1225,6 +1309,11 @@ function Activity({
         label: (
           <>
             <b>{who.name}</b> commented
+            {comment.pinned ? (
+              <span className="ms-2" data-comment-pinned="">
+                <Badge>Pinned</Badge>
+              </span>
+            ) : null}
           </>
         ),
         body: <MarkdownText source={comment.text} />,

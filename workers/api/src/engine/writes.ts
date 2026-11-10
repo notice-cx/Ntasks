@@ -8,6 +8,7 @@ import {
   TaskRefused,
   WORK_DETAILS,
   type Actor,
+  type CommentPins,
   type CommentResult,
   type CreateProjectInput,
   type CreateTaskInput,
@@ -271,6 +272,70 @@ export class Writes {
       at,
       changes: JSON.stringify(changes),
     });
+  }
+
+  /**
+   * The statements that add comment `id` to `task` with its history event,
+   * pinned or not as `pins` says, and unpin the comments `pins` names. The
+   * event records both, so the task's history says who pinned and unpinned
+   * what, and when. The task's version stays as it is: the event records
+   * `version`, or with null the version the task stands at when the batch runs.
+   */
+  #comment(
+    task: { id: string; projectId: string },
+    version: number | null,
+    id: string,
+    text: string,
+    pins: check.CheckedPins | null,
+    actor: Actor,
+    at: string,
+  ): Statement[] {
+    const unpin = pins?.unpin ?? [];
+    const changes: JsonObject = {
+      commentId: id,
+      text,
+      ...(pins?.pin === true ? { pinned: true } : {}),
+      ...(unpin.length > 0 ? { unpinned: [...unpin] } : {}),
+    };
+    const event =
+      version === null
+        ? this.#db
+            .prepare(
+              `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes)
+               SELECT id, project_id, version, 'commented', ?2, ?3, ?4, ?5 FROM tasks WHERE id = ?1`,
+            )
+            .bind(task.id, actor.name, actor.model ?? null, at, JSON.stringify(changes))
+        : this.#event(task, version, 'commented', actor, at, changes);
+    return [
+      this.#insert('task_comments', {
+        id,
+        task_id: task.id,
+        author: actor.name,
+        text,
+        created_at: at,
+        pinned: pins?.pin === true ? 1 : 0,
+      }),
+      ...unpin.map((commentId) =>
+        this.#db.prepare('UPDATE task_comments SET pinned = 0 WHERE id = ?1 AND task_id = ?2').bind(commentId, task.id),
+      ),
+      event,
+    ];
+  }
+
+  /** Refuses pins that unpin a comment which is not a pinned comment of the task. */
+  async #canUnpin(taskId: string, pins: check.CheckedPins | null): Promise<void> {
+    const wanted = pins?.unpin ?? [];
+    if (wanted.length === 0) return;
+    const { results } = await this.#db
+      .prepare(
+        `SELECT m.id FROM json_each(?2) wanted CROSS JOIN task_comments m ON m.id = wanted.value
+         WHERE m.task_id = ?1 AND m.pinned = 1`,
+      )
+      .bind(taskId, JSON.stringify(wanted))
+      .all<{ id: string }>();
+    const pinned = new Set(results.map((row) => row.id));
+    const not = wanted.filter((id) => !pinned.has(id));
+    if (not.length > 0) refuse('invalid', `${not.join(', ')} is not a pinned comment of ${taskId}`);
   }
 
   /** Adds an external link, or gives the one to the same URL this title and kind. */
@@ -960,7 +1025,14 @@ export class Writes {
         await this.#db.batch(statements);
         const result = await this.#result(projectId, taskId, recorded.created, false);
         if (commentId === null || write.comment === null) return result;
-        const comment: TaskComment = { id: commentId, taskId, author: actor.name, text: write.comment, createdAt: at };
+        const comment: TaskComment = {
+          id: commentId,
+          taskId,
+          author: actor.name,
+          text: write.comment,
+          createdAt: at,
+          pinned: write.pins?.pin === true,
+        };
         return { ...result, comment };
       } catch (error) {
         // The same retried request may have committed while this attempt ran;
@@ -1007,6 +1079,7 @@ export class Writes {
     if (closed && !write.reopen && set.status !== undefined)
       refuse('invalid', 'Reopen a closed task before changing its status.');
     if (current.type === 'gate' && set.type !== undefined) refuse('invalid', "A gate's type cannot change.");
+    await this.#canUnpin(taskId, write.pins);
 
     if (set.title !== undefined) change('title', 'title', set.title);
     if (set.description !== undefined) change('description', 'description', set.description);
@@ -1207,16 +1280,7 @@ export class Writes {
     return (gateId) => {
       const comment = (version: number): Statement[] => {
         if (write.comment === null || commentId === null) return [];
-        return [
-          this.#insert('task_comments', {
-            id: commentId,
-            task_id: taskId,
-            author: actor.name,
-            text: write.comment,
-            created_at: at,
-          }),
-          this.#event(current, version, 'commented', actor, at, { commentId, text: write.comment }),
-        ];
+        return this.#comment(current, version, commentId, write.comment, write.pins, actor, at);
       };
       if (commentOnly) {
         // The write was planned from this version of the task; the batch fails whole if it moved since.
@@ -1402,10 +1466,12 @@ export class Writes {
     textInput: string,
     actorInput: Actor,
     retryInput?: Retry,
+    pinsInput?: CommentPins,
   ): Promise<CommentResult> {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const text = check.text(textInput, 'comment', 4096, true);
+    const pins = check.pins(pinsInput);
     const [row] = await this.#reads.taskRows(projectId, [taskId]);
     if (row === undefined) refuse('not_found');
     const replayComment = async (): Promise<CommentResult | null> => {
@@ -1418,24 +1484,23 @@ export class Writes {
     };
     const replayed = await replayComment();
     if (replayed !== null) return replayed;
+    await this.#canUnpin(taskId, pins);
     const id = crypto.randomUUID();
     const at = this.#now();
     try {
       await this.#db.batch([
         ...this.#staleReceipt(retry),
-        this.#insert('task_comments', { id, task_id: taskId, author: actor.name, text, created_at: at }),
-        this.#db
-          .prepare(
-            `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes)
-             SELECT id, project_id, version, 'commented', ?2, ?3, ?4, ?5 FROM tasks WHERE id = ?1`,
-          )
-          .bind(taskId, actor.name, actor.model ?? null, at, JSON.stringify({ commentId: id, text })),
+        // A write may land between the read above and this batch: the event records the version then.
+        ...this.#comment({ id: taskId, projectId: row.project_id }, null, id, text, pins, actor, at),
         ...this.#receipt(retry, projectId, { commentId: id }, at, [taskId]),
       ]);
     } catch (error) {
       failureOf(error);
       return (await replayComment()) ?? refuse('retry_conflict');
     }
-    return { comment: { id, taskId, author: actor.name, text, createdAt: at }, replayed: false };
+    return {
+      comment: { id, taskId, author: actor.name, text, createdAt: at, pinned: pins?.pin === true },
+      replayed: false,
+    };
   }
 }

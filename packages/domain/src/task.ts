@@ -134,7 +134,16 @@ export const TASK_LIMITS = Object.freeze({
   stepText: 1024,
   stepCommand: 4096,
   stepNote: 1024,
+  /** The most pinned comments one new comment unpins. */
+  unpin: 32,
 });
+
+/**
+ * How much of a task's parent a read of the task shows (ParentContext): its
+ * newest pinned comments and its most recently closed other children. The
+ * totals say how many more there are; a read of the parent shows them all.
+ */
+export const PARENT_CONTEXT_LIMITS = Object.freeze({ pinned: 10, closedSiblings: 5 });
 
 /** A JSON value, as stored in a task's metadata, choices and history. */
 export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
@@ -340,6 +349,41 @@ export interface TaskComment {
   readonly author: string;
   readonly text: string;
   readonly createdAt: string;
+  /** Pinned when it was added, as a fact later work needs, and not unpinned since. A
+   * comment pinned on an epic is shown with each of its children (ParentContext). */
+  readonly pinned: boolean;
+}
+
+/** One of a task's siblings that closed, as a read of the task shows it: how it ended, why, and what proves it. */
+export interface ClosedSibling {
+  readonly id: string;
+  readonly title: string;
+  readonly resolution: TaskResolution;
+  readonly closedAt: string;
+  /** Null on a task imported without a recorded closer. */
+  readonly closedBy: string | null;
+  readonly reason: string | null;
+  /** The commit and pull request it closed with, and the link a close as done named. */
+  readonly commit: string | null;
+  readonly pullRequest: string | null;
+  readonly link: string | null;
+}
+
+/**
+ * What a task's parent holds for the work under it: the parent's pinned
+ * comments, newest first, and its other children that closed, most recently
+ * closed first, each cut to PARENT_CONTEXT_LIMITS, with how many there are in
+ * all. It carries the facts an epic's earlier tasks left for the later ones.
+ */
+export interface ParentContext {
+  readonly id: string;
+  readonly title: string;
+  readonly type: TaskType;
+  readonly status: TaskStatus;
+  readonly pinned: readonly TaskComment[];
+  readonly pinnedTotal: number;
+  readonly closedSiblings: readonly ClosedSibling[];
+  readonly closedSiblingsTotal: number;
 }
 
 /** One change to a task, as its history records it. */

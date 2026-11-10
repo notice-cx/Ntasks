@@ -305,6 +305,28 @@ describe('rules the database keeps whatever code writes to it', () => {
     );
   });
 
+  it('lets a pinned comment be unpinned, and never pins an unpinned one again', async () => {
+    const { taskId } = await newTask();
+    const id = crypto.randomUUID();
+    await insert('task_comments', {
+      id,
+      task_id: taskId,
+      author: 'tester',
+      text: 'Every page shares the header.',
+      created_at: NOW,
+      pinned: 1,
+    }).run();
+    const set = (sql: string) => db.prepare(`UPDATE task_comments SET ${sql} WHERE id = ?`).bind(id).run();
+
+    await expect(set("text = 'Changed.', pinned = 0")).rejects.toThrow(/comments are never edited/u);
+    await set('pinned = 0');
+    await expect(set('pinned = 1')).rejects.toThrow(/comments are never edited/u);
+    expect(await db.prepare('SELECT text, pinned FROM task_comments WHERE id = ?').bind(id).first()).toEqual({
+      text: 'Every page shares the header.',
+      pinned: 0,
+    });
+  });
+
   it('refuses a closed task that does not record its close', async () => {
     await expect(newTask({ status: 'closed' })).rejects.toThrow(/CHECK constraint failed/u);
   });

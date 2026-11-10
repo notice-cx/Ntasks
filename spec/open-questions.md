@@ -214,3 +214,12 @@ renumbers them, and an acceptance relayed by number depends on the
 proposal version it names. A list of criteria with stable ids would let a
 person tick them one by one before the close, and let a server check each
 one, at the cost of a second way to write what shows a task done.
+
+### OQ-26
+
+**How much of a parent's context should a read show?** <a id="oq-26"></a>
+([3.4](protocol.md#34-comment), [STATE-17](protocol.md#state-17)) Ntasks
+shows a child its parent's 10 newest pinned comments and 5 most recently
+closed other children, with the totals, so a read of one task stays short
+however large its epic grows. The protocol could fix these numbers, let a
+reader ask for more, or leave each server to state its own.

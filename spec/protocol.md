@@ -235,6 +235,27 @@ A comment adds a note or evidence to a task: its `id`, `author` (an actor),
 `text` of at most 4,096 characters and `createdAt`. A comment never changes
 the task's version, and is never edited or deleted ([INV-6](#inv-6)).
 
+A comment MAY be **pinned** when it is added, as a fact that later work
+needs; a server at the Live work level answers `pinned` on every comment. A
+later comment on the same task MAY unpin pinned comments, such as the facts
+it corrects. A task's **parent context** is what its parent holds for it:
+the parent's `id`, `title`, `type` and `status`; its newest pinned comments,
+as `pinned`, with `pinnedTotal`; and its most recently closed other children,
+as `closedSiblings`, each with its `id`, `title`, `resolution`, `closedAt`,
+`closedBy`, `closeReason` and its proof (`commit`, `pullRequest`,
+`closeLink`), with `closedSiblingsTotal`. Ntasks shows the 10 newest pinned
+comments and the 5 most recently closed children
+([OQ-26](open-questions.md#oq-26)).
+
+**STATE-17.** <a id="state-17"></a>Pinning a comment and unpinning one MUST
+leave the task's version as a comment does, and its history MUST record who
+pinned or unpinned which comment. A server MUST refuse to unpin a comment
+that is not pinned on the task, adding nothing, and MUST NOT pin a comment
+again once it is unpinned. A read of one task that has a parent MUST answer
+its parent context, newest first in each list, without the parent's comments
+that are not pinned; the totals MUST count every pinned comment and every
+other closed child.
+
 ### 3.5 Links
 
 Schema: [`link`](schemas/link.schema.json).
@@ -712,7 +733,8 @@ commit as one.
 
 **INV-6. History is kept.** <a id="inv-6"></a>A server MUST NOT delete a
 task, a history event or a comment, and MUST NOT edit a history event or a
-comment. A task MUST keep its id, project and creation time
+comment's author, text or time; unpinning is the one change a comment takes
+([STATE-17](#state-17)). A task MUST keep its id, project and creation time
 ([OQ-17](open-questions.md#oq-17)).
 
 **INV-7. Done carries proof.** <a id="inv-7"></a>A sender closing a task,
@@ -755,7 +777,7 @@ the ones above it in this table.
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
 | **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step and acceptance as done; record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12 | Close with a commit or pull request; send a signal |
-| **Live work** | Work in hand | STATE-13, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request |
+| **Live work** | Work in hand, pinned comments, parent context | STATE-13, STATE-17, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; claim by pull request; pin and unpin a comment; read a task's parent context |
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that

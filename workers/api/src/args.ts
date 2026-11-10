@@ -14,6 +14,7 @@ import {
   TASK_TYPES,
   WORK_DETAILS,
   WORK_LIMITS,
+  type CommentPins,
   type ExternalLink,
   type FieldValue,
   type JsonObject,
@@ -217,6 +218,24 @@ export function keyArg(args: Args, name = 'idempotency_key'): string | undefined
     refuse(`invalid arguments: ${name} (8–128 of A–Z a–z 0–9 . _ : -; reuse it when retrying this call)`);
   }
   return value;
+}
+
+/** How a new comment changes pinned comments: `pin` true pins it, and
+ * `unpin` names pinned comments of its task to unpin. Undefined when it
+ * changes none; the engine checks the ids. */
+export function pinsArg(args: Args): CommentPins | undefined {
+  const pin = booleanArg(args, 'pin');
+  const unpin = args.unpin;
+  if (
+    unpin !== undefined &&
+    (!Array.isArray(unpin) ||
+      unpin.length > TASK_LIMITS.unpin ||
+      unpin.some((id) => typeof id !== 'string' || id === '' || id.length > 64))
+  )
+    refuse(`invalid arguments: unpin (at most ${TASK_LIMITS.unpin} ids of pinned comments on the task)`);
+  const ids = (unpin ?? []) as string[];
+  if (pin !== true && ids.length === 0) return undefined;
+  return { ...(pin === true ? { pin: true } : {}), ...(ids.length > 0 ? { unpin: ids } : {}) };
 }
 
 /** How much of the task a write's reply shows: "full" for all of it, as get_task shows it. */

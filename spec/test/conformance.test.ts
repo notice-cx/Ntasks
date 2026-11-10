@@ -48,6 +48,8 @@ const FAILS: Readonly<Record<Defect, readonly string[]>> = {
     'state-12-commit-prefix-matches',
     'state-12-pull-request-matches',
     'state-12-reopen-clears-delivery',
+    // A closed sibling's proof, which a child's parent context shows.
+    'state-17-parent-context',
   ],
   'models-dropped': ['inv-12-history-names-actor-and-model'],
   'held-tasks-hidden': [
