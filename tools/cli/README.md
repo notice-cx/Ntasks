@@ -97,8 +97,11 @@ changes is under one of the folders `exclude-paths` lists in
 `release-please-config.json`: the website, the docs, the protocol, the skill,
 the workflows and the tools other than `tools/cli`.
 
-Merging the pull request creates the tag `ntasks-v<version>` and its GitHub release,
-then starts the Release workflow (`.github/workflows/release.yml`) on that tag.
+When the pull request lists ntasks, merging it creates the tag
+`ntasks-v<version>` and its GitHub release, then starts the Release workflow
+(`.github/workflows/release.yml`) on that tag. A pull request that lists only
+`@notice-cx/ntasks-ui` starts no Release run; its steps are in
+[packages/ui](../../packages/ui/README.md#releasing).
 The workflow waits for the owner to approve the `npm` environment. It then
 checks and builds the repository and publishes `tools/cli/dist` to npm.
 
@@ -111,15 +114,18 @@ The owner's steps:
    request.
 2. When its checks pass, click **Merge when ready**, then **Confirm merge when
    ready**, at the bottom of the **Conversation** tab.
-3. When the Release run waits for review (GitHub emails the owner), open it,
-   click **Review deployments**, tick **npm** and click **Approve and deploy**.
-   When the pull request also releases `@notice-cx/ntasks-ui`, its Release UI
-   package run waits the same way.
+3. When the pull request lists ntasks, its Release run waits for review
+   (GitHub emails the owner): open it, click **Review deployments**, tick
+   **npm** and click **Approve and deploy**. When the pull request also
+   releases `@notice-cx/ntasks-ui`, its Release UI package run waits the same
+   way.
 
 When more changes reach `main` before the pull request merges, release-please
 rebuilds it, and the new CI run waits for approval again: repeat step 1.
 
 To run a failed or rejected publish again, open **Actions**, choose
 **Release**, click **Run workflow**, pick the tag `ntasks-v<version>` under **Use
-workflow from** and click **Run workflow**. The workflow stops if it is run on a
-branch, or on a tag that does not name the version in `tools/cli/package.json`.
+workflow from** and click **Run workflow**. Releases up to 0.3.0 use the tag
+`v<version>` instead, such as `v0.3.0`: the workflow at those tags checks that
+name. The workflow stops if it is run on a branch, or on a tag that does not
+name the version in `tools/cli/package.json`.

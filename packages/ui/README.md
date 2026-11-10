@@ -308,9 +308,11 @@ folder's `CHANGELOG.md`. Before 1.0.0, a `feat` commit or a breaking change
 raises the minor version and any other commit the patch version
 (`release-please-config.json`).
 
-Merging the pull request creates the tag `ui-v<version>` and its GitHub
-release, then starts the Release UI package workflow
-(`.github/workflows/release-ui.yml`) on that tag. The workflow waits for the
+When the pull request lists `@notice-cx/ntasks-ui`, merging it creates the tag
+`ui-v<version>` and its GitHub release, then starts the Release UI package
+workflow (`.github/workflows/release-ui.yml`) on that tag. A pull request that
+lists only `ntasks` starts no Release UI package run; its steps are in
+[tools/cli](../../tools/cli/README.md#releasing). The workflow waits for the
 owner to approve the `npm` environment. It then runs every check, the host
 check, then `npm publish --provenance` of the tarball `pnpm pack` writes.
 
@@ -323,10 +325,10 @@ The owner's steps:
    request.
 2. When its checks pass, click **Merge when ready**, then **Confirm merge when
    ready**, at the bottom of the **Conversation** tab.
-3. When the Release UI package run waits for review (GitHub emails the owner), open it,
-   click **Review deployments**, tick **npm** and click **Approve and deploy**.
-   When the pull request also releases `ntasks`, its Release run waits the same
-   way.
+3. When the pull request lists `@notice-cx/ntasks-ui`, its Release UI package
+   run waits for review (GitHub emails the owner): open it, click **Review
+   deployments**, tick **npm** and click **Approve and deploy**. When the pull
+   request also releases `ntasks`, its Release run waits the same way.
 
 When more changes reach `main` before the pull request merges, release-please
 rebuilds it, and the new CI run waits for approval again: repeat step 1.
