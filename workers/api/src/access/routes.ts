@@ -301,9 +301,9 @@ async function serviceRegistration(
     response_types: ['code'],
     scope: registration.scope.join(' '),
   };
-  const created = await createAuth(env.DB, config, { appRegistration: { token, workspaceId } }).handler(
-    new Request(config.origin + REGISTER_PATH, { method: 'POST', headers, body: JSON.stringify(metadata) }),
-  );
+  const created = await createAuth(env.DB, config, {
+    appRegistration: { token, workspaceId, scopes: registration.scope },
+  }).handler(new Request(config.origin + REGISTER_PATH, { method: 'POST', headers, body: JSON.stringify(metadata) }));
   if (created.status !== 201) return created;
   // Answered in Ntasks's own recorded shape, not the library's, which may grow on an upgrade.
   await created.body?.cancel();

@@ -46,9 +46,13 @@ interface AuthOptions {
    * A service registering a connected app of its workspace, for the one
    * request whose service credential was verified: the library takes that
    * credential as RFC 7591's initial access token, stores the client as the
-   * workspace's app and lets it ask for a connected app's scopes.
+   * workspace's app and lets it hold the connected-app scopes it asked for.
    */
-  readonly appRegistration?: { readonly token: string; readonly workspaceId: string };
+  readonly appRegistration?: {
+    readonly token: string;
+    readonly workspaceId: string;
+    readonly scopes: readonly string[];
+  };
 }
 
 /**
@@ -63,7 +67,8 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
   // workspace's own service registers, can be granted tasks:decide.
   const scopes = [...APP_SCOPES, OFFLINE_ACCESS];
   const app = options.appRegistration;
-  const registrationScopes = app ? scopes : agentScopes;
+  // A service's app may hold only the scopes its registration asked for.
+  const registrationScopes = app ? [...app.scopes] : agentScopes;
   // The GitHub account this request's sign-in admitted, from the profile
   // GitHub just returned. Its invitations are accepted once its session is
   // made, when its user exists. An instance serves one request, so this holds

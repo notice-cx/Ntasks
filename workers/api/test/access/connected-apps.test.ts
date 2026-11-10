@@ -220,6 +220,19 @@ describe('a service registering its own connected app', () => {
     expect((task.choice as { by: string }).by).not.toMatch(/^service:/u);
   });
 
+  it('stores only the scopes a registration asked for', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const reader = await registerAsService(service.token, {
+      client_name: 'Reading Tower',
+      redirect_uris: [`${newOrigin()}/tasks/signed-in`],
+      scope: 'tasks:read offline_access',
+    });
+    expect(reader.status).toBe(201);
+    expect((await reader.json<{ scope: string }>()).scope.split(' ').sort()).toEqual(['offline_access', 'tasks:read']);
+  });
+
   it.each([
     [
       'a redirect address an app may not use',
