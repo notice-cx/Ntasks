@@ -334,6 +334,24 @@ export async function detectedOf(db: D1Database, workspaceId: string): Promise<D
   };
 }
 
+/** The names that count as deploys: the ones typed by hand, and the ones deliveries showed, each on or off. */
+export interface DeployNames {
+  readonly typed: readonly string[];
+  readonly detected: Detected['checks'];
+}
+
+/**
+ * Whether a check run or deployment named `name` is a deploy: typed by hand,
+ * or detected and not switched off. `looksLikeOne` says whether a name not
+ * seen before is a deploy, which is then recorded.
+ */
+export function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes' | 'new' | 'off' | 'no' {
+  if (names.typed.includes(name)) return 'yes';
+  const seen = names.detected.get(name);
+  if (seen !== undefined) return seen.on ? 'yes' : 'off';
+  return looksLikeOne ? 'new' : 'no';
+}
+
 /** Records what a delivery showed: a deploy check seen for the first time, and projects a deploy turned on. */
 export async function recordDetected(
   db: D1Database,

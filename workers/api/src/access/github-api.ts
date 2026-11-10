@@ -2,7 +2,8 @@
  * The calls Ntasks makes to GitHub's REST API as a workspace's GitHub App
  * (github-app.ts): a JSON Web Token signed with the app's private key
  * (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app),
- * exchanged for an installation's token, which reads a pull request. GitHub
+ * exchanged for an installation's token, which reads a pull request, a
+ * commit's check runs and whether one commit is in another's history. GitHub
  * hands the key over in PKCS #1 PEM, which Web Crypto does not import, so it
  * is wrapped as PKCS #8 first.
  */
@@ -182,4 +183,85 @@ export async function pullRequestState(
     base: typeof base.ref === 'string' ? base.ref : null,
     defaultBranch: typeof repo.default_branch === 'string' ? repo.default_branch : null,
   };
+}
+
+/** A time GitHub gives, as UTC ISO 8601 text, or null when it gives none that reads as one. */
+function timeOf(value: unknown): string | null {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/** A check run of a commit: its name, whether it completed with success, and when it started and completed. */
+export interface CheckRun {
+  readonly name: string;
+  readonly passed: boolean;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+}
+
+/** The most check runs of a commit read, in one request. */
+const CHECK_RUNS = 100;
+
+/**
+ * The latest check runs of `commit` in `repository`, up to CHECK_RUNS, read
+ * with an installation's token in one request; null when GitHub does not
+ * answer.
+ */
+export async function checkRunsOf(
+  token: string,
+  repository: string,
+  commit: string,
+): Promise<readonly CheckRun[] | null> {
+  const response = await fetch(`${API}/repos/${repository}/commits/${commit}/check-runs?per_page=${CHECK_RUNS}`, {
+    headers: { ...HEADERS, authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (response === null) return null;
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return null;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const runs = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).check_runs : null;
+  if (!Array.isArray(runs)) return null;
+  return runs.flatMap((entry: unknown) => {
+    if (entry === null || typeof entry !== 'object') return [];
+    const run = entry as Record<string, unknown>;
+    if (typeof run.name !== 'string') return [];
+    return [
+      {
+        name: run.name,
+        passed: run.status === 'completed' && run.conclusion === 'success',
+        startedAt: timeOf(run.started_at),
+        completedAt: timeOf(run.completed_at),
+      },
+    ];
+  });
+}
+
+/**
+ * Whether `commit` is in the history of `head` in `repository`, read with an
+ * installation's token in one request; null when GitHub does not answer.
+ * GitHub compares `head...commit`: `behind` or `identical` when it is.
+ */
+export async function inHistoryOf(
+  token: string,
+  repository: string,
+  head: string,
+  commit: string,
+): Promise<boolean | null> {
+  // Compared this way round, the answer lists only what `commit` adds after
+  // the two commits' merge base, which is nothing when it is in head's
+  // history, so the answer stays small however far apart they are.
+  const response = await fetch(`${API}/repos/${repository}/compare/${head}...${commit}?per_page=1`, {
+    headers: { ...HEADERS, authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (response === null) return null;
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return null;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const status = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).status : null;
+  if (typeof status !== 'string') return null;
+  return status === 'behind' || status === 'identical';
 }

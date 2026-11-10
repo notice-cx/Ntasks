@@ -855,21 +855,41 @@ so once for each project: an owner who turns the setting off again on the
 Projects page keeps it off.
 
 A merge GitHub made before the task closed sends its event too early to move
-the task, so the workspace's task store also asks GitHub itself, as the app:
+the task, and a deploy can ship a task that no delivery names, so the
+workspace's task store also asks GitHub itself, as the app:
 
 - about 5 seconds after a task closes as done with a pull request;
+- about 5 seconds after a delivery from GitHub moves a task;
 - when an owner installs the app, for the tasks already waiting for a merge,
   such as the ones closed before GitHub was connected.
 
-Each check reads the pull requests of the newest tasks waiting for a merge in
-repositories an installation reaches, and moves each one merged into its
-repository's default branch to `merged`, with its merge commit. An
+Each check first reads the pull requests of the newest tasks waiting for a
+merge in repositories an installation reaches, and moves each one merged into
+its repository's default branch to `merged`, with its merge commit. An
 installation on all of its account's repositories reaches every one; for an
 installation on selected repositories, the check lists them first, up to 200,
-and reads only pull requests in the ones listed. It makes at most 45 requests to GitHub, within the free plan's 50
-requests to other servers, so a check reads up to about 40 pull requests and
-the next close checks the rest. It signs in to GitHub with the app's private
-key.
+and reads only pull requests in the ones listed.
+
+Then it looks for the deploys of the tasks at `merged` that merged in the last
+day, in projects whose changes go live by a deploy, newest merge first. Such a
+task moves to `live` when either of these is true:
+
+- A later merge in its repository is `live`, and GitHub's comparison of the
+  two commits shows the task's merge commit in that merge's history. This is
+  the case when several pull requests merge within a minute and the host
+  builds only the last. The task goes live at the time the later merge did.
+- A deploy check on the task's merge commit passed and started at or after
+  the merge. This is the case when GitHub delivers the deploy before the
+  merge event, or the task closed after its deploy. The task goes live at the
+  time the check completed. A deploy check that started before the merge was
+  a preview, and moves nothing.
+
+A check makes at most 45 requests to GitHub, within the free plan's 50
+requests to other servers: two for each installation it reads through, and
+up to two more to list one's selected repositories; one for each pull
+request; and one or two for each merged task. So a check reads
+up to about 40 pull requests and merged tasks, and the next check reads the
+rest. It signs in to GitHub with the app's private key.
 
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
@@ -903,8 +923,10 @@ key.
 - A pull request's URL names its repository, so a merge moves only the tasks
   of that pull request, whichever repository sends it.
 - A deploy moves the tasks whose commit or merge commit is the commit it ran
-  on. A build that ships several merges at once names only the last, so the
-  tasks of the merges before it stay at `merged`.
+  on. The task store's next check moves the earlier merges that deploy
+  shipped ([above](#from-github)). A deploy that moves no task, such as one
+  of a pull request that no task names, leaves the merges before it at
+  `merged` until a later deploy in the same day moves a task.
 - A delivery is at most 1 MB, sent as `application/json` or as GitHub's form
   (`application/x-www-form-urlencoded`).
 - The app's webhook secret and private key are kept in D1, encrypted under a

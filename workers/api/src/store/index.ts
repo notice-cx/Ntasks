@@ -21,7 +21,7 @@ import { serveApi } from '../api.ts';
 import type { Principal } from '../auth.ts';
 import { reportDelivery } from '../delivery.ts';
 import { createEngine } from '../engine/index.ts';
-import { checkMergedWork } from '../github-check.ts';
+import { checkGitHubWork } from '../github-check.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { Refused } from '../refused.ts';
 import { closeMerged, type MergeCloses } from '../task-writes.ts';
@@ -38,7 +38,7 @@ export interface StoreBinding {
   readonly TASK_STORE: DurableObjectNamespace<TaskStore>;
 }
 
-/** How long after a close with a pull request the store asks GitHub whether it merged: a few closes in a row share one check. */
+/** How long after a close with a pull request, or a delivery that moved a task, the store asks GitHub about waiting work: a few in a row share one check. */
 const CHECK_DELAY_MS = 5_000;
 
 /** Whether a task waits for a merge of a pull request, which GitHub may already have made. */
@@ -99,11 +99,11 @@ export class TaskStore extends DurableObject<Env> {
     await this.#checkGitHubIn(0);
   }
 
-  /** The alarm: asks GitHub whether the pull requests of work waiting for a merge merged (github-check.ts). */
+  /** The alarm: asks GitHub whether the pull requests of work waiting for a merge merged, and whether merged work deployed (github-check.ts). */
   override async alarm(): Promise<void> {
     const name = this.ctx.id.name;
     if (name === undefined || !name.startsWith('workspace:')) return;
-    await checkMergedWork(this.env, name.slice('workspace:'.length), this.tasks);
+    await checkGitHubWork(this.env, name.slice('workspace:'.length), this.tasks);
   }
 
   /** Loads an import from Beads, or a backup, into this store, which must
@@ -181,9 +181,11 @@ export class TaskStore extends DurableObject<Env> {
    * webhook once the Worker checked a delivery's signature (github.ts): a
    * merge first closes the tasks in progress whose work names its pull
    * request (closeMerged), which only GitHub's own word does; then the
-   * closed tasks it names move. Names the projects `options` turned on as
-   * deploying. A refusal comes back as its sentence, since an error's class
-   * does not survive the call from the Worker. */
+   * closed tasks it names move. A move has the store ask GitHub a few
+   * seconds later about merged work a deploy shipped that no delivery named.
+   * Names the projects `options` turned on as deploying. A refusal comes
+   * back as its sentence, since an error's class does not survive the call
+   * from the Worker. */
   async deliver(
     signal: DeliverySignal,
     principal: Principal,
@@ -199,6 +201,8 @@ export class TaskStore extends DurableObject<Env> {
       const context = { engine: this.tasks, principal, now: () => new Date().toISOString() };
       const closes = await closeMerged(context, signal);
       const moved = await reportDelivery(context, signal, undefined, options);
+      // A merge may have deployed before its event came, and a deploy may ship earlier merges than the one it names.
+      if (moved.length > 0) await this.#checkGitHubIn(CHECK_DELAY_MS);
       const after = before === null ? null : await deployed();
       return { moved, turnedOn: after === null ? [] : [...after].filter((id) => !before?.has(id)), ...closes };
     } catch (error) {

@@ -42,6 +42,14 @@ export interface StandInPull {
   readonly base: string;
 }
 
+/** A check run that completed on a commit, as the stand-in lists it. */
+export interface StandInCheckRun {
+  readonly name: string;
+  readonly conclusion: 'success' | 'failure';
+  readonly startedAt: string;
+  readonly completedAt: string;
+}
+
 let appKeys: Promise<CryptoKeyPair> | undefined;
 
 /** The RSA key of every app a manifest converts into, made the first time a test needs it. */
@@ -110,6 +118,12 @@ export interface GitHubCalls {
   readonly repositories: Map<number, string[]>;
   /** Each pull request the Worker read, as `owner/name#number`. */
   readonly pullReads: string[];
+  /** The check runs of each commit, which a test sets; a commit not set has none. */
+  readonly checkRuns: Map<string, StandInCheckRun[]>;
+  /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
+  readonly histories: Map<string, string[]>;
+  /** Each request the Worker made to GitHub's REST API, as `<method> <path>`. */
+  readonly apiRequests: string[];
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -136,6 +150,9 @@ export function standInForGitHub(): GitHubCalls {
     installationTokens: [] as number[],
     repositories: new Map<number, string[]>(),
     pullReads: [] as string[],
+    checkRuns: new Map<string, StandInCheckRun[]>(),
+    histories: new Map<string, string[]>(),
+    apiRequests: [] as string[],
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -145,11 +162,15 @@ export function standInForGitHub(): GitHubCalls {
     calls.installationTokens.length = 0;
     calls.repositories.clear();
     calls.pullReads.length = 0;
+    calls.checkRuns.clear();
+    calls.histories.clear();
+    calls.apiRequests.length = 0;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
+      if (url.origin === 'https://api.github.com') calls.apiRequests.push(`${request.method} ${url.pathname}`);
       if (url.href === 'https://github.com/login/oauth/access_token') {
         const form = new URLSearchParams(await bodyText(init?.body));
         const client = tokenClient(form, request.headers.get('authorization'));
@@ -232,6 +253,40 @@ export function standInForGitHub(): GitHubCalls {
           merged_at: found.mergedAt ?? null,
           base: { ref: found.base, repo: { full_name: pull[1], default_branch: 'main' } },
         });
+      }
+      const runs = /^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/commits\/([0-9a-f]+)\/check-runs$/u.exec(
+        url.origin + url.pathname,
+      )?.[1];
+      if (runs !== undefined) {
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const listed = calls.checkRuns.get(runs) ?? [];
+        return Response.json({
+          total_count: listed.length,
+          check_runs: listed.map((run) => ({
+            name: run.name,
+            status: 'completed',
+            conclusion: run.conclusion,
+            started_at: run.startedAt,
+            completed_at: run.completedAt,
+          })),
+        });
+      }
+      // GitHub's comparison of base...head: whether head is ahead of base, behind it, the same commit, or neither.
+      const compare = /^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)$/u.exec(
+        url.origin + url.pathname,
+      );
+      if (compare) {
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const [, base = '', head = ''] = compare;
+        const status =
+          base === head
+            ? 'identical'
+            : calls.histories.get(base)?.includes(head)
+              ? 'behind'
+              : calls.histories.get(head)?.includes(base)
+                ? 'ahead'
+                : 'diverged';
+        return Response.json({ status, commits: [], files: [] });
       }
       if (url.href === 'https://api.github.com/user') {
         if (!id) return Response.json({ message: 'Bad credentials' }, { status: 401 });

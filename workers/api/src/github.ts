@@ -30,6 +30,11 @@
  * "changes go live by a deploy" for the projects of the tasks it names, once
  * for each project, so an owner who turns it off again keeps it off.
  *
+ * A delivery that moves a task also has the workspace's task store ask GitHub
+ * a few seconds later about the merged tasks no delivery moved to live
+ * (github-check.ts): one whose deploy was reported before its merge, and one
+ * whose own build a later merge's deploy replaced.
+ *
  * Any other event is answered with why it moves nothing. A task never moves
  * back, and a task a merge closed is no longer in progress, so a delivery
  * that GitHub sends again moves and closes nothing twice.
@@ -37,6 +42,7 @@
  */
 import {
   addInstallation,
+  deployOf,
   detectedOf,
   githubAppOf,
   hasInstallation,
@@ -44,7 +50,7 @@ import {
   isOwnerOnGitHub,
   recordDetected,
   removeInstallation,
-  type Detected,
+  type DeployNames,
 } from './access/github-app.ts';
 import { signInSecrets } from './access/config.ts';
 import { fromHex, sameBytes } from './access/crypto.ts';
@@ -102,24 +108,6 @@ function textAt(payload: unknown, ...path: readonly string[]): string | undefine
 function numberAt(payload: unknown, ...path: readonly string[]): number | undefined {
   const value = at(payload, ...path);
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
-}
-
-/** The names that count as deploys: the ones typed by hand, and the ones deliveries showed, each on or off. */
-export interface DeployNames {
-  readonly typed: readonly string[];
-  readonly detected: Detected['checks'];
-}
-
-/**
- * Whether a check run or deployment named `name` is a deploy: typed by hand,
- * or detected and not switched off. `looksLikeOne` says whether a name not
- * seen before is a deploy, which the delivery then records.
- */
-function deployOf(name: string, names: DeployNames, looksLikeOne: boolean): 'yes' | 'new' | 'off' | 'no' {
-  if (names.typed.includes(name)) return 'yes';
-  const seen = names.detected.get(name);
-  if (seen !== undefined) return seen.on ? 'yes' : 'off';
-  return looksLikeOne ? 'new' : 'no';
 }
 
 /** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
