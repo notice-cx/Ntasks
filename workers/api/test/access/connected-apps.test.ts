@@ -220,17 +220,26 @@ describe('a service registering its own connected app', () => {
     expect((task.choice as { by: string }).by).not.toMatch(/^service:/u);
   });
 
-  it('stores only the scopes a registration asked for', async () => {
+  it('stores only the scopes a registration asked for, so its app cannot later ask to decide', async () => {
     const owner = new Browser();
     await owner.signInAsOwner();
     const service = await serviceOf(owner);
+    const redirect = `${newOrigin()}/tasks/signed-in`;
     const reader = await registerAsService(service.token, {
       client_name: 'Reading Tower',
-      redirect_uris: [`${newOrigin()}/tasks/signed-in`],
+      redirect_uris: [redirect],
       scope: 'tasks:read offline_access',
     });
     expect(reader.status).toBe(201);
-    expect((await reader.json<{ scope: string }>()).scope.split(' ').sort()).toEqual(['offline_access', 'tasks:read']);
+    const registered = await reader.json<{ client_id: string; scope: string }>();
+    expect(registered.scope.split(' ').sort()).toEqual(['offline_access', 'tasks:read']);
+    const { landing } = await authorizeApp(
+      owner,
+      { clientId: registered.client_id, redirect },
+      'tasks:read tasks:decide',
+    );
+    expect(`${landing.origin}${landing.pathname}`).toBe(redirect);
+    expect(landing.searchParams.get('error')).toBe('invalid_scope');
   });
 
   it.each([
