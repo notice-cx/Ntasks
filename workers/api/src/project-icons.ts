@@ -1,9 +1,13 @@
 /**
- * A project's icon, read from its website when an owner sets the website.
- * The Worker reads it, never the browser: one GET of the page, whose head's
- * <link rel="apple-touch-icon"> and <link rel="icon"> tags name the
- * candidates, then a GET of each candidate in turn, ending with
- * /favicon.ico, until one is an image this Worker can serve.
+ * A project's icons, read from its website when an owner sets the website:
+ * a light one, which any page may draw, and a dark one when the website
+ * declares an icon for a dark colour scheme. The Worker reads them, never
+ * the browser: one GET of the page, whose head's <link rel="apple-touch-icon">
+ * and <link rel="icon"> tags name the candidates, a tag whose `media` query
+ * asks for `prefers-color-scheme: dark` naming a dark one, then a GET of each
+ * candidate in turn until one of each scheme is an image this Worker can
+ * serve. /favicon.ico is the light icon's last candidate; a dark icon is
+ * only one the page declares.
  *
  * Every read is http or https only, follows redirects by hand (at most five,
  * each to an http or https address that is not a local one), sends no
@@ -14,7 +18,13 @@
  * bytes show, never the type the website claimed. An SVG, which can run
  * script, is kept only as `safeSvg` makes it (svg-icon.ts).
  */
-import { PROJECT_ICON_MAX_BYTES, type ProjectIcon, type ProjectIconType } from '@ntasks/domain';
+import {
+  PROJECT_ICON_MAX_BYTES,
+  type IconScheme,
+  type ProjectIcon,
+  type ProjectIcons,
+  type ProjectIconType,
+} from '@ntasks/domain';
 import { safeSvg } from './svg-icon.ts';
 
 /** Honest identification, with a product token of its own. */
@@ -26,7 +36,7 @@ const READ_TIMEOUT_MS = 8_000;
 const PAGE_BYTE_LIMIT = 256 * 1024;
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-/** At most this many candidates are asked, /favicon.ico included. */
+/** At most this many candidates are asked for each scheme's icon, /favicon.ico included. */
 const MAX_CANDIDATES = 5;
 const MAX_URL_LENGTH = 2048;
 /** A declared size under this is a last resort: too small to draw sharply. */
@@ -41,6 +51,25 @@ interface DeclaredIcon {
   readonly href: string;
   readonly sizes: string | null;
   readonly type: string | null;
+  readonly media: string | null;
+}
+
+const DARK_SCHEME = /prefers-color-scheme\s*:\s*dark/iu;
+
+/**
+ * The schemes a `media` attribute names an icon for. Each query of its
+ * comma-separated list that asks for prefers-color-scheme: dark, without
+ * `not`, names dark; every other query names light, as no attribute does. A
+ * list such as `(prefers-color-scheme: dark), (prefers-color-scheme: light)`
+ * names both.
+ */
+export function iconSchemes(media: string | null): readonly IconScheme[] {
+  const queries = (media ?? '').split(',');
+  const dark = queries.map((query) => DARK_SCHEME.test(query) && !/\bnot\b/iu.test(query));
+  return [
+    ...(dark.some((isDark) => !isDark) ? ['light' as const] : []),
+    ...(dark.some(Boolean) ? ['dark' as const] : []),
+  ];
 }
 
 // --- addresses --------------------------------------------------------------
@@ -167,16 +196,16 @@ function rank(icon: DeclaredIcon): [number, number] {
 }
 
 /**
- * The icons a page's head declares, best first, each as an absolute address
- * resolved against its `<base href>` or else `pageUrl`, the address the page
- * was read from.
+ * The icons a page's head declares for each colour scheme, best first, each
+ * as an absolute address resolved against its `<base href>` or else
+ * `pageUrl`, the address the page was read from.
  */
-export function declaredIcons(html: string, pageUrl: string): string[] {
+export function declaredIcons(html: string, pageUrl: string): Record<IconScheme, string[]> {
   const text = html.replace(COMMENT, '').replace(RAW_TEXT, '');
   const end = text.search(HEAD_END);
   const head = end === -1 ? text : text.slice(0, end);
   let base: string | null = null;
-  const icons: { url: string; rank: [number, number]; index: number }[] = [];
+  const icons: { url: string; schemes: readonly IconScheme[]; rank: [number, number]; index: number }[] = [];
   const declared: DeclaredIcon[] = [];
   for (const match of head.matchAll(TAG)) {
     const attributes = attributesOf(match[2] ?? '');
@@ -187,14 +216,23 @@ export function declaredIcons(html: string, pageUrl: string): string[] {
     }
     const kind = iconKind(attributes.get('rel') ?? '');
     if (kind === null || href === undefined || href.trim() === '') continue;
-    declared.push({ kind, href, sizes: attributes.get('sizes') ?? null, type: attributes.get('type') ?? null });
+    declared.push({
+      kind,
+      href,
+      sizes: attributes.get('sizes') ?? null,
+      type: attributes.get('type') ?? null,
+      media: attributes.get('media') ?? null,
+    });
   }
   declared.forEach((icon, index) => {
     const url = webAddress(icon.href, base ?? pageUrl);
-    if (url !== null) icons.push({ url, rank: rank(icon), index });
+    if (url !== null) icons.push({ url, schemes: iconSchemes(icon.media), rank: rank(icon), index });
   });
   icons.sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] || a.index - b.index);
-  return [...new Set(icons.map((icon) => icon.url))];
+  const of = (scheme: IconScheme) => [
+    ...new Set(icons.filter((icon) => icon.schemes.includes(scheme)).map((icon) => icon.url)),
+  ];
+  return { light: of('light'), dark: of('dark') };
 }
 
 // --- the bytes ----------------------------------------------------------------
@@ -332,32 +370,42 @@ async function readIcon(fetchImpl: typeof fetch, candidate: string, signal: Abor
   return svg === null ? null : { sourceUrl: url, contentType: 'image/svg+xml', bytes: svg.slice().buffer };
 }
 
-/**
- * The icon of the website at `websiteUrl`, an address `websiteAddress`
- * accepted, or null when it serves none this Worker keeps. Never throws.
- */
-export async function readProjectIcon(
-  websiteUrl: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<ProjectIcon | null> {
-  const signal = AbortSignal.timeout(READ_TIMEOUT_MS);
-  const page = await get(fetchImpl, websiteUrl, 'text/html,application/xhtml+xml', signal);
-  let pageUrl = websiteUrl;
-  let candidates: string[] = [];
-  if (page !== null) {
-    pageUrl = page.url;
-    const type = page.response.headers.get('content-type') ?? '';
-    if (/html/iu.test(type) || type === '') candidates = declaredIcons(await readHead(page.response), page.url);
-    else await page.response.body?.cancel();
-  }
-  // /favicon.ico is always asked, last unless the page declares it, however many icons the page declares.
-  const favicon = webAddress('/favicon.ico', pageUrl);
-  candidates = candidates.slice(0, MAX_CANDIDATES - 1);
-  if (favicon !== null && !candidates.includes(favicon)) candidates.push(favicon);
+/** The first of `candidates` that is an icon this Worker keeps, or null. A candidate whose read fails, even in closing it, is skipped. */
+async function firstIcon(fetchImpl: typeof fetch, candidates: readonly string[], signal: AbortSignal) {
   for (const candidate of candidates) {
     if (signal.aborted) return null;
-    const icon = await readIcon(fetchImpl, candidate, signal);
+    const icon = await readIcon(fetchImpl, candidate, signal).catch(() => null);
     if (icon !== null) return icon;
   }
   return null;
+}
+
+/**
+ * The icons of the website at `websiteUrl`, an address `websiteAddress`
+ * accepted: the light one, or null when it serves none this Worker keeps,
+ * and the dark one, or null when it declares none this Worker keeps. Never
+ * throws.
+ */
+export async function readProjectIcons(websiteUrl: string, fetchImpl: typeof fetch = fetch): Promise<ProjectIcons> {
+  const signal = AbortSignal.timeout(READ_TIMEOUT_MS);
+  const page = await get(fetchImpl, websiteUrl, 'text/html,application/xhtml+xml', signal);
+  let pageUrl = websiteUrl;
+  let declared: Record<IconScheme, string[]> = { light: [], dark: [] };
+  if (page !== null) {
+    pageUrl = page.url;
+    const type = page.response.headers.get('content-type') ?? '';
+    if (/html/iu.test(type) || type === '') declared = declaredIcons(await readHead(page.response), page.url);
+    else await page.response.body?.cancel().catch(() => undefined);
+  }
+  // /favicon.ico is always asked for the light icon, last unless the page declares it, however many icons it declares.
+  const favicon = webAddress('/favicon.ico', pageUrl);
+  const light = declared.light.slice(0, MAX_CANDIDATES - 1);
+  if (favicon !== null && !light.includes(favicon)) light.push(favicon);
+  // Both searches run at once, so a slow light candidate never spends the dark icon's share of the deadline.
+  const [lightIcon, darkIcon] = await Promise.all([
+    firstIcon(fetchImpl, light, signal),
+    // A dark icon has no /favicon.ico to fall back to, so all its candidates are its page's.
+    firstIcon(fetchImpl, declared.dark.slice(0, MAX_CANDIDATES), signal),
+  ]);
+  return { light: lightIcon, dark: darkIcon };
 }

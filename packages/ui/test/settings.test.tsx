@@ -2,10 +2,13 @@
 // its name, its website and the icon read from it, and whether it takes new
 // tasks. Every website here is invented: the fixture reads an icon for any
 // address under example.com.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
-import { fixtureWorkspaces } from '@/api/fixture-data';
+import { FIXTURE_DARK_ICON_PNG, FIXTURE_ICON_PNG, fixtureWorkspaces } from '@/api/fixture-data';
+import { NtasksApp } from '@/NtasksApp';
+import type { Theme } from '@/lib/theme';
 import { enabledButton, renderApp } from './render';
 
 const sidebar = () => screen.findByRole('navigation', { name: 'Ntasks' });
@@ -165,5 +168,33 @@ describe('a project in Settings', () => {
     // Enabled again, it comes back.
     await api.updateProject('docs', { disabled: false });
     await api.createTask({ project: 'docs', title: 'Filed again' });
+  });
+});
+
+describe('a project icon and the app’s theme', () => {
+  /** The app at its board, drawn in `theme`, while the system prefers light, as the tests' browser does. */
+  const inTheme = (theme: Theme, api = createFixtureTasksApi()) =>
+    render(
+      <MemoryRouter initialEntries={['/tasks']}>
+        <Routes>
+          <Route path="/tasks/*" element={<NtasksApp api={api} theme={theme} basePath="/tasks" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  const drawn = (png: string) => `data:image/png;base64,${png}`;
+
+  it('draws the dark icon while the app is dark, whatever the system prefers, and only the light one while it is light', async () => {
+    const dark = inTheme('dark');
+    await waitFor(async () => expect(await sidebarIcon(/^Example web app/)).toBe(drawn(FIXTURE_DARK_ICON_PNG)));
+    dark.unmount();
+    inTheme('light');
+    await waitFor(async () => expect(await sidebarIcon(/^Example web app/)).toBe(drawn(FIXTURE_ICON_PNG)));
+  });
+
+  it('draws the light icon while the app is dark when the website declares no dark one', async () => {
+    const api = createFixtureTasksApi();
+    api.state.projects.find((project) => project.logicalKey === 'web')!.darkIcon = null;
+    inTheme('dark', api);
+    await waitFor(async () => expect(await sidebarIcon(/^Example web app/)).toBe(drawn(FIXTURE_ICON_PNG)));
   });
 });

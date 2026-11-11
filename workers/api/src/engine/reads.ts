@@ -30,6 +30,7 @@ import {
   type TaskFilters,
   type TaskResolution,
   type TaskStatus,
+  type IconScheme,
   type StoredProjectIcon,
   type TaskType,
   type WinsRead,
@@ -63,8 +64,10 @@ import {
 import type { Bindable, Database, Statement } from './database.ts';
 import { instant } from './validate.ts';
 
-/** A project's row with the time its icon was read, as `ProjectRow` holds it. */
-const PROJECT_SELECT = `SELECT p.*, i.read_at AS icon_at FROM projects p LEFT JOIN project_icons i ON i.project_id = p.id`;
+/** A project's row with the times its light and dark icons were read, as `ProjectRow` holds it. */
+const PROJECT_SELECT = `SELECT p.*, i.read_at AS icon_at, d.read_at AS dark_icon_at FROM projects p
+  LEFT JOIN project_icons i ON i.project_id = p.id AND i.scheme = 'light'
+  LEFT JOIN project_icons d ON d.project_id = p.id AND d.scheme = 'dark'`;
 
 /** The statuses of a task that is not closed, which the (project_id, status) index reaches. */
 const NOT_CLOSED = `('open', 'in_progress', 'blocked', 'deferred')`;
@@ -783,10 +786,12 @@ export class Reads {
     return row === null ? null : toProject(row);
   }
 
-  async projectIcon(projectId: string): Promise<StoredProjectIcon | null> {
+  async projectIcon(projectId: string, scheme: IconScheme): Promise<StoredProjectIcon | null> {
     const row = await this.#db
-      .prepare('SELECT source_url, content_type, bytes, read_at FROM project_icons WHERE project_id = ?1')
-      .bind(projectId)
+      .prepare(
+        'SELECT source_url, content_type, bytes, read_at FROM project_icons WHERE project_id = ?1 AND scheme = ?2',
+      )
+      .bind(projectId, scheme)
       .first<ProjectIconRow>();
     return row === null ? null : toProjectIcon(row);
   }

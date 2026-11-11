@@ -83,17 +83,20 @@ async function signed(secret: string, body: string): Promise<string> {
   return `sha256=${hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body))))}`;
 }
 
-/** Runs `work` while https://contract.example.com answers with a page and its icon, in place of the network. */
+/** Runs `work` while https://contract.example.com answers with a page and its light and dark icons, in place of the network. */
 async function withWebsite<T>(work: () => Promise<T>): Promise<T> {
   const before = globalThis.fetch;
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
   globalThis.fetch = async (input, init) => {
     const url = new Request(input, init).url;
     if (url === 'https://contract.example.com/')
-      return new Response('<link rel="icon" href="/icon.png" sizes="64x64">', {
-        headers: { 'content-type': 'text/html' },
-      });
-    if (url === 'https://contract.example.com/icon.png')
+      return new Response(
+        '<link rel="icon" href="/icon.png" sizes="64x64"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)">',
+        {
+          headers: { 'content-type': 'text/html' },
+        },
+      );
+    if (url === 'https://contract.example.com/icon.png' || url === 'https://contract.example.com/dark.png')
       return new Response(png, { headers: { 'content-type': 'image/png' } });
     return before(input, init);
   };
