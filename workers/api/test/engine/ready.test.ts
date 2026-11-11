@@ -766,6 +766,32 @@ describe('dropped links', () => {
     expect((await tasks.getTask(project.id, shelved.id))?.dependencies).toEqual([]);
   });
 
+  it('links an epic Ntasks drops to a task the dropping write only comments on', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const plan = await make(tasks, project.id, 'Plan the move', { title: '', type: 'epic' });
+    const step = await make(tasks, project.id, 'Move the images', { title: '', parentId: plan.id });
+    const naming = await make(tasks, project.id, 'Tell the team', { title: '', notes: `Once ${plan.id} lands.` });
+    time.advance(1);
+    await tasks.writeTask(
+      project.id,
+      step.id,
+      {
+        expectedVersion: step.version,
+        close: { reason: 'Dropped', resolution: 'wont-do' },
+        others: [{ taskId: naming.id, expectedVersion: naming.version, comment: 'The move is off.' }],
+      },
+      AGENT,
+    );
+    const epic = await tasks.getTask(project.id, plan.id);
+    expect(epic?.close).toMatchObject({ resolution: 'no-longer-needed' });
+    expect(epic?.dependencies.map((link) => [link.taskId, link.type])).toEqual([[naming.id, 'related']]);
+    expect((await tasks.getTask(project.id, naming.id))?.reliesOnDropped).toEqual([
+      { taskId: plan.id, title: 'Plan the move', resolution: 'no-longer-needed' },
+    ]);
+  });
+
   it('leaves out a child epic that closes with the parent epic it names', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
