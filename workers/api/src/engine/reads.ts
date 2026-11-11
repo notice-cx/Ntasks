@@ -17,6 +17,7 @@ import {
   type ChangePage,
   type CustomField,
   type EpicProgress,
+  type FormerId,
   type HeldTask,
   type LabelPage,
   type LabelQuery,
@@ -527,6 +528,45 @@ export class Reads {
     return results.map((row) => row.id);
   }
 
+  async listUnder(projectId: string, taskIds: readonly string[], limit: number): Promise<Task[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > TASK_LIMITS.page)
+      invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
+    if (taskIds.length === 0) return [];
+    // UNION ends a parent loop an import could leave; the LIMIT stops the walk itself.
+    const { results } = await this.#db
+      .prepare(
+        `WITH RECURSIVE under(id) AS (
+           SELECT c.id FROM ${among('?2')} CROSS JOIN tasks c INDEXED BY tasks_by_parent ON c.parent_id = wanted.id
+           WHERE c.project_id = ?1
+           UNION
+           SELECT c.id FROM under CROSS JOIN tasks c INDEXED BY tasks_by_parent ON c.parent_id = under.id
+           LIMIT ?3
+         )
+         SELECT id FROM under`,
+      )
+      .bind(projectId, JSON.stringify(taskIds), limit)
+      .all<{ id: string }>();
+    return (
+      await this.taskRows(
+        projectId,
+        results.map((row) => row.id),
+      )
+    ).map(toTask);
+  }
+
+  async formerIds(taskIds: readonly string[]): Promise<FormerId[]> {
+    if (taskIds.length === 0) return [];
+    if (taskIds.length > TASK_LIMITS.page) invalid(`taskIds must be at most ${TASK_LIMITS.page} task ids`);
+    const { results } = await this.#db
+      .prepare(
+        `SELECT a.alias AS former_id, t.id AS task_id, t.project_id FROM ${among('?1')}
+         CROSS JOIN task_aliases a ON a.alias = wanted.id JOIN tasks t ON t.id = a.task_id ORDER BY a.alias`,
+      )
+      .bind(JSON.stringify(taskIds))
+      .all<{ former_id: string; task_id: string; project_id: string }>();
+    return results.map((row) => ({ formerId: row.former_id, taskId: row.task_id, projectId: row.project_id }));
+  }
+
   async listTasks(projectId: string, query: TaskQuery): Promise<TaskPage> {
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > TASK_LIMITS.page) {
       invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
@@ -728,7 +768,12 @@ export class Reads {
       invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
     const { results } = await this.#db
       .prepare(
-        'SELECT * FROM task_events INDEXED BY task_events_by_task WHERE task_id = ?2 AND project_id = ?1 AND seq < ?3 ORDER BY seq DESC LIMIT ?4',
+        // An event keeps the project its task was in when it was recorded, so a
+        // moved task's earlier events name its earlier project: the task's own
+        // project decides.
+        `SELECT e.* FROM task_events e INDEXED BY task_events_by_task
+         WHERE e.task_id = ?2 AND e.seq < ?3 AND EXISTS (SELECT 1 FROM tasks t WHERE t.id = ?2 AND t.project_id = ?1)
+         ORDER BY e.seq DESC LIMIT ?4`,
       )
       .bind(projectId, taskId, beforeSeq ?? Number.MAX_SAFE_INTEGER, limit)
       .all<EventRow>();

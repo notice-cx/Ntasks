@@ -1,8 +1,8 @@
 // A task store holding a row of every kind: two projects, tasks of every type
 // and state with a child whose parent's id sorts after its own, every link
 // type, an external link, labels, comments pinned and not, history, custom fields, a held
-// task's work details, a request's steps, a person's acceptance and a retry
-// record. The backup and load tests share it.
+// task's work details, a request's steps, a person's acceptance, a moved
+// task's former id and a retry record. The backup and load tests share it.
 import type { BackupRows, TaskRow } from '@ntasks/domain';
 
 export const ACME = 'a1111111-0000-4000-8000-00000000000a';
@@ -256,6 +256,8 @@ export const ROWS: BackupRows = {
       changes: JSON.stringify({ commentId: 'k-0001', text: 'Looks right.' }),
     },
   ],
+  // beta-r1 was filed as acme-m1 and moved to Beta.
+  task_aliases: [{ alias: 'acme-m1', task_id: 'beta-r1' }],
   write_receipts: [
     {
       principal: 'service:noticeos/agent',

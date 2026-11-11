@@ -39,6 +39,7 @@ import {
   type StepMark,
   type TaskAcceptance,
   type TaskFieldChanges,
+  type TaskPlacement,
   type TaskResolution,
   type TaskStep,
   type TaskWork,
@@ -85,6 +86,28 @@ export function estimate(value: unknown, field: string): number {
 export function taskId(value: unknown, field: string): string {
   if (!isTaskId(value)) invalid(`${field} must be a task id, such as web-a1b2`);
   return value;
+}
+
+/** A move's placements: 1 to TASK_LIMITS.move, each task once. */
+export function placements(value: readonly TaskPlacement[]): TaskPlacement[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.move)
+    invalid(`placements must be a list of 1 to ${TASK_LIMITS.move} tasks`);
+  const checked = value.map((placement: TaskPlacement, index): TaskPlacement => {
+    if (placement === null || typeof placement !== 'object') invalid(`placements[${index}] must be an object`);
+    const { expectedVersion } = placement;
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1)
+      invalid(`placements[${index}].expectedVersion must be the version you read, a whole number of 1 or more`);
+    return {
+      taskId: taskId(placement.taskId, `placements[${index}].taskId`),
+      expectedVersion,
+      parentId: placement.parentId === null ? null : taskId(placement.parentId, `placements[${index}].parentId`),
+    };
+  });
+  const twice = checked.find(
+    (placement, index) => checked.findIndex((other) => other.taskId === placement.taskId) !== index,
+  );
+  if (twice !== undefined) invalid(`placements names ${twice.taskId} twice`);
+  return checked;
 }
 
 export function labels(value: unknown, field: string): string[] {

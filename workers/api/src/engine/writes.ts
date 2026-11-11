@@ -31,6 +31,8 @@ import {
   type FieldResult,
   type FieldValue,
   type Json,
+  type MovedId,
+  type MoveResult,
   type JsonObject,
   type Project,
   type ProjectChange,
@@ -40,6 +42,7 @@ import {
   type TaskDelivery,
   type TaskComment,
   type TaskEventKind,
+  type TaskPlacement,
   type TaskRefusal,
   type TaskResolution,
   type TaskStatus,
@@ -101,7 +104,8 @@ function failureOf(error: unknown): 'id_taken' | 'receipt_taken' {
   const message = messageOf(error);
   const refusal = guardRefusalOf(message);
   if (refusal !== null) refuse(refusal);
-  if (message.includes('UNIQUE constraint failed: tasks.id')) return 'id_taken';
+  if (message.includes('UNIQUE constraint failed: tasks.id') || message.includes("a moved task's former id"))
+    return 'id_taken';
   if (message.includes('UNIQUE constraint failed: write_receipts')) return 'receipt_taken';
   if (message.includes('FOREIGN KEY constraint failed')) refuse('not_found', 'A task this write names does not exist.');
   throw error;
@@ -184,6 +188,8 @@ interface Placed {
 /** A task a write changes or files: where it stood, null for a new task, and where the write leaves it. */
 interface Moved extends Placed {
   readonly id: string;
+  /** The id it had before the write, when a move gave it a new one. */
+  readonly formerId?: string;
   readonly before: { readonly parentId: string | null; readonly closed: boolean } | null;
   /** Closed before and closed by this write too: a close that replaces Ntasks's own close of an epic. */
   readonly closedAgain?: boolean;
@@ -743,14 +749,21 @@ export class Writes {
 
   /** The id the parent's next child takes: its id, a dot and one more than the highest child number used. */
   async #childId(parentId: string): Promise<string> {
+    return `${parentId}.${await this.#childNumber(parentId)}`;
+  }
+
+  /** One more than the highest child number the parent's children, or their former ids, use. */
+  async #childNumber(parentId: string): Promise<number> {
     const row = await this.#db
       // The pattern is one bound value, so SQLite reaches it through the primary key's index.
       .prepare(
-        `SELECT coalesce(max(CAST(substr(id, length(?1) + 2) AS INTEGER)), 0) + 1 AS next FROM tasks WHERE id GLOB ?2`,
+        // A child number a moved child left behind stays its former id, so it is never given again.
+        `SELECT coalesce(max(CAST(substr(id, length(?1) + 2) AS INTEGER)), 0) + 1 AS next FROM (
+           SELECT id FROM tasks WHERE id GLOB ?2 UNION ALL SELECT alias FROM task_aliases WHERE alias GLOB ?2)`,
       )
       .bind(parentId, `${parentId}.[0-9]*`)
       .first<{ next: number }>();
-    return `${parentId}.${row?.next ?? 1}`;
+    return row?.next ?? 1;
   }
 
   async #existing(projectId: string | null, taskIds: readonly string[]): Promise<Map<string, StoredTaskRow>> {
@@ -779,12 +792,12 @@ export class Writes {
    * were read, so the caller decides again.
    */
   async #epicsAfter(
-    projectId: string,
     moved: readonly Moved[],
     at: string,
     unkept: readonly string[] = [],
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
-    const written = new Set(moved.map((task) => task.id));
+    const formerIds = moved.flatMap((task) => (task.formerId === undefined ? [] : [task.formerId]));
+    const written = new Set([...moved.map((task) => task.id), ...formerIds]);
     const left = new Map<string, Placed>(moved.map((task) => [task.id, task]));
     // Each epic waits in the queue at most once, with the first cause that reached it.
     const queue = new Map<string, EpicCause>(unkept.map((epicId) => [epicId, { kind: 'unkept' }]));
@@ -802,6 +815,7 @@ export class Writes {
     }
     const checks = new Map<string, number>();
     type EpicRow = {
+      readonly project_id: string;
       readonly status: TaskStatus;
       readonly parent_id: string | null;
       readonly closed_by: string | null;
@@ -823,17 +837,18 @@ export class Writes {
           epicId,
           await this.#db
             .prepare(
-              `SELECT status, parent_id, closed_by, assignee_for, work,
-                 EXISTS (SELECT 1 FROM task_labels WHERE task_id = ?1 AND label = ?3) AS kept
-               FROM tasks WHERE id = ?1 AND project_id = ?2 AND type = 'epic'`,
+              // A move leaves an epic of another project; any other write's epics are in its project.
+              `SELECT project_id, status, parent_id, closed_by, assignee_for, work,
+                 EXISTS (SELECT 1 FROM task_labels WHERE task_id = ?1 AND label = ?2) AS kept
+               FROM tasks WHERE id = ?1 AND type = 'epic'`,
             )
-            .bind(epicId, projectId, KEEP_OPEN)
+            .bind(epicId, KEEP_OPEN)
             .first<EpicRow>(),
         );
       }
       const epic = read.get(epicId);
       if (epic === null || epic === undefined) continue;
-      const excluded = JSON.stringify([...left.keys()]);
+      const excluded = JSON.stringify([...left.keys(), ...formerIds]);
       const { results } = await this.#db
         .prepare(
           `SELECT status, resolution FROM tasks INDEXED BY tasks_by_parent
@@ -908,7 +923,7 @@ export class Writes {
                  assignee_for = NULL, work = '{}', version = version + 1, updated_at = ?1
                WHERE id = ?5 AND project_id = ?6 AND status <> 'closed'`,
             )
-            .bind(at, placed.reason, placed.resolution, NTASKS_ACTOR, epicId, projectId),
+            .bind(at, placed.reason, placed.resolution, NTASKS_ACTOR, epicId, epic.project_id),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
           this.#eventAtVersion(epicId, 'closed', actor, at, {
             status: 'closed',
@@ -937,7 +952,7 @@ export class Writes {
                  version = version + 1, updated_at = ?1
                WHERE id = ?2 AND project_id = ?3 AND status = 'closed' AND closed_by = ?4`,
             )
-            .bind(at, epicId, projectId, NTASKS_ACTOR),
+            .bind(at, epicId, epic.project_id, NTASKS_ACTOR),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
           this.#eventAtVersion(epicId, 'reopened', actor, at, { status: 'open', close: null }),
         );
@@ -1159,7 +1174,7 @@ export class Writes {
         closed: filed.close !== null,
         resolution: filed.close === null ? null : 'done',
       };
-      const epicsAfter = fields.parentId === null ? null : await this.#epicsAfter(projectId, [placed], at);
+      const epicsAfter = fields.parentId === null ? null : await this.#epicsAfter([placed], at);
       const epics = epicsAfter?.epics ?? [];
       const statements: Statement[] = [
         ...this.#staleReceipt(retry),
@@ -1322,7 +1337,7 @@ export class Writes {
         return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
       }),
     );
-    const { statements: settled, epics } = await this.#epicsAfter(projectId, moved, at, unkept);
+    const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept);
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const opens = write.requestApproval !== null || write.requestAction !== null;
@@ -1367,6 +1382,234 @@ export class Writes {
         const failure = failureOf(error);
         if (failure === 'id_taken') continue;
         return (await this.#replay(retry, projectId)) ?? refuse('retry_conflict');
+      }
+    }
+    throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
+  }
+
+  /** The tasks with these ids, or the ids they moved to, each read in the project it is in now, in the order given. */
+  async #tasksNow(taskIds: readonly string[]): Promise<Task[]> {
+    if (taskIds.length === 0) return [];
+    const now = new Map(taskIds.map((id) => [id, id]));
+    for (const former of await this.#reads.formerIds(taskIds)) now.set(former.formerId, former.taskId);
+    const { results } = await this.#db
+      .prepare('SELECT t.id, t.project_id FROM json_each(?1) w CROSS JOIN tasks t ON t.id = w.value')
+      .bind(JSON.stringify([...new Set(now.values())]))
+      .all<{ id: string; project_id: string }>();
+    const byProject = new Map<string, string[]>();
+    for (const row of results) byProject.set(row.project_id, [...(byProject.get(row.project_id) ?? []), row.id]);
+    const tasks = new Map<string, Task>();
+    for (const [projectId, ids] of byProject)
+      for (const row of await this.#reads.taskRows(projectId, ids)) tasks.set(row.id, toTask(row));
+    return taskIds.flatMap((id) => {
+      const task = tasks.get(now.get(id)!);
+      return task === undefined ? [] : [task];
+    });
+  }
+
+  /** A move's answer from its record, its tasks as they stand now. */
+  async #moveResult(recorded: Record<string, Json>, replayed: boolean): Promise<MoveResult> {
+    const epics = Array.isArray(recorded.epics) ? (recorded.epics as string[]) : [];
+    const moved = (recorded.moved as [string, string][]).map(([from, to]): MovedId => ({ from, to }));
+    const [tasks, closed] = await Promise.all([this.#tasksNow(recorded.tasks as string[]), this.#tasksNow(epics)]);
+    return { tasks, moved, ...(epics.length === 0 ? {} : { epics: closed }), replayed };
+  }
+
+  async #replayMove(retry: Retry | undefined, projectId: string): Promise<MoveResult | null> {
+    const recorded = await this.#recorded(retry, projectId);
+    if (recorded === null) return null;
+    // Another write's record names no moved tasks: its key was used for another kind of request.
+    if (!Array.isArray(recorded.tasks)) refuse('retry_conflict');
+    return this.#moveResult(recorded, true);
+  }
+
+  async recordedMove(projectId: string, retryInput: Retry): Promise<MoveResult | null> {
+    const retry = check.retry(retryInput) ?? check.invalid('a retry identity is required');
+    return this.#replayMove(retry, projectId);
+  }
+
+  /** A new key in the project that is no task's id or former id, nor one of `taken`. */
+  async #freeId(prefix: string, taken: ReadonlySet<string>): Promise<string> {
+    for (let tries = 0; ; tries += 1) {
+      const id = `${prefix}-${this.#newKey()}`;
+      if (taken.has(id) && tries < ATTEMPTS) continue;
+      const used = await this.#db
+        .prepare(
+          'SELECT EXISTS (SELECT 1 FROM tasks WHERE id = ?1) OR EXISTS (SELECT 1 FROM task_aliases WHERE alias = ?1) AS used',
+        )
+        .bind(id)
+        .first<{ used: number }>();
+      // A key still taken after a few tries goes to the batch, which fails on it and starts again.
+      if (used?.used !== 1 || tries >= ATTEMPTS) return id;
+    }
+  }
+
+  async moveTasks(
+    projectId: string,
+    placementsInput: readonly TaskPlacement[],
+    actorInput: Actor,
+    retryInput?: Retry,
+  ): Promise<MoveResult> {
+    const actor = check.actor(actorInput);
+    const retry = check.retry(retryInput);
+    const placements = check.placements(placementsInput);
+    const project = await this.#projectOf(projectId);
+    const replayed = await this.#replayMove(retry, projectId);
+    if (replayed !== null) return replayed;
+
+    const rows = await this.#existing(
+      null,
+      placements.map((placement) => placement.taskId),
+    );
+    for (const placement of placements)
+      if (rows.get(placement.taskId)!.version !== placement.expectedVersion) refuse('version_conflict');
+    const placing = new Map(placements.map((placement) => [placement.taskId, placement]));
+    await this.#existing(projectId, [
+      ...new Set(placements.flatMap(({ parentId }) => (parentId === null || placing.has(parentId) ? [] : [parentId]))),
+    ]);
+    // Parents before their children, so a child takes its new parent's id; a loop among them is refused.
+    const ordered: TaskPlacement[] = [];
+    const placed = new Set<string>();
+    while (ordered.length < placements.length) {
+      const ready = placements.filter(
+        ({ taskId, parentId }) =>
+          !placed.has(taskId) && (parentId === null || !placing.has(parentId) || placed.has(parentId)),
+      );
+      if (ready.length === 0) refuse('cycle');
+      for (const placement of ready) {
+        ordered.push(placement);
+        placed.add(placement.taskId);
+      }
+    }
+    const leaving = placements.filter(({ taskId }) => rows.get(taskId)!.project_id !== projectId);
+    if (leaving.length > 0) {
+      const { results } = await this.#db
+        .prepare(
+          `SELECT c.id, c.parent_id FROM json_each(?1) w CROSS JOIN tasks c INDEXED BY tasks_by_parent
+           ON c.parent_id = w.value ORDER BY c.id`,
+        )
+        .bind(JSON.stringify(leaving.map(({ taskId }) => taskId)))
+        .all<{ id: string; parent_id: string }>();
+      const behind = results.find((child) => !placing.has(child.id));
+      if (behind !== undefined)
+        refuse('invalid', `${behind.parent_id} moves to another project only with ${behind.id}, a task under it`);
+    }
+
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const at = this.#now();
+      const newIds = new Map<string, string>();
+      const children = new Map<string, number>();
+      for (const { taskId, parentId } of ordered) {
+        if (rows.get(taskId)!.project_id === projectId) continue;
+        const parent = parentId === null ? null : (newIds.get(parentId) ?? parentId);
+        if (parent === null) {
+          newIds.set(taskId, await this.#freeId(project.prefix, new Set(newIds.values())));
+          continue;
+        }
+        const next = children.get(parent) ?? (await this.#childNumber(parent));
+        children.set(parent, next + 1);
+        newIds.set(taskId, `${parent}.${next}`);
+      }
+      const after = (id: string) => newIds.get(id) ?? id;
+
+      const statements: Statement[] = [...this.#staleReceipt(retry)];
+      // Other tasks name a moved task as their parent or duplicate until their own statements below follow it.
+      if (newIds.size > 0) statements.push(this.#db.prepare('PRAGMA defer_foreign_keys = ON'));
+      const moved: Moved[] = [];
+      const loops: Statement[] = [];
+      for (const { taskId, parentId } of ordered) {
+        const row = rows.get(taskId)!;
+        const id = after(taskId);
+        const parent = parentId === null ? null : after(parentId);
+        const duplicateOf = row.duplicate_of === null ? null : after(row.duplicate_of);
+        if (id === taskId && parent === row.parent_id) continue;
+        const changes: Record<string, Json> = {};
+        if (id !== taskId) Object.assign(changes, { id, projectId });
+        if (parent !== row.parent_id) changes.parentId = parent;
+        if (duplicateOf !== row.duplicate_of) {
+          changes.close = {
+            at: row.closed_at,
+            reason: row.close_reason,
+            resolution: row.resolution,
+            duplicateOf,
+            by: row.closed_by,
+            model: row.closed_model,
+            link: row.close_link,
+            acceptance: row.close_acceptance === null ? null : (JSON.parse(row.close_acceptance) as JsonObject),
+          };
+        }
+        statements.push(
+          this.#db
+            .prepare(
+              `UPDATE tasks SET id = ?1, project_id = ?2, parent_id = ?3, duplicate_of = ?4, version = version + 1,
+                 updated_at = ?5 WHERE id = ?6 AND version = ?7`,
+            )
+            .bind(id, projectId, parent, duplicateOf, at, taskId, row.version),
+          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          this.#event({ id, projectId }, row.version + 1, 'updated', actor, at, changes),
+        );
+        if (parent !== null) loops.push(this.#noParentLoop(parent, id));
+        const closed = row.status === 'closed';
+        moved.push({
+          id,
+          ...(id === taskId ? {} : { formerId: taskId }),
+          before: { parentId: row.parent_id, closed },
+          parentId: parent,
+          closed,
+          resolution: row.resolution,
+        });
+      }
+      const placedIds = JSON.stringify(ordered.map(({ taskId }) => after(taskId)));
+      for (const [from, to] of newIds) {
+        statements.push(
+          this.#db
+            .prepare(
+              'UPDATE tasks SET duplicate_of = ?1, version = version + 1, updated_at = ?2 WHERE duplicate_of = ?3',
+            )
+            .bind(to, at, from),
+          this.#db
+            .prepare(
+              `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes)
+               SELECT id, project_id, version, 'updated', ?2, ?3, ?4, json_object('close', json_object(
+                 'at', closed_at, 'reason', close_reason, 'resolution', resolution, 'duplicateOf', duplicate_of,
+                 'by', closed_by, 'model', closed_model, 'link', close_link, 'acceptance', json(close_acceptance)))
+               FROM tasks WHERE duplicate_of = ?1 AND id NOT IN (SELECT value FROM json_each(?5))`,
+            )
+            .bind(to, actor.name, actor.model ?? null, at, placedIds),
+          // A task filed under a moved task since the move was planned would be left in the old project.
+          this.#db
+            .prepare(
+              `INSERT INTO write_guard (ok, refusal) SELECT NOT EXISTS (
+                 SELECT 1 FROM tasks INDEXED BY tasks_by_parent WHERE parent_id = ?1
+               ), 'version_conflict'`,
+            )
+            .bind(from),
+        );
+      }
+      statements.push(...loops);
+      const { statements: settled, epics } = await this.#epicsAfter(moved, at);
+      const recorded = {
+        taskId: after(placements[0]!.taskId),
+        created: [],
+        tasks: placements.map(({ taskId }) => after(taskId)),
+        moved: [...newIds],
+        ...(epics.length === 0 ? {} : { epics }),
+      };
+      statements.push(
+        ...settled,
+        ...this.#receipt(retry, projectId, recorded as unknown as JsonObject, at, recorded.tasks),
+      );
+      try {
+        await this.#db.batch(statements);
+        return this.#moveResult(recorded as unknown as Record<string, Json>, false);
+      } catch (error) {
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
+          const replay = await this.#replayMove(retry, projectId);
+          if (replay !== null) return replay;
+        }
+        const failure = failureOf(error);
+        if (failure === 'id_taken') continue;
+        return (await this.#replayMove(retry, projectId)) ?? refuse('retry_conflict');
       }
     }
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);

@@ -148,6 +148,8 @@ export const TASK_LIMITS = Object.freeze({
   stepNote: 1024,
   /** The most pinned comments one new comment unpins. */
   unpin: 32,
+  /** The most tasks one move places, the tasks under those it names included. */
+  move: 50,
 });
 
 /**

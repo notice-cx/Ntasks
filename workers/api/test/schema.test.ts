@@ -493,3 +493,163 @@ describe('rules the database keeps whatever code writes to it', () => {
     await expect(insert('task_edges', edge).run()).rejects.toThrow(/FOREIGN KEY constraint failed/u);
   });
 });
+
+describe('a move to another project', () => {
+  /** A task with a label, links both ways, an external link, a comment and a history event, beside a task it links to. */
+  async function filedTask(): Promise<{ from: { id: string; prefix: string }; taskId: string; otherId: string }> {
+    const from = await newProject();
+    const taskId = `${from.prefix}-a1b2`;
+    const otherId = `${from.prefix}-c3d4`;
+    await db.batch([
+      insert('tasks', taskRow(from.id, taskId)),
+      insert('tasks', taskRow(from.id, otherId)),
+      insert('task_labels', { task_id: taskId, label: 'docs' }),
+      insert('task_edges', { task_id: taskId, depends_on_id: otherId, type: 'blocks', created_at: NOW }),
+      insert('task_edges', { task_id: otherId, depends_on_id: taskId, type: 'related', created_at: NOW }),
+      insert('task_external_links', {
+        task_id: taskId,
+        url: 'https://example.com/spec',
+        title: 'Spec',
+        created_at: NOW,
+      }),
+      insert('task_comments', {
+        id: crypto.randomUUID(),
+        task_id: taskId,
+        author: 'tester',
+        text: 'Hi.',
+        created_at: NOW,
+      }),
+      insert('task_events', eventRow(from.id, taskId, { kind: 'created' })),
+    ]);
+    return { from, taskId, otherId };
+  }
+
+  /** The batch that renames `taskId` to `newId` in `projectId`, as the engine runs it. */
+  function moveTo(taskId: string, newId: string, projectId: string) {
+    return db.batch([
+      db.prepare('PRAGMA defer_foreign_keys = ON'),
+      db
+        .prepare('UPDATE tasks SET id = ?1, project_id = ?2, version = version + 1 WHERE id = ?3')
+        .bind(newId, projectId, taskId),
+    ]);
+  }
+
+  it('records the former id, and takes the task’s labels, links, comments and history to its new id', async () => {
+    const { from, taskId, otherId } = await filedTask();
+    const to = await newProject();
+    const newId = `${to.prefix}-e5f6`;
+
+    await moveTo(taskId, newId, to.id);
+
+    const count = (sql: string, id: string) =>
+      db
+        .prepare(sql)
+        .bind(id)
+        .first<{ n: number }>()
+        .then((row) => row?.n);
+    expect(await db.prepare('SELECT alias, task_id FROM task_aliases WHERE task_id = ?').bind(newId).all()).toEqual({
+      results: [{ alias: taskId, task_id: newId }],
+    });
+    for (const table of ['task_labels', 'task_external_links', 'task_comments', 'task_events']) {
+      expect(await count(`SELECT count(*) AS n FROM ${table} WHERE task_id = ?`, newId)).toBe(1);
+      expect(await count(`SELECT count(*) AS n FROM ${table} WHERE task_id = ?`, taskId)).toBe(0);
+    }
+    expect(
+      await db
+        .prepare(
+          'SELECT task_id, depends_on_id, type FROM task_edges WHERE ?1 IN (task_id, depends_on_id) ORDER BY type',
+        )
+        .bind(newId)
+        .all(),
+    ).toEqual({
+      results: [
+        { task_id: newId, depends_on_id: otherId, type: 'blocks' },
+        { task_id: otherId, depends_on_id: newId, type: 'related' },
+      ],
+    });
+    // Each history event keeps the project the task was in when it was recorded.
+    expect(await db.prepare('SELECT project_id FROM task_events WHERE task_id = ?').bind(newId).first()).toEqual({
+      project_id: from.id,
+    });
+  });
+
+  it('keeps every former id naming the task when it moves again, and gives no former id to a new task', async () => {
+    const { taskId } = await filedTask();
+    const second = await newProject();
+    const third = await newProject();
+    const secondId = `${second.prefix}-e5f6`;
+    const thirdId = `${third.prefix}-g7h8`;
+
+    await moveTo(taskId, secondId, second.id);
+    await moveTo(secondId, thirdId, third.id);
+
+    expect(
+      await db.prepare('SELECT alias, task_id FROM task_aliases WHERE task_id = ? ORDER BY alias').bind(thirdId).all(),
+    ).toEqual({
+      results: [
+        { alias: secondId, task_id: thirdId },
+        { alias: taskId, task_id: thirdId },
+      ].sort((a, b) => (a.alias < b.alias ? -1 : 1)),
+    });
+    await expect(insert('tasks', taskRow(second.id, secondId)).run()).rejects.toThrow(/former id/u);
+    await expect(
+      moveTo(
+        thirdId,
+        taskId,
+        (await db.prepare('SELECT project_id FROM tasks WHERE id = ?').bind(thirdId).first<{ project_id: string }>())!
+          .project_id,
+      ),
+    ).rejects.toThrow(/keeps its id, project and creation time/u);
+  });
+
+  it('refuses a new id without the new project’s prefix, a new id in the same project, and a new creation time', async () => {
+    const { from, taskId } = await filedTask();
+    const to = await newProject();
+
+    await expect(moveTo(taskId, `${from.prefix}-e5f6`, to.id)).rejects.toThrow(
+      /keeps its id, project and creation time/u,
+    );
+    await expect(moveTo(taskId, `${from.prefix}-e5f6`, from.id)).rejects.toThrow(
+      /keeps its id, project and creation time/u,
+    );
+    await expect(
+      db.prepare('UPDATE tasks SET created_at = ?, version = version + 1 WHERE id = ?').bind(LATER, taskId).run(),
+    ).rejects.toThrow(/keeps its id, project and creation time/u);
+    expect(await db.prepare('SELECT id, project_id FROM tasks WHERE id = ?').bind(taskId).first()).toEqual({
+      id: taskId,
+      project_id: from.id,
+    });
+    expect(await db.prepare('SELECT count(*) AS n FROM task_aliases WHERE alias = ?').bind(taskId).first()).toEqual({
+      n: 0,
+    });
+  });
+
+  it('never removes a former id, nor points it at a task it did not move to, and moves history and comments only with their task', async () => {
+    const { taskId, otherId } = await filedTask();
+    const to = await newProject();
+    const newId = `${to.prefix}-e5f6`;
+    await moveTo(taskId, newId, to.id);
+
+    await expect(db.prepare('DELETE FROM task_aliases WHERE alias = ?').bind(taskId).run()).rejects.toThrow(
+      /never removed/u,
+    );
+    await expect(
+      db.prepare('UPDATE task_aliases SET task_id = ? WHERE alias = ?').bind(otherId, taskId).run(),
+    ).rejects.toThrow(/names the task it moved to/u);
+    await expect(insert('task_aliases', { alias: otherId, task_id: newId }).run()).rejects.toThrow(
+      /no task's current id/u,
+    );
+    await expect(
+      db.prepare('UPDATE task_events SET task_id = ? WHERE task_id = ?').bind(otherId, newId).run(),
+    ).rejects.toThrow(/history is never edited/u);
+    await expect(
+      db.prepare('UPDATE task_comments SET task_id = ? WHERE task_id = ?').bind(otherId, newId).run(),
+    ).rejects.toThrow(/comments are never edited/u);
+    expect(await db.prepare('SELECT task_id FROM task_aliases WHERE alias = ?').bind(taskId).first()).toEqual({
+      task_id: newId,
+    });
+    expect(await db.prepare('SELECT count(*) AS n FROM task_events WHERE task_id = ?').bind(newId).first()).toEqual({
+      n: 1,
+    });
+  });
+});
