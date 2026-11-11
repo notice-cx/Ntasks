@@ -1290,9 +1290,10 @@ new type replaces the one the pair had; a `blocks` link that would make two
 tasks wait on each other is refused; only `related`, `duplicates`,
 `supersedes` and `merges-after` may name a task in another project; and a
 link to or from a person's decision changes only when the person decides.
-Removals run first, then additions, in the order sent, and a refusal answers
-`409` with the links before it already in place. Each is safe to send again,
-so the route keeps no retry record for them.
+Removals run first, then additions, in the order sent. A link a rule
+refuses answers `409`, a malformed body `400`, and a `blocks` link to a task
+outside the project `404`; in each case the links before it stay in place.
+Each is safe to send again, so the route keeps no retry record for them.
 
 `fields` is an object of custom field values by key, as `fields` is over MCP,
 and in a change `null` takes a value off. The task answers its values as

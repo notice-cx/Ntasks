@@ -435,9 +435,16 @@ export function createFixtureTasksApi({
     const decides = (row: FixtureTask) => row.issueType === 'gate' || row.labels.includes('human');
     const pair = (other: FixtureTask) =>
       task.dependencies.some((edge) => edge.id === other.id) || other.dependencies.some((edge) => edge.id === task.id);
+    // Takes the pair's link off, and answers what puts it back. Another project's link onto this task is changed there.
     const unlink = (other: FixtureTask) => {
+      if (other.project !== task.project && other.dependencies.some((edge) => edge.id === task.id))
+        refused(`${other.id} links to ${task.id} from another project; change it there.`);
+      const before = [task.dependencies, other.dependencies] as const;
       task.dependencies = task.dependencies.filter((edge) => edge.id !== other.id);
       other.dependencies = other.dependencies.filter((edge) => edge.id !== task.id);
+      return () => {
+        [task.dependencies, other.dependencies] = before;
+      };
     };
     // Whether `from` waits on `to`, directly or through the tasks it waits on.
     const waits = (from: string, to: string, seen = new Set<string>()): boolean => {
@@ -466,9 +473,11 @@ export function createFixtureTasksApi({
       if (task.dependencies.some((edge) => edge.id === row.id && edge.type === link.type)) continue;
       if (pair(row) && (decides(task) || decides(row)))
         refused(`${decides(task) ? task.id : row.id} is a person's decision.`);
-      unlink(row);
-      if (link.type === 'blocks' && waits(row.id, task.id))
+      const restore = unlink(row);
+      if (link.type === 'blocks' && waits(row.id, task.id)) {
+        restore();
         refused(`${row.id} already waits on ${task.id}, so ${task.id} cannot wait on it.`);
+      }
       task.dependencies = [...task.dependencies, { id: row.id, type: link.type, title: null, status: null }];
       touch(row);
     }
@@ -824,6 +833,10 @@ export function createFixtureTasksApi({
       reach();
       once(options?.idempotencyKey, ['update', id, key, edit], () => {
         const task = find(id, key);
+        // As the API does, links go in a change of their own, refused whole before anything is written.
+        const others = Object.keys(edit).filter((name) => name !== 'addLinks' && name !== 'removeLinks');
+        if ((edit.addLinks !== undefined || edit.removeLinks !== undefined) && others.length > 0)
+          invalid(`unknown ${others.join(', ')}`);
         if (edit.claim) {
           if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
           if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {

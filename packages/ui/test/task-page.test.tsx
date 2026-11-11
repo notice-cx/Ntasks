@@ -718,6 +718,27 @@ describe("a task's links", () => {
     await waitFor(() => expect(document.querySelector('[data-task-links]')).toBeNull());
   });
 
+  it('keeps every link as it was when the fixture refuses a change, as the API does', async () => {
+    const api = createFixtureTasksApi();
+    const links = (id: string) => task(api, id)?.dependencies.map(({ id: other, type }) => [other, type]);
+    await api.updateTask('web-k3m9.2', 'web', { addLinks: [{ taskId: 'web-k3m9.4', type: 'related' }] });
+    // web-k3m9.4 waits on web-k3m9.3, which waits on web-k3m9.2: waiting on web-k3m9.4 would loop.
+    await expect(
+      api.updateTask('web-k3m9.2', 'web', { addLinks: [{ taskId: 'web-k3m9.4', type: 'blocks' }] }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(links('web-k3m9.2')).toContainEqual(['web-k3m9.4', 'related']);
+    await expect(
+      api.updateTask('web-b2r6', 'web', { priority: 4, addLinks: [{ taskId: 'web-t5w3', type: 'related' }] }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect([task(api, 'web-b2r6')?.priority, links('web-b2r6')]).toEqual([0, []]);
+    // A link another project's task holds onto this one is changed from that task.
+    task(api, 'docs-k8f2')?.dependencies.push({ id: 'web-b2r6', type: 'related', title: null, status: null });
+    await expect(api.updateTask('web-b2r6', 'web', { removeLinks: ['docs-k8f2'] })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(links('docs-k8f2')).toContainEqual(['web-b2r6', 'related']);
+  });
+
   it("shows why a link is refused, and offers no Remove on another task's link onto this one", async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-k3m9.2', api);
