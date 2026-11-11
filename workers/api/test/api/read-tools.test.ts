@@ -643,6 +643,7 @@ describe('get_task', () => {
         text: 'Half written.',
         createdAt: expect.any(String),
         pinned: false,
+        test: null,
       },
     ]);
     expect(JSON.parse(answer.proposal)[0]).toBe(ids.child);

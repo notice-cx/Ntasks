@@ -189,6 +189,7 @@ describe('closing and reopening', () => {
       model: 'model-a',
       link: null,
       acceptance: null,
+      test: null,
     });
     expect(closed.ready).toBe(false);
   });

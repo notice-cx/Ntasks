@@ -216,6 +216,64 @@ test('a store that holds comments keeps each unpinned, and lets a comment only b
   db.close();
 });
 
+test('a store that holds history, comments and closes takes helpers, sessions and test runs only where they belong', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0009_changed_through_and_tests.sql');
+  assert.ok(index > 0, 'the migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+
+  migrated(db, FILES.slice(index));
+
+  const events = db.prepare('SELECT actor_for, session FROM task_events').all();
+  assert.ok(events.length > 0 && events.every((row) => row.actor_for === null && row.session === null));
+  // A change keeps whatever helper and session an imported task holds, past a new write's limits.
+  const change = (actorFor: string, session: string) =>
+    insert(db, 'task_events', {
+      task_id: 'web-a1.1',
+      project_id: 'p1',
+      version: 1,
+      kind: 'commented',
+      actor: 'agent-a',
+      at: LATER,
+      changes: '{}',
+      actor_for: actorFor,
+      session,
+    });
+  change('h'.repeat(255), 's'.repeat(2048));
+  change('helper-1', '');
+  assert.throws(() => change('h'.repeat(256), 'session-1'), /CHECK constraint/u, 'a helper longer than a task holds');
+  assert.deepEqual(
+    db
+      .prepare('SELECT id, test FROM task_comments')
+      .all()
+      .map((row) => [row.id, row.test]),
+    [['c1', null]],
+    'the comment it held reports no test',
+  );
+  const run = JSON.stringify({ command: 'pnpm test', result: 'passed' });
+  const setClose = (id: string, value: string) =>
+    db.prepare('UPDATE tasks SET close_test = ?, version = version + 1 WHERE id = ?').run(value, id);
+  setClose('web-b2', run);
+  assert.throws(() => setClose('web-a1.1', run), /CHECK constraint/u, 'an open task');
+  assert.throws(() => setClose('web-b2', '"passed"'), /CHECK constraint/u, 'not an object');
+  insert(db, 'task_comments', {
+    id: 'c2',
+    task_id: 'web-a1',
+    author: 'a',
+    text: 'Ran it.',
+    created_at: LATER,
+    test: run,
+  });
+  assert.throws(
+    () => db.prepare("UPDATE task_comments SET test = NULL WHERE id = 'c2'").run(),
+    /comments are never edited/u,
+    'its test',
+  );
+  db.close();
+});
+
 test('a store that holds links keeps each one when the links table takes merges-after', () => {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');

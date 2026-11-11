@@ -13,6 +13,7 @@ import {
   isTaskType,
   SORT_DIRECTIONS,
   TASK_LIMITS,
+  WORK_LIMITS,
   TASK_SORTS,
   TASK_STATUSES,
   taskComparator,
@@ -179,6 +180,22 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         maxLength: TASK_LIMITS.actor,
         description: 'Only tasks assigned to this name; "me" for the tasks you hold.',
       },
+      changed_by: {
+        type: 'string',
+        maxLength: TASK_LIMITS.actor,
+        description: 'Only tasks this name changed or commented on; "me" for the ones you did.',
+      },
+      changed_for: {
+        type: 'string',
+        maxLength: TASK_LIMITS.helper,
+        description:
+          "Only tasks changed through this helper agent: by their holder while it named this helper as for. A task's history names the helper of each change.",
+      },
+      changed_in: {
+        type: 'string',
+        maxLength: WORK_LIMITS.session,
+        description: 'Only tasks changed in this agent session: by their holder while its work named this session.',
+      },
       parent: { type: 'string', description: 'Only the direct children of this task.' },
       labels: {
         type: 'array',
@@ -247,6 +264,15 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const assignee = textArg(args, 'assignee', TASK_LIMITS.actor, false);
       if (assignee !== undefined && (/[\r\n\t]/u.test(assignee) || assignee.trim() !== assignee))
         refuse('invalid arguments: assignee (a name on one line, or "me")');
+      const changed = (name: string, max: number, what: string) => {
+        const value = textArg(args, name, max, false);
+        if (value !== undefined && (/[\r\n\t]/u.test(value) || value.trim() !== value))
+          refuse(`invalid arguments: ${name} (${what} on one line)`);
+        return value;
+      };
+      const changedBy = changed('changed_by', TASK_LIMITS.actor, 'a name, or "me",');
+      const changedFor = changed('changed_for', TASK_LIMITS.helper, "a helper agent's name");
+      const changedIn = changed('changed_in', WORK_LIMITS.session, 'a session');
       const asked = args.status === undefined ? TASK_STATUSES : args.status;
       if (
         !Array.isArray(asked) ||
@@ -289,6 +315,9 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         ...(ready === true ? { ready: true } : {}),
         ...(args.parent === undefined ? {} : { parentId: taskArg(args, 'parent') }),
         ...(assignee === undefined ? {} : { assignee: assignee === 'me' ? principal.name : assignee }),
+        ...(changedBy === undefined ? {} : { changedBy: changedBy === 'me' ? principal.name : changedBy }),
+        ...optional('changedFor', changedFor),
+        ...optional('changedIn', changedIn),
         ...(args.labels === undefined ? {} : { labels: stringsArg(args, 'labels') }),
         ...(args.type === undefined ? {} : { types: stringsArg(args, 'type') as TaskType[] }),
         ...optional('createdAfter', instantArg(args, 'created_after')),

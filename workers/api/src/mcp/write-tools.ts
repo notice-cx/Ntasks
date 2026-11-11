@@ -21,6 +21,8 @@ import {
   lacksProof,
   TASK_LIMITS,
   TASK_RESOLUTIONS,
+  TEST_LIMITS,
+  TEST_RESULTS,
   TOUCHES_LIMITS,
   WORK_LIMITS,
   type ApprovalRequest,
@@ -55,6 +57,7 @@ import {
   refuse,
   setOrTakeOff,
   taskArg,
+  testArg,
   textArg,
   typeArg,
   urlsArg,
@@ -195,6 +198,25 @@ const WORK = Object.freeze({
       'The files or other things this work changes, such as a path, a folder or a migration number. Replaces the list before it; [] takes it off. ' +
       'The answer lists in overlaps the other tasks in progress whose touches meet these.',
   },
+});
+/** A test run a comment or a close reports, beside its words. */
+const TEST = Object.freeze({
+  type: 'object',
+  properties: {
+    command: {
+      type: 'string',
+      maxLength: TEST_LIMITS.command,
+      description: 'The command that ran, such as pnpm test.',
+    },
+    result: { type: 'string', enum: TEST_RESULTS },
+    passed: { type: 'integer', minimum: 0, maximum: TEST_LIMITS.count, description: 'How many tests passed.' },
+    failed: { type: 'integer', minimum: 0, maximum: TEST_LIMITS.count, description: 'How many tests failed.' },
+    commit: { type: 'string', maxLength: WORK_LIMITS.commit, description: 'The commit it ran on.' },
+  },
+  required: ['command', 'result'],
+  additionalProperties: false,
+  description:
+    'The test run this reports: the command, passed or failed, its counts and the commit it ran on. The task page shows it beside the words.',
 });
 const TASK_IDS = (description: string) => ({
   type: 'array',
@@ -1545,6 +1567,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           description:
             'Ids of pinned comments on this task to unpin, such as facts this comment corrects. They stay among its comments.',
         },
+        test: TEST,
         model: MODEL,
         ...WORK,
         idempotency_key: IDEMPOTENCY,
@@ -1561,6 +1584,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const work = workArgs(args);
       const detail = detailArg(args);
       const pins = pinsArg(args);
+      const test = testArg(args);
       if (!one && pins?.unpin !== undefined)
         refuse('invalid arguments: unpin (a comment id names a comment of one task: name it with task)');
       const comment = async (taskId: string, retry: RetryRequest) => {
@@ -1574,6 +1598,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           work,
           model,
           pins,
+          test,
         );
         // Only a comment that records touches is checked against the other work in progress.
         const touched = work?.work?.touches === undefined ? null : await context.engine.getTask(project.id, taskId);
@@ -1686,6 +1711,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           type: 'boolean',
           description: 'true closes every open task under each one named first, with the same reason and proof.',
         },
+        test: TEST,
         model: MODEL,
         idempotency_key: IDEMPOTENCY,
         detail: DETAIL,
@@ -1700,7 +1726,12 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
       const given = closingArgs(args, one ? ids[0]! : '', 'duplicate_of');
       if (given.duplicateOf !== undefined && ids.includes(given.duplicateOf))
         refuse('invalid arguments: duplicate_of (another task than the ones closing)');
-      const closing = { ...given, ...shippedArgs(args, PROOF, given.resolution) };
+      const test = testArg(args);
+      const closing = {
+        ...given,
+        ...shippedArgs(args, PROOF, given.resolution),
+        ...(test === undefined ? {} : { test }),
+      };
       const withChildren = booleanArg(args, 'with_children') === true;
       const detail = detailArg(args);
       const closed: Task[] = [];

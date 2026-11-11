@@ -69,7 +69,7 @@ describe('store rows', () => {
 
   it('reads a table back in a fixed order, naming only its known tables', () => {
     expect(selectAllSql('task_events')).toBe(
-      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq',
+      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes, actor_for, session FROM task_events ORDER BY seq',
     );
     expect(isStoreTable('task_edges')).toBe(true);
     expect(isStoreTable('write_receipts')).toBe(false);

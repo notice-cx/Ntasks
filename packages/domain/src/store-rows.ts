@@ -85,6 +85,8 @@ export interface TaskRow {
   readonly steps?: string | null;
   /** JSON text: a person's acceptance of the task as done on their own call (TaskAcceptance). Left out, null. */
   readonly close_acceptance?: string | null;
+  /** JSON text: the test run its close reported (TaskTestResult). Left out, null. */
+  readonly close_test?: string | null;
 }
 
 export interface LabelRow {
@@ -130,6 +132,8 @@ export interface CommentRow {
   readonly created_at: string;
   /** 1 when the comment is pinned. Left out, 0. */
   readonly pinned?: number;
+  /** JSON text: the test run the comment reported (TaskTestResult). Left out, null. */
+  readonly test?: string | null;
 }
 
 export interface EventRow {
@@ -144,6 +148,9 @@ export interface EventRow {
   readonly at: string;
   /** JSON text. */
   readonly changes: string;
+  /** The helper agent and the agent session it was made through. Left out, null. */
+  readonly actor_for?: string | null;
+  readonly session?: string | null;
 }
 
 /** Every row of the tables that hold tasks. A task's parent and the task it duplicates come before it. */
@@ -211,6 +218,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'close_link',
     'steps',
     'close_acceptance',
+    'close_test',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],
@@ -226,8 +234,20 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'retired_at',
     'retired_by',
   ],
-  task_comments: ['id', 'task_id', 'author', 'text', 'created_at', 'pinned'],
-  task_events: ['seq', 'task_id', 'project_id', 'version', 'kind', 'actor', 'model', 'at', 'changes'],
+  task_comments: ['id', 'task_id', 'author', 'text', 'created_at', 'pinned', 'test'],
+  task_events: [
+    'seq',
+    'task_id',
+    'project_id',
+    'version',
+    'kind',
+    'actor',
+    'model',
+    'at',
+    'changes',
+    'actor_for',
+    'session',
+  ],
 });
 
 /** The order a table's rows are read back in: its primary key, which storeKey gives as columns. */

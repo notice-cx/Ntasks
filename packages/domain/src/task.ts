@@ -303,6 +303,23 @@ export interface TaskAcceptance {
 /** The reason a person's acceptance closes a task with when they give none of their own. */
 export const ACCEPTED_REASON = 'Accepted as done';
 
+/** Whether a test run passed. */
+export const TEST_RESULTS = ['passed', 'failed'] as const;
+export type TestResult = (typeof TEST_RESULTS)[number];
+
+/** A test run a comment or a close reports, as structured evidence beside its words. */
+export interface TaskTestResult {
+  /** The command that ran, such as `pnpm test`. One line of at most TEST_LIMITS.command characters. */
+  readonly command: string;
+  readonly result: TestResult;
+  /** How many tests passed and how many failed, when the run counted them. */
+  readonly passed?: number;
+  readonly failed?: number;
+  /** The commit it ran on: 7 to 64 hexadecimal characters (COMMIT_SHA). */
+  readonly commit?: string;
+}
+export const TEST_LIMITS = Object.freeze({ command: 512, count: 1_000_000 });
+
 /** How the task's current close ended. Earlier closes are in its history. */
 export interface TaskClose {
   readonly at: string;
@@ -317,6 +334,8 @@ export interface TaskClose {
   readonly link: string | null;
   /** A close as done on a person's own call; null on every other close. */
   readonly acceptance: TaskAcceptance | null;
+  /** The test run the close reported; null when it reported none. */
+  readonly test: TaskTestResult | null;
 }
 
 /** Where a closed task's change is, and when it got to each stage. */
@@ -409,6 +428,8 @@ export interface TaskComment {
   /** Pinned when it was added, as a fact later work needs, and not unpinned since. A
    * comment pinned on an epic is shown with each of its children (ParentContext). */
   readonly pinned: boolean;
+  /** The test run the comment reported; null when it reported none. */
+  readonly test: TaskTestResult | null;
 }
 
 /** One of a task's siblings that closed, as a read of the task shows it: how it ended, why, and what proves it. */
@@ -454,6 +475,10 @@ export interface TaskEvent {
   readonly kind: TaskEventKind;
   readonly actor: string;
   readonly model: string | null;
+  /** The helper agent and the agent session the change was made through: for a change by the
+   * task's holder, its helper and session as they stood; null when it had none. */
+  readonly actorFor: string | null;
+  readonly session: string | null;
   readonly at: string;
   /** The fields this change set, with their new values. A created event holds every field. */
   readonly changes: JsonObject;

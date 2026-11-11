@@ -296,6 +296,17 @@ function filter(statement: Query, query: TaskFilters): void {
   if (query.ready === false) where.push(`NOT ${READY}`);
   if (query.parentId !== undefined) where.push(`t.parent_id = ${statement.param(query.parentId)}`);
   if (query.assignee !== undefined) where.push(`t.assignee = ${statement.param(query.assignee)}`);
+  // Each reads the task's own history entries: task_events_by_actor for a
+  // writer, and the partial indexes of the changes that name a helper or a session.
+  if (query.changedBy !== undefined)
+    where.push(`EXISTS (SELECT 1 FROM task_events e INDEXED BY task_events_by_actor
+      WHERE e.task_id = t.id AND e.actor = ${statement.param(query.changedBy)})`);
+  if (query.changedFor !== undefined)
+    where.push(`EXISTS (SELECT 1 FROM task_events e INDEXED BY task_events_by_helper
+      WHERE e.task_id = t.id AND e.actor_for = ${statement.param(query.changedFor)})`);
+  if (query.changedIn !== undefined)
+    where.push(`EXISTS (SELECT 1 FROM task_events e INDEXED BY task_events_by_session
+      WHERE e.task_id = t.id AND e.session = ${statement.param(query.changedIn)})`);
   // Labels and words each travel as one JSON array, because a statement binds
   // at most 100 values; a task must carry every label and hold every word.
   if (query.labels !== undefined && query.labels.length > 0) {
@@ -648,7 +659,7 @@ export class Reads {
         `SELECT p.id, p.title, p.type, p.status,
            (SELECT count(*) ${pinnedFrom}) AS pinned_total,
            (SELECT json_group_array(json_object('id', id, 'task_id', task_id, 'author', author, 'text', text,
-               'created_at', created_at, 'pinned', pinned))
+               'created_at', created_at, 'pinned', pinned, 'test', test))
               FROM (SELECT m.* ${pinnedFrom} ORDER BY m.created_at DESC, m.id DESC LIMIT ?3)) AS pinned_json,
            (SELECT count(*) ${closedFrom}) AS closed_total,
            (SELECT json_group_array(json_object('id', id, 'title', title, 'resolution', resolution,

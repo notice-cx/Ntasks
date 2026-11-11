@@ -16,6 +16,7 @@ import type {
   StoredProjectIcon,
   Task,
   TaskAcceptance,
+  TaskTestResult,
   TaskComment,
   TaskDelivery,
   TaskEvent,
@@ -81,6 +82,8 @@ export interface StoredTaskRow {
   readonly steps: string | null;
   /** A person's acceptance of the task as done on their own call, as a JSON object. */
   readonly close_acceptance: string | null;
+  /** The test run its close reported, as a JSON object. */
+  readonly close_test: string | null;
 }
 
 /** A `tasks` row as the engine's reads select it, with the columns they compute. */
@@ -148,6 +151,8 @@ export interface CommentRow {
   readonly text: string;
   readonly created_at: string;
   readonly pinned: number;
+  /** The test run it reported, as a JSON object. */
+  readonly test: string | null;
 }
 
 /** A closed child of a task's parent, as parentContext reads it. */
@@ -173,6 +178,8 @@ export interface EventRow {
   readonly model: string | null;
   readonly at: string;
   readonly changes: string;
+  readonly actor_for: string | null;
+  readonly session: string | null;
 }
 
 export interface EpicRow {
@@ -291,6 +298,7 @@ export function toTask(row: TaskRow): Task {
             model: row.closed_model,
             link: row.close_link,
             acceptance: row.close_acceptance === null ? null : (JSON.parse(row.close_acceptance) as TaskAcceptance),
+            test: row.close_test === null ? null : (JSON.parse(row.close_test) as TaskTestResult),
           }
         : null,
     delivery: deliveryOf(row),
@@ -346,6 +354,7 @@ export function toComment(row: CommentRow): TaskComment {
     text: row.text,
     createdAt: row.created_at,
     pinned: row.pinned === 1,
+    test: row.test === null ? null : (JSON.parse(row.test) as TaskTestResult),
   };
 }
 
@@ -372,6 +381,8 @@ export function toEvent(row: EventRow): TaskEvent {
     kind: row.kind,
     actor: row.actor,
     model: row.model,
+    actorFor: row.actor_for,
+    session: row.session,
     at: row.at,
     changes: JSON.parse(row.changes) as JsonObject,
   };

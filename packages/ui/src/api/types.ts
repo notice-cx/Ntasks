@@ -202,6 +202,8 @@ export interface LiveTask {
   proof?: 'none' | null;
   /** On a task a person accepted as done on their own call, when the server sends it. */
   closeAcceptance?: TaskAcceptance | null;
+  /** The test run its close reported, when the server sends it. */
+  closeTest?: TaskTestResult | null;
   /** The helper agent the assignee works through, shown as `claude for page-rebuild-2`, when the server sends it. */
   for?: string | null;
   /** What the assignee recorded about the work in hand, such as its branch and next step, when the server sends it. */
@@ -381,6 +383,15 @@ export interface ChangesPage {
   lastSeq: number;
 }
 
+/** A test run a comment or a close reported: the command, passed or failed, its counts and the commit it ran on. */
+export interface TaskTestResult {
+  command: string;
+  result: 'passed' | 'failed';
+  passed?: number;
+  failed?: number;
+  commit?: string;
+}
+
 export interface TaskComment {
   id: string;
   author: string;
@@ -388,6 +399,8 @@ export interface TaskComment {
   createdAt: string | null;
   /** Pinned as a fact later work needs; a server before API version 7 leaves it out. */
   pinned?: boolean;
+  /** The test run it reported, when the server sends it. */
+  test?: TaskTestResult | null;
 }
 
 /** One of the parent's other children that closed: how it ended, why, and what proves it. */

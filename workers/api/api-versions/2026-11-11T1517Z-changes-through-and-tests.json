@@ -1,0 +1,31 @@
+{
+  "added": "`test` on a comment, `closeTest` on a task, `for` and `session` on a change in `GET /api/tasks/:id/history`, and `actorFor` and `session` on an event in `GET /api/changes`",
+  "shapes": {
+    "comment": {
+      "test": "null|object",
+      "test.command": "string",
+      "test.result": "string",
+      "test.passed": "absent|number",
+      "test.failed": "absent|number",
+      "test.commit": "absent|string"
+    },
+    "task": {
+      "closeTest": "null|object",
+      "closeTest.command": "string",
+      "closeTest.result": "string",
+      "closeTest.passed": "absent|number",
+      "closeTest.failed": "absent|number",
+      "closeTest.commit": "absent|string"
+    }
+  },
+  "routes": {
+    "GET /api/tasks/:id/history": {
+      "changes[].for": "absent|string",
+      "changes[].session": "absent|string"
+    },
+    "GET /api/changes": {
+      "events[].actorFor": "null|string",
+      "events[].session": "null|string"
+    }
+  }
+}

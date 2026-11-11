@@ -56,8 +56,8 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
       writes.recordUnchanged(projectId, taskId, expectedVersion, retry),
     createTask: (projectId, input, actor, retry) => writes.createTask(projectId, input, actor, retry),
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
-    addComment: (projectId, taskId, text, actor, retry, pins) =>
-      writes.addComment(projectId, taskId, text, actor, retry, pins),
+    addComment: (projectId, taskId, text, actor, retry, pins, test) =>
+      writes.addComment(projectId, taskId, text, actor, retry, pins, test),
     reportDelivery: (projectIds, signal, actor, options) => writes.reportDelivery(projectIds, signal, actor, options),
   };
 }
