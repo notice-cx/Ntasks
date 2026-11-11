@@ -327,7 +327,7 @@ export function TopBar({ title, children, className }: { title: ReactNode; child
   return (
     <header
       className={cn(
-        'flex h-14 items-center gap-2.5 border-b border-border ps-6 pe-5 max-sm:h-13 max-sm:ps-4 max-sm:pe-3',
+        'flex h-14 items-center gap-2.5 border-b border-border ps-6 pe-5 max-sm:h-13 max-sm:gap-2 max-sm:ps-4 max-sm:pe-3',
         className,
       )}
     >

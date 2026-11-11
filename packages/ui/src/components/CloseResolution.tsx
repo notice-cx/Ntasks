@@ -31,6 +31,7 @@ export function CloseMenu({
   onAccept,
   variant = 'secondary',
   disabledReason = null,
+  iconOnPhone = false,
 }: {
   /** The button's words: Close, or Close as when Done is not on offer. */
   label: string;
@@ -43,6 +44,8 @@ export function CloseMenu({
   variant?: 'primary' | 'secondary' | 'ghost';
   /** Why this sign-in cannot close it, shown as the button's tip; null when it can. */
   disabledReason?: string | null;
+  /** On a phone the button shows its icons alone, its words kept for a screen reader, so a top bar fits the screen. */
+  iconOnPhone?: boolean;
 }) {
   return (
     <Menu>
@@ -55,7 +58,7 @@ export function CloseMenu({
           data-close-trigger=""
         >
           <Check aria-hidden />
-          {label}
+          {iconOnPhone ? <span className="max-sm:sr-only">{label}</span> : label}
           <ChevronDown aria-hidden />
         </Button>
       </MenuTrigger>

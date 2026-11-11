@@ -273,37 +273,43 @@ function Legend() {
   );
 }
 
-/** Every day's counts as a table, for a screen reader: the chart's values without pointing at them. */
+/**
+ * Every day's counts as a table, for a screen reader: the chart's values without pointing at them.
+ * The wrapper is what hides it: a table grows to fit its cells whatever width it is given, so a
+ * hidden table on its own widens the page on a phone.
+ */
 function BurndownTable({ days }: { days: readonly BurndownDay[] }) {
   return (
-    <table className="sr-only" data-burndown-table="">
-      <caption>Open tasks by day, last 8 weeks</caption>
-      <thead>
-        <tr>
-          <th scope="col">Day</th>
-          <th scope="col">Open</th>
-          <th scope="col">Created</th>
-          <th scope="col">Done</th>
-          <th scope="col">Closed, not done</th>
-        </tr>
-      </thead>
-      <tbody>
-        {days.map((day) => (
-          <tr key={day.day}>
-            <th scope="row">{dayLabel(day.day)}</th>
-            {isRecorded(day) ? (
-              <>
-                <td>{formatInt(day.open)}</td>
-                <td>{formatInt(day.created)}</td>
-                <td>{formatInt(day.done)}</td>
-                <td>{formatInt(day.closedNotDone)}</td>
-              </>
-            ) : (
-              <td colSpan={4}>Not recorded</td>
-            )}
+    <div className="sr-only">
+      <table data-burndown-table="">
+        <caption>Open tasks by day, last 8 weeks</caption>
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            <th scope="col">Open</th>
+            <th scope="col">Created</th>
+            <th scope="col">Done</th>
+            <th scope="col">Closed, not done</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {days.map((day) => (
+            <tr key={day.day}>
+              <th scope="row">{dayLabel(day.day)}</th>
+              {isRecorded(day) ? (
+                <>
+                  <td>{formatInt(day.open)}</td>
+                  <td>{formatInt(day.created)}</td>
+                  <td>{formatInt(day.done)}</td>
+                  <td>{formatInt(day.closedNotDone)}</td>
+                </>
+              ) : (
+                <td colSpan={4}>Not recorded</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -62,7 +62,7 @@ export function Segmented({
       role="group"
       aria-label={question}
       className={cn(
-        'inline-flex overflow-hidden rounded-md bg-background inset-ring inset-ring-border',
+        'inline-flex max-w-full overflow-hidden rounded-md bg-background inset-ring inset-ring-border',
         'max-sm:flex-wrap max-sm:gap-1.5 max-sm:overflow-visible max-sm:bg-transparent max-sm:inset-ring-0',
         className,
       )}
@@ -80,7 +80,9 @@ export function Segmented({
             'transition-colors duration-120 hover:bg-hover focus-visible:bg-hover focus-visible:inset-ring-2 focus-visible:inset-ring-accent',
             'disabled:pointer-events-none disabled:opacity-45',
             index > 0 && 'shadow-[inset_1px_0_0_var(--border)]',
-            'max-sm:h-7.5 max-sm:rounded-md max-sm:bg-background max-sm:shadow-none max-sm:inset-ring max-sm:inset-ring-border',
+            'max-sm:rounded-md max-sm:bg-background max-sm:shadow-none max-sm:inset-ring max-sm:inset-ring-border',
+            // On a phone a long label takes more lines rather than running past the screen.
+            'max-sm:h-auto max-sm:min-h-7.5 max-sm:max-w-full max-sm:whitespace-normal max-sm:py-1 max-sm:text-start',
           )}
           onClick={() => onChoose(option.key)}
         >
