@@ -70,6 +70,10 @@ export function LiveRoute() {
     [board.allTasks, waits, deploying, now],
   );
   const onBoard = STAGES.reduce((sum, stage) => sum + columns[stage].length, 0);
+  const projectsByKey = useMemo(
+    () => new Map(board.projects.map((project) => [project.key, project] as const)),
+    [board.projects],
+  );
   // Each project's open epics, so a task in progress sits under its own.
   const epics = useMemo(
     () =>
@@ -107,7 +111,7 @@ export function LiveRoute() {
   } else if (board.loading || (view === 'board' && onBoard === 0 && waits.loading)) {
     body = <PageSkeleton shape="list" />;
   } else if (view === 'board' && onBoard > 0) {
-    body = <LiveBoardView columns={columns} nowMs={now} />;
+    body = <LiveBoardView columns={columns} projects={projectsByKey} nowMs={now} />;
   } else if (total === 0) {
     body = (
       <EmptyState

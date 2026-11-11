@@ -10,6 +10,7 @@ import {
   type DeliveryMove,
   type DeliveryOptions,
   type DeliverySignal,
+  type Task,
   type TaskResolution,
   type TaskType,
   type TaskWork,
@@ -25,6 +26,23 @@ const GITHUB_PULL = /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d{1,9})(?:\/
 
 function githubPull(repository: string, number: number): string {
   return `https://github.com/${repository.toLowerCase()}/pull/${number}`;
+}
+
+/** A pull request as pullRequestUrl writes one on GitHub: its repository as
+ * `owner/name` and its number; null for any other URL. */
+export function githubPullOf(url: string): { readonly repository: string; readonly number: number } | null {
+  const pull = /^https:\/\/github\.com\/([a-z0-9-]+\/[a-z0-9._-]+)\/pull\/(\d{1,9})$/u.exec(url);
+  return pull ? { repository: pull[1]!, number: Number(pull[2]) } : null;
+}
+
+/** The pull request an approval gates: the URL of its first link of kind
+ * pull-request on GitHub, in the order a read lists links; null on any other
+ * task, a request to do steps included. */
+export function gatedPullRequest(task: Pick<Task, 'type' | 'steps' | 'externalLinks'>): string | null {
+  if (task.type !== 'gate' || task.steps !== null) return null;
+  return (
+    task.externalLinks.find((link) => link.kind === 'pull-request' && githubPullOf(link.url) !== null)?.url ?? null
+  );
 }
 
 /**

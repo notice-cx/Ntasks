@@ -42,6 +42,24 @@ export interface StandInPull {
   readonly base: string;
 }
 
+/** A pull request an approval gates, as the stand-in's GraphQL API answers it, by `owner/name#number`. */
+export interface StandInMergeable {
+  /** OPEN unless a test names another. */
+  readonly state?: 'OPEN' | 'MERGED' | 'CLOSED';
+  /** GitHub's merge state: BLOCKED, as while required checks run, unless a test names another. */
+  readonly mergeStateStatus?: string;
+  /** Whether its base branch has a merge queue. */
+  readonly mergeQueue?: boolean;
+}
+
+/** What the Worker asked GitHub to do to a pull request an approval gates. */
+export interface StandInMergeRequest {
+  /** `owner/name#number`. */
+  readonly pull: string;
+  /** The merge method it named, or null when it named none. */
+  readonly method: string | null;
+}
+
 /** A check run on a commit, as the stand-in lists it. */
 export interface StandInCheckRun {
   /** GitHub's id of the run; none when a test names none. */
@@ -139,6 +157,71 @@ export interface GitHubCalls {
   readonly apiRequests: string[];
   /** The display name each GitHub user's profile gives, which a test sets; without one, `Person <id>`. */
   readonly names: Map<number, string>;
+  /** The pull requests GitHub's GraphQL API shows for a merge, which a test sets. */
+  readonly mergeables: Map<string, StandInMergeable>;
+  /** Each pull request whose auto-merge the Worker turned on. */
+  readonly autoMerges: StandInMergeRequest[];
+  /** Each pull request the Worker merged at once. */
+  readonly merges: StandInMergeRequest[];
+  /** Each comment the Worker posted on a pull request, by `owner/name#number`. */
+  readonly comments: { readonly pull: string; readonly body: string }[];
+  /** Whether the app holds only read permissions, as before an owner accepts write ones: GitHub refuses every write. */
+  readOnly: boolean;
+  /** Whether GitHub makes a change asked for but its answer breaks off after the status, as one that stalls past a deadline does. */
+  changeAnswersBreak: boolean;
+}
+
+/** The stand-in's node id of a pull request, which its mutations name it by. */
+function nodeIdOf(pull: string): string {
+  return `PR_${pull}`;
+}
+
+/** The GraphQL answer to a read of a pull request to merge, or to turning on its auto-merge or merging it; null for any other query. */
+function mergeAnswer(calls: GitHubCalls, query: string, variables: Record<string, unknown>): Response | null {
+  const forbidden = () =>
+    Response.json({ data: null, errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }] });
+  if (query.includes('pullRequest(number:')) {
+    const pull = `${String(variables.owner)}/${String(variables.name)}#${String(variables.number)}`;
+    const found = calls.mergeables.get(pull);
+    const enabled = calls.autoMerges.some((entry) => entry.pull === pull);
+    return Response.json({
+      data: {
+        repository: {
+          squashMergeAllowed: true,
+          mergeCommitAllowed: true,
+          rebaseMergeAllowed: false,
+          pullRequest:
+            found === undefined
+              ? null
+              : {
+                  id: nodeIdOf(pull),
+                  state: found.state ?? 'OPEN',
+                  isDraft: false,
+                  isInMergeQueue: false,
+                  isMergeQueueEnabled: found.mergeQueue === true,
+                  mergeStateStatus: found.mergeStateStatus ?? 'BLOCKED',
+                  autoMergeRequest: enabled ? { enabledAt: new Date().toISOString() } : null,
+                },
+        },
+      },
+    });
+  }
+  const changed = /enablePullRequestAutoMerge|mergePullRequest/u.exec(query)?.[0];
+  if (changed === undefined) return null;
+  if (calls.readOnly) return forbidden();
+  const pull = String(variables.id).replace(/^PR_/u, '');
+  const method = typeof variables.method === 'string' ? variables.method : null;
+  (changed === 'mergePullRequest' ? calls.merges : calls.autoMerges).push({ pull, method });
+  if (calls.changeAnswersBreak) {
+    const broken = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"data":'));
+        controller.error(new Error('the answer broke off'));
+      },
+    });
+    return new Response(broken, { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  return Response.json({ data: { [changed]: { clientMutationId: null } } });
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -173,6 +256,12 @@ export function standInForGitHub(): GitHubCalls {
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
     names: new Map<number, string>(),
+    mergeables: new Map<string, StandInMergeable>(),
+    autoMerges: [] as StandInMergeRequest[],
+    merges: [] as StandInMergeRequest[],
+    comments: [] as { pull: string; body: string }[],
+    readOnly: false,
+    changeAnswersBreak: false,
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -190,6 +279,12 @@ export function standInForGitHub(): GitHubCalls {
     calls.histories.clear();
     calls.apiRequests.length = 0;
     calls.names.clear();
+    calls.mergeables.clear();
+    calls.autoMerges.length = 0;
+    calls.merges.length = 0;
+    calls.comments.length = 0;
+    calls.readOnly = false;
+    calls.changeAnswersBreak = false;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -279,10 +374,23 @@ export function standInForGitHub(): GitHubCalls {
           base: { ref: found.base, repo: { full_name: pull[1], default_branch: 'main' } },
         });
       }
-      // GitHub's GraphQL API, for the one query the Worker sends: a commit's check runs, by check suite.
+      // GitHub's REST API for a comment on a pull request, which is an issue's comment there.
+      const comment = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/u.exec(url.href);
+      if (comment && request.method === 'POST') {
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        if (calls.readOnly)
+          return Response.json({ message: 'Resource not accessible by integration' }, { status: 403 });
+        const { body } = (await request.json()) as { body: string };
+        calls.comments.push({ pull: `${comment[1]}#${comment[2]}`, body });
+        return Response.json({ id: calls.comments.length, body }, { status: 201 });
+      }
+      // GitHub's GraphQL API: a pull request to merge, auto-merge turned on or a merge, and a commit's check runs.
       if (url.href === 'https://api.github.com/graphql' && request.method === 'POST') {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
-        const { variables } = (await request.json()) as { variables: { commit: string } };
+        const sent = (await request.json()) as { query: string; variables: Record<string, unknown> };
+        const merging = mergeAnswer(calls, sent.query, sent.variables);
+        if (merging !== null) return merging;
+        const variables = sent.variables as { commit: string };
         calls.checkReads.push(variables.commit);
         if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
         // A secondary rate limit, which GitHub may answer with no retry-after or rate-limit header.

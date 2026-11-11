@@ -137,8 +137,8 @@ const CODEX = /codex|openai|\bgpt\b/i;
 /**
  * The prefixes the API gives a non-person actor: `agent:<name>`, and
  * `service:<credential>` or `service:<credential>/<agent>` for a service and
- * the agent it acts for. A person whose own name starts like one is recorded
- * as `person:<name>` (docs/sign-in.md).
+ * the agent it acts for. A person whose own name starts like one, or reads as
+ * an agent's, is recorded as `person:<name>` (docs/sign-in.md).
  */
 const AGENT_ACTOR = /^(?:agent|service):/;
 const PERSON_ACTOR = /^person:/;

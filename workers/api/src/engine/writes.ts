@@ -54,6 +54,7 @@ import {
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
+import { githubPullOf } from '../delivery.ts';
 import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
 import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
@@ -518,7 +519,7 @@ export class Writes {
     taskId: string,
     projectId: string,
     priority: number,
-    { reason, title: given }: check.CheckedApproval,
+    { reason, title: given, pullRequest }: check.CheckedApproval,
     actor: Actor,
     at: string,
   ): Statement[] {
@@ -531,7 +532,24 @@ export class Writes {
         .map((line) => line.trim())
         .find((line) => line !== '')!
         .slice(0, 512);
-    return this.#request(gateId, taskId, projectId, priority, { title, description: reason, steps: null }, actor, at);
+    const pull = pullRequest === null ? null : githubPullOf(pullRequest);
+    const link: ExternalLink | null =
+      pullRequest === null
+        ? null
+        : {
+            url: pullRequest,
+            title: pull === null ? 'Pull request' : `${pull.repository}#${pull.number}`,
+            kind: 'pull-request',
+          };
+    return this.#request(
+      gateId,
+      taskId,
+      projectId,
+      priority,
+      { title, description: reason, steps: null, link },
+      actor,
+      at,
+    );
   }
 
   /** The gate a write opens: an approval, or a request that a person do steps. */
@@ -547,22 +565,36 @@ export class Writes {
     if (write.requestApproval !== null)
       return this.#gate(gateId, taskId, projectId, priority, write.requestApproval, actor, at);
     const { title, context, steps } = write.requestAction!;
-    return this.#request(gateId, taskId, projectId, priority, { title, description: context, steps }, actor, at);
+    return this.#request(
+      gateId,
+      taskId,
+      projectId,
+      priority,
+      { title, description: context, steps, link: null },
+      actor,
+      at,
+    );
   }
 
-  /** A new request to a person: the gate task, its created event, and the
-   * link by which `taskId` waits on it. With steps, it asks them to do the
-   * steps; without, to approve its description. */
+  /** A new request to a person: the gate task, its created event, its link
+   * to the pull request an approval gates, and the link by which `taskId`
+   * waits on it. With steps, it asks them to do the steps; without, to
+   * approve its description. */
   #request(
     gateId: string,
     taskId: string,
     projectId: string,
     priority: number,
-    ask: { readonly title: string; readonly description: string; readonly steps: readonly TaskStep[] | null },
+    ask: {
+      readonly title: string;
+      readonly description: string;
+      readonly steps: readonly TaskStep[] | null;
+      readonly link: ExternalLink | null;
+    },
     actor: Actor,
     at: string,
   ): Statement[] {
-    const { title, description: reason, steps } = ask;
+    const { title, description: reason, steps, link } = ask;
     return [
       this.#insert('tasks', {
         id: gateId,
@@ -607,13 +639,14 @@ export class Writes {
         metadata: {},
         labels: [],
         dependencies: [],
-        externalLinks: [],
+        externalLinks: link === null ? [] : externalList(new Map([[link.url, link]])),
         fields: {},
         close: null,
         ...(steps === null ? {} : { steps: steps as unknown as Json }),
         filedBy: actor.name,
         filedModel: actor.model ?? null,
       }),
+      ...(link === null ? [] : [this.#externalLink(gateId, link, actor, at)]),
       this.#insert('task_edges', {
         task_id: taskId,
         depends_on_id: gateId,
@@ -2011,6 +2044,20 @@ export class Writes {
       const standing = external.get(link.url);
       return standing?.title !== link.title || standing.kind !== link.kind;
     });
+    // The pull request an approval gates is part of what a person approves,
+    // and stays as the approval was asked for, so no answer comes to cover another.
+    if (
+      current.type === 'gate' &&
+      [...removeExternal.map((url) => current.externalLinks.find((link) => link.url === url)), ...addExternal].some(
+        (link) =>
+          link?.kind === 'pull-request' ||
+          current.externalLinks.some((had) => had.url === link?.url && had.kind === 'pull-request'),
+      )
+    )
+      refuse(
+        'invalid',
+        "An approval's pull request stays as the approval was asked for; ask for a new approval instead.",
+      );
     for (const link of addExternal) external.set(link.url, link);
     // Only a write that adds is held to the limit, so a task imported with more can still lose some.
     if (addExternal.length > 0 && external.size > TASK_LIMITS.externalLinks)

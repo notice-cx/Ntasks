@@ -499,16 +499,20 @@ function workDetails(value: unknown): TaskWork {
   return checked;
 }
 
-/** An approval to open, checked; its title is null when the request leaves it to the reason's first line. */
+/** An approval to open, checked; its title is null when the request leaves it
+ * to the reason's first line, and its pull request null when it gates none. */
 export interface CheckedApproval {
   readonly reason: string;
   readonly title: string | null;
+  readonly pullRequest: string | null;
 }
 
 function approval(value: ApprovalRequest | undefined): CheckedApproval {
   return {
     reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true),
     title: value?.title === undefined ? null : line(value.title, 'requestApproval.title', TASK_LIMITS.title),
+    pullRequest:
+      value?.pullRequest === undefined ? null : externalUrl(value.pullRequest, 'requestApproval.pullRequest'),
   };
 }
 

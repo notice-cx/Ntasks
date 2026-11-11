@@ -68,6 +68,13 @@ export interface TaskDependency {
   status: string | null;
 }
 
+/** A task another relies on that closed as won't do or no longer needed: its premise may be gone. */
+export interface DroppedTask {
+  id: string;
+  title: string;
+  resolution: TaskResolution;
+}
+
 /** A page outside Ntasks a task links to, such as a pull request. */
 export interface TaskExternalLink {
   url: string;
@@ -171,6 +178,8 @@ export interface LiveTask {
   dependencies: TaskDependency[];
   /** The links other tasks hold onto this one, in any project the reader reaches; a server without the API version in workers/api/api-versions/2026-11-10T0513Z-touches-merge-order.json leaves it out. */
   dependents?: TaskDependency[];
+  /** The tasks it relies on that closed as won't do or no longer needed after it last changed, ordered by id; a server that sends none leaves it out. */
+  reliesOnDropped?: DroppedTask[];
   /** Ordered by URL, when the server sends them. */
   externalLinks?: TaskExternalLink[];
   /** The values of its project's custom fields, by field key, when the server sends them. */
@@ -188,6 +197,9 @@ export interface LiveTask {
   /** On a request that a person do steps: the steps, with who ticked each, their notes and where they got
    * stuck. Null on every other task, and absent when the server sends none. */
   steps?: readonly TaskStep[] | null;
+  /** On an approval: the pull request it gates, whose auto-merge Approve turns on, when the server sends it; null on
+   * every other task. */
+  pullRequest?: string | null;
   /** Who filed the task and the model they named, when the server sends them; null on a task imported without them. */
   filedBy?: string | null;
   filedModel?: string | null;

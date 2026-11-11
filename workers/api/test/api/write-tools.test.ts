@@ -15,6 +15,7 @@ import {
   titleHolds,
 } from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
+import { proposalVersionOf } from '../../src/views.ts';
 import { AGENT, clock, everyTask, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
@@ -211,6 +212,7 @@ describe('tools/list', () => {
       'comment_on_task.detail',
       'request_human_approval.title',
       'request_human_approval.description',
+      'request_human_approval.pr',
       'request_human_approval.model',
       'close_task.tasks',
       'close_task.commit',
@@ -611,7 +613,7 @@ describe('create_task', () => {
       'invalid arguments: approval.title (one line, with no tab or line break)',
     );
     expect(await ask({ title: 'Approve it', description: 'You: press Approve.', reason: 'Why' })).toBe(
-      'invalid arguments: approval (title and description only; not reason)',
+      'invalid arguments: approval (title, description and pr only; not reason)',
     );
     expect(await ask(5)).toBe('invalid arguments: approval (an object with title and description, or one text)');
     expect(await everyTask(engine, project.id)).toEqual([]);
@@ -2430,6 +2432,65 @@ describe('request_human_approval', () => {
     });
     expect(retitled.created).toBe(true);
     expect((await current(project, id)).dependencies).toHaveLength(2);
+  });
+
+  it('opens an approval that gates a pull request, which its reads name and its proposal covers', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const pr = 'https://github.com/example/site/pull/12';
+    const args = {
+      project: project.id,
+      task: id,
+      title: 'Approve merging the migration',
+      description: 'You: press Approve on this task.',
+      pr: 'https://github.com/Example/Site/pull/12/files',
+    };
+    const opened = await write<{ approval: { id: string; pr: string } }>(target, 'request_human_approval', args);
+    expect(opened.approval.pr).toBe(pr);
+    const gate = await current(project, opened.approval.id);
+    expect(gate.externalLinks).toEqual([{ url: pr, title: 'example/site#12', kind: 'pull-request' }]);
+    expect(await read(target, 'get_task', { project: project.id, task: gate.id })).toMatchObject({
+      task: { pullRequest: pr },
+    });
+    // The same pull request, written another way, is the same request.
+    const again = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', {
+      ...args,
+      pr,
+    });
+    expect(again).toMatchObject({ approval: { id: gate.id }, created: false });
+    // The pull request is part of what a person approves, and another one is another request.
+    expect(await proposalVersionOf({ ...gate, externalLinks: [] })).not.toBe(await proposalVersionOf(gate));
+    const other = await write<{ created: boolean }>(target, 'request_human_approval', {
+      ...args,
+      pr: 'https://github.com/example/site/pull/13',
+    });
+    expect(other.created).toBe(true);
+    expect(
+      await refusal(target, 'request_human_approval', {
+        ...args,
+        pr: 'https://gitlab.example.com/a/b/-/merge_requests/1',
+      }),
+    ).toBe("invalid arguments: pr (a GitHub pull request's URL, such as https://github.com/owner/name/pull/12)");
+    // Its pull request stays as it was asked for; its other links change as any task's do.
+    const edit = (change: Record<string, unknown>) =>
+      callTool(target, 'update_task', { workspace: WORKSPACE.id, project: project.id, task: gate.id, ...change });
+    for (const change of [
+      { remove_external_links: [pr] },
+      {
+        add_external_links: [
+          { url: 'https://github.com/example/site/pull/14', title: 'Another', kind: 'pull-request' },
+        ],
+      },
+      { add_external_links: [{ url: pr, title: 'Renamed', kind: 'document' }] },
+    ])
+      expect((await edit(change)).refused).toMatch(/pull request stays as the approval was asked for/u);
+    expect(
+      (await edit({ add_external_links: [{ url: 'https://example.com/plan', title: 'The plan' }] })).refused,
+    ).toBeNull();
+    expect((await current(project, gate.id)).externalLinks.map((link) => link.url)).toEqual([
+      'https://example.com/plan',
+      pr,
+    ]);
   });
 
   it('advises an approval that names no place to answer, and not one that does', async () => {

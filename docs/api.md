@@ -179,13 +179,13 @@ answered by then leaves its tasks out, and the rest are listed.
 | `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`), and `changed_by` (a name, `"me"` for your own), `changed_for` (a helper agent) and `changed_in` (a session): only the tasks with a change in their history by that name, through that helper or in that session ([below](#who-changed-a-task)) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval` (an object with `title` and `description`, as `request_human_approval` takes them, or one text of at most 400 characters, its first line the title), `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
+| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval` (an object with `title`, `description` and optionally `pr`, as `request_human_approval` takes them, or one text of at most 400 characters, its first line the title), `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
 | `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)); with `touches`, `overlaps` when other work in progress changes the same ([below](#work-that-changes-the-same-files)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, `overlaps` as `claim_task` answers it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `test` ([a test run](#a-test-run)), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
-| `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
+| `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }` and `pr` when it gates a pull request, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `pr` (the GitHub pull request it gates, [below](#an-approval-that-gates-a-pull-request)), `project` and `model` |
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
 | `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `closedEpics` when the close also closed epics whose last open task it was (each `{ id, resolution }`), `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `closedEpics`, `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `test` ([a test run](#a-test-run)), `model`, `idempotency_key` and `detail` |
 | `move_tasks` | `tasks`: each task named, after the move, as `{ id, parent, version }`, or as `get_task` shows it with `detail: "full"`; `moved`: each task whose id changed, old id to new; `fieldsKept` when a task kept field values its new project does not define, by its new id; `epics` when the move closed or reopened epics, each `{ id, status, resolution }`; and `replayed` | `workspace`, `task` or `tasks` (1 to 50 task ids), and `project`, `parent` or both, and optionally `with_children`, `model`, `idempotency_key` and `detail` ([below](#moving-tasks)) |
@@ -450,9 +450,11 @@ too.
   with a line that starts `Reason:` and has text after it is refused: an
   approval imported from Beads asks only what follows that label, and every
   answer reads it so. A `Reason:` line with nothing after it leaves the
-  approval asking its whole description.
+  approval asking its whole description. A request that names a pull
+  request as `pr` asks the same only of an approval that gates that pull
+  request; one that names a URL other than a GitHub pull request's is refused.
   `create_task`, and each entry of `create_tasks`, opens an approval with
-  the task from `approval`: `{ title, description }`, checked as
+  the task from `approval`: `{ title, description, pr }`, checked as
   `request_human_approval` checks them, or one text whose first line is the
   title. Its answer has the approval and `replayed`, not `created`, and its
   `lint` advises on that approval as `request_human_approval` does, each
@@ -746,6 +748,45 @@ as `answer`, or null:
 | `at` | When it was recorded |
 | `disputedBy` | The person who disputed it, or null |
 
+### An approval that gates a pull request
+
+An approval opened with `pr` gates that GitHub pull request: an approval to
+merge a pull request that waits for the owner, such as one that changes the
+database. The approval keeps it as its link of kind `pull-request`, every
+task read answers it as `pullRequest` (null on any other task), and it is
+part of what the person approves. It stays as the approval was asked for:
+`update_task` refuses to remove, replace or relabel that link, and another
+pull request takes a new approval. The agent leaves the pull request's
+auto-merge off.
+
+Each answer to such an approval acts on the pull request through the
+workspace's [GitHub App](github.md), right after the answer is recorded:
+
+| Answer | On the pull request |
+|---|---|
+| A person's Approve in the web app or a connected app (`POST /api/gates/:id/resolve`) | Turns on its auto-merge, or merges it at once when GitHub can merge it already, then posts one comment |
+| An approval an agent relays (`reconcile_task` `answer`) | Posts one comment; turns on no auto-merge, since the owner can dispute it |
+| A decline (`reconcile_task` `declined`) | Posts one comment; turns on no auto-merge |
+| The person's report that they did it themselves (Did it myself, or `reconcile_task` `owner_performed`) | Posts one comment; turns on no auto-merge |
+| A dispute of a relayed approval | Posts one comment |
+
+The comment names the answer, the person who gave it, the agent that
+relayed it, and the approval with a link to it, each name and title as plain
+text that links and mentions nothing, so an agent that watches the
+pull request learns the answer without anyone passing it on. Auto-merge uses
+squash when the repository allows it, then a merge commit, then rebase; on a
+branch with a merge queue the pull request joins the queue.
+
+What GitHub did is recorded on the approval as one comment by
+`service:GitHub`: auto-merge turned on or the pull request merged, the
+comment posted, or why GitHub refused. When GitHub refuses because the app
+lacks a permission, the comment names it and gives the two links that grant
+it: the app's permissions page and the installation's page, where the
+account accepts them. The answer stands whatever GitHub does. An approval
+with no pull request asks nothing of GitHub, and so does one in a workspace
+without the app, or on an account the app is not installed on; the comment
+on the approval says which.
+
 ## Agent statistics
 
 `get_agent_stats` and `GET /api/tasks/agent-stats` count the work of agents
@@ -973,8 +1014,11 @@ Each organization takes one more install: in Settings, press **Install on
 an organization**, pick the organization, and press **Install**. No secret
 is copied, no webhook is added by hand, and no name is typed.
 
-The app reads pull requests, checks, deployments, the repository's contents
-and its metadata, and receives the `pull_request`, `push`, `check_run` and
+The app reads checks, deployments and the repository's metadata, writes
+pull requests and contents, which reading pushed commits, turning on a pull
+request's auto-merge, merging it and commenting on it take
+([an approval that gates a pull request](#an-approval-that-gates-a-pull-request)),
+and receives the `pull_request`, `push`, `check_run` and
 `deployment_status` events of every repository it is installed on, at
 `POST /api/github/<workspace id>`. Each becomes a signal for every project
 of the workspace:
@@ -1042,8 +1086,10 @@ requests each, up to half of what is left after the installations, so open
 pull requests cannot take every request. So a check reads up to about 40
 pull requests and merged tasks, and the next check reads the rest. When
 GitHub fails to answer a merged task's read, with no answer, a server error
-or a rate limit, the check runs again a few seconds later, up to six more
-times with a growing delay. It signs in to GitHub with the app's private key.
+or a rate limit, the check runs again 1 minute later, then after 5 and 15
+minutes, then every 60 minutes, until GitHub answers every read or no merged
+task waits on a deploy, which a task stops doing a day after its merge. It
+signs in to GitHub with the app's private key.
 
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret
@@ -1468,7 +1514,9 @@ and in a change `null` takes a value off. The task answers its values as
 `fields`.
 
 A task answers its [delivery](#delivery) as `delivery`, null when it has
-none, the link its close named as `closeLink`, a person's acceptance as
+none, the pull request an approval gates as `pullRequest`
+([above](#an-approval-that-gates-a-pull-request)), null on any other task,
+the link its close named as `closeLink`, a person's acceptance as
 `closeAcceptance` ([above](#done-on-a-persons-call)), and `proof`: `"none"` for
 work closed as done without proof ([above](#proof-of-work-done)), and null
 otherwise.

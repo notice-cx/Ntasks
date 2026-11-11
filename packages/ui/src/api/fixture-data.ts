@@ -230,7 +230,12 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     base('web', 'web-k3m9.4', 'Remove the old sign-in page', {
       parent: 'web-k3m9',
       priority: 3,
-      dependencies: [{ id: 'web-k3m9.3', type: 'blocks', title: null, status: null }],
+      dependencies: [
+        { id: 'web-k3m9.3', type: 'blocks', title: null, status: null },
+        { id: 'web-h1z8', type: 'related', title: null, status: null },
+      ],
+      // The landing page it was to go with was dropped after this task last changed.
+      reliesOnDropped: [{ id: 'web-h1z8', title: 'Remove the old landing page', resolution: 'no-longer-needed' }],
     }),
     base('web', 'web-g7p2', 'Approve sending the new sign-in page to every visitor', {
       issueType: 'gate',
@@ -245,6 +250,14 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
         'Scope: The /sign-in route only. The old page stays in the code, so rolling back is one revert.',
         'Verification: Sign in with a test account, then check that a wrong password shows its error.',
       ].join('\n'),
+      // The pull request this approval gates: approving it turns on the pull request's auto-merge.
+      externalLinks: [
+        {
+          url: 'https://github.com/example/web/pull/57',
+          title: 'Send every visitor to the new sign-in page',
+          kind: 'pull-request',
+        },
+      ],
     }),
     // An approval an agent recorded for a person, which the person can still dispute.
     base('web', 'web-r2v9', 'Approve turning on the new sign-in page for staff', {
