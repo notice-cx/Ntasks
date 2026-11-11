@@ -1615,11 +1615,20 @@ export class Writes {
             )
             .bind(id, projectId, parent, duplicateOf, at, taskId, row.version),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-          // A client that reads one project's changes sees the task leave it as well as arrive in the other.
+          // A client that reads one project's changes sees the task leave it, by the id it had there, as well as
+          // arrive in the other.
           ...(id === taskId
             ? []
             : [
-                this.#event({ id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, changes, through),
+                this.#event(
+                  { id, projectId: row.project_id },
+                  row.version + 1,
+                  'updated',
+                  actor,
+                  at,
+                  { ...changes, formerId: taskId },
+                  through,
+                ),
               ]),
           this.#event({ id, projectId }, row.version + 1, 'updated', actor, at, changes, through),
         );

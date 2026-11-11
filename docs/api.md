@@ -620,7 +620,9 @@ moves at most 50 tasks, counting the tasks that move with them.
 - The task's history records the move as one change whose `id` and
   `projectId` fields show the old and new id and project. The changes of
   both projects show it ([reading changes](#reading-changes-instead-of-reloading)),
-  so a client that reads one project's changes sees the task leave it.
+  so a client that reads one project's changes sees the task leave it: the
+  change in the project it left also names the id it had there, in
+  `formerId`.
 - The epic a task leaves and the epic it joins close or reopen as when a task
   under them closes or reopens ([epics](concepts.md#epics)).
 

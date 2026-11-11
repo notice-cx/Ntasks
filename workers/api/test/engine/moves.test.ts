@@ -226,10 +226,12 @@ describe('a move and the records around it', () => {
 
     const left = await tasks.listChanges({ after, limit: 10, projectId: from.id });
     const joined = await tasks.listChanges({ after, limit: 10, projectId: to.id });
-    for (const page of [left, joined])
-      expect(page.events.map((event) => [event.taskId, event.changes])).toEqual([
-        [moved!.id, { id: moved!.id, projectId: to.id }],
-      ]);
+    expect(left.events.map((event) => [event.taskId, event.changes])).toEqual([
+      [moved!.id, { id: moved!.id, projectId: to.id, formerId: task.id }],
+    ]);
+    expect(joined.events.map((event) => [event.taskId, event.changes])).toEqual([
+      [moved!.id, { id: moved!.id, projectId: to.id }],
+    ]);
     expect((await tasks.listHistory(to.id, moved!.id, { limit: 10 })).map((event) => event.kind)).toEqual([
       'updated',
       'created',

@@ -100,8 +100,9 @@ keeps each former id, each naming its id now. The tasks that name a moved
 task as their parent or the task they duplicate are the engine's to change,
 each with a new version and a history event, so the batch defers foreign
 keys until it commits. The move's own event is written twice, once in each
-project's `project_id`, so each project's changes show it; a read of the
-task's history keeps the one the project it joined recorded. A retry record
+project's `project_id`, so each project's changes show it, the one in the
+project it left with the task's `formerId` there; a read of the task's
+history keeps the one the project it joined recorded. A retry record
 answers for its task wherever the task moved since.
 
 A task's external links are http or https URLs, kept as the URL standard
