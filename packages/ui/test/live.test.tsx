@@ -251,6 +251,16 @@ describe('the Live board', () => {
     expect(within(card).queryByText('Claude')).toBeNull();
   });
 
+  it('says a task closed with a commit and no pull request is not pushed yet', async () => {
+    const seed = fixtureSeed(Date.now());
+    const built = seed.tasks.find((entry) => entry.id === 'web-k3m9.1') as FixtureTask;
+    built.delivery = { ...built.delivery!, pullRequest: null };
+    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    expect(await boardCards('Waiting to ship')).toEqual(['web-k3m9.1']);
+    const card = document.querySelector('[data-board-card="web-k3m9.1"]') as HTMLElement;
+    expect(card.querySelector('[data-live-context]')?.textContent).toBe('Not pushed yet');
+  });
+
   it('shows the latest tasks in a column and counts the rest', async () => {
     const seed = fixtureSeed(Date.now());
     const model = seed.tasks.find((entry) => entry.id === 'web-k3m9.2') as FixtureTask;

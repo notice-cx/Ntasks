@@ -261,8 +261,14 @@ describe('Connect GitHub', () => {
       redirect_url: `${ORIGIN}/api/access/github/app/created`,
       setup_url: `${ORIGIN}/tasks/settings/github`,
       public: true,
-      default_permissions: { metadata: 'read', pull_requests: 'read', checks: 'read', deployments: 'read' },
-      default_events: ['pull_request', 'check_run', 'deployment_status'],
+      default_permissions: {
+        metadata: 'read',
+        contents: 'read',
+        pull_requests: 'read',
+        checks: 'read',
+        deployments: 'read',
+      },
+      default_events: ['pull_request', 'push', 'check_run', 'deployment_status'],
     });
     expect((manifest.name as string).length).toBeLessThanOrEqual(34);
 

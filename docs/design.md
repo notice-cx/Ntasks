@@ -718,9 +718,11 @@ days in Text 3.
 | Waiting to ship | closed tasks waiting for a merge, and merged tasks of a project that deploys, waiting for a deploy, whenever they closed | latest stage reached first | 5, 3 on a phone |
 | Live | closed tasks whose change went live, and merged tasks of a project that does not deploy, closed in the last 7 days | latest stage reached first | 4, 2 on a phone |
 
-A card in Waiting to ship says the step left in Text 3: Not merged yet, or
-Not deployed yet. A merge moves a card within the column; a deploy, or a
-merge in a project that does not deploy, moves it to Live.
+A card in Waiting to ship says the step left in Text 3: Not merged yet, Not
+pushed yet for a task closed with a commit and no pull request, as in a
+project that commits straight to its default branch, or Not deployed yet. A
+merge or a push moves a card within the column; a deploy, or a merge in a
+project that does not deploy, moves it to Live.
 
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in

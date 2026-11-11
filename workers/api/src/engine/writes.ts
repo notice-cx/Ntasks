@@ -185,6 +185,8 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
     ON t.delivery_merge_commit >= substr(w.value, 1, 7) AND t.delivery_merge_commit < substr(w.value, 1, 7) || 'g'
   WHERE substr(w.value, 1, length(t.delivery_merge_commit)) = t.delivery_merge_commit
     OR substr(t.delivery_merge_commit, 1, length(w.value)) = w.value
+  UNION
+  SELECT t.id FROM json_each(?4) w CROSS JOIN tasks t ON t.id = w.value
 )
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
@@ -1098,8 +1100,11 @@ export class Writes {
     if (projectIdsInput.length === 0) return [];
     const turnOn = signal.stage === 'live' ? options.turnOnDeploys : undefined;
     const kept = new Set(turnOn?.except ?? []);
-    // Only a merge names its merge commit, and only when it names one commit.
-    const mergeCommit = signal.stage === 'merged' && signal.commits.length === 1 ? signal.commits[0]! : null;
+    // Only a merge names its merge commit: the one it says brought the work in, or else its only commit.
+    const mergeCommit =
+      signal.stage !== 'merged'
+        ? null
+        : (signal.mergeCommit ?? (signal.commits.length === 1 ? signal.commits[0]! : null));
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const { results } = await this.#db
         .prepare(DELIVERY_CANDIDATES)
@@ -1107,6 +1112,7 @@ export class Writes {
           JSON.stringify([...new Set(projectIdsInput)]),
           JSON.stringify(signal.pullRequests),
           JSON.stringify(signal.commits),
+          JSON.stringify(signal.taskIds ?? []),
         )
         .all<StoredTaskRow & { readonly deploys: number }>();
       const at = this.#now();

@@ -1,5 +1,5 @@
 // GitHub's deliveries through the Worker (src/github.ts): a signed
-// pull_request, check_run or deployment_status event moves the closed tasks
+// pull_request, push, check_run or deployment_status event moves the closed tasks
 // it names as POST /api/delivery would, and an unsigned or forged one is
 // refused. The workspace's owner saves the secret and the deploy checks in
 // Settings (POST /api/access/github).
@@ -120,6 +120,20 @@ function checkRun(name: string, sha: string, options: { branch?: string; conclus
       conclusion: options.conclusion ?? 'success',
       check_suite: { head_branch: options.branch ?? 'main' },
     },
+    repository: repository(),
+  };
+}
+
+/** A `push` delivery of `commits`, oldest first, to `branch`, main unless named; its newest commit is the last. */
+function push(
+  commits: readonly { id: string; message?: string }[],
+  options: { branch?: string; deleted?: boolean } = {},
+) {
+  return {
+    ref: `refs/heads/${options.branch ?? 'main'}`,
+    after: commits.at(-1)?.id ?? '0'.repeat(40),
+    deleted: options.deleted ?? false,
+    commits: commits.map((commit) => ({ id: commit.id, message: commit.message ?? 'Change it' })),
     repository: repository(),
   };
 }
@@ -270,6 +284,83 @@ describe('the GitHub receiver', () => {
     });
   });
 
+  it('moves the tasks of a push to the default branch to merged, and the deploy of its newest commit to live', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const [earlier, newest] = [newCommit(), newCommit()];
+    const first = await closedWith(owner, projectId, { commit: earlier.slice(0, 12) });
+    const second = await closedWith(owner, projectId, { commit: newest });
+
+    const answer = await deliver('push', push([{ id: earlier }, { id: newest }]));
+    expect(answer.status).toBe(200);
+    expect(answer.body.moved).toEqual(
+      expect.arrayContaining([
+        { id: first, stage: 'merged' },
+        { id: second, stage: 'merged' },
+      ]),
+    );
+    // The deploy check runs on the push's newest commit alone, and ships every commit of the push.
+    expect((await taskOf(projectId, first)).delivery).toMatchObject({ stage: 'merged', mergeCommit: newest });
+    const deployed = await deliver('check_run', checkRun(DEPLOY_CHECK, newest));
+    expect(deployed.body.moved).toEqual(
+      expect.arrayContaining([
+        { id: first, stage: 'live' },
+        { id: second, stage: 'live' },
+      ]),
+    );
+  });
+
+  it('moves a task its pushed commit names on a Refs: line, though a rebase gave the commit a new name', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const named = await closedWith(owner, projectId, { commit: newCommit() });
+    const mentioned = await closedWith(owner, projectId, { commit: newCommit() });
+    const rebased = newCommit();
+
+    const message = `Fix the sign-in form, as ${mentioned} asked\n\nRefs: ${named}, not-a-task!`;
+    const answer = await deliver('push', push([{ id: rebased, message }]));
+    // Only the Refs: line names tasks; an id elsewhere in the message moves nothing.
+    expect(answer.body.moved).toEqual([{ id: named, stage: 'merged' }]);
+    expect((await taskOf(projectId, named)).delivery).toMatchObject({ stage: 'merged', mergeCommit: rebased });
+    expect((await taskOf(projectId, mentioned)).delivery?.stage).toBe('built');
+  });
+
+  it('moves the tasks of every commit of a push longer than one signal takes', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const commits = Array.from({ length: 150 }, () => ({ id: newCommit() }));
+    const oldest = await closedWith(owner, projectId, { commit: commits[0]!.id });
+    const newest = await closedWith(owner, projectId, { commit: commits[149]!.id });
+
+    const answer = await deliver('push', push(commits));
+    expect(answer.body.moved).toEqual(
+      expect.arrayContaining([
+        { id: oldest, stage: 'merged' },
+        { id: newest, stage: 'merged' },
+      ]),
+    );
+    // Every part records the push's newest commit, which its deploy then names.
+    expect((await taskOf(projectId, oldest)).delivery).toMatchObject({ mergeCommit: commits[149]!.id });
+  });
+
+  it('moves nothing for a push to another branch, a deleted branch or a push with no commits', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const commit = newCommit();
+    const id = await closedWith(owner, projectId, { commit });
+    for (const [delivery, reason] of [
+      [push([{ id: commit }], { branch: 'feature' }), /feature, not the default branch/u],
+      [push([{ id: commit }], { deleted: true }), /deleted branch/u],
+      [push([]), /no commits/u],
+    ] as const) {
+      const answer = await deliver('push', delivery);
+      expect(answer.status).toBe(200);
+      expect(answer.body.moved).toEqual([]);
+      expect(answer.body.ignored).toMatch(reason);
+    }
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('built');
+  });
+
   it('leaves a task alone when a pull request with its number merges in another repository', async () => {
     const owner = await ownerWithWebhook();
     const projectId = await deployingProject();
@@ -339,7 +430,7 @@ describe('the GitHub receiver', () => {
       ['ping', { zen: 'Keep it logically awesome.', hook_id: 1 }, /reaches Ntasks/u],
       ['pull_request', unmerged, /only a merged pull request/u],
       ['pull_request', mergedPullRequest(number, newCommit(), { base: 'release' }), /release, not the default branch/u],
-      ['push', { ref: 'refs/heads/main', repository: repository() }, /not push/u],
+      ['issues', { action: 'opened', repository: repository() }, /not issues/u],
     ] as const) {
       const answer = await deliver(event, payload);
       expect(answer.status).toBe(200);

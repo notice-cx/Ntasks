@@ -1,8 +1,9 @@
 # Connect GitHub
 
-Connect GitHub once, and each task your agents close with a pull request
-moves on by itself: to **Merged** when the pull request merges, and to
-**Live** when its deploy passes. No agent reports either step, so a task
+Connect GitHub once, and each task your agents close with a pull request or
+a commit moves on by itself: to **Merged** when the pull request merges or
+the commit is pushed to the default branch, and to **Live** when its deploy
+passes. No agent reports either step, so a task
 moves on even after the agent that did the work has stopped.
 
 A workspace's owner connects it on the web app's **Settings** page. It takes
@@ -45,7 +46,8 @@ move it from there:
 | On GitHub | The task moves to |
 |---|---|
 | Its pull request merges into the repository's default branch | Merged |
-| A deploy of the merge passes | Live |
+| Its commit is pushed straight to the default branch | Merged |
+| A deploy of the merge or the push passes | Live |
 
 - **A deploy** is a passing check whose name starts with `Workers Builds:` or
   `Cloudflare Pages`, the checks Cloudflare's builds report, or a successful
@@ -79,11 +81,48 @@ move it from there:
   merged, as the merge event would have closed it. Ntasks asks when the app
   is installed and on each of its other checks.
 
+## Projects without pull requests
+
+Where you and your agents commit straight to the default branch and push it
+yourself, a task moves through the same stages:
+
+1. **Built** when an agent closes it with its commit. The Live page says
+   Not pushed yet.
+2. **Merged** when you push: GitHub sends the push, and every task closed
+   with one of its commits moves on. The Live page says Not deployed yet.
+3. **Live** when the deploy of the push passes, such as Cloudflare's
+   `Workers Builds:` check on its newest commit. That check ships every
+   commit of the push, so it moves all of their tasks.
+
+A rebase before the push gives a commit a new name, so its task's commit no
+longer matches. Name the task on a `Refs:` line at the end of the commit
+message, `Refs: web-a1b2`, and the push moves it all the same. Only a
+`Refs:` line counts; a task id anywhere else in the message moves nothing.
+GitHub lists up to 2,048 commits of one push, and Ntasks reads every one.
+
+An app connected before Ntasks read pushes asks GitHub for neither. To add
+them, open the app's page on GitHub (**Settings**, **Developer settings**,
+**GitHub Apps**, the app, **Edit**), and under **Permissions and events**:
+
+1. Set **Repository permissions**, **Contents**, to **Read-only**.
+2. Tick **Push** under **Subscribe to events**, and press **Save changes**.
+3. Accept the new permission on each installation: GitHub lists the request
+   under **Settings**, **Applications**, **Installed GitHub Apps**, the app,
+   **Review request**.
+
 ## When a task stays at a stage
 
-- **Closed with only a commit.** GitHub's events name the pull request and
-  its merge commit, so a task closed with a commit from its branch matches
-  neither. Close tasks with their pull request.
+- **Closed with only a commit from a pull request's branch.** GitHub's
+  events name the pull request and its merge commit, so a task closed with a
+  commit from its branch matches neither. Close tasks with their pull
+  request, or name them on a `Refs:` line of the merge's commit message.
+- **A pushed task whose deploy check waited on another.** When a commit
+  carries two deploy checks and the second ends as skipped or neutral, the
+  first one's success counts only when Ntasks checks GitHub again, and that
+  check reads only tasks closed with a pull request. A task closed with a
+  pushed commit then stays at Merged. Redeliver the passing deploy check's
+  event from **Recent Deliveries** ([below](#check-that-it-works)) to move
+  it to Live.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
   commit's other deploys did, until that check passes on a rerun (press
   **Re-run** on it in GitHub) or a later merge's deploy ships it.

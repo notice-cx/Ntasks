@@ -64,7 +64,10 @@ import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { notConfigured } from './access/verify.ts';
 import { listed, type Args } from './args.ts';
+import { isTaskId, type DeliveryMove } from '@ntasks/domain';
 import { movedView, signalArgs } from './delivery.ts';
+import type { MergeCloses } from './task-writes.ts';
+import { SIGNAL_ITEMS } from './engine/validate.ts';
 import { githubSender } from './github-check.ts';
 import { readBoundedBytes } from './http/json-body.ts';
 import { json } from './http/respond.ts';
@@ -121,6 +124,10 @@ function numberAt(payload: unknown, ...path: readonly string[]): number | undefi
 export type GitHubEvent =
   | {
       readonly signal: Args;
+      /** With a push: its newest commit, which each task it moves records as its merge commit. */
+      readonly mergeCommit?: string;
+      /** With a push: the tasks its commit messages name on a `Refs:` line. */
+      readonly taskIds?: readonly string[];
       readonly newDeploy?: string;
       readonly mergedBy?: string;
       readonly at?: string;
@@ -138,9 +145,45 @@ export type GitHubEvent =
       readonly recheck?: true;
     };
 
+/** A `Refs:` line of a commit message, which names the tasks the commit is for: `Refs: web-a1b2, web-c3d4`. */
+const REFS_LINE = /^refs:[ \t]*(.+)$/gimu;
+
+/** The task ids a commit message names on its `Refs:` lines. */
+export function refsOf(message: string): string[] {
+  return [...message.matchAll(REFS_LINE)].flatMap(([, list]) =>
+    (list ?? '').split(/[\s,]+/u).filter((word) => isTaskId(word)),
+  );
+}
+
+type Closed = MergeCloses['closed'][number];
+type Kept = MergeCloses['kept'][number];
+
+/**
+ * An event's signal in parts that each name at most SIGNAL_ITEMS commits and
+ * tasks, as one signal takes: a push lists up to 2,048 commits. Each part
+ * names at least one commit, the push's newest when its share of commits ran
+ * out, and every part records the same merge commit.
+ */
+function signalParts(event: Extract<GitHubEvent, { signal: Args }>): { signal: Args; taskIds: readonly string[] }[] {
+  const commits = Array.isArray(event.signal.commits) ? (event.signal.commits as unknown[]) : [];
+  const taskIds = event.taskIds ?? [];
+  const count = Math.max(1, Math.ceil(commits.length / SIGNAL_ITEMS), Math.ceil(taskIds.length / SIGNAL_ITEMS));
+  return Array.from({ length: count }, (_, index) => {
+    const share = commits.slice(index * SIGNAL_ITEMS, (index + 1) * SIGNAL_ITEMS);
+    const named = share.length > 0 || index === 0 || event.mergeCommit === undefined ? share : [event.mergeCommit];
+    return {
+      signal: index === 0 ? { ...event.signal, commits: named } : { ...event.signal, pullRequests: [], commits: named },
+      taskIds: taskIds.slice(index * SIGNAL_ITEMS, (index + 1) * SIGNAL_ITEMS),
+    };
+  });
+}
+
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
-  if (event === 'ping') return { ignored: 'GitHub reaches Ntasks. A merged pull request or a deploy moves tasks.' };
+  if (event === 'ping')
+    return {
+      ignored: 'GitHub reaches Ntasks. A merged pull request, a push to the default branch or a deploy moves tasks.',
+    };
   const repository = textAt(payload, 'repository', 'full_name');
   const defaultBranch = textAt(payload, 'repository', 'default_branch');
   if (repository === undefined || defaultBranch === undefined)
@@ -169,6 +212,31 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
           pullRequests: url === undefined ? [] : [url],
           commits: commits(textAt(payload, 'pull_request', 'merge_commit_sha')),
         },
+      };
+    }
+    case 'push': {
+      // A push straight to the default branch is that project's merge: its
+      // commits are now on GitHub, waiting for a deploy. Its newest commit is
+      // what a deploy check then runs on, so each task it moves records that
+      // one as its merge commit, and the check moves them all to live.
+      if (at(payload, 'deleted') === true) return { ignored: 'a deleted branch moves no task' };
+      const ref = textAt(payload, 'ref');
+      if (ref !== `refs/heads/${defaultBranch}`)
+        return {
+          ignored: `pushed to ${ref?.replace(/^refs\/heads\//u, '') ?? 'another branch'}, not the default branch, so no task moves`,
+        };
+      const listed = at(payload, 'commits');
+      const pushed = (Array.isArray(listed) ? listed : []).flatMap((commit) => {
+        const id = textAt(commit, 'id');
+        return id === undefined ? [] : [{ id: id.toLowerCase(), message: textAt(commit, 'message') ?? '' }];
+      });
+      const head = textAt(payload, 'after')?.toLowerCase();
+      if (pushed.length === 0 || head === undefined) return { ignored: 'a push with no commits moves no task' };
+      const taskIds = [...new Set(pushed.flatMap((commit) => refsOf(commit.message)))];
+      return {
+        signal: { repository, stage: 'merged', commits: pushed.map((commit) => commit.id) },
+        mergeCommit: head,
+        ...(taskIds.length === 0 ? {} : { taskIds }),
       };
     }
     case 'check_run': {
@@ -208,7 +276,7 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
     }
     default:
       return {
-        ignored: `Ntasks reads pull_request, check_run and deployment_status events, not ${event ?? 'this one'}`,
+        ignored: `Ntasks reads pull_request, push, check_run and deployment_status events, not ${event ?? 'this one'}`,
       };
   }
 }
@@ -352,13 +420,15 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     if (event.recheck === true) await workspaceStore(env, workspaceId).checkGitHub();
     return json({ moved: [], ignored: event.ignored }, 200);
   }
-  let signal;
+  let signals;
   try {
-    signal = {
-      ...signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
+    signals = signalParts(event).map((part) => ({
+      ...signalArgs(part.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
       ...(event.mergedBy === undefined ? {} : { mergedBy: event.mergedBy }),
       ...(event.at === undefined ? {} : { at: event.at }),
-    };
+      ...(event.mergeCommit === undefined ? {} : { mergeCommit: event.mergeCommit }),
+      ...(part.taskIds.length === 0 ? {} : { taskIds: part.taskIds }),
+    }));
   } catch (error) {
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);
     throw error;
@@ -391,10 +461,23 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
       return json({ moved: [], ignored: `${which} not passed, so no task moves yet` }, 200);
     }
   }
-  const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
-    turnOnDeploys: { except: detected.projects },
-  });
-  if ('refused' in answer) return json({ error: 'unavailable', detail: answer.refused }, 503);
+  const answer: { moved: DeliveryMove[]; turnedOn: string[]; closed: Closed[]; kept: Kept[] } = {
+    moved: [],
+    turnedOn: [],
+    closed: [],
+    kept: [],
+  };
+  // Each part moves its tasks on its own; a part sent again moves nothing twice, so GitHub may redeliver the whole push.
+  for (const signal of signals) {
+    const part = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
+      turnOnDeploys: { except: detected.projects },
+    });
+    if ('refused' in part) return json({ error: 'unavailable', detail: part.refused }, 503);
+    answer.moved.push(...part.moved);
+    answer.turnedOn.push(...part.turnedOn);
+    answer.closed.push(...part.closed);
+    answer.kept.push(...part.kept);
+  }
   try {
     await recordDetected(env.DB, workspaceId, { projects: answer.turnedOn });
   } catch {
