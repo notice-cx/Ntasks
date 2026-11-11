@@ -29,7 +29,8 @@ export function BoardsProvider({
   pollMs,
 }: {
   children: ReactNode;
-  /** How often to ask the change feed. */ pollMs?: number;
+  /** How often to ask the change feed. */
+  pollMs?: number;
 }) {
   const catalog = useTaskProjects();
   const active = useMemo(() => (catalog.data ?? []).filter((project) => project.disabled !== true), [catalog.data]);

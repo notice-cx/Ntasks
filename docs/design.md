@@ -756,8 +756,16 @@ Between two reads, each card is compared with where it was, and:
   ring that grows from its activity mark to 2.6 times its size and fades,
   once, over 900 ms.
 
+When the change feed brings a change to a task, the card shows who made it
+and what it did for 2.4 seconds, such as Claude commented, Codex pushed a
+commit or GitHub merged #42: a pill in Chip type, semibold, On accent on
+Accent, across the card's top edge at its right (`changeWords` in
+`src/lib/change-words.ts`). It fades in and out over 300 ms. A change that
+says nothing a person reads, such as a link added, shows no pill, and a
+change that arrived while another page was open shows none either.
+
 With `prefers-reduced-motion`, nothing travels, slides, fades in, rings or
-breathes: a card in another column is drawn there tinted Accent soft for
+breathes, and the pill appears and goes without fading: a card in another column is drawn there tinted Accent soft for
 700 ms. The first draw animates nothing.
 
 #### List

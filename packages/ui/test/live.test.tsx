@@ -274,6 +274,19 @@ describe('the Live board', () => {
     expect(travel?.frames.some((frame) => String(frame.transform).startsWith('translate('))).toBe(true);
   });
 
+  it('names on its card who changed a task and what they did, as the change feed brings it', async () => {
+    const api = createFixtureTasksApi();
+    const { queryClient } = renderApp('/tasks/live', api);
+    expect(await boardCards('In progress')).toContain('web-k3m9.2');
+    const card = () => document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
+    expect(card().querySelector('[data-live-label]')).toBeNull();
+    await api.comment('web-k3m9.2', 'web', 'The error is announced now');
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['changes'] });
+    });
+    await waitFor(() => expect(card().querySelector('[data-live-label]')?.textContent).toBe('Example Owner commented'));
+  });
+
   it('with reduced motion, tints a card that changed column and moves nothing', async () => {
     restore.push(preferReducedMotion());
     const started = recordAnimations();

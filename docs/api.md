@@ -1570,6 +1570,24 @@ change in the workspace. `GET /api/changes?after=N` returns the events
 after `N`, oldest first, and `lastSeq`, the number to ask after next. When
 nothing changed it returns no events and the same `lastSeq`.
 
+Each event is the history entry of one change, as `GET /api/tasks/:id/history`
+lists it:
+
+| Field | Holds |
+|---|---|
+| `seq` | The sequence number |
+| `taskId`, `projectId` | The task and its project |
+| `version` | The task's version after the change; a comment leaves it unchanged |
+| `kind` | `created`, `updated`, `closed`, `reopened` or `commented` |
+| `actor`, `model` | Who made the change, and the model an agent named, or null |
+| `at` | When it was made |
+| `changes` | The fields the change set, with their new values; a comment's `commentId` and `text`; on a `created` event, every field |
+
+A change to the holder's work details records all of them as they stand
+after it, under `work`. The web app's Live board shows each change in a few
+words made from these fields, such as "Claude pushed a commit" or "GitHub
+merged #42".
+
 This is the cheapest read the API has. A client that shows a board starts
 from the board's own `lastSeq`, asks for the changes after it, and reloads
 the board only when an event arrives.
