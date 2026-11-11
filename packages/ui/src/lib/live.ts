@@ -83,7 +83,10 @@ export function stageTime(task: BoardTask, stage: Stage): string | null {
  * where their change is, the latest first: every task still waiting for a
  * merge or a deploy (`waits`, whenever it closed), and the board's own
  * closes, which reach back 7 days, for merged work of a project that does not
- * deploy and for work that went live. A decision or an approval ships nothing.
+ * deploy and for work that went live. A task the board read holds is placed
+ * by that read, never by a wait, which comes from a read of its own that can
+ * lag behind or fail: a task reopened, or moved on, sits where the board
+ * read puts it. A decision or an approval ships nothing.
  */
 export function liveBoard(
   tasks: readonly BoardTask[],
@@ -93,8 +96,10 @@ export function liveBoard(
   const groups = liveGroups(tasks, nowMs);
   const columns: Record<Exclude<Stage, 'progress'>, BoardTask[]> = { built: [], merged: [], live: [] };
   const placed = new Set<string>();
+  const onBoard = new Set(tasks.map((task) => task.id));
   const closes = tasks.filter((task) => task.status === 'closed');
-  for (const task of [...waits.merge, ...waits.deploy, ...closes]) {
+  const waiting = [...waits.merge, ...waits.deploy].filter((task) => !onBoard.has(task.id));
+  for (const task of [...closes, ...waiting]) {
     if (placed.has(task.id) || task.issueType === 'decision' || task.issueType === 'gate') continue;
     const stage = task.delivery?.stage;
     if (stage !== 'built' && stage !== 'merged' && stage !== 'live') continue;

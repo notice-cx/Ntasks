@@ -1,7 +1,7 @@
 import { Activity as ActivityIcon, Bot, GitBranch, GitPullRequest, Layers } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { PageSkeleton, ReadFailed } from '../components/surface';
+import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
 import { Avatar } from '../components/ui/avatar';
 import { ProgressBar } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -102,7 +102,7 @@ export function LiveRoute() {
         onRetry={() => void board.refetch()}
       />
     );
-  } else if (board.loading) {
+  } else if (board.loading || (view === 'board' && onBoard === 0 && waits.loading)) {
     body = <PageSkeleton shape="list" />;
   } else if (view === 'board' && onBoard > 0) {
     body = <LiveBoardView columns={columns} nowMs={now} />;
@@ -112,7 +112,7 @@ export function LiveRoute() {
         icon={<ActivityIcon />}
         title={
           view === 'board'
-            ? board.complete
+            ? board.complete && waits.unread.length === 0
               ? 'No tasks in progress or shipped this week'
               : 'No tasks in progress or shipped this week in the projects that could be read'
             : board.complete
@@ -184,6 +184,15 @@ export function LiveRoute() {
         <BarSpacer />
         {views}
       </TopBar>
+      {view === 'board' && board.readFailure === null && waits.unread.length > 0 ? (
+        <ReadBanner
+          title="Couldn't read the work waiting for a merge or a deploy in:"
+          onRetry={waits.retry}
+          data-live-unread=""
+        >
+          {waits.unread.join(', ')}
+        </ReadBanner>
+      ) : null}
       <div data-live-page="">{body}</div>
     </>
   );

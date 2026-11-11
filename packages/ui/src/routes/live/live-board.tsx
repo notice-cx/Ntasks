@@ -133,7 +133,8 @@ function Card({ task, stage, nowMs }: { task: BoardTask; stage: Stage; nowMs: nu
   // A pull request that is not an http or https address shows no link, as on the task page.
   const pr = httpUrl(held ? (task.work?.pr ?? '') : (task.delivery?.pullRequest ?? ''));
   const closer = held ? null : closeAttribution(task);
-  const actor = held ? task.assignee : (closer?.by ?? task.assignee);
+  // A closed task can keep its holder after someone else closes it, so only the close names its closer.
+  const actor = held ? task.assignee : (closer?.by ?? null);
   const name = actor ? actorLabel(actor, task.actors) : null;
   const model = held ? claimedModel(task) : (closer?.model ?? null);
   const age = ageMs(nowMs, stageTime(task, stage));
@@ -214,8 +215,8 @@ function Card({ task, stage, nowMs }: { task: BoardTask; stage: Stage; nowMs: nu
           {actor && name ? (
             <>
               <Avatar name={name} agent={isAgentActor(actor)} model={model} size={18} decorative />
-              <span className="shrink-0 whitespace-nowrap text-ink-2">{name}</span>
-              {model ? <span className="min-w-0 truncate text-ink-3">{model}</span> : null}
+              <span className="min-w-0 truncate text-ink-2">{name}</span>
+              {model ? <span className="min-w-0 shrink-[3] truncate text-ink-3">{model}</span> : null}
             </>
           ) : null}
           <span className="flex-1" />

@@ -137,6 +137,18 @@ describe('the Live board’s columns', () => {
     expect(ids(board.merged)).toEqual(['docs-m2', 'web-m1']);
     expect(ids(board.live)).toEqual(['web-l2', 'web-l1']);
   });
+
+  it('place a task the board read holds by that read, not by a wait read apart from it', () => {
+    const board = liveBoard(
+      [closed('web-m1', 'merged', HOUR), task('web-r1', { lastActivityAt: ago(5 * 60_000) })],
+      // A delivery read that lags behind: web-m1 merged since, and web-r1 was reopened.
+      { merge: [closed('web-m1', 'built', HOUR), closed('web-r1', 'built', DAY)], deploy: [] },
+      NOW,
+    );
+    expect(ids(board.built)).toEqual([]);
+    expect(ids(board.merged)).toEqual(['web-m1']);
+    expect(ids(board.progress)).toEqual(['web-r1']);
+  });
 });
 
 /** The ids of the cards in a column of the Live board, in order. */
@@ -197,6 +209,39 @@ describe('the Live board', () => {
     fireEvent.click(screen.getByRole('button', { name: 'List' }));
     expect(await liveRows('Active')).toEqual(['web-k3m9.2']);
     expect(document.querySelector('[data-live-board]')).toBeNull();
+  });
+
+  it('says which projects’ waiting work could not be read, and reads it again on Retry', async () => {
+    const seed = fixtureSeed(Date.now());
+    const model = seed.tasks.find((entry) => entry.id === 'web-k3m9.1') as FixtureTask;
+    // Closed three weeks ago and still waiting for its merge, so only the read of waiting work holds it.
+    const closedAt = new Date(Date.now() - 21 * DAY).toISOString();
+    seed.tasks.push({ ...model, id: 'web-old1', title: 'Old built task', closedAt, updatedAt: closedAt });
+    const api = createFixtureTasksApi({ seed });
+    let failing = true;
+    renderApp('/tasks/live', {
+      ...api,
+      delivery: (project: string, signal?: AbortSignal) =>
+        failing ? Promise.reject(new Error('The read timed out.')) : api.delivery(project, signal),
+    });
+    const banner = await screen.findByRole('alert');
+    expect(banner.hasAttribute('data-live-unread')).toBe(true);
+    expect(banner.textContent).toContain('Example web app');
+    expect(await boardCards('Built')).not.toContain('web-old1');
+    failing = false;
+    fireEvent.click(within(banner).getByRole('button', { name: 'Retry' }));
+    await waitFor(async () => expect(await boardCards('Built')).toContain('web-old1'));
+    expect(document.querySelector('[data-live-unread]')).toBeNull();
+  });
+
+  it('names who closed a task only when its close names them', async () => {
+    const seed = fixtureSeed(Date.now());
+    const live = seed.tasks.find((entry) => entry.id === 'web-j6y4') as FixtureTask;
+    Object.assign(live, { metadata: null, closedBy: null, assignee: 'agent:claude' });
+    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    expect(await boardCards('Live')).toEqual(['web-j6y4']);
+    const card = document.querySelector('[data-board-card="web-j6y4"]') as HTMLElement;
+    expect(within(card).queryByText('Claude')).toBeNull();
   });
 
   it('shows the latest tasks in a column and counts the rest', async () => {

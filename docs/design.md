@@ -709,7 +709,12 @@ Live's heading ends with Last 7 days in Text 3.
 
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in
-progress or shipped this week.
+progress or shipped this week. When the read of a project's work waiting for
+a merge or a deploy fails, a banner over the board names the project, with
+Retry, as the Tasks board does for a project it could not read; a task the
+board read itself holds is placed by that read, never by an older read of
+waiting work. A closed card names who closed it only when the close records
+them.
 
 A card is a Background panel with a Border edge, 8 px corners and the raise
 shadow. Its first line is the activity mark for a task in progress, the
@@ -719,8 +724,7 @@ task in progress, a line in Text 3: Next and the next step, else the branch
 after `git-branch` when there is no pull request, else Nothing recorded.
 Last, the holder's `Avatar` at 18 px, their name in Text 2, the model in Text
 3, and how long the task has been in its column: since its holder's last
-activity in progress, else since its change reached its stage. A closed
-card names who closed it. A card in progress is tinted by its activity: an
+activity in progress, else since its change reached its stage. A card in progress is tinted by its activity: an
 Active card is filled Accent soft with an Accent edge at 40 % opacity, a
 Quiet one Accent soft at 40 % with an Accent edge at 15 %, and a Stalled one
 has a dashed Border strong edge, no fill and no shadow, and its title in Text
