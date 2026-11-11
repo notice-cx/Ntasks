@@ -81,7 +81,8 @@ move it from there:
   its merge commit, so a task closed with a commit from its branch matches
   neither. Close tasks with their pull request.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
-  commit's other deploys did, until a later merge's deploy ships it.
+  commit's other deploys did, until that check passes on a rerun (press
+  **Re-run** on it in GitHub) or a later merge's deploy ships it.
 - **One deploy shipped several merges.** A deploy names the one commit it
   ran on, so it moves the task merged as that commit. Tasks merged before it
   stay at Merged unless their own merge was deployed too.

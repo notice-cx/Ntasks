@@ -546,7 +546,62 @@ describe('the app’s deliveries', () => {
       body: { error: 'unavailable' },
     });
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    // An answer in part, with an error, leaves the other checks as unread as no answer does.
     github.checkOutages.clear();
+    github.checkErrors.add(merge);
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).status).toBe(503);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    github.checkErrors.clear();
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+  });
+
+  it('holds a passing deploy while a later run of the same check, such as a rerun, has not passed', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 44);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 44, merge));
+    const first = ago(120_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt: first, completedAt: ago(90_000) },
+      { name: 'Workers Builds: site', conclusion: null, startedAt: ago(30_000), completedAt: null },
+    ]);
+
+    // The first run's delivery comes after its rerun started.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge, 'main', first))).body).toMatchObject(
+      { moved: [] },
+    );
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+  });
+
+  it('reads the commit again once the deploy its tasks waited on completes as skipped', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 45);
+    const merge = newCommit();
+    const startedAt = ago(60_000);
+    const completedAt = ago(30_000);
+    const site = { name: 'Workers Builds: site', conclusion: 'success' as const, startedAt, completedAt };
+    github.checkRuns.set(merge, [
+      site,
+      { name: 'Workers Builds: app', conclusion: null, startedAt, completedAt: null },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 45, merge, ago(120_000)));
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).body).toMatchObject({ moved: [] });
+    // The check the merge set off runs while the app's deploy still runs.
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+
+    github.checkRuns.set(merge, [site, { name: 'Workers Builds: app', conclusion: 'skipped', startedAt, completedAt }]);
+    const run = passed(mine, 'Workers Builds: app', merge);
+    expect(
+      (await deliver('check_run', { ...run, check_run: { ...run.check_run, conclusion: 'skipped' } })).body,
+    ).toMatchObject({ moved: [] });
     expect(await runDurableObjectAlarm(store())).toBe(true);
     expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
   });

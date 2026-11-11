@@ -976,17 +976,21 @@ merge queue's branch, the latest run completed with `success`, or with
 
 - While another deploy check on the commit runs, a passing one's delivery
   answers `200` with `ignored` and moves nothing. The other check's own
-  delivery moves the tasks once it passes.
+  delivery moves the tasks once it passes. When it completes as `skipped` or
+  `neutral` instead, its delivery moves nothing itself, and the task store's
+  check reads the commit again a few seconds later.
 - Once a deploy check on the commit failed, its tasks stay at `merged` until
-  a later merge's deploy ships them ([above](#from-github)).
-- The receiver reads the commit's checks through the app's installation on
-  the repository's account, with two requests to GitHub. When GitHub does
-  not answer, the delivery answers `503` with `unavailable` and moves
-  nothing, and the task store's check reads the commit again a few seconds
-  later.
-- Without the app installed on the repository's account, as for a webhook
-  set up by hand alone, Ntasks cannot read a commit's other checks, and each
-  deploy check counts on its own.
+  that check passes on a rerun, which **Re-run** on the check in GitHub
+  starts, or a later merge's deploy ships them ([above](#from-github)).
+- The receiver reads the commit's checks through the app's installation that
+  sent the delivery, with two requests to GitHub. When GitHub does not
+  answer, or answers without every check, the delivery answers `503` with
+  `unavailable` and moves nothing, and the task store's check reads the
+  commit again a few seconds later.
+- A webhook set up by hand reads them through the app's installation on the
+  repository's account. Without one, or when it does not reach the
+  repository, Ntasks cannot read a commit's other checks, and each deploy
+  check counts on its own.
 
 #### Work still in progress when its pull request merges
 

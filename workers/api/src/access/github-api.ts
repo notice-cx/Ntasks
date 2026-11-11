@@ -278,16 +278,22 @@ export async function checksOf(
     return retryable(response) ? RETRY : null;
   }
   const body: unknown = await response.json().catch(() => null);
-  // GraphQL answers a rate limit with 200 and an error of this type.
+  // GraphQL answers with 200 and errors: a rate limit as an error of type
+  // RATE_LIMITED, and a part it could not read as null beside an error, so an
+  // answer with any other error lacks runs, and one still running would read
+  // as none.
   const errors = at(body, 'errors');
-  if (Array.isArray(errors) && errors.some((error) => at(error, 'type') === 'RATE_LIMITED')) return RETRY;
+  if (Array.isArray(errors) && errors.length > 0)
+    return errors.some((error) => at(error, 'type') === 'RATE_LIMITED') ? RETRY : null;
   const defaultBranch = at(body, 'data', 'repository', 'defaultBranchRef', 'name');
   if (typeof defaultBranch !== 'string') return null;
   const suites = at(body, 'data', 'repository', 'object', 'checkSuites', 'nodes');
-  const runs = (Array.isArray(suites) ? suites : []).flatMap((suite: unknown) => {
+  if (!Array.isArray(suites) || !suites.every((suite: unknown) => Array.isArray(at(suite, 'checkRuns', 'nodes'))))
+    return null;
+  const runs = suites.flatMap((suite: unknown) => {
     const branch = at(suite, 'branch', 'name');
-    const nodes = at(suite, 'checkRuns', 'nodes');
-    return (Array.isArray(nodes) ? nodes : []).flatMap((run: unknown): CheckRun[] => {
+    const nodes = at(suite, 'checkRuns', 'nodes') as unknown[];
+    return nodes.flatMap((run: unknown): CheckRun[] => {
       const runName = at(run, 'name');
       if (typeof runName !== 'string') return [];
       const conclusion = at(run, 'conclusion');

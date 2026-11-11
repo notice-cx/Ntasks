@@ -370,32 +370,41 @@ export function deployBranchOf(branch: string | null | undefined, defaultBranch:
 /** Conclusions of a deploy check that ship nothing, so they hold nothing back: a build its host skipped or called neutral. */
 const NOTHING_DEPLOYED = new Set(['neutral', 'skipped']);
 
+/** Whether a check run's conclusion, in lowercase, is one that deploys nothing. */
+export function deployedNothing(conclusion: string | null): boolean {
+  return conclusion !== null && NOTHING_DEPLOYED.has(conclusion);
+}
+
 /**
  * The deploy checks that hold a commit's tasks back from Live: each deploy
  * on the default branch or the merge queue's whose latest run is still
  * running, or ended without success. A commit that changes two Workers, such
  * as an app and its website, has a deploy check for each, and its tasks go
- * live once both passed. `passed` names a deploy whose own event said it
- * passed, which GitHub's list of the commit's checks may not show yet.
+ * live once both passed. `passed` is the run whose own event said it passed:
+ * it and the earlier runs of its check are left out, since GitHub's list of
+ * the commit's checks may not show it finished yet, while a later run of that
+ * check, such as a rerun, still counts.
  */
 export function heldBy(
   runs: readonly CheckRun[],
   names: DeployNames,
   defaultBranch: string,
-  passed?: string,
+  passed?: { readonly name: string; readonly startedAt: string | null },
 ): string[] {
   // A run that has not started, queued after the others, is the latest of its name.
-  const startOf = (run: CheckRun) => run.startedAt ?? '￿';
+  const startOf = (run: { readonly startedAt: string | null }) =>
+    run.startedAt === null ? Number.POSITIVE_INFINITY : Date.parse(run.startedAt);
   const latest = new Map<string, CheckRun>();
   for (const run of runs) {
-    if (run.name === passed || deployBranchOf(run.branch, defaultBranch) === null) continue;
+    if (deployBranchOf(run.branch, defaultBranch) === null) continue;
+    if (run.name === passed?.name && (passed.startedAt === null || startOf(run) <= startOf(passed))) continue;
     const verdict = deployOf(run.name, names, isDeployCheck(run.name));
     if (verdict !== 'yes' && verdict !== 'new') continue;
     const seen = latest.get(run.name);
     if (seen === undefined || startOf(run) > startOf(seen)) latest.set(run.name, run);
   }
   return [...latest.values()]
-    .filter((run) => run.conclusion !== 'success' && !NOTHING_DEPLOYED.has(run.conclusion ?? ''))
+    .filter((run) => run.conclusion !== 'success' && !deployedNothing(run.conclusion))
     .map((run) => run.name)
     .sort();
 }
