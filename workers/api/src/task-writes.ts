@@ -342,7 +342,7 @@ export interface NewTask {
   /** Values of the project's custom fields, by key; the engine checks each against its field. */
   readonly fields?: Readonly<Record<string, FieldValue>>;
   /** What a person must approve before the task proceeds. */
-  readonly approval?: string;
+  readonly approval?: ApprovalRequest;
   readonly choices?: JsonObject;
   /** A card's figures, without who wrote it and when. */
   readonly card?: JsonObject;
@@ -428,7 +428,7 @@ export async function createTask(
     ...(typeof due === 'string' ? { dueAt: due } : task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
-    ...(task.approval === undefined ? {} : { requestApproval: { reason: task.approval } }),
+    ...(task.approval === undefined ? {} : { requestApproval: task.approval }),
     ...(task.claim === true ? { claim: true as const } : {}),
     ...(task.done === undefined ? {} : { close: closeOf(task.done, task.type ?? 'task') }),
   };

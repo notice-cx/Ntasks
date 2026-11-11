@@ -86,6 +86,9 @@ function shape(value: unknown): unknown {
   );
 }
 
+/** The schema keywords that apply to an object alone. */
+const OBJECT_KEYWORDS = ['properties', 'required', 'additionalProperties'];
+
 /**
  * `ours` without the properties `theirs` lacks, at any depth, such as an entry
  * of create_tasks, and without descriptions and required lists. Each property
@@ -103,6 +106,15 @@ function withoutAdded(
       withoutAdded(entry, (theirs as unknown[] | undefined)?.[index], at, found),
     );
   if (!isSchema(ours) || !isSchema(theirs)) return shape(ours);
+  if (Array.isArray(ours.type) && typeof theirs.type === 'string' && ours.type.includes(theirs.type)) {
+    // A type the argument also takes now, named in added, with the keywords
+    // only that type reads; the type it took is compared as before.
+    found.added.push(`${at}:${ours.type.filter((type) => type !== theirs.type).join('|')}`);
+    const before = Object.fromEntries(
+      Object.entries(ours).filter(([key]) => key in theirs || !OBJECT_KEYWORDS.includes(key)),
+    );
+    return withoutAdded({ ...before, type: theirs.type }, theirs, at, found);
+  }
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(ours)) {
     if (key === 'description') continue;
@@ -161,6 +173,7 @@ describe('tools/list', () => {
       'create_task.supersedes',
       'create_task.external_links',
       'create_task.fields',
+      'create_task.approval:object',
       'create_task.claim',
       'create_task.done',
       'create_task.detail',
@@ -171,6 +184,7 @@ describe('tools/list', () => {
       'create_tasks.tasks.supersedes',
       'create_tasks.tasks.external_links',
       'create_tasks.tasks.fields',
+      'create_tasks.tasks.approval:object',
       'create_tasks.tasks.claim',
       'create_tasks.tasks.done',
       ...WORK_ARGS.map((name) => `claim_task.${name}`),
@@ -513,6 +527,91 @@ describe('create_task', () => {
     expect(await current(project, reply.approval.id)).toMatchObject({ type: 'gate', awaitType: 'human' });
   });
 
+  it('opens an approval with the title and description it is given, in create_task and create_tasks', async () => {
+    const project = await newProject(engine);
+    const title = 'Approve deploying the Worker to production';
+    const description =
+      'You: press Approve on this task to let the agent deploy the Worker.\n\n## Why this needs you\n\nIt changes production.';
+    const reply = await write<{ id: string; approval: { id: string }; lint?: { advice?: readonly string[] } }>(
+      target,
+      'create_task',
+      { project: project.id, title: 'Deploy the Worker', approval: { title, description }, idempotency_key: key() },
+    );
+    expect(reply).toMatchObject({ approval: { status: 'open', title }, held: true });
+    expect(reply.lint?.advice ?? []).toEqual([]);
+    expect(await current(project, reply.approval.id)).toMatchObject({ type: 'gate', title, description });
+    expect((await current(project, reply.id)).ready).toBe(false);
+
+    const batch = await write<{ results: { approval: { id: string; title: string } }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Deploy the API', approval: { title: 'Approve deploying the API', description } }],
+      idempotency_key: key(),
+    });
+    expect(batch.results[0]!.approval.title).toBe('Approve deploying the API');
+    expect(await current(project, batch.results[0]!.approval.id)).toMatchObject({ description });
+  });
+
+  it('advises the approval it opens as request_human_approval advises one, naming it approval', async () => {
+    const project = await newProject(engine);
+    const vague = await write<{ approval: { id: string }; lint: { advice: readonly string[] } }>(
+      target,
+      'create_task',
+      {
+        project: project.id,
+        title: 'Merge the column change',
+        acceptance: 'Merged.',
+        approval: { title: 'Approve merging the column change', description: 'The merge adds one column.' },
+        idempotency_key: key(),
+      },
+    );
+    const gate = await current(project, vague.approval.id);
+    expect(vague.lint.advice).toEqual(placeAdvice(gate).map((line) => `approval.${line}`));
+    expect(vague.lint.advice).toHaveLength(1);
+
+    // A text's first line is the title, so the approval repeats it; the advice then names the object form too.
+    type Filed = { approval: { id: string }; lint: { advice: readonly string[] } };
+    const batch = await write<{ results: Filed[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Merge it', acceptance: 'Merged.', approval: 'Approve the merge.\nIt adds one column.' }],
+      idempotency_key: key(),
+    });
+    const text = batch.results[0]!;
+    const textGate = await current(project, text.approval.id);
+    expect(textGate.title).toBe('Approve the merge.');
+    expect(text.lint.advice).toEqual([
+      ...[...repeatAdvice(textGate.title, textGate.description), ...placeAdvice(textGate)].map(
+        (line) => `approval.${line}`,
+      ),
+      expect.stringMatching(/^approval: /u),
+    ]);
+  });
+
+  it('refuses an approval without a title or a description, a title on two lines, another field, and a value that is neither', async () => {
+    const project = await newProject(engine);
+    const ask = (approval: unknown) =>
+      refusal(target, 'create_task', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        title: 'Gated',
+        approval,
+        idempotency_key: key(),
+      });
+    expect(await ask({ title: 'Approve the deploy' })).toBe(
+      'invalid arguments: approval.description (required: pass title and description, or approval as one text)',
+    );
+    expect(await ask({ description: 'You: press Approve on this task.' })).toBe(
+      'invalid arguments: approval.title (required: pass title and description, or approval as one text)',
+    );
+    expect(await ask({ title: 'Approve\nthe deploy', description: 'You: press Approve.' })).toBe(
+      'invalid arguments: approval.title (one line, with no tab or line break)',
+    );
+    expect(await ask({ title: 'Approve it', description: 'You: press Approve.', reason: 'Why' })).toBe(
+      'invalid arguments: approval (title and description only; not reason)',
+    );
+    expect(await ask(5)).toBe('invalid arguments: approval (an object with title and description, or one text)');
+    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+  });
+
   it('names the sections lint finds missing, and advises choices for lettered options', async () => {
     const project = await newProject(engine);
     const reply = await write<{ lint: unknown }>(target, 'create_task', {
@@ -793,6 +892,27 @@ describe('create_task', () => {
       /^card arrived as text: your client's copy of the task tools predates this server \(guide version [0-9a-f]{12}\); reconnect this server to get the current tools$/u,
     );
     expect((await current(project, reply.id)).metadata.noticeos_card).toMatchObject({ measurability: 'holdout' });
+  });
+
+  it('reads an approval sent as object text, and keeps an approval that is plain text as text', async () => {
+    const project = await newProject(engine);
+    const title = 'Approve the deploy';
+    const sent = await write<{ staleClient: string; approval: { id: string; title: string } }>(target, 'create_task', {
+      project: project.id,
+      title: 'Deploy it',
+      approval: JSON.stringify({ title, description: 'You: press Approve on this task.' }),
+      idempotency_key: key(),
+    });
+    expect(sent.staleClient).toMatch(/^approval arrived as text: /u);
+    expect(sent.approval.title).toBe(title);
+    const plain = await write<Record<string, unknown>>(target, 'create_task', {
+      project: project.id,
+      title: 'Deploy it again',
+      approval: 'Approve the second deploy.',
+      idempotency_key: key(),
+    });
+    expect(plain).not.toHaveProperty('staleClient');
+    expect(plain).toMatchObject({ approval: { title: 'Approve the second deploy.' } });
   });
 
   it('reads object text in an entry of create_tasks and a null in update_task, and refuses text that is no object', async () => {
