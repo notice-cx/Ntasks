@@ -236,7 +236,10 @@ MCP clients follow these steps on their own; the person sees steps 5 and 6.
    it asks to do, chooses its projects among those of each workspace they
    belong to, and allows or denies it. Allowing records the project grants,
    each with its workspace, then the consent. The page reads the projects of
-   each of the person's workspaces from that workspace's task store.
+   each of the person's workspaces from that workspace's task store, 10
+   workspaces at most. A person in more than 10 ticks which ones to list
+   under Workspaces and presses Show projects; one approval grants projects
+   in up to 10 workspaces.
 7. The agent exchanges the code for an access token and a refresh token at
    `POST /api/auth/oauth2/token`.
 8. It calls the MCP endpoint with `Authorization: Bearer <access token>`.
