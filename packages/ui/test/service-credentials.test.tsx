@@ -104,4 +104,43 @@ describe('service credentials on the Settings page', () => {
     fireEvent.change(name, { target: { value: 'nightly-backup-2' } });
     expect(name.getAttribute('aria-invalid')).toBeNull();
   });
+
+  it('shows a failed project read with Retry in the form, and lists the projects once a retry reads them', async () => {
+    const api = createFixtureTasksApi();
+    const projects = api.projects.bind(api);
+    let failing = true;
+    vi.spyOn(api, 'projects').mockImplementation(async (signal) => {
+      if (failing) throw new Error('The project list: the server answered 503.');
+      return projects(signal);
+    });
+    renderApp('/tasks/settings/services', api);
+    const form = await openForm();
+    const retry = await within(form).findByRole('button', { name: /Retry/u });
+    failing = false;
+    fireEvent.click(retry);
+    const [first] = await projects();
+    expect(await within(form).findByRole('combobox', { name: `${first!.displayName} access` })).toBeTruthy();
+  });
+
+  it('keeps the form while a credential is being made, whatever Escape asks', async () => {
+    const api = createFixtureTasksApi();
+    let finish: () => void = () => {};
+    const made = api.createServiceCredential.bind(api);
+    vi.spyOn(api, 'createServiceCredential').mockImplementation(
+      (input, options) =>
+        new Promise((resolve, reject) => {
+          finish = () => void made(input, options).then(resolve, reject);
+        }),
+    );
+    renderApp('/tasks/settings/services', api);
+    const form = await openForm();
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'nightly-backup' } });
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Back up every project' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Make credential' }));
+    await waitFor(() => expect(api.createServiceCredential).toHaveBeenCalled());
+    fireEvent.keyDown(form, { key: 'Escape' });
+    expect(form.isConnected).toBe(true);
+    finish();
+    expect(await screen.findByRole('region', { name: 'Token for nightly-backup' })).toBeTruthy();
+  });
 });

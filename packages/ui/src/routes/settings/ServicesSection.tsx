@@ -18,6 +18,7 @@ import {
   useServiceCredentials,
 } from '../../hooks/useWorkspace';
 import { ageMs, formatAge } from '../../lib/format';
+import { cn } from '../../lib/utils';
 
 /** How far a credential reaches into one project; `none` leaves the project out of its grants. */
 type Reach = 'none' | ServiceGrant['access'];
@@ -39,7 +40,7 @@ export function ServicesSection() {
   return (
     <SettingsSection
       title="Services"
-      description="A service such as NoticeOS signs in with a credential's token, and reaches only the projects it names."
+      description="A service such as NoticeOS signs in with a credential's token. It reaches only the projects you choose, unless it backs up or loads the whole workspace."
       action={
         <Button
           variant="primary"
@@ -126,14 +127,22 @@ function CredentialRow({
   const live = service.revokedAt === null;
   return (
     <li>
-      <Row data-service-row={service.id} className="ps-4 pe-2">
+      <Row
+        data-service-row={service.id}
+        className={cn('ps-4 pe-2', reaches && 'max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-1 max-sm:py-2')}
+      >
         <RowTitle>{service.name}</RowTitle>
-        {/* The projects give way before the name does. */}
+        {/* The projects give way before the name does; a phone gives them a line of their own. */}
         {reaches ? <RowMeta className="block min-w-0 shrink-[4] truncate">{reaches}</RowMeta> : null}
         <RowSpacer />
         {service.backup ? <Badge>Backup</Badge> : null}
         {service.restore ? <Badge>Load</Badge> : null}
         <RowAge>{formatAge(ageMs(now, service.revokedAt ?? service.createdAt))}</RowAge>
+        {reaches ? (
+          <span className="order-last basis-full text-meta text-ink-3 sm:hidden" data-service-reach="">
+            {reaches}
+          </span>
+        ) : null}
         {live && !confirming ? (
           <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
             Revoke
@@ -224,7 +233,8 @@ function NewCredentialForm({
         void submit();
       }}
       onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
+        // A credential being made shows its token once it is made, so the form stays until then.
+        if (event.key !== 'Escape' || create.isPending) return;
         event.preventDefault();
         onCancel();
       }}
@@ -249,7 +259,14 @@ function NewCredentialForm({
         aria-describedby={refused === 'grants' ? grantsErrorId : undefined}
       >
         <legend className="mb-1.5 p-0 text-label font-medium text-ink-2">Projects</legend>
-        {catalog.isPending ? (
+        {catalog.isError ? (
+          <ReadFailed
+            title="Couldn't load the projects"
+            error={catalog.error}
+            retrying={catalog.isFetching}
+            onRetry={() => void catalog.refetch()}
+          />
+        ) : catalog.isPending ? (
           <PageSkeleton shape="list" />
         ) : projects.length === 0 ? (
           <p className="m-0 text-meta text-ink-3">No projects yet.</p>

@@ -1094,45 +1094,54 @@ export function createFixtureTasksApi({
     async serviceCredentials() {
       return copy(owned().services ?? []);
     },
-    /** Makes a credential as the Worker does: its name rule, its grants rule, and a name kept by a revoked one too. */
-    async createServiceCredential({ name, grants, backup, restore }, options) {
+    /**
+     * Makes a credential as the Worker does: its name and grant rules, a name
+     * a revoked credential keeps, and no replay of a retried request, which
+     * the Worker refuses as a taken name since it never shows a token twice.
+     */
+    async createServiceCredential({ name, grants, backup, restore }) {
       const workspace = owned();
-      return once(options?.idempotencyKey, ['service', workspace.workspaceId, name, grants, backup, restore], () => {
-        const trimmed = name.trim();
-        if (!APP_NAME.test(trimmed))
-          throw new ApiError(
-            'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores',
-            400,
-            'invalid_request',
-            'name',
-          );
-        if (trimmed.toLowerCase() === 'ntasks')
-          throw new ApiError(
-            `name ${trimmed} is the one Ntasks records its own changes under`,
-            400,
-            'invalid_request',
-            'name',
-          );
-        if (grants.length === 0 && !backup && !restore)
-          throw new ApiError('grants must list 1 to 200 projects', 400, 'invalid_request', 'grants');
-        const known = new Set(workspace.seed.projects.map((row) => row.projectId));
-        if (!grants.every((grant) => known.has(grant.projectId)))
-          throw new ApiError('a grant names a project that does not exist', 400, 'unknown_project', 'grants');
-        const services = workspace.services ?? [];
-        if (services.some((row) => row.name === trimmed))
-          throw new ApiError('a service credential in this workspace already has this name', 409, 'name_taken', 'name');
-        const service: ServiceCredential = {
-          id: crypto.randomUUID(),
-          name: trimmed,
-          createdAt: new Date(now()).toISOString(),
-          revokedAt: null,
-          grants: grants.map((grant) => ({ ...grant })),
-          backup,
-          restore,
-        };
-        workspace.services = [service, ...services];
-        return { ...copy(service), token: `ntasks_service.${service.id}.${crypto.randomUUID().replaceAll('-', '')}` };
-      });
+      const trimmed = name.trim();
+      if (!APP_NAME.test(trimmed))
+        throw new ApiError(
+          'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores',
+          400,
+          'invalid_request',
+          'name',
+        );
+      if (trimmed.toLowerCase() === 'ntasks')
+        throw new ApiError(
+          `name ${trimmed} is the one Ntasks records its own changes under`,
+          400,
+          'invalid_request',
+          'name',
+        );
+      if ((grants.length === 0 && !backup && !restore) || grants.length > 200)
+        throw new ApiError('grants must list 1 to 200 projects', 400, 'invalid_request', 'grants');
+      if (new Set(grants.map((grant) => grant.projectId)).size !== grants.length)
+        throw new ApiError(
+          'each grant names a project once, with access read or write',
+          400,
+          'invalid_request',
+          'grants',
+        );
+      const known = new Set(workspace.seed.projects.map((row) => row.projectId));
+      if (!grants.every((grant) => known.has(grant.projectId)))
+        throw new ApiError('a grant names a project that does not exist', 400, 'unknown_project', 'grants');
+      const services = workspace.services ?? [];
+      if (services.some((row) => row.name === trimmed))
+        throw new ApiError('a service credential in this workspace already has this name', 409, 'name_taken', 'name');
+      const service: ServiceCredential = {
+        id: crypto.randomUUID(),
+        name: trimmed,
+        createdAt: new Date(now()).toISOString(),
+        revokedAt: null,
+        grants: grants.map((grant) => ({ ...grant })),
+        backup,
+        restore,
+      };
+      workspace.services = [service, ...services];
+      return { ...copy(service), token: `ntasks_service.${service.id}.${crypto.randomUUID().replaceAll('-', '')}` };
     },
     async revokeServiceCredential(id) {
       const service = (owned().services ?? []).find((row) => row.id === id);
