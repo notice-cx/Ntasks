@@ -49,7 +49,7 @@ describe('backup rows', () => {
       'SELECT task_id, label FROM task_labels WHERE (task_id, label) >= (?, ?) ORDER BY task_id, label LIMIT ? OFFSET ?',
     );
     expect(backupPageSql('task_events', 'first')).toBe(
-      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes FROM task_events ORDER BY seq LIMIT ? OFFSET ?',
+      'SELECT seq, task_id, project_id, version, kind, actor, model, at, changes, actor_for, session FROM task_events ORDER BY seq LIMIT ? OFFSET ?',
     );
     expect(backupSelectSql('write_receipts')).toBe(
       'SELECT principal, operation, idempotency_key, project_id, request_hash, result, created_at FROM write_receipts ORDER BY principal, operation, idempotency_key',

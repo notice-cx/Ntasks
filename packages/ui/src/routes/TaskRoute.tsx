@@ -29,6 +29,7 @@ import type {
 } from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
+import { TestRun } from '../components/TestRun';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Badge, Progress } from '../components/ui/badge';
 import { LinkedText } from '../components/ui/linked-text';
@@ -1346,7 +1347,12 @@ function Activity({
             ) : null}
           </>
         ),
-        body: <MarkdownText source={comment.text} />,
+        body: (
+          <>
+            <MarkdownText source={comment.text} />
+            {comment.test ? <TestRun run={comment.test} /> : null}
+          </>
+        ),
       });
     }
     if (task.closedAt) {
@@ -1378,6 +1384,7 @@ function Activity({
         ) : (
           `Closed${how}`
         ),
+        ...(task.closeTest ? { body: <TestRun run={task.closeTest} /> } : {}),
       });
     }
     return out;

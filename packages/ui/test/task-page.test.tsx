@@ -547,6 +547,39 @@ describe('a task page', () => {
     });
   });
 
+  describe('a test run', () => {
+    it('shows the run a comment and a close reported, under each, and none under a comment that reported none', async () => {
+      const api = createFixtureTasksApi();
+      Object.assign(task(api, 'web-k3m9.1')!, {
+        closeTest: { command: 'pnpm test', result: 'passed', passed: 22, failed: 0, commit: '1a2b3c4d5e' },
+      } satisfies Partial<LiveTask>);
+      api.state.comments.set('web-k3m9.1', [
+        {
+          id: 'run-1',
+          author: FIXTURE_ACTOR,
+          text: 'One link fails.',
+          createdAt: '2026-11-05T12:00:00.000Z',
+          test: { command: 'pnpm test', result: 'failed', passed: 21, failed: 1 },
+        },
+        { id: 'run-2', author: FIXTURE_ACTOR, text: 'Fixed it.', createdAt: '2026-11-05T13:00:00.000Z' },
+      ]);
+      renderApp('/tasks/web-k3m9.1', api);
+
+      const activity = await screen.findByRole('list', { name: 'Activity' });
+      await waitFor(() => expect(activity.querySelectorAll('[data-test-run]')).toHaveLength(2));
+      const entries = (kind: string) =>
+        within(activity)
+          .getAllByRole('listitem')
+          .filter((entry) => entry.dataset.timelineEntry === kind);
+      const runOf = (entry: HTMLElement) => entry.querySelector<HTMLElement>('[data-test-run]');
+      expect(entries('comment').map((entry) => runOf(entry)?.dataset.testRun ?? null)).toEqual(['failed', null]);
+      const [closed] = entries('closed');
+      expect(runOf(closed!)?.dataset.testRun).toBe('passed');
+      expect(within(runOf(closed!)!).getByText(/22 passed/u)).toBeTruthy();
+      expect(within(runOf(closed!)!).getByText('1a2b3c4')).toBeTruthy();
+    });
+  });
+
   describe('a stalled task', () => {
     it('shows where its work stopped and frees it on the person’s call, keeping that in a comment', async () => {
       const api = createFixtureTasksApi();

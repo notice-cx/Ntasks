@@ -57,6 +57,8 @@ export {
   TASK_RESOLUTIONS,
   TASK_STATUSES,
   TASK_TYPES,
+  TEST_LIMITS,
+  TEST_RESULTS,
   TOUCHES_LIMITS,
   WORK_DETAILS,
   WORK_LIMITS,
@@ -93,8 +95,10 @@ export type {
   TaskResolution,
   TaskStatus,
   TaskStep,
+  TaskTestResult,
   TaskType,
   TaskWork,
+  TestResult,
   WorkDetail,
 } from './task.ts';
 export { GUARD_REFUSALS, guardRefusalOf, IDEMPOTENCY_KEY, TASK_REFUSALS, TaskRefused } from './engine.ts';

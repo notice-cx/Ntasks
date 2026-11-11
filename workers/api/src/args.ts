@@ -20,6 +20,7 @@ import {
   type FieldValue,
   type JsonObject,
   type TaskFieldChanges,
+  type TaskTestResult,
   type TaskType,
   type WorkDetail,
 } from '@ntasks/domain';
@@ -513,6 +514,15 @@ export function closingArgs(args: Args, taskId: string, duplicateName: string) {
     ...(resolution === undefined ? {} : { resolution }),
     ...(duplicateOf === undefined ? {} : { duplicateOf }),
   };
+}
+
+/** The test run a comment or a close reports, as the engine checks it; undefined when it reports none. */
+export function testArg(args: Args): TaskTestResult | undefined {
+  const value = args.test;
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    refuse('invalid arguments: test (an object with command and result, passed or failed)');
+  return value as TaskTestResult;
 }
 
 /** Choices, a card and a change class are set together or taken off together, never both in one change. */

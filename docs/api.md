@@ -176,18 +176,18 @@ answered by then leaves its tasks out, and the rest are listed.
 | `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, `closeAcceptance` when it recorded one, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `met`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `list_projects` | Each project's `projectId`, key, name and prefix; `deploys`, whether its changes go live by a deploy; `disabled`, whether it refuses new tasks; and `websiteUrl`, its website or null | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
-| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
+| `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`), and `changed_by` (a name, `"me"` for your own), `changed_for` (a helper agent) and `changed_in` (a session): only the tasks with a change in their history by that name, through that helper or in that session ([below](#who-changed-a-task)) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
 | `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
 | `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)); with `touches`, `overlaps` when other work in progress changes the same ([below](#work-that-changes-the-same-files)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
-| `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, `overlaps` as `claim_task` answers it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
+| `comment_on_task` | The `task` and the comment's `commentId`, `pinned: true` when it pinned it, `overlaps` as `claim_task` answers it, and `replayed`; with `detail: "full"`, the whole comment. With `tasks`, `results`: the same for each, or `{ task, error }` | `workspace`, `task` or `tasks` (1 to 50 task ids), `text`, and optionally `project`, `pin`, `unpin` (with `task` only), `test` ([a test run](#a-test-run)), `model`, `for`, `session`, `worktree`, `branch`, `pr`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `link_tasks` | `{ task, to, type }`, and `replaced`, the link it replaced, when there was another; or `{ task, to, removed: true }` | `workspace`, `task`, `to`, `type` or `remove: true`, and optionally `project` and `model` ([below](#linking-two-tasks)) |
 | `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
-| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `closedEpics` when the close also closed epics whose last open task it was (each `{ id, resolution }`), `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `closedEpics`, `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `model`, `idempotency_key` and `detail` |
+| `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `closedEpics` when the close also closed epics whose last open task it was (each `{ id, resolution }`), `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `closedEpics`, `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `test` ([a test run](#a-test-run)), `model`, `idempotency_key` and `detail` |
 | `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
@@ -241,6 +241,37 @@ returns `openChildren`: each child that is not closed, with its `id`,
 `title`, `status`, `assignee`, `for` and `lastActivityAt`.
 `get_task_history` records each change of them as `assigneeFor` and `work`.
 
+### Who changed a task
+
+Each change in a task's history records, beside its `actor`, the helper
+agent and the agent session it was made through. A change the task's holder
+makes is made through the task's `for` and `work.session` as the change
+leaves them, or as they stood before a close or a release cleared them; a
+change by anyone else names neither. `get_task_history` shows them on each
+change as `for` and `session`, and leaves out the ones it has none of.
+`list_tasks` with `changed_by`, `changed_for` or `changed_in` lists only the
+tasks with a change by that name, through that helper or in that session, so
+a coordinator lists what each of its helpers changed, closed tasks within
+`closed_days` included. A task keeps one `for` at a time; its history keeps
+the helper of each change.
+
+### A test run
+
+`comment_on_task` and `close_task` take `test`, the test run the comment or
+the close reports:
+
+| Field | Holds |
+|---|---|
+| `command` | The command that ran, such as `pnpm test`: one line of at most 512 characters. Required |
+| `result` | `passed` or `failed`. Required |
+| `passed`, `failed` | How many tests passed and failed: whole numbers from 0 to 1,000,000 |
+| `commit` | The commit it ran on, 7 to 64 hexadecimal characters |
+
+A comment's run is its `test`, and a close's is the task's `closeTest`, null
+when it reported none; a reopen clears `closeTest`. The task page shows each
+run under its comment or its close. `get_task_history` records a comment's
+run as `test` in its `commented` change, and a close's in its `close`.
+
 `duplicates` names earlier tasks for the same work, and `supersedes` the
 tasks this one replaces. `get_task` lists them among `dependencies`, with
 those types, and lists the links other tasks hold onto this one among
@@ -275,7 +306,7 @@ corrects; a comment that is not pinned on the task is refused, and the call
 then adds nothing. Pinning and unpinning leave the task's version as a plain
 comment does, and its history records them in the comment's `commented`
 change as `pinned: true` and `unpinned`, the ids. Every comment `get_task`
-returns says whether it is `pinned`.
+returns says whether it is `pinned`, and holds the `test` run it reported, or null.
 
 `get_task` of one task with a parent, `claim_task` and `GET /api/tasks/:id`
 answer `parent`:

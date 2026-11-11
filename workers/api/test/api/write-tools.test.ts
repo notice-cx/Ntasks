@@ -150,6 +150,9 @@ describe('tools/list', () => {
       'list_tasks.stage',
       'list_tasks.stalled',
       'list_tasks.activity',
+      'list_tasks.changed_by',
+      'list_tasks.changed_for',
+      'list_tasks.changed_in',
       'list_tasks.sort',
       'list_tasks.direction',
       'list_tasks.fields',
@@ -188,6 +191,7 @@ describe('tools/list', () => {
       'comment_on_task.tasks',
       'comment_on_task.pin',
       'comment_on_task.unpin',
+      'comment_on_task.test',
       'comment_on_task.model',
       ...WORK_ARGS.map((name) => `comment_on_task.${name}`),
       'comment_on_task.detail',
@@ -199,6 +203,7 @@ describe('tools/list', () => {
       'close_task.pr',
       'close_task.link',
       'close_task.with_children',
+      'close_task.test',
       'close_task.detail',
     ]);
   });
@@ -2027,7 +2032,14 @@ describe('comment_on_task', () => {
     const args = { project: project.id, task: id, text: 'Halfway.', idempotency_key: key(), detail: 'full' };
     const first = await write<{ comment: Record<string, unknown>; replayed: boolean }>(target, 'comment_on_task', args);
     expect(first).toEqual({
-      comment: { id: expect.any(String), author: WRITER.name, text: 'Halfway.', createdAt: time.now(), pinned: false },
+      comment: {
+        id: expect.any(String),
+        author: WRITER.name,
+        text: 'Halfway.',
+        createdAt: time.now(),
+        pinned: false,
+        test: null,
+      },
       replayed: false,
     });
     const again = await write<{ comment: Record<string, unknown>; replayed: boolean }>(target, 'comment_on_task', args);

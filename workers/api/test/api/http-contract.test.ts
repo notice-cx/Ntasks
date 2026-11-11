@@ -228,12 +228,21 @@ async function drive(): Promise<readonly Sample[]> {
   await as('PATCH /api/tasks/:id', task(later), inProject({ defer: '2026-12-01' }));
   await tool(owner, 'link_tasks', { task: date, to: post, type: 'merges-after' });
   const checked = (await tool(owner, 'create_task', { project: projectId, title: 'Check the links' })).id as string;
-  await tool(owner, 'claim_task', { task: checked, model: 'claude-sonnet-5-5' });
+  // Through a helper agent and a session, with a test run on the comment and on the close.
+  await tool(owner, 'claim_task', {
+    task: checked,
+    model: 'claude-sonnet-5-5',
+    for: 'link-check-1',
+    session: 'session-1',
+  });
+  const linksPass = { command: 'pnpm test', result: 'passed', passed: 12, failed: 0, commit: 'c0ffee12' };
+  await tool(owner, 'comment_on_task', { task: checked, text: 'Every link answers.', test: linksPass });
   await tool(owner, 'close_task', {
     task: checked,
     reason: 'Checked.',
     commit: 'c0ffee12',
     model: 'claude-sonnet-5-5',
+    test: linksPass,
   });
   const held = (await tool(owner, 'create_task', { project: projectId, title: 'Fix the links' })).id as string;
   await tool(owner, 'claim_task', { task: held, model: 'claude-sonnet-5-5' });
@@ -342,7 +351,7 @@ async function drive(): Promise<readonly Sample[]> {
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
-  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done, donations])
+  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done, donations, checked])
     await as('GET /api/tasks/:id', `${task(id)}?project=${projectId}`);
   for (const id of [post, checked])
     await as('GET /api/tasks/:id/history', `${task(id, '/history')}?project=${projectId}`);
