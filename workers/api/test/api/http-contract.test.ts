@@ -604,6 +604,11 @@ let driven: Promise<readonly Sample[]> | undefined;
 /** The answers of every route, sent once for the whole file. */
 const answers = () => (driven ??= drive());
 
+/** The options of each test that reads the answers. Whichever runs first
+ * sends every route, over a hundred requests through workerd, which a busy
+ * CI runner took 15 seconds to answer. */
+const DRIVES = { timeout: 60_000 };
+
 /** Each route's answers, compared with its recorded contract. */
 async function differences() {
   const byRoute = new Map<string, Sample[]>();
@@ -651,14 +656,14 @@ describe('the version', () => {
     }
   });
 
-  it('names the version on every answer the contract records', async () => {
+  it('names the version on every answer the contract records', DRIVES, async () => {
     const unnamed = (await answers()).filter((sample) => sample.version !== String(API_VERSION));
     expect(unnamed.map((sample) => `${sample.route} ${sample.path}`)).toEqual([]);
   });
 });
 
 describe('the contract', () => {
-  it('keeps every recorded route and field, with its recorded type', async () => {
+  it('keeps every recorded route and field, with its recorded type', DRIVES, async () => {
     const found = await differences();
     expect(found.filter((route) => route.recorded && !route.sent).map((route) => route.route)).toEqual([]);
     expect(found.flatMap((route) => route.removed)).toEqual([]);
@@ -670,7 +675,7 @@ describe('the contract', () => {
 
   // An addition passes the test above. Recording it, under a new version, is
   // what holds it to the contract and tells a client which version has it.
-  it('records every field the routes answer', async () => {
+  it('records every field the routes answer', DRIVES, async () => {
     expect((await differences()).flatMap((route) => route.unrecorded)).toEqual([]);
   });
 

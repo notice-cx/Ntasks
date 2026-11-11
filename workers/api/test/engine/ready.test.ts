@@ -307,6 +307,58 @@ describe('ready work', () => {
     expect(await readyIds(tasks, project.id)).toEqual([epic.id, child.id, grandchild.id].sort());
   });
 
+  it('holds a task labelled human only by its own links, not by a waiting parent, and holds the tasks under it', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const blocker = await make(tasks, project.id, 'Blocker');
+    const research = await make(tasks, project.id, 'Research');
+    const parent = await make(tasks, project.id, 'Parent', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
+    const decision = await make(tasks, project.id, 'Pick a layout', {
+      title: '',
+      type: 'decision',
+      labels: ['human'],
+      parentId: parent.id,
+      choices: {
+        question: 'Which layout?',
+        options: [
+          { key: 'a', label: 'One column', recommended: true },
+          { key: 'b', label: 'Two columns' },
+        ],
+      },
+    });
+    const underDecision = await make(tasks, project.id, 'Build the layout', { title: '', parentId: decision.id });
+    const afterResearch = await make(tasks, project.id, 'Answer after the research', {
+      title: '',
+      labels: ['human'],
+      parentId: parent.id,
+      links: [{ direction: 'depends-on', taskId: research.id, type: 'blocks' }],
+    });
+    const agentWork = await make(tasks, project.id, 'Agent work', { title: '', parentId: parent.id });
+    const humanEpic = await make(tasks, project.id, 'Epic labelled human', {
+      title: '',
+      type: 'epic',
+      labels: ['human'],
+      parentId: parent.id,
+    });
+
+    const held = [parent, underDecision, afterResearch, agentWork, humanEpic].map((task) => task.id);
+    expect(await readyIds(tasks, project.id)).toEqual([blocker.id, research.id, decision.id].sort());
+    expect((await tasks.getTask(project.id, decision.id))?.ready).toBe(true);
+    for (const id of held) expect((await tasks.getTask(project.id, id))?.ready, id).toBe(false);
+    const labelled = await tasks.listLabelled(project.id, { label: 'human', limit: 10 });
+    expect(Object.fromEntries(labelled.tasks.map((task) => [task.id, task.ready]))).toEqual({
+      [decision.id]: true,
+      [afterResearch.id]: false,
+      [humanEpic.id]: false,
+    });
+
+    await close(tasks, project.id, research);
+    expect((await tasks.getTask(project.id, afterResearch.id))?.ready).toBe(true);
+  });
+
   it('passes blocking down from a parent in any status but closed', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
