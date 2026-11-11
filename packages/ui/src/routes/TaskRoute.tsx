@@ -66,6 +66,7 @@ import {
   claimedModel,
   closeAttribution,
   closeNote,
+  filedAttribution,
   inboxAsk,
   isGate,
   isBlockingLink,
@@ -1318,8 +1319,24 @@ function Activity({
 }) {
   const entries = useMemo(() => {
     const out: TimelineEntry[] = [];
-    if (task.createdAt)
-      out.push({ id: 'filed', at: task.createdAt, kind: 'filed', actor: null, icon: <Plus />, label: 'Filed' });
+    if (task.createdAt) {
+      const filer = filedAttribution(task);
+      const who = filer ? actorOf(filer.by, filer.model, actors) : null;
+      out.push({
+        id: 'filed',
+        at: task.createdAt,
+        kind: 'filed',
+        actor: who,
+        icon: <Plus />,
+        label: who ? (
+          <>
+            <b>{who.name}</b> filed this
+          </>
+        ) : (
+          'Filed'
+        ),
+      });
+    }
     if (task.startedAt && task.assignee) {
       const who = actorOf(task.assignee, claimedModel(task), actors);
       out.push({

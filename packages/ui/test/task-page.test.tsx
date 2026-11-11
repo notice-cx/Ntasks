@@ -149,6 +149,27 @@ describe('a task page', () => {
     });
   });
 
+  it('names who filed the task with their avatar, and an import that recorded nobody as Filed alone', async () => {
+    const api = createFixtureTasksApi();
+    const imported = task(api, 'web-q8n5');
+    if (!imported) throw new Error('The seed has no web-q8n5');
+    imported.filedBy = null;
+    imported.filedModel = null;
+    const filedEntry = () => document.querySelector('[data-timeline-entry="filed"]') as HTMLElement;
+
+    const { unmount } = renderApp('/tasks/web-b2r6', api);
+    await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });
+    await waitFor(() => expect(filedEntry().textContent).toContain('Claude filed this'));
+    expect(filedEntry().querySelector('[data-avatar]')?.getAttribute('data-avatar')).toBe('claude');
+    unmount();
+
+    renderApp('/tasks/web-q8n5', api);
+    await screen.findByRole('heading', { level: 1, name: 'Confirm the support address on the error page' });
+    await waitFor(() => expect(filedEntry().textContent).toContain('Filed'));
+    expect(filedEntry().textContent).not.toContain('filed this');
+    expect(filedEntry().querySelector('[data-avatar]')).toBeNull();
+  });
+
   it('shows a fact it may not change as words, not as a control', async () => {
     renderApp('/tasks/web-b2r6');
     await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });

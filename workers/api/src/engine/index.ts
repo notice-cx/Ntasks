@@ -29,7 +29,6 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
     listBurndown: (projectIds, from) => reads.listBurndown(projectIds, from),
     listHeld: (assignee) => reads.listHeld(assignee),
     findTasks: (projectId, taskIds) => reads.findTasks(projectId, taskIds),
-    listTasks: (projectId, query) => reads.listTasks(projectId, query),
     listBoard: (projectId, query) => reads.listBoard(projectId, query),
     listLabelled: (projectId, query) => reads.listLabelled(projectId, query),
     listExternalLinks: (taskIds) => reads.listExternalLinks(taskIds),

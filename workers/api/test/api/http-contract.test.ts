@@ -227,7 +227,9 @@ async function drive(): Promise<readonly Sample[]> {
   );
   await as('PATCH /api/tasks/:id', task(later), inProject({ defer: '2026-12-01' }));
   await tool(owner, 'link_tasks', { task: date, to: post, type: 'merges-after' });
-  const checked = (await tool(owner, 'create_task', { project: projectId, title: 'Check the links' })).id as string;
+  const checked = (
+    await tool(owner, 'create_task', { project: projectId, title: 'Check the links', model: 'claude-sonnet-5-5' })
+  ).id as string;
   await tool(owner, 'claim_task', { task: checked, model: 'claude-sonnet-5-5' });
   await tool(owner, 'close_task', {
     task: checked,
@@ -339,6 +341,7 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&field.severity=high`);
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&stage=built,merged,live`);
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&activity=active,quiet,stalled`);
+  await as('GET /api/tasks', `/api/tasks?project=${projectId}&externalLinks=none`);
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
@@ -348,6 +351,7 @@ async function drive(): Promise<readonly Sample[]> {
     await as('GET /api/tasks/:id/history', `${task(id, '/history')}?project=${projectId}`);
   await as('GET /api/changes', `/api/changes?after=0&project=${projectId}`);
   await as('GET /api/fields', `/api/fields?project=${projectId}`);
+  // Nothing has merged yet, so agent statistics count no change shipped.
   await as('GET /api/tasks/agent-stats', `/api/tasks/agent-stats?project=${projectId}`);
   // An epic finished, so the wins feed answers every kind of win: a change shipped, an answer and an epic.
   const wrapUp = await create({ title: 'Wrap up the launch', type: 'epic' });
@@ -361,6 +365,7 @@ async function drive(): Promise<readonly Sample[]> {
     pullRequests: ['https://github.com/example/launch/pull/7'],
     commits: ['c0ffee12'],
   });
+  await as('GET /api/tasks/agent-stats', `/api/tasks/agent-stats?project=${projectId}`);
   await as('GET /api/tasks/wins', '/api/tasks/wins');
   await as('GET /api/tasks/wins', `/api/tasks/wins?project=${projectId}&timeZone=America/Los_Angeles`);
   // Back to the oldest days the feed reaches, where it offers no earlier ones.
@@ -602,6 +607,11 @@ let driven: Promise<readonly Sample[]> | undefined;
 /** The answers of every route, sent once for the whole file. */
 const answers = () => (driven ??= drive());
 
+/** The options of each test that reads the answers. Whichever runs first
+ * sends every route, over a hundred requests through workerd, which a busy
+ * CI runner took 15 seconds to answer. */
+const DRIVES = { timeout: 60_000 };
+
 /** Each route's answers, compared with its recorded contract. */
 async function differences() {
   const byRoute = new Map<string, Sample[]>();
@@ -614,7 +624,7 @@ async function differences() {
       route,
       sent: byRoute.has(route),
       recorded: route in CONTRACT.routes,
-      ...compare(route, contract, held),
+      ...compare(route, contract, held, CONTRACT.emptied[route]),
     };
   });
 }
@@ -643,31 +653,32 @@ describe('the version', () => {
     for (const { name, version } of RECORD) {
       expect(typeof version.added === 'string' && version.added.trim() !== '', name).toBe(true);
       expect(
-        Object.keys(version).filter((key) => !['added', 'shapes', 'routes'].includes(key)),
+        Object.keys(version).filter((key) => !['added', 'shapes', 'routes', 'emptied'].includes(key)),
         name,
       ).toEqual([]);
     }
   });
 
-  it('names the version on every answer the contract records', async () => {
+  it('names the version on every answer the contract records', DRIVES, async () => {
     const unnamed = (await answers()).filter((sample) => sample.version !== String(API_VERSION));
     expect(unnamed.map((sample) => `${sample.route} ${sample.path}`)).toEqual([]);
   });
 });
 
 describe('the contract', () => {
-  it('keeps every recorded route and field, with its recorded type', async () => {
+  it('keeps every recorded route and field, with its recorded type', DRIVES, async () => {
     const found = await differences();
     expect(found.filter((route) => route.recorded && !route.sent).map((route) => route.route)).toEqual([]);
     expect(found.flatMap((route) => route.removed)).toEqual([]);
     expect(found.flatMap((route) => route.retyped)).toEqual([]);
+    expect(found.flatMap((route) => route.filled)).toEqual([]);
     // A field these answers never give a value has a type nothing checks: the drive above sets one up.
     expect(withoutValue(found)).toEqual([]);
   });
 
   // An addition passes the test above. Recording it, under a new version, is
   // what holds it to the contract and tells a client which version has it.
-  it('records every field the routes answer', async () => {
+  it('records every field the routes answer', DRIVES, async () => {
     expect((await differences()).flatMap((route) => route.unrecorded)).toEqual([]);
   });
 
@@ -708,6 +719,36 @@ describe('the contract', () => {
     const unassigned = against({ tasks: [{ id: 'a', assignee: null }] });
     expect(withoutValue([unassigned])).toEqual(['shape task assignee']);
     expect(withoutValue([unassigned, kept])).toEqual([]);
+  });
+
+  it('keeps an emptied array with its recorded entries, checks that it answers empty, and asks no value of its fields', () => {
+    const contract = expand(
+      { awards: 'array', 'awards[]': 'object', 'awards[].holder': 'string', total: 'number' },
+      {},
+    );
+    const against = (answer: unknown) => {
+      const seen = observed();
+      observe(answer, contract, seen);
+      return compare('GET /x', contract, seen, ['awards']);
+    };
+    const empty = against({ awards: [], total: 3 });
+    expect(empty).toMatchObject({ removed: [], retyped: [], unrecorded: [], filled: [] });
+    expect(withoutValue([empty])).toEqual([]);
+    // Without the version that emptied it, its fields would go unchecked.
+    const seen = observed();
+    observe({ awards: [], total: 3 }, contract, seen);
+    expect(withoutValue([compare('GET /x', contract, seen)])).toEqual(['GET /x awards[]', 'GET /x awards[].holder']);
+    expect(against({ awards: [{ holder: 'a' }], total: 3 }).filled).toEqual(['GET /x awards']);
+    expect(against({ total: 3 }).removed).toEqual(['GET /x awards']);
+    expect(() => compare('GET /x', contract, observed(), ['total'])).toThrow(
+      'GET /x total is emptied but records no array',
+    );
+    expect(() =>
+      merge([
+        { added: 'a', emptied: { 'GET /x': ['awards'] } },
+        { added: 'b', emptied: { 'GET /x': ['awards'] } },
+      ]),
+    ).toThrow('GET /x awards is emptied twice');
   });
 
   it('refuses a field recorded twice, so a later version cannot change its type', () => {

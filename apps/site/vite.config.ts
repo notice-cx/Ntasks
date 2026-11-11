@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, normalizePath, type Plugin } from 'vite';
 import { docsList } from './lib/landing-docs.ts';
 import { inlineMark } from './lib/mark.ts';
 import { DOCS_BASE } from './lib/site.ts';
@@ -14,6 +14,9 @@ import { landingSchema, llmsText } from './lib/discovery.ts';
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const read = (path: string) => readFileSync(`${repo}${path}`);
 
+/** The dev server's route to a file outside its root, followed by the file's absolute path. */
+const FS_PREFIX = '/@fs/';
+
 // Files served at a fixed address, which the docs' pages link to as well.
 const FIXED = {
   'favicon.svg': 'apps/web/public/brand/notice-icon.svg',
@@ -24,13 +27,17 @@ const FIXED = {
 function landing(): Plugin {
   return {
     name: 'ntasks-landing',
-    transformIndexHtml(html) {
+    transformIndexHtml(html, { server }) {
       const mark = inlineMark(read('apps/web/public/brand/notice-icon.svg').toString(), 'mark');
-      return withStatcounter(html)
+      const page = withStatcounter(html)
         .replaceAll('<!--mark-->', mark)
         .replace('<!--social-head-->', headHtml([...socialHead, landingSchema]))
         .replace('<!--icons-->', headHtml(iconHead))
         .replace('<!--docs-->', docsList(read('docs/index.md').toString(), DOCS_BASE));
+      // The build bundles each file a relative URL names, such as
+      // ../../docs/images/. The dev server serves only this folder at /, so
+      // there a URL that leaves it goes through Vite's /@fs/ file route.
+      return server ? page.replaceAll('"../../', `"${FS_PREFIX}${normalizePath(repo).replace(/^\//u, '')}`) : page;
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'llms.txt', source: llmsText(read('docs/index.md').toString()) });

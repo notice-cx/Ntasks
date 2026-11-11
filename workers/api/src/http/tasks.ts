@@ -128,6 +128,8 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
     query.activity !== undefined
   )
     invalidRequest('a label read reads every status and every close: leave out status, closedDays, stage and activity');
+  if (query.externalLinks !== undefined)
+    invalidRequest('a label read returns its page of tasks with their external links: leave out externalLinks');
   const label = query.label!;
   if (label.length < 1 || label.length > TASK_LIMITS.label)
     invalidRequest(`label must be 1 to ${TASK_LIMITS.label} characters`);
@@ -160,8 +162,11 @@ async function labelRoute(context: ReadContext, query: Readonly<Record<string, s
  * stages, whenever they closed unless `closedDays` is given. `activity`, a
  * comma-separated list of active, quiet and stalled, reads the tasks in
  * progress whose holders worked on them that recently, and counts each group
- * in `activities`, as a read with `status` naming in_progress does. With
- * `label` it is the label read above instead.
+ * in `activities`, as a read with `status` naming in_progress does.
+ * `externalLinks=none` leaves every task's external links unread and empty,
+ * which keeps a board of tasks carrying many long links small enough for the
+ * store to keep in memory; the task page reads them. With `label` it is the
+ * label read above instead.
  */
 export async function boardRoute(context: ReadContext, url: URL): Promise<Response> {
   const { engine, now } = context;
@@ -175,6 +180,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
     'after',
     'stage',
     'activity',
+    'externalLinks',
     ...fieldNames,
   ]);
   if (query.label !== undefined) {
@@ -183,6 +189,8 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
   }
   if (query.limit !== undefined || query.after !== undefined)
     invalidRequest('limit and after page a label read: label=');
+  if (query.externalLinks !== undefined && query.externalLinks !== 'none')
+    invalidRequest('externalLinks takes none, which leaves the tasks’ external links unread');
   const stages = query.stage?.split(',');
   if (stages !== undefined) {
     if (new Set(stages).size !== stages.length || !stages.every(isDeliveryStage))
@@ -235,6 +243,7 @@ export async function boardRoute(context: ReadContext, url: URL): Promise<Respon
       {
         ...(fields === undefined ? {} : { fields }),
         ...(stages === undefined ? {} : { stages: stages.filter(isDeliveryStage) }),
+        ...(query.externalLinks === undefined ? {} : { withoutExternalLinks: true as const }),
       },
       now,
     ),

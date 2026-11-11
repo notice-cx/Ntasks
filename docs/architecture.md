@@ -179,6 +179,7 @@ limits that shape the design, from Cloudflare's documentation in November
 |---|---:|
 | Worker requests | 100,000 a day |
 | Worker CPU time | 10 ms per request |
+| Subrequests | 50 per request |
 | Durable Object requests | 100,000 a day |
 | Rows read, by the task store | 5,000,000 a day |
 | Rows written, by the task store | 100,000 a day |
@@ -201,6 +202,10 @@ store. When a daily limit is reached, operations of that kind fail until
   reloading whole lists;
 - keeps CPU time per request low, because time spent waiting on the database
   does not count but parsing and serializing large answers does;
+- lists the projects of at most 10 workspaces on the agent approval page,
+  one task store call each, and none to deny, so a person in many
+  workspaces chooses which to list instead of one request reaching every
+  store ([How an AI agent connects](sign-in.md#how-an-ai-agent-connects));
 - answers a GitHub delivery that moves nothing, such as a check that is not a
   deploy, from D1 alone, in at most four queries of a few rows each, without
   reaching the task store. A GitHub App installed on an organization sends

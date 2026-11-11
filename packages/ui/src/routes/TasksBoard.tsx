@@ -1,5 +1,5 @@
 import { CircleAlert, Inbox, ListFilter, Plus, Search, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
 import { PageSkeleton, ReadFailed } from '../components/surface';
@@ -50,6 +50,9 @@ const NARROW = '(width < 48rem)';
 /** Rows a group shows per press: enough to fill a laptop screen. */
 const PAGE_ROWS = 25;
 
+/** Rows the first frame after a change of view or order draws: more than a screen holds. */
+const FIRST_FRAME_ROWS = 40;
+
 /** The board's views. Waiting for you is the sidebar's; the tabs offer the rest, and Epics while one project is in view. */
 const VIEWS = ['all', 'active', 'done', 'waiting', 'epics'] as const;
 type View = (typeof VIEWS)[number];
@@ -76,6 +79,9 @@ const VIEW_GROUPS: Readonly<Record<TaskView, readonly StatusMarkKey[]>> = {
   done: ['done'],
   waiting: ['waiting'],
 };
+
+/** A project's epics when its read named none. */
+const NO_PROGRESS: ReadonlyMap<string, { closed: number; total: number }> = new Map();
 
 /** The filters a person sets in the Filter menu, each a part of the address. */
 const FILTER_NAMES = ['project', 'status', 'priority', 'assignee', 'label'] as const;
@@ -114,7 +120,9 @@ export function TasksBoard() {
     fields: fieldFiltersOf(params),
   };
   const asked = viewOf(params.get('view'));
-  const sort = sortOf(params);
+  const named = sortOf(params);
+  // Every address is read into a new object; one order keeps one object, so the groups sorted by it are kept.
+  const sort = useMemo(() => named, [named?.by, named?.direction]);
   const composing = params.get('new') === '1' || composeRequested(location.state);
   // A filter by custom field narrows the server's read to the tasks holding the value, which would shrink every
   // epic's counts; the Epics view reads the whole project and keeps those filters in the address for the task views.
@@ -434,28 +442,48 @@ function Groups({
   const [searchFolds, setSearchFolds] = useState<ReadonlySet<StatusMarkKey>>(() => new Set());
   const [folded, setFolded] = searched ? [searchFolds, setSearchFolds] : [boardFolds, setBoardFolds];
   const [shown, setShown] = useState<Partial<Record<string, number>>>({});
+  // A change of view or order draws a screen of rows at once and the rest just after, so the rows a
+  // person sees change within a frame however many the groups hold.
+  const layout = `${view}:${sort?.by ?? ''}:${sort?.direction ?? ''}`;
+  const [drawn, setDrawn] = useState(layout);
+  useEffect(() => {
+    if (drawn !== layout) startTransition(() => setDrawn(layout));
+  }, [drawn, layout]);
+  let room = drawn === layout ? Infinity : FIRST_FRAME_ROWS;
+  /** How many of a group's rows this draw shows: up to its limit, within the first frame's rows left. */
+  const take = (total: number, limit: number) => {
+    const count = Math.min(total, limit, room);
+    room -= count;
+    return count;
+  };
   // The Waiting for you view also lists the work waiting for a merge or a deploy.
   const delivery = useDeliveryWaits(board, filters, view === 'waiting');
   const deliveryGroups = DELIVERY_GROUPS.filter((group) => delivery[group.wait].length > 0);
-  const projects = new Map(board.projects.map((project) => [project.key, project]));
-  const fetchedAt = (task: BoardTask) => projects.get(task.project)?.fetchedAt ?? null;
-  // An answered decision leaves its group at once, while its Undo window runs and until a later read says what the server holds.
-  const inbox = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
-  const groups = groupRows(
-    board.rows.filter((task) => !hides(task.id, fetchedAt(task))),
-    board.statuses,
-    board.held,
-  );
-  groups.waiting = [...inbox, ...groups.waiting];
-  if (sort !== null)
-    for (const mark of Object.keys(groups) as StatusMarkKey[]) groups[mark] = sorted(groups[mark], sort);
+  const projects = useMemo(() => new Map(board.projects.map((project) => [project.key, project])), [board.projects]);
+  // Worked out once per read, answer and sort, so a change of view or of folds alone does not group every task again.
+  const groups = useMemo(() => {
+    const fetchedAt = (task: BoardTask) => projects.get(task.project)?.fetchedAt ?? null;
+    // An answered decision leaves its group at once, while its Undo window runs and until a later read says what the server holds.
+    const inbox = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
+    const grouped = groupRows(
+      board.rows.filter((task) => !hides(task.id, fetchedAt(task))),
+      board.statuses,
+      board.held,
+    );
+    grouped.waiting = [...inbox, ...grouped.waiting];
+    if (sort !== null)
+      for (const mark of Object.keys(grouped) as StatusMarkKey[]) grouped[mark] = sorted(grouped[mark], sort);
+    return grouped;
+  }, [board.inbox, board.rows, board.statuses, board.held, projects, hides, sort]);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
-  const people = board.rows.flatMap((task) => (task.assignee ? [task.assignee] : []));
+  // Kept as one list per read: a row compares its context field by field, so a new list would draw every row again.
+  const people = useMemo(() => board.rows.flatMap((task) => (task.assignee ? [task.assignee] : [])), [board.rows]);
   const contextOf = (task: BoardTask): RowContext => ({
+    capabilities,
     statuses: board.statuses,
     held: board.held,
-    epicProgress: projects.get(task.project)?.epicProgress ?? new Map(),
+    epicProgress: projects.get(task.project)?.epicProgress ?? NO_PROGRESS,
     actionable: projects.get(task.project)?.ok === true && writable,
     people,
     age: formatAge(ageMs(now, task.updatedAt)),
@@ -496,8 +524,9 @@ function Groups({
     );
   }
 
-  const more = (mark: string, total: number, limit: number) =>
-    total > limit ? (
+  // Only a group drawn up to its limit offers more.
+  const more = (mark: string, total: number, limit: number, drawnRows: number) =>
+    total > limit && drawnRows === limit ? (
       <div className="border-b border-border px-5.5 py-1.5 max-sm:px-4">
         <Button
           variant="ghost"
@@ -516,19 +545,21 @@ function Groups({
         const rows = groups[mark];
         const limit = shown[mark] ?? PAGE_ROWS;
         if (mark === 'waiting') {
+          const drawnRows = take(rows.length, limit);
           return (
             <WaitingGroup
               key={mark}
-              asks={rows.slice(0, limit)}
+              asks={rows.slice(0, drawnRows)}
               count={rows.length}
               contextOf={waitingContextOf}
               writable={(task) => projects.get(task.project)?.ok === true}
-              more={more(mark, rows.length, limit)}
+              more={more(mark, rows.length, limit, drawnRows)}
             />
           );
         }
         // In the Done view the one group stays open.
         const open = view === 'done' || !folded.has(mark);
+        const drawnRows = open ? take(rows.length, limit) : 0;
         return (
           <section key={mark} aria-label={STATUS_MARK_LABELS[mark]} data-group={mark}>
             <GroupHeader
@@ -550,10 +581,10 @@ function Groups({
             />
             {open ? (
               <>
-                {rows.slice(0, limit).map((task) => (
+                {rows.slice(0, drawnRows).map((task) => (
                   <TaskRow key={task.id} task={task} context={contextOf(task)} />
                 ))}
-                {more(mark, rows.length, limit)}
+                {more(mark, rows.length, limit, drawnRows)}
               </>
             ) : null}
           </section>
@@ -562,14 +593,15 @@ function Groups({
       {deliveryGroups.map(({ wait }) => {
         const rows = sorted(delivery[wait], sort);
         const limit = shown[wait] ?? PAGE_ROWS;
+        const drawnRows = take(rows.length, limit);
         return (
           <DeliveryGroup
             key={wait}
             wait={wait}
-            rows={rows.slice(0, limit)}
+            rows={rows.slice(0, drawnRows)}
             count={rows.length}
             contextOf={wait === 'merge' ? waitingContextOf : contextOf}
-            more={more(wait, rows.length, limit)}
+            more={more(wait, rows.length, limit, drawnRows)}
           />
         );
       })}
@@ -596,10 +628,14 @@ function FilterMenu({
     FILTER_NAMES.filter((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all')).length +
     Object.keys(fieldFilters).length;
   // Keyed as assigneeCounts is: one option per sender, whatever names their tasks were recorded under.
-  const names = new Map(
-    board.allTasks.flatMap((task) =>
-      task.assignee ? [[actorKey(task.assignee), actorLabel(task.assignee, task.actors)] as const] : [],
-    ),
+  const names = useMemo(
+    () =>
+      new Map(
+        board.allTasks.flatMap((task) =>
+          task.assignee ? [[actorKey(task.assignee), actorLabel(task.assignee, task.actors)] as const] : [],
+        ),
+      ),
+    [board.allTasks],
   );
   // A retired field is offered while a filter by it holds, so its filter can be changed as well as cleared.
   const offered = fields.filter(

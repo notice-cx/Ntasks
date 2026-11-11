@@ -9,6 +9,7 @@
 import { GITHUB_WEBHOOK_PATH } from './access/github-webhook.ts';
 import { isApiPath, MCP_PATH } from './api.ts';
 import type { Authenticator } from './auth.ts';
+import { databaseBehind, databaseBehindBody, missingMigrations } from './d1-migrations.ts';
 import { githubReceiver } from './github.ts';
 import { json } from './http/respond.ts';
 import { serveTaskMcp } from './mcp/server.ts';
@@ -27,7 +28,7 @@ export function createWorker(options: WorkerOptions) {
     /** Answers the health check, the version and GitHub's deliveries, then signed-in API and MCP requests. */
     async fetch(request: Request, env: Env): Promise<Response> {
       const { pathname } = new URL(request.url);
-      if (pathname === '/healthz') return health(request);
+      if (pathname === '/healthz') return health(request, env.DB);
       if (pathname === VERSION_PATH) return version(request);
       const hook = GITHUB_WEBHOOK_PATH.exec(pathname)?.[1];
       if (hook === undefined && !isApiPath(pathname)) return json({ error: 'not_found' }, 404);
@@ -36,6 +37,8 @@ export function createWorker(options: WorkerOptions) {
         if (hook !== undefined) return await githubReceiver(request, env, hook);
         const authenticator = options.authenticator(env);
         const sender = await signedIn(authenticator, request);
+        // A sign-in that fails on a missing table would send the person to sign in again and again.
+        if (sender === 'failed') return (await databaseBehind(env.DB)) ?? authenticator.challenge(request);
         if (!sender) return authenticator.challenge(request);
         if (pathname === MCP_PATH) {
           return await serveTaskMcp(
@@ -52,27 +55,35 @@ export function createWorker(options: WorkerOptions) {
       } catch {
         // A fault's message can carry storage internals: only the path is logged.
         console.error('request failed', pathname);
-        return json({ error: 'internal_error' }, 500);
+        return (await databaseBehind(env.DB)) ?? json({ error: 'internal_error' }, 500);
       }
     },
   } satisfies ExportedHandler<Env>;
 }
 
-async function signedIn(authenticator: Authenticator, request: Request): Promise<Sender | null> {
+async function signedIn(authenticator: Authenticator, request: Request): Promise<Sender | null | 'failed'> {
   try {
     return await authenticator.authenticate(request);
   } catch {
     // A sign-in that fails is a sign-in refused; the reason stays in the server log.
     console.error('sign-in failed');
-    return null;
+    return 'failed';
   }
 }
 
-/** Liveness only: it answers from the Worker itself and reads no binding. */
-function health(request: Request): Response {
+/** The Worker is running and its D1 database has every migration its code needs. */
+async function health(request: Request, db: D1Database): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
   }
+  let missing: string[];
+  try {
+    missing = await missingMigrations(db);
+  } catch {
+    console.error('health check failed');
+    return json({ ok: false, error: 'internal_error' }, 500);
+  }
+  if (missing.length > 0) return json({ ok: false, ...databaseBehindBody(missing) }, 503);
   return json({ ok: true }, 200);
 }
 

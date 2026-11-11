@@ -12,8 +12,8 @@ npx ntasks deploy
 This deploys the latest Ntasks release to your Cloudflare account: one
 Worker, its D1 database and the Durable Object that holds the tasks.
 
-- **You need** Node.js and a Cloudflare account, and no copy of this
-  repository.
+- **You need** Node.js 22 or later and a Cloudflare account, and no copy of
+  this repository.
 - **It ships** the npm package [`ntasks`](../tools/cli/README.md), which holds
   the built Worker, the web app and the D1 migrations, and deploys them with
   wrangler.
@@ -61,6 +61,13 @@ Run `npx ntasks deploy` again. It:
 The Worker's secrets stay as they are, and each workspace's task store applies
 its own migrations when it next starts. `npx ntasks@<version> deploy` deploys
 that release in place of the latest.
+
+npx runs a global or project install of `ntasks` as it is, without looking
+for a newer release. Such a copy reads the latest release from the npm
+registry first. When that is newer, the command prints both releases and
+the same command with its options run as `npx ntasks@latest deploy`, and
+deploys the older release only when you confirm in the terminal. When the registry cannot be reached, it says the
+check was skipped and deploys.
 
 Nothing is kept on your machine between runs: each deploy tags the Worker's
 version with its release, such as `v0.1.0`, and the next run reads the tag.
@@ -130,6 +137,24 @@ To update a deployment made from a checkout, bring the checkout to the latest
 `main` and run `pnpm install`, `pnpm run build` and `pnpm run deploy` from its
 root. `pnpm run deploy` applies any new D1 migrations, then deploys the
 Worker. A deployment connected to Builds updates on each push instead.
+
+### The database lacks a migration
+
+A deploy that runs `wrangler deploy` alone, such as a Workers Builds
+connection whose deploy command is left at its default, deploys the Worker
+without applying the D1 migrations its code needs. While the database lacks
+one, `GET /healthz` answers `503` with `database_behind` and `missing`, the
+migration files the database lacks, and so does any request that fails, such
+as Settings' read of GitHub; Settings shows the same sentence. Apply the
+missing migrations from a checkout:
+
+```bash
+pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --remote
+```
+
+Then set the deploy command to `pnpm run deploy`, which applies them before
+it deploys the Worker, in the Cloudflare dashboard under Workers & Pages, the
+Worker, Settings, Builds. `npx ntasks deploy` applies them as well.
 
 ### Set up sign-in
 
