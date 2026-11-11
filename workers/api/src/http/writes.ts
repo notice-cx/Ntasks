@@ -53,6 +53,7 @@ import {
   defineField,
   linkTasks,
   moveTasks,
+  namedAfter,
   retireField,
   updateTask,
   type NewTask,
@@ -230,7 +231,7 @@ export async function moveRoute(context: WriteContext, url: URL, request: Reques
   const links = await linksSeenBy(context);
   return json({
     tasks: await webTasks(
-      result.tasks.slice(0, tasks.length).map((task) => links.task(task)),
+      namedAfter(tasks, result).map((task) => links.task(task)),
       context.now(),
     ),
     moved: Object.fromEntries(result.moved.map(({ from, to }) => [from, to])),

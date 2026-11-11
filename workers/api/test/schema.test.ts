@@ -574,7 +574,7 @@ describe('a move to another project', () => {
   });
 
   it('keeps every former id naming the task when it moves again, and gives no former id to a new task', async () => {
-    const { taskId } = await filedTask();
+    const { from, taskId } = await filedTask();
     const second = await newProject();
     const third = await newProject();
     const secondId = `${second.prefix}-e5f6`;
@@ -592,14 +592,8 @@ describe('a move to another project', () => {
       ].sort((a, b) => (a.alias < b.alias ? -1 : 1)),
     });
     await expect(insert('tasks', taskRow(second.id, secondId)).run()).rejects.toThrow(/former id/u);
-    await expect(
-      moveTo(
-        thirdId,
-        taskId,
-        (await db.prepare('SELECT project_id FROM tasks WHERE id = ?').bind(thirdId).first<{ project_id: string }>())!
-          .project_id,
-      ),
-    ).rejects.toThrow(/keeps its id, project and creation time/u);
+    // Back to its first project under its first id: only that id being a former id refuses it.
+    await expect(moveTo(thirdId, taskId, from.id)).rejects.toThrow(/keeps its id, project and creation time/u);
   });
 
   it('refuses a new id without the new project’s prefix, a new id in the same project, and a new creation time', async () => {

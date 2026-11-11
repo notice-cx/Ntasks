@@ -48,7 +48,7 @@ import {
   updateRoute,
 } from './http/writes.ts';
 import { readBoundedBytes } from './http/json-body.ts';
-import { formerIdsOf, ownerOf, type Reader } from './lookup.ts';
+import { formerIdsOf, type Reader } from './lookup.ts';
 import { notAPerson } from './owner-answers.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { BackupAnswer } from './store/backup.ts';
@@ -217,7 +217,9 @@ async function followingMove(
 ): Promise<{ request: Request; url: URL } | null> {
   const former = (await formerIdsOf(reader, [id])).get(id);
   if (former === undefined) return null;
-  const before = (await ownerOf(reader, id))?.id;
+  // Only compared with what the request names, so a sender who no longer reaches the old project still reaches the task.
+  const prefix = id.slice(0, id.indexOf('-'));
+  const before = (await reader.engine.listProjects()).find((project) => project.prefix === prefix)?.id;
   const now = new URL(url);
   now.pathname = url.pathname
     .split('/')

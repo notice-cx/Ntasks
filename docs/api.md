@@ -581,10 +581,15 @@ moves at most 50 tasks, counting the tasks that move with them.
   delivery, its holder and work details, and its custom field values. A
   value its new project does not define, or defines with another type or
   options, stays on the task, and the answer names it in `fieldsKept`.
+- An open approval or request to do steps that a task waits on moves with
+  it, when every task waiting on it moves too; otherwise it stays, and still
+  holds the task back from the other project.
 - A task closed as a duplicate of a moved task names the new id, with a
   change in its own history.
 - The task's history records the move as one change whose `id` and
-  `projectId` fields show the old and new id and project.
+  `projectId` fields show the old and new id and project. The changes of
+  both projects show it ([reading changes](#reading-changes-instead-of-reloading)),
+  so a client that reads one project's changes sees the task leave it.
 - The epic a task leaves and the epic it joins close or reopen as when a task
   under them closes or reopens ([epics](concepts.md#epics)).
 
@@ -603,7 +608,10 @@ own tasks, so the work is filed again there. A disabled project, which takes
 no new tasks, is refused too, as is a `parent` in another project than
 `project`, and a task the sender may only read. With `idempotency_key`, or
 the `Idempotency-Key` header, a retry answers the first move without moving
-again ([retrying a write](#retrying-a-write)).
+again ([retrying a write](#retrying-a-write)), even once the project no longer
+takes tasks or the tasks have moved on; it leaves out a task now in a project
+the sender cannot reach. A retry of another write whose task has moved since
+answers with the task where it is now.
 
 ## Recording an owner answer
 

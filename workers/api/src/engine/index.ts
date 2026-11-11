@@ -58,7 +58,7 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
       writes.recordUnchanged(projectId, taskId, expectedVersion, retry),
     createTask: (projectId, input, actor, retry) => writes.createTask(projectId, input, actor, retry),
     writeTask: (projectId, taskId, write, actor, retry) => writes.writeTask(projectId, taskId, write, actor, retry),
-    recordedMove: (projectId, retry) => writes.recordedMove(projectId, retry),
+    recordedMove: (retry) => writes.recordedMove(retry),
     moveTasks: (projectId, placements, actor, retry) => writes.moveTasks(projectId, placements, actor, retry),
     addComment: (projectId, taskId, text, actor, retry, pins) =>
       writes.addComment(projectId, taskId, text, actor, retry, pins),

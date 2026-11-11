@@ -628,9 +628,10 @@ export interface TaskEngine {
   recordUnchanged(projectId: string, taskId: string, expectedVersion: number, retry: Retry): Promise<WriteResult>;
 
   /** The answer of an earlier moveTasks with this retry identity, its tasks as
-   * they stand now and `replayed: true`, or null when no move in the last
-   * seven days used the key; refused as `retry_conflict` as recordedWrite is. */
-  recordedMove(projectId: string, retry: Retry): Promise<MoveResult | null>;
+   * they stand now, wherever they moved since, and `replayed: true`, or null
+   * when no move in the last seven days used the key; refused as
+   * `retry_conflict` as recordedWrite is. */
+  recordedMove(retry: Retry): Promise<MoveResult | null>;
 
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
   /** Changes an existing task in one batch (rules 1 to 4). */

@@ -191,12 +191,15 @@ describe('Move to…', () => {
     expect(screen.queryByRole('menuitem', { name: 'Move to…' })).toBeNull();
   });
 
-  it('is not offered by an Ntasks whose writes do not include moving', async () => {
+  it.each([
+    ['lists writes without moving', ['create', 'update', 'comment', 'close']],
+    ['lists no writes', undefined],
+  ])('is not offered by an Ntasks that %s', async (_case, operations) => {
     const api = createFixtureTasksApi();
     api.capabilities = async () => ({
       live: true,
       writable: true,
-      operations: ['create', 'update', 'comment', 'close'],
+      ...(operations === undefined ? {} : { operations }),
       reason: null,
     });
     renderAt(['/tasks/web-t5w3'], api);
@@ -227,5 +230,14 @@ describe("a moved task's old id", () => {
     // The old address was replaced, so Back does not open it again.
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     await waitFor(() => expect(where()).toBe('/tasks'));
+  });
+
+  it('takes a write to the moved task, in its old project, as the Worker does', async () => {
+    const api = createFixtureTasksApi();
+    const { moved } = await api.moveTasks({ ids: ['web-t5w3'], project: 'docs', withChildren: true });
+
+    await api.comment('web-t5w3', 'web', 'Still on it.');
+
+    expect(api.state.comments.get(moved['web-t5w3']!)?.map((comment) => comment.text)).toContain('Still on it.');
   });
 });

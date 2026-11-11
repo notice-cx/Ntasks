@@ -55,6 +55,9 @@ protocol appears in neither table.
 | STATE-24 | `workers/api/test/api/moves.test.ts` › "refuses a project of another workspace, a disabled project, a parent in another project and too many tasks, moving nothing" |
 | STATE-24 | `workers/api/test/api/moves.test.ts` › "keeps field values the new project does not define, and names them" |
 | STATE-24 | `workers/api/test/api/moves.test.ts` › "moves the tasks, and the old id’s task routes answer for the moved task in its new project" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "shows in the changes of the project the task left and of the one it joined, and once in its history" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "takes an open approval along with the task waiting on it, which still waits until it is answered" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "keeps an approval that another task still waits on where it is, and the moved task still waits on it" |
 | STATE-22 | `workers/api/test/engine/moves.test.ts` › "closes the epic left with no open task, and the epic a closed task joins when that leaves none open" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval once, returning the open one when asked the same again" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
@@ -137,6 +140,8 @@ protocol appears in neither table.
 | INV-3 | `workers/api/test/api/write-tools.test.ts` › "answers a retry with the same claim, and refuses the key for a different claim" |
 | INV-3 | `workers/api/test/api/http-writes.test.ts` › "answers a retried change once, and refuses its key for the same change to another task" |
 | INV-3 | `workers/api/test/api/moves.test.ts` › "answers the same move sent again with its key, naming the old ids, without moving again" |
+| INV-3 | `workers/api/test/engine/moves.test.ts` › "answers an earlier write repeated with its key after its task moved, with the task where it is now" |
+| INV-4 | `workers/api/test/engine/moves.test.ts` › "plans again when a task it leaves in place changes before its batch, moving nothing until then" |
 | INV-4 | `workers/api/test/engine/writes.test.ts` › "refuses a write based on an older version (rule 2)" |
 | INV-4 | `workers/api/test/api/write-tools.test.ts` › "reads the task again when another write changed it first (rule 2), and gives up after a few tries" |
 | INV-4 | `workers/api/test/schema.test.ts` › "refuses an update that does not raise the version by one" |

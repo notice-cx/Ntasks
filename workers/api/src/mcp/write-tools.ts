@@ -90,6 +90,7 @@ import {
   linkTasks,
   lintOf,
   moveTasks,
+  namedAfter,
   lintView,
   OPEN_STATUSES,
   proofWarning,
@@ -1825,7 +1826,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         model,
         await retryRequest(context, 'move_tasks', context.sent ?? args),
       );
-      const named = result.tasks.slice(0, ids.length);
+      const named = namedAfter(ids, result);
       const epics = (result.epics ?? []).map((epic) => ({
         id: epic.id,
         status: epic.status,

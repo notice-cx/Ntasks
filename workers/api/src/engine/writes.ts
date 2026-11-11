@@ -575,9 +575,11 @@ export class Writes {
   /**
    * The recorded result of an earlier write with this key, or null; a key
    * reused for another request is refused. A derived key's stale record
-   * answers nothing, so the write runs again (#staleReceipt clears it).
+   * answers nothing, so the write runs again (#staleReceipt clears it). A
+   * record kept in another project answers when the task it wrote has moved
+   * to this one, and with a null project wherever it was kept.
    */
-  async #recorded(retry: Retry | undefined, projectId: string): Promise<Record<string, Json> | null> {
+  async #recorded(retry: Retry | undefined, projectId: string | null): Promise<Record<string, Json> | null> {
     if (retry === undefined) return null;
     const row = await this.#db
       .prepare(
@@ -587,9 +589,14 @@ export class Writes {
       .bind(retry.principal, retry.operation, retry.key, this.#cutoff(), this.#cutoff(DERIVED_NEW_TASK_HOURS))
       .first<{ project_id: string; request_hash: string; result: string; stale: number }>();
     if (row === null) return null;
-    if (row.request_hash !== retry.requestHash || row.project_id !== projectId) refuse('retry_conflict');
+    if (row.request_hash !== retry.requestHash) refuse('retry_conflict');
+    const recorded = JSON.parse(row.result) as Record<string, Json>;
+    if (projectId !== null && row.project_id !== projectId) {
+      const [moved] = typeof recorded.taskId === 'string' ? await this.#tasksNow([recorded.taskId]) : [];
+      if (moved?.projectId !== projectId) refuse('retry_conflict');
+    }
     if (retry.derived === true && row.stale) return null;
-    return JSON.parse(row.result) as Record<string, Json>;
+    return recorded;
   }
 
   /**
@@ -675,12 +682,22 @@ export class Writes {
     };
   }
 
-  /** A recorded write's answer as it stands now, with the comment it added, if any. */
-  async #recordedResult(projectId: string, recorded: Record<string, Json>, taskId: string): Promise<WriteResult> {
+  /** A recorded write's answer as it stands now, with the comment it added, if any; a task it wrote that moved since is read where it is now. */
+  async #recordedResult(recorded: Record<string, Json>, taskId: string): Promise<WriteResult> {
     const epics = Array.isArray(recorded.epics) ? (recorded.epics as string[]) : [];
-    const result = await this.#result(projectId, taskId, recorded.created as string[], true, epics);
+    const created = recorded.created as string[];
+    const tasks = await this.#tasksNow([taskId, ...created, ...epics]);
+    const byId = new Map([taskId, ...created, ...epics].map((id, index) => [id, tasks[index]]));
+    const found = (id: string) => byId.get(id) ?? refuse('not_found');
+    const task = found(taskId);
+    const result: WriteResult = {
+      task,
+      created: created.map(found),
+      ...(epics.length === 0 ? {} : { epics: epics.map(found) }),
+      replayed: true,
+    };
     if (typeof recorded.commentId !== 'string') return result;
-    const comment = (await this.#reads.listComments(projectId, taskId)).find(
+    const comment = (await this.#reads.listComments(task.projectId, task.id)).find(
       (candidate) => candidate.id === recorded.commentId,
     );
     return comment === undefined ? result : { ...result, comment };
@@ -689,7 +706,7 @@ export class Writes {
   async #replay(retry: Retry | undefined, projectId: string): Promise<WriteResult | null> {
     const recorded = await this.#recorded(retry, projectId);
     if (recorded === null) return null;
-    return this.#recordedResult(projectId, recorded, recorded.taskId as string);
+    return this.#recordedResult(recorded, recorded.taskId as string);
   }
 
   async recordedWrite(projectId: string, retryInput: Retry): Promise<WriteResult | null> {
@@ -698,7 +715,7 @@ export class Writes {
     if (recorded === null) return null;
     // A comment's record names no task: its key was used for another kind of request.
     if (typeof recorded.taskId !== 'string') refuse('retry_conflict');
-    return this.#recordedResult(projectId, recorded, recorded.taskId);
+    return this.#recordedResult(recorded, recorded.taskId);
   }
 
   async recordUnchanged(
@@ -1387,8 +1404,8 @@ export class Writes {
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);
   }
 
-  /** The tasks with these ids, or the ids they moved to, each read in the project it is in now, in the order given. */
-  async #tasksNow(taskIds: readonly string[]): Promise<Task[]> {
+  /** The task with each of these ids, or the id it moved to, read in the project it is in now: one entry for each id, undefined for an id that names no task. */
+  async #tasksNow(taskIds: readonly string[]): Promise<(Task | undefined)[]> {
     if (taskIds.length === 0) return [];
     const now = new Map(taskIds.map((id) => [id, id]));
     for (const former of await this.#reads.formerIds(taskIds)) now.set(former.formerId, former.taskId);
@@ -1401,31 +1418,30 @@ export class Writes {
     const tasks = new Map<string, Task>();
     for (const [projectId, ids] of byProject)
       for (const row of await this.#reads.taskRows(projectId, ids)) tasks.set(row.id, toTask(row));
-    return taskIds.flatMap((id) => {
-      const task = tasks.get(now.get(id)!);
-      return task === undefined ? [] : [task];
-    });
+    return taskIds.map((id) => tasks.get(now.get(id)!));
   }
 
   /** A move's answer from its record, its tasks as they stand now. */
   async #moveResult(recorded: Record<string, Json>, replayed: boolean): Promise<MoveResult> {
     const epics = Array.isArray(recorded.epics) ? (recorded.epics as string[]) : [];
     const moved = (recorded.moved as [string, string][]).map(([from, to]): MovedId => ({ from, to }));
+    const present = (tasks: readonly (Task | undefined)[]) => tasks.filter((task) => task !== undefined);
     const [tasks, closed] = await Promise.all([this.#tasksNow(recorded.tasks as string[]), this.#tasksNow(epics)]);
-    return { tasks, moved, ...(epics.length === 0 ? {} : { epics: closed }), replayed };
+    return { tasks: present(tasks), moved, ...(epics.length === 0 ? {} : { epics: present(closed) }), replayed };
   }
 
-  async #replayMove(retry: Retry | undefined, projectId: string): Promise<MoveResult | null> {
-    const recorded = await this.#recorded(retry, projectId);
+  /** A move's record answers wherever its tasks went since: the tasks it placed may have moved on. */
+  async #replayMove(retry: Retry | undefined): Promise<MoveResult | null> {
+    const recorded = await this.#recorded(retry, null);
     if (recorded === null) return null;
     // Another write's record names no moved tasks: its key was used for another kind of request.
     if (!Array.isArray(recorded.tasks)) refuse('retry_conflict');
     return this.#moveResult(recorded, true);
   }
 
-  async recordedMove(projectId: string, retryInput: Retry): Promise<MoveResult | null> {
+  async recordedMove(retryInput: Retry): Promise<MoveResult | null> {
     const retry = check.retry(retryInput) ?? check.invalid('a retry identity is required');
-    return this.#replayMove(retry, projectId);
+    return this.#replayMove(retry);
   }
 
   /** A new key in the project that is no task's id or former id, nor one of `taken`. */
@@ -1454,7 +1470,7 @@ export class Writes {
     const retry = check.retry(retryInput);
     const placements = check.placements(placementsInput);
     const project = await this.#projectOf(projectId);
-    const replayed = await this.#replayMove(retry, projectId);
+    const replayed = await this.#replayMove(retry);
     if (replayed !== null) return replayed;
 
     const rows = await this.#existing(
@@ -1522,7 +1538,19 @@ export class Writes {
         const id = after(taskId);
         const parent = parentId === null ? null : after(parentId);
         const duplicateOf = row.duplicate_of === null ? null : after(row.duplicate_of);
-        if (id === taskId && parent === row.parent_id) continue;
+        if (id === taskId && parent === row.parent_id) {
+          // It stays where it is only as it was read: a write since moves the batch to plan again.
+          statements.push(
+            this.#db
+              .prepare(
+                `INSERT INTO write_guard (ok, refusal) SELECT EXISTS (
+                   SELECT 1 FROM tasks WHERE id = ?1 AND version = ?2
+                 ), 'version_conflict'`,
+              )
+              .bind(taskId, row.version),
+          );
+          continue;
+        }
         const changes: Record<string, Json> = {};
         if (id !== taskId) Object.assign(changes, { id, projectId });
         if (parent !== row.parent_id) changes.parentId = parent;
@@ -1546,6 +1574,10 @@ export class Writes {
             )
             .bind(id, projectId, parent, duplicateOf, at, taskId, row.version),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+          // A client that reads one project's changes sees the task leave it as well as arrive in the other.
+          ...(id === taskId
+            ? []
+            : [this.#event({ id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, changes)]),
           this.#event({ id, projectId }, row.version + 1, 'updated', actor, at, changes),
         );
         if (parent !== null) loops.push(this.#noParentLoop(parent, id));
@@ -1604,12 +1636,12 @@ export class Writes {
         return this.#moveResult(recorded as unknown as Record<string, Json>, false);
       } catch (error) {
         if (guardRefusalOf(messageOf(error)) === 'version_conflict') {
-          const replay = await this.#replayMove(retry, projectId);
+          const replay = await this.#replayMove(retry);
           if (replay !== null) return replay;
         }
         const failure = failureOf(error);
         if (failure === 'id_taken') continue;
-        return (await this.#replayMove(retry, projectId)) ?? refuse('retry_conflict');
+        return (await this.#replayMove(retry)) ?? refuse('retry_conflict');
       }
     }
     throw new Error(`No free task id in project ${projectId} after ${ATTEMPTS} attempts.`);

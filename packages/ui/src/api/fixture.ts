@@ -99,6 +99,22 @@ const SEARCH_PAGE = 100;
 const SEARCH_TEXT = 512;
 /** The most tasks one move names, as the Worker's move route. */
 const MOVE_LIMIT = 50;
+/** Every write the fixture takes, as an Ntasks lists them for a person who may change its projects. */
+const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
+  'create',
+  'update',
+  'comment',
+  'close',
+  'move',
+  'respond',
+  'dismiss',
+  'resolve',
+  'choose',
+  'dispute',
+  'step',
+  'accept',
+  'release',
+]);
 const ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 function randomKey(length: number): string {
@@ -211,6 +227,10 @@ export function createFixtureTasksApi({
   }
 
   function find(id: string, key: string): FixtureTask {
+    // A moved task's old id names it in the project it moved to, as the Worker reads it.
+    const current = state.aliases?.get(id);
+    const moved = current === undefined ? undefined : state.tasks.find((row) => row.id === current);
+    if (moved !== undefined) return moved;
     project(key);
     const task = state.tasks.find((row) => row.id === id && row.project === key);
     if (!task) throw new ApiError(`Task ${id}: not found.`, 404, null);
@@ -650,7 +670,7 @@ export function createFixtureTasksApi({
     },
     async capabilities() {
       reach();
-      return { live: true, writable: true, projectSelection: true, reason: null };
+      return { live: true, writable: true, projectSelection: true, operations: FIXTURE_OPERATIONS, reason: null };
     },
     async projects() {
       reach();
@@ -836,10 +856,7 @@ export function createFixtureTasksApi({
     },
     async task(id, key) {
       reach();
-      // A moved task's old id reads it as it is now, in the project it moved to.
-      const current = state.aliases?.get(id);
-      project(key);
-      const task = (current === undefined ? undefined : state.tasks.find((row) => row.id === current)) ?? find(id, key);
+      const task = find(id, key);
       const { prefix, logicalKey } = project(task.project);
       return copy({
         project: logicalKey,

@@ -789,10 +789,14 @@ its **former id**:
   links, delivery, claim and custom field values MUST come along, and a value
   of a field the new project does not define MUST be kept;
 - a task with tasks under it MUST go to another project only with every task
-  under it, each keeping its parent.
+  under it, each keeping its parent;
+- an approval or a request to do steps that a moved task waits on MUST still
+  hold it back until it is answered, and SHOULD move with it when every task
+  waiting on it moves.
 
 A server MUST record each move in the history of each task it moves, with
-the old and new id and project. The epic a task leaves and the epic it joins
+the old and new id and project, and SHOULD show it in the changes of the
+project the task left as well as the one it joined. The epic a task leaves and the epic it joins
 close and reopen as [STATE-22](#state-22) says.
 
 ## 5. Authority rules

@@ -3,7 +3,26 @@
 // that names it.
 import { NTASKS_ACTOR, type CreateTaskInput, type Task, type TaskEngine, type TaskPlacement } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
+import type { Database } from '../../src/engine/database.ts';
+import { createEngine } from '../../src/engine/index.ts';
+import { storeDatabase } from '../store.ts';
 import { AGENT, engine, expectRefusal, newProject, OWNER, retryFor } from './helpers.ts';
+
+/** An engine whose next batch first runs the hook a test sets, as another write landing between a move's read and its batch. */
+function racedEngine() {
+  const inner = storeDatabase();
+  const race: { before: (() => Promise<unknown>) | null } = { before: null };
+  const db: Database = {
+    prepare: (sql) => inner.prepare(sql),
+    async batch(statements) {
+      const hook = race.before;
+      race.before = null;
+      if (hook) await hook();
+      return inner.batch(statements);
+    },
+  };
+  return { tasks: createEngine(db), race };
+}
 
 async function make(tasks: TaskEngine, projectId: string, input: CreateTaskInput): Promise<Task> {
   return (await tasks.createTask(projectId, input, AGENT)).task;
@@ -191,8 +210,59 @@ describe('a move to another project', () => {
     const again = await tasks.moveTasks(to.id, [placement], OWNER, retry);
 
     expect(again).toEqual({ ...first, replayed: true });
-    expect(await tasks.recordedMove(to.id, retry)).toEqual({ ...first, replayed: true });
+    expect(await tasks.recordedMove(retry)).toEqual({ ...first, replayed: true });
     expect((await tasks.listHistory(to.id, first.tasks[0]!.id, { limit: 10 })).length).toBe(2);
+  });
+});
+
+describe('a move and the records around it', () => {
+  it('shows in the changes of the project the task left and of the one it joined, and once in its history', async () => {
+    const tasks = engine();
+    const [from, to] = [await newProject(tasks), await newProject(tasks)];
+    const task = await make(tasks, from.id, { title: 'Write the runbook' });
+    const after = await tasks.latestChange();
+
+    const [moved] = (await tasks.moveTasks(to.id, [await placing(tasks, task, null)], OWNER)).tasks;
+
+    const left = await tasks.listChanges({ after, limit: 10, projectId: from.id });
+    const joined = await tasks.listChanges({ after, limit: 10, projectId: to.id });
+    for (const page of [left, joined])
+      expect(page.events.map((event) => [event.taskId, event.changes])).toEqual([
+        [moved!.id, { id: moved!.id, projectId: to.id }],
+      ]);
+    expect((await tasks.listHistory(to.id, moved!.id, { limit: 10 })).map((event) => event.kind)).toEqual([
+      'updated',
+      'created',
+    ]);
+  });
+
+  it('answers an earlier write repeated with its key after its task moved, with the task where it is now', async () => {
+    const tasks = engine();
+    const [from, to] = [await newProject(tasks), await newProject(tasks)];
+    const retry = await retryFor('create-0001', { title: 'Write the runbook' }, 'create_task');
+    const filed = (await tasks.createTask(from.id, { title: 'Write the runbook' }, AGENT, retry)).task;
+    const [moved] = (await tasks.moveTasks(to.id, [await placing(tasks, filed, null)], OWNER)).tasks;
+
+    const again = await tasks.createTask(from.id, { title: 'Write the runbook' }, AGENT, retry);
+
+    expect(again).toMatchObject({ replayed: true, task: { id: moved!.id, projectId: to.id } });
+    expect(await tasks.recordedWrite(to.id, retry)).toMatchObject({ task: { id: moved!.id } });
+  });
+
+  it('plans again when a task it leaves in place changes before its batch, moving nothing until then', async () => {
+    const { tasks, race } = racedEngine();
+    const [from, to] = [await newProject(tasks), await newProject(tasks)];
+    const epic = await make(tasks, to.id, { title: 'Launch', type: 'epic' });
+    const staying = await make(tasks, to.id, { title: 'Pick the date', parentId: epic.id });
+    const moving = await make(tasks, from.id, { title: 'Write the post' });
+    const placements = [await placing(tasks, staying, epic.id), await placing(tasks, moving, epic.id)];
+    race.before = () =>
+      tasks.writeTask(to.id, staying.id, { expectedVersion: staying.version, set: { parentId: null } }, OWNER);
+
+    await expectRefusal(tasks.moveTasks(to.id, placements, OWNER), 'version_conflict');
+
+    expect(await tasks.getTask(from.id, moving.id)).toMatchObject({ id: moving.id, version: moving.version });
+    expect(await tasks.formerIds([moving.id])).toEqual([]);
   });
 });
 

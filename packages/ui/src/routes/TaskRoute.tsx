@@ -447,7 +447,8 @@ function TaskPage({
             onEdit={setEditing}
             onAddLink={() => setAddingLink(true)}
             onMove={
-              !closed && operationAvailable(capabilities, 'move')
+              // Moving came after the other writes, so only an Ntasks that lists it offers it.
+              !closed && operationAvailable(capabilities, 'move') && capabilities.operations?.includes('move') === true
                 ? () => {
                     closeAs.cancel();
                     setPanel({ kind: 'move' });

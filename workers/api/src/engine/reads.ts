@@ -728,9 +728,12 @@ export class Reads {
       .prepare(
         // An event keeps the project its task was in when it was recorded, so a
         // moved task's earlier events name its earlier project: the task's own
-        // project decides.
+        // project decides. A move is also recorded in the project the task
+        // left, for that project's changes; its history keeps the move once,
+        // as the project it went to recorded it.
         `SELECT e.* FROM task_events e INDEXED BY task_events_by_task
          WHERE e.task_id = ?2 AND e.seq < ?3 AND EXISTS (SELECT 1 FROM tasks t WHERE t.id = ?2 AND t.project_id = ?1)
+           AND NOT (e.kind = 'updated' AND coalesce(json_extract(e.changes, '$.projectId') <> e.project_id, 0))
          ORDER BY e.seq DESC LIMIT ?4`,
       )
       .bind(projectId, taskId, beforeSeq ?? Number.MAX_SAFE_INTEGER, limit)

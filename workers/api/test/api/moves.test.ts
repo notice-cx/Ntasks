@@ -6,6 +6,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { newProject, OWNER } from '../engine/helpers.ts';
 import { api, get, granted, read, refusal, send, write, WRITER, type TestApi } from './helpers.ts';
 
+const LINK = 'https://example.com/deploys/42';
+
 let target: TestApi;
 let engine: TaskEngine;
 
@@ -152,6 +154,71 @@ describe('move_tasks', () => {
   });
 });
 
+describe('a move and the approvals and retries around it', () => {
+  it('takes an open approval along with the task waiting on it, which still waits until it is answered', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Deploy the API' });
+    const asked = await write<{ approval: { id: string } }>(target, 'request_human_approval', {
+      task: moving.id,
+      reason: 'Approve deploying the API',
+    });
+
+    const answer = await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key });
+    const refused = await refusal(target, 'close_task', { task: moving.id, reason: 'Deployed.', link: LINK });
+
+    const gate = answer.moved[asked.approval.id]!;
+    expect(gate.startsWith(`${to.prefix}-`)).toBe(true);
+    expect((await stored(to, [answer.moved[moving.id]!]))[0]!.dependencies).toMatchObject([
+      { taskId: gate, type: 'blocks', status: 'open' },
+    ]);
+    expect(refused).toContain(gate);
+  });
+
+  it('keeps an approval that another task still waits on where it is, and the moved task still waits on it', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Deploy the API' });
+    const staying = await task(from, { title: 'Deploy the site' });
+    const asked = await write<{ approval: { id: string } }>(target, 'request_human_approval', {
+      task: moving.id,
+      reason: 'Approve deploying both',
+    });
+    await write(target, 'link_tasks', { task: staying.id, to: asked.approval.id, type: 'blocks' });
+
+    const answer = await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key });
+    const refused = await refusal(target, 'close_task', { task: moving.id, reason: 'Deployed.', link: LINK });
+
+    expect(Object.keys(answer.moved)).toEqual([moving.id]);
+    expect(refused).toContain(asked.approval.id);
+    expect((await stored(to, [answer.moved[moving.id]!]))[0]).toMatchObject({ status: 'open' });
+  });
+
+  it('answers a move repeated with its key once its project no longer takes tasks, without moving again', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from);
+    const args = { task: moving.id, project: to.key, idempotency_key: `key-${crypto.randomUUID()}` };
+    const first = await write<Moved>(target, 'move_tasks', args);
+    await engine.updateProject(to.id, { disabled: true });
+
+    const again = await write<Moved>(target, 'move_tasks', args);
+
+    expect(again).toMatchObject({ moved: first.moved, replayed: true });
+  });
+
+  it('leaves out of a repeated move the tasks that moved on to a project its sender cannot reach', async () => {
+    const [from, to, hidden] = [await newProject(engine), await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Draft the contract' });
+    const agent = api({ principal: granted({ [from.id]: 'write', [to.id]: 'write' }), engine });
+    const args = { task: moving.id, project: to.key, idempotency_key: `key-${crypto.randomUUID()}` };
+    const first = await write<Moved>(agent, 'move_tasks', args);
+    await write(target, 'move_tasks', { task: first.moved[moving.id]!, project: hidden.key });
+
+    const again = await write<Moved>(agent, 'move_tasks', args);
+
+    expect(again).toMatchObject({ tasks: [], replayed: true });
+    expect(JSON.stringify(again)).not.toContain(hidden.prefix);
+  });
+});
+
 describe('POST /api/tasks/move', () => {
   it('moves the tasks, and the old id’s task routes answer for the moved task in its new project', async () => {
     const [from, to] = [await newProject(engine), await newProject(engine)];
@@ -172,6 +239,17 @@ describe('POST /api/tasks/move', () => {
     expect(history.status).toBe(200);
     expect(edited.status).toBe(200);
     expect((await stored(to, [newId]))[0]).toMatchObject({ priority: 0 });
+  });
+
+  it('answers for a moved task named by its old id and project to a sender who no longer reaches that project', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Write the runbook' });
+    const newId = (await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key })).moved[moving.id]!;
+    const reader = api({ principal: granted({ [to.id]: 'read' }), engine });
+
+    const page = await get(reader, `/api/tasks/${moving.id}?project=${from.id}`);
+
+    expect(page).toMatchObject({ status: 200, body: { task: { id: newId } } });
   });
 
   it('refuses a task named twice in place of parent, and a missing destination, moving nothing', async () => {

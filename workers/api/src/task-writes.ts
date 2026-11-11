@@ -42,7 +42,7 @@ import {
 } from '@ntasks/domain';
 import { listed, type WorkArgs } from './args.ts';
 import { closeProof, pullRequestUrl } from './delivery.ts';
-import { mayReach, type Principal } from './auth.ts';
+import { mayReach, reachable, type Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, projectOfTask, taskOf, tasksIn, type Reader } from './lookup.ts';
 import {
@@ -188,24 +188,40 @@ function openBlockers(task: Task): string[] {
     .map((link) => link.taskId);
 }
 
-/** The open gates among the tasks this one waits on. */
+/** The open gates among the tasks this one waits on, each read in the project its id names, which a move can leave
+ * other than the task's: a close must find every approval it waits on. */
 async function openGates({ engine }: Reader, project: Project, task: Task): Promise<Task[]> {
-  const blockers = await Promise.all(openBlockers(task).map((id) => engine.getTask(project.id, id)));
+  const ids = openBlockers(task);
+  if (ids.length === 0) return [];
+  const projects = await engine.listProjects();
+  const owner = (id: string) =>
+    projects.find((candidate) => candidate.prefix === id.slice(0, id.indexOf('-')))?.id ?? project.id;
+  const blockers = await Promise.all(ids.map((id) => engine.getTask(owner(id), id)));
   return blockers.filter((blocker): blocker is Task => blocker !== null && blocker.type === 'gate');
 }
 
 /** The answer an earlier write with this retry identity gave, or null. */
 export async function recorded(
-  { engine }: Reader,
+  reader: Reader,
   project: Project,
   retry: Retry | undefined,
 ): Promise<WriteResult | null> {
+  const { engine, principal } = reader;
   if (retry === undefined) return null;
+  let replay: WriteResult | null;
   try {
-    return await engine.recordedWrite(project.id, retry);
+    replay = await engine.recordedWrite(project.id, retry);
   } catch (error) {
     throw fromEngine(error);
   }
+  // The task it wrote may have moved since to a project the sender cannot reach, which answers as no task.
+  if (replay !== null && !mayReach(principal, replay.task.projectId, 'read'))
+    throw new Refused(
+      'not_found',
+      'refused: the task this idempotency_key wrote is in no project you can reach; choose a new key for a new change.',
+      'The task this change wrote is not in a project you can reach.',
+    );
+  return replay;
 }
 
 /** Whether a derived key's record answers the same request now, is stale
@@ -708,7 +724,6 @@ export interface TaskMove {
 }
 
 export interface MovedTasks {
-  readonly project: Project;
   readonly result: MoveResult;
   /** For each task that came from another project, the keys of the values it
    * kept that this project defines with another type or options, or not at all. */
@@ -778,9 +793,11 @@ async function placementsOf(context: WriteContext, project: Project, move: TaskM
     parentId: parent,
   }));
   const placed = new Set(move.tasks);
+  const leaving: Task[] = [];
   for (const id of move.tasks) {
     const task = found.get(id)!;
     if (task.projectId === project.id) continue;
+    leaving.push(task);
     const under = await context.engine.listUnder(task.projectId, [task.id], TASK_LIMITS.move + 1);
     if (under.length > 0 && move.withChildren !== true) {
       const named = listed(under.slice(0, 3).map((child) => child.id));
@@ -791,9 +808,27 @@ async function placementsOf(context: WriteContext, project: Project, move: TaskM
       );
     }
     for (const child of under) {
+      leaving.push(child);
       if (placed.has(child.id)) continue;
       placed.add(child.id);
       placements.push({ taskId: child.id, expectedVersion: child.version, parentId: child.parentId });
+    }
+  }
+  // An open approval or request to do steps moves with the task waiting on it, when every task waiting on it moves:
+  // a person answers it beside the task it holds back, and an answer reaches the tasks it holds.
+  for (const task of leaving) {
+    const blockers = task.dependencies.filter((link) => link.type === 'blocks' && link.status !== 'closed');
+    const gates = (
+      await context.engine.getTasks(
+        task.projectId,
+        blockers.map((link) => link.taskId),
+      )
+    ).filter((gate) => gate.type === 'gate' && !placed.has(gate.id));
+    for (const gate of gates) {
+      const waiting = gate.dependents.filter((link) => link.type === 'blocks').map((link) => link.taskId);
+      if (!waiting.every((id) => placed.has(id))) continue;
+      placed.add(gate.id);
+      placements.push({ taskId: gate.id, expectedVersion: gate.version, parentId: null });
     }
   }
   if (placements.length > TASK_LIMITS.move)
@@ -805,12 +840,21 @@ async function placementsOf(context: WriteContext, project: Project, move: TaskM
   return placements;
 }
 
-/** The field values the tasks that came from another project kept that `fields` does not take as they are. */
-function fieldsKeptOf(result: MoveResult, fields: readonly CustomField[]): Record<string, readonly string[]> {
+/** The tasks a move names, as it left them, in the order named: each by the id it moved to, if it moved. */
+export function namedAfter(ids: readonly string[], result: MoveResult): Task[] {
+  const now = new Map(result.moved.map(({ from, to }) => [from, to]));
+  return ids.flatMap((id) => result.tasks.filter((task) => task.id === (now.get(id) ?? id)));
+}
+
+/** The field values the tasks that came from another project kept that their project does not take as they are. */
+async function fieldsKeptOf(context: WriteContext, result: MoveResult): Promise<Record<string, readonly string[]>> {
   const arrived = new Set(result.moved.map((moved) => moved.to));
   const kept: Record<string, string[]> = {};
+  const defined = new Map<string, readonly CustomField[]>();
   for (const task of result.tasks) {
     if (!arrived.has(task.id)) continue;
+    if (!defined.has(task.projectId)) defined.set(task.projectId, await context.engine.listFields(task.projectId));
+    const fields = defined.get(task.projectId)!;
     const keys = Object.entries(task.fields).flatMap(([key, value]) => {
       try {
         fieldValues(fields, { [key]: value }, false);
@@ -836,21 +880,30 @@ export async function moveTasks(
   model: string | undefined,
   retryRequest?: RetryRequest,
 ): Promise<MovedTasks> {
-  const project = await destinationOf(context, move);
   const retry = await retryOf(context.principal, retryRequest);
-  const finished = async (result: MoveResult): Promise<MovedTasks> => ({
-    project,
-    result,
-    fieldsKept: fieldsKeptOf(result, await context.engine.listFields(project.id)),
-  });
+  const finished = async (found: MoveResult): Promise<MovedTasks> => {
+    // A replay reads the tasks where they are now, which may be a project the sender cannot reach.
+    const reached = new Set(reachable(context.principal, await context.engine.listProjects()).map((one) => one.prefix));
+    const seen = (id: string) => reached.has(id.slice(0, id.indexOf('-')));
+    const result: MoveResult = {
+      ...found,
+      tasks: found.tasks.filter((task) => seen(task.id)),
+      moved: found.moved.filter((moved) => seen(moved.to)),
+      ...(found.epics === undefined ? {} : { epics: found.epics.filter((epic) => seen(epic.id)) }),
+    };
+    return { result, fieldsKept: await fieldsKeptOf(context, result) };
+  };
+  // A move answered before answers again, whatever has changed since about where it went.
   if (retry !== undefined) {
+    let replay: MoveResult | null;
     try {
-      const replay = await context.engine.recordedMove(project.id, retry);
-      if (replay !== null) return finished(replay);
+      replay = await context.engine.recordedMove(retry);
     } catch (error) {
       throw fromEngine(error);
     }
+    if (replay !== null) return finished(replay);
   }
+  const project = await destinationOf(context, move);
   const actor = actorOf(context.principal, model);
   for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     const placements = await placementsOf(context, project, move);
