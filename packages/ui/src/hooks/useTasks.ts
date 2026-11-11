@@ -84,6 +84,32 @@ export function useTaskProjects() {
 }
 
 /**
+ * A project's icon as an image address the page can draw, or null while it is
+ * read, when it has none, or when it could not be read. The icon is read
+ * through the API, with the sign-in every other read carries, so it draws on
+ * a host's page too; an icon's address changes whenever the icon does, so
+ * each is read once.
+ */
+export function useProjectIcon(icon: string | null | undefined): string | null {
+  const api = useTasksApi();
+  const read = useQuery<string>({
+    queryKey: ['project-icon', icon],
+    queryFn: async ({ signal }) => dataAddress(await api.projectIcon(icon!, signal)),
+    enabled: typeof icon === 'string' && icon !== '',
+    staleTime: Infinity,
+    retry: 1,
+  });
+  return read.data ?? null;
+}
+
+/** An image as a data: address, which every page can draw and which needs no releasing. */
+async function dataAddress(image: Blob): Promise<string> {
+  let binary = '';
+  for (const byte of new Uint8Array(await image.arrayBuffer())) binary += String.fromCharCode(byte);
+  return `data:${image.type || 'image/png'};base64,${btoa(binary)}`;
+}
+
+/**
  * Every named project's board, in the order given. A board is the API's most
  * expensive read (about two database rows per task), so it is read when a
  * page opens, after a write, and when the change feed names a change in its

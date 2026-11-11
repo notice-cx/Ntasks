@@ -8,6 +8,8 @@ import { useBoards, useFilteredBoard, useTaskProjects, useTaskSearch } from './u
 
 interface BoardsRead {
   catalog: UseQueryResult<readonly TaskProject[], Error>;
+  /** The projects the board shows: every one but those disabled. */
+  active: readonly TaskProject[];
   keys: readonly string[];
   boards: UseQueryResult<LiveTasksPayload, Error>[];
 }
@@ -17,13 +19,17 @@ const BoardsContext = createContext<BoardsRead | null>(null);
 /**
  * Reads every project's board once for everything inside it, the sidebar's
  * counts and the page alike, and keeps them current with the one change feed.
+ * A disabled project's board is not read: it leaves the sidebar, the board
+ * and its menus, and its tasks still open on their own pages.
  */
 export function BoardsProvider({ children }: { children: ReactNode }) {
   const catalog = useTaskProjects();
-  const keys = useMemo(() => (catalog.data ?? []).map((project) => project.logicalKey), [catalog.data]);
+  const active = useMemo(() => (catalog.data ?? []).filter((project) => project.disabled !== true), [catalog.data]);
+  const keys = useMemo(() => active.map((project) => project.logicalKey), [active]);
   const boards = useBoards(keys);
   useChangeFeed(
     keys.map((project, index) => ({ project, lastSeq: boards[index]?.data?.lastSeq })),
+    // Every project, so a change to a disabled project's task still refreshes its open page.
     catalog.data,
   );
   // The query results are new objects on every draw, and the frame draws on
@@ -33,7 +39,7 @@ export function BoardsProvider({ children }: { children: ReactNode }) {
   const version = [catalog, ...boards]
     .map((query) => `${query.status}:${query.fetchStatus}:${query.dataUpdatedAt}:${query.errorUpdatedAt}`)
     .join('|');
-  const value = useMemo(() => ({ catalog, keys, boards }), [version, keys]);
+  const value = useMemo(() => ({ catalog, active, keys, boards }), [version, active, keys]);
   return <BoardsContext.Provider value={value}>{children}</BoardsContext.Provider>;
 }
 
@@ -47,7 +53,7 @@ export function BoardsProvider({ children }: { children: ReactNode }) {
 export function useBoard(filters: BoardFilters) {
   const shared = useContext(BoardsContext);
   if (!shared) throw new Error('useBoard needs a BoardsProvider around it.');
-  const fieldProject = fieldsProject(filters, shared.catalog.data ?? []);
+  const fieldProject = fieldsProject(filters, shared.active);
   const fieldFilters = fieldProject === null ? {} : filters.fields;
   const filtering = fieldProject !== null && Object.keys(fieldFilters).length > 0;
   const narrowed = useFilteredBoard(filtering ? fieldProject : null, fieldFilters);
@@ -56,7 +62,7 @@ export function useBoard(filters: BoardFilters) {
   const filterKey = JSON.stringify(filters);
   const narrowedVersion = `${narrowed.status}:${narrowed.fetchStatus}:${narrowed.dataUpdatedAt}:${narrowed.errorUpdatedAt}`;
   return useMemo(() => {
-    const { catalog, keys, boards } = shared;
+    const { catalog, active, keys, boards } = shared;
     const reads = new Map<string, ProjectRead>(
       keys.map((key, index) => {
         const board = boards[index];
@@ -64,11 +70,11 @@ export function useBoard(filters: BoardFilters) {
       }),
     );
     const boardFilters = JSON.parse(filterKey) as BoardFilters;
-    let read = readBoard(catalog.data ?? [], reads, boardFilters, search.found);
+    let read = readBoard(active, reads, boardFilters, search.found);
     if (filtering && fieldProject !== null) {
       const whole = read;
       read = readBoard(
-        catalog.data ?? [],
+        active,
         new Map(reads).set(fieldProject, {
           data: narrowed.data,
           error: narrowed.error ?? null,
@@ -93,6 +99,8 @@ export function useBoard(filters: BoardFilters) {
     return {
       ...read,
       catalog,
+      /** The projects that take new tasks, which the board shows. */
+      active,
       /** The project the Filter menu offers custom fields of, or null with several projects in view. */
       fieldProject,
       /** That project's tasks before any filter by custom field, which the Filter menu counts values in. */

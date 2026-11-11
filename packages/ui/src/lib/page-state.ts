@@ -1,7 +1,7 @@
 /**
  * What a link or a key asks of a page through the location's state, without
  * changing its address: open the board's composer, put the cursor in its
- * search field, or open the Projects page's New project form.
+ * search field, or open the New project form in Settings's Projects tab.
  */
 
 /** Location state that opens the composer. */

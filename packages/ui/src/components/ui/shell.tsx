@@ -265,16 +265,48 @@ export function NavItem({
   );
 }
 
-/** The first letter of a project's prefix (`web` is W) in a 16 px ringed square: the project's mark in the sidebar and in a page's path. */
-export function ProjectBadge({ prefix, className }: { prefix: string; className?: string }) {
+/**
+ * A project's mark in the sidebar, in a page's path and in Settings, 16 px
+ * square unless `size` says otherwise: the icon read from its website when
+ * `src` gives one, else the first letter of its prefix (`web` is W) in a
+ * ringed square. The project's name always stands beside it, so screen
+ * readers skip it.
+ */
+export function ProjectBadge({
+  prefix,
+  src = null,
+  size = 16,
+  className,
+}: {
+  prefix: string;
+  src?: string | null;
+  size?: number;
+  className?: string;
+}) {
+  const [broken, setBroken] = useState<string | null>(null);
   const letter = (prefix.trim()[0] ?? '?').toUpperCase();
+  if (src !== null && broken !== src)
+    return (
+      <img
+        alt=""
+        aria-hidden
+        src={src}
+        width={size}
+        height={size}
+        data-project-icon=""
+        className={cn('shrink-0 rounded-sm object-contain', className)}
+        style={{ width: size, height: size }}
+        onError={() => setBroken(src)}
+      />
+    );
   return (
     <span
       aria-hidden
       className={cn(
-        'grid size-4 shrink-0 place-items-center rounded-sm bg-background text-[10px] leading-4 font-semibold text-ink-2 inset-ring inset-ring-border-strong',
+        'grid shrink-0 place-items-center rounded-sm bg-background leading-none font-semibold text-ink-2 inset-ring inset-ring-border-strong',
         className,
       )}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.625) }}
     >
       {letter}
     </span>

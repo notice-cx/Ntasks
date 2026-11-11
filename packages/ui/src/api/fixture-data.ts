@@ -463,8 +463,26 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
   ]);
 
   const projects: TaskProject[] = [
-    { projectId: 'p-web', logicalKey: 'web', displayName: 'Example web app', prefix: 'web', deploys: true },
-    { projectId: 'p-docs', logicalKey: 'docs', displayName: 'Example docs', prefix: 'docs', deploys: false },
+    {
+      projectId: 'p-web',
+      logicalKey: 'web',
+      displayName: 'Example web app',
+      prefix: 'web',
+      deploys: true,
+      disabled: false,
+      websiteUrl: 'https://web.example.com/',
+      icon: fixtureIconPath('p-web'),
+    },
+    {
+      projectId: 'p-docs',
+      logicalKey: 'docs',
+      displayName: 'Example docs',
+      prefix: 'docs',
+      deploys: false,
+      disabled: false,
+      websiteUrl: null,
+      icon: null,
+    },
   ];
 
   // One field of every type, and one retired, whose values tasks keep.
@@ -562,4 +580,13 @@ export function fixtureWorkspaces(nowMs: number, seed: FixtureSeed = fixtureSeed
       invitations: [],
     },
   ];
+}
+
+/** The icon every invented website under example.com serves: an invented mark, 64 px square. */
+export const FIXTURE_ICON_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADCklEQVR42uWbiVLbMBCG/XTNQUJCIJBwn+ldetGXTpzDgbbQZlSvLFsQHMtaSW7M7sz/AN83QbteCc/LWYubClvcVNnie5X9hXyryXyF1NmfLyKfN6JcR3m4brCHTyIfm1E+NNk9zya7fy/yrsXz+63Im7bM6y32CzIQueok+Xm5HeVC5HyHebZq8QPAywUPuTuDdJkZeMnheU6jkIa/O9llt2FIw98eQ/YYaXieoxUSqMBD5oc99uJOex34ZwKowc8PIH1W2iHHBnwigCr8fL/PgjAeZfigvx8KIAzPBVCGD3ogoGB4VRUJH/QOHglwCI8t1/DBXizAEbytcgU/4wIcwLsq2/BCQDng47IJP9s9ZF6Z4KUEO/BSQIngEwkW4GddEPAf4Fe1Ot0yhZ91j4SAAk573SEnlwBD+OkOCFhD+Pi0zycBD58IcDnkmI63SgEG8FzAOsPHp72qsPDT7eNQgMFsbwKvO+QoBSDgpQAHHzar4HP1+JQ+nykACT/tgIACv+p0evxyn1f+GSDgJ50TIQDxPe+yz68acrIKAz/ZAgHIZUamAEdDjlKAJjwXgN3kKAUsnfbaAlKGnEwBCPhJmwvArbFUi4zlVqcv4PmEpxSgCT9pn4YCkDs83U0OSsDSkJMpAAEvBSAWmNkbnPQhxwQeWl22AH34cQsEILe3mDVWbgGa8FAY+HHrLBKAXV1nCrA827uAH2+GAkz29koBGeOt7lddLgGa8FIA8tJCOdBYWmDm+vkj4MdNEGB4Y4Od7dcBftw8fyQAeV2Fne1twHMBBvB+IsDwri73aLtm8H4DBFi4qLQx5ORpdakCDOD9xgXzbN3SFl024P0NEGDxirps8FKAxfv5MsH7dRDg4HFCWeBH9UspwMXLDKvgDuBHNSHA9bMUNLjhkKOC5wKKfpPj6qsOAz+qXQkBBb7JwW5vXcCPqiCAMLwUQBR+WAEBhOGHlUH0Xpg0fCSAHvzw1eDp/wyQhk8EEIFPFQBFGj6RQBk+kUAZPi7S8E9EvLTTHlulHXIU9Q8vcqF3RvcWWwAAAABJRU5ErkJggg==';
+
+/** The address of a fixture project's icon, as the server's project list gives one. */
+export function fixtureIconPath(projectId: string, version = 1): string {
+  return `/api/tasks/projects/${projectId}/icon?v=${version}`;
 }

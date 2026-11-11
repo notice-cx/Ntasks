@@ -6,7 +6,7 @@ import type { TaskAcceptance, TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices
 import { Avatar } from '../../components/ui/avatar';
 import { CopyButton } from '../../components/ui/copy-button';
 import { OptionList } from '../../components/ui/choice';
-import { ProjectBadge } from '../../components/ui/shell';
+import { ProjectIcon } from '../../components/ProjectIcon';
 import { StatusMark } from '../../components/ui/symbols';
 import { ageMs, formatAge } from '../../lib/format';
 import { choiceName, RESOLUTION_LABELS, stageLabel, waivedCount } from '../../lib/task-model';
@@ -31,7 +31,7 @@ export function TaskPath({
   parent,
 }: {
   id: string;
-  project: { name: string; prefix: string; to: string } | null;
+  project: { name: string; prefix: string; icon?: string | null; to: string } | null;
   parent: { id: string; title: string | null } | null;
 }) {
   const paths = usePaths();
@@ -42,7 +42,7 @@ export function TaskPath({
       {project ? (
         <>
           <Link to={project.to} aria-label={project.name} className={crumb}>
-            <ProjectBadge prefix={project.prefix} />
+            <ProjectIcon project={project} />
             <span className="truncate max-sm:hidden">{project.name}</span>
           </Link>
           <ChevronRight aria-hidden size={14} className="shrink-0" />

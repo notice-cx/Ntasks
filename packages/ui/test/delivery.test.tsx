@@ -39,7 +39,7 @@ describe('the Waiting for you view', () => {
     unmount();
 
     const api = createFixtureTasksApi();
-    await api.setDeploys('docs', true);
+    await api.updateProject('docs', { deploys: true });
     renderApp('/tasks?view=waiting', api);
     const deploy = await screen.findByRole('region', { name: 'Waiting for deploy' });
     expect(deploy.querySelector(`[data-task-row="${MERGED}"]`)).not.toBeNull();
@@ -47,24 +47,31 @@ describe('the Waiting for you view', () => {
 });
 
 describe('a project’s deploy setting', () => {
-  it('is ticked by an owner, and shown to a member as it stands', async () => {
+  it('is set by an owner in Settings, and shown to a member as it stands', async () => {
     const api = createFixtureTasksApi();
-    const { unmount } = renderApp('/tasks/projects', api);
-    const box = await screen.findByRole('checkbox', { name: 'Example docs: changes go live by a deploy' });
-    await waitFor(() => expect((box as HTMLInputElement).disabled).toBe(false));
-    expect((box as HTMLInputElement).checked).toBe(false);
+    const { unmount } = renderApp('/tasks/settings/projects', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Example docs' }));
+    const editor = await screen.findByRole('form', { name: 'Edit Example docs' });
+    const box = within(editor).getByRole('checkbox', { name: 'Changes go live by a deploy' }) as HTMLInputElement;
+    expect(box.checked).toBe(false);
     fireEvent.click(box);
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save' }));
     await waitFor(async () =>
       expect((await api.projects()).find((project) => project.logicalKey === 'docs')?.deploys).toBe(true),
     );
     unmount();
 
     const [, labs] = fixtureWorkspaces(Date.now());
-    renderApp('/tasks/projects', createFixtureTasksApi({ workspaces: labs ? [labs] : [] }));
-    const shown = (await screen.findByRole('checkbox', {
-      name: 'Example research: changes go live by a deploy',
-    })) as HTMLInputElement;
-    expect(shown.disabled).toBe(true);
+    const member = createFixtureTasksApi({ workspaces: labs ? [labs] : [] });
+    member.state.projects[0]!.deploys = true;
+    renderApp('/tasks/settings/projects', member);
+    const row = await waitFor(() => {
+      const found = document.querySelector('[data-project-row="lab"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(within(row).getByText('Deploys')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit Example research' })).toBeNull();
   });
 });
 
@@ -102,7 +109,7 @@ describe('how long work has waited', () => {
 
   it('counts from the last change in Waiting for deploy', async () => {
     const api = createFixtureTasksApi();
-    await api.setDeploys('docs', true);
+    await api.updateProject('docs', { deploys: true });
     // docs-y5u2 was filed 6 days ago and merged 3 days ago.
     renderApp('/tasks?view=waiting', api);
     const age = await ageOf(MERGED);

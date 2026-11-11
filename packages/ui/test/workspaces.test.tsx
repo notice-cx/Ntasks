@@ -116,13 +116,14 @@ describe('an owner', () => {
   it('invites a GitHub account with a role, revokes an invitation and removes a member', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);
-    fireEvent.click(await sidebarLink('Members'));
+    fireEvent.click(await sidebarLink('Settings'));
+    fireEvent.click(await screen.findByRole('link', { name: 'Members' }));
     fireEvent.click(await enabledButton('Invite'));
     const form = await screen.findByRole('form', { name: 'Invite' });
     fireEvent.change(within(form).getByLabelText(/^GitHub username/), { target: { value: '@example-new' } });
     fireEvent.change(within(form).getByLabelText('Role'), { target: { value: 'owner' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Invite' }));
-    const invitations = await screen.findByRole('region', { name: 'Invitations' });
+    const invitations = await screen.findByRole('list', { name: 'Invitations' });
     await within(invitations).findByText('example-new');
     expect((await api.members()).invitations).toContainEqual(
       expect.objectContaining({ githubLogin: 'example-new', role: 'owner' }),
@@ -227,7 +228,7 @@ describe('the Settings page', () => {
 });
 
 describe('a sign-in with no workspace', () => {
-  it("creates the first one as a deployment admin, and lands on its Projects page's New project form", async () => {
+  it("creates the first one as a deployment admin, and lands on the New project form in Settings's Projects tab", async () => {
     const api = createFixtureTasksApi({ workspaces: [], deploymentAdmin: true });
     renderApp('/tasks', api);
     const step = await screen.findByRole('form', { name: 'New workspace' });

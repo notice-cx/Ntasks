@@ -77,6 +77,8 @@ export interface BoardProject {
   key: string;
   name: string;
   prefix: string;
+  /** The address of the icon read from its website; null when it has none. */
+  icon: string | null;
   /** The read answered. */
   ok: boolean;
   error: string | null;
@@ -112,7 +114,12 @@ function workStatus(task: BoardTask, statuses: ReadonlyMap<string, string>): str
  * current when nothing says they still are.
  */
 function readProject(project: TaskProject, read: ProjectRead | undefined): BoardProject {
-  const base = { key: project.logicalKey, name: project.displayName, prefix: project.prefix };
+  const base = {
+    key: project.logicalKey,
+    name: project.displayName,
+    prefix: project.prefix,
+    icon: project.icon ?? null,
+  };
   const error = read?.error;
   const payload = error === undefined || error === null ? read?.data : undefined;
   if (!payload) {

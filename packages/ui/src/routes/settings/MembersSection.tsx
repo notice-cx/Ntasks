@@ -1,59 +1,56 @@
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { refusedField } from '../api/client';
-import type { WorkspaceInvitation, WorkspaceMember, WorkspaceRole } from '../api/types';
-import { PageSkeleton, ReadFailed } from '../components/surface';
-import { Avatar } from '../components/ui/avatar';
-import { Badge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
-import { EmptyState } from '../components/ui/empty-state';
-import { Field, FieldError, Input, Select } from '../components/ui/field';
-import { Kbd } from '../components/ui/kbd';
-import { GroupHeader, Row, RowAge, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
-import { BarSpacer, TopBar } from '../components/ui/shell';
-import { useNow } from '../hooks/useNow';
-import { useShortcut } from '../hooks/useShortcut';
-import { useRetryKey } from '../hooks/useTasks';
-import { useInvite, useIsOwner, useMembers, useRemoveMember, useRevokeInvitation } from '../hooks/useWorkspace';
-import { ageMs, formatAge } from '../lib/format';
-import { usePageTitle } from '../lib/page-title';
+import { refusedField } from '../../api/client';
+import type { WorkspaceInvitation, WorkspaceMember, WorkspaceRole } from '../../api/types';
+import { PageSkeleton, ReadFailed } from '../../components/surface';
+import { Avatar } from '../../components/ui/avatar';
+import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
+import { Field, FieldError, Input, Select } from '../../components/ui/field';
+import { Kbd } from '../../components/ui/kbd';
+import { Row, RowAge, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
+import { SettingsGroup, SettingsSection } from '../../components/ui/settings';
+import { useNow } from '../../hooks/useNow';
+import { useShortcut } from '../../hooks/useShortcut';
+import { useRetryKey } from '../../hooks/useTasks';
+import { useInvite, useMembers, useRemoveMember, useRevokeInvitation } from '../../hooks/useWorkspace';
+import { ageMs, formatAge } from '../../lib/format';
 
 const ROLE_WORDS: Readonly<Record<WorkspaceRole, string>> = { owner: 'Owner', member: 'Member' };
 
-/**
- * The workspace's members and pending invitations. Only an owner reads them,
- * and an owner invites a GitHub account (`I`), revokes an invitation and
- * removes a member.
- */
-export default function MembersRoute() {
-  usePageTitle('Members');
-  const owner = useIsOwner();
-  const [inviting, setInviting] = useState(false);
-  useShortcut('i', () => setInviting(true), owner && !inviting);
+const counted = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
+/**
+ * Settings's Members tab, for an owner: the workspace's members and pending
+ * invitations. An owner invites a GitHub account (`I`), revokes an
+ * invitation and removes a member. Settings shows the tab to owners alone.
+ */
+export function MembersSection() {
+  const [inviting, setInviting] = useState(false);
+  useShortcut('i', () => setInviting(true), !inviting);
   return (
-    <>
-      <TopBar title="Members">
-        <BarSpacer />
-        {owner ? (
-          <Button
-            variant="primary"
-            disabled={inviting}
-            onClick={() => setInviting(true)}
-            aria-label="Invite"
-            aria-keyshortcuts="I"
-            className="max-sm:w-9 max-sm:px-0"
-          >
-            <UserPlus aria-hidden />
-            <span className="max-sm:hidden">Invite</span>
-            <Kbd className="max-sm:hidden">I</Kbd>
-          </Button>
-        ) : null}
-      </TopBar>
-      {owner && inviting ? <InviteForm onDone={() => setInviting(false)} /> : null}
-      {owner ? <MemberList /> : <EmptyState icon={<Users aria-hidden />} title="Only owners see members" />}
-    </>
+    <SettingsSection
+      title="Members"
+      description="The people who use this workspace, and the GitHub accounts invited to it."
+      action={
+        <Button
+          variant="primary"
+          disabled={inviting}
+          onClick={() => setInviting(true)}
+          aria-label="Invite"
+          aria-keyshortcuts="I"
+          className="max-sm:w-9 max-sm:px-0"
+        >
+          <UserPlus aria-hidden />
+          <span className="max-sm:hidden">Invite</span>
+          <Kbd className="max-sm:hidden">I</Kbd>
+        </Button>
+      }
+    >
+      {inviting ? <InviteForm onDone={() => setInviting(false)} /> : null}
+      <MemberList />
+    </SettingsSection>
   );
 }
 
@@ -61,41 +58,32 @@ function MemberList() {
   const members = useMembers(true);
   if (members.isError)
     return (
-      <div className="p-6 max-sm:p-4">
-        <ReadFailed
-          title="Couldn't load the members"
-          error={members.error}
-          retrying={members.isFetching}
-          onRetry={() => void members.refetch()}
-        />
-      </div>
+      <ReadFailed
+        title="Couldn't load the members"
+        error={members.error}
+        retrying={members.isFetching}
+        onRetry={() => void members.refetch()}
+      />
     );
-  if (members.isPending)
-    return (
-      <div className="p-6 max-sm:p-4">
-        <PageSkeleton shape="list" />
-      </div>
-    );
+  if (members.isPending) return <PageSkeleton shape="list" />;
   const { members: people, invitations } = members.data;
   return (
     <>
-      <section aria-label="Members">
-        <GroupHeader label="Members" count={people.length} />
-        <ul className="m-0 list-none p-0">
+      <SettingsGroup title={counted(people.length, 'member')}>
+        <ul className="m-0 list-none p-0 [&>li:last-child>div]:border-b-0" aria-label="Members">
           {people.map((member) => (
             <MemberRow key={member.userId} member={member} />
           ))}
         </ul>
-      </section>
+      </SettingsGroup>
       {invitations.length > 0 ? (
-        <section aria-label="Invitations">
-          <GroupHeader label="Invitations" count={invitations.length} />
-          <ul className="m-0 list-none p-0">
+        <SettingsGroup title={counted(invitations.length, 'invitation')}>
+          <ul className="m-0 list-none p-0 [&>li:last-child>div]:border-b-0" aria-label="Invitations">
             {invitations.map((invitation) => (
               <InvitationRow key={invitation.invitationId} invitation={invitation} />
             ))}
           </ul>
-        </section>
+        </SettingsGroup>
       ) : null}
     </>
   );
@@ -134,7 +122,7 @@ function MemberRow({ member }: { member: WorkspaceMember }) {
   );
   return (
     <li>
-      <Row data-member-row={member.userId}>
+      <Row data-member-row={member.userId} className="ps-4 pe-2">
         <Avatar name={member.name} size={20} decorative />
         <RowTitle>{member.name}</RowTitle>
         {member.githubLogin ? <RowMeta>{member.githubLogin}</RowMeta> : null}
@@ -151,7 +139,7 @@ function InvitationRow({ invitation }: { invitation: WorkspaceInvitation }) {
   const now = useNow();
   return (
     <li>
-      <Row data-invitation-row={invitation.invitationId}>
+      <Row data-invitation-row={invitation.invitationId} className="ps-4 pe-2">
         <UserPlus aria-hidden size={14} className="shrink-0 text-ink-3" />
         <RowTitle>{invitation.githubLogin}</RowTitle>
         <RowSpacer />
@@ -202,7 +190,7 @@ function InviteForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="border-b border-border px-5.5 py-4 max-sm:px-4">
+    <div>
       <form
         className="flex flex-col gap-3 rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border"
         aria-label="Invite"

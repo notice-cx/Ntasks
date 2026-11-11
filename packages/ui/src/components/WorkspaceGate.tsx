@@ -59,7 +59,7 @@ export function WorkspaceGate() {
   const switchTo = useCallback((next: string) => setChosen(next), []);
   const navigate = useNavigate();
   const paths = usePaths();
-  // A new workspace opens at once on its Projects page, where its first project is made.
+  // A new workspace opens at once on Settings's Projects tab, where its first project is made.
   const created = useCallback(
     (added: Workspace) => {
       client.setQueryData<readonly Workspace[]>(WORKSPACES_KEY, (known = []) => [

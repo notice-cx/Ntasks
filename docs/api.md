@@ -770,8 +770,8 @@ projects of the workspace the sender may change, to its stage:
 - A `merged` signal that names exactly one commit records it as the task's
   merge commit, which a later `live` signal matches.
 - A project says whether its changes go live by a deploy (`deploys`,
-  `false` when it is made). Its owner sets it on the web app's Projects page
-  or with `PATCH /api/tasks/projects`. For a project that does not deploy,
+  `false` when it is made). Its owner sets it in the web app, in Settings,
+  Projects, Edit, or with `PATCH /api/tasks/projects`. For a project that does not deploy,
   merged is the last stage: a `live` signal moves its tasks to `merged`.
 
 The answer lists each task moved, as `{ id, stage }`; a task in a project
@@ -876,8 +876,8 @@ switched off moves no task.
 
 A deploy also turns on **Changes go live by a deploy** for the projects of
 the tasks it names, so their tasks go live without anyone ticking it. It does
-so once for each project: an owner who turns the setting off again on the
-Projects page keeps it off.
+so once for each project: an owner who turns the setting off again in
+Settings, Projects keeps it off.
 
 A merge GitHub made before the task closed sends its event too early to move
 the task, and a deploy can ship a task that no delivery names, so the

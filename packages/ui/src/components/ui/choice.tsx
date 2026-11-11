@@ -1,5 +1,6 @@
 import { Check, Star } from 'lucide-react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { TASK_CHOICE_KEYS, type TaskChoiceKey } from '../../api/types';
 import { choiceName } from '../../lib/task-model';
 import { cn } from '../../lib/utils';
@@ -210,6 +211,51 @@ function OptionFace({ option, chosen = false }: { option: ChoiceOption; chosen?:
   );
 }
 
+/** A tab of `Tabs` or `TabLinks`: the current one ringed on Surface, the others in Text 3. */
+function tabClass(on: boolean): string {
+  return cn(
+    'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-label font-medium whitespace-nowrap no-underline pointer-coarse:h-7.5',
+    'transition-colors duration-120 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    on ? 'bg-surface text-ink inset-ring inset-ring-border' : 'text-ink-3 hover:text-ink',
+  );
+}
+
+/**
+ * A page's sections, each at an address of its own, drawn as `Tabs` are: the
+ * current one is the page. In a row too narrow for them all, the current one
+ * is scrolled into view.
+ */
+export function TabLinks({
+  label,
+  items,
+  className,
+}: {
+  label: string;
+  items: readonly { to: string; label: ReactNode; current: boolean }[];
+  className?: string;
+}) {
+  const current = useRef<HTMLAnchorElement>(null);
+  const shown = items.find((item) => item.current)?.to;
+  useEffect(() => {
+    current.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [shown]);
+  return (
+    <nav aria-label={label} className={cn('flex gap-0.5', className)}>
+      {items.map((item) => (
+        <Link
+          key={item.to}
+          ref={item.current ? current : undefined}
+          to={item.to}
+          aria-current={item.current ? 'page' : undefined}
+          className={tabClass(item.current)}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 /** A page's views, such as All, Active and Done: the current one is ringed on Surface. */
 export function Tabs<T extends string>({
   label,
@@ -233,11 +279,7 @@ export function Tabs<T extends string>({
             key={item.value}
             type="button"
             aria-pressed={on}
-            className={cn(
-              'inline-flex h-6.5 items-center rounded-md px-2.25 text-label font-medium pointer-coarse:h-7.5',
-              'transition-colors duration-120 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-              on ? 'bg-surface text-ink inset-ring inset-ring-border' : 'text-ink-3 hover:text-ink',
-            )}
+            className={tabClass(on)}
             onClick={() => onChange(item.value)}
           >
             {item.label}

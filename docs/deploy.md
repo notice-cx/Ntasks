@@ -175,10 +175,10 @@ A new deployment, or `pnpm dev`, needs `AUTH_SECRET` first
 2. **Create a workspace.** An admin who belongs to no workspace sees one
    step, New workspace, and owns the workspace it creates. A workspace keeps
    its own projects, tasks and members apart from every other. Its owner
-   renames it on the Settings page.
-3. **Create a project.** The Projects page opens with New project: a name and
+   renames it in Settings, Workspace.
+3. **Create a project.** Settings, Projects opens with New project: a name and
    a prefix, the letters and digits that start every task id in the project
-   (`web` gives `web-a1b2`). On the Members page, an owner invites people by
+   (`web` gives `web-a1b2`). In Settings, Members, an owner invites people by
    GitHub username; each joins when they first sign in.
 4. **Connect an agent.** Run
    `curl -fsSL https://raw.githubusercontent.com/notice-cx/Ntasks/main/install.sh | bash`

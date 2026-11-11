@@ -1,15 +1,18 @@
 import { Copy } from 'lucide-react';
 import { useId, useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { refusedField } from '../api/client';
 import type { ConnectedApp, GitHubAppStart, GitHubWebhook, Workspace } from '../api/types';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Button, IconButton } from '../components/ui/button';
+import { TabLinks } from '../components/ui/choice';
 import { Field, FieldError, Input, Select, Textarea } from '../components/ui/field';
 import { Row, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
+import { SettingsGroup, SettingsRow, SettingsSection } from '../components/ui/settings';
 import { TopBar } from '../components/ui/shell';
 import { WorkspaceIcon } from '../components/ui/symbols';
+import { useMedia } from '../hooks/useMedia';
 import { useRetryKey } from '../hooks/useTasks';
 import {
   useAccount,
@@ -30,32 +33,127 @@ import {
 import { copyText } from '../lib/clipboard';
 import { browserTimeZone, timeZoneNames } from '../lib/dates';
 import { usePageTitle } from '../lib/page-title';
+import { usePaths } from '../lib/paths';
+import { MembersSection } from './settings/MembersSection';
+import { ProjectsSection } from './settings/ProjectsSection';
+
+/** Settings's tabs, in order: the workspace's first, then the person's own. An owner alone sees Members and GitHub. */
+const TABS = [
+  { key: 'workspace', label: 'Workspace', owner: false },
+  { key: 'projects', label: 'Projects', owner: false },
+  { key: 'members', label: 'Members', owner: true },
+  { key: 'github', label: 'GitHub', owner: true },
+  { key: 'apps', label: 'Apps', owner: false },
+  { key: 'you', label: 'You', owner: false },
+] as const;
+type Tab = (typeof TABS)[number]['key'];
+
+/** Below 64rem the top bar has no room for every tab, so they take a row of their own under it. */
+const NARROW = '(width < 64rem)';
 
 /**
- * The open workspace's name and id, its connected apps, and for an owner its
- * GitHub webhook. An owner renames it; anyone else reads the name. The name
- * is only shown: the API and agents name a workspace by its id, which never
- * changes.
+ * Settings: one tab at a time, each at its own address under the top bar's
+ * tabs. Workspace is the workspace's name and ID; Projects and Members its
+ * projects and people; GitHub how merges and deploys reach it; Apps the apps
+ * that act for whoever signs in to them; You the person's own settings in
+ * every workspace. `/settings` opens the first tab, as does a tab this
+ * sign-in may not open, except that GitHub's return from an installation,
+ * which names `installation_id` or `github`, opens the GitHub tab.
  */
 export default function SettingsRoute() {
-  usePageTitle('Settings');
+  const { tab } = useParams();
+  const [params] = useSearchParams();
   const { workspace } = useWorkspace();
+  const paths = usePaths();
+  const narrow = useMedia(NARROW);
+  const owner = workspace.role === 'owner';
+  const tabs = TABS.filter((entry) => owner || !entry.owner);
+  const current = tabs.find((entry) => entry.key === tab);
+  usePageTitle(current?.label ?? 'Settings', current === undefined ? null : 'Settings');
+  if (current === undefined) {
+    const fromGitHub = owner && tab === undefined && (params.has('installation_id') || params.has('github'));
+    const to = paths.settingsTab(fromGitHub ? 'github' : tabs[0]!.key);
+    return <Navigate to={{ pathname: to, search: fromGitHub ? `?${params}` : '' }} replace />;
+  }
+
+  const tabLinks = (
+    <TabLinks
+      label="Settings"
+      items={tabs.map((entry) => ({
+        to: paths.settingsTab(entry.key),
+        label: entry.label,
+        current: entry.key === current.key,
+      }))}
+    />
+  );
   return (
     <>
-      <TopBar title="Settings" />
-      <div className="flex max-w-140 flex-col gap-5 px-6 py-6 max-sm:px-4">
-        <div className="flex items-center gap-3">
-          <WorkspaceIcon workspaceId={workspace.workspaceId} name={workspace.name} size={32} />
-          <p className="m-0 text-label text-ink-2">People see the name; agents and the API use the ID.</p>
+      <TopBar title="Settings">{narrow ? null : tabLinks}</TopBar>
+      {narrow ? (
+        <div
+          className="overflow-x-auto border-b border-border px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          data-narrow-views=""
+        >
+          {tabLinks}
         </div>
+      ) : null}
+      <div className="flex w-full max-w-180 flex-col px-6 py-6 max-sm:px-4" data-settings-tab={current.key}>
+        <TabContent tab={current.key} workspace={workspace} />
+      </div>
+    </>
+  );
+}
+
+function TabContent({ tab, workspace }: { tab: Tab; workspace: Workspace }) {
+  switch (tab) {
+    case 'you':
+      return <YouSection />;
+    case 'workspace':
+      return <WorkspaceSection workspace={workspace} />;
+    case 'projects':
+      return <ProjectsSection />;
+    case 'members':
+      return <MembersSection />;
+    case 'github':
+      return <GitHubWebhookSection />;
+    case 'apps':
+      return <ConnectedApps owner={workspace.role === 'owner'} />;
+  }
+}
+
+/** The person's own settings, which apply in every workspace. */
+function YouSection() {
+  const account = useAccount(true);
+  return (
+    <SettingsSection title="You" description="Your own settings, in every workspace.">
+      <SettingsGroup>
+        <SettingsRow label="Name">
+          <span className="min-w-0 truncate">{account.data?.name ?? ''}</span>
+        </SettingsRow>
+        <TimeZoneSetting />
+      </SettingsGroup>
+    </SettingsSection>
+  );
+}
+
+/** The workspace's name and ID. An owner renames it; anyone else reads the name. The API and agents name a
+ * workspace by its ID, which never changes. */
+function WorkspaceSection({ workspace }: { workspace: Workspace }) {
+  return (
+    <SettingsSection
+      title="Workspace"
+      description="People see the name; agents and the API use the ID."
+      icon={<WorkspaceIcon workspaceId={workspace.workspaceId} name={workspace.name} size={32} />}
+    >
+      <SettingsGroup>
         {workspace.role === 'owner' ? (
-          <RenameForm workspace={workspace} />
+          <RenameRow workspace={workspace} />
         ) : (
-          <Setting label="Name">
+          <SettingsRow label="Name">
             <span className="min-w-0 truncate">{workspace.name}</span>
-          </Setting>
+          </SettingsRow>
         )}
-        <Setting label="ID">
+        <SettingsRow label="ID">
           <code className="min-w-0 truncate font-mono text-code text-ink">{workspace.workspaceId}</code>
           <IconButton
             size="sm"
@@ -63,12 +161,9 @@ export default function SettingsRoute() {
             icon={<Copy aria-hidden />}
             onClick={() => void copyText(workspace.workspaceId, 'the ID')}
           />
-        </Setting>
-        <TimeZoneSetting />
-        <ConnectedApps owner={workspace.role === 'owner'} />
-        {workspace.role === 'owner' ? <GitHubWebhookSection /> : null}
-      </div>
-    </>
+        </SettingsRow>
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
@@ -95,27 +190,29 @@ function ConnectedApps({ owner }: { owner: boolean }) {
   else if (apps.data.length === 0) list = <p className="m-0 text-label text-ink-3">No apps yet.</p>;
   else
     list = (
-      <ul className="m-0 list-none overflow-hidden rounded-lg p-0 inset-ring inset-ring-border [&>li:last-child>div]:border-b-0">
-        {apps.data.map((app) => (
-          <AppRow key={app.clientId} app={app} owner={owner} />
-        ))}
-      </ul>
+      <SettingsGroup>
+        <ul className="m-0 list-none p-0 [&>li:last-child>div]:border-b-0" aria-label="Connected apps">
+          {apps.data.map((app) => (
+            <AppRow key={app.clientId} app={app} owner={owner} />
+          ))}
+        </ul>
+      </SettingsGroup>
     );
   return (
-    <section aria-label="Connected apps" className="flex flex-col gap-3 pt-2">
-      <div className="flex items-center gap-2">
-        <h2 className="m-0 text-label font-medium text-ink">Connected apps</h2>
-        <span className="flex-1" />
-        {owner && !registering ? (
-          <Button size="sm" onClick={() => setRegistering(true)}>
+    <SettingsSection
+      title="Connected apps"
+      description="An app here acts as whoever signs in to it, in this workspace only."
+      action={
+        owner ? (
+          <Button disabled={registering} onClick={() => setRegistering(true)}>
             Register app
           </Button>
-        ) : null}
-      </div>
-      <p className="m-0 text-label text-ink-2">An app here acts as whoever signs in to it, in this workspace only.</p>
+        ) : undefined
+      }
+    >
       {owner && registering ? <RegisterAppForm onDone={() => setRegistering(false)} /> : null}
       {list}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -127,7 +224,7 @@ function AppRow({ app, owner }: { app: ConnectedApp; owner: boolean }) {
   const where = app.redirectUris[0] ? new URL(app.redirectUris[0]).host : null;
   return (
     <li>
-      <Row data-app-row={app.clientId} className="ps-3 pe-2">
+      <Row data-app-row={app.clientId} className="ps-4 pe-2">
         <RowTitle>{app.name}</RowTitle>
         {/* The address gives way before the name does. */}
         {where ? <RowMeta className="block min-w-0 shrink-[4] truncate">{where}</RowMeta> : null}
@@ -295,13 +392,12 @@ function GitHubWebhookSection() {
   else if (github.data.app !== null) body = <GitHubConnected github={github.data} />;
   else body = <GitHubConnect github={github.data} retry={params.get('github') === 'retry'} />;
   return (
-    <section aria-label="GitHub" className="flex flex-col gap-3 pt-2">
-      <h2 className="m-0 text-label font-medium text-ink">GitHub</h2>
-      <p className="m-0 text-label text-ink-2">
-        GitHub moves a closed task to Merged when its pull request merges, and to Live when its deploy passes.
-      </p>
+    <SettingsSection
+      title="GitHub"
+      description="GitHub moves a closed task to Merged when its pull request merges, and to Live when its deploy passes."
+    >
       {body}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -323,13 +419,13 @@ function postToGitHub({ action, manifest }: GitHubAppStart): void {
 function GitHubConnect({ github, retry }: { github: GitHubWebhook; retry: boolean }) {
   const connect = useConnectGitHub();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
       {retry ? (
         <p role="status" className="m-0 text-label text-ink">
           GitHub didn't finish connecting. Press Connect GitHub again.
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-3 inset-ring inset-ring-border">
         <Button
           variant="primary"
           disabled={connect.isPending}
@@ -346,13 +442,10 @@ function GitHubConnect({ github, retry }: { github: GitHubWebhook; retry: boolea
           GitHub makes an app for this workspace. Then install it on your account and your organizations.
         </p>
       </div>
-      <details className="group" open={github.updatedAt !== null}>
-        <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
-        <div className="pt-3">
-          {/* A save gives the form the saved values to start from again. */}
-          <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
-        </div>
-      </details>
+      <ByHand open={github.updatedAt !== null}>
+        {/* A save gives the form the saved values to start from again. */}
+        <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
+      </ByHand>
     </div>
   );
 }
@@ -364,70 +457,78 @@ function GitHubConnected({ github }: { github: GitHubWebhook }) {
   const setCheck = useSetDeployCheck();
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="flex flex-col gap-4">
-      <Setting label="App">
-        <a href={app.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-ink underline">
-          {app.slug}
-        </a>
-      </Setting>
-      <div className="flex flex-col gap-1.5" data-github-installations="">
-        <span className="text-label font-medium text-ink-2">Installed on</span>
-        {github.installations.length === 0 ? (
-          <p className="m-0 text-label text-ink-3">No account yet.</p>
-        ) : (
-          <ul className="m-0 list-none overflow-hidden rounded-lg p-0 inset-ring inset-ring-border [&>li:last-child>div]:border-b-0">
-            {github.installations.map((installation) => (
-              <li key={installation.installationId}>
-                <Row className="ps-3 pe-2">
-                  <RowTitle>{installation.account}</RowTitle>
-                  <RowMeta>{installation.accountType === 'Organization' ? 'Organization' : 'Account'}</RowMeta>
-                </Row>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="flex flex-wrap gap-2 pt-1.5">
-          <Button asChild size="sm" variant="primary">
-            <a href={app.accountInstallUrl}>Install on your account</a>
-          </Button>
-          <Button asChild size="sm">
-            <a href={app.installUrl}>Install on an organization</a>
-          </Button>
+    <div className="flex flex-col gap-5">
+      <SettingsGroup>
+        <SettingsRow label="App">
+          <a href={app.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-ink underline">
+            {app.slug}
+          </a>
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title="Installed on">
+        <div data-github-installations="">
+          {github.installations.length === 0 ? (
+            <p className="m-0 px-4 py-3 text-label text-ink-3">No account yet.</p>
+          ) : (
+            <ul className="m-0 list-none p-0">
+              {github.installations.map((installation) => (
+                <li key={installation.installationId}>
+                  <Row className="ps-4 pe-2">
+                    <RowTitle>{installation.account}</RowTitle>
+                    <RowMeta>{installation.accountType === 'Organization' ? 'Organization' : 'Account'}</RowMeta>
+                  </Row>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap gap-2 px-4 py-3">
+            <Button asChild size="sm" variant="primary">
+              <a href={app.accountInstallUrl}>Install on your account</a>
+            </Button>
+            <Button asChild size="sm">
+              <a href={app.installUrl}>Install on an organization</a>
+            </Button>
+          </div>
         </div>
-      </div>
-      <div className="flex flex-col gap-1.5" data-github-deploys="">
-        <span className="text-label font-medium text-ink-2">Deploys</span>
-        {github.detected.length === 0 ? (
-          <p className="m-0 text-label text-ink-3">
-            None seen yet. A passing Workers Builds check or a production deployment shows here.
-          </p>
-        ) : (
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-            {github.detected.map((check) => (
-              <li key={check.name}>
-                <label className="flex items-center gap-2 text-label text-ink">
-                  <input
-                    type="checkbox"
-                    className="size-[15px] accent-accent"
-                    checked={
-                      setCheck.isPending && setCheck.variables.name === check.name ? setCheck.variables.on : check.on
-                    }
-                    disabled={setCheck.isPending}
-                    aria-label={`${check.name} counts as a deploy`}
-                    onChange={(event) =>
-                      setCheck.mutate(
-                        { name: check.name, on: event.target.checked },
-                        { onError: (error) => toast.error(error.message) },
-                      )
-                    }
-                  />
-                  <span className="min-w-0 truncate">{check.name}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      </SettingsGroup>
+      <SettingsGroup title="Deploys">
+        <div data-github-deploys="">
+          {github.detected.length === 0 ? (
+            <p className="m-0 px-4 py-3 text-label text-ink-3">
+              None seen yet. A passing Workers Builds check or a production deployment shows here.
+            </p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-2 px-4 py-3">
+              {github.detected.map((check) => (
+                <li key={check.name}>
+                  <label className="flex items-center gap-2 text-label text-ink">
+                    <input
+                      type="checkbox"
+                      className="size-[15px] accent-accent"
+                      checked={
+                        setCheck.isPending && setCheck.variables.name === check.name ? setCheck.variables.on : check.on
+                      }
+                      disabled={setCheck.isPending}
+                      aria-label={`${check.name} counts as a deploy`}
+                      onChange={(event) =>
+                        setCheck.mutate(
+                          { name: check.name, on: event.target.checked },
+                          { onError: (error) => toast.error(error.message) },
+                        )
+                      }
+                    />
+                    <span className="min-w-0 truncate">{check.name}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </SettingsGroup>
+      {/* A webhook set up by hand works beside the app: its owner can add, change or remove one at any time. */}
+      <ByHand open={false}>
+        <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
+      </ByHand>
       <div className="flex flex-wrap items-center gap-2">
         {confirming ? (
           <>
@@ -453,19 +554,22 @@ function GitHubConnected({ github }: { github: GitHubWebhook }) {
             </Button>
           </>
         ) : (
-          <Button type="button" variant="ghost" onClick={() => setConfirming(true)}>
+          <Button type="button" onClick={() => setConfirming(true)}>
             Disconnect
           </Button>
         )}
       </div>
-      {/* A webhook set up by hand works beside the app: its owner can add, change or remove one at any time. */}
-      <details className="group">
-        <summary className="cursor-pointer text-label text-ink-2">Set up by hand</summary>
-        <div className="pt-3">
-          <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
-        </div>
-      </details>
     </div>
+  );
+}
+
+/** The GitHub webhook set up by hand, folded under its own heading on a panel. */
+function ByHand({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <details className="group rounded-xl px-4 py-3 inset-ring inset-ring-border" open={open}>
+      <summary className="cursor-pointer text-label font-medium text-ink">Set up by hand</summary>
+      <div className="pt-3">{children}</div>
+    </details>
   );
 }
 
@@ -638,15 +742,19 @@ function Setting({ label, children }: { label: string; children: ReactNode }) {
 function TimeZoneSetting() {
   const account = useAccount(true);
   const save = useSetTimeZone();
+  const id = useId();
   const zones = useMemo(timeZoneNames, []);
   const browser = browserTimeZone();
   const chosen = account.data?.timeZone ?? '';
   const failed = save.error === null ? null : save.error.message || 'The time zone was not saved.';
   return (
-    <Field label="Your time zone" error={failed}>
+    <SettingsRow label="Time zone" labelFor={id} error={failed}>
       <Select
+        id={id}
+        className="w-72 max-sm:w-full"
         value={chosen}
         disabled={account.data === undefined || save.isPending}
+        aria-invalid={failed === null ? undefined : true}
         onChange={(event) => {
           const zone = event.target.value === '' ? null : event.target.value;
           save.mutate(zone, { onSuccess: () => toast.success(`Dates now show in ${zoneName(zone ?? browser)}`) });
@@ -660,26 +768,24 @@ function TimeZoneSetting() {
           </option>
         ))}
       </Select>
-    </Field>
+    </SettingsRow>
   );
 }
 
 /** A time zone's IANA name as a person reads it: `America/Los Angeles`. */
 const zoneName = (zone: string) => zone.replaceAll('_', ' ');
 
-/** The name, required, saved with Save or Enter. A refusal shows under it. */
-function RenameForm({ workspace }: { workspace: Workspace }) {
+/** The workspace's name, required, saved with Save or Enter. A refusal shows under it. */
+function RenameRow({ workspace }: { workspace: Workspace }) {
   const rename = useRenameWorkspace();
-  const errorId = useId();
+  const id = useId();
   const [name, setName] = useState(workspace.name);
   const trimmed = name.trim();
   const ready = trimmed !== '' && trimmed !== workspace.name && !rename.isPending;
-  const refused = refusedField(rename.error, ['name'] as const);
   const said = rename.error?.message ?? null;
 
   return (
     <form
-      className="flex flex-col gap-3"
       aria-label="Rename"
       noValidate
       onSubmit={(event) => {
@@ -696,8 +802,13 @@ function RenameForm({ workspace }: { workspace: Workspace }) {
         );
       }}
     >
-      <Field label="Name" required error={refused === 'name' ? said : null}>
+      <SettingsRow label="Name" labelFor={id} error={said}>
         <Input
+          boxClassName="w-64 max-sm:w-full"
+          id={id}
+          required
+          aria-required
+          aria-invalid={said === null ? undefined : true}
           autoComplete="off"
           value={name}
           disabled={rename.isPending}
@@ -707,13 +818,10 @@ function RenameForm({ workspace }: { workspace: Workspace }) {
             setName(event.target.value);
           }}
         />
-      </Field>
-      {said !== null && refused === null ? <FieldError id={errorId}>{said}</FieldError> : null}
-      <div>
         <Button variant="primary" type="submit" disabled={!ready}>
           {rename.isPending ? 'Saving…' : 'Save'}
         </Button>
-      </div>
+      </SettingsRow>
     </form>
   );
 }

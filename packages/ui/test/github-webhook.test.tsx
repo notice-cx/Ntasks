@@ -40,7 +40,7 @@ describe('Connect GitHub on the Settings page', () => {
   it('posts the manifest to GitHub from one button', async () => {
     const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
     try {
-      renderApp('/tasks/settings', createFixtureTasksApi());
+      renderApp('/tasks/settings/github', createFixtureTasksApi());
       fireEvent.click(await enabledButton('Connect GitHub'));
       await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
       const form = submit.mock.contexts[0] as HTMLFormElement;
@@ -58,7 +58,7 @@ describe('Connect GitHub on the Settings page', () => {
   });
 
   it('keeps a webhook saved by hand reachable once the app is connected', async () => {
-    renderApp('/tasks/settings', connectedApi(true));
+    renderApp('/tasks/settings/github', connectedApi(true));
     const section = await screen.findByRole('region', { name: 'GitHub' });
     expect(await within(section).findByText('example-org')).toBeTruthy();
     expect(within(section).getByText('Set up by hand')).toBeTruthy();
@@ -67,7 +67,7 @@ describe('Connect GitHub on the Settings page', () => {
 
   it('shows where the app is installed, links to install it, switches a deploy off and disconnects', async () => {
     const api = connectedApi();
-    renderApp('/tasks/settings', api);
+    renderApp('/tasks/settings/github', api);
     const section = await screen.findByRole('region', { name: 'GitHub' });
     expect(await within(section).findByText('example-org')).toBeTruthy();
     expect(within(section).getByRole('link', { name: 'ntasks-example' }).getAttribute('href')).toBe(
@@ -95,7 +95,7 @@ describe('Connect GitHub on the Settings page', () => {
 describe('the GitHub webhook on the Settings page', () => {
   it('lets an owner make a secret, save it with deploy checks, change the checks alone and remove the webhook', async () => {
     const api = createFixtureTasksApi();
-    renderApp('/tasks/settings', api);
+    renderApp('/tasks/settings/github', api);
     let form = await webhookForm();
     expect(within(form).getByText(/\/api\/github\/0f6c2a52-6d1e-4c39-9a57-2f1b8e4d7a10$/u)).toBeTruthy();
     expect(within(form).getByRole<HTMLButtonElement>('button', { name: 'Save' }).disabled).toBe(true);
@@ -131,7 +131,7 @@ describe('the GitHub webhook on the Settings page', () => {
   });
 
   it('shows a refused secret under its field', async () => {
-    renderApp('/tasks/settings', createFixtureTasksApi());
+    renderApp('/tasks/settings/github', createFixtureTasksApi());
     const form = await webhookForm();
     const secret = within(form).getByLabelText<HTMLInputElement>(/^Secret/);
     fireEvent.change(secret, { target: { value: 'too short' } });
@@ -143,8 +143,10 @@ describe('the GitHub webhook on the Settings page', () => {
 
   it('is not shown to a member', async () => {
     const [, labs] = fixtureWorkspaces(Date.now());
-    renderApp('/tasks/settings', createFixtureTasksApi({ workspaces: labs ? [labs] : [] }));
-    await screen.findByRole('region', { name: 'Connected apps' });
+    renderApp('/tasks/settings/github', createFixtureTasksApi({ workspaces: labs ? [labs] : [] }));
+    // The tab is not offered, and its address opens the first tab instead.
+    await screen.findByRole('region', { name: 'Workspace' });
+    expect(screen.queryByRole('link', { name: 'GitHub' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'GitHub' })).toBeNull();
   });
 });

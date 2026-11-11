@@ -84,7 +84,7 @@ move it from there:
   to move it to Live; GitHub keeps them for 3 days, and after that a signal
   (below) does it. The event turns on **Changes go live by a deploy** for
   a project no deploy has turned it on for; where an owner turned it off,
-  turn it on again on the Projects page first.
+  turn it on again in Settings, Projects first.
 - **Many tasks waiting at once.** Each check reads up to about 40 pull
   requests, starting from the newest waiting task, within the free plan's
   limit on requests. While many newer tasks wait, an older one can stay at
