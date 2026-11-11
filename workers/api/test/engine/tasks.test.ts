@@ -2,9 +2,9 @@
 // metadata, comments and input checks. The groups follow Beads' backend
 // conformance suite (MIT License, Copyright (c) 2025 Beads Contributors;
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
-import { isTaskId } from '@ntasks/domain';
+import { isTaskId, type Task } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { AGENT, clock, engine, expectRefusal, newProject, OWNER } from './helpers.ts';
+import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OWNER } from './helpers.ts';
 
 describe('creating and reading a task', () => {
   it('returns the new task with its fields, its filer and version 1', async () => {
@@ -101,7 +101,7 @@ describe('creating and reading a task', () => {
   });
 });
 
-describe('searching and paging', () => {
+describe('listing', () => {
   it('lists most urgent first, then oldest, and filters by status, assignee, parent and label', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
@@ -127,42 +127,12 @@ describe('searching and paging', () => {
       AGENT,
     );
 
-    const all = await tasks.listTasks(project.id, { limit: 50 });
-    expect(all.tasks.map((task) => task.title)).toEqual(['Urgent', 'Epic', 'Child', 'Low']);
-    expect(
-      (await tasks.listTasks(project.id, { limit: 50, statuses: ['in_progress'] })).tasks.map((task) => task.id),
-    ).toEqual([low.id]);
-    expect(
-      (await tasks.listTasks(project.id, { limit: 50, assignee: AGENT.name })).tasks.map((task) => task.id),
-    ).toEqual([low.id]);
-    expect((await tasks.listTasks(project.id, { limit: 50, parentId: epic.id })).tasks.map((task) => task.id)).toEqual([
-      child.id,
-    ]);
-    expect((await tasks.listTasks(project.id, { limit: 50, labels: ['ops'] })).tasks.map((task) => task.id)).toEqual([
-      urgent.id,
-      child.id,
-    ]);
-  });
-
-  it('pages through every task once, in order, with a cursor', async () => {
-    const time = clock();
-    const tasks = engine({ now: time.now });
-    const project = await newProject(tasks);
-    const ids: string[] = [];
-    for (let index = 0; index < 7; index += 1) {
-      time.advance(1);
-      ids.push((await tasks.createTask(project.id, { title: `Task ${index}` }, AGENT)).task.id);
-    }
-
-    const seen: string[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await tasks.listTasks(project.id, { limit: 3, ...(cursor === undefined ? {} : { cursor }) });
-      seen.push(...page.tasks.map((task) => task.id));
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor !== undefined);
-
-    expect(seen).toEqual(ids);
+    const ids = (listed: readonly Task[]) => listed.map((task) => task.id);
+    expect((await everyTask(tasks, project.id)).map((task) => task.title)).toEqual(['Urgent', 'Epic', 'Child', 'Low']);
+    expect(ids(await tasks.listBoard(project.id, { statuses: ['in_progress'] }))).toEqual([low.id]);
+    expect(ids(await everyTask(tasks, project.id, { assignee: AGENT.name }))).toEqual([low.id]);
+    expect(ids(await everyTask(tasks, project.id, { parentId: epic.id }))).toEqual([child.id]);
+    expect(ids(await everyTask(tasks, project.id, { labels: ['ops'] }))).toEqual([urgent.id, child.id]);
   });
 
   it('filters closed tasks by when they closed', async () => {
@@ -186,21 +156,9 @@ describe('searching and paging', () => {
       AGENT,
     );
 
-    expect((await tasks.listTasks(project.id, { limit: 50, closedSince: cut })).tasks.map((task) => task.id)).toEqual([
+    expect((await tasks.listBoard(project.id, { statuses: [], closedSince: cut })).map((task) => task.id)).toEqual([
       late.id,
     ]);
-    expect((await tasks.listTasks(project.id, { limit: 50, closedBefore: cut })).tasks.map((task) => task.id)).toEqual([
-      early.id,
-    ]);
-  });
-
-  it('refuses a limit outside 1 to 200 and a cursor it did not make', async () => {
-    const tasks = engine();
-    const project = await newProject(tasks);
-
-    await expectRefusal(tasks.listTasks(project.id, { limit: 0 }), 'invalid');
-    await expectRefusal(tasks.listTasks(project.id, { limit: 201 }), 'invalid');
-    await expectRefusal(tasks.listTasks(project.id, { limit: 5, cursor: 'not-a-cursor' }), 'invalid');
   });
 });
 

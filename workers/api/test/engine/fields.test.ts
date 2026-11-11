@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createEngine } from '../../src/engine/index.ts';
 import type { Database, Statement } from '../../src/engine/database.ts';
 import { storeDatabase } from '../store.ts';
-import { AGENT, clock, engine, expectRefusal, newProject, OWNER, retryFor } from './helpers.ts';
+import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OWNER, retryFor } from './helpers.ts';
 
 /** One field of each type, a minute apart when given a clock. */
 async function defineEach(tasks: TaskEngine, projectId: string, time?: ReturnType<typeof clock>) {
@@ -157,7 +157,7 @@ describe('values', () => {
       );
       expect(refused.message, key).toBe(message);
     }
-    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(tasks, project.id)).toEqual([]);
     // A year below 100 is a date like any other, and a leap day only in a leap year.
     const early = await tasks.createTask(project.id, { title: 'Early', fields: { launch: '0050-01-01' } }, AGENT);
     expect(early.task.fields).toMatchObject({ launch: '0050-01-01' });
@@ -173,7 +173,7 @@ describe('values', () => {
 });
 
 describe('filters', () => {
-  it('narrow a list and a board to the tasks holding a value, and to a multiple-choice field holding an option', async () => {
+  it('narrow a board to the tasks holding a value, and to a multiple-choice field holding an option', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
     await defineEach(tasks, project.id);
@@ -182,12 +182,8 @@ describe('filters', () => {
     const a = await make('A', { severity: 'high', areas: ['web', 'api'], points: 3, public: true });
     const b = await make('B', { severity: 'low', areas: ['api'], points: 3.5, public: false });
     const c = await make('C', { severity: 'high' });
-    const listed = async (fields: Record<string, string | number | boolean>) => {
-      const list = (await tasks.listTasks(project.id, { limit: 50, fields })).tasks.map((task) => task.id);
-      const board = (await tasks.listBoard(project.id, { statuses: ['open'], fields })).map((task) => task.id);
-      expect(board.sort(), JSON.stringify(fields)).toEqual([...list].sort());
-      return list.sort();
-    };
+    const listed = async (fields: Record<string, string | number | boolean>) =>
+      (await tasks.listBoard(project.id, { statuses: ['open'], fields })).map((task) => task.id).sort();
     expect(await listed({ severity: 'high' })).toEqual([a, c].sort());
     expect(await listed({ areas: 'api' })).toEqual([a, b].sort());
     expect(await listed({ areas: 'web', severity: 'high' })).toEqual([a]);
@@ -215,7 +211,7 @@ describe('retiring a field', () => {
     expect(await tasks.retireField(project.id, 'points', AGENT)).toEqual({ ...retired, replayed: false });
 
     expect((await tasks.getTask(project.id, task.id))!.fields).toEqual({ points: 5, severity: 'low' });
-    expect((await tasks.listTasks(project.id, { limit: 10, fields: { points: 5 } })).tasks).toHaveLength(1);
+    expect(await everyTask(tasks, project.id, { fields: { points: 5 } })).toHaveLength(1);
     const refused = await expectRefusal(
       tasks.writeTask(project.id, task.id, { expectedVersion: 1, setFields: { points: 6 } }, AGENT),
       'invalid',
@@ -290,7 +286,7 @@ describe('a field retired while a write is made', () => {
       'invalid',
     );
     expect(refused.message).toBe('fields.size: Size is retired and takes no new values');
-    expect((await setUp.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id)).toEqual([task.id]);
+    expect((await everyTask(setUp, project.id)).map((row) => row.id)).toEqual([task.id]);
 
     const changing = createEngine(retiringBeforeBatch(project.id, 'tier'));
     await expectRefusal(

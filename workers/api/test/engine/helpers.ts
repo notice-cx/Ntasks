@@ -1,6 +1,14 @@
 // Shared set-up for the engine tests: a fresh project per test, a clock the
 // test moves, and the actors that act in them.
-import { TaskRefused, type Actor, type Project, type TaskEngine, type TaskRefusal } from '@ntasks/domain';
+import {
+  TaskRefused,
+  type Actor,
+  type Project,
+  type Task,
+  type TaskEngine,
+  type TaskFilters,
+  type TaskRefusal,
+} from '@ntasks/domain';
 import { expect } from 'vitest';
 import { createEngine, type EngineOptions } from '../../src/engine/index.ts';
 import { storeDatabase } from '../store.ts';
@@ -32,6 +40,16 @@ export async function newProject(tasks: TaskEngine): Promise<Project> {
     key: `${id.slice(0, 8)}.example.com`,
     name: 'Test project',
     prefix: `p${id.slice(0, 8)}`,
+  });
+}
+
+/** Every task of the project matching `filters`, closed ones of any age
+ * included, most urgent first: a board that reaches back to 1970. */
+export function everyTask(tasks: TaskEngine, projectId: string, filters: TaskFilters = {}): Promise<readonly Task[]> {
+  return tasks.listBoard(projectId, {
+    ...filters,
+    statuses: ['open', 'in_progress', 'blocked', 'deferred'],
+    closedSince: '1970-01-01T00:00:00.000Z',
   });
 }
 
