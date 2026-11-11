@@ -179,8 +179,15 @@ export interface Project {
   readonly iconAt: string | null;
 }
 
-/** The image types a project's icon may have: rasters a browser draws, never an SVG, which can run script. */
-export const PROJECT_ICON_TYPES = ['image/png', 'image/x-icon', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+/** The image types a project's icon may have. An SVG, which can run script, is kept only once made safe (workers/api/src/svg-icon.ts). */
+export const PROJECT_ICON_TYPES = [
+  'image/png',
+  'image/x-icon',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+] as const;
 export type ProjectIconType = (typeof PROJECT_ICON_TYPES)[number];
 
 /** The largest project icon kept, in bytes. */

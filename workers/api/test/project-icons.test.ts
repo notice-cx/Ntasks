@@ -32,7 +32,7 @@ const image = (bytes: Uint8Array, type: string) => new Response(bytes, { headers
 const redirect = (location: string) => new Response(null, { status: 301, headers: { location } });
 
 describe('the icons a page declares', () => {
-  it('ranks apple-touch-icons and large icons by size, then icons of no size, then small ones, leaving SVG out', () => {
+  it('ranks SVG icons first, then apple-touch-icons and large icons by size, then icons of no size, then small ones', () => {
     const html = `
       <link rel="icon" href="/16.png" sizes="16x16">
       <link rel="icon" href="/any.ico">
@@ -44,6 +44,8 @@ describe('the icons a page declares', () => {
       <!-- <link rel="icon" href="/commented.png" sizes="512x512"> -->
       <script>document.write('<link rel="icon" href="/scripted.png" sizes="512x512">')</script>`;
     expect(declaredIcons(html, 'https://example.com/app/')).toEqual([
+      'https://example.com/mark.svg',
+      'https://example.com/vector.svg?v=2',
       'https://example.com/192.png',
       'https://example.com/touch.png',
       'https://example.com/48.png',
@@ -108,16 +110,34 @@ describe('reading a website’s icon', () => {
     expect(asked).toEqual(['https://example.com/', 'https://example.com/touch']);
   });
 
-  it('skips an SVG, whatever type it is served as, and falls back to /favicon.ico', async () => {
+  it('keeps an SVG icon made safe, as image/svg+xml, whatever type it is served as', async () => {
     const { fetchImpl } = website({
       'https://example.com/': page('<link rel="apple-touch-icon" href="/touch.png">'),
       'https://example.com/touch.png': image(SVG, 'image/png'),
       'https://example.com/favicon.ico': image(ICO, 'image/vnd.microsoft.icon'),
     });
-    expect(await readProjectIcon('https://example.com/', fetchImpl)).toMatchObject({
-      sourceUrl: 'https://example.com/favicon.ico',
-      contentType: 'image/x-icon',
+    const icon = await readProjectIcon('https://example.com/', fetchImpl);
+    expect(icon).toMatchObject({ sourceUrl: 'https://example.com/touch.png', contentType: 'image/svg+xml' });
+    const kept = new TextDecoder().decode(icon!.bytes);
+    expect(kept).toMatch(/^<svg /u);
+    expect(kept).not.toMatch(/script|alert/iu);
+  });
+
+  it('keeps the SVG icon of a website that declares nothing else and answers /favicon.ico with its page', async () => {
+    const mark = new TextEncoder().encode(
+      '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/></svg>',
+    );
+    const { fetchImpl, asked } = website({
+      'https://example.com/': page('<link rel="icon" href="/favicon.svg" type="image/svg+xml">'),
+      'https://example.com/favicon.svg': image(mark, 'image/svg+xml'),
+      'https://example.com/favicon.ico': page(''),
     });
+    const icon = await readProjectIcon('https://example.com/', fetchImpl);
+    expect(icon).toMatchObject({ sourceUrl: 'https://example.com/favicon.svg', contentType: 'image/svg+xml' });
+    expect(new TextDecoder().decode(icon!.bytes)).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/></svg>',
+    );
+    expect(asked).not.toContain('https://example.com/favicon.ico');
   });
 
   it('follows the website’s redirects and reads its icons from where the page is', async () => {
