@@ -325,7 +325,8 @@ test('a store that holds project icons keeps each one when the icons table takes
     db.prepare('UPDATE project_icons SET content_type = ? WHERE project_id = ?').run(type, 'p1');
   assert.throws(svg('image/svg+xml'), /CHECK constraint/u, 'no SVG before the migration');
 
-  migrated(db, FILES.slice(index));
+  // Only this migration: a later one changes the table again, and has its own case.
+  migrated(db, FILES.slice(index, index + 1));
 
   assert.deepEqual(icons(), before, 'every icon it held, unchanged');
   svg('image/svg+xml')();
@@ -382,5 +383,49 @@ test('a store that holds tasks keeps every row as it was when tasks can move, an
   );
   assert.equal(rows('task_external_links', 'task_id')[0]?.task_id, 'ops-x1', 'its external link follows it');
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  db.close();
+});
+
+test('a store that holds project icons keeps each one as its light icon when the icons table takes a scheme', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0011_project_icon_schemes.sql');
+  assert.ok(index > 0, 'the icon scheme migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+  db.prepare(
+    'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?, ?, ?, ?, ?)',
+  ).run('p1', 'https://web.example.com/favicon.svg', 'image/svg+xml', svg, AT);
+
+  migrated(db, FILES.slice(index));
+
+  const icons = db
+    .prepare('SELECT project_id, scheme, source_url, content_type, bytes, read_at FROM project_icons')
+    .all()
+    .map((row) => ({ ...row, bytes: [...(row.bytes as Uint8Array)] }));
+  assert.deepEqual(
+    icons,
+    [
+      {
+        project_id: 'p1',
+        scheme: 'light',
+        source_url: 'https://web.example.com/favicon.svg',
+        content_type: 'image/svg+xml',
+        bytes: [...svg],
+        read_at: AT,
+      },
+    ],
+    'the icon it held, as the light icon',
+  );
+  const add = (scheme: string) =>
+    db
+      .prepare(
+        'INSERT INTO project_icons (project_id, scheme, source_url, content_type, bytes, read_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run('p1', scheme, 'https://web.example.com/dark.png', 'image/png', svg, LATER);
+  add('dark');
+  assert.throws(() => add('dark'), /UNIQUE|PRIMARY KEY/u, 'a second dark icon');
+  assert.throws(() => add('dim'), /CHECK constraint/u, 'a scheme that is not light or dark');
   db.close();
 });

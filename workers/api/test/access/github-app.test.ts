@@ -12,6 +12,7 @@ import { SCOPES, type Principal } from '../../src/auth.ts';
 import { githubSender } from '../../src/github-check.ts';
 import type { TaskStore } from '../../src/store/index.ts';
 import { createTask, requestApproval } from '../../src/task-writes.ts';
+import { pullRequestComment } from '../../src/approval-github.ts';
 import { proposalVersionOf } from '../../src/views.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
@@ -1208,6 +1209,26 @@ describe('an answer to an approval that gates a pull request', () => {
     expect(record).toContain(`https://github.com/organizations/example/settings/installations/${id}`);
     // The approval stands whatever GitHub refused.
     expect((await taskOf(projectId, gate)).close?.resolution).toBe('done');
+  });
+
+  it('posts an approval’s title and its people as plain words, linking and mentioning nothing', async () => {
+    const { projectId, gate: id } = await approvalFor(57);
+    const gate = { ...(await taskOf(projectId, id)), title: 'Merge [this](https://x.example) @team' };
+    const comment = pullRequestComment(
+      {
+        projectId,
+        gate,
+        pullRequest: `https://github.com/${REPOSITORY}/pull/57`,
+        answer: 'declined',
+        by: '@owner',
+        relayedBy: null,
+      },
+      null,
+      ORIGIN,
+    );
+    expect(comment).not.toContain('[this](https://x.example)');
+    expect(comment).not.toMatch(/@(team|owner)/u);
+    expect(comment).toContain(`[${gate.id}](${ORIGIN}/tasks/${gate.id})`);
   });
 
   it('asks nothing of GitHub for an approval that gates no pull request', async () => {

@@ -133,8 +133,9 @@ export interface ProjectRow {
   readonly deploys: number;
   readonly disabled_at: string | null;
   readonly website_url: string | null;
-  /** From project_icons, joined in. */
+  /** From project_icons, joined in: when its light and its dark icon were read. */
   readonly icon_at: string | null;
+  readonly dark_icon_at: string | null;
 }
 
 export interface ProjectIconRow {
@@ -334,6 +335,7 @@ export function toProject(row: ProjectRow): Project {
     disabledAt: row.disabled_at,
     websiteUrl: row.website_url,
     iconAt: row.icon_at,
+    darkIconAt: row.dark_icon_at,
   };
 }
 

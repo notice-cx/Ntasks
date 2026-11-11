@@ -487,6 +487,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       disabled: false,
       websiteUrl: 'https://web.example.com/',
       icon: fixtureIconPath('p-web'),
+      darkIcon: fixtureIconPath('p-web', 1, 'dark'),
     },
     {
       projectId: 'p-docs',
@@ -497,6 +498,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       disabled: false,
       websiteUrl: null,
       icon: null,
+      darkIcon: null,
     },
   ];
 
@@ -601,7 +603,11 @@ export function fixtureWorkspaces(nowMs: number, seed: FixtureSeed = fixtureSeed
 export const FIXTURE_ICON_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADCklEQVR42uWbiVLbMBCG/XTNQUJCIJBwn+ldetGXTpzDgbbQZlSvLFsQHMtaSW7M7sz/AN83QbteCc/LWYubClvcVNnie5X9hXyryXyF1NmfLyKfN6JcR3m4brCHTyIfm1E+NNk9zya7fy/yrsXz+63Im7bM6y32CzIQueok+Xm5HeVC5HyHebZq8QPAywUPuTuDdJkZeMnheU6jkIa/O9llt2FIw98eQ/YYaXieoxUSqMBD5oc99uJOex34ZwKowc8PIH1W2iHHBnwigCr8fL/PgjAeZfigvx8KIAzPBVCGD3ogoGB4VRUJH/QOHglwCI8t1/DBXizAEbytcgU/4wIcwLsq2/BCQDng47IJP9s9ZF6Z4KUEO/BSQIngEwkW4GddEPAf4Fe1Ot0yhZ91j4SAAk573SEnlwBD+OkOCFhD+Pi0zycBD58IcDnkmI63SgEG8FzAOsPHp72qsPDT7eNQgMFsbwKvO+QoBSDgpQAHHzar4HP1+JQ+nykACT/tgIACv+p0evxyn1f+GSDgJ50TIQDxPe+yz68acrIKAz/ZAgHIZUamAEdDjlKAJjwXgN3kKAUsnfbaAlKGnEwBCPhJmwvArbFUi4zlVqcv4PmEpxSgCT9pn4YCkDs83U0OSsDSkJMpAAEvBSAWmNkbnPQhxwQeWl22AH34cQsEILe3mDVWbgGa8FAY+HHrLBKAXV1nCrA827uAH2+GAkz29koBGeOt7lddLgGa8FIA8tJCOdBYWmDm+vkj4MdNEGB4Y4Od7dcBftw8fyQAeV2Fne1twHMBBvB+IsDwri73aLtm8H4DBFi4qLQx5ORpdakCDOD9xgXzbN3SFl024P0NEGDxirps8FKAxfv5MsH7dRDg4HFCWeBH9UspwMXLDKvgDuBHNSHA9bMUNLjhkKOC5wKKfpPj6qsOAz+qXQkBBb7JwW5vXcCPqiCAMLwUQBR+WAEBhOGHlUH0Xpg0fCSAHvzw1eDp/wyQhk8EEIFPFQBFGj6RQBk+kUAZPi7S8E9EvLTTHlulHXIU9Q8vcqF3RvcWWwAAAABJRU5ErkJggg==';
 
-/** The address of a fixture project's icon, as the server's project list gives one. */
-export function fixtureIconPath(projectId: string, version = 1): string {
-  return `/api/tasks/projects/${projectId}/icon?v=${version}`;
+/** The icon the invented websites declare for a dark colour scheme: the same mark, light on a dark page. */
+export const FIXTURE_DARK_ICON_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACv0lEQVR42uWb21LbMBCG8248TZ+x0FJaSnM+AG3pgXLNS/wNlmxLNo60q5XHYj3z34Vkvm+CtNpVZrPIB/9u4ecAPHazB/662Zn8cbM1+V1nY/LLzdrkoc6qzc86yzY/XrLwMpN68HSH0uDx/SXzKmnghcM3uf8G1fB1VMNHSXjr8Li7qaIaflCCJnjcfoVq+DrFFjkS8I0ArfBVDteYaYbvCNAH7wjQCW8FjAv/fPbuZMaEx+HLUcAI8CHoQRmZ4bHvCZCF54L3ReSB7wiQg5cC74kQhncETB++J0EA3gooB76RIASP/eejgMLgexIS4LHzBIwHP7TVkd8nEd4RkH+1pxY5LAFEeCtgevB1SBIY8NhdWQEZi5zU8jZKABPeCJgwfL3QBT+HCY+tJ4Be26fAU4ucOAE0eEeA/MFmCD6q0Hllnw8LoMNbAeOd6liFjl3kgn/DgMf2kxXAOM/n3OeHipx4AXHwRgCzmREtQLDIiRMQD49NI4DeyYkS4Kz2yQKO/+dhATR4K4DXxgoK6Gx1SQLsKn9aAB0em0srgNHDo3Zy2AKcPf7k6xnwRgCzgRnVwekUOSnw8QLi4bH2BNC6t5w2FkkAAb4VQIN3BPBa10EBgrV9DngrgN+3J/XvOhUe9VR3WgAPHuuPVgBzaEFqYia0scJffx68EZA4seHW9lOAx6oRwB9XcWt7CfjqvRPgrYD0WV20hInBY/XBEZAwqJQocmK2umEBPPhWgMCUdvS2uAC8ESA4oi4NHstGgNx8viR4K0D+ckIp8FheOAIy3MyQB5eFbwVkvpbCBk8sckLwRsDId3Jyneo48FhUAsa9k8Pt3uaAx+K8I0AZvC9AIXwrQCl8JaC6L6wZvidACTzm553fDGiGrwQogsf8/cDvhjTDexK0wjcSNMN7ErTCeyLe2mrPFlFqkRN4/gN+Hkwqe4wZtwAAAABJRU5ErkJggg==';
+
+/** The address of a fixture project's icon for `scheme`, as the server's project list gives one. */
+export function fixtureIconPath(projectId: string, version = 1, scheme: 'light' | 'dark' = 'light'): string {
+  return `/api/tasks/projects/${projectId}/icon?${scheme === 'dark' ? 'scheme=dark&' : ''}v=${version}`;
 }

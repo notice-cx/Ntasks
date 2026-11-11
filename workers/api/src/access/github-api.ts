@@ -21,6 +21,13 @@ const HEADERS = {
 
 const encoder = new TextEncoder();
 
+/**
+ * How long a request a person's answer waits on may take: past it the request
+ * is abandoned, so GitHub not answering never holds the answer's reply. A
+ * change abandoned so is UNCONFIRMED, since GitHub may still have made it.
+ */
+const ANSWER_DEADLINE_MS = 8_000;
+
 /** A DER length: short form below 128, long form above. */
 function derLength(length: number): number[] {
   if (length < 0x80) return [length];
@@ -77,6 +84,7 @@ export async function installationToken(appJwt: string, installationId: number):
   const response = await fetch(`${API}/app/installations/${installationId}/access_tokens`, {
     method: 'POST',
     headers: { ...HEADERS, authorization: `Bearer ${appJwt}` },
+    signal: AbortSignal.timeout(ANSWER_DEADLINE_MS),
   }).catch(() => null);
   if (response === null) return null;
   if (response.status !== 201) {
@@ -383,6 +391,7 @@ async function graphql(
       'content-type': 'application/json',
     },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(ANSWER_DEADLINE_MS),
   }).catch(() => null);
   if (response === null || response.status === 429 || response.status >= 500) {
     await response?.body?.cancel();
@@ -490,6 +499,7 @@ export async function commentOnPullRequest(
     method: 'POST',
     headers: { ...HEADERS, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ body }),
+    signal: AbortSignal.timeout(ANSWER_DEADLINE_MS),
   }).catch(() => null);
   if (response === null || response.status === 429 || response.status >= 500) {
     await response?.body?.cancel();

@@ -741,7 +741,10 @@ GitHub App:
   including a refusal for lack of permission. The answer stands whatever the
   host does;
 - MUST change nothing on the host for an approval that names no pull
-  request.
+  request;
+- MUST refuse a change to the pull request an approval gates once it is
+  asked for, as it refuses a change to a request's steps, so no answer comes
+  to cover another pull request.
 
 **STATE-14.** <a id="state-14"></a>A request to do steps:
 

@@ -34,9 +34,13 @@ export function turnsOnAutoMerge(answer: ApprovalAnswer): boolean {
   return answer.answer === 'approved' && answer.relayedBy === null;
 }
 
-/** Text that mentions nobody on GitHub: an @ starts a mention there, which would notify that account. */
-function unmentioned(text: string): string {
-  return text.replaceAll('@', '@​');
+/**
+ * Text as plain words in a GitHub comment: Markdown's punctuation escaped, so
+ * a title cannot add a link, an image or a heading, and each @ followed by a
+ * zero-width space, since an @ starts a mention that notifies that account.
+ */
+function plain(text: string): string {
+  return text.replace(/[\\`*_{}[\]()<>#+!|~]/gu, '\\$&').replaceAll('@', '@\u200b');
 }
 
 const isRefusal = (value: unknown): value is GitHubRefusal =>
@@ -45,14 +49,14 @@ const isRefusal = (value: unknown): value is GitHubRefusal =>
 /** The comment posted on the pull request: the answer, who gave it, the approval, and what became of auto-merge. */
 export function pullRequestComment(answer: ApprovalAnswer, merge: AutoMerge | null, origin: string | null): string {
   const { gate } = answer;
-  const approval = `${origin === null ? gate.id : `[${gate.id}](${origin}/tasks/${gate.id})`}, ${unmentioned(gate.title)}`;
-  const relayed = answer.relayedBy === null ? '' : `, relayed by ${unmentioned(answer.relayedBy)}`;
-  const by = `${unmentioned(answer.by)}${relayed}`;
+  const approval = `${origin === null ? gate.id : `[${gate.id}](${origin}/tasks/${gate.id})`}, ${plain(gate.title)}`;
+  const relayed = answer.relayedBy === null ? '' : `, relayed by ${plain(answer.relayedBy)}`;
+  const by = `${plain(answer.by)}${relayed}`;
   switch (answer.answer) {
     case 'approved':
       return `**Approved** in Ntasks by ${by}: ${approval}.\n\n${mergeSentence(merge)}`;
     case 'performed':
-      return `**Done by ${unmentioned(answer.by)} themselves**, recorded in Ntasks${relayed}: ${approval}.\n\nNo agent does the action it asked for.`;
+      return `**Done by ${plain(answer.by)} themselves**, recorded in Ntasks${relayed}: ${approval}.\n\nNo agent does the action it asked for.`;
     case 'declined':
       return `**Declined** in Ntasks by ${by}: ${approval}.\n\nThe action it asked for must not happen.`;
     case 'withdrawn':

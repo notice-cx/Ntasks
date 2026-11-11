@@ -90,6 +90,7 @@ describe('GET /api/tasks/projects and /api/tasks/capabilities', () => {
       disabled: false,
       websiteUrl: null,
       icon: null,
+      darkIcon: null,
     });
   });
 

@@ -32,7 +32,7 @@ export function TaskPath({
   parent,
 }: {
   id: string;
-  project: { name: string; prefix: string; icon?: string | null; to: string } | null;
+  project: { name: string; prefix: string; icon?: string | null; darkIcon?: string | null; to: string } | null;
   parent: { id: string; title: string | null } | null;
 }) {
   const paths = usePaths();

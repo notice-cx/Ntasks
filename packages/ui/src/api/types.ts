@@ -488,6 +488,8 @@ export interface TaskProject {
   websiteUrl?: string | null;
   /** The address of the icon read from its website, on the API's origin; null or absent when it has none. */
   icon?: string | null;
+  /** The address of the icon its website declares for a dark colour scheme; null or absent when it has none. */
+  darkIcon?: string | null;
 }
 
 /** An owner's change to a project: each field it names, and only those. */

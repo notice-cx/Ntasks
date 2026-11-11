@@ -29,7 +29,8 @@ import type {
   JsonObject,
   ParentContext,
   Project,
-  ProjectIcon,
+  IconScheme,
+  ProjectIcons,
   StoredProjectIcon,
   Task,
   TaskAcceptance,
@@ -94,8 +95,8 @@ export interface ProjectChange {
   readonly deploys?: boolean;
   /** Whether it refuses new tasks. */
   readonly disabled?: boolean;
-  /** Its website and the icon read from it, which replace the ones it had; null clears both. */
-  readonly website?: { readonly url: string; readonly icon: ProjectIcon | null } | null;
+  /** Its website and the icons read from it, which replace the ones it had; null clears them all. */
+  readonly website?: { readonly url: string; readonly icons: ProjectIcons } | null;
 }
 
 /** A link a new task starts with. */
@@ -555,8 +556,8 @@ export interface TaskEngine {
   createProject(input: CreateProjectInput): Promise<Project>;
   /** Renames the project, says whether its changes go live by a deploy and whether it takes new tasks, and sets its website. */
   updateProject(projectId: string, change: ProjectChange): Promise<Project>;
-  /** The icon kept for the project, or null when it has none. */
-  projectIcon(projectId: string): Promise<StoredProjectIcon | null>;
+  /** The project's icon for the colour scheme, or null when it has none. */
+  projectIcon(projectId: string, scheme: IconScheme): Promise<StoredProjectIcon | null>;
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;

@@ -964,7 +964,9 @@ username, its role, its age and Revoke.
 
 `ProjectBadge` draws the icon read from a project's website, through
 `ProjectIcon`, which reads it with the page's sign-in, and the prefix's
-letter in a ringed square until it is read or when there is none.
+letter in a ringed square until it is read or when there is none. In a dark
+`ThemeScope` it draws the icon the website declares for a dark scheme, else
+the light one; in a light one, only the light one.
 
 A sign-in in no workspace sees a page of its own on Canvas, outside the
 frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New

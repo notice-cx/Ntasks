@@ -9,6 +9,7 @@ import {
   guardRefusalOf,
   KEEP_OPEN,
   NTASKS_ACTOR,
+  ICON_SCHEMES,
   PROJECT_ICON_MAX_BYTES,
   PROJECT_ICON_TYPES,
   TASK_LIMITS,
@@ -36,6 +37,7 @@ import {
   type JsonObject,
   type Project,
   type ProjectChange,
+  type IconScheme,
   type ProjectIcon,
   type Retry,
   type Task,
@@ -1094,16 +1096,18 @@ export class Writes {
       const url = change.website === null ? null : check.httpUrl(change.website.url);
       if (change.website !== null && url === null) check.invalid('website must be an http or https URL');
       statements.push(set('website_url', url));
-      // The icon belongs to the website it was read from: a new website, or none, replaces it.
+      // The icons belong to the website they were read from: a new website, or none, replaces them.
       statements.push(this.#db.prepare('DELETE FROM project_icons WHERE project_id = ?1').bind(projectId));
-      const icon = change.website?.icon ?? null;
-      if (icon !== null) statements.push(this.#iconInsert(projectId, icon));
+      for (const scheme of ICON_SCHEMES) {
+        const icon = change.website?.icons[scheme] ?? null;
+        if (icon !== null) statements.push(this.#iconInsert(projectId, scheme, icon));
+      }
     }
     if (statements.length > 0) await this.#db.batch(statements);
     return this.#projectOf(projectId);
   }
 
-  #iconInsert(projectId: string, icon: ProjectIcon): Statement {
+  #iconInsert(projectId: string, scheme: IconScheme, icon: ProjectIcon): Statement {
     const sourceUrl = check.httpUrl(icon.sourceUrl) ?? check.invalid('icon.sourceUrl must be an http or https URL');
     if (!(PROJECT_ICON_TYPES as readonly string[]).includes(icon.contentType))
       check.invalid(`icon.contentType must be one of ${PROJECT_ICON_TYPES.join(', ')}`);
@@ -1115,9 +1119,9 @@ export class Writes {
       check.invalid(`icon.bytes must hold 1 to ${PROJECT_ICON_MAX_BYTES} bytes`);
     return this.#db
       .prepare(
-        'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+        'INSERT INTO project_icons (project_id, scheme, source_url, content_type, bytes, read_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
       )
-      .bind(projectId, sourceUrl, icon.contentType, icon.bytes, this.#now());
+      .bind(projectId, scheme, sourceUrl, icon.contentType, icon.bytes, this.#now());
   }
 
   async reportDelivery(
@@ -1959,6 +1963,20 @@ export class Writes {
       const standing = external.get(link.url);
       return standing?.title !== link.title || standing.kind !== link.kind;
     });
+    // The pull request an approval gates is part of what a person approves,
+    // and stays as the approval was asked for, so no answer comes to cover another.
+    if (
+      current.type === 'gate' &&
+      [...removeExternal.map((url) => current.externalLinks.find((link) => link.url === url)), ...addExternal].some(
+        (link) =>
+          link?.kind === 'pull-request' ||
+          current.externalLinks.some((had) => had.url === link?.url && had.kind === 'pull-request'),
+      )
+    )
+      refuse(
+        'invalid',
+        "An approval's pull request stays as the approval was asked for; ask for a new approval instead.",
+      );
     for (const link of addExternal) external.set(link.url, link);
     // Only a write that adds is held to the limit, so a task imported with more can still lose some.
     if (addExternal.length > 0 && external.size > TASK_LIMITS.externalLinks)

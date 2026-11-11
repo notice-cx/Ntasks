@@ -2471,6 +2471,26 @@ describe('request_human_approval', () => {
         pr: 'https://gitlab.example.com/a/b/-/merge_requests/1',
       }),
     ).toBe("invalid arguments: pr (a GitHub pull request's URL, such as https://github.com/owner/name/pull/12)");
+    // Its pull request stays as it was asked for; its other links change as any task's do.
+    const edit = (change: Record<string, unknown>) =>
+      callTool(target, 'update_task', { workspace: WORKSPACE.id, project: project.id, task: gate.id, ...change });
+    for (const change of [
+      { remove_external_links: [pr] },
+      {
+        add_external_links: [
+          { url: 'https://github.com/example/site/pull/14', title: 'Another', kind: 'pull-request' },
+        ],
+      },
+      { add_external_links: [{ url: pr, title: 'Renamed', kind: 'document' }] },
+    ])
+      expect((await edit(change)).refused).toMatch(/pull request stays as the approval was asked for/u);
+    expect(
+      (await edit({ add_external_links: [{ url: 'https://example.com/plan', title: 'The plan' }] })).refused,
+    ).toBeNull();
+    expect((await current(project, gate.id)).externalLinks.map((link) => link.url)).toEqual([
+      'https://example.com/plan',
+      pr,
+    ]);
   });
 
   it('advises an approval that names no place to answer, and not one that does', async () => {
