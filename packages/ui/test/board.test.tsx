@@ -639,6 +639,7 @@ describe('a row waiting for you', () => {
         status: 'closed',
         resolution: 'done',
         closeReason: 'Did it myself: Turned it on from the console.',
+        answer: { option: 'done', quote: 'Turned it on from the console.', relayed: false },
       }),
     );
   });

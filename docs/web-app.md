@@ -133,8 +133,8 @@ can dispute it.
 
 **Did it myself**, beside Approve, is for an action you already did. It
 takes a note, and closes the approval as done by you, not approved: no agent
-does the action, and each task that waited on it goes back to its agent to
-check the result.
+does the action. Each task that waited on it gets a comment to check the
+result, and those labelled `human` go back to agents.
 
 ### Tick off your steps
 
