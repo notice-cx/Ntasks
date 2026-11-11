@@ -780,7 +780,7 @@ describe('dropped links', () => {
       {
         expectedVersion: step.version,
         close: { reason: 'Dropped', resolution: 'wont-do' },
-        others: [{ taskId: naming.id, expectedVersion: naming.version, comment: 'The move is off.' }],
+        others: [{ taskId: naming.id, expectedVersion: naming.version, comment: 'The move is off.', setFields: {} }],
       },
       AGENT,
     );

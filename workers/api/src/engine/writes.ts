@@ -106,7 +106,8 @@ function commentsOnly(write: check.CheckedWrite): boolean {
     write.close === null &&
     !write.reopen &&
     write.metadata === null &&
-    write.setFields === null &&
+    // Field values that change nothing leave the version too; an empty set of them is the one case read here.
+    (write.setFields === null || Object.keys(write.setFields).length === 0) &&
     write.requestApproval === null &&
     write.requestAction === null &&
     write.addLabels.length === 0 &&
