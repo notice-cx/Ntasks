@@ -8,9 +8,10 @@ it again to update that deployment to the latest release.
 npx ntasks deploy
 ```
 
-It needs Node.js and a Cloudflare account. No copy of the Ntasks repository
-is involved: this package holds the built Worker, the web app and the D1
-migrations, and deploys them with [wrangler](https://developers.cloudflare.com/workers/wrangler/).
+It needs Node.js 22 or later and a Cloudflare account. No copy of the Ntasks
+repository is involved: this package holds the built Worker, the web app and
+the D1 migrations, and deploys them with
+[wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
 ## What it does
 
