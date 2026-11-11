@@ -910,8 +910,8 @@ Each organization takes one more install: in Settings, press **Install on
 an organization**, pick the organization, and press **Install**. No secret
 is copied, no webhook is added by hand, and no name is typed.
 
-The app reads pull requests, checks, deployments and the repository's
-metadata, and receives the `pull_request`, `check_run` and
+The app reads pull requests, checks, deployments, the repository's contents
+and its metadata, and receives the `pull_request`, `push`, `check_run` and
 `deployment_status` events of every repository it is installed on, at
 `POST /api/github/<workspace id>`. Each becomes a signal for every project
 of the workspace:
@@ -919,6 +919,7 @@ of the workspace:
 | GitHub event | Signal |
 |---|---|
 | `pull_request`, closed and merged into the repository's default branch | `merged`, naming the pull request and its merge commit |
+| `push` to the repository's default branch | `merged`, naming each commit pushed (GitHub lists up to 20) and each task id on a `Refs:` line of their messages (`taskIds`), with the push's newest commit as each task's merge commit, which the deploy check on that commit then matches. A push to another branch, or one that deletes the branch, moves nothing |
 | `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on, once every other deploy check on that commit passed too ([below](#more-than-one-deploy-on-a-commit)). A commit the merge queue landed counts too: GitHub names its check suite for the queue's branch, `gh-readonly-queue/<default branch>/…`, and a build there counts only for tasks merged before it started, since one that started earlier was a preview |
 | `deployment_status` with `success`, when it is a deploy | `live`, naming the deployed commit |
 
@@ -1113,8 +1114,8 @@ Then, in GitHub:
 2. Set **Payload URL** to the one Settings shows, **Content type** to
    `application/json`, and **Secret** to the saved secret.
 3. Under **Which events would you like to trigger this webhook?**, choose
-   **Let me select individual events**, tick **Pull requests**, **Check
-   runs** and **Deployment statuses**, and untick **Pushes**.
+   **Let me select individual events**, and tick **Pull requests**,
+   **Pushes**, **Check runs** and **Deployment statuses**.
 4. Leave **Active** ticked and press **Add webhook**.
 
 GitHub then sends a `ping`; under Recent Deliveries its answer says

@@ -64,7 +64,9 @@ import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { notConfigured } from './access/verify.ts';
 import { listed, type Args } from './args.ts';
+import { isTaskId } from '@ntasks/domain';
 import { movedView, signalArgs } from './delivery.ts';
+import { SIGNAL_ITEMS } from './engine/validate.ts';
 import { githubSender } from './github-check.ts';
 import { readBoundedBytes } from './http/json-body.ts';
 import { json } from './http/respond.ts';
@@ -121,6 +123,10 @@ function numberAt(payload: unknown, ...path: readonly string[]): number | undefi
 export type GitHubEvent =
   | {
       readonly signal: Args;
+      /** With a push: its newest commit, which each task it moves records as its merge commit. */
+      readonly mergeCommit?: string;
+      /** With a push: the tasks its commit messages name on a `Refs:` line. */
+      readonly taskIds?: readonly string[];
       readonly newDeploy?: string;
       readonly mergedBy?: string;
       readonly at?: string;
@@ -138,9 +144,22 @@ export type GitHubEvent =
       readonly recheck?: true;
     };
 
+/** A `Refs:` line of a commit message, which names the tasks the commit is for: `Refs: web-a1b2, web-c3d4`. */
+const REFS_LINE = /^refs:[ \t]*(.+)$/gimu;
+
+/** The task ids a commit message names on its `Refs:` lines. */
+export function refsOf(message: string): string[] {
+  return [...message.matchAll(REFS_LINE)].flatMap(([, list]) =>
+    (list ?? '').split(/[\s,]+/u).filter((word) => isTaskId(word)),
+  );
+}
+
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
-  if (event === 'ping') return { ignored: 'GitHub reaches Ntasks. A merged pull request or a deploy moves tasks.' };
+  if (event === 'ping')
+    return {
+      ignored: 'GitHub reaches Ntasks. A merged pull request, a push to the default branch or a deploy moves tasks.',
+    };
   const repository = textAt(payload, 'repository', 'full_name');
   const defaultBranch = textAt(payload, 'repository', 'default_branch');
   if (repository === undefined || defaultBranch === undefined)
@@ -169,6 +188,31 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
           pullRequests: url === undefined ? [] : [url],
           commits: commits(textAt(payload, 'pull_request', 'merge_commit_sha')),
         },
+      };
+    }
+    case 'push': {
+      // A push straight to the default branch is that project's merge: its
+      // commits are now on GitHub, waiting for a deploy. Its newest commit is
+      // what a deploy check then runs on, so each task it moves records that
+      // one as its merge commit, and the check moves them all to live.
+      if (at(payload, 'deleted') === true) return { ignored: 'a deleted branch moves no task' };
+      const ref = textAt(payload, 'ref');
+      if (ref !== `refs/heads/${defaultBranch}`)
+        return {
+          ignored: `pushed to ${ref?.replace(/^refs\/heads\//u, '') ?? 'another branch'}, not the default branch, so no task moves`,
+        };
+      const listed = at(payload, 'commits');
+      const pushed = (Array.isArray(listed) ? listed : []).flatMap((commit) => {
+        const id = textAt(commit, 'id');
+        return id === undefined ? [] : [{ id: id.toLowerCase(), message: textAt(commit, 'message') ?? '' }];
+      });
+      const head = textAt(payload, 'after')?.toLowerCase();
+      if (pushed.length === 0 || head === undefined) return { ignored: 'a push with no commits moves no task' };
+      const taskIds = [...new Set(pushed.flatMap((commit) => refsOf(commit.message)))].slice(0, SIGNAL_ITEMS);
+      return {
+        signal: { repository, stage: 'merged', commits: pushed.map((commit) => commit.id).slice(-SIGNAL_ITEMS) },
+        mergeCommit: head,
+        ...(taskIds.length === 0 ? {} : { taskIds }),
       };
     }
     case 'check_run': {
@@ -208,7 +252,7 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
     }
     default:
       return {
-        ignored: `Ntasks reads pull_request, check_run and deployment_status events, not ${event ?? 'this one'}`,
+        ignored: `Ntasks reads pull_request, push, check_run and deployment_status events, not ${event ?? 'this one'}`,
       };
   }
 }
@@ -358,6 +402,8 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
       ...signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
       ...(event.mergedBy === undefined ? {} : { mergedBy: event.mergedBy }),
       ...(event.at === undefined ? {} : { at: event.at }),
+      ...(event.mergeCommit === undefined ? {} : { mergeCommit: event.mergeCommit }),
+      ...(event.taskIds === undefined ? {} : { taskIds: event.taskIds }),
     };
   } catch (error) {
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);

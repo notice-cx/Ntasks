@@ -52,8 +52,14 @@ export function githubAppManifest(origin: string, workspaceId: string): string {
     setup_url: origin + SETTINGS_PAGE,
     setup_on_update: true,
     public: true,
-    default_permissions: { metadata: 'read', pull_requests: 'read', checks: 'read', deployments: 'read' },
-    default_events: ['pull_request', 'check_run', 'deployment_status'],
+    default_permissions: {
+      metadata: 'read',
+      contents: 'read',
+      pull_requests: 'read',
+      checks: 'read',
+      deployments: 'read',
+    },
+    default_events: ['pull_request', 'push', 'check_run', 'deployment_status'],
   });
 }
 
