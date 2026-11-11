@@ -12,12 +12,13 @@ import { SCOPES, type Principal } from '../../src/auth.ts';
 import { githubSender } from '../../src/github-check.ts';
 import type { TaskStore } from '../../src/store/index.ts';
 import { createTask, requestApproval } from '../../src/task-writes.ts';
+import { turnOnAutoMerge, UNCONFIRMED } from '../../src/access/github-api.ts';
 import { pullRequestComment } from '../../src/approval-github.ts';
 import { proposalVersionOf } from '../../src/views.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
 import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
-import { convertedWebhookSecret, manifestCodeFor, standInForGitHub } from './github.ts';
+import { convertedWebhookSecret, manifestCodeFor, standInForGitHub, type StandInCheckRun } from './github.ts';
 
 const github = standInForGitHub();
 
@@ -1050,12 +1051,58 @@ describe('merged work a deploy shipped that no delivery named', () => {
     github.checkOutages.add(merge);
     await deliver('pull_request', mergedAt(mine, 88, merge, ago(120_000)));
 
-    // Thrown, so the platform runs the alarm again.
-    await expect(runDurableObjectAlarm(store())).rejects.toThrow(/runs again/u);
+    // Longer than the platform's six reruns of a throwing alarm: each check sets the next one itself.
+    const waits: number[] = [];
+    for (let check = 0; check < 8; check += 1) {
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      const next = await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm());
+      expect(next).not.toBeNull();
+      waits.push(Math.round((next! - Date.now()) / 60_000));
+    }
+    expect(waits).toEqual([1, 5, 15, 60, 60, 60, 60, 60]);
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+
+    // With no other event, the next check reads the deploy once GitHub answers, and sets no further one.
     github.checkOutages.clear();
-    await runInDurableObject(store(), (instance: TaskStore) => instance.alarm());
+    expect(await runDurableObjectAlarm(store())).toBe(true);
     expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+    expect(await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm())).toBeNull();
+  });
+
+  it('starts its retries from the first delay again after a check GitHub answered', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const check: StandInCheckRun = {
+      name: 'Workers Builds: site',
+      conclusion: 'success',
+      startedAt: ago(60_000),
+      completedAt: ago(30_000),
+    };
+    const nextWait = async () => {
+      const next = await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm());
+      return next === null ? null : Math.round((next - Date.now()) / 60_000);
+    };
+    const first = newCommit();
+    github.checkRuns.set(first, [check]);
+    github.checkOutages.add(first);
+    await closedWithPullRequest(owner, projectId, 89);
+    await deliver('pull_request', mergedAt(mine, 89, first, ago(120_000)));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await nextWait()).toBe(5);
+    github.checkOutages.clear();
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await nextWait()).toBeNull();
+
+    const second = newCommit();
+    github.checkRuns.set(second, [check]);
+    github.checkOutages.add(second);
+    await closedWithPullRequest(owner, projectId, 90);
+    await deliver('pull_request', mergedAt(mine, 90, second, ago(60_000)));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await nextWait()).toBe(1);
   });
 
   it('asks GitHub at most 45 times in one check', async () => {
@@ -1229,6 +1276,17 @@ describe('an answer to an approval that gates a pull request', () => {
     expect(comment).not.toContain('[this](https://x.example)');
     expect(comment).not.toMatch(/@(team|owner)/u);
     expect(comment).toContain(`[${gate.id}](${ORIGIN}/tasks/${gate.id})`);
+  });
+
+  it('counts a change whose answer broke off after its status as unconfirmed, not as made', async () => {
+    github.mergeables.set(`${REPOSITORY}#58`, {});
+    github.mergeables.set(`${REPOSITORY}#59`, { mergeStateStatus: 'CLEAN' });
+    github.changeAnswersBreak = true;
+    expect(await turnOnAutoMerge('installation-token-1', REPOSITORY, 58)).toBe(UNCONFIRMED);
+    expect(await turnOnAutoMerge('installation-token-1', REPOSITORY, 59)).toBe(UNCONFIRMED);
+    // GitHub made both changes; only their answers were lost.
+    expect(github.autoMerges.map((entry) => entry.pull)).toEqual([`${REPOSITORY}#58`]);
+    expect(github.merges.map((entry) => entry.pull)).toEqual([`${REPOSITORY}#59`]);
   });
 
   it('asks nothing of GitHub for an approval that gates no pull request', async () => {

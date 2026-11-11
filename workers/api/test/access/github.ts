@@ -167,6 +167,8 @@ export interface GitHubCalls {
   readonly comments: { readonly pull: string; readonly body: string }[];
   /** Whether the app holds only read permissions, as before an owner accepts write ones: GitHub refuses every write. */
   readOnly: boolean;
+  /** Whether GitHub makes a change asked for but its answer breaks off after the status, as one that stalls past a deadline does. */
+  changeAnswersBreak: boolean;
 }
 
 /** The stand-in's node id of a pull request, which its mutations name it by. */
@@ -210,6 +212,15 @@ function mergeAnswer(calls: GitHubCalls, query: string, variables: Record<string
   const pull = String(variables.id).replace(/^PR_/u, '');
   const method = typeof variables.method === 'string' ? variables.method : null;
   (changed === 'mergePullRequest' ? calls.merges : calls.autoMerges).push({ pull, method });
+  if (calls.changeAnswersBreak) {
+    const broken = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"data":'));
+        controller.error(new Error('the answer broke off'));
+      },
+    });
+    return new Response(broken, { status: 200, headers: { 'content-type': 'application/json' } });
+  }
   return Response.json({ data: { [changed]: { clientMutationId: null } } });
 }
 
@@ -250,6 +261,7 @@ export function standInForGitHub(): GitHubCalls {
     merges: [] as StandInMergeRequest[],
     comments: [] as { pull: string; body: string }[],
     readOnly: false,
+    changeAnswersBreak: false,
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -272,6 +284,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.merges.length = 0;
     calls.comments.length = 0;
     calls.readOnly = false;
+    calls.changeAnswersBreak = false;
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {

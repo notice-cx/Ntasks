@@ -1083,8 +1083,10 @@ requests each, up to half of what is left after the installations, so open
 pull requests cannot take every request. So a check reads up to about 40
 pull requests and merged tasks, and the next check reads the rest. When
 GitHub fails to answer a merged task's read, with no answer, a server error
-or a rate limit, the check runs again a few seconds later, up to six more
-times with a growing delay. It signs in to GitHub with the app's private key.
+or a rate limit, the check runs again 1 minute later, then after 5 and 15
+minutes, then every 60 minutes, until GitHub answers every read or no merged
+task waits on a deploy, which a task stops doing a day after its merge. It
+signs in to GitHub with the app's private key.
 
 - A delivery is read only when its `X-Hub-Signature-256` header is the
   HMAC-SHA-256 of its body under the app's webhook secret, or the secret

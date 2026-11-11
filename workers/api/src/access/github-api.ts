@@ -399,6 +399,8 @@ async function graphql(
   }
   const body: unknown = await response.json().catch(() => null);
   if (response.status !== 200) return refusalOf(at(body, 'message'));
+  // A 200 whose body stalled past the deadline, or broke off, answered nothing.
+  if (body === null || typeof body !== 'object') return RETRY;
   const errors = at(body, 'errors');
   if (Array.isArray(errors) && errors.length > 0) {
     const first: unknown = errors[0];
@@ -485,7 +487,12 @@ export async function turnOnAutoMerge(token: string, repository: string, number:
     : await graphql(token, ENABLE_AUTO_MERGE, { id, method: queue ? null : method });
   if (changed === RETRY) return UNCONFIRMED;
   if (!('data' in changed)) return changed;
-  return now ? 'merged' : 'on';
+  // Only an answer that names the change confirms it.
+  return at(changed.data, now ? 'mergePullRequest' : 'enablePullRequestAutoMerge')
+    ? now
+      ? 'merged'
+      : 'on'
+    : UNCONFIRMED;
 }
 
 /** Posts `body` as a comment on the pull request `number` of `repository`, with an installation's token: true once GitHub made it, UNCONFIRMED when no answer came. */
