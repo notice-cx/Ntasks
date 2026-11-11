@@ -32,12 +32,16 @@ import type {
   FieldFilters,
   LiveTaskDetail,
   LiveTasksPayload,
+  MadeServiceCredential,
   NewApp,
   NewInvitation,
   NewProject,
+  NewServiceCredential,
   NewTask,
   ProjectEdit,
   ProjectFields,
+  ServiceCredential,
+  ServiceGrant,
   StepMarking,
   TaskChoiceKey,
   TaskCreated,
@@ -165,6 +169,12 @@ export interface TasksApi {
   revokeApp(clientId: string): Promise<void>;
   /** Remove an app for everyone; only the workspace's owners may. */
   removeApp(clientId: string): Promise<void>;
+  /** The workspace's service credentials, revoked ones included, without their tokens; only its owners may read them. */
+  serviceCredentials(signal?: AbortSignal): Promise<ServiceCredential[]>;
+  /** Make a service credential; only the workspace's owners may. The answer holds its token, which no later read shows. */
+  createServiceCredential(input: NewServiceCredential, options?: WriteOptions): Promise<MadeServiceCredential>;
+  /** Revoke a service credential: its token is refused from its next request. */
+  revokeServiceCredential(id: string): Promise<void>;
   /** The workspace's GitHub webhook, without its secret; only its owners may read it. */
   githubWebhook(signal?: AbortSignal): Promise<GitHubWebhook>;
   /** Save the webhook's secret, its deploy checks or both; only the workspace's owners may. */
@@ -469,6 +479,24 @@ function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook 
   };
 }
 
+function readServiceCredential(row: unknown, unreadable: string): ServiceCredential {
+  if (!isRecord(row) || typeof row.id !== 'string' || typeof row.name !== 'string')
+    throw new UnreadableAnswer(unreadable);
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+    revokedAt: typeof row.revokedAt === 'string' ? row.revokedAt : null,
+    grants: (Array.isArray(row.grants) ? row.grants : []).flatMap((grant: unknown): ServiceGrant[] =>
+      isRecord(grant) && typeof grant.projectId === 'string' && (grant.access === 'read' || grant.access === 'write')
+        ? [{ projectId: grant.projectId, access: grant.access }]
+        : [],
+    ),
+    backup: row.backup === true,
+    restore: row.restore === true,
+  };
+}
+
 function readApps(payload: unknown): ConnectedApp[] {
   const unreadable = 'The app list could not be read.';
   if (!isRecord(payload) || !Array.isArray(payload.apps)) throw new UnreadableAnswer(unreadable);
@@ -612,6 +640,9 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     registerApp: (input, options) => scope().registerApp(input, options),
     revokeApp: (clientId) => scope().revokeApp(clientId),
     removeApp: (clientId) => scope().removeApp(clientId),
+    serviceCredentials: (signal) => scope().serviceCredentials(signal),
+    createServiceCredential: (input, options) => scope().createServiceCredential(input, options),
+    revokeServiceCredential: (id) => scope().revokeServiceCredential(id),
     githubWebhook: (signal) => scope().githubWebhook(signal),
     saveGitHubWebhook: (settings) => scope().saveGitHubWebhook(settings),
     removeGitHubWebhook: () => scope().removeGitHubWebhook(),
@@ -887,6 +918,25 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async removeApp(clientId) {
       await write('POST', `/api/access/apps/${encodeURIComponent(clientId)}/remove`, {}, 'The app');
+    },
+    async serviceCredentials(signal) {
+      const unreadable = 'The service credentials could not be read.';
+      const answer = await read<unknown>('/api/access/services', 'The service credentials', signal);
+      if (!isRecord(answer) || !Array.isArray(answer.services)) throw new UnreadableAnswer(unreadable);
+      return answer.services.map((row: unknown) => readServiceCredential(row, unreadable));
+    },
+    async createServiceCredential({ name, grants, backup, restore }, options) {
+      const body = { name, grants, backup, restore };
+      const response = await write('POST', '/api/access/services', body, 'The service credential', options);
+      const unreadable = 'The credential was made, but the answer could not be read.';
+      const answer = await answerJson(response, unreadable);
+      const service = isRecord(answer) ? answer.service : null;
+      const made = readServiceCredential(service, unreadable);
+      if (!isRecord(service) || typeof service.token !== 'string') throw new UnreadableAnswer(unreadable);
+      return { ...made, token: service.token };
+    },
+    async revokeServiceCredential(id) {
+      await write('POST', `/api/access/services/${encodeURIComponent(id)}/revoke`, {}, 'The service credential');
     },
     async githubWebhook(signal) {
       const answer = await read<unknown>('/api/access/github', 'The GitHub webhook', signal);

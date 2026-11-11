@@ -8,6 +8,7 @@ import type {
   DetectedDeploy,
   GitHubInstallation,
   LiveTask,
+  ServiceCredential,
   TaskActor,
   TaskComment,
   TaskField,
@@ -37,6 +38,8 @@ export interface FixtureWorkspace extends Workspace {
   invitations: WorkspaceInvitation[];
   /** Its connected apps; none when left out. */
   apps?: ConnectedApp[];
+  /** Its service credentials, revoked ones included; none when left out. */
+  services?: ServiceCredential[];
   /** Its GitHub webhook, with the secret the Worker would keep encrypted; none when left out. */
   github?: { secret: string; deployChecks: string[]; updatedAt: string };
   /** Its GitHub App, where it is installed and the deploy checks deliveries showed; none when left out. */

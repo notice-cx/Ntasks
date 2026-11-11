@@ -561,10 +561,11 @@ one on Hover), `NavSection`s with their headings (Projects, People),
 `ProjectBadge` (the icon read from a project's website, or its prefix's
 first letter in a ringed square) and `SidebarSpacer`, which pushes Settings
 and Source code to the foot. `NavItem asChild` makes a router link the item. For a person in
-two or more workspaces, the name is a `WorkspaceButton`: the name and a
+two or more workspaces, and for a deployment admin, the name is a `WorkspaceButton`: the name and a
 14 px `chevrons-up-down` in Text 3, Hover under the pointer and while its
 menu is open. Its menu lists the workspaces, each with its icon and the open
-one ticked, then Settings under a divider.
+one ticked, then Settings under a divider, and for a deployment admin New
+workspace, which shows the first step's New workspace form in place of the page.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions. Below 768 px the board's views leave the top bar for a
@@ -609,10 +610,15 @@ in a field of `text-code` with Save and Cancel; a pointer finds Edit beside
 each one. Links are quiet lines grouped under their relation in Text 3
 (Waits on, Holds back, Related, Duplicates, Replaces, a pull request, a
 document): a status mark, the id and the title, or for a page outside
-Ntasks its icon, title and host, opening in a new tab. A page's line ends in
-Remove, and the heading in Add link, while pointed at. Add link opens a
-Surface panel under the links: URL\* and Title\*, both required, and Kind
-(Link, Pull request or Document). Activity is one line per moment, oldest
+Ntasks its icon, title and host, opening in a new tab. A page's line, and
+the line of a link the task itself holds, end in Remove, and the heading in
+Add link, while pointed at; a link another task holds onto this one (Holds
+back, Merges before) is removed from that task's page. Add link opens a
+Surface panel under the links: Kind first, a page's (Link, Pull request or
+Document) and a task's (Waits on, Related, Duplicates, Replaces or Merges
+after), then for a page URL\* and Title\*, both required, or for a task
+Task\*, its id. Two tasks hold one link, so a new kind replaces the one the
+pair had. Activity is one line per moment, oldest
 first: the actor's 20 px avatar (an icon where the read names nobody), what
 they did, and its age at the end; a comment's words sit under its line. The
 comment box ends the page, with Comment and its `⌘↵`.
@@ -835,8 +841,8 @@ from Oct 28 to Nov 3.
 ### Settings and the first workspace
 
 Settings is one tab at a time under a `TopBar` whose `TabLinks` name the
-tabs: Workspace, Projects, Members, GitHub, Apps and You, each at its own
-address; a member has no Members or GitHub tab. Below 1024 px the tabs leave
+tabs: Workspace, Projects, Members, GitHub, Apps, Services and You, each at
+its own address; a member has no Members, GitHub or Services tab. Below 1024 px the tabs leave
 the top bar for a row of their own under it, which scrolls sideways with the
 current tab in view. Each tab is a `SettingsSection` (`settings.tsx`), 720 px
 at most: its title in `text-heading`, one line in Text 2 saying what it
