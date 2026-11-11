@@ -1,0 +1,9 @@
+{
+  "added": "`filedBy` and `filedModel` on a task: who filed it and the model they named",
+  "shapes": {
+    "task": {
+      "filedBy": "null|string",
+      "filedModel": "null|string"
+    }
+  }
+}

@@ -1291,6 +1291,9 @@ otherwise.
 A task answers its holder's work in hand as `for`, `work`,
 `lastActivityAt`, `stalled` and `activity`, as `get_task` does.
 
+A task answers who filed it as `filedBy` and the model they named as
+`filedModel`; each is null on a task imported without them.
+
 ### A project's website and icon
 
 When an owner saves a project's website, the Worker reads the website's icon
