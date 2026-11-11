@@ -8,8 +8,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { deploy, Stop } from './deploy.ts';
-import { IncompleteRelease, readRelease } from './release.ts';
+import { compareReleases, deploy, Stop } from './deploy.ts';
+import { inNpxCache, latestRelease, PACKAGE, registryOf } from './latest.ts';
+import { IncompleteRelease, readRelease, type Release } from './release.ts';
 import { Wrangler, WranglerError, type Io, type WranglerCommand } from './wrangler.ts';
 
 export const DEFAULT_NAME = 'ntasks';
@@ -37,9 +38,40 @@ export interface Deps {
   /** Where wrangler's login and deploy output goes; left out, the terminal. */
   readonly terminal?: Io;
   readonly makeSecret?: () => string;
+  /** Asks the person a question in the terminal and answers what they typed; left out when there is no terminal to ask in. */
+  readonly ask?: (question: string) => Promise<string>;
 }
 
 class UsageError extends Error {}
+
+/**
+ * Before a deploy, a copy outside npx's cache compares its release with the
+ * registry's latest. An older one prints both and the command that deploys
+ * the latest, and deploys only when the person confirms.
+ */
+async function checkLatest(release: Release, dryRun: boolean, deps: Deps): Promise<void> {
+  if (inNpxCache(deps.packageDir)) return;
+  const { io } = deps;
+  const latest = await latestRelease(registryOf(deps.env));
+  if (latest === undefined) {
+    io.out(`The npm registry could not be read, so the check for a release newer than ${release.version} was skipped.`);
+    io.out('');
+    return;
+  }
+  if (compareReleases(release.version, latest) >= 0) return;
+  io.out(`This is ntasks ${release.version}, and the latest release is ${latest}. To deploy ${latest}, run:`);
+  io.out('');
+  io.out(`  npx ${PACKAGE}@latest deploy`);
+  io.out('');
+  if (dryRun) return;
+  if (deps.ask === undefined) {
+    throw new Stop(
+      `Nothing was deployed. To deploy ${release.version} anyway, run the command in a terminal and confirm.`,
+    );
+  }
+  const answer = await deps.ask(`Deploy ${release.version} anyway? [y/N] `);
+  if (!/^y(?:es)?$/iu.test(answer.trim())) throw new Stop('Nothing was deployed.');
+}
 
 function parse(argv: readonly string[]) {
   try {
@@ -101,6 +133,8 @@ export async function main(argv: readonly string[], deps: Deps): Promise<number>
         `--name ${name}: a name is lowercase letters, digits and hyphens, at most 63, starting and ending with a letter or digit.`,
       );
     }
+    const dryRun = values['dry-run'] ?? false;
+    await checkLatest(release, dryRun, deps);
     workDir = await mkdtemp(path.join(tmpdir(), 'ntasks-deploy-'));
     const wrangler = new Wrangler({
       command: deps.wrangler,
@@ -109,7 +143,7 @@ export async function main(argv: readonly string[], deps: Deps): Promise<number>
       terminal: deps.terminal,
     });
     await deploy(
-      { name, account: values.account, dryRun: values['dry-run'] ?? false },
+      { name, account: values.account, dryRun },
       {
         release,
         wrangler,

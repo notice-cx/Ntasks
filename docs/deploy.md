@@ -62,6 +62,13 @@ The Worker's secrets stay as they are, and each workspace's task store applies
 its own migrations when it next starts. `npx ntasks@<version> deploy` deploys
 that release in place of the latest.
 
+npx runs a global or project install of `ntasks` as it is, without looking
+for a newer release. Such a copy reads the latest release from the npm
+registry first. When that is newer, the command prints both releases and
+`npx ntasks@latest deploy`, and deploys the older release only when you
+confirm in the terminal. When the registry cannot be reached, it says the
+check was skipped and deploys.
+
 Nothing is kept on your machine between runs: each deploy tags the Worker's
 version with its release, such as `v0.1.0`, and the next run reads the tag.
 
