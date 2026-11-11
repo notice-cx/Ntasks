@@ -147,7 +147,9 @@ In each case, a signal that names the pull request or commit moves the task:
 ([Delivery](api.md#delivery)). A `live` signal moves a task to Live only in
 a project with **Changes go live by a deploy** turned on, in Settings,
 Projects; in any other project it stops at Merged. A task whose repository
-is ticked under **Merges go live** moves to Live on either signal.
+is ticked under **Merges go live** moves to Live on either signal. A change
+that went live with no deploy GitHub reports is moved with **Mark as live**
+on its task page, or `report_delivery` naming the task by id.
 
 ## Approve a pull request in Ntasks
 

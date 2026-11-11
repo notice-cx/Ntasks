@@ -107,6 +107,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'comment',
   'close',
   'move',
+  'deliver',
   'respond',
   'dismiss',
   'resolve',
@@ -1122,6 +1123,28 @@ export function createFixtureTasksApi({
           criteria: criteria.map(({ text }, index) => ({ text, met: met.includes(index + 1) })),
         };
       });
+    },
+    /** Moves it as the Worker does: a project that does not deploy stops at merged, and nothing moves back. */
+    async markLive(id) {
+      reach();
+      const task = state.tasks.find((row) => row.id === id);
+      const delivery = task?.delivery;
+      if (!task || task.status !== 'closed' || !delivery || delivery.stage === 'live') return null;
+      // As the Worker reads it, at any stage: the delivery's repository, or else its GitHub pull request's.
+      const merging =
+        delivery.repository ??
+        /^https:\/\/github\.com\/([a-z0-9-]+\/[a-z0-9._-]+)\/pull\/\d+$/u.exec(delivery.pullRequest ?? '')?.[1] ??
+        null;
+      const live =
+        state.projects.find((row) => row.logicalKey === task.project)?.deploys === true ||
+        (merging !== null && state.mergesLive?.has(merging) === true);
+      if (!live && delivery.stage === 'merged') return null;
+      const at = new Date(now()).toISOString();
+      task.delivery = live
+        ? { ...delivery, stage: 'live', liveAt: at }
+        : { ...delivery, stage: 'merged', mergedAt: delivery.mergedAt ?? at };
+      touch(task);
+      return task.delivery.stage === 'live' ? 'live' : 'merged';
     },
     async dispute(id, key) {
       reach();

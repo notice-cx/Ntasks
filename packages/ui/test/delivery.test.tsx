@@ -30,6 +30,35 @@ describe('a closed task with a delivery', () => {
   });
 });
 
+describe('marking a closed task live by hand', () => {
+  const stageOn = (region: HTMLElement) =>
+    region.querySelector('[data-task-delivery]')?.getAttribute('data-task-delivery');
+
+  it('moves a built task to Live, and is not offered once it is Live or where Merged is the last stage', async () => {
+    const api = createFixtureTasksApi();
+    const { unmount } = renderApp(`/tasks/${BUILT}`, api);
+    const closed = await screen.findByRole('region', { name: 'Closed as Done' });
+    fireEvent.click(within(closed).getByRole('button', { name: 'Mark as live' }));
+    await waitFor(() => expect(stageOn(screen.getByRole('region', { name: 'Closed as Done' }))).toBe('live'));
+    const live = screen.getByRole('region', { name: 'Closed as Done' });
+    expect(within(live).queryByRole('button', { name: 'Mark as live' })).toBeNull();
+    unmount();
+
+    // docs does not deploy, so its merged task has no stage left.
+    const { unmount: leave } = renderApp(`/tasks/${MERGED}`, api);
+    const merged = await screen.findByRole('region', { name: /^Closed as/u });
+    expect(stageOn(merged)).toBe('merged');
+    expect(within(merged).queryByRole('button', { name: 'Mark as live' })).toBeNull();
+    leave();
+
+    await api.updateProject('docs', { deploys: true });
+    renderApp(`/tasks/${MERGED}`, api);
+    const waiting = await screen.findByRole('region', { name: /^Closed as/u });
+    fireEvent.click(within(waiting).getByRole('button', { name: 'Mark as live' }));
+    await waitFor(() => expect(stageOn(screen.getByRole('region', { name: /^Closed as/u }))).toBe('live'));
+  });
+});
+
 describe('the Waiting for you view', () => {
   it('lists built work waiting for its merge, and merged work only where the project deploys', async () => {
     const { unmount } = renderApp('/tasks?view=waiting');

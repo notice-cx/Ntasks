@@ -332,7 +332,10 @@ project whose changes do not go live by a deploy, such as a library, stops at
 merged; the project's owner says which kind it is, or a deploy that GitHub
 reports for one of its tasks says it the first time. In a project whose
 repositories differ, an owner says a repository with no deploy has its
-merges go live, and its tasks move from built straight to live.
+merges go live, and its tasks move from built straight to live. A change
+that went live where no signal reaches Ntasks, such as a deploy by hand, is
+moved by the person who knows: **Mark as live** on the closed task, or
+`report_delivery` naming the task.
 
 The web app's **Waiting for you** list shows built work, which waits for a
 merge, and merged work of a project that deploys, which waits for a deploy.

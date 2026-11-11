@@ -389,6 +389,16 @@ export function useReleaseTask() {
   });
 }
 
+/** Says that a closed task's change went live, for a deploy no signal reports to Ntasks. */
+export function useMarkLive() {
+  const api = useTasksApi();
+  const refresh = useTaskRefresh();
+  return useMutation({
+    mutationFn: (id: string) => api.markLive(id),
+    onSuccess: () => refresh(),
+  });
+}
+
 export function useDisputeTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();

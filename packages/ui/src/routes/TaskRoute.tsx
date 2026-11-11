@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Reply,
+  Rocket,
   SearchX,
   Undo2,
   X,
@@ -54,6 +55,7 @@ import {
   useDisputeTask,
   useCommentOnTask,
   useInboxAnswer,
+  useMarkLive,
   useRetryKey,
   useTask,
   useTaskProjects,
@@ -295,6 +297,14 @@ function TaskPage({
     (task.answer.option === 'approve' || task.answer.option === 'done') &&
     task.answer.disputedBy === null;
   const disputeReason = reasonFor(operationAvailable(capabilities, 'dispute'));
+  // A change that went live where no signal reaches Ntasks, such as a deploy by hand. In a project
+  // that does not deploy, Merged is the last stage, so only a change still at Built has a step left.
+  const stage = closed ? (task.delivery?.stage ?? null) : null;
+  // An older server, which lists no `deliver`, refuses a signal that names only tasks.
+  const markableLive =
+    (stage === 'built' || (stage === 'merged' && project.deploys === true)) &&
+    capabilities.operations?.includes('deliver') === true;
+  const markLiveReason = reasonFor(operationAvailable(capabilities, 'deliver'));
   const claimable = task.status === 'open' && task.assignee === null;
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
   const acceptOffered = !isGate(task) && operationAvailable(capabilities, 'accept');
@@ -537,6 +547,7 @@ function TaskPage({
               {acceptanceDisputable ? (
                 <DisputeAction id={task.id} project={key} disabledReason={disputeReason} />
               ) : null}
+              {markableLive ? <MarkLiveAction id={task.id} disabledReason={markLiveReason} /> : null}
             </ClosedSummary>
           ) : null}
           {task.answer?.relayed ? (
@@ -663,6 +674,32 @@ function ClaimAction({ id, project, disabledReason }: { id: string; project: str
       {claim.isPending ? 'Claiming…' : 'Claim'}
       <Kbd className="max-sm:hidden">M</Kbd>
     </Button>
+  );
+}
+
+/** Moves a closed task's change to Live by hand, for a release no deploy check or merge reports to Ntasks. */
+function MarkLiveAction({ id, disabledReason }: { id: string; disabledReason: string | null }) {
+  const markLive = useMarkLive();
+  return (
+    <div>
+      <Button
+        disabled={disabledReason !== null || markLive.isPending}
+        title={disabledReason ?? undefined}
+        data-task-action="mark-live"
+        onClick={() =>
+          markLive.mutate(id, {
+            onSuccess: (stage) =>
+              stage === null
+                ? toast.error(`${id} didn't move: it may already be live, or you may only read its project.`)
+                : toast.success(stage === 'live' ? `Marked ${id} live` : `Marked ${id} merged`),
+            onError: (error) => toast.error(error.message),
+          })
+        }
+      >
+        <Rocket aria-hidden />
+        {markLive.isPending ? 'Marking…' : 'Mark as live'}
+      </Button>
+    </div>
   );
 }
 

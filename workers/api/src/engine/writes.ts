@@ -263,6 +263,9 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
     OR substr(t.delivery_merge_commit, 1, length(w.value)) = w.value
   UNION
   SELECT t.id FROM json_each(?4) w CROSS JOIN tasks t ON t.id = w.value
+  UNION
+  -- A moved task's old id, such as on a Refs: line written before the move, still names it.
+  SELECT a.task_id FROM json_each(?4) w CROSS JOIN task_aliases a ON a.alias = w.value
 )
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
