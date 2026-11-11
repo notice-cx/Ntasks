@@ -28,6 +28,11 @@ protocol appears in neither table.
 | STATE-8 | `workers/api/test/engine/writes.test.ts` › "reopens a closed task with no close left on it, and keeps the earlier close in history (rule 6)" |
 | STATE-8 | `workers/api/test/api/delivery.test.ts` › "is cleared by a reopen and kept in history, and a close without a commit or pull request has none" |
 | STATE-9 | `workers/api/test/engine/ready.test.ts` › "lists open epics with their children, eligible to close once every child is" |
+| STATE-23 | `workers/api/test/engine/ready.test.ts` › "names the linked tasks dropped after a task last changed, in every read, until it changes again" |
+| STATE-23 | `workers/api/test/engine/ready.test.ts` › "counts a dropped task that waited on this one, and leaves out one it replaces, work found from it and closed tasks" |
+| STATE-23 | `workers/api/test/engine/ready.test.ts` › "takes a task off the list once the dropped task reopens" |
+| STATE-23 | `workers/api/test/api/read-tools.test.ts` › "names the linked tasks dropped since a task last changed, on the task and only on its list row" |
+| STATE-23 | `workers/api/test/api/link-privacy.test.ts` › "are left out of the dropped tasks a task relies on" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes as done in the same write, by Ntasks, naming the task that closed last, and clears its holder’s work" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes as done when any task under it closed as done, and as no longer needed when none shipped" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "closes a nested epic, then the epic above it when that was its last open task" |

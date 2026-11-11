@@ -180,6 +180,10 @@ async function drive(): Promise<readonly Sample[]> {
   const unproved = await create({ title: 'Tidy the folder' });
   const decision = await create({ title: 'Ship on Monday?', type: 'decision', labels: ['human'] });
   const declined = await create({ title: 'Translate the post', labels: ['human'] });
+  // It waits on the translation, so it relies on a dropped task once the translation is dismissed below.
+  const translation = (
+    await tool(owner, 'create_task', { project: projectId, title: 'Publish the translation', depends_on: [declined] })
+  ).id as string;
 
   const task = (id: string, part = '') => `/api/tasks/${id}${part}`;
   await as('PATCH /api/tasks/:id', task(post), inProject({ priority: 0 }));
@@ -354,7 +358,21 @@ async function drive(): Promise<readonly Sample[]> {
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
-  for (const id of [post, date, advert, linked, unproved, choice, approval, relayed, stuck, done, donations, checked])
+  for (const id of [
+    post,
+    date,
+    advert,
+    linked,
+    unproved,
+    choice,
+    approval,
+    relayed,
+    stuck,
+    done,
+    donations,
+    translation,
+    checked,
+  ])
     await as('GET /api/tasks/:id', `${task(id)}?project=${projectId}`);
   for (const id of [post, checked])
     await as('GET /api/tasks/:id/history', `${task(id, '/history')}?project=${projectId}`);

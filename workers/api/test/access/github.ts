@@ -42,12 +42,15 @@ export interface StandInPull {
   readonly base: string;
 }
 
-/** A check run that completed on a commit, as the stand-in lists it. */
+/** A check run on a commit, as the stand-in lists it. */
 export interface StandInCheckRun {
+  /** GitHub's id of the run; none when a test names none. */
+  readonly id?: number;
   readonly name: string;
-  readonly conclusion: 'success' | 'failure';
+  /** How it ended, or null while it runs. */
+  readonly conclusion: 'success' | 'failure' | 'skipped' | null;
   readonly startedAt: string;
-  readonly completedAt: string;
+  readonly completedAt: string | null;
   /** The branch of its check suite; main when a test names none. */
   readonly branch?: string;
 }
@@ -126,6 +129,10 @@ export interface GitHubCalls {
   readonly checkReads: string[];
   /** The commits whose check runs GitHub fails to answer, with a server error, which a test sets. */
   readonly checkOutages: Set<string>;
+  /** The commits whose check runs GitHub answers in part, with an error and no check suites, which a test sets. */
+  readonly checkErrors: Set<string>;
+  /** The commits whose check runs GitHub refuses with a rate limit's 403 and no header, which a test sets. */
+  readonly checkRateLimits: Set<string>;
   /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
   readonly histories: Map<string, string[]>;
   /** Each request the Worker made to GitHub's API, as `<method> <path>`. */
@@ -161,6 +168,8 @@ export function standInForGitHub(): GitHubCalls {
     checkRuns: new Map<string, StandInCheckRun[]>(),
     checkReads: [] as string[],
     checkOutages: new Set<string>(),
+    checkErrors: new Set<string>(),
+    checkRateLimits: new Set<string>(),
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
     names: new Map<number, string>(),
@@ -176,6 +185,8 @@ export function standInForGitHub(): GitHubCalls {
     calls.checkRuns.clear();
     calls.checkReads.length = 0;
     calls.checkOutages.clear();
+    calls.checkErrors.clear();
+    calls.checkRateLimits.clear();
     calls.histories.clear();
     calls.apiRequests.length = 0;
     calls.names.clear();
@@ -268,12 +279,21 @@ export function standInForGitHub(): GitHubCalls {
           base: { ref: found.base, repo: { full_name: pull[1], default_branch: 'main' } },
         });
       }
-      // GitHub's GraphQL API, for the one query the Worker sends: a commit's passing check runs, by check suite.
+      // GitHub's GraphQL API, for the one query the Worker sends: a commit's check runs, by check suite.
       if (url.href === 'https://api.github.com/graphql' && request.method === 'POST') {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
         const { variables } = (await request.json()) as { variables: { commit: string } };
         calls.checkReads.push(variables.commit);
         if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
+        // A secondary rate limit, which GitHub may answer with no retry-after or rate-limit header.
+        if (calls.checkRateLimits.has(variables.commit))
+          return Response.json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 });
+        // As GitHub answers a query past its resource limits: 200, the parts it read, and null for the rest.
+        if (calls.checkErrors.has(variables.commit))
+          return Response.json({
+            data: { repository: { defaultBranchRef: { name: 'main' }, object: { checkSuites: null } } },
+            errors: [{ type: 'MAX_NODE_LIMIT_EXCEEDED', message: 'This query requests too many nodes.' }],
+          });
         const suites = new Map<string, StandInCheckRun[]>();
         for (const run of calls.checkRuns.get(variables.commit) ?? []) {
           const branch = run.branch ?? 'main';
@@ -288,9 +308,13 @@ export function standInForGitHub(): GitHubCalls {
                   nodes: [...suites].map(([branch, runs]) => ({
                     branch: { name: branch },
                     checkRuns: {
-                      nodes: runs
-                        .filter((run) => run.conclusion === 'success')
-                        .map((run) => ({ name: run.name, startedAt: run.startedAt, completedAt: run.completedAt })),
+                      nodes: runs.map((run) => ({
+                        databaseId: run.id ?? null,
+                        name: run.name,
+                        startedAt: run.startedAt,
+                        completedAt: run.completedAt,
+                        conclusion: run.conclusion?.toUpperCase() ?? null,
+                      })),
                     },
                   })),
                 },

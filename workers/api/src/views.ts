@@ -174,6 +174,12 @@ export function webTask(task: Task, now: string) {
       title: link.title,
       status: link.status,
     })),
+    /** Linked tasks closed as won't do or no longer needed after this one last changed: its premise may be gone. */
+    reliesOnDropped: task.reliesOnDropped.map((link) => ({
+      id: link.taskId,
+      title: link.title,
+      resolution: link.resolution,
+    })),
     externalLinks: task.externalLinks.map(({ url, title, kind }) => ({ url, title, kind })),
     fields: task.fields,
     comments: task.commentCount,
@@ -251,6 +257,7 @@ export function mcpTask(task: Task, now: string) {
     deferUntil: task.deferUntil,
     dependencies: web.dependencies,
     dependents: web.dependents,
+    reliesOnDropped: web.reliesOnDropped,
     externalLinks: web.externalLinks,
     fields: task.fields,
     commentCount: task.commentCount,
@@ -291,6 +298,7 @@ export function mcpSummary(task: Task, now: string): Record<string, unknown> {
     parent: full.parent,
     ready: full.ready,
     awaitingHuman: full.awaitingHuman,
+    reliesOnDropped: full.reliesOnDropped,
     choices: full.choices,
     choice: full.choice,
     card: full.card,

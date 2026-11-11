@@ -86,6 +86,34 @@ async function parentOf(api: Api, task: string): Promise<ParentContext> {
 
 export const live: readonly Check[] = [
   {
+    id: 'state-23-dropped-task-is-named',
+    rule: 'STATE-23',
+    level: 'live',
+    strength: 'should',
+    title:
+      'An open task that waits on a task closed as wont-do names it in reliesOnDropped, and a change to the task clears it',
+    async run(context) {
+      const api = context.api();
+      const blocker = await file(context);
+      const waiting = await file(context, { dependsOn: [blocker] });
+      const dropped = async () =>
+        ((await taskOf(api, waiting)).reliesOnDropped ?? []).map((link) => [link.id, link.title, link.resolution]);
+      same(await dropped(), [], `${waiting}'s dropped tasks while ${blocker} is open`);
+      answered(
+        await context.setup().close(blocker, { reason: 'Not needed after all', resolution: 'wont-do' }),
+        `closing ${blocker} as wont-do`,
+      );
+      const { title } = await taskOf(api, blocker);
+      same(
+        await dropped(),
+        [[blocker, title, 'wont-do']],
+        `${waiting}'s dropped tasks once ${blocker} closed as wont-do`,
+      );
+      answered(await api.update(waiting, { description: 'Still needed without it.' }), `changing ${waiting}`);
+      same(await dropped(), [], `${waiting}'s dropped tasks once it changed`);
+    },
+  },
+  {
     id: 'state-16-stalled-is-shown-and-frees-nothing',
     rule: 'STATE-16',
     level: 'live',

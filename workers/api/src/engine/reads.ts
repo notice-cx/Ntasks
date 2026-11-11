@@ -161,9 +161,11 @@ const EXTERNAL_LINKS = `(SELECT json_group_array(json_object('url', x.url, 'titl
 const COLUMNS_WITHOUT_LINKS = `t.*, ${READY} AS ready, ${LAST_ACTIVITY} AS last_activity_at,
   (SELECT count(*) FROM task_comments m WHERE m.task_id = t.id) AS comment_count,
   (SELECT json_group_array(l.label) FROM task_labels l WHERE l.task_id = t.id) AS labels_json,
-  (SELECT json_group_array(json_object('id', e.depends_on_id, 'type', e.type, 'title', o.title, 'status', o.status))
+  (SELECT json_group_array(json_object('id', e.depends_on_id, 'type', e.type, 'title', o.title, 'status', o.status,
+       'resolution', o.resolution, 'closedAt', o.closed_at))
      FROM task_edges e JOIN tasks o ON o.id = e.depends_on_id WHERE e.task_id = t.id) AS dependencies_json,
-  (SELECT json_group_array(json_object('id', e.task_id, 'type', e.type, 'title', o.title, 'status', o.status))
+  (SELECT json_group_array(json_object('id', e.task_id, 'type', e.type, 'title', o.title, 'status', o.status,
+       'resolution', o.resolution, 'closedAt', o.closed_at))
      FROM task_edges e JOIN tasks o ON o.id = e.task_id WHERE e.depends_on_id = t.id) AS dependents_json`;
 
 const TASK_COLUMNS = `${COLUMNS_WITHOUT_LINKS},

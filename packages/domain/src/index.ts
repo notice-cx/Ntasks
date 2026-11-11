@@ -70,6 +70,7 @@ export type {
   CustomField,
   DeliveryStage,
   DependencyType,
+  DroppedLink,
   EpicProgress,
   ExternalLink,
   ExternalLinkKind,
