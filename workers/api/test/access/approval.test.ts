@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { TASK_LIMITS } from '@ntasks/domain';
+import { actorIdentity, TASK_LIMITS } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import { actorOf, personActor, personOf, uniquePersonName } from '../../src/access/principal.ts';
 import { verifyRequest } from '../../src/access/verify.ts';
@@ -122,6 +122,21 @@ describe('the name a new person is recorded under', () => {
     expect(personActor(uniquePersonName('agent:Alice', account, held('agent:Alice')))).toBe(
       'person:agent:Alice (alex-gh)',
     );
+  });
+
+  it('shows a person as a person when their name, cut to an actor’s length, reads as an agent’s', () => {
+    // Whole, the name ends in `opusX` and reads as a person's; cut, it ends in `opus`, as an agent's name does.
+    const long = `Claude${' '.repeat(TASK_LIMITS.actor - 10)}opusX`;
+    expect(actorIdentity(long.slice(0, TASK_LIMITS.actor)).kind).toBe('agent');
+    expect(actorIdentity(personActor(long))).toMatchObject({ kind: 'person' });
+
+    const shown = `Claude${' '.repeat(TASK_LIMITS.actor - 21)}opusX`;
+    const account = { id: '2302', login: 'abcdefgh' };
+    const actor = personActor(uniquePersonName(shown, account, held(shown)));
+    expect(actor.endsWith(' (abcdefgh)')).toBe(true);
+    expect(actor.length).toBeLessThanOrEqual(TASK_LIMITS.actor);
+    expect(actorIdentity(actor).kind).toBe('person');
+    expect(actor).not.toBe(personActor(shown));
   });
 
   it('keeps the part in brackets whole in an actor cut to its limit', () => {
