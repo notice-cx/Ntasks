@@ -325,6 +325,24 @@ describe('the GitHub receiver', () => {
     expect((await taskOf(projectId, mentioned)).delivery?.stage).toBe('built');
   });
 
+  it('moves the tasks of every commit of a push longer than one signal takes', async () => {
+    const owner = await ownerWithWebhook();
+    const projectId = await deployingProject();
+    const commits = Array.from({ length: 150 }, () => ({ id: newCommit() }));
+    const oldest = await closedWith(owner, projectId, { commit: commits[0]!.id });
+    const newest = await closedWith(owner, projectId, { commit: commits[149]!.id });
+
+    const answer = await deliver('push', push(commits));
+    expect(answer.body.moved).toEqual(
+      expect.arrayContaining([
+        { id: oldest, stage: 'merged' },
+        { id: newest, stage: 'merged' },
+      ]),
+    );
+    // Every part records the push's newest commit, which its deploy then names.
+    expect((await taskOf(projectId, oldest)).delivery).toMatchObject({ mergeCommit: commits[149]!.id });
+  });
+
   it('moves nothing for a push to another branch, a deleted branch or a push with no commits', async () => {
     const owner = await ownerWithWebhook();
     const projectId = await deployingProject();

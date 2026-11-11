@@ -64,8 +64,9 @@ import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { notConfigured } from './access/verify.ts';
 import { listed, type Args } from './args.ts';
-import { isTaskId } from '@ntasks/domain';
+import { isTaskId, type DeliveryMove } from '@ntasks/domain';
 import { movedView, signalArgs } from './delivery.ts';
+import type { MergeCloses } from './task-writes.ts';
 import { SIGNAL_ITEMS } from './engine/validate.ts';
 import { githubSender } from './github-check.ts';
 import { readBoundedBytes } from './http/json-body.ts';
@@ -154,6 +155,29 @@ export function refsOf(message: string): string[] {
   );
 }
 
+type Closed = MergeCloses['closed'][number];
+type Kept = MergeCloses['kept'][number];
+
+/**
+ * An event's signal in parts that each name at most SIGNAL_ITEMS commits and
+ * tasks, as one signal takes: a push lists up to 2,048 commits. Each part
+ * names at least one commit, the push's newest when its share of commits ran
+ * out, and every part records the same merge commit.
+ */
+function signalParts(event: Extract<GitHubEvent, { signal: Args }>): { signal: Args; taskIds: readonly string[] }[] {
+  const commits = Array.isArray(event.signal.commits) ? (event.signal.commits as unknown[]) : [];
+  const taskIds = event.taskIds ?? [];
+  const count = Math.max(1, Math.ceil(commits.length / SIGNAL_ITEMS), Math.ceil(taskIds.length / SIGNAL_ITEMS));
+  return Array.from({ length: count }, (_, index) => {
+    const share = commits.slice(index * SIGNAL_ITEMS, (index + 1) * SIGNAL_ITEMS);
+    const named = share.length > 0 || index === 0 || event.mergeCommit === undefined ? share : [event.mergeCommit];
+    return {
+      signal: index === 0 ? { ...event.signal, commits: named } : { ...event.signal, pullRequests: [], commits: named },
+      taskIds: taskIds.slice(index * SIGNAL_ITEMS, (index + 1) * SIGNAL_ITEMS),
+    };
+  });
+}
+
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
   if (event === 'ping')
@@ -208,9 +232,9 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       });
       const head = textAt(payload, 'after')?.toLowerCase();
       if (pushed.length === 0 || head === undefined) return { ignored: 'a push with no commits moves no task' };
-      const taskIds = [...new Set(pushed.flatMap((commit) => refsOf(commit.message)))].slice(0, SIGNAL_ITEMS);
+      const taskIds = [...new Set(pushed.flatMap((commit) => refsOf(commit.message)))];
       return {
-        signal: { repository, stage: 'merged', commits: pushed.map((commit) => commit.id).slice(-SIGNAL_ITEMS) },
+        signal: { repository, stage: 'merged', commits: pushed.map((commit) => commit.id) },
         mergeCommit: head,
         ...(taskIds.length === 0 ? {} : { taskIds }),
       };
@@ -396,15 +420,15 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     if (event.recheck === true) await workspaceStore(env, workspaceId).checkGitHub();
     return json({ moved: [], ignored: event.ignored }, 200);
   }
-  let signal;
+  let signals;
   try {
-    signal = {
-      ...signalArgs(event.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
+    signals = signalParts(event).map((part) => ({
+      ...signalArgs(part.signal, { pullRequests: 'pullRequests', commits: 'commits' }),
       ...(event.mergedBy === undefined ? {} : { mergedBy: event.mergedBy }),
       ...(event.at === undefined ? {} : { at: event.at }),
       ...(event.mergeCommit === undefined ? {} : { mergeCommit: event.mergeCommit }),
-      ...(event.taskIds === undefined ? {} : { taskIds: event.taskIds }),
-    };
+      ...(part.taskIds.length === 0 ? {} : { taskIds: part.taskIds }),
+    }));
   } catch (error) {
     if (error instanceof Refused) return json({ error: 'invalid_request', detail: error.detail }, 400);
     throw error;
@@ -437,10 +461,23 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
       return json({ moved: [], ignored: `${which} not passed, so no task moves yet` }, 200);
     }
   }
-  const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
-    turnOnDeploys: { except: detected.projects },
-  });
-  if ('refused' in answer) return json({ error: 'unavailable', detail: answer.refused }, 503);
+  const answer: { moved: DeliveryMove[]; turnedOn: string[]; closed: Closed[]; kept: Kept[] } = {
+    moved: [],
+    turnedOn: [],
+    closed: [],
+    kept: [],
+  };
+  // Each part moves its tasks on its own; a part sent again moves nothing twice, so GitHub may redeliver the whole push.
+  for (const signal of signals) {
+    const part = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
+      turnOnDeploys: { except: detected.projects },
+    });
+    if ('refused' in part) return json({ error: 'unavailable', detail: part.refused }, 503);
+    answer.moved.push(...part.moved);
+    answer.turnedOn.push(...part.turnedOn);
+    answer.closed.push(...part.closed);
+    answer.kept.push(...part.kept);
+  }
   try {
     await recordDetected(env.DB, workspaceId, { projects: answer.turnedOn });
   } catch {
