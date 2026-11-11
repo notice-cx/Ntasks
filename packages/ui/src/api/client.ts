@@ -696,13 +696,18 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       return readCapabilities(await read<unknown>('/api/tasks/capabilities', 'What this sign-in may do', signal));
     },
     projects: (signal) => until(readCatalog(), signal),
+    // The task page reads a task's external links, so a board leaves them out.
     async board(project, signal, fields = {}) {
-      const params = new URLSearchParams({ project: await projectId(project, signal) });
+      const params = new URLSearchParams({ project: await projectId(project, signal), externalLinks: 'none' });
       for (const [key, value] of Object.entries(fields)) params.append(`field.${key}`, value);
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
     },
     async delivery(project, signal) {
-      const params = new URLSearchParams({ project: await projectId(project, signal), stage: 'built,merged' });
+      const params = new URLSearchParams({
+        project: await projectId(project, signal),
+        stage: 'built,merged',
+        externalLinks: 'none',
+      });
       return read<LiveTasksPayload>(`/api/tasks?${params}`, 'The task list', signal);
     },
     async fields(project, signal) {

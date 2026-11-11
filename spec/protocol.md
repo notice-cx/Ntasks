@@ -538,7 +538,10 @@ A task is ready when:
 1. its status is `open`;
 2. every task it has a `blocks` link onto is closed;
 3. its parent is not waiting either: a parent that waits on an open task
-   holds every task under it, at any depth;
+   holds every task under it, at any depth, except a task labelled `human`
+   that is not an epic. Only its own `blocks` links hold such a task, so a
+   person is asked while the work above them waits; the tasks under it stay
+   held;
 4. neither it nor its parent is deferred to a later time;
 5. no approval it waits on is open; and
 6. it is not an approval.

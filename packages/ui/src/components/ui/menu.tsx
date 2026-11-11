@@ -22,7 +22,7 @@ import { roveFocus } from './rove';
  * A menu that picks a value marks the value held with a tick (`checked`) and
  * opens on it.
  */
-const MenuContext = createContext<{ close: () => void } | null>(null);
+const MenuContext = createContext<{ open: boolean; close: () => void } | null>(null);
 
 const ITEM = '[role^="menuitem"]:not([disabled])';
 
@@ -46,7 +46,7 @@ export function Menu({
   );
   const close = useCallback(() => setOpen(false), [setOpen]);
   return (
-    <MenuContext.Provider value={{ close }}>
+    <MenuContext.Provider value={{ open, close }}>
       <Popover open={open} onOpenChange={setOpen}>
         {children}
       </Popover>
@@ -72,6 +72,9 @@ export function MenuContent({
   footer?: ReactNode;
   className?: string;
 }) {
+  const menu = useContext(MenuContext);
+  // A closed menu draws nothing, so a list of rows, each with its own menu, keeps none of their parts.
+  if (menu?.open === false) return null;
   const items = Children.toArray(children).length > 0;
   return (
     <PopoverContent

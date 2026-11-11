@@ -425,14 +425,17 @@ too.
   project, as any write needs. Listing a project's fields needs only reading
   it.
 - **Lint**: `create_task`, `create_tasks` and `update_task` return `lint`
-  when it finds something: the sections the task's type expects that it still
-  lacks, and advice. Advice names a title over 70 characters or holding a
-  command, a file path or a commit hash; a description that writes a command
-  inline, or has a fenced block with no language tag or a `$` prompt; a
-  description whose first line repeats the title; an ask to a person, an
-  approval or a task labelled `human`, that names no link, control to press
-  or command; and lettered options to pass as `choices`. Nothing is refused
-  for it.
+  when it finds something: in `missing`, what the task's type expects that
+  it still lacks, and advice. A bug lacks `## Steps to Reproduce` when its
+  description never names it, and a bug, task, feature or epic lacks
+  `acceptance` when that field is blank, as the
+  [rules for writing a task](concepts.md#writing-a-task) ask. Advice names a
+  title over 70 characters or holding a command, a file path or a commit
+  hash; a description that writes a command inline, or has a fenced block
+  with no language tag or a `$` prompt; a description whose first line
+  repeats the title; an ask to a person, an approval or a task labelled
+  `human`, that names no link, control to press or command; and lettered
+  options to pass as `choices`. Nothing is refused for it.
 
 ## Filing, claiming and closing in one call
 
@@ -562,7 +565,7 @@ and hand-backs of the tasks waiting on an approval.
 | `declined` | On an approval or a request to do steps only: closes it as `wont-do`, tells each task waiting on it that the action must not happen, or that the steps are not done, and hands back the same waiting tasks as `answer`. |
 | `accepted` | On any open task but an approval or a request to do steps, from a sender that acts for a person (a service, which acts for nobody, is refused): the owner accepts it as done on their own call. `met` lists the numbers of the criteria they found met, counting each line or list item of `acceptance` from 1, `[]` when none is; the rest are recorded as waived. The task closes as `done` with the reason `explanation`, or `Accepted as done`, and its `closeAcceptance` names the owner as `by` and the sender in `relayed`, with the quote and the source ([Done on a person's call](#done-on-a-persons-call)). |
 | `owner_performed` | On an approval or a request to do steps only: the owner did the action, or the steps, themselves. On an open one it closes it as `done` and hands back the same waiting tasks as `answer`; on a closed approval it records the report. Either way it records `permission: none`. A request's steps stay as the person left them: ticks come only from the person. |
-| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
+| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. An approval, a request to do steps and a decision are never retired as `completed`. |
 | `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
 
@@ -1214,8 +1217,8 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, and `icon`: the address of the icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none |
 | `GET /api/tasks/projects/:projectId/icon` | optionally `v`, as `icon` gives it | The icon's bytes, with the image type the bytes show (`image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon. |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
-| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays`, `field.<key>` and `externalLinks=none` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. `externalLinks=none` leaves the tasks' external links unread: each task's `externalLinks` is empty, and `GET /api/tasks/:id` reads them; the web app's board sends it, with `stage` and `activity` too. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
+| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays`, `field.<key>` and `externalLinks` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
 | `GET /api/tasks` with `activity` | `project` and `activity`, a comma-separated list of `active`, `quiet` and `stalled`; optionally `status` naming `in_progress` and `field.<key>` | The board's answer, holding the project's tasks in progress in those groups of [activity](#work-in-hand), and `activities`, which counts the tasks in progress in each group. A board read with `status` naming `in_progress` answers `activities` too. `stage` is refused with `activity`. |
 | `GET /api/tasks/search` | `q`, 1 to 512 characters, and optionally `limit` (1 to 200, default 100) | `{ readAt, closedSince, total, tasks }`: the tasks of every project the sender reaches whose id, title, description, acceptance or labels hold every word of `q`, ignoring case, among the open ones and those closed in the last 7 days, most urgent first, as `list_tasks` searches with `query`. When `q` is a task id whose prefix names a project the sender reaches, that task comes first, closed at any time. Each task carries `project`, its project's key; `total` counts every match, and `tasks` holds the first `limit`. |
@@ -1557,6 +1560,11 @@ query:
 - `list_tasks` and `GET /api/tasks/search` read the external links of the
   tasks on the page they return, in one statement after the board, and no
   other task's;
+- a board read with `externalLinks=none` reads no external links, so its
+  answer's size does not grow with them: a project of 200 tasks with 32
+  links of 2,048 characters each answers a board that the store keeps in
+  memory, where the same board with its links passes 8 MB and is read
+  afresh each time;
 - a label read reads about fifteen rows for each task carrying the label in
   that project, however many tasks the project has;
 - a task's custom field values are part of its row, so they cost no row of

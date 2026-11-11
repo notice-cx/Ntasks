@@ -1,5 +1,6 @@
 /**
- * The sections a task's description is expected to have, by type.
+ * The parts of a task the task guide asks each type to have, and which of
+ * them a task lacks.
  *
  * Adapted from Beads (MIT License, Copyright (c) 2025 Beads Contributors;
  * see THIRD_PARTY_NOTICES.md): `RequiredSections` in internal/types/types.go
@@ -8,44 +9,39 @@
  */
 import type { TaskType } from './task.ts';
 
-const REQUIRED_SECTIONS: Readonly<Record<TaskType, readonly string[]>> = Object.freeze({
-  bug: ['Steps to Reproduce', 'Acceptance Criteria'],
-  task: ['Acceptance Criteria'],
-  feature: ['Acceptance Criteria'],
-  epic: ['Success Criteria'],
-  decision: ['Decision', 'Rationale', 'Alternatives Considered'],
+/** The acceptance field, as lint names it when a type expects it and it is blank. */
+export const ACCEPTANCE = 'acceptance';
+
+/** By type: the description's headings the guide asks for, and the acceptance field. */
+const REQUIRED: Readonly<Record<TaskType, readonly string[]>> = Object.freeze({
+  bug: ['## Steps to Reproduce', ACCEPTANCE],
+  task: [ACCEPTANCE],
+  feature: [ACCEPTANCE],
+  epic: [ACCEPTANCE],
+  decision: [],
   chore: [],
   gate: [],
 });
 
-/** The sections a task's type expects, as Markdown headings such as `## Acceptance Criteria`. */
+/** What a task's type expects: Markdown headings such as `## Steps to Reproduce`, and `acceptance`. */
 export function requiredSections(type: TaskType): readonly string[] {
-  return REQUIRED_SECTIONS[type].map((name) => `## ${name}`);
+  return REQUIRED[type];
 }
 
 /**
- * The headings a task's type expects that its text lacks, in the type's order.
- *
- * A section counts as present when its name appears anywhere in the
- * description or the acceptance text, in any case. A non-empty acceptance
- * field also counts as the "Acceptance Criteria" or "Success Criteria"
- * section, and an epic may say "Acceptance Criteria" for "Success Criteria".
+ * What a task's type expects that it lacks, in the type's order. A heading
+ * counts as present when its name appears anywhere in the description, in
+ * any case; `acceptance` when the acceptance field is not blank.
  */
 export function missingSections(task: {
   readonly type: TaskType;
   readonly description: string;
   readonly acceptance: string;
 }): string[] {
-  const text = `${task.description}\n${task.acceptance}`.toLowerCase();
-  const hasAcceptance = task.acceptance.trim() !== '';
-  return REQUIRED_SECTIONS[task.type]
-    .filter((name) => {
-      const key = name.toLowerCase();
-      if (text.includes(key)) return false;
-      const criteria = key === 'acceptance criteria' || key === 'success criteria';
-      if (criteria && hasAcceptance) return false;
-      if (task.type === 'epic' && key === 'success criteria' && text.includes('acceptance criteria')) return false;
-      return true;
-    })
-    .map((name) => `## ${name}`);
+  const description = task.description.toLowerCase();
+  return REQUIRED[task.type].filter((part) =>
+    part === ACCEPTANCE
+      ? task.acceptance.trim() === ''
+      : !description.includes(part.replace(/^#+\s*/u, '').toLowerCase()),
+  );
 }
