@@ -249,6 +249,27 @@ describe('a move and the records around it', () => {
     expect(await tasks.recordedWrite(to.id, retry)).toMatchObject({ task: { id: moved!.id } });
   });
 
+  it('records the change on a task it leaves in place whose duplicate it moves', async () => {
+    const tasks = engine();
+    const [from, to] = [await newProject(tasks), await newProject(tasks)];
+    const original = await make(tasks, from.id, { title: 'Fix the footer' });
+    const again = await make(tasks, from.id, { title: 'Footer is broken' });
+    await close(tasks, again, { duplicateOf: original.id });
+    const [duplicate] = (await tasks.moveTasks(to.id, [await placing(tasks, again, null)], OWNER)).tasks;
+
+    const result = await tasks.moveTasks(
+      to.id,
+      [await placing(tasks, original, null), await placing(tasks, duplicate!, null)],
+      OWNER,
+    );
+
+    const moved = result.moved.find((one) => one.from === original.id)!.to;
+    const stays = await read(tasks, to.id, duplicate!.id);
+    const [change] = await tasks.listHistory(to.id, duplicate!.id, { limit: 1 });
+    expect(stays).toMatchObject({ version: duplicate!.version + 1, close: { duplicateOf: moved } });
+    expect(change).toMatchObject({ version: stays.version, changes: { close: { duplicateOf: moved } } });
+  });
+
   it('plans again when a task it leaves in place changes before its batch, moving nothing until then', async () => {
     const { tasks, race } = racedEngine();
     const [from, to] = [await newProject(tasks), await newProject(tasks)];

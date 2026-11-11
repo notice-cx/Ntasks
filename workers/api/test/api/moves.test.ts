@@ -228,6 +228,19 @@ describe('a move and the approvals and retries around it', () => {
     expect(again).toMatchObject({ moved: first.moved, replayed: true });
   });
 
+  it('answers a move under a parent repeated with its key after the parent moved on with it', async () => {
+    const [from, to, later] = [await newProject(engine), await newProject(engine), await newProject(engine)];
+    const epic = await task(to, { title: 'Launch', type: 'epic' });
+    const moving = await task(from, { title: 'Pick the date' });
+    const args = { task: moving.id, parent: epic.id, idempotency_key: `key-${crypto.randomUUID()}` };
+    const first = await write<Moved>(target, 'move_tasks', args);
+    await write(target, 'move_tasks', { task: epic.id, project: later.key, with_children: true });
+
+    const again = await write<Moved>(target, 'move_tasks', args);
+
+    expect(again).toMatchObject({ moved: first.moved, replayed: true });
+  });
+
   it('leaves out of a repeated move the tasks that moved on to a project its sender cannot reach', async () => {
     const [from, to, hidden] = [await newProject(engine), await newProject(engine), await newProject(engine)];
     const moving = await task(from, { title: 'Draft the contract' });

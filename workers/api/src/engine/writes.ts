@@ -1574,7 +1574,7 @@ export class Writes {
         const id = after(taskId);
         const parent = parentId === null ? null : after(parentId);
         const duplicateOf = row.duplicate_of === null ? null : after(row.duplicate_of);
-        if (id === taskId && parent === row.parent_id) {
+        if (id === taskId && parent === row.parent_id && duplicateOf === row.duplicate_of) {
           // It stays where it is only as it was read: a write since moves the batch to plan again.
           statements.push(
             this.#db

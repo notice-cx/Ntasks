@@ -237,7 +237,9 @@ describe("a moved task's old id", () => {
     const { moved } = await api.moveTasks({ ids: ['web-t5w3'], project: 'docs', withChildren: true });
 
     await api.comment('web-t5w3', 'web', 'Still on it.');
-
     expect(api.state.comments.get(moved['web-t5w3']!)?.map((comment) => comment.text)).toContain('Still on it.');
+
+    const again = await api.moveTasks({ ids: ['web-t5w3'], project: 'web', withChildren: true });
+    expect(Object.keys(again.moved)).toEqual([moved['web-t5w3']]);
   });
 });

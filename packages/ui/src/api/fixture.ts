@@ -588,7 +588,9 @@ export function createFixtureTasksApi({
         'task_refused',
       );
     const roots = ids.map((id) => {
-      const found = state.tasks.find((row) => row.id === id);
+      // A former id names the task it moved to, as the Worker's move reads it.
+      const current = state.aliases?.get(id) ?? id;
+      const found = state.tasks.find((row) => row.id === current);
       if (!found) throw new ApiError(`Task ${id}: not found.`, 404, 'not_found');
       return found;
     });
