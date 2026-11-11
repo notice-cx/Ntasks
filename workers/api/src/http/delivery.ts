@@ -10,6 +10,7 @@ import { only, projectArg, refuse } from '../args.ts';
 import { movedView, reportDelivery, signalArgs } from '../delivery.ts';
 import { projectOf } from '../lookup.ts';
 import { readProjectIcon, websiteAddress } from '../project-icons.ts';
+import { ICON_SECURITY_POLICY } from '../svg-icon.ts';
 import type { ReadContext } from './tasks.ts';
 import type { WriteContext } from '../task-writes.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
@@ -108,7 +109,7 @@ export async function projectIconRoute(context: ReadContext, url: URL, projectId
       'content-type': icon.contentType,
       'cache-control': current ? 'private, max-age=31536000, immutable' : 'private, no-cache',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; sandbox",
+      'content-security-policy': ICON_SECURITY_POLICY,
     },
   });
 }

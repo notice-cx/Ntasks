@@ -1299,12 +1299,23 @@ A task answers its holder's work in hand as `for`, `work`,
 When an owner saves a project's website, the Worker reads the website's icon
 before it answers, and keeps it in the task store, so no page reads the website
 again. It reads the page's head for `<link rel="apple-touch-icon">` and
-`<link rel="icon">` tags and asks them in this order: an apple-touch-icon or an
-icon of 32 px or more, largest first; an icon with no declared size; a smaller
-one; then `/favicon.ico`. It keeps the first one whose own bytes are a PNG,
-ICO, JPEG, GIF or WebP image of at most 100 KB, and serves it with the type
-the bytes show. An SVG is never kept, whatever type the website claims for it,
-because an SVG can run script.
+`<link rel="icon">` tags and asks them in this order: an SVG, sharp at any
+size; an apple-touch-icon or an icon of 32 px or more, largest first; an icon
+with no declared size; a smaller one; then `/favicon.ico`. It keeps the first
+one whose own bytes are an SVG, PNG, ICO, JPEG, GIF or WebP image of at most
+100 KB, and serves it with the type the bytes show, whatever type the website
+claimed.
+
+An SVG can run script, so the Worker keeps one only once it has removed from
+it everything that runs or reaches outside it: scripts, `foreignObject`,
+embedded documents and media, animations, event-handler attributes, the
+document type and its entities, and every link that is not to a part of the
+same SVG or to a PNG, JPEG, GIF or WebP `data:` image. An SVG it cannot read
+as well-formed XML is not kept. `GET /api/tasks/projects/:projectId/icon`
+sends every icon with `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline';
+img-src data:; sandbox`, so opening the icon's address runs nothing, and the
+web app draws icons only in `<img>`.
 
 Every read is http or https, sends no cookie, follows at most 5 redirects, none
 to a local or private address, and the whole search stops after 8 seconds. A

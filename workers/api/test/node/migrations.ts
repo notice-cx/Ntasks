@@ -245,3 +245,42 @@ test('a store that holds links keeps each one when the links table takes merges-
   );
   db.close();
 });
+
+test('a store that holds project icons keeps each one when the icons table takes SVG', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0008_project_icon_svg.sql');
+  assert.ok(index > 0, 'the SVG icon migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  db.prepare(
+    'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?, ?, ?, ?, ?)',
+  ).run('p1', 'https://web.example.com/touch.png', 'image/png', png, AT);
+  const icons = () =>
+    db
+      .prepare('SELECT project_id, source_url, content_type, bytes, read_at FROM project_icons')
+      .all()
+      .map((row) => ({ ...row, bytes: [...(row.bytes as Uint8Array)] }));
+  const before = icons();
+  const svg = (type: string) => () =>
+    db.prepare('UPDATE project_icons SET content_type = ? WHERE project_id = ?').run(type, 'p1');
+  assert.throws(svg('image/svg+xml'), /CHECK constraint/u, 'no SVG before the migration');
+
+  migrated(db, FILES.slice(index));
+
+  assert.deepEqual(icons(), before, 'every icon it held, unchanged');
+  svg('image/svg+xml')();
+  assert.throws(svg('text/html'), /CHECK constraint/u, 'a type that is not an image');
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run('p-none', 'https://example.com/a.svg', 'image/svg+xml', png, AT),
+    /FOREIGN KEY/u,
+    'a project that does not exist',
+  );
+  db.close();
+});
