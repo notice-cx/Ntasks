@@ -640,13 +640,18 @@ hand as facts it may not change: Last activity (`12m ago`), Next step,
 Branch, Pull request (a link), Commit, Worktree and Session (a link when it
 is a URL), each only when recorded.
 
-After the task's own facts come the custom fields its project defines,
-under the names the project gave them, in the order it defined them. Each
-field in use opens the menu its type takes: its options for a single
+After the task's own facts come the custom fields the task holds a value
+for, under the names the project gave them, in the order it defined them.
+Each field in use opens the menu its type takes: its options for a single
 choice, its options to turn on and off for a multiple choice, Yes and No, a
 date with Today, Tomorrow and In a week, or a field for text, a number or a
-URL, which shows as a link. A retired field shows the value a task keeps as
-words. Until the project's fields are read, a value is named from its key
+URL, which shows as a link. None takes the value off and the field's line
+with it, as turning off the last option of a multiple choice does. Add field, a line in Text 3 under the custom fields, lists the
+fields in use that the task holds no value for; picking one shows that
+field's menu in its place, and the value saved gives the field its line. It
+takes no room when the task holds a value for every field, or when the
+sign-in may not change fields. A retired field shows the value a task keeps
+as words. Until the project's fields are read, a value is named from its key
 (`story_points` is Story points) and is not pressable.
 
 The board's Filter menu offers the custom fields of the one project in view

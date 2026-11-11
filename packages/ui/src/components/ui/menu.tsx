@@ -61,12 +61,15 @@ export function MenuContent({
   label,
   align = 'start',
   footer,
+  panelKey,
   className,
 }: {
   children: ReactNode;
   /** The menu's name for a screen reader, such as the task it acts on. */
   label: string;
   align?: 'start' | 'center' | 'end';
+  /** Changed when the menu shows another list in place of this one, so focus moves to that list's first item. */
+  panelKey?: string;
   /** What follows the items outside the menu itself, such as a field for a value the items do not hold.
    * A menu with no items is its footer alone. */
   footer?: ReactNode;
@@ -84,7 +87,7 @@ export function MenuContent({
       onOpenAutoFocus={(event) => event.preventDefault()}
     >
       {items ? (
-        <MenuPanel label={label} autoFocus>
+        <MenuPanel key={panelKey} label={label} autoFocus>
           {children}
         </MenuPanel>
       ) : null}
