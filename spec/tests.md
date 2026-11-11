@@ -65,6 +65,13 @@ protocol appears in neither table.
 | STATE-24 | `workers/api/test/api/moves.test.ts` › "takes an open approval along with the task waiting on it, which still waits until it is answered" |
 | STATE-24 | `workers/api/test/api/moves.test.ts` › "keeps an approval that another task still waits on where it is, and the moved task still waits on it" |
 | STATE-22 | `workers/api/test/engine/moves.test.ts` › "closes the epic left with no open task, and the epic a closed task joins when that leaves none open" |
+| STATE-25 | `workers/api/test/api/write-tools.test.ts` › "opens an approval that gates a pull request, which its reads name and its proposal covers" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "turns on auto-merge when a person approves, and posts one comment naming them and the approval" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "merges at once a pull request GitHub can merge already, and leaves a merge queue to choose its own method" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "posts %s on the pull request, naming the owner and the agent, and turns on no auto-merge" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "posts a person’s report that they did it themselves, and turns on no auto-merge" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "records on the approval that GitHub refused for lack of permission, with the links that give it" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "asks nothing of GitHub for an approval that gates no pull request" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval once, returning the open one when asked the same again" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |

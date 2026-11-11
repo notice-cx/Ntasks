@@ -602,9 +602,10 @@ describe('a row waiting for you that this sign-in cannot answer', () => {
       ...within(row('web-d4x1')).getAllByRole('button', { name: /^\([abc]\)/ }),
       within(row('web-q8n5')).getByRole('button', { name: 'Answer' }),
     ];
+    // Approve's description goes on to the pull request whose auto-merge it turns on; the reason comes first.
     for (const control of controls) {
       expect((control as HTMLButtonElement).disabled).toBe(true);
-      expect(reasonOf(control)).toBe('This sign-in cannot answer it.');
+      expect(reasonOf(control).startsWith('This sign-in cannot answer it.')).toBe(true);
     }
   });
 });
@@ -723,5 +724,19 @@ describe('a row waiting for you', () => {
     await waitFor(() =>
       expect(api.state.tasks.find((entry) => entry.id === 'docs-r4s9')?.choice).toMatchObject({ option: 'a' }),
     );
+  });
+});
+
+describe('a row that relies on a dropped task', () => {
+  it('names the dropped task, linked to its page, and a row that relies on none names nothing', async () => {
+    renderApp('/tasks');
+    const blocked = await group('Blocked');
+    const row = blocked.querySelector('[data-task-row="web-k3m9.4"]') as HTMLElement;
+    const fact = row.querySelector('[data-row-dropped]') as HTMLElement;
+    expect(fact.textContent).toBe('Relies on dropped web-h1z8');
+    expect((await group('Open')).querySelector('[data-task-row="web-b2r6"] [data-row-dropped]')).toBeNull();
+
+    fireEvent.click(within(fact).getByRole('link', { name: 'web-h1z8' }));
+    await screen.findByRole('heading', { level: 1, name: 'Remove the old landing page' });
   });
 });

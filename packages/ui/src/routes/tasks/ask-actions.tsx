@@ -1,21 +1,24 @@
 import { lazy, Suspense, useId, useState, type ReactNode } from 'react';
-import { Check, CheckCheck, CornerDownLeft, ListChecks, SendHorizontal } from 'lucide-react';
+import { Check, CheckCheck, CornerDownLeft, GitPullRequest, ListChecks, SendHorizontal } from 'lucide-react';
 import type { TaskChoiceKey, TaskChoices, TaskStep } from '../../api/types';
 import { Button } from '../../components/ui/button';
 import { Segmented } from '../../components/ui/choice';
 import { Field, Input, Textarea } from '../../components/ui/field';
 import { useInboxAnswer } from '../../hooks/useTasks';
+import { pullRequestName } from '../../lib/format';
 import { PERFORMED_LABEL, stepsDone, type InboxAsk } from '../../lib/task-model';
+import { cn } from '../../lib/utils';
 
 // The steps draw Markdown, whose renderer the board loads only when a row opens them.
 const StepList = lazy(() => import('./step-list').then((module) => ({ default: module.StepList })));
 
 /**
  * What a row in Waiting for you offers: Approve on an approval, beside Did it
- * myself, which opens a note under the row, the options side by side on a
- * decision (one press answers), Answer on a question, which opens a box under
- * the row, and Your steps on a request to do steps, which opens its steps
- * under the row. Every answer waits in the Undo window.
+ * myself, which opens a note under the row, after the pull request whose
+ * auto-merge Approve turns on when the approval gates one; the options side by
+ * side on a decision (one press answers), Answer on a question, which opens a
+ * box under the row, and Your steps on a request to do steps, which opens its
+ * steps under the row. Every answer waits in the Undo window.
  * `buttons` sit beside the title and `box` under it; both are null when
  * nothing is asked. Closing as something else is in the row's menu.
  */
@@ -27,6 +30,7 @@ export function useAskActions({
   proposalVersion = null,
   choices = null,
   steps = null,
+  pullRequest = null,
   nowMs = Date.now(),
   disabledReason = null,
   chooseDisabledReason = disabledReason,
@@ -41,6 +45,8 @@ export function useAskActions({
   choices?: TaskChoices | null;
   /** A request's steps, which Steps opens. */
   steps?: readonly TaskStep[] | null;
+  /** The pull request an approval gates. */
+  pullRequest?: string | null;
   nowMs?: number;
   /** Why the verbs cannot run here, or null. */
   disabledReason?: string | null;
@@ -52,6 +58,7 @@ export function useAskActions({
   const [text, setText] = useState('');
   const answer = useInboxAnswer();
   const reasonId = useId();
+  const mergeId = useId();
   const disabled = disabledReason !== null;
 
   if (ask === null) return { buttons: null, box: null };
@@ -92,6 +99,7 @@ export function useAskActions({
     </Button>
   ) : ask === 'approve' ? (
     <>
+      {pullRequest ? <AutoMergeNote pullRequest={pullRequest} id={mergeId} compact /> : null}
       <PerformedButton
         size="sm"
         open={performing}
@@ -105,7 +113,7 @@ export function useAskActions({
         size="sm"
         disabled={disabled}
         title={disabledReason || undefined}
-        aria-describedby={described}
+        aria-describedby={describedBy(described, pullRequest ? mergeId : undefined)}
         onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
         data-task-action="approve"
       >
@@ -177,6 +185,62 @@ export function useAskActions({
     </>
   );
   return { buttons, box };
+}
+
+/** An `aria-describedby` naming each element given, or undefined when none is. */
+function describedBy(...ids: readonly (string | undefined)[]): string | undefined {
+  const named = ids.filter((id) => id !== undefined && id !== '');
+  return named.length === 0 ? undefined : named.join(' ');
+}
+
+/**
+ * What Approve does to the pull request an approval gates: it turns on the
+ * pull request's auto-merge. The pull request is a link that opens it on
+ * GitHub. `compact` is a row's form, which leaves out the sentence; `id` lets
+ * Approve take the note as its description.
+ */
+export function AutoMergeNote({
+  pullRequest,
+  id,
+  compact = false,
+  className,
+}: {
+  pullRequest: string;
+  id?: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  const link = (
+    <a
+      href={pullRequest}
+      target="_blank"
+      rel="noreferrer"
+      className="nums text-accent-text no-underline hover:underline"
+      data-approve-pull-request=""
+    >
+      {pullRequestName(pullRequest)}
+    </a>
+  );
+  if (compact) {
+    return (
+      <span
+        id={id}
+        className={cn(
+          // On a phone it takes a line of its own, so Did it myself and Approve stay side by side under it.
+          'me-1 inline-flex min-w-0 items-center gap-1.25 text-meta text-ink-3 [overflow-wrap:anywhere] max-sm:basis-full [&_svg]:size-3.5 [&_svg]:shrink-0',
+          className,
+        )}
+      >
+        <GitPullRequest aria-hidden />
+        Auto-merge {link}
+      </span>
+    );
+  }
+  return (
+    <p id={id} className={cn('m-0 text-label text-ink-3 [overflow-wrap:anywhere]', className)}>
+      Approve turns on auto-merge for {link}.
+    </p>
+  );
 }
 
 /** Did it myself: the button that opens the note a person's report that they did an approval's action takes. */

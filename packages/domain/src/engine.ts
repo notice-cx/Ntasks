@@ -29,7 +29,8 @@ import type {
   JsonObject,
   ParentContext,
   Project,
-  ProjectIcon,
+  IconScheme,
+  ProjectIcons,
   StoredProjectIcon,
   Task,
   TaskAcceptance,
@@ -94,8 +95,8 @@ export interface ProjectChange {
   readonly deploys?: boolean;
   /** Whether it refuses new tasks. */
   readonly disabled?: boolean;
-  /** Its website and the icon read from it, which replace the ones it had; null clears both. */
-  readonly website?: { readonly url: string; readonly icon: ProjectIcon | null } | null;
+  /** Its website and the icons read from it, which replace the ones it had; null clears them all. */
+  readonly website?: { readonly url: string; readonly icons: ProjectIcons } | null;
 }
 
 /** A link a new task starts with. */
@@ -109,10 +110,12 @@ export interface NewTaskLink {
 
 /** An approval to open. `reason` is its description: the request a person
  * answers. `title` is its title; left out, the reason's first line that is
- * not blank. */
+ * not blank. `pullRequest` is the URL of the pull request it gates, which
+ * the approval keeps as its link of kind pull-request. */
 export interface ApprovalRequest {
   readonly reason: string;
   readonly title?: string;
+  readonly pullRequest?: string;
 }
 
 /** A step of a new request that a person do steps: its text, and the command it runs when it runs one. */
@@ -492,6 +495,12 @@ export interface DeliverySignal {
    */
   readonly mergeCommit?: string;
   /**
+   * The repository the change reached, as owner/name. Each task the signal
+   * moves records it when it has none yet, so a check of the repository's
+   * host can later read the deploy of a task that closed with only a commit.
+   */
+  readonly repository?: string;
+  /**
    * Tasks named by id, such as on a commit message's `Refs:` line: each moves
    * as if its own commit were named, so a commit rewritten by a rebase still
    * finds its task.
@@ -553,8 +562,8 @@ export interface TaskEngine {
   createProject(input: CreateProjectInput): Promise<Project>;
   /** Renames the project, says whether its changes go live by a deploy and whether it takes new tasks, and sets its website. */
   updateProject(projectId: string, change: ProjectChange): Promise<Project>;
-  /** The icon kept for the project, or null when it has none. */
-  projectIcon(projectId: string): Promise<StoredProjectIcon | null>;
+  /** The project's icon for the colour scheme, or null when it has none. */
+  projectIcon(projectId: string, scheme: IconScheme): Promise<StoredProjectIcon | null>;
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;

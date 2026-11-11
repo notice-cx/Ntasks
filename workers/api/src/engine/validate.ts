@@ -3,6 +3,7 @@
 import {
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
+  REPOSITORY_NAME,
   FIELD_TYPES,
   IDEMPOTENCY_KEY,
   isDependencyType,
@@ -498,16 +499,20 @@ function workDetails(value: unknown): TaskWork {
   return checked;
 }
 
-/** An approval to open, checked; its title is null when the request leaves it to the reason's first line. */
+/** An approval to open, checked; its title is null when the request leaves it
+ * to the reason's first line, and its pull request null when it gates none. */
 export interface CheckedApproval {
   readonly reason: string;
   readonly title: string | null;
+  readonly pullRequest: string | null;
 }
 
 function approval(value: ApprovalRequest | undefined): CheckedApproval {
   return {
     reason: text(value?.reason, 'requestApproval.reason', TASK_LIMITS.reason, true),
     title: value?.title === undefined ? null : line(value.title, 'requestApproval.title', TASK_LIMITS.title),
+    pullRequest:
+      value?.pullRequest === undefined ? null : externalUrl(value.pullRequest, 'requestApproval.pullRequest'),
   };
 }
 
@@ -881,11 +886,17 @@ export function deliverySignal(value: DeliverySignal): DeliverySignal {
   if (pullRequests.length === 0 && commits.length === 0) invalid('a signal names a pull request or a commit');
   if (value.mergedBy !== undefined && value.stage !== 'live') invalid('mergedBy goes with stage live');
   if (value.mergeCommit !== undefined && value.stage !== 'merged') invalid('mergeCommit goes with stage merged');
+  if (
+    value.repository !== undefined &&
+    (typeof value.repository !== 'string' || !REPOSITORY_NAME.test(value.repository))
+  )
+    invalid('repository must be owner/name, such as example/app');
   return {
     stage: value.stage,
     pullRequests,
     commits,
     ...(value.mergeCommit === undefined ? {} : { mergeCommit: commitSha(value.mergeCommit, 'mergeCommit') }),
+    ...(value.repository === undefined ? {} : { repository: value.repository.toLowerCase() }),
     ...(taskIds.length === 0 ? {} : { taskIds }),
     ...(value.mergedBy === undefined ? {} : { mergedBy: instant(value.mergedBy, 'mergedBy') }),
     ...(value.at === undefined ? {} : { at: instant(value.at, 'at') }),

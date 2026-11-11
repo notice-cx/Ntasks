@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed, type FixtureTask } from '@/api/fixture-data';
@@ -216,6 +216,10 @@ describe('the Live board', () => {
     fireEvent.click(screen.getByRole('button', { name: 'List' }));
     expect(await liveRows('Active')).toEqual(['web-k3m9.2']);
     expect(document.querySelector('[data-live-board]')).toBeNull();
+    // Back on the board, a count in the top bar opens the List view too.
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    fireEvent.click(await screen.findByRole('link', { name: '1 stalled' }));
+    expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
   });
 
   it('says which projects’ waiting work could not be read, and reads it again on Retry', async () => {
@@ -248,7 +252,17 @@ describe('the Live board', () => {
     renderApp('/tasks/live', createFixtureTasksApi({ seed }));
     expect(await boardCards('Live')).toContain('web-j6y4');
     const card = document.querySelector('[data-board-card="web-j6y4"]') as HTMLElement;
-    expect(within(card).queryByText('Claude')).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Claude' })).toBeNull();
+  });
+
+  it('shows who holds a task as an icon whose tooltip names them and their model, and says its activity to a screen reader', async () => {
+    renderApp('/tasks/live');
+    await boardCards('In progress');
+    const card = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
+    expect(within(card).getByText('Active').className).toContain('sr-only');
+    expect(within(card).getByText('Example web app').className).toContain('sr-only');
+    fireEvent.focus(within(card).getByRole('button', { name: 'Codex' }));
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Codex · codex-example');
   });
 
   it('says a task closed with a commit and no pull request is not pushed yet', async () => {
@@ -275,7 +289,56 @@ describe('the Live board', () => {
     renderApp('/tasks/live', createFixtureTasksApi({ seed }));
     expect(await boardCards('In progress')).toEqual(['web-a1', 'web-a2', 'web-a3', 'web-a4', 'web-a5', 'web-a6']);
     const column = screen.getByRole('region', { name: 'In progress' });
-    expect(column.querySelector('[data-live-more]')?.textContent).toBe('3 more');
+    fireEvent.click(within(column).getByRole('button', { name: 'Show 3 more' }));
+    expect(await boardCards('In progress')).toHaveLength(9);
+    expect(within(column).queryByRole('button', { name: /more/ })).toBeNull();
+  });
+
+  it('keeps in Live the work shipped in the last 24 hours or 7 days, as the switch and the address say', async () => {
+    const seed = fixtureSeed(Date.now());
+    const model = seed.tasks.find((entry) => entry.id === 'web-j6y4') as FixtureTask;
+    const liveAt = new Date(Date.now() - 2 * HOUR).toISOString();
+    seed.tasks.push({
+      ...model,
+      id: 'web-l9',
+      title: 'Shipped this morning',
+      delivery: { ...model.delivery!, liveAt },
+    });
+    const api = createFixtureTasksApi({ seed });
+    renderApp('/tasks/live', api);
+    // web-j6y4 went live 28 hours ago and docs-y5u2 merged 2 days ago, its project's last stage.
+    expect(await boardCards('Live')).toEqual(['web-l9', 'web-j6y4', 'docs-y5u2']);
+    const live = screen.getByRole('region', { name: 'Live' });
+    fireEvent.click(within(live).getByRole('button', { name: '24 hours' }));
+    expect(await boardCards('Live')).toEqual(['web-l9']);
+    cleanup();
+    renderApp('/tasks/live?shipped=day', api);
+    expect(await boardCards('Live')).toEqual(['web-l9']);
+    expect(
+      within(screen.getByRole('region', { name: 'Live' }))
+        .getByRole('button', { name: '24 hours' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('keeps the board and its switch when nothing shipped in the last 24 hours, and its counts keep the window', async () => {
+    const seed = fixtureSeed(Date.now());
+    // Only work that shipped days ago: nothing in progress, nothing waiting to ship.
+    seed.tasks = seed.tasks.filter((entry) => entry.status !== 'in_progress' && entry.delivery?.stage !== 'built');
+    renderApp('/tasks/live?shipped=day', createFixtureTasksApi({ seed }));
+    const live = await screen.findByRole('region', { name: 'Live' });
+    expect(await boardCards('Live')).toEqual([]);
+    fireEvent.click(within(live).getByRole('button', { name: '7 days' }));
+    expect(await boardCards('Live')).toEqual(['web-j6y4', 'docs-y5u2']);
+  });
+
+  it('opens the List from a top-bar count, keeping the Live column’s window for the way back', async () => {
+    renderApp('/tasks/live?shipped=day');
+    fireEvent.click(await screen.findByRole('link', { name: '1 stalled' }));
+    expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    const live = await screen.findByRole('region', { name: 'Live' });
+    expect(within(live).getByRole('button', { name: '24 hours' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('moves a card to its new column when a read finds its task there, and sends it travelling', async () => {

@@ -83,17 +83,20 @@ async function signed(secret: string, body: string): Promise<string> {
   return `sha256=${hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body))))}`;
 }
 
-/** Runs `work` while https://contract.example.com answers with a page and its icon, in place of the network. */
+/** Runs `work` while https://contract.example.com answers with a page and its light and dark icons, in place of the network. */
 async function withWebsite<T>(work: () => Promise<T>): Promise<T> {
   const before = globalThis.fetch;
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
   globalThis.fetch = async (input, init) => {
     const url = new Request(input, init).url;
     if (url === 'https://contract.example.com/')
-      return new Response('<link rel="icon" href="/icon.png" sizes="64x64">', {
-        headers: { 'content-type': 'text/html' },
-      });
-    if (url === 'https://contract.example.com/icon.png')
+      return new Response(
+        '<link rel="icon" href="/icon.png" sizes="64x64"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)">',
+        {
+          headers: { 'content-type': 'text/html' },
+        },
+      );
+    if (url === 'https://contract.example.com/icon.png' || url === 'https://contract.example.com/dark.png')
       return new Response(png, { headers: { 'content-type': 'image/png' } });
     return before(input, init);
   };
@@ -291,7 +294,12 @@ async function drive(): Promise<readonly Sample[]> {
 
   const update = (await tool(owner, 'create_task', { project: projectId, title: 'Update the server' })).id as string;
   const performed = idOf(
-    await tool(owner, 'request_human_approval', { task: update, reason: 'Update the server to main.' }),
+    await tool(owner, 'request_human_approval', {
+      task: update,
+      reason: 'Update the server to main.',
+      // An approval that gates a pull request names it as the task's pullRequest.
+      pr: 'https://github.com/example/site/pull/7',
+    }),
     'approval',
   );
   await as('POST /api/gates/:id/performed', `/api/gates/${performed}/performed`, inProject({ note: 'Done here.' }));

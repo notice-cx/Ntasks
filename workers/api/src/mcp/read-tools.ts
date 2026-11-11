@@ -44,7 +44,7 @@ import {
   proposalOf,
   proposalVersionOf,
 } from '../views.ts';
-import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
+import { fieldFiltersOf, OPEN_STATUSES, type WriteContext } from '../task-writes.ts';
 import {
   booleanArg,
   choiceArg,
@@ -68,6 +68,8 @@ export interface ToolContext {
   /** The arguments as sent, when a former id in them was read as the task's id
    * now: a move's retry is the request its sender sent, whatever moved since. */
   readonly sent?: Args;
+  /** Posts a landed answer to an approval that gates a pull request on GitHub (WriteContext). */
+  readonly approvalAnswered?: WriteContext['approvalAnswered'];
 }
 
 export interface TaskTool {

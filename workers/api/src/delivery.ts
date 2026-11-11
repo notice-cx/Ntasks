@@ -5,10 +5,12 @@
  */
 import {
   COMMIT_SHA,
+  REPOSITORY_NAME,
   TaskRefused,
   type DeliveryMove,
   type DeliveryOptions,
   type DeliverySignal,
+  type Task,
   type TaskResolution,
   type TaskType,
   type TaskWork,
@@ -19,13 +21,28 @@ import { httpUrl, SIGNAL_ITEMS } from './engine/validate.ts';
 import { Refused } from './refused.ts';
 import type { WriteContext } from './task-writes.ts';
 
-/** A GitHub repository: owner/name. */
-const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
 /** A GitHub pull request's path, with anything after its number. */
 const GITHUB_PULL = /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d{1,9})(?:\/.*)?$/u;
 
 function githubPull(repository: string, number: number): string {
   return `https://github.com/${repository.toLowerCase()}/pull/${number}`;
+}
+
+/** A pull request as pullRequestUrl writes one on GitHub: its repository as
+ * `owner/name` and its number; null for any other URL. */
+export function githubPullOf(url: string): { readonly repository: string; readonly number: number } | null {
+  const pull = /^https:\/\/github\.com\/([a-z0-9-]+\/[a-z0-9._-]+)\/pull\/(\d{1,9})$/u.exec(url);
+  return pull ? { repository: pull[1]!, number: Number(pull[2]) } : null;
+}
+
+/** The pull request an approval gates: the URL of its first link of kind
+ * pull-request on GitHub, in the order a read lists links; null on any other
+ * task, a request to do steps included. */
+export function gatedPullRequest(task: Pick<Task, 'type' | 'steps' | 'externalLinks'>): string | null {
+  if (task.type !== 'gate' || task.steps !== null) return null;
+  return (
+    task.externalLinks.find((link) => link.kind === 'pull-request' && githubPullOf(link.url) !== null)?.url ?? null
+  );
 }
 
 /**
@@ -97,7 +114,7 @@ export function shippedArgs(
  */
 export function signalArgs(args: Args, names: { readonly pullRequests: string; readonly commits: string }) {
   const repository = args.repository;
-  if (typeof repository !== 'string' || !REPOSITORY.test(repository))
+  if (typeof repository !== 'string' || !REPOSITORY_NAME.test(repository))
     refuse('invalid arguments: repository (owner/name, such as example/app)');
   const stage = args.stage;
   if (stage !== 'merged' && stage !== 'live') refuse('invalid arguments: stage (merged or live)');
@@ -119,7 +136,12 @@ export function signalArgs(args: Args, names: { readonly pullRequests: string; r
   const commits = list(names.commits).map((entry, index) => commitOf(entry, `${names.commits}[${index}]`));
   if (pullRequests.length === 0 && commits.length === 0)
     refuse(`invalid arguments: ${names.pullRequests} or ${names.commits} (name at least one)`);
-  return { stage, pullRequests: [...new Set(pullRequests)], commits: [...new Set(commits)] } satisfies DeliverySignal;
+  return {
+    stage,
+    pullRequests: [...new Set(pullRequests)],
+    commits: [...new Set(commits)],
+    repository: repository.toLowerCase(),
+  } satisfies DeliverySignal;
 }
 
 /**

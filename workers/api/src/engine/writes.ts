@@ -9,6 +9,7 @@ import {
   guardRefusalOf,
   KEEP_OPEN,
   NTASKS_ACTOR,
+  ICON_SCHEMES,
   PROJECT_ICON_MAX_BYTES,
   PROJECT_ICON_TYPES,
   TASK_LIMITS,
@@ -36,6 +37,7 @@ import {
   type JsonObject,
   type Project,
   type ProjectChange,
+  type IconScheme,
   type ProjectIcon,
   type Retry,
   type Task,
@@ -52,6 +54,7 @@ import {
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
+import { githubPullOf } from '../delivery.ts';
 import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
 import { deliveryOf, DROPPED, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
@@ -184,8 +187,17 @@ function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
 
 /** A delivery as history events record it. */
 function deliveryJson(delivery: TaskDelivery): JsonObject {
-  const { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt } = delivery;
-  return { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt };
+  const { stage, commit, pullRequest, mergeCommit, repository, builtAt, mergedAt, liveAt } = delivery;
+  return {
+    stage,
+    commit,
+    pullRequest,
+    mergeCommit,
+    ...(repository === null ? {} : { repository }),
+    builtAt,
+    mergedAt,
+    liveAt,
+  };
 }
 
 /** The order of the stages: a task moves only to a later one. */
@@ -197,6 +209,7 @@ const DELIVERY_COLUMNS = [
   'delivery_commit',
   'delivery_pull_request',
   'delivery_merge_commit',
+  'delivery_repository',
   'built_at',
   'merged_at',
   'live_at',
@@ -321,6 +334,7 @@ function filedState(fields: check.CreateFields, actor: Actor, at: string) {
         commit: close.commit,
         pullRequest: close.pullRequest,
         mergeCommit: null,
+        repository: null,
         builtAt: at,
         mergedAt: null,
         liveAt: null,
@@ -528,7 +542,7 @@ export class Writes {
     taskId: string,
     projectId: string,
     priority: number,
-    { reason, title: given }: check.CheckedApproval,
+    { reason, title: given, pullRequest }: check.CheckedApproval,
     actor: Actor,
     at: string,
   ): Statement[] {
@@ -541,7 +555,24 @@ export class Writes {
         .map((line) => line.trim())
         .find((line) => line !== '')!
         .slice(0, 512);
-    return this.#request(gateId, taskId, projectId, priority, { title, description: reason, steps: null }, actor, at);
+    const pull = pullRequest === null ? null : githubPullOf(pullRequest);
+    const link: ExternalLink | null =
+      pullRequest === null
+        ? null
+        : {
+            url: pullRequest,
+            title: pull === null ? 'Pull request' : `${pull.repository}#${pull.number}`,
+            kind: 'pull-request',
+          };
+    return this.#request(
+      gateId,
+      taskId,
+      projectId,
+      priority,
+      { title, description: reason, steps: null, link },
+      actor,
+      at,
+    );
   }
 
   /** The gate a write opens: an approval, or a request that a person do steps. */
@@ -557,22 +588,36 @@ export class Writes {
     if (write.requestApproval !== null)
       return this.#gate(gateId, taskId, projectId, priority, write.requestApproval, actor, at);
     const { title, context, steps } = write.requestAction!;
-    return this.#request(gateId, taskId, projectId, priority, { title, description: context, steps }, actor, at);
+    return this.#request(
+      gateId,
+      taskId,
+      projectId,
+      priority,
+      { title, description: context, steps, link: null },
+      actor,
+      at,
+    );
   }
 
-  /** A new request to a person: the gate task, its created event, and the
-   * link by which `taskId` waits on it. With steps, it asks them to do the
-   * steps; without, to approve its description. */
+  /** A new request to a person: the gate task, its created event, its link
+   * to the pull request an approval gates, and the link by which `taskId`
+   * waits on it. With steps, it asks them to do the steps; without, to
+   * approve its description. */
   #request(
     gateId: string,
     taskId: string,
     projectId: string,
     priority: number,
-    ask: { readonly title: string; readonly description: string; readonly steps: readonly TaskStep[] | null },
+    ask: {
+      readonly title: string;
+      readonly description: string;
+      readonly steps: readonly TaskStep[] | null;
+      readonly link: ExternalLink | null;
+    },
     actor: Actor,
     at: string,
   ): Statement[] {
-    const { title, description: reason, steps } = ask;
+    const { title, description: reason, steps, link } = ask;
     return [
       this.#insert('tasks', {
         id: gateId,
@@ -617,13 +662,14 @@ export class Writes {
         metadata: {},
         labels: [],
         dependencies: [],
-        externalLinks: [],
+        externalLinks: link === null ? [] : externalList(new Map([[link.url, link]])),
         fields: {},
         close: null,
         ...(steps === null ? {} : { steps: steps as unknown as Json }),
         filedBy: actor.name,
         filedModel: actor.model ?? null,
       }),
+      ...(link === null ? [] : [this.#externalLink(gateId, link, actor, at)]),
       this.#insert('task_edges', {
         task_id: taskId,
         depends_on_id: gateId,
@@ -1109,16 +1155,18 @@ export class Writes {
       const url = change.website === null ? null : check.httpUrl(change.website.url);
       if (change.website !== null && url === null) check.invalid('website must be an http or https URL');
       statements.push(set('website_url', url));
-      // The icon belongs to the website it was read from: a new website, or none, replaces it.
+      // The icons belong to the website they were read from: a new website, or none, replaces them.
       statements.push(this.#db.prepare('DELETE FROM project_icons WHERE project_id = ?1').bind(projectId));
-      const icon = change.website?.icon ?? null;
-      if (icon !== null) statements.push(this.#iconInsert(projectId, icon));
+      for (const scheme of ICON_SCHEMES) {
+        const icon = change.website?.icons[scheme] ?? null;
+        if (icon !== null) statements.push(this.#iconInsert(projectId, scheme, icon));
+      }
     }
     if (statements.length > 0) await this.#db.batch(statements);
     return this.#projectOf(projectId);
   }
 
-  #iconInsert(projectId: string, icon: ProjectIcon): Statement {
+  #iconInsert(projectId: string, scheme: IconScheme, icon: ProjectIcon): Statement {
     const sourceUrl = check.httpUrl(icon.sourceUrl) ?? check.invalid('icon.sourceUrl must be an http or https URL');
     if (!(PROJECT_ICON_TYPES as readonly string[]).includes(icon.contentType))
       check.invalid(`icon.contentType must be one of ${PROJECT_ICON_TYPES.join(', ')}`);
@@ -1130,9 +1178,9 @@ export class Writes {
       check.invalid(`icon.bytes must hold 1 to ${PROJECT_ICON_MAX_BYTES} bytes`);
     return this.#db
       .prepare(
-        'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+        'INSERT INTO project_icons (project_id, scheme, source_url, content_type, bytes, read_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
       )
-      .bind(projectId, sourceUrl, icon.contentType, icon.bytes, this.#now());
+      .bind(projectId, scheme, sourceUrl, icon.contentType, icon.bytes, this.#now());
   }
 
   async reportDelivery(
@@ -1191,6 +1239,7 @@ export class Writes {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
+          repository: current.repository ?? signal.repository ?? null,
           mergedAt: stage === 'merged' ? reached : current.mergedAt,
           liveAt: stage === 'live' ? reached : null,
         };
@@ -1198,10 +1247,10 @@ export class Writes {
           this.#db
             .prepare(
               `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
-                 version = version + 1, updated_at = ?5
+                 delivery_repository = ?8, version = version + 1, updated_at = ?5
                WHERE id = ?6 AND version = ?7`,
             )
-            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version),
+            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
           this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
             delivery: deliveryJson(next),
@@ -1897,6 +1946,7 @@ export class Writes {
           commit,
           pullRequest,
           mergeCommit: null,
+          repository: null,
           builtAt: at,
           mergedAt: null,
           liveAt: null,
@@ -1994,6 +2044,20 @@ export class Writes {
       const standing = external.get(link.url);
       return standing?.title !== link.title || standing.kind !== link.kind;
     });
+    // The pull request an approval gates is part of what a person approves,
+    // and stays as the approval was asked for, so no answer comes to cover another.
+    if (
+      current.type === 'gate' &&
+      [...removeExternal.map((url) => current.externalLinks.find((link) => link.url === url)), ...addExternal].some(
+        (link) =>
+          link?.kind === 'pull-request' ||
+          current.externalLinks.some((had) => had.url === link?.url && had.kind === 'pull-request'),
+      )
+    )
+      refuse(
+        'invalid',
+        "An approval's pull request stays as the approval was asked for; ask for a new approval instead.",
+      );
     for (const link of addExternal) external.set(link.url, link);
     // Only a write that adds is held to the limit, so a task imported with more can still lose some.
     if (addExternal.length > 0 && external.size > TASK_LIMITS.externalLinks)

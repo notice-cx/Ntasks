@@ -34,8 +34,12 @@ const APP_NAME_LENGTH = 34;
 const DEPLOY_CHECK_PREFIXES = ['Workers Builds:', 'Cloudflare Pages'];
 
 /**
- * The manifest of a workspace's app: it reads pull requests, checks and
- * deployments, and receives their events at the workspace's receiver. It is
+ * The manifest of a workspace's app: it reads checks and deployments, and
+ * receives their events, pull requests' and pushes' at the workspace's
+ * receiver; it writes pull requests and contents, which turning on a pull
+ * request's auto-merge, merging it and commenting on it take, for an answer
+ * to an approval that gates one (approval-github.ts), and which cover
+ * reading a push's commits. It is
  * public, because only a public app can be installed on an account other
  * than its owner's, such as an organization; the receiver refuses every
  * installation that an owner of the workspace did not make. Its name ends
@@ -45,7 +49,7 @@ export function githubAppManifest(origin: string, workspaceId: string): string {
   const suffix = hex(crypto.getRandomValues(new Uint8Array(3)));
   return JSON.stringify({
     name: `${`Ntasks ${new URL(origin).host}`.slice(0, APP_NAME_LENGTH - suffix.length - 1)} ${suffix}`,
-    description: `Tells the Ntasks at ${origin} when pull requests merge and deploys pass.`,
+    description: `Tells the Ntasks at ${origin} when pull requests merge and deploys pass, and turns on auto-merge for a pull request a person approved there.`,
     url: origin,
     hook_attributes: { url: githubWebhookUrl(origin, workspaceId), active: true },
     redirect_url: origin + GITHUB_APP_RETURN_PATH,
@@ -54,8 +58,8 @@ export function githubAppManifest(origin: string, workspaceId: string): string {
     public: true,
     default_permissions: {
       metadata: 'read',
-      contents: 'read',
-      pull_requests: 'read',
+      contents: 'write',
+      pull_requests: 'write',
       checks: 'read',
       deployments: 'read',
     },
@@ -304,6 +308,42 @@ export async function removeInstallation(db: D1Database, workspaceId: string, in
     .prepare('DELETE FROM access_github_installations WHERE workspace_id = ? AND installation_id = ?')
     .bind(workspaceId, installationId)
     .run();
+}
+
+/** The installation of the workspace's app on the account `account`, a login in any case; null when it has none there. */
+export async function installationOn(
+  db: D1Database,
+  workspaceId: string,
+  account: string,
+): Promise<Omit<GitHubInstallation, 'installedBy'> | null> {
+  const row = await db
+    .prepare(
+      `SELECT installation_id, account, account_type FROM access_github_installations
+       WHERE workspace_id = ? AND lower(account) = lower(?)`,
+    )
+    .bind(workspaceId, account)
+    .first<{ installation_id: number; account: string; account_type: string }>();
+  return row === null
+    ? null
+    : { installationId: row.installation_id, account: row.account, accountType: row.account_type };
+}
+
+/**
+ * Where an owner gives the app a permission it lacks: the app's permissions
+ * on GitHub, which Connect GitHub made under the owner's own account, and
+ * the installation's page, where the account accepts the new permissions.
+ */
+export function permissionLinks(
+  slug: string,
+  installation: Pick<GitHubInstallation, 'installationId' | 'account' | 'accountType'>,
+): { readonly appPermissions: string; readonly installation: string } {
+  return {
+    appPermissions: `https://github.com/settings/apps/${slug}/permissions`,
+    installation:
+      installation.accountType === 'Organization'
+        ? `https://github.com/organizations/${installation.account}/settings/installations/${installation.installationId}`
+        : `https://github.com/settings/installations/${installation.installationId}`,
+  };
 }
 
 /** Whether an owner of the workspace made this installation of its app. */

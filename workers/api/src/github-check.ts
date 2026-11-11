@@ -82,13 +82,17 @@ export function githubSender(workspaceId: string): Principal {
   });
 }
 
-/** A task's pull request on GitHub, and the installation that reaches its repository. */
-interface Pull {
-  readonly url: string;
+/** A repository on GitHub, and the installation of the workspace's app that reaches its owner. */
+interface Reached {
   /** owner/name, in lowercase: GitHub's names ignore case. */
   readonly repository: string;
-  readonly number: number;
   readonly installation: number;
+}
+
+/** A task's pull request on GitHub, and the installation that reaches its repository. */
+interface Pull extends Reached {
+  readonly url: string;
+  readonly number: number;
 }
 
 /**
@@ -106,8 +110,21 @@ function pullOf(task: Task, installations: ReadonlyMap<string, number>): Pull | 
     : { url, repository: `${owner}/${name}`.toLowerCase(), number: Number(number), installation };
 }
 
+/**
+ * The repository a task's change reached, when an installation reaches its
+ * owner: its pull request's, or for a task closed with only a commit, the one
+ * its merge's signal named, such as a push's.
+ */
+function reachedOf(task: Task, installations: ReadonlyMap<string, number>): Reached | null {
+  const pull = pullOf(task, installations);
+  if (pull !== null) return pull;
+  const repository = task.delivery?.repository?.toLowerCase();
+  const installation = installations.get(repository?.split('/')[0] ?? '');
+  return repository === undefined || installation === undefined ? null : { repository, installation };
+}
+
 /** A merged change of a project that deploys: its repository, its merge commit, and when it merged and went live. */
-interface Change extends Pull {
+interface Change extends Reached {
   readonly mergeCommit: string;
   readonly mergedAt: string;
   readonly liveAt: string | null;
@@ -138,10 +155,13 @@ async function changesOf(
     );
   }
   const changes = tasks.flatMap((task): Change[] => {
-    const pull = pullOf(task, installations);
+    const reached = reachedOf(task, installations);
     const { mergeCommit = null, mergedAt = null, liveAt = null } = task.delivery ?? {};
-    if (pull === null || mergeCommit === null || !COMMIT_SHA.test(mergeCommit) || mergedAt === null) return [];
-    return [{ ...pull, mergeCommit, mergedAt, liveAt: task.delivery?.stage === 'live' ? liveAt : null }];
+    if (reached === null || mergeCommit === null || !COMMIT_SHA.test(mergeCommit) || mergedAt === null) return [];
+    const { repository, installation } = reached;
+    return [
+      { repository, installation, mergeCommit, mergedAt, liveAt: task.delivery?.stage === 'live' ? liveAt : null },
+    ];
   });
   changes.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : a.mergedAt > b.mergedAt ? -1 : 0));
   // Tasks closed with one pull request share its merge commit, and one signal moves them all.
@@ -222,10 +242,10 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
     requests += listed.requests;
     if (listed.repositories !== null) reach.set(installation, { token, repositories: listed.repositories });
   }
-  const tokenOf = (pull: Pull): string | null => {
-    const found = reach.get(pull.installation);
+  const tokenOf = (reached: Reached): string | null => {
+    const found = reach.get(reached.installation);
     if (found === undefined) return null;
-    return found.repositories === 'all' || found.repositories.has(pull.repository) ? found.token : null;
+    return found.repositories === 'all' || found.repositories.has(reached.repository) ? found.token : null;
   };
   const context = { engine, principal: githubSender(workspaceId), now: () => new Date().toISOString() };
   // Merged tasks waiting for a deploy keep two requests each, up to half of
@@ -271,7 +291,7 @@ async function moveDeployed(
   workspaceId: string,
   context: WriteContext,
   changes: { readonly waiting: readonly Change[]; readonly live: readonly Change[] },
-  tokenOf: (pull: Pull) => string | null,
+  tokenOf: (reached: Reached) => string | null,
   budget: number,
 ): Promise<GitHubCheck> {
   let requests = 0;

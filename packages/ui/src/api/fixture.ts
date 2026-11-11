@@ -31,6 +31,7 @@ import { ApiError, type TasksApi } from './client';
 import {
   emptySeed,
   FIXTURE_ACTOR,
+  FIXTURE_DARK_ICON_PNG,
   FIXTURE_ICON_PNG,
   fixtureIconPath,
   FIXTURE_ACTORS,
@@ -127,6 +128,16 @@ function randomKey(length: number): string {
 
 function copy<T>(value: T): T {
   return structuredClone(value);
+}
+
+/** A GitHub pull request's page, as the Worker records one. */
+const GITHUB_PULL = /^https:\/\/github\.com\/[a-z0-9-]+\/[a-z0-9._-]+\/pull\/\d{1,9}$/u;
+
+/** The pull request an approval gates, as the Worker reads it: the approval's first link of kind pull-request on
+ * GitHub; null on any other task, a request to do steps included. */
+function gatedPullRequest(task: FixtureTask): string | null {
+  if (task.issueType !== 'gate' || (task.steps ?? null) !== null) return null;
+  return task.externalLinks?.find((link) => link.kind === 'pull-request' && GITHUB_PULL.test(link.url))?.url ?? null;
 }
 
 export interface FixtureOptions {
@@ -251,6 +262,7 @@ export function createFixtureTasksApi({
     return {
       ...row,
       ready: ready(task),
+      pullRequest: gatedPullRequest(task),
       comments: state.comments.get(task.id)?.length ?? 0,
       dependencies: task.dependencies.map((edge) => {
         const other = state.tasks.find((candidate) => candidate.id === edge.id);
@@ -299,6 +311,8 @@ export function createFixtureTasksApi({
   function touch(task: FixtureTask, kind = 'updated', fields: Record<string, unknown> = {}): string {
     const at = new Date(now()).toISOString();
     task.updatedAt = at;
+    // A change to the task, which a comment is not, comes after every drop it relied on, as the Worker counts them.
+    if (kind !== 'commented') task.reliesOnDropped = [];
     if (task.assignee === FIXTURE_ACTOR) task.lastActivityAt = at;
     logChange(task, kind, fields);
     return at;
@@ -1198,6 +1212,7 @@ export function createFixtureTasksApi({
           disabled: false,
           websiteUrl: null,
           icon: null,
+          darkIcon: null,
         });
         state.fields.set(prefix, []);
       });
@@ -1226,19 +1241,20 @@ export function createFixtureTasksApi({
       if (website !== undefined) {
         found.websiteUrl = website;
         iconVersion += 1;
-        // Every invented website under example.com serves the fixture's icon; any other serves none.
-        found.icon =
-          website !== null && /(^|\.)example\.com$/u.test(new URL(website).hostname)
-            ? fixtureIconPath(found.projectId, iconVersion)
-            : null;
+        // Every invented website under example.com serves the fixture's light and dark icons; any other serves none.
+        const served = website !== null && /(^|\.)example\.com$/u.test(new URL(website).hostname);
+        found.icon = served ? fixtureIconPath(found.projectId, iconVersion) : null;
+        found.darkIcon = served ? fixtureIconPath(found.projectId, iconVersion, 'dark') : null;
       }
       return copy(found);
     },
     async projectIcon(icon) {
       reach();
-      if (!state.projects.some((row) => row.icon === icon))
+      const dark = state.projects.some((row) => row.darkIcon === icon);
+      if (!dark && !state.projects.some((row) => row.icon === icon))
         throw new ApiError('This project has no icon.', 404, 'not_found');
-      return new Blob([Uint8Array.from(atob(FIXTURE_ICON_PNG), (char) => char.charCodeAt(0))], { type: 'image/png' });
+      const png = dark ? FIXTURE_DARK_ICON_PNG : FIXTURE_ICON_PNG;
+      return new Blob([Uint8Array.from(atob(png), (char) => char.charCodeAt(0))], { type: 'image/png' });
     },
     async members() {
       const { members, invitations } = owned();

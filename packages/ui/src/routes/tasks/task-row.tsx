@@ -67,6 +67,7 @@ import {
 } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { useAskActions } from './ask-actions';
+import { DroppedFact } from './relies-on-dropped';
 import { closeOperation, declinedOnClose, useCloseAs } from './close-actions';
 import { assigneeChange, assigneeEditor, priorityChange, priorityEditor, useFieldSave } from './task-facts';
 
@@ -119,7 +120,8 @@ function RowPanel({ children }: { children: ReactNode }) {
   );
 }
 
-/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, when it
+/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, the dropped
+ * tasks it relies on, when it
  * unparks, for a ready task its estimate, for a task someone holds the helper they work through and when
  * they last wrote to it, and for a closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
@@ -128,6 +130,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
+  const dropped = task.status === 'closed' ? [] : (task.reliesOnDropped ?? []);
   const zone = useTimeZone();
   // A park ends on the day the person picked, written as that day's start.
   const until =
@@ -169,6 +172,11 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
         <RowMeta>
           <LinkIcon aria-hidden />
           Waits on <span className="text-ink-2">{waits.join(', ')}</span>
+        </RowMeta>
+      ) : null}
+      {dropped.length > 0 ? (
+        <RowMeta data-row-dropped="">
+          <DroppedFact dropped={dropped} />
         </RowMeta>
       ) : null}
       {until ? (
@@ -334,7 +342,8 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
 
 /**
  * A row in Waiting for you: what it asks answered in place, an approval by
- * Approve or Did it myself, a decision by its options, a question by Answer.
+ * Approve or Did it myself, after the pull request whose auto-merge Approve
+ * turns on, a decision by its options, a question by Answer.
  */
 export const WaitingRow = memo(function WaitingRow({
   task,
@@ -363,6 +372,7 @@ export const WaitingRow = memo(function WaitingRow({
     proposalVersion: task.proposalVersion ?? null,
     choices: task.choices ?? null,
     steps: task.steps ?? null,
+    pullRequest: task.pullRequest ?? null,
     disabledReason: verbReason(
       capabilities,
       writable &&
@@ -378,10 +388,11 @@ export const WaitingRow = memo(function WaitingRow({
   });
   const closable = writable && !isGate(task) && operationAvailable(capabilities, 'dismiss');
   const choosing = askVerb(task) === 'choose' && (task.choices ?? null) !== null;
+  const gated = askVerb(task) === 'approve' && (task.pullRequest ?? null) !== null;
   const [menu, setMenu] = useState<MenuList | null>(null);
   return (
     <>
-      <Row answer={choosing ? 'wide' : true} data-inbox-row={task.id} data-task-row={task.id}>
+      <Row answer={choosing || gated ? 'wide' : true} data-inbox-row={task.id} data-task-row={task.id}>
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
         <StatusMark status="waiting" />

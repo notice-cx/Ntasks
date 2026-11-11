@@ -69,6 +69,9 @@ export type DeliveryStage = (typeof DELIVERY_STAGES)[number];
 /** A commit as a delivery records it: 7 to 64 lowercase hexadecimal characters. */
 export const COMMIT_SHA = /^[0-9a-f]{7,64}$/u;
 
+/** A GitHub repository as owner/name, which a delivery records in lowercase: GitHub's names ignore case. */
+export const REPOSITORY_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
+
 /** What a history event records. A comment is `commented`; every other write is one of the rest. */
 export const TASK_EVENT_KINDS = ['created', 'updated', 'closed', 'reopened', 'commented'] as const;
 export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
@@ -179,7 +182,13 @@ export interface Project {
   readonly websiteUrl: string | null;
   /** When the icon kept for it was read from its website; null when it has none. */
   readonly iconAt: string | null;
+  /** When the icon its website declares for a dark colour scheme was read; null when it has none. */
+  readonly darkIconAt: string | null;
 }
+
+/** The colour schemes a project keeps an icon for: light, which any page may draw, and dark, for a dark page. */
+export const ICON_SCHEMES = ['light', 'dark'] as const;
+export type IconScheme = (typeof ICON_SCHEMES)[number];
 
 /** The image types a project's icon may have. An SVG, which can run script, is kept only once made safe (workers/api/src/svg-icon.ts). */
 export const PROJECT_ICON_TYPES = [
@@ -201,6 +210,12 @@ export interface ProjectIcon {
   readonly sourceUrl: string;
   readonly contentType: ProjectIconType;
   readonly bytes: ArrayBuffer;
+}
+
+/** The icons read from a project's website: the light one, and the dark one when the website declares one. */
+export interface ProjectIcons {
+  readonly light: ProjectIcon | null;
+  readonly dark: ProjectIcon | null;
 }
 
 /** A project's icon as the store keeps it. */
@@ -349,6 +364,8 @@ export interface TaskDelivery {
   readonly pullRequest: string | null;
   /** The commit that merged it, when the merge's signal named one. */
   readonly mergeCommit: string | null;
+  /** The repository the change reached, as owner/name in lowercase, when a signal that moved it named one. */
+  readonly repository: string | null;
   readonly builtAt: string;
   /** Null until a signal said it merged; a task can go live without one. */
   readonly mergedAt: string | null;

@@ -167,6 +167,7 @@ describe("the Worker's task answers", () => {
       commit: 'abc1234',
       pullRequest: 'https://github.com/example/web/pull/7',
       mergeCommit: 'def5678',
+      repository: 'example/web',
       builtAt: NOW,
       mergedAt: NOW,
       liveAt: null,

@@ -2,24 +2,26 @@
  * The HTTP routes of delivery and of a project's settings: a repository's
  * signal that pull requests or commits merged or went live, an owner's
  * settings of a project (its name, whether its changes go live by a deploy,
- * whether it takes new tasks, and its website), and the icon read from that
- * website. docs/api.md describes them.
+ * whether it takes new tasks, and its website), and the icons read from
+ * that website. docs/api.md describes them.
  */
-import type { Project, ProjectChange } from '@ntasks/domain';
+import { ICON_SCHEMES, type IconScheme, type Project, type ProjectChange } from '@ntasks/domain';
 import { only, projectArg, refuse } from '../args.ts';
 import { movedView, reportDelivery, signalArgs } from '../delivery.ts';
 import { projectOf } from '../lookup.ts';
-import { readProjectIcon, websiteAddress } from '../project-icons.ts';
+import { readProjectIcons, websiteAddress } from '../project-icons.ts';
 import { ICON_SECURITY_POLICY } from '../svg-icon.ts';
 import type { ReadContext } from './tasks.ts';
 import type { WriteContext } from '../task-writes.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
 import { writeOf } from './writes.ts';
 
-/** The address of a project's icon on this Ntasks, which changes whenever the icon does; null when it has none. */
-function iconPath(project: Project): string | null {
-  if (project.iconAt === null) return null;
-  return `/api/tasks/projects/${encodeURIComponent(project.id)}/icon?v=${iconVersion(project.iconAt)}`;
+/** The address of a project's icon for `scheme` on this Ntasks, which changes whenever the icon does; null when it has none. */
+function iconPath(project: Project, scheme: IconScheme): string | null {
+  const at = scheme === 'dark' ? project.darkIconAt : project.iconAt;
+  if (at === null) return null;
+  const dark = scheme === 'dark' ? 'scheme=dark&' : '';
+  return `/api/tasks/projects/${encodeURIComponent(project.id)}/icon?${dark}v=${iconVersion(at)}`;
 }
 
 /** Names one read of an icon in its address. */
@@ -35,7 +37,8 @@ export function projectView(project: Project) {
     deploys: project.deploys,
     disabled: project.disabledAt !== null,
     websiteUrl: project.websiteUrl,
-    icon: iconPath(project),
+    icon: iconPath(project, 'light'),
+    darkIcon: iconPath(project, 'dark'),
   };
 }
 
@@ -84,7 +87,7 @@ export async function projectSettingsRoute(context: WriteContext, url: URL, requ
           'the website is an http or https address, such as https://example.com',
           'websiteUrl',
         );
-      change.website = { url: website, icon: await readProjectIcon(website) };
+      change.website = { url: website, icons: await readProjectIcons(website) };
     }
   }
   if (Object.keys(change).length === 0)
@@ -94,14 +97,17 @@ export async function projectSettingsRoute(context: WriteContext, url: URL, requ
 
 /**
  * GET /api/tasks/projects/:projectId/icon: the icon read from the project's
- * website, with the image type its bytes show. An address with the icon's
- * current `v`, as the project list gives it, may be kept as long as a browser
- * likes: a new icon has a new address.
+ * website, the light one or with `scheme=dark` the dark one, with the image
+ * type its bytes show. An address with the icon's current `v`, as the
+ * project list gives it, may be kept as long as a browser likes: a new icon
+ * has a new address.
  */
 export async function projectIconRoute(context: ReadContext, url: URL, projectId: string): Promise<Response> {
-  const { v } = queryOf(url, ['v']);
+  const { v, scheme = 'light' } = queryOf(url, ['v', 'scheme']);
+  if (!(ICON_SCHEMES as readonly string[]).includes(scheme))
+    throw new HttpRefused(400, 'invalid_request', `scheme is ${ICON_SCHEMES.join(' or ')}`, 'scheme');
   const project = await projectOf(context, projectId);
-  const icon = await context.engine.projectIcon(project.id);
+  const icon = await context.engine.projectIcon(project.id, scheme as IconScheme);
   if (icon === null) return json({ error: 'not_found', detail: `${project.name} has no icon` }, 404);
   const current = v === iconVersion(icon.readAt);
   return new Response(icon.bytes, {

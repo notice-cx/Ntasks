@@ -6,15 +6,30 @@
 import { GitBranch, GitMerge, GitPullRequest } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
+import { ProjectIcon } from '../../components/ProjectIcon';
 import { Avatar } from '../../components/ui/avatar';
-import { ActivityMark, StatusMark } from '../../components/ui/symbols';
+import { StatusMark } from '../../components/ui/symbols';
+import { Tooltip } from '../../components/ui/tooltip';
+import { Button } from '../../components/ui/button';
+import { Tabs } from '../../components/ui/choice';
 import { useRecentChanges } from '../../hooks/useBoard';
 import type { RecentChange } from '../../hooks/useChangeFeed';
 import { useMedia } from '../../hooks/useMedia';
 import { pullRequestLabel } from '../../lib/wins';
 import { httpUrl } from '../../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../../lib/format';
-import { activityOf, STAGE_LABELS, STAGES, stageTime, type Activity, type LiveBoard, type Stage } from '../../lib/live';
+import type { BoardProject } from '../../lib/board-read';
+import {
+  ACTIVITY_LABELS,
+  activityOf,
+  STAGE_LABELS,
+  STAGES,
+  stageTime,
+  type Activity,
+  type LiveBoard,
+  type ShippedWindow,
+  type Stage,
+} from '../../lib/live';
 import { usePaths } from '../../lib/paths';
 import { isAgentActor } from '../../lib/symbols';
 import { actorLabel, claimedModel, closeAttribution, type BoardTask } from '../../lib/task-model';
@@ -29,8 +44,11 @@ const SHOWN: Readonly<Record<'wide' | 'phone', Readonly<Record<Stage, number>>>>
   phone: { progress: 3, shipping: 3, live: 2 },
 };
 
-/** What a column holds, where its heading has room to say it. Only Live's needs saying: it reaches back a week. */
-const COLUMN_RULES: Readonly<Partial<Record<Stage, string>>> = { live: 'Last 7 days' };
+/** The Live column's reach, as its switch words it. */
+const WINDOW_LABELS: readonly { value: ShippedWindow; label: string }[] = [
+  { value: 'day', label: '24 hours' },
+  { value: 'week', label: '7 days' },
+];
 
 const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
   progress: <StatusMark status="in-progress" label={null} />,
@@ -44,7 +62,8 @@ const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
  * faintly, Stalled not at all. Closed cards keep the plain Background.
  */
 const ACTIVITY_TINTS: Readonly<Record<Activity, string>> = {
-  active: 'border-accent/40 bg-accent-soft',
+  // A 2 px edge, 1 px less padding: Active reads apart from Quiet where colours are forced, as in high contrast.
+  active: 'border-2 border-accent/40 bg-accent-soft p-[9px]',
   quiet: 'border-accent/15 bg-accent-soft/40',
   stalled: 'border-dashed border-border-strong bg-transparent shadow-none',
 };
@@ -56,7 +75,21 @@ const TRAVEL_MS = 700;
 const LANDED_MS = 700;
 const EASE_OUT = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 
-export function LiveBoardView({ columns, nowMs }: { columns: LiveBoard; nowMs: number }) {
+export function LiveBoardView({
+  columns,
+  projects,
+  nowMs,
+  shipped,
+  onShipped,
+}: {
+  columns: LiveBoard;
+  /** The projects in view, by key, whose icons lead their tasks' cards. */
+  projects: ReadonlyMap<string, BoardProject>;
+  nowMs: number;
+  /** How far back the Live column reaches, which its heading switches. */
+  shipped: ShippedWindow;
+  onShipped: (next: ShippedWindow) => void;
+}) {
   const phone = useMedia(PHONE);
   const reduced = useMedia(REDUCED_MOTION);
   const recent = useRecentChanges();
@@ -71,7 +104,26 @@ export function LiveBoardView({ columns, nowMs }: { columns: LiveBoard; nowMs: n
         data-live-board=""
       >
         {STAGES.map((stage) => (
-          <Column key={stage} stage={stage} tasks={columns[stage]} shown={shown[stage]} nowMs={nowMs} recent={recent} />
+          <Column
+            key={stage}
+            stage={stage}
+            tasks={columns[stage]}
+            shown={shown[stage]}
+            nowMs={nowMs}
+            recent={recent}
+            projects={projects}
+            end={
+              stage === 'live' ? (
+                <Tabs
+                  label="Shipped within"
+                  items={WINDOW_LABELS}
+                  value={shipped}
+                  onChange={onShipped}
+                  className="ms-auto"
+                />
+              ) : null
+            }
+          />
         ))}
       </div>
     </div>
@@ -84,58 +136,84 @@ function Column({
   shown,
   nowMs,
   recent,
+  projects,
+  end,
 }: {
   stage: Stage;
   tasks: readonly BoardTask[];
   shown: number;
   nowMs: number;
   recent: ReadonlyMap<string, RecentChange>;
+  projects: ReadonlyMap<string, BoardProject>;
+  /** What ends the heading, such as the Live column's switch. */
+  end: ReactNode;
 }) {
   const label = STAGE_LABELS[stage];
-  const rule = COLUMN_RULES[stage];
-  const more = tasks.length - Math.min(tasks.length, shown);
+  const [all, setAll] = useState(false);
+  const visible = all ? tasks : tasks.slice(0, shown);
+  const more = tasks.length - visible.length;
   return (
     <section
       aria-label={label}
       data-live-column={stage}
       className="flex min-w-0 flex-col gap-2 rounded-xl bg-canvas p-2"
     >
-      <h2 className="flex h-6 min-w-0 items-center gap-2 px-1 text-label font-semibold text-ink">
-        {COLUMN_MARKS[stage]}
-        <span className="whitespace-nowrap">{label}</span>
-        <span className="nums font-medium text-ink-3">{formatInt(tasks.length)}</span>
-        {rule ? <span className="ms-auto truncate text-meta font-normal text-ink-3">{rule}</span> : null}
-      </h2>
+      <div className="flex min-h-6 min-w-0 items-center gap-2 px-1">
+        <h2 className="flex min-w-0 items-center gap-2 text-label font-semibold text-ink">
+          {COLUMN_MARKS[stage]}
+          <span className="whitespace-nowrap">{label}</span>
+          <span className="nums font-medium text-ink-3">{formatInt(tasks.length)}</span>
+        </h2>
+        {end}
+      </div>
       {tasks.length === 0 ? <p className="px-1 pb-1 text-meta text-ink-3">None</p> : null}
-      {tasks.slice(0, shown).map((task) => (
-        <Card key={task.id} task={task} stage={stage} nowMs={nowMs} change={recent.get(task.id)} />
+      {visible.map((task) => (
+        <Card
+          key={task.id}
+          task={task}
+          stage={stage}
+          nowMs={nowMs}
+          change={recent.get(task.id)}
+          project={projects.get(task.project)}
+        />
       ))}
       {more > 0 ? (
-        <p className="nums px-1 pb-1 text-meta text-ink-3" data-live-more="">
-          {formatInt(more)} more
-        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          className="self-start"
+          onClick={() => setAll(true)}
+          data-live-more=""
+        >
+          Show {formatInt(more)} more
+        </Button>
       ) : null}
     </section>
   );
 }
 
 /**
- * A task on the board: its id and pull request, its title, and who holds it
- * or closed it with the model they named and how long it has been in its
- * column. A task in progress also shows its activity mark and its holder's
- * next step, or else its branch.
+ * A task on the board: its project's icon, its id and pull request, its
+ * title, then what is next for it and, at the end, the icon of who holds it
+ * or closed it, whose name and model show in a tooltip, and how long it has
+ * been in its column. A task in progress shows its holder's next step, or
+ * else its branch, and its tint says how recently they worked on it.
  */
 function Card({
   task,
   stage,
   nowMs,
   change,
+  project,
 }: {
   task: BoardTask;
   stage: Stage;
   nowMs: number;
   /** The task's latest change the feed brought, which the card names for a moment. */
   change: RecentChange | undefined;
+  /** The project the task is in, whose icon leads the card. */
+  project: BoardProject | undefined;
 }) {
   const paths = usePaths();
   const held = stage === 'progress';
@@ -168,7 +246,6 @@ function Card({
     <article
       data-board-card={task.id}
       data-column={stage}
-      data-last-activity={held ? (task.lastActivityAt ?? '') : ''}
       data-activity={activity ?? undefined}
       className={cn(
         'relative flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-background p-2.5 shadow-raise',
@@ -179,24 +256,15 @@ function Card({
     >
       <ChangeLabel change={change} />
       <div className="flex min-w-0 items-center gap-1.5 text-meta text-ink-3">
-        {activity ? (
-          <span className="relative grid shrink-0 place-items-center">
-            {activity === 'active' ? (
-              <span
-                aria-hidden
-                data-live-halo=""
-                className="pointer-events-none absolute -inset-1 rounded-full bg-accent/30 opacity-0 motion-safe:animate-breathe"
-              />
-            ) : null}
-            <ActivityMark activity={activity} className="relative" />
-            <span
-              aria-hidden
-              data-live-ping=""
-              className="pointer-events-none absolute inset-0 rounded-full border-[1.5px] border-accent opacity-0"
-            />
-          </span>
+        {project ? (
+          <>
+            <ProjectIcon project={project} size={16} />
+            <span className="sr-only">{project.name}</span>
+          </>
         ) : null}
         <span className="nums whitespace-nowrap">{task.id}</span>
+        {/* The tint shows how recently its holder worked on it; a screen reader hears it. */}
+        {activity ? <span className="sr-only">{ACTIVITY_LABELS[activity]}</span> : null}
         <span className="flex-1" />
         {pr ? (
           <a
@@ -219,22 +287,23 @@ function Card({
       >
         {task.title}
       </Link>
-      {context ? (
-        <p className="flex min-w-0 items-center gap-1 text-meta text-ink-3" data-live-context="">
-          {context}
-        </p>
-      ) : null}
-      {name || age !== null ? (
-        <div className="flex min-w-0 items-center gap-1.5 text-meta">
+      {context || name || age !== null ? (
+        <div className="flex min-w-0 items-center gap-1.5 text-meta text-ink-3">
+          <span className="flex min-w-0 flex-1 items-center gap-1" data-live-context={context ? '' : undefined}>
+            {context}
+          </span>
           {actor && name ? (
-            <>
-              <Avatar name={name} agent={isAgentActor(actor)} model={model} size={18} decorative />
-              <span className="min-w-0 truncate text-ink-2">{name}</span>
-              {model ? <span className="min-w-0 shrink-[3] truncate text-ink-3">{model}</span> : null}
-            </>
+            <Tooltip content={model ? `${name} · ${model}` : name}>
+              <button
+                type="button"
+                aria-label={name}
+                className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Avatar name={name} agent={isAgentActor(actor)} model={model} size={18} decorative />
+              </button>
+            </Tooltip>
           ) : null}
-          <span className="flex-1" />
-          {age === null ? null : <span className="nums shrink-0 text-ink-3">{formatAge(age)}</span>}
+          {age === null ? null : <span className="nums shrink-0">{formatAge(age)}</span>}
         </div>
       ) : null}
     </article>
@@ -285,12 +354,11 @@ function ChangeLabel({ change }: { change: RecentChange | undefined }) {
   );
 }
 
-/** Where a card sits in the board, without the transform an animation adds, and what it showed. */
+/** Where a card sits in the board, without the transform an animation adds, and its column. */
 interface Place {
   x: number;
   y: number;
   column: string;
-  activity: string;
 }
 
 /** A card's layout position relative to `root`: offsets ignore transforms, so a card in flight reads where it lands. */
@@ -318,9 +386,8 @@ function land(card: HTMLElement): void {
 /**
  * After each draw, compares every card with where it was in the draw before
  * and animates the difference: a card that changed column travels there,
- * lifted, one after another; a card that moved within its column slides; a
- * new card fades in; and a task whose holder wrote to it since rings its
- * activity mark once. With reduced motion nothing travels: a card that
+ * lifted, one after another; a card that moved within its column slides; and
+ * a new card fades in. With reduced motion nothing travels: a card that
  * changed column is only tinted. The first draw animates nothing.
  */
 function useCardMotion(board: RefObject<HTMLElement | null>, reduced: boolean): void {
@@ -334,7 +401,6 @@ function useCardMotion(board: RefObject<HTMLElement | null>, reduced: boolean): 
       now.set(card.dataset.boardCard ?? '', {
         ...placeOf(card, root),
         column: card.dataset.column ?? '',
-        activity: card.dataset.lastActivity ?? '',
       });
     }
     const last = before.current;
@@ -395,18 +461,6 @@ function useCardMotion(board: RefObject<HTMLElement | null>, reduced: boolean): 
           duration: 350,
           easing: EASE_OUT,
         });
-      }
-      if (!reduced && is.activity !== '' && was.activity !== is.activity) {
-        const ring = card.querySelector('[data-live-ping]');
-        if (ring)
-          animate(
-            ring,
-            [
-              { opacity: 0.9, transform: 'scale(0.8)' },
-              { opacity: 0, transform: 'scale(2.6)' },
-            ],
-            { duration: 900, easing: EASE_OUT },
-          );
       }
     }
   });

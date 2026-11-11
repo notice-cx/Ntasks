@@ -88,6 +88,8 @@ export interface TaskRow {
   readonly close_acceptance?: string | null;
   /** JSON text: the test run its close reported (TaskTestResult). Left out, null. */
   readonly close_test?: string | null;
+  /** The repository its merged change reached, as owner/name. Left out, null. */
+  readonly delivery_repository?: string | null;
 }
 
 export interface LabelRow {
@@ -228,6 +230,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'steps',
     'close_acceptance',
     'close_test',
+    'delivery_repository',
   ],
   task_labels: ['task_id', 'label'],
   task_edges: ['task_id', 'depends_on_id', 'type', 'created_at', 'created_by'],

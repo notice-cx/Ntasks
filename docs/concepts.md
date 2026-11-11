@@ -351,7 +351,10 @@ Some steps only a person can take. Ntasks asks a person in three ways:
 - An **approval** holds a task until a person approves a named action, such
   as a deployment. Its title names the action, and its description says what
   the agent will do and what it changes ([writing a task](#writing-a-task)). While the
-  approval is pending, the task is not ready, so no agent starts it.
+  approval is pending, the task is not ready, so no agent starts it. An
+  approval to merge a pull request names it: approving it turns on the pull
+  request's auto-merge, and each answer is posted on the pull request
+  ([Connect GitHub](github.md#approve-a-pull-request-in-ntasks)).
 - A **request to do steps** holds a task until a person does steps only they
   can do, such as running a command on their own machine. Its steps are an
   ordered list, each with its text and the command it runs, shown as a block
@@ -369,9 +372,9 @@ Some steps only a person can take. Ntasks asks a person in three ways:
 ### What a person answers
 
 A task's **proposal** is what a person answers: its title, description,
-acceptance, type and options, and a request's steps. For an approval, that
-is the exact action it asks for, with its environment, scope and
-verification. The **proposal
+acceptance, type and options, a request's steps, and the pull request an
+approval gates. For an approval, that is the exact action it asks for, with
+its environment, scope and verification. The **proposal
 version** is a short hash of the proposal, so it changes whenever the
 proposal does.
 

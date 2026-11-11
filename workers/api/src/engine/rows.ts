@@ -74,6 +74,7 @@ export interface StoredTaskRow {
   readonly delivery_commit: string | null;
   readonly delivery_pull_request: string | null;
   readonly delivery_merge_commit: string | null;
+  readonly delivery_repository: string | null;
   readonly built_at: string | null;
   readonly merged_at: string | null;
   readonly live_at: string | null;
@@ -133,8 +134,9 @@ export interface ProjectRow {
   readonly deploys: number;
   readonly disabled_at: string | null;
   readonly website_url: string | null;
-  /** From project_icons, joined in. */
+  /** From project_icons, joined in: when its light and its dark icon were read. */
   readonly icon_at: string | null;
+  readonly dark_icon_at: string | null;
 }
 
 export interface ProjectIconRow {
@@ -243,6 +245,7 @@ export function deliveryOf(row: StoredTaskRow): TaskDelivery | null {
     commit: row.delivery_commit,
     pullRequest: row.delivery_pull_request,
     mergeCommit: row.delivery_merge_commit,
+    repository: row.delivery_repository,
     builtAt: row.built_at,
     mergedAt: row.merged_at,
     liveAt: row.live_at,
@@ -334,6 +337,7 @@ export function toProject(row: ProjectRow): Project {
     disabledAt: row.disabled_at,
     websiteUrl: row.website_url,
     iconAt: row.icon_at,
+    darkIconAt: row.dark_icon_at,
   };
 }
 

@@ -505,6 +505,13 @@ describe('approvals', () => {
     expect(await refusedWith(project, old!.id, { action: 'duplicate', ...EVIDENCE, duplicate_of: other!.id })).toMatch(
       /same requested scope/u,
     );
+    // The same words gating another pull request ask for another merge.
+    const { gate: elsewhere } = await make(project, 'Production read elsewhere', {
+      requestApproval: { reason: 'One bounded production read', pullRequest: 'https://github.com/example/site/pull/9' },
+    });
+    expect(
+      await refusedWith(project, old!.id, { action: 'duplicate', ...EVIDENCE, duplicate_of: elsewhere!.id }),
+    ).toMatch(/same requested scope/u);
     const { gate: survivor } = await make(project, 'Production read again', {
       requestApproval: { reason: 'One bounded production read' },
     });

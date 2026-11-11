@@ -501,7 +501,8 @@ beside it (Not now on Focus) and Answer with its `↵`. Answer is disabled
 until an option is selected; Enter sends the selected option, and Enter on a
 focused option sends that one. Focus draws it on a card with `shadow-pop`,
 headed by Your choice, the id, the project and the age; a task's page draws
-it under the description.
+it under the description. On Focus, an approval that gates a pull request
+shows the same auto-merge line as a task's page just above its buttons.
 
 ### Rows (`row.tsx`)
 
@@ -510,6 +511,8 @@ parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
 ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
+on an open task that relies on a dropped one `Relies on dropped web-h1z8`
+after a `circle-alert` icon, each id a link to its task,
 `Until 11 Nov`, on a ready task that is not an epic `Estimate 1h 30m` or
 `No estimate` after a `clock` icon from 1024 px wide, where the title keeps
 room beside it, on a held task `For page-rebuild-2` and
@@ -524,9 +527,13 @@ not reset how long it has waited, and its tip says so (`Created 3d ago`).
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
 row puts its answer in `RowAnswer`: Approve after Did it myself, which opens
-a Note under the row, a `Segmented` choice, or Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
-its options take a line of their own under the title, so the title is never
-cut to make room for them. When this sign-in cannot answer, the controls are
+a Note under the row, a `Segmented` choice, or Answer. An approval that
+gates a pull request puts the compact `AutoMergeNote` before Did it myself:
+a pull request icon, Auto-merge and the pull request as a link, in Text 3,
+which Approve takes as its description. A row whose answer is a choice, or
+an approval's note and buttons, is `answer="wide"`: below 1240 px wide
+its answer takes a line of its own under the title, and wraps there, so the
+title is never cut to make room for it. When this sign-in cannot answer, the controls are
 disabled and each carries the reason as its description (`aria-describedby`;
 `Segmented` takes `describedBy`), shown to a pointer as a tip.
 
@@ -595,10 +602,16 @@ id, then its id. Its end holds Copy link, the More menu (add or edit the
 description, Done when, design and notes, add a link, move the task to
 another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
 someone holds it; on a task waiting for you, Approve after Did it myself,
-which opens a Note in the reading column, or Answer beside Close as.
+which opens a Note in the reading column, or Answer beside Close as. On an
+approval that gates a pull request, a line in `text-label` Text 3 under the
+title says that Approve turns on that pull request's auto-merge, with the
+pull request as an Accent text link; Approve takes it as its description.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),
+for an open task each dropped task it relies on (a Surface block, one line
+each after a `circle-alert` icon in Text 3: Check:, the dropped task's title
+as a link, which this relies on, closed as won't do or no longer needed),
 how a closed task ended (with where its change is: Built, Merged or Live,
 its pull request as a link and its commit, or the link that shows the work,
 or No proof), the description, a decision's card or its recorded
@@ -697,7 +710,9 @@ Stalled, with the holder's last activity, in place of Active.
 `/tasks/live` has two views under a `TopBar` titled Live: Board, which the
 page opens on, and List, at `?view=list`. `Tabs` at the bar's end switch them.
 The bar also holds each activity group's count after its activity mark
-(`6 active`, `3 quiet`, `50 stalled`, from 640 px wide). While the page is
+(`6 active`, `3 quiet`, `50 stalled`, from 640 px wide); on the board each
+count is a link to the List view, which groups the tasks it counts, keeping
+the rest of the address. While the page is
 open the change feed is asked every 5 seconds instead of every 30, so a card
 moves within seconds of the change.
 
@@ -708,15 +723,16 @@ Live (`liveBoard` in `src/lib/live.ts`). The board is one column under a
 672 px wide board and three from 672 px, by container width, so the
 sidebar's width counts. Each column is a Canvas panel with 12 px corners: a
 heading with its mark (the In progress mark, `git-merge`, the Done mark), its
-name and its count, then its cards, then `N more` in Text 3 for the cards it
-leaves out, or None when it has no tasks. Live's heading ends with Last 7
-days in Text 3.
+name and its count, then its cards, then Show N more, a `ghost` button that
+shows the cards it leaves out, or None when it has no tasks. Live's heading
+ends with `Tabs` that set how far back it reaches, 24 hours or 7 days, 7
+days unless the address says `?shipped=day`.
 
 | Column | Holds | Order | Shows |
 |---|---|---|---|
 | In progress | every task in progress | Active, then Quiet, then Stalled, each the latest activity first | 6, 3 on a phone |
 | Waiting to ship | closed tasks waiting for a merge, and merged tasks of a project that deploys, waiting for a deploy, whenever they closed | latest stage reached first | 5, 3 on a phone |
-| Live | closed tasks whose change went live, and merged tasks of a project that does not deploy, closed in the last 7 days | latest stage reached first | 4, 2 on a phone |
+| Live | closed tasks whose change went live, and merged tasks of a project that does not deploy, that reached that stage in the last 24 hours or 7 days | latest stage reached first | 4, 2 on a phone |
 
 A card in Waiting to ship says the step left in Text 3: Not merged yet, Not
 pushed yet for a task closed with a commit and no pull request, as in a
@@ -726,7 +742,8 @@ project that does not deploy, moves it to Live.
 
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in
-progress or shipped this week. When the read of a project's work waiting for
+progress or shipped this week; one the 24-hour window leaves empty stays, so
+its switch can widen it again. When the read of a project's work waiting for
 a merge or a deploy fails, a banner over the board names the project, with
 Retry, as the Tasks board does for a project it could not read; a task the
 board read itself holds is placed by that read, never by an older read of
@@ -734,21 +751,24 @@ waiting work. A closed card names who closed it only when the close records
 them.
 
 A card is a Background panel with a Border edge, 8 px corners and the raise
-shadow. Its first line is the activity mark for a task in progress, the
+shadow. Its first line is its project's icon at 16 px (`ProjectIcon`), with
+the project's name for a screen reader, the
 task's id in Text 3 and, at the end, the pull request's number as a link
-after `git-pull-request`. Then the title as a link, two lines at most. On a
-task in progress, a line in Text 3: Next and the next step, else the branch
-after `git-branch` when there is no pull request, else Nothing recorded.
-Last, the holder's `Avatar` at 18 px, their name in Text 2, the model in Text
-3, and how long the task has been in its column: since its holder's last
-activity in progress, else since its change reached its stage. A card in progress is tinted by its activity: an
-Active card is filled Accent soft with an Accent edge at 40 % opacity, a
-Quiet one Accent soft at 40 % with an Accent edge at 15 %, and a Stalled one
-has a dashed Border strong edge, no fill and no shadow, and its title in Text
-2. Closed cards keep the plain Background. An Active card's mark sits on an
-Accent halo at 30 % opacity that grows from 0.6 to 1.35 times the mark's size
-and fades, over and over, every 2.4 seconds: the one motion on the board that
-repeats while nothing changes.
+after `git-pull-request`. Then the title as a link, two lines at most. Its
+last line, in Text 3, is what is next for it: on a task in progress, Next and
+the next step, else the branch after `git-branch` when there is no pull
+request, else Nothing recorded; on a card waiting to ship, the step left.
+That line ends with the `Avatar` of who holds the task, or closed it, at
+18 px, a button whose `Tooltip` names them and the model they named, and how
+long the task has been in its column: since its holder's last activity in
+progress, else since its change reached its stage.
+
+A card in progress is tinted by its activity, and says it to a screen reader
+in a hidden word: an Active card is filled Accent soft with an Accent edge at
+40 % opacity, 2 px wide so it reads apart from a Quiet one where colours are
+forced, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
+and a Stalled one has a dashed Border strong edge, no fill and no shadow, and
+its title in Text 2. Closed cards keep the plain Background.
 
 Between two reads, each card is compared with where it was, and:
 
@@ -757,10 +777,7 @@ Between two reads, each card is compared with where it was, and:
   move in one read start 110 ms apart; it lands tinted Accent soft, which
   fades over 700 ms;
 - a card that moved within its column slides there over 350 ms;
-- a new card fades in, rising 6 px, over 300 ms;
-- a task whose holder changed or commented on it since gets a 1.5 px Accent
-  ring that grows from its activity mark to 2.6 times its size and fades,
-  once, over 900 ms.
+- a new card fades in, rising 6 px, over 300 ms.
 
 When the change feed brings a change to a task, the card shows who made it
 and what it did for 2.4 seconds, such as Claude commented, Codex pushed a
@@ -770,9 +787,9 @@ Accent, across the card's top edge at its right (`changeWords` in
 says nothing a person reads, such as a link added, shows no pill, and a
 change that arrived while another page was open shows none either.
 
-With `prefers-reduced-motion`, nothing travels, slides, fades in, rings or
-breathes, and the pill appears and goes without fading: a card in another column is drawn there tinted Accent soft for
-700 ms. The first draw animates nothing.
+With `prefers-reduced-motion`, nothing travels, slides or fades in, and the
+pill appears and goes without fading: a card in another column is drawn
+there tinted Accent soft for 700 ms. The first draw animates nothing.
 
 #### List
 
@@ -956,7 +973,9 @@ username, its role, its age and Revoke.
 
 `ProjectBadge` draws the icon read from a project's website, through
 `ProjectIcon`, which reads it with the page's sign-in, and the prefix's
-letter in a ringed square until it is read or when there is none.
+letter in a ringed square until it is read or when there is none. In a dark
+`ThemeScope` it draws the icon the website declares for a dark scheme, else
+the light one; in a light one, only the light one.
 
 A sign-in in no workspace sees a page of its own on Canvas, outside the
 frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New

@@ -8,7 +8,7 @@ import { CopyButton } from '../../components/ui/copy-button';
 import { OptionList } from '../../components/ui/choice';
 import { ProjectIcon } from '../../components/ProjectIcon';
 import { StatusMark } from '../../components/ui/symbols';
-import { ageMs, formatAge } from '../../lib/format';
+import { ageMs, formatAge, pullRequestName } from '../../lib/format';
 import { cn } from '../../lib/utils';
 import { choiceName, RESOLUTION_LABELS, stageLabel, waivedCount } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
@@ -32,7 +32,7 @@ export function TaskPath({
   parent,
 }: {
   id: string;
-  project: { name: string; prefix: string; icon?: string | null; to: string } | null;
+  project: { name: string; prefix: string; icon?: string | null; darkIcon?: string | null; to: string } | null;
   parent: { id: string; title: string | null } | null;
 }) {
   const paths = usePaths();
@@ -85,18 +85,6 @@ function Byline({ by, at, nowMs }: { by: Actor | null; at: string | null; nowMs:
       ) : null}
     </>
   );
-}
-
-/** A pull request's name: `owner/name#12` for GitHub's, its host and path for any other. */
-function pullRequestName(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
-  }
-  const pull = /^\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(parsed.pathname);
-  return parsed.hostname === 'github.com' && pull ? `${pull[1]}#${pull[2]}` : `${parsed.host}${parsed.pathname}`;
 }
 
 /** Where a closed task's change is: its stage, then its pull request and commit. */

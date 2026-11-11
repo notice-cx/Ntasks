@@ -219,6 +219,7 @@ describe('an import into the task store', () => {
         steps: null,
         close_acceptance: null,
         close_test: null,
+        delivery_repository: null,
         ...row,
       })),
       task_comments: ROWS.task_comments.map((row) => ({ pinned: 0, test: null, ...row })),
