@@ -105,13 +105,11 @@ export function useFieldSave(id: string, project: string): FieldSave {
           : {
               action: {
                 label: 'Undo',
+                // The menu that saved may have closed by now, and a mutation calls back only while its component is mounted.
                 onClick: () => {
-                  update.mutate(
-                    { id, project, edit: undo },
-                    {
-                      onSuccess: () => toast.success(`Reverted ${label}`),
-                      onError: (error) => toast.error(error.message),
-                    },
+                  update.mutateAsync({ id, project, edit: undo }).then(
+                    () => toast.success(`Reverted ${label}`),
+                    (error: Error) => toast.error(error.message),
                   );
                 },
               },

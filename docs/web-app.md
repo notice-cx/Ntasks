@@ -61,7 +61,10 @@ who changed it and how, such as "Claude pushed a commit" or "GitHub merged
 #42". A card leads with its project's icon and ends with the icon of who
 holds it, whose name and model show on hover. A card in progress is tinted
 by how recently its holder worked on it: strongly while Active, faintly while
-Quiet, and not at all once Stalled, after a day without activity. While the page is open it checks for
+Quiet, and not at all once Stalled, after a day without activity. A column
+shows its latest cards and **Show N more** for the rest; the Live column
+covers the last **24 hours** or **7 days**, and the counts at the top open
+the List. While the page is open it checks for
 changes every 5 seconds. **List** shows the tasks in progress grouped as
 Active, Quiet and Stalled, each under its epic with the epic's progress bar.
 A stalled task's page shows where its work stopped and **Free it**, which

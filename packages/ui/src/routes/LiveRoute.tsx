@@ -17,7 +17,15 @@ import { byEpic, readEpics, type EpicSummary } from '../lib/epics';
 import { pullRequestLabel } from '../lib/wins';
 import { httpUrl } from '../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../lib/format';
-import { ACTIVITIES, ACTIVITY_LABELS, liveBoard, liveGroups, STAGES, type Activity } from '../lib/live';
+import {
+  ACTIVITIES,
+  ACTIVITY_LABELS,
+  liveBoard,
+  liveGroups,
+  STAGES,
+  type Activity,
+  type ShippedWindow,
+} from '../lib/live';
 import { isAgentActor } from '../lib/symbols';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
@@ -58,6 +66,19 @@ export function LiveRoute() {
   const board = useBoard(NO_FILTERS);
   const [params, setParams] = useSearchParams();
   const view: LiveView = params.get('view') === 'list' ? 'list' : 'board';
+  // The Live column's reach: 7 days unless the address names the last 24 hours.
+  const shipped: ShippedWindow = params.get('shipped') === 'day' ? 'day' : 'week';
+  // The List view's address, keeping the rest of this one, such as the Live column's window.
+  const listParams = new URLSearchParams(params);
+  listParams.set('view', 'list');
+  const listSearch = listParams.toString();
+  /** The address with `name` set to `value`, or without it for its default, keeping the rest. */
+  function setParam(name: 'view' | 'shipped', value: string | null) {
+    const next = new URLSearchParams(params);
+    if (value === null) next.delete(name);
+    else next.set(name, value);
+    setParams(next);
+  }
   const [allStalled, setAllStalled] = useState(false);
   const groups = useMemo(() => liveGroups(board.allTasks, now), [board.allTasks, now]);
   const waits = useDeliveryWaits(board, NO_FILTERS, view === 'board');
@@ -66,8 +87,8 @@ export function LiveRoute() {
     [board.catalog.data],
   );
   const columns = useMemo(
-    () => liveBoard(board.allTasks, waits, (project) => deploying.has(project), now),
-    [board.allTasks, waits, deploying, now],
+    () => liveBoard(board.allTasks, waits, (project) => deploying.has(project), now, shipped),
+    [board.allTasks, waits, deploying, now, shipped],
   );
   const onBoard = STAGES.reduce((sum, stage) => sum + columns[stage].length, 0);
   const projectsByKey = useMemo(
@@ -94,7 +115,7 @@ export function LiveRoute() {
       label="View"
       items={VIEWS}
       value={view}
-      onChange={(next) => setParams(next === 'board' ? {} : { view: next })}
+      onChange={(next) => setParam('view', next === 'board' ? null : next)}
     />
   );
 
@@ -110,8 +131,17 @@ export function LiveRoute() {
     );
   } else if (board.loading || (view === 'board' && onBoard === 0 && waits.loading)) {
     body = <PageSkeleton shape="list" />;
-  } else if (view === 'board' && onBoard > 0) {
-    body = <LiveBoardView columns={columns} projects={projectsByKey} nowMs={now} />;
+  } else if (view === 'board' && (onBoard > 0 || shipped === 'day')) {
+    // A board left empty by the 24-hour window stays, so its switch can widen it again.
+    body = (
+      <LiveBoardView
+        columns={columns}
+        projects={projectsByKey}
+        nowMs={now}
+        shipped={shipped}
+        onShipped={(next) => setParam('shipped', next === 'week' ? null : next)}
+      />
+    );
   } else if (total === 0) {
     body = (
       <EmptyState
@@ -179,12 +209,29 @@ export function LiveRoute() {
       <TopBar title="Live">
         {shown ? (
           <span className="flex items-center gap-4 max-sm:hidden" data-live-summary="">
-            {ACTIVITIES.map((activity) => (
-              <span key={activity} className="nums inline-flex items-center gap-1.5 text-label font-medium text-ink-2">
-                <ActivityMark activity={activity} label={null} />
-                {formatInt(groups[activity].length)} {ACTIVITY_LABELS[activity].toLowerCase()}
-              </span>
-            ))}
+            {ACTIVITIES.map((activity) => {
+              const count = (
+                <>
+                  <ActivityMark activity={activity} label={null} />
+                  {formatInt(groups[activity].length)} {ACTIVITY_LABELS[activity].toLowerCase()}
+                </>
+              );
+              const look = 'nums inline-flex items-center gap-1.5 text-label font-medium text-ink-2';
+              // On the board each count opens the List view, which groups the tasks it counts.
+              return view === 'list' ? (
+                <span key={activity} className={look}>
+                  {count}
+                </span>
+              ) : (
+                <Link
+                  key={activity}
+                  to={{ search: `?${listSearch}` }}
+                  className={cn(look, 'no-underline outline-none hover:text-ink focus-visible:underline')}
+                >
+                  {count}
+                </Link>
+              );
+            })}
           </span>
         ) : null}
         <BarSpacer />

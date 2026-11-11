@@ -1,3 +1,4 @@
+import { Slot } from '@radix-ui/react-slot';
 import { useEffect, useId, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import { Popover, PopoverAnchor, PopoverContent } from './popover';
 
@@ -22,7 +23,7 @@ function isMouse(event: PointerEvent): boolean {
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactElement }) {
   const [open, setOpen] = useState(false);
   const rest = useRef<number | undefined>(undefined);
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLElement>(null);
   const id = useId();
   useEffect(() => () => window.clearTimeout(rest.current), []);
 
@@ -32,9 +33,8 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : hide())}>
-      <PopoverAnchor
-        asChild
+    <>
+      <Slot
         ref={anchor}
         aria-describedby={open ? id : undefined}
         onPointerEnter={(event) => {
@@ -50,26 +50,29 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
         onClick={() => setOpen(true)}
       >
         {children}
-      </PopoverAnchor>
-      {/* A hidden tip draws nothing, so a list of rows, each with a tip, keeps none of their parts. */}
+      </Slot>
+      {/* The popover mounts only while the tip shows, so a list of rows, each with a tip, keeps none of its parts. */}
       {open ? (
-        <PopoverContent
-          id={id}
-          role="tooltip"
-          side="top"
-          align="center"
-          sideOffset={6}
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          // A press on the control itself shows the tooltip; it must not count as a press elsewhere.
-          onPointerDownOutside={(event) => {
-            if (event.target instanceof Node && anchor.current?.contains(event.target)) event.preventDefault();
-          }}
-          className="w-auto rounded-md px-2 py-1.5 text-meta font-medium whitespace-nowrap"
-        >
-          {content}
-        </PopoverContent>
+        <Popover open onOpenChange={(next) => (next ? setOpen(true) : hide())}>
+          <PopoverAnchor virtualRef={anchor} />
+          <PopoverContent
+            id={id}
+            role="tooltip"
+            side="top"
+            align="center"
+            sideOffset={6}
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+            // A press on the control itself shows the tooltip; it must not count as a press elsewhere.
+            onPointerDownOutside={(event) => {
+              if (event.target instanceof Node && anchor.current?.contains(event.target)) event.preventDefault();
+            }}
+            className="w-auto rounded-md px-2 py-1.5 text-meta font-medium whitespace-nowrap"
+          >
+            {content}
+          </PopoverContent>
+        </Popover>
       ) : null}
-    </Popover>
+    </>
   );
 }
