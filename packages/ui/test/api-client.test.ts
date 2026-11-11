@@ -152,6 +152,32 @@ describe('the HTTP Tasks API client', () => {
     ]);
   });
 
+  it('moves tasks to a project by its id, sending no epic as an empty parent, and answers the ids that changed', async () => {
+    const { api, sent } = server(() => Response.json({ tasks: [], moved: { 'web-a1b2': 'docs-c3d4' } }));
+    await expect(
+      api.moveTasks(
+        { ids: ['web-a1b2'], project: 'web', parent: null, withChildren: true },
+        { idempotencyKey: 'move-1' },
+      ),
+    ).resolves.toEqual({ moved: { 'web-a1b2': 'docs-c3d4' } });
+    await api.moveTasks({ ids: ['web-a1b2', 'web-e5f6'], project: 'web', parent: 'web-k3m9' });
+    await api.moveTasks({ ids: ['web-a1b2'], project: 'web' });
+    expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
+      ['POST', '/api/tasks/move', { tasks: ['web-a1b2'], projectId: 'p-web', parent: '', withChildren: true }],
+      ['POST', '/api/tasks/move', { tasks: ['web-a1b2', 'web-e5f6'], projectId: 'p-web', parent: 'web-k3m9' }],
+      ['POST', '/api/tasks/move', { tasks: ['web-a1b2'], projectId: 'p-web' }],
+    ]);
+    expect(sent[0]?.headers.get('idempotency-key')).toBe('move-1');
+  });
+
+  it('does not take a move answer whose changed ids it cannot read', async () => {
+    for (const answer of [{ tasks: [] }, { moved: { 'web-a1b2': 7 } }, { moved: ['docs-c3d4'] }]) {
+      const { api } = server(() => Response.json(answer));
+      const error: unknown = await api.moveTasks({ ids: ['web-a1b2'], project: 'web' }).catch((failure) => failure);
+      expect(error).toBeInstanceOf(UnreadableAnswer);
+    }
+  });
+
   it("reads a project's custom fields, and a board filtered by them, by the project's id", async () => {
     const fields = [
       {

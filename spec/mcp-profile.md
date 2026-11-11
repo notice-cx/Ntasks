@@ -60,6 +60,7 @@ a task again therefore claims it twice.
 | Comment | `comment_on_task` | `tasks` comments on up to 50 |
 | Link | `link_tasks` | Sets or, with `remove: true`, removes the one link between two tasks ([INV-11](protocol.md#inv-11)). Takes no key: asking again changes nothing |
 | Close | `close_task` | `resolution` (`done` when left out), `reason`, `duplicate_of`, and the proof `commit`, `pr` or `link`. `tasks` closes several and `with_children` an epic's open tasks first, at most 50 in all; the answer lists `unblocked` |
+| Move | `move_tasks` | `task` or `tasks`, `project`, `parent` or both, and `with_children`; at most 50 tasks in all, every one moving or none ([STATE-24](protocol.md#state-24)). The answer's `moved` maps each old id to the new one. Every tool reads a former id as the task, and its answer then holds `formerIds` |
 | Release a task whose holder stopped | `reconcile_task`, action `release` | With `holder`, `inactive: true`, `activity_check` and `progress` ([AUTH-9](protocol.md#auth-9)). A person frees a task on their own call over HTTP |
 
 ### Human decisions and approvals
@@ -151,6 +152,6 @@ own.
 | `for` | 64 characters |
 | `session`, `worktree`, `next` / `branch` / `commit` / `pr` | 512 / 255 / 128 characters / a 2,048-character URL |
 | Custom fields | 64 a project; 64 options a field |
-| Tasks in one `create_tasks` / `get_task`, `comment_on_task` or `close_task` | 25 / 50 |
+| Tasks in one `create_tasks` / `get_task`, `comment_on_task`, `close_task` or `move_tasks` | 25 / 50 |
 | Tasks in one page of `list_tasks` | 200 |
 | Pull requests and commits in one signal | 100 of each |

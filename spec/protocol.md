@@ -780,6 +780,33 @@ commit matches one it names, in the projects the sender may change:
 
 A reopen clears the delivery; history keeps each stage and each move.
 
+### 4.8 Moves
+
+**STATE-24.** <a id="state-24"></a>A server that offers moving MUST move
+every task a move names, or none of them, to the project and the parent the
+move names, within one workspace; a move to a project of another workspace
+MUST be refused. A task that stays in its project MUST keep its id. A task
+that goes to another project MUST take an id that starts with that project's
+prefix, so a task id's prefix still names its project, and its old id becomes
+its **former id**:
+
+- a server MUST read a former id, wherever a call names a task, as the task
+  it moved to, and SHOULD say in its answer which former ids it read;
+- a server MUST NOT give a former id to another task;
+- the task's comments, history, labels, links in both directions, external
+  links, delivery, claim and custom field values MUST come along, and a value
+  of a field the new project does not define MUST be kept;
+- a task with tasks under it MUST go to another project only with every task
+  under it, each keeping its parent;
+- an approval or a request to do steps that a moved task waits on MUST still
+  hold it back until it is answered, and SHOULD move with it when every task
+  waiting on it moves.
+
+A server MUST record each move in the history of each task it moves, with
+the old and new id and project, and SHOULD show it in the changes of the
+project the task left as well as the one it joined. The epic a task leaves and the epic it joins
+close and reopen as [STATE-22](#state-22) says.
+
 ## 5. Authority rules
 
 These rules decide who may answer for a person. They hold whatever a sender
@@ -928,7 +955,9 @@ commit as one.
 **INV-6. History is kept.** <a id="inv-6"></a>A server MUST NOT delete a
 task, a history event or a comment, and MUST NOT edit a history event or a
 comment's author, text or time; unpinning is the one change a comment takes
-([STATE-17](#state-17)). A task MUST keep its id, project and creation time
+([STATE-17](#state-17)). A task MUST keep its creation time, and MUST keep
+its id and project except in a move to another project ([STATE-24](#state-24)),
+where its comments and history follow it to its new id
 ([OQ-17](open-questions.md#oq-17)).
 
 **INV-7. Done carries proof.** <a id="inv-7"></a>A sender closing a task,
@@ -982,9 +1011,10 @@ the ones above it in this table.
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that
-offers custom fields. The levels are independent above
-Core: a server MAY claim Core and Delivery without Human decisions and
-approvals. How a server states the levels it claims is
+offers custom fields, and STATE-24 to one that offers moving tasks. The
+levels are independent above Core: a server MAY claim Core and Delivery
+without Human decisions and approvals. How a server states the levels it
+claims is
 [OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
 [conformance suite](conformance/README.md) checks that claim;
 [the spec's README](README.md#implementations) lists each server and the

@@ -223,6 +223,7 @@ describe('an import into the task store', () => {
       })),
       task_comments: ROWS.task_comments.map((row) => ({ pinned: 0, test: null, ...row })),
       task_events: ROWS.task_events.map((row) => ({ actor_for: null, session: null, ...row })),
+      task_aliases: [],
     };
     for (const table of STORE_TABLES) expect(await stub.tableRows(table)).toEqual(stored[table]);
   });

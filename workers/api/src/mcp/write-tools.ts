@@ -92,6 +92,8 @@ import {
   createTask,
   linkTasks,
   lintOf,
+  moveTasks,
+  namedAfter,
   lintView,
   OPEN_STATUSES,
   proofWarning,
@@ -1794,6 +1796,83 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         results,
         ...(await after()),
         ...withWarnings([...citationWarnings(args, ['reason']), ...proofWarnings(closed, 'close_task')]),
+      };
+    },
+  },
+  {
+    name: 'move_tasks',
+    description:
+      `Move tasks to another epic or another project of this workspace, up to ${TASK_LIMITS.move} in one call counting the tasks under them: ` +
+      'every task moves, or none does and the refusal names the task at fault. ' +
+      "In another project a task takes a new id with that project's prefix; its old id still names it in every tool, and the answer's moved maps each old id to the new one. " +
+      'with_children moves the tasks under each one with it, which a task with tasks under it needs to move to another project. ' +
+      'An epic a task leaves or joins closes or reopens as when a task under it closes or reopens.',
+    inputSchema: schema(
+      {
+        project: {
+          type: 'string',
+          description:
+            "The project they go to: its projectId, key or prefix from list_projects. Left out, parent's project.",
+        },
+        task: TASK,
+        tasks: {
+          type: 'array',
+          minItems: 1,
+          maxItems: TASK_LIMITS.move,
+          items: { type: 'string' },
+          description: `Up to ${TASK_LIMITS.move} task ids to move together, in place of task.`,
+        },
+        parent: {
+          type: 'string',
+          description: 'The epic they go under, a task id in the project they go to; "" or left out for none.',
+        },
+        with_children: {
+          type: 'boolean',
+          description: 'true moves every task under each one named with it, keeping its place under it.',
+        },
+        model: MODEL,
+        idempotency_key: IDEMPOTENCY,
+        detail: DETAIL,
+      },
+      [],
+    ),
+    annotations: WRITE,
+    scope: SCOPES.write,
+    async run(context, args) {
+      const { ids } = tasksNamed(args);
+      if (ids.length > TASK_LIMITS.move) refuse(`invalid arguments: tasks (1–${TASK_LIMITS.move} task ids)`);
+      const parent = args.parent === undefined || args.parent === '' ? null : taskArg(args, 'parent');
+      if (parent !== null && ids.includes(parent))
+        refuse('invalid arguments: parent (another task than the ones moving)');
+      const model = modelArg(args);
+      const detail = detailArg(args);
+      const { result, fieldsKept } = await moveTasks(
+        context,
+        {
+          tasks: ids,
+          ...(args.project === undefined ? {} : { project: projectArg(args) }),
+          parent,
+          withChildren: booleanArg(args, 'with_children') === true,
+        },
+        model,
+        await retryRequest(context, 'move_tasks', context.sent ?? args),
+      );
+      const named = namedAfter(ids, result);
+      const epics = (result.epics ?? []).map((epic) => ({
+        id: epic.id,
+        status: epic.status,
+        ...(epic.close === null ? {} : { resolution: epic.close.resolution }),
+      }));
+      const links = await linksSeenBy(context);
+      const now = context.now();
+      return {
+        tasks: named.map((task) =>
+          detail === 'full' ? mcpTask(links.task(task), now) : writtenView(links.task(task), ['parent'], now),
+        ),
+        moved: Object.fromEntries(result.moved.map(({ from, to }) => [from, to])),
+        ...(Object.keys(fieldsKept).length === 0 ? {} : { fieldsKept }),
+        ...(epics.length === 0 ? {} : { epics }),
+        replayed: result.replayed,
       };
     },
   },

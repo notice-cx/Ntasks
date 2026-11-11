@@ -12,10 +12,10 @@
  * the task the call named, when the refusal does not name it, and whether
  * the change may have been written.
  */
-import { isTaskId, type HeldTask } from '@ntasks/domain';
+import { isTaskId, type FormerId, type HeldTask } from '@ntasks/domain';
 import { listed, suggestion, unknownArguments, type Args } from '../args.ts';
 import { reachable, SCOPES } from '../auth.ts';
-import type { Reader } from '../lookup.ts';
+import { formerIdsOf, type Reader } from '../lookup.ts';
 import { json } from '../http/respond.ts';
 import { Refused } from '../refused.ts';
 import type { WorkspaceReach } from '../workspaces.ts';
@@ -312,6 +312,46 @@ export async function runTaskTool(
   }
 }
 
+/** The arguments that name tasks, at the top of a call and in each entry of an array of objects, such as create_tasks' tasks. */
+const TASK_ARGUMENTS: ReadonlySet<string> = new Set([
+  'task',
+  'tasks',
+  'parent',
+  'to',
+  'depends_on',
+  'blocks',
+  'related',
+  'discovered_from',
+  'duplicates',
+  'supersedes',
+  'duplicate_of',
+]);
+
+/** The ids the arguments that name tasks hold. */
+function idsNamed(args: Args): unknown[] {
+  return Object.entries(args).flatMap(([name, value]) => {
+    if (!TASK_ARGUMENTS.has(name)) return [];
+    if (!Array.isArray(value)) return [value];
+    return value.flatMap((entry: unknown) =>
+      entry && typeof entry === 'object' && !Array.isArray(entry) ? idsNamed(entry as Args) : [entry],
+    );
+  });
+}
+
+/** The arguments with each former id a task argument holds read as the task's id now. */
+function withIdsNow(args: Args, now: ReadonlyMap<string, FormerId>): Args {
+  const read = (value: unknown): unknown => {
+    if (typeof value === 'string') return now.get(value)?.taskId ?? value;
+    if (!Array.isArray(value)) return value;
+    return value.map((entry: unknown) =>
+      entry && typeof entry === 'object' && !Array.isArray(entry) ? withIdsNow(entry as Args, now) : read(entry),
+    );
+  };
+  return Object.fromEntries(
+    Object.entries(args).map(([name, value]) => [name, TASK_ARGUMENTS.has(name) ? read(value) : value]),
+  );
+}
+
 /**
  * Runs a tool, its refusals becoming answers the model reads. An object
  * argument that arrived as text is read as JSON, and the reply or refusal
@@ -322,17 +362,31 @@ async function runTool(tool: TaskTool, context: ToolContext, args: Record<string
   const sent = [...read.text, ...read.unread];
   const line = sent.length === 0 ? null : staleClientLine(sent, (await taskGuide(OFFERED)).version);
   let reply: unknown;
+  let formerIds: ReadonlyMap<string, FormerId> = new Map();
   try {
     const unknown = unknownOf(tool.inputSchema as ArgumentSchema, read.args);
     if (unknown.length > 0) throw new McpToolError(unknownArguments(unknown));
-    reply = await tool.run(context, read.args);
+    // A task moved to another project has a new id; a call naming its old id acts on it.
+    formerIds = await formerIdsOf(context, idsNamed(read.args));
+    reply =
+      formerIds.size === 0
+        ? await tool.run(context, read.args)
+        : await tool.run({ ...context, sent: read.args }, withIdsNow(read.args, formerIds));
   } catch (error) {
     if (error instanceof Refused || error instanceof McpToolError) {
-      const message = line === null ? error.message : `${line}. ${error.message}`;
+      const moved = [...formerIds.values()].map((former) => `${former.formerId} moved to ${former.taskId}.`);
+      const message = [line === null ? error.message : `${line}. ${error.message}`, ...moved].join(' ');
       const unsure = error instanceof Refused && error.kind === 'unavailable';
       throw new McpToolError(refusalOf(message, unsure, args.task));
     }
     throw error;
   }
-  return line === null ? reply : { staleClient: line, ...(reply as Record<string, unknown>) };
+  if (line === null && formerIds.size === 0) return reply;
+  return {
+    ...(line === null ? {} : { staleClient: line }),
+    ...(formerIds.size === 0
+      ? {}
+      : { formerIds: Object.fromEntries([...formerIds.values()].map((former) => [former.formerId, former.taskId])) }),
+    ...(reply as Record<string, unknown>),
+  };
 }

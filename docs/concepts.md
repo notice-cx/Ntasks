@@ -41,7 +41,10 @@ A **task** is one piece of work. It has:
   - `closed`: finished, with a record of how it ended.
 
 A task's **id** is its project's prefix, a hyphen and a short key of lowercase
-letters and digits, such as `web-a1b2`.
+letters and digits, such as `web-a1b2`. A task **moved** to another project
+takes an id with that project's prefix, and keeps its comments, history and
+links; its old id stays its **former id**, which still names it wherever a
+task id is read ([API](api.md#moving-tasks)).
 
 ### Writing a task
 

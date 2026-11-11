@@ -613,6 +613,27 @@ async function drive(): Promise<readonly Sample[]> {
   const freed = (await tool(owner, 'create_task', { project: projectId, title: 'Rebuild the home page' })).id as string;
   await tool(owner, 'claim_task', { task: freed, next: 'Write the hero copy' });
   await as('POST /api/tasks/:id/release', task(freed, '/release'), inProject());
+  // The last open task of an epic moves to a project that does not define its field, so the epic closes.
+  const archive = (
+    (await as('POST /api/tasks/projects', '/api/tasks/projects', {
+      name: 'Contract archive',
+      prefix: 'ctarchive',
+      key: 'archive.example.com',
+    })) as { project: { projectId: string } }
+  ).project.projectId;
+  const season = (await tool(owner, 'create_task', { project: projectId, title: 'Autumn', type: 'epic' })).id as string;
+  const shipped = (await tool(owner, 'create_task', { project: projectId, title: 'Book the hall', parent: season }))
+    .id as string;
+  await tool(owner, 'close_task', { task: shipped, reason: 'Booked.', link: 'https://contract.example.com/hall' });
+  const leaving = (
+    await tool(owner, 'create_task', {
+      project: projectId,
+      title: 'Print the flyers',
+      parent: season,
+      fields: { points: 2 },
+    })
+  ).id as string;
+  await as('POST /api/tasks/move', '/api/tasks/move', { tasks: [leaving], projectId: archive });
   await as('GET /api/access/apps', '/api/access/apps');
   await as('POST /api/access/apps/:id/revoke', `/api/access/apps/${app.clientId}/revoke`, {});
   await as('POST /api/access/apps/:id/remove', `/api/access/apps/${app.clientId}/remove`, {});

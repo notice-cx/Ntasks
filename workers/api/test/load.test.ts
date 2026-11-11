@@ -184,6 +184,7 @@ describe('a load into an empty store', () => {
       task_external_links: [],
       task_comments: [],
       task_events: [],
+      task_aliases: [],
       write_receipts: [],
       custom_fields: [],
     });

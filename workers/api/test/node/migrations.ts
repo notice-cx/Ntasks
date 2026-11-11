@@ -342,3 +342,45 @@ test('a store that holds project icons keeps each one when the icons table takes
   );
   db.close();
 });
+
+test('a store that holds tasks keeps every row as it was when tasks can move, and then moves one with its rows', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0010_task_moves.sql');
+  assert.ok(index > 0, 'the task moves migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  const rows = (table: string, order: string) =>
+    db
+      .prepare(`SELECT * FROM ${table} ORDER BY ${order}`)
+      .all()
+      .map((row) => ({ ...row }));
+  const tables = {
+    tasks: 'id',
+    task_events: 'seq',
+    task_comments: 'id',
+    task_labels: 'task_id',
+    task_edges: 'task_id',
+  };
+  const before = Object.fromEntries(Object.entries(tables).map(([table, order]) => [table, rows(table, order)]));
+
+  migrated(db, FILES.slice(index));
+
+  for (const [table, order] of Object.entries(tables))
+    assert.deepEqual(rows(table, order), before[table], `${table} holds every row unchanged`);
+  assert.deepEqual(rows('task_aliases', 'alias'), [], 'no task has a former id');
+  insert(db, 'projects', { id: 'p2', key: 'ops.example.com', name: 'Ops', prefix: 'ops', created_at: AT });
+  db.exec('BEGIN');
+  db.exec('PRAGMA defer_foreign_keys = ON');
+  db.prepare("UPDATE tasks SET id = 'ops-x1', project_id = 'p2', version = version + 1 WHERE id = 'web-b2'").run();
+  db.exec('COMMIT');
+  assert.deepEqual(rows('task_aliases', 'alias'), [{ alias: 'web-b2', task_id: 'ops-x1' }]);
+  assert.deepEqual(
+    rows('task_edges', 'task_id').map((row) => [row.task_id, row.depends_on_id]),
+    [['web-a1.1', 'ops-x1']],
+    'the link onto it follows it',
+  );
+  assert.equal(rows('task_external_links', 'task_id')[0]?.task_id, 'ops-x1', 'its external link follows it');
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  db.close();
+});

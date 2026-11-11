@@ -15,6 +15,7 @@ export const STORE_TABLES = [
   'task_external_links',
   'task_comments',
   'task_events',
+  'task_aliases',
 ] as const;
 export type StoreTable = (typeof STORE_TABLES)[number];
 
@@ -136,6 +137,12 @@ export interface CommentRow {
   readonly test?: string | null;
 }
 
+/** A moved task's former id, and the id it has now. */
+export interface AliasRow {
+  readonly alias: string;
+  readonly task_id: string;
+}
+
 export interface EventRow {
   /** Kept as given, so an imported history keeps its order. */
   readonly seq: number;
@@ -165,6 +172,8 @@ export interface StoreRows {
   readonly custom_fields?: readonly CustomFieldRow[];
   readonly task_comments: readonly CommentRow[];
   readonly task_events: readonly EventRow[];
+  /** Left out, an import writes none. */
+  readonly task_aliases?: readonly AliasRow[];
 }
 
 type RowOf<T extends StoreTable> = NonNullable<StoreRows[T]>[number];
@@ -248,6 +257,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'actor_for',
     'session',
   ],
+  task_aliases: ['alias', 'task_id'],
 });
 
 /** The order a table's rows are read back in: its primary key, which storeKey gives as columns. */
@@ -260,6 +270,7 @@ const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
   custom_fields: 'project_id, key',
   task_comments: 'id',
   task_events: 'seq',
+  task_aliases: 'alias',
 });
 
 export type StoreValue = string | number | null;
