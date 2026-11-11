@@ -238,11 +238,75 @@ function FactMenu({
   align?: 'start' | 'end';
   onSave: (next: string, on?: boolean) => void;
 }) {
+  return (
+    <MenuContent label={label} align={align} footer={factMenuFooter(label, editor, onSave)}>
+      {factMenuItems(editor, onSave)}
+    </MenuContent>
+  );
+}
+
+/** The values a fact's menu offers, for a menu that shows a fact's editor in place of its own list. */
+export function factMenuItems(editor: FactEditor, onSave: (next: string, on?: boolean) => void): ReactNode[] {
   const presets = editor.kind === 'date' || editor.kind === 'text' ? (editor.presets ?? []) : [];
-  const typed =
-    editor.kind === 'date' ? (
-      <TypedValue label={editor.field ?? `${label} date`} type="date" initial={editor.value} onSave={onSave} />
-    ) : editor.kind === 'text' ? (
+  if (editor.kind === 'choice')
+    return editor.choices.map((choice) => (
+      <MenuItem
+        key={choice.value || 'none'}
+        icon={choice.mark}
+        checked={choice.value === editor.value}
+        onSelect={() => onSave(choice.value)}
+      >
+        {choice.label}
+      </MenuItem>
+    ));
+  if (editor.kind === 'toggle')
+    return editor.choices.map((choice) => {
+      const on = editor.values.includes(choice.value);
+      return (
+        <MenuItem
+          key={choice.value}
+          icon={choice.mark}
+          checked={on}
+          keepOpen
+          onSelect={() => onSave(choice.value, !on)}
+        >
+          {choice.label}
+        </MenuItem>
+      );
+    });
+  return [
+    ...presets.map((preset) => (
+      <MenuItem
+        key={preset.value}
+        icon={preset.mark}
+        checked={preset.value === editor.value}
+        onSelect={() => onSave(preset.value)}
+      >
+        {preset.label}
+      </MenuItem>
+    )),
+    ...(editor.value !== '' && editor.clear
+      ? [
+          ...(presets.length > 0 ? [<MenuSeparator key="separator" />] : []),
+          <MenuItem key="clear" onSelect={() => onSave('')}>
+            {editor.clear}
+          </MenuItem>,
+        ]
+      : []),
+  ];
+}
+
+/** The field for a typed value at the foot of a fact's menu, or null when its editor takes none. */
+export function factMenuFooter(
+  label: string,
+  editor: FactEditor,
+  onSave: (next: string, on?: boolean) => void,
+): ReactNode {
+  const presets = editor.kind === 'date' || editor.kind === 'text' ? (editor.presets ?? []) : [];
+  if (editor.kind === 'date')
+    return <TypedValue label={editor.field ?? `${label} date`} type="date" initial={editor.value} onSave={onSave} />;
+  if (editor.kind === 'text')
+    return (
       <TypedValue
         label={editor.field}
         type={editor.inputType ?? 'text'}
@@ -251,62 +315,15 @@ function FactMenu({
         autoFocus={presets.length === 0 && editor.value === ''}
         onSave={onSave}
       />
-    ) : editor.other ? (
+    );
+  if (editor.other)
+    return (
       <TypedValue
         label={editor.other}
         onSave={(next) => (editor.kind === 'toggle' ? onSave(next, true) : onSave(next))}
       />
-    ) : null;
-  return (
-    <MenuContent label={label} align={align} footer={typed}>
-      {editor.kind === 'choice'
-        ? editor.choices.map((choice) => (
-            <MenuItem
-              key={choice.value || 'none'}
-              icon={choice.mark}
-              checked={choice.value === editor.value}
-              onSelect={() => onSave(choice.value)}
-            >
-              {choice.label}
-            </MenuItem>
-          ))
-        : editor.kind === 'toggle'
-          ? editor.choices.map((choice) => {
-              const on = editor.values.includes(choice.value);
-              return (
-                <MenuItem
-                  key={choice.value}
-                  icon={choice.mark}
-                  checked={on}
-                  keepOpen
-                  onSelect={() => onSave(choice.value, !on)}
-                >
-                  {choice.label}
-                </MenuItem>
-              );
-            })
-          : [
-              ...presets.map((preset) => (
-                <MenuItem
-                  key={preset.value}
-                  icon={preset.mark}
-                  checked={preset.value === editor.value}
-                  onSelect={() => onSave(preset.value)}
-                >
-                  {preset.label}
-                </MenuItem>
-              )),
-              ...(editor.value !== '' && editor.clear
-                ? [
-                    ...(presets.length > 0 ? [<MenuSeparator key="separator" />] : []),
-                    <MenuItem key="clear" onSelect={() => onSave('')}>
-                      {editor.clear}
-                    </MenuItem>,
-                  ]
-                : []),
-            ]}
-    </MenuContent>
-  );
+    );
+  return null;
 }
 
 /** A value typed instead of picked: Enter saves it, unless `check` names what is wrong with it, which shows under it. */

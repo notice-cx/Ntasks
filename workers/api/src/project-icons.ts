@@ -9,12 +9,13 @@
  * each to an http or https address that is not a local one), sends no
  * cookie, and stops at READ_TIMEOUT_MS for the whole search. A page is read
  * to the end of its head, at most PAGE_BYTE_LIMIT bytes; an icon at most
- * PROJECT_ICON_MAX_BYTES. An icon is kept only when its own bytes are a PNG,
- * ICO, JPEG, GIF or WebP image, and is served with the type those bytes
- * show, never the type the website claimed: an SVG, which can run script, is
- * never kept.
+ * PROJECT_ICON_MAX_BYTES. An icon is kept only when its own bytes are an
+ * SVG, PNG, ICO, JPEG, GIF or WebP image, and is served with the type those
+ * bytes show, never the type the website claimed. An SVG, which can run
+ * script, is kept only as `safeSvg` makes it (svg-icon.ts).
  */
 import { PROJECT_ICON_MAX_BYTES, type ProjectIcon, type ProjectIconType } from '@ntasks/domain';
+import { safeSvg } from './svg-icon.ts';
 
 /** Honest identification, with a product token of its own. */
 export const ICON_USER_AGENT = 'Ntasks-Icons/1.0 (+https://ntasks.notice.cx; project icon read)';
@@ -154,20 +155,21 @@ function isSvg(icon: DeclaredIcon): boolean {
 }
 
 /**
- * Lower is better: an apple-touch-icon or an icon of 32 px or more, largest
- * first; then an icon with no declared size; then one under 32 px. Document
- * order breaks a tie.
+ * Lower is better: an SVG, sharp at any size; then an apple-touch-icon or an
+ * icon of 32 px or more, largest first; then an icon with no declared size;
+ * then one under 32 px. Document order breaks a tie.
  */
 function rank(icon: DeclaredIcon): [number, number] {
+  if (isSvg(icon)) return [0, 0];
   const size = largestSize(icon.sizes) ?? (icon.kind === 'apple-touch-icon' ? APPLE_TOUCH_PX : null);
-  if (size === null) return [1, 0];
-  return size >= LARGE_PX ? [0, -size] : [2, -size];
+  if (size === null) return [2, 0];
+  return size >= LARGE_PX ? [1, -size] : [3, -size];
 }
 
 /**
  * The icons a page's head declares, best first, each as an absolute address
  * resolved against its `<base href>` or else `pageUrl`, the address the page
- * was read from. SVG icons are left out.
+ * was read from.
  */
 export function declaredIcons(html: string, pageUrl: string): string[] {
   const text = html.replace(COMMENT, '').replace(RAW_TEXT, '');
@@ -188,7 +190,6 @@ export function declaredIcons(html: string, pageUrl: string): string[] {
     declared.push({ kind, href, sizes: attributes.get('sizes') ?? null, type: attributes.get('type') ?? null });
   }
   declared.forEach((icon, index) => {
-    if (isSvg(icon)) return;
     const url = webAddress(icon.href, base ?? pageUrl);
     if (url !== null) icons.push({ url, rank: rank(icon), index });
   });
@@ -198,7 +199,7 @@ export function declaredIcons(html: string, pageUrl: string): string[] {
 
 // --- the bytes ----------------------------------------------------------------
 
-/** The raster type `bytes` hold, read from their first bytes; null for any other content, SVG included. */
+/** The raster type `bytes` hold, read from their first bytes; null for any other content, SVG included, which `safeSvg` reads. */
 export function sniffIcon(bytes: Uint8Array): ProjectIconType | null {
   const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
   if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
@@ -216,11 +217,13 @@ export function sniffIcon(bytes: Uint8Array): ProjectIconType | null {
   return null;
 }
 
-/** Whether the type a website claimed for an icon may be a raster image; the bytes decide. */
-function rasterClaim(contentType: string | null): boolean {
+/** The types a website may claim for an icon besides `image/*`; the bytes decide what it is. */
+const OTHER_ICON_CLAIMS = new Set(['', 'application/octet-stream', 'application/xml', 'text/xml', 'text/plain']);
+
+/** Whether the type a website claimed for an icon may be an image; a page, such as an app's HTML answering any address, is not. */
+function imageClaim(contentType: string | null): boolean {
   const type = (contentType ?? '').split(';')[0]!.trim().toLowerCase();
-  if (type.includes('svg')) return false;
-  return type === '' || type.startsWith('image/') || type === 'application/octet-stream';
+  return type.startsWith('image/') || OTHER_ICON_CLAIMS.has(type);
 }
 
 /** The whole body, at most `limit` bytes; null when it holds more or the read fails part-way, since a cut-off
@@ -317,14 +320,16 @@ async function readIcon(fetchImpl: typeof fetch, candidate: string, signal: Abor
   if (answer === null) return null;
   const { url, response } = answer;
   const declared = Number(response.headers.get('content-length'));
-  if (!rasterClaim(response.headers.get('content-type')) || declared > PROJECT_ICON_MAX_BYTES) {
+  if (!imageClaim(response.headers.get('content-type')) || declared > PROJECT_ICON_MAX_BYTES) {
     await response.body?.cancel();
     return null;
   }
   const bytes = await readBody(response, PROJECT_ICON_MAX_BYTES);
-  const contentType = bytes === null || bytes.byteLength === 0 ? null : sniffIcon(bytes);
-  if (bytes === null || contentType === null) return null;
-  return { sourceUrl: url, contentType, bytes: bytes.slice().buffer };
+  if (bytes === null || bytes.byteLength === 0) return null;
+  const raster = sniffIcon(bytes);
+  if (raster !== null) return { sourceUrl: url, contentType: raster, bytes: bytes.slice().buffer };
+  const svg = safeSvg(bytes);
+  return svg === null ? null : { sourceUrl: url, contentType: 'image/svg+xml', bytes: svg.slice().buffer };
 }
 
 /**

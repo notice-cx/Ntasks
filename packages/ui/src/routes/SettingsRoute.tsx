@@ -36,14 +36,17 @@ import { usePageTitle } from '../lib/page-title';
 import { usePaths } from '../lib/paths';
 import { MembersSection } from './settings/MembersSection';
 import { ProjectsSection } from './settings/ProjectsSection';
+import { ServicesSection } from './settings/ServicesSection';
 
-/** Settings's tabs, in order: the workspace's first, then the person's own. An owner alone sees Members and GitHub. */
+/** Settings's tabs, in order: the workspace's first, then the person's own. An owner alone sees Members, GitHub and
+ * Services. */
 const TABS = [
   { key: 'workspace', label: 'Workspace', owner: false },
   { key: 'projects', label: 'Projects', owner: false },
   { key: 'members', label: 'Members', owner: true },
   { key: 'github', label: 'GitHub', owner: true },
   { key: 'apps', label: 'Apps', owner: false },
+  { key: 'services', label: 'Services', owner: true },
   { key: 'you', label: 'You', owner: false },
 ] as const;
 type Tab = (typeof TABS)[number]['key'];
@@ -55,8 +58,9 @@ const NARROW = '(width < 64rem)';
  * Settings: one tab at a time, each at its own address under the top bar's
  * tabs. Workspace is the workspace's name and ID; Projects and Members its
  * projects and people; GitHub how merges and deploys reach it; Apps the apps
- * that act for whoever signs in to them; You the person's own settings in
- * every workspace. `/settings` opens the first tab, as does a tab this
+ * that act for whoever signs in to them; Services the credentials services
+ * sign in with; You the person's own settings in every workspace.
+ * `/settings` opens the first tab, as does a tab this
  * sign-in may not open, except that GitHub's return from an installation,
  * which names `installation_id` or `github`, opens the GitHub tab.
  */
@@ -118,6 +122,8 @@ function TabContent({ tab, workspace }: { tab: Tab; workspace: Workspace }) {
       return <GitHubWebhookSection />;
     case 'apps':
       return <ConnectedApps owner={workspace.role === 'owner'} />;
+    case 'services':
+      return <ServicesSection />;
   }
 }
 

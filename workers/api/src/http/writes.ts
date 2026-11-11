@@ -36,6 +36,8 @@ import {
   setOrTakeOff,
   sourceMetadataArg,
   taskArg,
+  taskIdsArg,
+  taskLinksArg,
   textArg,
   typeArg,
   urlsArg,
@@ -49,6 +51,7 @@ import {
   commentOnTask,
   createTask,
   defineField,
+  linkTasks,
   moveTasks,
   retireField,
   updateTask,
@@ -88,6 +91,8 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'removeLabels',
   'addExternalLinks',
   'removeExternalLinks',
+  'addLinks',
+  'removeLinks',
   'fields',
   'card',
   'changeClass',
@@ -246,6 +251,8 @@ export async function updateRoute(
   // A claim also takes the helper the sender works through and its work details.
   only(body, ['projectId', ...EDITABLE_FIELDS, 'for', 'work']);
   const projectId = projectArg(body, 'projectId', 'http');
+  if (body.addLinks !== undefined || body.removeLinks !== undefined)
+    return linksRoute(context, body, projectId, taskId);
   if (body.claim !== undefined) {
     if (body.claim !== true) refuse('invalid arguments: claim (true)');
     const others = ['assignee', 'status', 'card', 'changeClass'].filter((name) => body[name] !== undefined);
@@ -289,6 +296,29 @@ export async function updateRoute(
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
   const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
   return json({ task });
+}
+
+/**
+ * PATCH /api/tasks/:id with `addLinks` or `removeLinks`, and no other field:
+ * each sets or removes the one link between the task and another, as
+ * link_tasks does, so the same rules hold. Removals run first, then additions,
+ * in order; a refusal answers with the links before it in place. Each is
+ * safe to send again, so a retry key is not needed.
+ */
+async function linksRoute(context: WriteContext, body: Args, projectId: string, taskId: string): Promise<Response> {
+  only(body, ['projectId', 'addLinks', 'removeLinks']);
+  const addLinks = taskLinksArg(body, 'addLinks') ?? [];
+  const removeLinks = taskIdsArg(body, 'removeLinks') ?? [];
+  if (addLinks.some((link) => removeLinks.includes(link.taskId)))
+    refuse('invalid arguments: addLinks and removeLinks (a task both linked and unlinked; send one)');
+  if ([...addLinks.map((link) => link.taskId), ...removeLinks].includes(taskId))
+    refuse('invalid arguments: addLinks and removeLinks (another task than this one)');
+  for (const to of removeLinks) await linkTasks(context, projectId, taskId, to, null);
+  for (const link of addLinks) await linkTasks(context, projectId, taskId, link.taskId, link.type);
+  const task = await context.engine.getTask(projectId, taskId);
+  if (task === null) throw new HttpRefused(404, 'not_found', `No task ${taskId}`);
+  const [view] = await webTasks([(await linksSeenBy(context)).task(task)], context.now());
+  return json({ task: view });
 }
 
 /** POST /api/tasks/:id/comments: adds a comment, which `pin: true` pins and

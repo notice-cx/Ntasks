@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ACCEPTED_REASON, type TaskResolution } from '@ntasks/domain';
+import { ACCEPTED_REASON, isTaskId, type TaskResolution } from '@ntasks/domain';
 import { ApiError } from '../api/client';
 import type {
   LiveEpic,
@@ -590,8 +590,8 @@ function TaskPage({
             siblings={siblings}
             adding={addingLink}
             onAdding={setAddingLink}
-            canAdd={writable('addExternalLinks')}
-            canRemove={writable('removeExternalLinks')}
+            canAdd={{ pages: writable('addExternalLinks'), tasks: writable('addLinks') }}
+            canRemove={{ pages: writable('removeExternalLinks'), tasks: writable('removeLinks') }}
           />
           {epic || siblings.some((row) => row.parent === task.id) ? (
             <EpicTasks epic={epic} tasks={siblings.filter((row) => row.parent === task.id)} />
@@ -711,7 +711,7 @@ function MoreMenu({
               </MenuItem>
             );
           })}
-        {canEdit('addExternalLinks') ? (
+        {canEdit('addExternalLinks') || canEdit('addLinks') ? (
           <MenuItem icon={<Plus aria-hidden />} onSelect={onAddLink}>
             Add link
           </MenuItem>
@@ -968,7 +968,8 @@ const LINK_WORDS: Readonly<Record<string, string>> = {
 const EXTERNAL_WORDS: Readonly<Record<string, string>> = { 'pull-request': 'Pull request', document: 'Document' };
 
 type LinkRow =
-  | { kind: 'task'; id: string; title: string | null; status: string | null }
+  /** `type` is the link's type when the task holds it, and absent for another task's link onto this one. */
+  | { kind: 'task'; id: string; title: string | null; status: string | null; type?: string }
   | { kind: 'external'; url: string; title: string; linkKind: string | null };
 
 /** The task's links in groups, each named once: what it waits on, what it holds back, the rest, then pages outside. */
@@ -983,7 +984,7 @@ export function linkGroups(
     const label = isBlockingLink(edge.type)
       ? 'Waits on'
       : (LINK_WORDS[edge.type] ?? edge.type.charAt(0).toUpperCase() + edge.type.slice(1).replace(/-/g, ' '));
-    add(label, { kind: 'task', id: edge.id, title: edge.title, status: edge.status });
+    add(label, { kind: 'task', id: edge.id, title: edge.title, status: edge.status, type: edge.type });
   }
   // The other end of a link: the task's own dependents, which reach across projects, or, from a
   // server that sends none, the links its board's tasks hold onto it.
@@ -1038,18 +1039,30 @@ function TaskLinks({
   task: LiveTask;
   project: string;
   siblings: readonly LiveTask[];
-  /** The form that adds a page is open. */
+  /** The form that adds a link is open. */
   adding: boolean;
   onAdding: (on: boolean) => void;
-  canAdd: boolean;
-  canRemove: boolean;
+  /** Whether this sign-in may link the task to pages outside Ntasks, and to other tasks. */
+  canAdd: LinkWrites;
+  canRemove: LinkWrites;
 }) {
   const save = useFieldSave(task.id, project);
   const groups = linkGroups(task, siblings);
+  const addable = canAdd.pages || canAdd.tasks;
   // An empty section takes no room; the top bar's menu adds a link.
-  if (groups.length === 0 && !(adding && canAdd)) return null;
+  if (groups.length === 0 && !(adding && addable)) return null;
 
-  function remove(row: Extract<LinkRow, { kind: 'external' }>) {
+  function remove(row: LinkRow) {
+    if (row.kind === 'task') {
+      if (row.type === undefined) return;
+      void save({
+        label: 'the link',
+        said: 'Removed the link',
+        edit: { removeLinks: [row.id] },
+        undo: { addLinks: [{ taskId: row.id, type: row.type }] },
+      });
+      return;
+    }
     void save({
       label: 'the link',
       said: 'Removed the link',
@@ -1059,11 +1072,14 @@ function TaskLinks({
       },
     });
   }
+  // A link another task holds onto this one is changed from that task.
+  const removable = (row: LinkRow) =>
+    row.kind === 'task' ? row.type !== undefined && canRemove.tasks : canRemove.pages;
 
   return (
     <section className="group/links flex flex-col gap-1" data-task-links="">
       <SectionHeading title="Links">
-        {canAdd && !adding ? (
+        {addable && !adding ? (
           <IconButton
             size="sm"
             label="Add link"
@@ -1086,10 +1102,10 @@ function TaskLinks({
                     {...(row.kind === 'task' ? { 'data-linked-task': row.id } : { 'data-external-link': row.url })}
                   >
                     {row.kind === 'task' ? <TaskLinkRow row={row} /> : <ExternalLinkRow row={row} />}
-                    {row.kind === 'external' && canRemove ? (
+                    {removable(row) ? (
                       <IconButton
                         size="sm"
-                        label={`Remove ${row.title}`}
+                        label={row.kind === 'task' ? `Remove the link to ${row.id}` : `Remove ${row.title}`}
                         icon={<X aria-hidden />}
                         onClick={() => remove(row)}
                         className={cn(ON_HOVER, 'ms-auto shrink-0 group-hover/link:opacity-100')}
@@ -1102,48 +1118,77 @@ function TaskLinks({
           ))}
         </dl>
       ) : null}
-      {adding && canAdd ? <LinkForm task={task} project={project} onDone={() => onAdding(false)} /> : null}
+      {adding && addable ? (
+        <LinkForm task={task} project={project} can={canAdd} onDone={() => onAdding(false)} />
+      ) : null}
     </section>
   );
 }
 
-/** What a new link's Kind offers, in the words the Links section groups pages under. */
-const LINK_KINDS: readonly { value: string; label: string }[] = [
+/** What a sign-in may do to one kind of link: to pages outside Ntasks, and to other tasks. */
+interface LinkWrites {
+  pages: boolean;
+  tasks: boolean;
+}
+
+/** What a new link's Kind offers, in the words the Links section groups links under: a page's kinds, then a task's. */
+const PAGE_KINDS: readonly { value: string; label: string }[] = [
   { value: 'other', label: 'Link' },
   { value: 'pull-request', label: 'Pull request' },
   { value: 'document', label: 'Document' },
 ];
+const TASK_KINDS: readonly { value: string; label: string }[] = [
+  { value: 'blocks', label: 'Waits on' },
+  { value: 'related', label: 'Related' },
+  { value: 'duplicates', label: 'Duplicates' },
+  { value: 'supersedes', label: 'Replaces' },
+  { value: 'merges-after', label: 'Merges after' },
+];
 
-/** Add a page the task links to: its address and title, both required, and its kind. Enter adds, Escape cancels. */
-function LinkForm({ task, project, onDone }: { task: LiveTask; project: string; onDone: () => void }) {
+/**
+ * Add a link: first its Kind, then for a page its address and title, both
+ * required, or for a task its id. Enter adds, Escape cancels.
+ */
+function LinkForm({
+  task,
+  project,
+  can,
+  onDone,
+}: {
+  task: LiveTask;
+  project: string;
+  can: LinkWrites;
+  onDone: () => void;
+}) {
   const save = useFieldSave(task.id, project);
   const retryKey = useRetryKey();
+  const [kind, setKind] = useState(can.pages ? 'other' : 'related');
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
-  const [kind, setKind] = useState('other');
+  const [other, setOther] = useState('');
   const [checked, setChecked] = useState(false);
   const [saving, setSaving] = useState(false);
+  const toTask = TASK_KINDS.some((option) => option.value === kind);
   const address = httpUrl(url);
+  const otherId = other.trim().toLowerCase();
   const urlError = checked && url.trim() !== '' && address === null ? 'Not an http or https address' : null;
-  const ready = address !== null && title.trim() !== '' && !saving;
+  const taskError =
+    !checked || otherId === ''
+      ? null
+      : !isTaskId(otherId)
+        ? 'Not a task id'
+        : otherId === task.id
+          ? 'Another task than this one'
+          : null;
+  const ready =
+    !saving && (toTask ? isTaskId(otherId) && otherId !== task.id : address !== null && title.trim() !== '');
 
   async function add() {
     setChecked(true);
-    if (!ready || address === null) return;
-    const link = { url: address, title: title.trim(), kind };
-    const held = task.externalLinks?.find((existing) => existing.url === address);
+    if (!ready) return;
     setSaving(true);
     try {
-      const saved = await save({
-        label: 'the link',
-        said: 'Added the link',
-        edit: { addExternalLinks: [link] },
-        // A page the task linked to already keeps its old title and kind on Undo.
-        undo: held
-          ? { addExternalLinks: [{ url: held.url, title: held.title, ...(held.kind ? { kind: held.kind } : {}) }] }
-          : { removeExternalLinks: [address] },
-        idempotencyKey: retryKey.keyFor(JSON.stringify(link)),
-      });
+      const saved = toTask ? await addTask() : await addPage();
       if (saved) {
         retryKey.done();
         onDone();
@@ -1151,6 +1196,37 @@ function LinkForm({ task, project, onDone }: { task: LiveTask; project: string; 
     } finally {
       setSaving(false);
     }
+  }
+
+  function addPage() {
+    if (address === null) return Promise.resolve(false);
+    const link = { url: address, title: title.trim(), kind };
+    const held = task.externalLinks?.find((existing) => existing.url === address);
+    return save({
+      label: 'the link',
+      said: 'Added the link',
+      edit: { addExternalLinks: [link] },
+      // A page the task linked to already keeps its old title and kind on Undo.
+      undo: held
+        ? { addExternalLinks: [{ url: held.url, title: held.title, ...(held.kind ? { kind: held.kind } : {}) }] }
+        : { removeExternalLinks: [address] },
+      idempotencyKey: retryKey.keyFor(JSON.stringify(link)),
+    });
+  }
+
+  function addTask() {
+    const link = { taskId: otherId, type: kind };
+    const held = task.dependencies.find((edge) => edge.id === otherId);
+    // The pair's one link replaces one the other task held onto this one, which Undo cannot put back from here.
+    const theirs = (task.dependents ?? []).some((edge) => edge.id === otherId);
+    return save({
+      label: 'the link',
+      said: 'Added the link',
+      edit: { addLinks: [link] },
+      ...(theirs
+        ? {}
+        : { undo: held ? { addLinks: [{ taskId: otherId, type: held.type }] } : { removeLinks: [otherId] } }),
+    });
   }
 
   return (
@@ -1168,31 +1244,72 @@ function LinkForm({ task, project, onDone }: { task: LiveTask; project: string; 
         onDone();
       }}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px] gap-2 max-sm:grid-cols-1">
-        <Field label="URL" required error={urlError}>
-          <Input
-            type="url"
-            autoFocus
-            spellCheck={false}
-            autoCapitalize="off"
-            value={url}
-            disabled={saving}
-            onChange={(event) => setUrl(event.target.value)}
-            onBlur={() => setChecked(true)}
-          />
-        </Field>
-        <Field label="Title" required>
-          <Input value={title} disabled={saving} onChange={(event) => setTitle(event.target.value)} />
-        </Field>
+      <div
+        className={cn(
+          'grid gap-2 max-sm:grid-cols-1',
+          toTask ? 'grid-cols-[140px_minmax(0,1fr)]' : 'grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]',
+        )}
+      >
         <Field label="Kind">
-          <Select value={kind} disabled={saving} onChange={(event) => setKind(event.target.value)}>
-            {LINK_KINDS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+          <Select
+            value={kind}
+            disabled={saving}
+            onChange={(event) => {
+              setKind(event.target.value);
+              setChecked(false);
+            }}
+          >
+            {can.pages ? (
+              <optgroup label="Page">
+                {PAGE_KINDS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {can.tasks ? (
+              <optgroup label="Task">
+                {TASK_KINDS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </Select>
         </Field>
+        {toTask ? (
+          <Field label="Task" required error={taskError}>
+            <Input
+              autoFocus
+              spellCheck={false}
+              autoCapitalize="off"
+              value={other}
+              disabled={saving}
+              onChange={(event) => setOther(event.target.value)}
+              onBlur={() => setChecked(true)}
+            />
+          </Field>
+        ) : (
+          <>
+            <Field label="URL" required error={urlError}>
+              <Input
+                type="url"
+                autoFocus
+                spellCheck={false}
+                autoCapitalize="off"
+                value={url}
+                disabled={saving}
+                onChange={(event) => setUrl(event.target.value)}
+                onBlur={() => setChecked(true)}
+              />
+            </Field>
+            <Field label="Title" required>
+              <Input value={title} disabled={saving} onChange={(event) => setTitle(event.target.value)} />
+            </Field>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <Button variant="primary" type="submit" disabled={!ready} data-task-confirm="link">

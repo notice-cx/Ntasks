@@ -1,0 +1,3 @@
+{
+  "added": "`addLinks` and `removeLinks` in a `PATCH /api/tasks/:id` body, which set and remove links between tasks as `link_tasks` does, and both among the `editableFields` of `GET /api/tasks/capabilities`"
+}

@@ -227,6 +227,10 @@ describe('the HTTP Tasks API client', () => {
       fields: { area: 'Email', platforms: ['Web', 'iOS'], points: 3, customer_facing: false, team: null },
     });
     await api.updateTask('web-a1b2', 'web', { estimateMinutes: null, dueAt: null }, { idempotencyKey: 'retry-one' });
+    await api.updateTask('web-a1b2', 'web', {
+      addLinks: [{ taskId: 'web-c3d4', type: 'duplicates' }],
+      removeLinks: ['web-e5f6'],
+    });
     expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
       [
         'PATCH',
@@ -243,6 +247,11 @@ describe('the HTTP Tasks API client', () => {
         },
       ],
       ['PATCH', '/api/tasks/web-a1b2', { estimateMinutes: null, dueAt: null, projectId: 'p-web' }],
+      [
+        'PATCH',
+        '/api/tasks/web-a1b2',
+        { addLinks: [{ taskId: 'web-c3d4', type: 'duplicates' }], removeLinks: ['web-e5f6'], projectId: 'p-web' },
+      ],
     ]);
     expect(sent[0]?.headers.get('idempotency-key')?.length).toBeGreaterThanOrEqual(8);
     expect(sent[1]?.headers.get('idempotency-key')).toBe('retry-one');
@@ -406,6 +415,40 @@ describe('the workspace a call is made in', () => {
       ['POST', '/api/access/invitations', 'ws-a', { githubLogin: 'example-new', role: 'member' }],
       ['POST', '/api/access/invitations/i-1/revoke', 'ws-a', {}],
       ['POST', '/api/access/members/u-2/remove', 'ws-a', {}],
+    ]);
+  });
+
+  it('makes, lists and revokes service credentials in the selected workspace, reading the token only when made', async () => {
+    const credential = {
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'noticeos',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      revokedAt: null,
+      grants: [{ projectId: 'p-web', access: 'write' as const }],
+      backup: true,
+      restore: false,
+    };
+    const sent: unknown[][] = [];
+    const api = createHttpTasksApi(async (url, init) => {
+      const method = init?.method ?? 'GET';
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      sent.push([method, url, new Headers(init?.headers).get(WORKSPACE_HEADER), body]);
+      if (method === 'GET') return Response.json({ services: [credential] });
+      if (url.endsWith('/revoke')) return Response.json({ revoked: true });
+      return Response.json({ service: { ...credential, token: 'ntasks_service.example' } }, { status: 201 });
+    });
+    api.selectWorkspace('ws-a');
+    const input = { name: 'noticeos', grants: credential.grants, backup: true, restore: false };
+    await expect(api.createServiceCredential(input)).resolves.toEqual({
+      ...credential,
+      token: 'ntasks_service.example',
+    });
+    await expect(api.serviceCredentials()).resolves.toEqual([credential]);
+    await api.revokeServiceCredential(credential.id);
+    expect(sent).toEqual([
+      ['POST', '/api/access/services', 'ws-a', input],
+      ['GET', '/api/access/services', 'ws-a', null],
+      ['POST', `/api/access/services/${credential.id}/revoke`, 'ws-a', {}],
     ]);
   });
 
