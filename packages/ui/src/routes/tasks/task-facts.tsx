@@ -525,33 +525,35 @@ function useFieldPick(
   onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>,
 ): (next: string, on?: boolean) => Promise<boolean> {
   const key = field?.key ?? null;
-  // What the last press sent, and what the task last held: read back, or saved since.
-  const sent = useRef({ key, value });
-  const held = useRef({ key, value });
+  // By field: the value last read, what the last press sent, and what the task last held, read back or saved since.
+  const read = useRef(new Map<string, TaskFieldValue | undefined>());
+  const sent = useRef(new Map<string, TaskFieldValue | undefined>());
+  const held = useRef(new Map<string, TaskFieldValue | undefined>());
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    sent.current = { key, value };
-    held.current = { key, value };
+    // Only a new read replaces what saves since the last one recorded, so showing a field again keeps them.
+    if (key === null || (read.current.has(key) && read.current.get(key) === value)) return;
+    read.current.set(key, value);
+    sent.current.set(key, value);
+    held.current.set(key, value);
   }, [key, value]);
 
   return (next, on) => {
     if (!field) return Promise.resolve(false);
-    const own = (kept: { key: string | null; value: TaskFieldValue | undefined }) =>
-      kept.key === field.key ? kept.value : value;
+    const own = (kept: Map<string, TaskFieldValue | undefined>) => (kept.has(field.key) ? kept.get(field.key) : value);
     const pending = own(sent.current);
     const send = async (value: TaskFieldValue | null) => {
       const intended = value ?? undefined;
-      sent.current = { key: field.key, value: intended };
+      sent.current.set(field.key, intended);
       const run = queue.current.then(async () => {
         const saved = await onSave(value, own(held.current));
-        if (saved) held.current = { key: field.key, value: intended };
+        if (saved) held.current.set(field.key, intended);
         return saved;
       });
       queue.current = run.catch(() => undefined);
       const saved = await run;
       // A refused save leaves the task as it was, and no new read will say so.
-      if (!saved && sent.current.key === field.key && sent.current.value === intended)
-        sent.current = { key: field.key, value: own(held.current) };
+      if (!saved && sent.current.get(field.key) === intended) sent.current.set(field.key, own(held.current));
       return saved;
     };
     if (next === '' && field.type !== 'multiple-choice') return send(null);

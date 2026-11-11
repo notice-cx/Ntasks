@@ -533,6 +533,30 @@ describe('a task page', () => {
     expect(values().team).toBe('Growth');
   });
 
+  it('undoes a field set twice before the page reads it back to its first value, with another field set between', async () => {
+    const api = createFixtureTasksApi();
+    // The page keeps the task as first read, so Add field still offers Team after its first save.
+    const first = await api.task('web-k3m9.2', 'web');
+    api.task = async () => structuredClone(first);
+    renderApp('/tasks/web-k3m9.2', api);
+    const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
+    const save = async (field: string, value: string) => {
+      await addField(field);
+      fireEvent.change(typedField(field), { target: { value } });
+      fireEvent.click(screen.getByRole('button', { name: `Save ${field.toLowerCase()}` }));
+    };
+    await save('Team', 'Growth');
+    await waitFor(() => expect(values().team).toBe('Growth'));
+    await save('Spec', 'https://example.com/spec');
+    await waitFor(() => expect(values().spec).toBe('https://example.com/spec'));
+    await save('Team', 'Platform');
+    await waitFor(() => expect(values().team).toBe('Platform'));
+    // Toasts list the newest first.
+    const saved = screen.getAllByText('Saved Team')[0]?.closest('li') as HTMLElement;
+    fireEvent.click(within(saved).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(values().team).toBe('Growth'));
+  });
+
   it('edits a number, a text, a date and a URL field through the API, refusing a value of the wrong type', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-k3m9.2', api);
