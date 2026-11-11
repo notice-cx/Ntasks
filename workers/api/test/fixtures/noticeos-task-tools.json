@@ -10,9 +10,7 @@
           "description": "The workspaceId from list_workspaces."
         }
       },
-      "required": [
-        "workspace"
-      ],
+      "required": ["workspace"],
       "additionalProperties": false
     },
     "annotations": {
@@ -36,9 +34,7 @@
           "description": "The projectId from list_projects; omit for workspace totals."
         }
       },
-      "required": [
-        "workspace"
-      ],
+      "required": ["workspace"],
       "additionalProperties": false
     },
     "annotations": {
@@ -70,13 +66,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "open",
-              "in_progress",
-              "blocked",
-              "deferred",
-              "closed"
-            ]
+            "enum": ["open", "in_progress", "blocked", "deferred", "closed"]
           },
           "description": "Only these statuses."
         },
@@ -141,9 +131,7 @@
           "description": "Skip this many, from the previous answer's nextOffset."
         }
       },
-      "required": [
-        "workspace"
-      ],
+      "required": ["workspace"],
       "additionalProperties": false
     },
     "annotations": {
@@ -171,11 +159,7 @@
           "description": "The task id, such as abc-1x2."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task"
-      ],
+      "required": ["workspace", "project", "task"],
       "additionalProperties": false
     },
     "annotations": {
@@ -213,11 +197,7 @@
           "description": "Include full task snapshots instead of compact field changes (default false)."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task"
-      ],
+      "required": ["workspace", "project", "task"],
       "additionalProperties": false
     },
     "annotations": {
@@ -250,14 +230,7 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "task",
-            "bug",
-            "feature",
-            "epic",
-            "chore",
-            "decision"
-          ],
+          "enum": ["task", "bug", "feature", "epic", "chore", "decision"],
           "description": "decision records a choice; label it human when a person must make it."
         },
         "priority": {
@@ -322,10 +295,7 @@
         "choices": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "question",
-            "options"
-          ],
+          "required": ["question", "options"],
           "description": "When the task needs a person to pick one option. The Tower shows one button per option; the pick comes back on the task as choice.",
           "properties": {
             "question": {
@@ -342,14 +312,7 @@
                 "properties": {
                   "key": {
                     "type": "string",
-                    "enum": [
-                      "a",
-                      "b",
-                      "c",
-                      "d",
-                      "e",
-                      "f"
-                    ],
+                    "enum": ["a", "b", "c", "d", "e", "f"],
                     "description": "a for the first option, b for the second, and so on in order."
                   },
                   "label": {
@@ -367,10 +330,7 @@
                     "description": "true on exactly one option: the one you recommend."
                   }
                 },
-                "required": [
-                  "key",
-                  "label"
-                ],
+                "required": ["key", "label"],
                 "additionalProperties": false
               }
             }
@@ -379,13 +339,7 @@
         "card": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "valuePerMonth",
-            "likelihood",
-            "reviewMinutes",
-            "daysToSignal",
-            "measurability"
-          ],
+          "required": ["valuePerMonth", "likelihood", "reviewMinutes", "daysToSignal", "measurability"],
           "description": "What the work is worth, for work meant to change money. The Tower ranks tasks by it; a task without one is listed, not ranked. The server records who wrote it and when.",
           "properties": {
             "valuePerMonth": {
@@ -420,21 +374,12 @@
             },
             "measurability": {
               "type": "string",
-              "enum": [
-                "cohort",
-                "holdout",
-                "unmeasured"
-              ],
+              "enum": ["cohort", "holdout", "unmeasured"],
               "description": "How the change is measured: cohort, holdout, or unmeasured when neither applies."
             },
             "revenueFamily": {
               "type": "string",
-              "enum": [
-                "ads",
-                "affiliate",
-                "subs",
-                "licensing"
-              ],
+              "enum": ["ads", "affiliate", "subs", "licensing"],
               "description": "The revenue it moves."
             },
             "durability": {
@@ -457,10 +402,7 @@
                   "description": "YYYY-MM-DD. It is also the task's due date."
                 }
               },
-              "required": [
-                "state",
-                "date"
-              ],
+              "required": ["state", "date"],
               "additionalProperties": false,
               "description": "When to give up on it."
             },
@@ -473,25 +415,13 @@
         },
         "change_class": {
           "type": "string",
-          "enum": [
-            "content-data",
-            "copy",
-            "template",
-            "feature",
-            "infra"
-          ],
+          "enum": ["content-data", "copy", "template", "feature", "infra"],
           "description": "The kind of change the task makes. The autonomy ladder and the likelihood priors are kept by it."
         },
         "metadata": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "noticeos_source",
-            "noticeos_asset",
-            "noticeos_kind",
-            "noticeos_rule",
-            "noticeos_key"
-          ],
+          "required": ["noticeos_source", "noticeos_asset", "noticeos_kind", "noticeos_rule", "noticeos_key"],
           "description": "The complete source identity from a copied NoticeOS handoff. Only these five fields are accepted; they grant no authority.",
           "properties": {
             "noticeos_source": {
@@ -505,12 +435,7 @@
             },
             "noticeos_kind": {
               "type": "string",
-              "enum": [
-                "query",
-                "finding",
-                "page",
-                "alert"
-              ]
+              "enum": ["query", "finding", "page", "alert"]
             },
             "noticeos_rule": {
               "type": "string",
@@ -535,12 +460,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "title",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "title", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {
@@ -581,14 +501,7 @@
               },
               "type": {
                 "type": "string",
-                "enum": [
-                  "task",
-                  "bug",
-                  "feature",
-                  "epic",
-                  "chore",
-                  "decision"
-                ],
+                "enum": ["task", "bug", "feature", "epic", "chore", "decision"],
                 "description": "decision records a choice; label it human when a person must make it."
               },
               "priority": {
@@ -653,10 +566,7 @@
               "choices": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "question",
-                  "options"
-                ],
+                "required": ["question", "options"],
                 "description": "When the task needs a person to pick one option. The Tower shows one button per option; the pick comes back on the task as choice.",
                 "properties": {
                   "question": {
@@ -673,14 +583,7 @@
                       "properties": {
                         "key": {
                           "type": "string",
-                          "enum": [
-                            "a",
-                            "b",
-                            "c",
-                            "d",
-                            "e",
-                            "f"
-                          ],
+                          "enum": ["a", "b", "c", "d", "e", "f"],
                           "description": "a for the first option, b for the second, and so on in order."
                         },
                         "label": {
@@ -698,10 +601,7 @@
                           "description": "true on exactly one option: the one you recommend."
                         }
                       },
-                      "required": [
-                        "key",
-                        "label"
-                      ],
+                      "required": ["key", "label"],
                       "additionalProperties": false
                     }
                   }
@@ -710,13 +610,7 @@
               "card": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "valuePerMonth",
-                  "likelihood",
-                  "reviewMinutes",
-                  "daysToSignal",
-                  "measurability"
-                ],
+                "required": ["valuePerMonth", "likelihood", "reviewMinutes", "daysToSignal", "measurability"],
                 "description": "What the work is worth, for work meant to change money. The Tower ranks tasks by it; a task without one is listed, not ranked. The server records who wrote it and when.",
                 "properties": {
                   "valuePerMonth": {
@@ -751,21 +645,12 @@
                   },
                   "measurability": {
                     "type": "string",
-                    "enum": [
-                      "cohort",
-                      "holdout",
-                      "unmeasured"
-                    ],
+                    "enum": ["cohort", "holdout", "unmeasured"],
                     "description": "How the change is measured: cohort, holdout, or unmeasured when neither applies."
                   },
                   "revenueFamily": {
                     "type": "string",
-                    "enum": [
-                      "ads",
-                      "affiliate",
-                      "subs",
-                      "licensing"
-                    ],
+                    "enum": ["ads", "affiliate", "subs", "licensing"],
                     "description": "The revenue it moves."
                   },
                   "durability": {
@@ -788,10 +673,7 @@
                         "description": "YYYY-MM-DD. It is also the task's due date."
                       }
                     },
-                    "required": [
-                      "state",
-                      "date"
-                    ],
+                    "required": ["state", "date"],
                     "additionalProperties": false,
                     "description": "When to give up on it."
                   },
@@ -804,25 +686,13 @@
               },
               "change_class": {
                 "type": "string",
-                "enum": [
-                  "content-data",
-                  "copy",
-                  "template",
-                  "feature",
-                  "infra"
-                ],
+                "enum": ["content-data", "copy", "template", "feature", "infra"],
                 "description": "The kind of change the task makes. The autonomy ladder and the likelihood priors are kept by it."
               },
               "metadata": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "noticeos_source",
-                  "noticeos_asset",
-                  "noticeos_kind",
-                  "noticeos_rule",
-                  "noticeos_key"
-                ],
+                "required": ["noticeos_source", "noticeos_asset", "noticeos_kind", "noticeos_rule", "noticeos_key"],
                 "description": "The complete source identity from a copied NoticeOS handoff. Only these five fields are accepted; they grant no authority.",
                 "properties": {
                   "noticeos_source": {
@@ -836,12 +706,7 @@
                   },
                   "noticeos_kind": {
                     "type": "string",
-                    "enum": [
-                      "query",
-                      "finding",
-                      "page",
-                      "alert"
-                    ]
+                    "enum": ["query", "finding", "page", "alert"]
                   },
                   "noticeos_rule": {
                     "type": "string",
@@ -856,9 +721,7 @@
                 }
               }
             },
-            "required": [
-              "title"
-            ],
+            "required": ["title"],
             "additionalProperties": false
           }
         },
@@ -873,12 +736,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "tasks",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "tasks", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {
@@ -917,12 +775,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "task", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {
@@ -952,12 +805,7 @@
         },
         "status": {
           "type": "string",
-          "enum": [
-            "open",
-            "in_progress",
-            "blocked",
-            "deferred"
-          ]
+          "enum": ["open", "in_progress", "blocked", "deferred"]
         },
         "priority": {
           "type": "integer",
@@ -1008,15 +856,9 @@
           "description": "Add nonblocking related tasks in this workspace, including other projects."
         },
         "choices": {
-          "type": [
-            "object",
-            "null"
-          ],
+          "type": ["object", "null"],
           "additionalProperties": false,
-          "required": [
-            "question",
-            "options"
-          ],
+          "required": ["question", "options"],
           "description": "A whole new set of choices, or null to take them off. Refused once a person has chosen.",
           "properties": {
             "question": {
@@ -1033,14 +875,7 @@
                 "properties": {
                   "key": {
                     "type": "string",
-                    "enum": [
-                      "a",
-                      "b",
-                      "c",
-                      "d",
-                      "e",
-                      "f"
-                    ],
+                    "enum": ["a", "b", "c", "d", "e", "f"],
                     "description": "a for the first option, b for the second, and so on in order."
                   },
                   "label": {
@@ -1058,28 +893,16 @@
                     "description": "true on exactly one option: the one you recommend."
                   }
                 },
-                "required": [
-                  "key",
-                  "label"
-                ],
+                "required": ["key", "label"],
                 "additionalProperties": false
               }
             }
           }
         },
         "card": {
-          "type": [
-            "object",
-            "null"
-          ],
+          "type": ["object", "null"],
           "additionalProperties": false,
-          "required": [
-            "valuePerMonth",
-            "likelihood",
-            "reviewMinutes",
-            "daysToSignal",
-            "measurability"
-          ],
+          "required": ["valuePerMonth", "likelihood", "reviewMinutes", "daysToSignal", "measurability"],
           "description": "A whole new card, or null to take it off. Refused once the task closed as done: its card then stays as it shipped. What the work is worth, for work meant to change money. The Tower ranks tasks by it; a task without one is listed, not ranked. The server records who wrote it and when.",
           "properties": {
             "valuePerMonth": {
@@ -1114,21 +937,12 @@
             },
             "measurability": {
               "type": "string",
-              "enum": [
-                "cohort",
-                "holdout",
-                "unmeasured"
-              ],
+              "enum": ["cohort", "holdout", "unmeasured"],
               "description": "How the change is measured: cohort, holdout, or unmeasured when neither applies."
             },
             "revenueFamily": {
               "type": "string",
-              "enum": [
-                "ads",
-                "affiliate",
-                "subs",
-                "licensing"
-              ],
+              "enum": ["ads", "affiliate", "subs", "licensing"],
               "description": "The revenue it moves."
             },
             "durability": {
@@ -1151,10 +965,7 @@
                   "description": "YYYY-MM-DD. It is also the task's due date."
                 }
               },
-              "required": [
-                "state",
-                "date"
-              ],
+              "required": ["state", "date"],
               "additionalProperties": false,
               "description": "When to give up on it."
             },
@@ -1166,18 +977,8 @@
           }
         },
         "change_class": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "enum": [
-            "content-data",
-            "copy",
-            "template",
-            "feature",
-            "infra",
-            null
-          ],
+          "type": ["string", "null"],
+          "enum": ["content-data", "copy", "template", "feature", "infra", null],
           "description": "The kind of change the task makes. The autonomy ladder and the likelihood priors are kept by it. null takes it off."
         },
         "idempotency_key": {
@@ -1186,12 +987,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "task", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {
@@ -1229,13 +1025,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task",
-        "text",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "task", "text", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {
@@ -1269,12 +1059,7 @@
           "description": "What the person is asked to approve."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task",
-        "reason"
-      ],
+      "required": ["workspace", "project", "task", "reason"],
       "additionalProperties": false
     },
     "annotations": {
@@ -1308,14 +1093,7 @@
         },
         "resolution": {
           "type": "string",
-          "enum": [
-            "done",
-            "wont-do",
-            "duplicate",
-            "cant-reproduce",
-            "already-handled",
-            "no-longer-needed"
-          ],
+          "enum": ["done", "wont-do", "duplicate", "cant-reproduce", "already-handled", "no-longer-needed"],
           "description": "How it ended: done (the default) when the work shipped; wont-do, duplicate, cant-reproduce or already-handled when nothing did."
         },
         "duplicate_of": {
@@ -1333,13 +1111,7 @@
           "description": "A key you choose for this call. Retrying with the same key and arguments never repeats the change."
         }
       },
-      "required": [
-        "workspace",
-        "project",
-        "task",
-        "reason",
-        "idempotency_key"
-      ],
+      "required": ["workspace", "project", "task", "reason", "idempotency_key"],
       "additionalProperties": false
     },
     "annotations": {

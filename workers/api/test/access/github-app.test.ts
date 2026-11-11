@@ -647,6 +647,48 @@ describe('the app’s deliveries', () => {
     expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
   });
 
+  it('moves a pushed task to live once the deploy it waited on completes as skipped', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const commit = newCommit();
+    const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Fix the footer' });
+    const id = created.body.id as string;
+    expect(
+      (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', commit })).status,
+    ).toBe(200);
+    const pushed = { id: commit, message: 'Fix the footer' };
+    const push = { ref: 'refs/heads/main', after: commit, commits: [pushed], installation: { id: mine }, repository };
+    expect((await deliver('push', push)).body).toMatchObject({ moved: [{ id, stage: 'merged' }] });
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ mergeCommit: commit, repository: REPOSITORY });
+
+    // Both deploy checks start after the push: the site's passes while the app's still runs.
+    const startedAt = new Date().toISOString();
+    const site = { name: 'Workers Builds: site', conclusion: 'success' as const, startedAt, completedAt: startedAt };
+    github.checkRuns.set(commit, [
+      site,
+      { name: 'Workers Builds: app', conclusion: null, startedAt, completedAt: null },
+    ]);
+    expect(
+      (await deliver('check_run', passed(mine, 'Workers Builds: site', commit, 'main', startedAt))).body,
+    ).toMatchObject({
+      moved: [],
+    });
+    github.checkRuns.set(commit, [
+      site,
+      { name: 'Workers Builds: app', conclusion: 'skipped', startedAt, completedAt: startedAt },
+    ]);
+    const run = passed(mine, 'Workers Builds: app', commit, 'main', startedAt);
+    expect(
+      (await deliver('check_run', { ...run, check_run: { ...run.check_run, conclusion: 'skipped' } })).body,
+    ).toMatchObject({ moved: [] });
+    // The skipped check's own delivery moves nothing; the store's check reads the commit through the pushed repository.
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+    expect(github.checkReads).toContain(commit);
+  });
+
   it('holds a deploy that a webhook set up by hand reports, reading its commit through the app on the repository’s account', async () => {
     const owner = await connected();
     const mine = newInstallation();

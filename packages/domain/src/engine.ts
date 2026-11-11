@@ -492,6 +492,12 @@ export interface DeliverySignal {
    */
   readonly mergeCommit?: string;
   /**
+   * The repository the change reached, as owner/name. Each task the signal
+   * moves records it when it has none yet, so a check of the repository's
+   * host can later read the deploy of a task that closed with only a commit.
+   */
+  readonly repository?: string;
+  /**
    * Tasks named by id, such as on a commit message's `Refs:` line: each moves
    * as if its own commit were named, so a commit rewritten by a rebase still
    * finds its task.

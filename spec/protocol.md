@@ -452,7 +452,8 @@ it is a decision or an approval:
 | `live` | A signal said a deploy shipped it. |
 
 A delivery records its `commit` (7 to 64 lowercase hexadecimal characters),
-`pullRequest`, `mergeCommit`, and the times `builtAt`, `mergedAt` and
+`pullRequest`, `mergeCommit`, the `repository` the change reached when a
+signal that moved it named one, and the times `builtAt`, `mergedAt` and
 `liveAt`. A project says whether its changes go live by a deploy
 (`deploys`); for one that does not, such as a library, merged is the last
 stage.

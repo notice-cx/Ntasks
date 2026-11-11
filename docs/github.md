@@ -116,13 +116,6 @@ them, open the app's page on GitHub (**Settings**, **Developer settings**,
   events name the pull request and its merge commit, so a task closed with a
   commit from its branch matches neither. Close tasks with their pull
   request, or name them on a `Refs:` line of the merge's commit message.
-- **A pushed task whose deploy check waited on another.** When a commit
-  carries two deploy checks and the second ends as skipped or neutral, the
-  first one's success counts only when Ntasks checks GitHub again, and that
-  check reads only tasks closed with a pull request. A task closed with a
-  pushed commit then stays at Merged. Redeliver the passing deploy check's
-  event from **Recent Deliveries** ([below](#check-that-it-works)) to move
-  it to Live.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
   commit's other deploys did, until that check passes on a rerun (press
   **Re-run** on it in GitHub) or a later merge's deploy ships it.

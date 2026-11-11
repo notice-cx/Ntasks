@@ -885,6 +885,9 @@ projects of the workspace the sender may change, to its stage:
 - A task never moves back, so a repeated signal moves nothing.
 - A `merged` signal that names exactly one commit records it as the task's
   merge commit, which a later `live` signal matches.
+- A signal records its `repository`, in lowercase, on each task it moves
+  that has none yet, so the task store's check of GitHub can read the deploy
+  of a task closed with only a commit ([From GitHub](#from-github)).
 - A project says whether its changes go live by a deploy (`deploys`,
   `false` when it is made). Its owner sets it in the web app, in Settings,
   Projects, Edit, or with `PATCH /api/tasks/projects`. For a project that does not deploy,
@@ -893,7 +896,7 @@ projects of the workspace the sender may change, to its stage:
 The answer lists each task moved, as `{ id, stage }`; a task in a project
 the sender may only read is left as it is. `get_task` returns a task's
 delivery as `delivery`, with its `stage`, `commit`, `pullRequest`,
-`mergeCommit`, `builtAt`, `mergedAt` and `liveAt`, and leaves it out when the
+`mergeCommit`, `repository`, `builtAt`, `mergedAt` and `liveAt`, and leaves it out when the
 task has none; `list_tasks` returns it on each task that has one.
 `list_tasks` with `stage` lists the closed tasks at that stage, whenever they
 closed unless `closed_days` is given. With `stage`, or with a `status` that

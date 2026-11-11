@@ -5,6 +5,7 @@
  */
 import {
   COMMIT_SHA,
+  REPOSITORY_NAME,
   TaskRefused,
   type DeliveryMove,
   type DeliveryOptions,
@@ -19,8 +20,6 @@ import { httpUrl, SIGNAL_ITEMS } from './engine/validate.ts';
 import { Refused } from './refused.ts';
 import type { WriteContext } from './task-writes.ts';
 
-/** A GitHub repository: owner/name. */
-const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
 /** A GitHub pull request's path, with anything after its number. */
 const GITHUB_PULL = /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d{1,9})(?:\/.*)?$/u;
 
@@ -97,7 +96,7 @@ export function shippedArgs(
  */
 export function signalArgs(args: Args, names: { readonly pullRequests: string; readonly commits: string }) {
   const repository = args.repository;
-  if (typeof repository !== 'string' || !REPOSITORY.test(repository))
+  if (typeof repository !== 'string' || !REPOSITORY_NAME.test(repository))
     refuse('invalid arguments: repository (owner/name, such as example/app)');
   const stage = args.stage;
   if (stage !== 'merged' && stage !== 'live') refuse('invalid arguments: stage (merged or live)');
@@ -119,7 +118,12 @@ export function signalArgs(args: Args, names: { readonly pullRequests: string; r
   const commits = list(names.commits).map((entry, index) => commitOf(entry, `${names.commits}[${index}]`));
   if (pullRequests.length === 0 && commits.length === 0)
     refuse(`invalid arguments: ${names.pullRequests} or ${names.commits} (name at least one)`);
-  return { stage, pullRequests: [...new Set(pullRequests)], commits: [...new Set(commits)] } satisfies DeliverySignal;
+  return {
+    stage,
+    pullRequests: [...new Set(pullRequests)],
+    commits: [...new Set(commits)],
+    repository: repository.toLowerCase(),
+  } satisfies DeliverySignal;
 }
 
 /**

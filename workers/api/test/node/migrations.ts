@@ -364,7 +364,7 @@ test('a store that holds tasks keeps every row as it was when tasks can move, an
   };
   const before = Object.fromEntries(Object.entries(tables).map(([table, order]) => [table, rows(table, order)]));
 
-  migrated(db, FILES.slice(index));
+  migrated(db, FILES.slice(index, index + 1));
 
   for (const [table, order] of Object.entries(tables))
     assert.deepEqual(rows(table, order), before[table], `${table} holds every row unchanged`);

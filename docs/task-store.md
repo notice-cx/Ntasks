@@ -110,10 +110,12 @@ writes them, so one page has one URL and a task links to it once. The
 database allows URLs of at most 2,048 characters; a new write through the API
 also takes at most 32 links on a task and 512 characters in a title.
 
-A task's delivery ([concepts](concepts.md#where-a-change-is)) is seven
+A task's delivery ([concepts](concepts.md#where-a-change-is)) is eight
 columns of `tasks`: `delivery_stage` (`built`, `merged` or `live`),
-`delivery_commit`, `delivery_pull_request`, `delivery_merge_commit`, and
-`built_at`, `merged_at` and `live_at`. A signal names pull requests and
+`delivery_commit`, `delivery_pull_request`, `delivery_merge_commit`,
+`delivery_repository` (the repository the change reached, which the store's
+check of GitHub reads a commit's deploy checks through), and `built_at`,
+`merged_at` and `live_at`. A signal names pull requests and
 commits, and reaches the tasks carrying them through one index on each of the
 three, never through a project's history: a commit matches by prefix, so it
 reads the range of the index that shares its first 7 characters.

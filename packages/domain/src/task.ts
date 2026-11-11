@@ -69,6 +69,9 @@ export type DeliveryStage = (typeof DELIVERY_STAGES)[number];
 /** A commit as a delivery records it: 7 to 64 lowercase hexadecimal characters. */
 export const COMMIT_SHA = /^[0-9a-f]{7,64}$/u;
 
+/** A GitHub repository as owner/name, which a delivery records in lowercase: GitHub's names ignore case. */
+export const REPOSITORY_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/u;
+
 /** What a history event records. A comment is `commented`; every other write is one of the rest. */
 export const TASK_EVENT_KINDS = ['created', 'updated', 'closed', 'reopened', 'commented'] as const;
 export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
@@ -349,6 +352,8 @@ export interface TaskDelivery {
   readonly pullRequest: string | null;
   /** The commit that merged it, when the merge's signal named one. */
   readonly mergeCommit: string | null;
+  /** The repository the change reached, as owner/name in lowercase, when a signal that moved it named one. */
+  readonly repository: string | null;
   readonly builtAt: string;
   /** Null until a signal said it merged; a task can go live without one. */
   readonly mergedAt: string | null;
