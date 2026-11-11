@@ -41,6 +41,22 @@ export interface StoreBinding {
 /** How long after a close with a pull request, or a delivery that moved a task, the store asks GitHub about waiting work: a few in a row share one check. */
 const CHECK_DELAY_MS = 5_000;
 
+const MINUTE_MS = 60_000;
+/**
+ * How long the store waits to ask GitHub again after a check in which GitHub
+ * missed a read of merged work: the first retry waits the first delay, and
+ * every retry after the last delay waits the last. A merged task leaves the
+ * check's deploy window a day after its merge, which bounds the retries.
+ */
+export const GITHUB_RETRY_DELAYS_MS: readonly number[] = Object.freeze([
+  MINUTE_MS,
+  5 * MINUTE_MS,
+  15 * MINUTE_MS,
+  60 * MINUTE_MS,
+]);
+/** The storage key of how many checks in a row GitHub missed a read in. */
+const GITHUB_RETRIES = 'githubRetries';
+
 /** Whether a task waits for a merge of a pull request, which GitHub may already have made. */
 function waitsOnPullRequest(task: Task): boolean {
   return task.delivery?.stage === 'built' && task.delivery.pullRequest !== null;
@@ -99,15 +115,27 @@ export class TaskStore extends DurableObject<Env> {
     await this.#checkGitHubIn(0);
   }
 
-  /** The alarm: asks GitHub whether the pull requests of work waiting for a merge merged, and whether merged work deployed (github-check.ts). */
+  /**
+   * The alarm: asks GitHub whether the pull requests of work waiting for a
+   * merge merged, and whether merged work deployed (github-check.ts). When
+   * GitHub missed a read of merged work, it sets the next check itself, after
+   * the next of GITHUB_RETRY_DELAYS_MS, rather than throwing: the platform
+   * reruns a throwing alarm only six times, which an outage of an hour
+   * outlasts. They end with the first check that GitHub answers every read
+   * of, which is also the first once no merged work waits on a deploy.
+   */
   override async alarm(): Promise<void> {
     const name = this.ctx.id.name;
     if (name === undefined || !name.startsWith('workspace:')) return;
     const checked = await checkGitHubWork(this.env, name.slice('workspace:'.length), this.tasks);
-    // An alarm that throws runs again, up to six times with a growing delay
-    // (developers.cloudflare.com/durable-objects/api/alarms/), so a deploy
-    // GitHub missed answering for is read again.
-    if (checked.retry) throw new Error('GitHub did not answer a read of merged work, so the check runs again');
+    const retries = await this.ctx.storage.get<number>(GITHUB_RETRIES);
+    if (!checked.retry) {
+      if (retries !== undefined) await this.ctx.storage.delete(GITHUB_RETRIES);
+      return;
+    }
+    const done = retries ?? 0;
+    await this.ctx.storage.put(GITHUB_RETRIES, done + 1);
+    await this.#checkGitHubIn(GITHUB_RETRY_DELAYS_MS[Math.min(done, GITHUB_RETRY_DELAYS_MS.length - 1)]!);
   }
 
   /** Loads an import from Beads, or a backup, into this store, which must
