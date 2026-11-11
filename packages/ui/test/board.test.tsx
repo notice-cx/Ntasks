@@ -602,9 +602,10 @@ describe('a row waiting for you that this sign-in cannot answer', () => {
       ...within(row('web-d4x1')).getAllByRole('button', { name: /^\([abc]\)/ }),
       within(row('web-q8n5')).getByRole('button', { name: 'Answer' }),
     ];
+    // Approve's description goes on to the pull request whose auto-merge it turns on; the reason comes first.
     for (const control of controls) {
       expect((control as HTMLButtonElement).disabled).toBe(true);
-      expect(reasonOf(control)).toBe('This sign-in cannot answer it.');
+      expect(reasonOf(control).startsWith('This sign-in cannot answer it.')).toBe(true);
     }
   });
 });

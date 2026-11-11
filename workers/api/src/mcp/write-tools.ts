@@ -110,7 +110,7 @@ import { reachable } from '../auth.ts';
 import { linksSeenBy, projectOf } from '../lookup.ts';
 import { commentView, mcpTask, parentView, writtenView, type McpTaskField } from '../views.ts';
 import { overlapsOf } from '../overlaps.ts';
-import { pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
+import { gatedPullRequest, githubPullOf, pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
 import { projectFor, projectForNew } from './project.ts';
@@ -408,6 +408,13 @@ const APPROVAL_DESCRIPTION = Object.freeze({
     'In Markdown: a first line with the ask and where to answer, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>"; ## Why this needs you; ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we\'ll confirm; ## If you decline.',
 });
 
+const APPROVAL_PR = Object.freeze({
+  type: 'string',
+  maxLength: TASK_LIMITS.externalLinkUrl,
+  description:
+    "The GitHub pull request the approval gates, such as one you may merge only once approved. When the person presses Approve, Ntasks's GitHub App turns on its auto-merge; every answer is posted on it as a comment, which wakes an agent watching it.",
+});
+
 /** A new task's fields, for create_task and each entry of create_tasks. */
 const NEW_TASK = Object.freeze({
   title: { type: 'string', maxLength: TASK_LIMITS.title },
@@ -437,11 +444,11 @@ const NEW_TASK = Object.freeze({
   approval: {
     type: ['string', 'object'],
     maxLength: GATE_REASON_MAX,
-    properties: { title: APPROVAL_TITLE, description: APPROVAL_DESCRIPTION },
+    properties: { title: APPROVAL_TITLE, description: APPROVAL_DESCRIPTION, pr: APPROVAL_PR },
     required: ['title', 'description'],
     additionalProperties: false,
     description:
-      "What a person must approve before it proceeds: title and description, as request_human_approval takes them, or one text whose first line is the approval's title. Opens a gate that holds it out of ready work, as request_human_approval does.",
+      "What a person must approve before it proceeds: title, description and pr, as request_human_approval takes them, or one text whose first line is the approval's title. Opens a gate that holds it out of ready work, as request_human_approval does.",
   },
   claim: { type: 'boolean', description: 'true files it claimed by you, in progress, as claim_task would.' },
   done: {
@@ -625,9 +632,16 @@ function doneArg(args: Args): NewTask['done'] {
   };
 }
 
-/** An approval as an answer names it: its id, status, title and what it asks. */
+/** An approval as an answer names it: its id, status, title, what it asks and the pull request it gates. */
 function approvalView(gate: Task) {
-  return { id: gate.id, status: gate.status, title: gate.title, reason: gateReason(gate.description) };
+  const pr = gatedPullRequest(gate);
+  return {
+    id: gate.id,
+    status: gate.status,
+    title: gate.title,
+    reason: gateReason(gate.description),
+    ...(pr === null ? {} : { pr }),
+  };
 }
 
 /** An approval request as every reply shows it, saying plainly what it does to the task. */
@@ -1152,16 +1166,27 @@ function titledApproval(args: Args, at: string, instead: string): ApprovalReques
   return { reason: description, title: title.trim() };
 }
 
-/** The approval a request_human_approval call asks for: a title with a description, or a reason alone. */
-function approvalArgs(args: Args): ApprovalRequest {
-  const reason = textArg(args, 'reason', GATE_REASON_MAX, false);
-  if (reason === undefined) return titledApproval(args, '', 'reason alone');
-  if (args.title !== undefined || args.description !== undefined)
-    refuse('invalid arguments: reason (pass title and description, or reason alone)');
-  return { reason };
+/** The pull request an approval gates, at `name`: a GitHub pull request's URL, written as pullRequestUrl writes it. */
+function gatedPrArg(args: Args, name: string): { readonly pullRequest?: string } {
+  if (args[name] === undefined) return {};
+  const url = pullRequestUrl(args[name]);
+  if (url === null || githubPullOf(url) === null)
+    refuse(`invalid arguments: ${name} (a GitHub pull request's URL, such as https://github.com/owner/name/pull/12)`);
+  return { pullRequest: url };
 }
 
-/** The approval a new task waits on: an object with a title and a description, or one text whose first line is the title. */
+/** The approval a request_human_approval call asks for: a title with a description, or a reason alone, and the pull request it gates. */
+function approvalArgs(args: Args): ApprovalRequest {
+  const pr = gatedPrArg(args, 'pr');
+  const reason = textArg(args, 'reason', GATE_REASON_MAX, false);
+  if (reason === undefined) return { ...titledApproval(args, '', 'reason alone'), ...pr };
+  if (args.title !== undefined || args.description !== undefined)
+    refuse('invalid arguments: reason (pass title and description, or reason alone)');
+  return { reason, ...pr };
+}
+
+/** The approval a new task waits on: an object with a title, a description and
+ * the pull request it gates, or one text whose first line is the title. */
 function newApprovalArg(args: Args): ApprovalRequest | undefined {
   const value = args.approval;
   if (value === undefined || typeof value === 'string') {
@@ -1170,10 +1195,11 @@ function newApprovalArg(args: Args): ApprovalRequest | undefined {
   }
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     refuse('invalid arguments: approval (an object with title and description, or one text)');
-  const unknown = Object.keys(value).filter((name) => name !== 'title' && name !== 'description');
-  if (unknown.length > 0) refuse(`invalid arguments: approval (title and description only; not ${unknown.join(', ')})`);
+  const unknown = Object.keys(value).filter((name) => !['title', 'description', 'pr'].includes(name));
+  if (unknown.length > 0)
+    refuse(`invalid arguments: approval (title, description and pr only; not ${unknown.join(', ')})`);
   const named = Object.fromEntries(Object.entries(value).map(([name, entry]) => [`approval.${name}`, entry]));
-  return titledApproval(named, 'approval.', 'approval as one text');
+  return { ...titledApproval(named, 'approval.', 'approval as one text'), ...gatedPrArg(named, 'approval.pr') };
 }
 
 const APPROVAL_FORM =
@@ -1186,7 +1212,8 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
     'that holds the task out of ready work until the owner approves its scope. Pass title and description; ' +
     'reason, one text whose first line becomes the title, still works. The description starts with the ask and where ' +
     'to answer it, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>", in plain ' +
-    'words without internal terms. Record an existing answer with reconcile_task. ' +
+    'words without internal terms. An approval that gates a pull request names it as pr: Approve turns on its ' +
+    'auto-merge, and every answer is posted on it as a comment. Record an existing answer with reconcile_task. ' +
     'To ask without holding the task, comment on it instead. Asking again with the same title and description, ' +
     'or the same reason, returns the open request.',
   inputSchema: schema(
@@ -1195,6 +1222,7 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
       task: TASK,
       title: APPROVAL_TITLE,
       description: APPROVAL_DESCRIPTION,
+      pr: APPROVAL_PR,
       reason: {
         type: 'string',
         maxLength: GATE_REASON_MAX,

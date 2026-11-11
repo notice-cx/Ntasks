@@ -1,0 +1,8 @@
+{
+  "added": "`pullRequest` on a task: on an approval, the pull request it gates, whose auto-merge a person's approval turns on and on which every answer is posted; null on any other task",
+  "shapes": {
+    "task": {
+      "pullRequest": "null|string"
+    }
+  }
+}

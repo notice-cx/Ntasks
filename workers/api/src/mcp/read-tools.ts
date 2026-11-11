@@ -44,7 +44,7 @@ import {
   proposalOf,
   proposalVersionOf,
 } from '../views.ts';
-import { fieldFiltersOf, OPEN_STATUSES } from '../task-writes.ts';
+import { fieldFiltersOf, OPEN_STATUSES, type WriteContext } from '../task-writes.ts';
 import {
   booleanArg,
   choiceArg,
@@ -65,6 +65,8 @@ export interface ToolContext {
   readonly workspace: Workspace;
   readonly principal: Principal;
   readonly now: () => string;
+  /** Posts a landed answer to an approval that gates a pull request on GitHub (WriteContext). */
+  readonly approvalAnswered?: WriteContext['approvalAnswered'];
 }
 
 export interface TaskTool {

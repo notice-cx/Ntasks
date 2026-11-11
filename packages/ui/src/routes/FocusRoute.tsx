@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Check, Inbox, SendHorizontal } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { TaskChoiceKey } from '../api/types';
@@ -19,7 +19,7 @@ import { takesOwnKeys } from '../lib/symbols';
 import { askVerb, isGate, type BoardTask, type InboxAsk } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
-import { PerformedButton, PerformedForm } from './tasks/ask-actions';
+import { AutoMergeNote, PerformedButton, PerformedForm } from './tasks/ask-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { StepList } from './tasks/step-list';
 import { MarkdownText } from './tasks/task-markdown';
@@ -154,7 +154,8 @@ export function FocusRoute() {
 /**
  * One decision on a card: whose turn it is and how long it has waited, the
  * title, the text, then its answer: options with their keys, the steps to
- * tick, Approve beside Did it myself, or a box for words, beside Not now.
+ * tick, Approve beside Did it myself under the pull request whose auto-merge
+ * Approve turns on, or a box for words, beside Not now.
  * Letters pick an option, Enter answers or approves, and → passes it over.
  */
 function FocusDecision({
@@ -184,6 +185,8 @@ function FocusDecision({
   const ask = askVerb(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
   const steps = ask === 'do' ? (task.steps ?? null) : null;
+  const gated = ask === 'approve' ? (task.pullRequest ?? null) : null;
+  const mergeId = useId();
   const operation = choices ? 'choose' : steps ? 'step' : isGate(task) ? 'resolve' : 'respond';
   const allowed = writable && operationAvailable(capabilities, operation);
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
@@ -324,6 +327,7 @@ function FocusDecision({
                   onCancel={() => setPerforming(false)}
                 />
               ) : null}
+              {gated ? <AutoMergeNote pullRequest={gated} id={mergeId} /> : null}
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {notNow}
                 <PerformedButton
@@ -337,6 +341,7 @@ function FocusDecision({
                   disabled={reason !== null}
                   title={reason ?? undefined}
                   aria-keyshortcuts="Enter"
+                  aria-describedby={gated ? mergeId : undefined}
                   onClick={approve}
                   data-focus-approve=""
                 >

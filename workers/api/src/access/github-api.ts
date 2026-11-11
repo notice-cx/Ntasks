@@ -4,7 +4,9 @@
  * (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app),
  * exchanged for an installation's token, which reads a pull request and
  * whether one commit is in another's history from the REST API, and a
- * commit's passing check runs from the GraphQL API. GitHub
+ * commit's passing check runs from the GraphQL API; and, for an answer to an
+ * approval that gates a pull request, turns on its auto-merge through the
+ * GraphQL API and comments on it through the REST API. GitHub
  * hands the key over in PKCS #1 PEM, which Web Crypto does not import, so it
  * is wrapped as PKCS #8 first.
  */
@@ -344,4 +346,153 @@ export async function inHistoryOf(
   const status = body !== null && typeof body === 'object' ? (body as Record<string, unknown>).status : null;
   if (typeof status !== 'string') return null;
   return status === 'behind' || status === 'identical';
+}
+
+/** Why GitHub did not do what was asked: its own words, and whether it refused for lack of permission. */
+export interface GitHubRefusal {
+  readonly refused: string;
+  /** GitHub answered that the app's installation lacks the permission, such as "Resource not accessible by integration". */
+  readonly forbidden: boolean;
+}
+
+/** The most of GitHub's words a refusal keeps. */
+const REFUSAL_LENGTH = 300;
+
+/** A refusal from GitHub's words, which name a missing permission as "not accessible by integration". */
+function refusalOf(message: unknown, forbidden = false): GitHubRefusal {
+  const words = typeof message === 'string' && message.trim() !== '' ? message.trim() : 'GitHub gave no reason';
+  return {
+    refused: words.slice(0, REFUSAL_LENGTH),
+    forbidden: forbidden || /not accessible by integration|permission/iu.test(words),
+  };
+}
+
+/** One GraphQL request; RETRY when GitHub gave no answer, else its data or its refusal. */
+async function graphql(
+  token: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<{ readonly data: unknown } | GitHubRefusal | typeof RETRY> {
+  const response = await fetch(`${API}/graphql`, {
+    method: 'POST',
+    headers: {
+      'user-agent': HEADERS['user-agent'],
+      // A pull request's merge state is still a preview of GitHub's GraphQL API.
+      accept: 'application/vnd.github.merge-info-preview+json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  }).catch(() => null);
+  if (response === null || response.status === 429 || response.status >= 500) {
+    await response?.body?.cancel();
+    return RETRY;
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (response.status !== 200) return refusalOf(at(body, 'message'));
+  const errors = at(body, 'errors');
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first: unknown = errors[0];
+    return refusalOf(at(first, 'message'), at(first, 'type') === 'FORBIDDEN');
+  }
+  return { data: at(body, 'data') };
+}
+
+const PULL_TO_MERGE = `query ($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    squashMergeAllowed
+    mergeCommitAllowed
+    rebaseMergeAllowed
+    pullRequest(number: $number) {
+      id
+      state
+      isDraft
+      isInMergeQueue
+      isMergeQueueEnabled
+      mergeStateStatus
+      autoMergeRequest { enabledAt }
+    }
+  }
+}`;
+
+const ENABLE_AUTO_MERGE = `mutation ($id: ID!, $method: PullRequestMergeMethod) {
+  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method }) { clientMutationId }
+}`;
+
+const MERGE_NOW = `mutation ($id: ID!, $method: PullRequestMergeMethod!) {
+  mergePullRequest(input: { pullRequestId: $id, mergeMethod: $method }) { clientMutationId }
+}`;
+
+/** The merge states in which GitHub can merge a pull request now, where it refuses to turn on auto-merge. */
+const MERGEABLE_NOW = new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE']);
+
+/**
+ * What asking GitHub to merge a pull request once it may came to: `on`, its
+ * auto-merge turned on, or it joined its merge queue; `merged`, GitHub could
+ * merge it at once and did; `already`, its auto-merge was on or it was in the
+ * queue; `merged-before` or `closed`, there was nothing left to merge; or why
+ * GitHub refused, or RETRY when it gave no answer.
+ */
+export type AutoMerge = 'on' | 'merged' | 'already' | 'merged-before' | 'closed' | GitHubRefusal | typeof RETRY;
+
+/**
+ * Turns on the auto-merge of the pull request `number` of `repository`, as
+ * GitHub's Enable auto-merge does, read and changed with an installation's
+ * token in two GraphQL requests. GitHub refuses auto-merge for a pull request
+ * it can merge now, so one in that state is merged at once, as auto-merge
+ * would merge it. The merge method is squash, else a merge commit, else
+ * rebase, whichever the repository allows first; a merge queue uses its own.
+ */
+export async function turnOnAutoMerge(token: string, repository: string, number: number): Promise<AutoMerge> {
+  const [owner = '', name = ''] = repository.split('/');
+  const read = await graphql(token, PULL_TO_MERGE, { owner, name, number });
+  if (read === RETRY || !('data' in read)) return read;
+  const repo = at(read.data, 'repository');
+  const pull = at(repo, 'pullRequest');
+  const id = at(pull, 'id');
+  if (typeof id !== 'string') return refusalOf(`GitHub shows no pull request ${repository}#${number} to the app`);
+  const state = at(pull, 'state');
+  if (state === 'MERGED') return 'merged-before';
+  if (state === 'CLOSED') return 'closed';
+  if (at(pull, 'autoMergeRequest') || at(pull, 'isInMergeQueue') === true) return 'already';
+  if (at(pull, 'isDraft') === true) return refusalOf('The pull request is a draft, and GitHub merges no draft');
+  const queue = at(pull, 'isMergeQueueEnabled') === true;
+  const method =
+    at(repo, 'squashMergeAllowed') === true
+      ? 'SQUASH'
+      : at(repo, 'mergeCommitAllowed') === true
+        ? 'MERGE'
+        : at(repo, 'rebaseMergeAllowed') === true
+          ? 'REBASE'
+          : 'SQUASH';
+  const now = !queue && MERGEABLE_NOW.has(String(at(pull, 'mergeStateStatus')));
+  const changed = now
+    ? await graphql(token, MERGE_NOW, { id, method })
+    : await graphql(token, ENABLE_AUTO_MERGE, { id, method: queue ? null : method });
+  if (changed === RETRY || !('data' in changed)) return changed;
+  return now ? 'merged' : 'on';
+}
+
+/** Posts `body` as a comment on the pull request `number` of `repository`, with an installation's token: true once GitHub made it. */
+export async function commentOnPullRequest(
+  token: string,
+  repository: string,
+  number: number,
+  body: string,
+): Promise<true | GitHubRefusal | typeof RETRY> {
+  const response = await fetch(`${API}/repos/${repository}/issues/${number}/comments`, {
+    method: 'POST',
+    headers: { ...HEADERS, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ body }),
+  }).catch(() => null);
+  if (response === null || response.status === 429 || response.status >= 500) {
+    await response?.body?.cancel();
+    return RETRY;
+  }
+  if (response.status === 201) {
+    await response.body?.cancel();
+    return true;
+  }
+  const answer: unknown = await response.json().catch(() => null);
+  return refusalOf(at(answer, 'message'));
 }

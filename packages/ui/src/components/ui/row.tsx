@@ -16,8 +16,9 @@ export function Row({
 }: ComponentProps<'div'> & {
   /**
    * It holds an answer (`RowAnswer`): on a phone the row wraps and the answer
-   * takes its own line. A `wide` answer, a decision's options side by side,
-   * also takes its own line, under the title, below 1240 px wide.
+   * takes its own line. A `wide` answer, a decision's options side by side or
+   * an approval's pull request beside its buttons, also takes its own line,
+   * under the title, below 1240 px wide.
    */
   answer?: boolean | 'wide';
 }) {
@@ -102,15 +103,15 @@ export function RowAge({ className, ...props }: ComponentProps<'span'>) {
   return <span className={cn('nums w-8.5 shrink-0 text-right text-meta text-ink-3', className)} {...props} />;
 }
 
-/** The answer a waiting row offers in place: Approve, the options, or Answer. */
+/** The answer a waiting row offers in place: Approve, the options, or Answer. On a line of its own it wraps. */
 export function RowAnswer({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-row-answer=""
       className={cn(
-        'flex items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:ps-13.75',
+        'flex items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:flex-wrap max-sm:gap-y-2 max-sm:ps-13.75',
         // Under the title: past the priority tag, the id and the status mark.
-        'group-data-[answer=wide]/row:sm:max-[1240px]:order-last group-data-[answer=wide]/row:sm:max-[1240px]:basis-full group-data-[answer=wide]/row:sm:max-[1240px]:ps-[150px]',
+        'group-data-[answer=wide]/row:sm:max-[1240px]:order-last group-data-[answer=wide]/row:sm:max-[1240px]:basis-full group-data-[answer=wide]/row:sm:max-[1240px]:flex-wrap group-data-[answer=wide]/row:sm:max-[1240px]:gap-y-2 group-data-[answer=wide]/row:sm:max-[1240px]:ps-[150px]',
         className,
       )}
       {...props}

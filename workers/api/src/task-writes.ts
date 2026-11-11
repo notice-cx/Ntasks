@@ -39,7 +39,7 @@ import {
   type WriteResult,
 } from '@ntasks/domain';
 import { listed, type WorkArgs } from './args.ts';
-import { closeProof, pullRequestUrl } from './delivery.ts';
+import { closeProof, gatedPullRequest, pullRequestUrl } from './delivery.ts';
 import { mayReach, type Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
 import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
@@ -56,6 +56,24 @@ import { Refused } from './refused.ts';
 export interface WriteContext extends Reader {
   /** The current time as UTC ISO 8601 text. */
   readonly now: () => string;
+  /** Called once an answer to an approval that gates a pull request has
+   * landed; the task store posts it on GitHub (approval-github.ts). */
+  readonly approvalAnswered?: (answer: ApprovalAnswer) => Promise<void>;
+}
+
+/** An answer to an approval that gates a pull request, as it landed. */
+export interface ApprovalAnswer {
+  readonly projectId: string;
+  /** The approval as the answer left it. */
+  readonly gate: Task;
+  /** The pull request it gates (gatedPullRequest). */
+  readonly pullRequest: string;
+  /** Approved, done by the person themselves, declined, or a relayed approval withdrawn by a dispute. */
+  readonly answer: 'approved' | 'performed' | 'declined' | 'withdrawn';
+  /** The person whose answer it is. */
+  readonly by: string;
+  /** The agent that relayed it; null for a person's own answer in the web app or a connected app. */
+  readonly relayedBy: string | null;
 }
 
 /** What a write's retry record is kept under. */
@@ -1119,7 +1137,8 @@ export async function linkTasks(
 
 /** Opens an approval the task waits on, or returns the open one already
  * asking the same thing, so a repeated request never asks a person twice. A
- * request with a title asks the same only of an approval with that title. */
+ * request with a title asks the same only of an approval with that title, and
+ * one that names a pull request only of an approval that gates it. */
 export async function requestApproval(
   context: WriteContext,
   projectId: string,
@@ -1136,7 +1155,8 @@ export async function requestApproval(
       (gate) =>
         gate.awaitType === 'human' &&
         asksAlike(gate.description, request.reason) &&
-        (request.title === undefined || gate.title === request.title),
+        (request.title === undefined || gate.title === request.title) &&
+        (request.pullRequest === undefined || gatedPullRequest(gate) === request.pullRequest),
     );
     if (open !== undefined) return { gate: open, created: false };
     try {

@@ -50,6 +50,7 @@ import {
 import { notAPerson } from './owner-answers.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { BackupAnswer } from './store/backup.ts';
+import type { WriteContext } from './task-writes.ts';
 import type { abortLoad, beginLoad, commitLoad, stageRows } from './store/load.ts';
 
 export const MCP_PATH = '/api/mcp';
@@ -58,6 +59,8 @@ export interface ApiContext {
   readonly engine: TaskEngine;
   /** The current time as UTC ISO 8601 text. */
   readonly now: () => string;
+  /** Posts a landed answer to an approval that gates a pull request on GitHub (WriteContext). */
+  readonly approvalAnswered?: WriteContext['approvalAnswered'];
   /** One page of a backup of the whole store: the first when the token is null (store/backup.ts). */
   readonly backup: (token: string | null) => Promise<BackupAnswer>;
   /** A load into the empty store, page by page (store/load.ts). */
@@ -74,6 +77,7 @@ export interface LoadPort {
 export interface RouteContext extends ReadContext {
   readonly backup: ApiContext['backup'];
   readonly load: LoadPort;
+  readonly approvalAnswered?: ApiContext['approvalAnswered'];
 }
 
 type Route = (context: RouteContext, url: URL, request: Request) => Response | Promise<Response>;
@@ -199,7 +203,7 @@ export function lacking(scope: string): string {
 /** Answers one HTTP request from a signed-in sender, in one workspace's store. */
 export async function serveApi(request: Request, principal: Principal, context: ApiContext): Promise<Response> {
   const url = new URL(request.url);
-  const { engine, now, backup, load } = context;
+  const { engine, now, backup, load, approvalAnswered } = context;
   const routes = routesOf(url.pathname);
   if (!routes) return json({ error: 'not_found' }, 404);
   const method = request.method === 'HEAD' ? 'GET' : request.method;
@@ -214,7 +218,8 @@ export async function serveApi(request: Request, principal: Principal, context: 
     return json({ error: 'forbidden', detail: 'origin refused' }, 403);
   }
   try {
-    return await route({ engine, principal, now, backup, load }, url, request);
+    const routed = { engine, principal, now, backup, load, ...(approvalAnswered ? { approvalAnswered } : {}) };
+    return await route(routed, url, request);
   } catch (error) {
     if (error instanceof HttpRefused) return error.response();
     if (error instanceof Refused) {

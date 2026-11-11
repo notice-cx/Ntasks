@@ -66,7 +66,7 @@ flowchart LR
 | Part | Code | Built |
 |---|---|---|
 | Worker | [`workers/api/src/worker.ts`](../workers/api/src/worker.ts), [`index.ts`](../workers/api/src/index.ts), [`workspaces.ts`](../workers/api/src/workspaces.ts) | The health check at `/healthz`, sign-in, the MCP endpoint and the GitHub receiver ([`github.ts`](../workers/api/src/github.ts)); signs each API request in, picks the workspace it reaches, and hands it to that workspace's task store with its sender |
-| Task store | [`workers/api/src/store/`](../workers/api/src/store/) | The Durable Object that holds one workspace's tasks, applies its schema and answers repeated reads from memory |
+| Task store | [`workers/api/src/store/`](../workers/api/src/store/), [`github-check.ts`](../workers/api/src/github-check.ts), [`approval-github.ts`](../workers/api/src/approval-github.ts) | The Durable Object that holds one workspace's tasks, applies its schema and answers repeated reads from memory; as the workspace's GitHub App, it asks GitHub about work waiting for a merge or a deploy, and posts each answer to an approval that gates a pull request on it, turning on its auto-merge for a person's approval |
 | Task store schema | [`workers/api/src/store/migrations/`](../workers/api/src/store/migrations/) | The tables and the rules the database enforces ([The task store](task-store.md)) |
 | Sign-in schema | [`workers/api/migrations/`](../workers/api/migrations/) | The tables of sign-in and of workspaces, their members and invitations, in D1 ([Sign-in](sign-in.md#tables)) |
 | Task model | [`packages/domain/src/`](../packages/domain/src/) | The task id format, the vocabulary and the engine contract |
@@ -163,7 +163,10 @@ it is signed with the workspace's webhook secret.
 - **GitHub** sends the deliveries of a workspace's GitHub App, which its
   owner makes with Connect GitHub, each signed with the app's secret and
   read only from installations an owner made, and moves closed tasks to
-  merged and live ([API](api.md#from-github)).
+  merged and live ([API](api.md#from-github)). The same app turns on the
+  auto-merge of a pull request a person approved in Ntasks, and posts each
+  answer to that approval on the pull request
+  ([API](api.md#an-approval-that-gates-a-pull-request)).
 
 [Sign-in](sign-in.md) describes each, the check made on every request, and
 how to cut a caller off; [SECURITY.md](../SECURITY.md) says what it means
