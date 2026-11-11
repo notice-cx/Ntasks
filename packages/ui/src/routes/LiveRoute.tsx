@@ -14,7 +14,7 @@ import { useBoard } from '../hooks/useBoard';
 import { useNow } from '../hooks/useNow';
 import { NO_FILTERS } from '../lib/board-read';
 import { byEpic, readEpics, type EpicSummary } from '../lib/epics';
-import { pullRequestLabel } from '../lib/change-words';
+import { pullRequestLabel } from '../lib/wins';
 import { httpUrl } from '../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../lib/format';
 import { ACTIVITIES, ACTIVITY_LABELS, liveBoard, liveGroups, STAGES, type Activity } from '../lib/live';

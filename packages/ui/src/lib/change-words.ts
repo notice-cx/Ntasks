@@ -4,12 +4,7 @@
  */
 import type { TaskWork } from '@ntasks/domain';
 import type { LiveTask, TaskChange } from '../api/types';
-
-/** A pull request's number from its URL, as `#42`, or its kind when the URL names none. */
-export function pullRequestLabel(url: string): string {
-  const number = /\/pull\/(\d+)/.exec(url)?.[1];
-  return number === undefined ? 'Pull request' : `#${number}`;
-}
+import { pullRequestLabel } from './wins';
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;

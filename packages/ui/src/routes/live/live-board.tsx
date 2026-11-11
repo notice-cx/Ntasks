@@ -11,7 +11,7 @@ import { ActivityMark, StatusMark } from '../../components/ui/symbols';
 import { useRecentChanges } from '../../hooks/useBoard';
 import type { RecentChange } from '../../hooks/useChangeFeed';
 import { useMedia } from '../../hooks/useMedia';
-import { pullRequestLabel } from '../../lib/change-words';
+import { pullRequestLabel } from '../../lib/wins';
 import { httpUrl } from '../../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../../lib/format';
 import { activityOf, STAGE_LABELS, STAGES, stageTime, type Activity, type LiveBoard, type Stage } from '../../lib/live';
