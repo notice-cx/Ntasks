@@ -975,6 +975,10 @@ export class Writes {
       const actor: Actor = { name: NTASKS_ACTOR };
       if (placed.closed) {
         const work = JSON.parse(epic.work) as Record<string, unknown>;
+        const named =
+          placed.resolution !== null && DROPPED.includes(placed.resolution)
+            ? await this.#namedLinksOf(epicId, actor, at)
+            : { statements: [], links: null };
         statements.push(
           this.#db
             .prepare(
@@ -1000,7 +1004,9 @@ export class Writes {
             // An epic the write changes may have taken a helper or work details in it, so both are recorded cleared.
             ...(epic.assignee_for === null && !written.has(epicId) ? {} : { assigneeFor: null }),
             ...(Object.keys(work).length === 0 && !written.has(epicId) ? {} : { work: {} }),
+            ...(named.links === null ? {} : { dependencies: named.links }),
           }),
+          ...named.statements,
         );
       } else {
         statements.push(
@@ -2050,28 +2056,74 @@ export class Writes {
 
   /**
    * The open tasks, in any project, whose description, acceptance, notes or
-   * design name this task's id as a whole id, newest change first, at most
-   * NAMED_LINKS of them, leaving out those in `linked`. It reads one index
-   * entry and one row for each task that is not closed.
+   * design name this task by its id or a former id, as a whole id, newest
+   * change first, at most NAMED_LINKS of them, leaving out those in `linked`.
+   * It reads one index entry and one row for each task that is not closed.
    */
   async #namedBy(taskId: string, linked: ReadonlySet<string>): Promise<string[]> {
+    const { results: aliases } = await this.#db
+      .prepare('SELECT alias FROM task_aliases INDEXED BY task_aliases_by_task WHERE task_id = ?1')
+      .bind(taskId)
+      .all<{ alias: string }>();
+    const ids = [taskId, ...aliases.map((row) => row.alias)];
+    // One condition per id, bound as ?1, ?2…: a json_each over the ids would read a row more for each task.
+    const names = ids
+      .map((_, index) =>
+        ['description', 'acceptance', 'notes', 'design'].map((column) => `instr(t.${column}, ?${index + 1}) > 0`),
+      )
+      .flat()
+      .join(' OR ');
     const { results } = await this.#db
       .prepare(
         `SELECT t.id, t.description, t.acceptance, t.notes, t.design FROM projects p
            CROSS JOIN tasks t INDEXED BY tasks_by_project_status
              ON t.project_id = p.id AND t.status IN ('open', 'in_progress', 'blocked', 'deferred')
-         WHERE t.id <> ?1
-           AND (instr(t.description, ?1) > 0 OR instr(t.acceptance, ?1) > 0 OR instr(t.notes, ?1) > 0
-             OR instr(t.design, ?1) > 0)
+         WHERE t.id <> ?1 AND (${names})
          ORDER BY t.updated_at DESC, t.id`,
       )
-      .bind(taskId)
+      .bind(...ids)
       .all<{ id: string; description: string; acceptance: string; notes: string; design: string }>();
-    const named = namesTask(taskId);
+    const named = ids.map(namesTask);
     return results
-      .filter((row) => !linked.has(row.id) && [row.description, row.acceptance, row.notes, row.design].some(named))
+      .filter(
+        (row) =>
+          !linked.has(row.id) &&
+          [row.description, row.acceptance, row.notes, row.design].some((text) => named.some((test) => test(text))),
+      )
       .slice(0, NAMED_LINKS)
       .map((row) => row.id);
+  }
+
+  /**
+   * The related links an epic Ntasks drops takes to the open tasks that name
+   * it, as a close that drops a task adds them (#prepare), and its links once
+   * they are added, for its history; none when no open task names it.
+   */
+  async #namedLinksOf(
+    epicId: string,
+    actor: Actor,
+    at: string,
+  ): Promise<{ statements: Statement[]; links: Json | null }> {
+    const { results } = await this.#db
+      .prepare(
+        `SELECT depends_on_id AS id, type FROM task_edges WHERE task_id = ?1
+         UNION ALL SELECT task_id AS id, NULL AS type FROM task_edges INDEXED BY task_edges_by_dependency WHERE depends_on_id = ?1`,
+      )
+      .bind(epicId)
+      .all<{ id: string; type: DependencyType | null }>();
+    const naming = await this.#namedBy(epicId, new Set(results.map((row) => row.id)));
+    if (naming.length === 0) return { statements: [], links: null };
+    const links = new Map(results.flatMap((row) => (row.type === null ? [] : [[row.id, row.type] as const])));
+    for (const id of naming) links.set(id, 'related');
+    const statements = naming.map((id) =>
+      this.#db
+        .prepare(
+          `INSERT INTO task_edges (task_id, depends_on_id, type, created_at, created_by) VALUES (?1, ?2, 'related', ?3, ?4)
+           ON CONFLICT (task_id, depends_on_id) DO NOTHING`,
+        )
+        .bind(epicId, id, at, actor.name),
+    );
+    return { statements, links: linkList(links) };
   }
 
   /** The project's field with this key, or null. */
