@@ -28,6 +28,8 @@ export interface FixtureSeed {
   comments: Map<string, TaskComment[]>;
   /** Each project's custom fields, by the project's key, in the order they were defined. */
   fields: Map<string, TaskField[]>;
+  /** Each former id of a task moved to another project, and the id it has now; none when left out. */
+  aliases?: Map<string, string>;
 }
 
 /** A workspace with what it holds: its projects and tasks, its members and its pending invitations. */
@@ -50,7 +52,7 @@ export interface FixtureWorkspace extends Workspace {
 
 /** A workspace with no projects. */
 export function emptySeed(): FixtureSeed {
-  return { projects: [], tasks: [], comments: new Map(), fields: new Map() };
+  return { projects: [], tasks: [], comments: new Map(), fields: new Map(), aliases: new Map() };
 }
 
 /** Who the fixture API records as the sender of every change. */
@@ -511,7 +513,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     ['docs', []],
   ]);
 
-  return { projects, tasks, comments, fields };
+  return { projects, tasks, comments, fields, aliases: new Map() };
 }
 
 /** Who signs in to the fixture API, as a member of a workspace. */

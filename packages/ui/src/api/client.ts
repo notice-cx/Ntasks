@@ -43,8 +43,10 @@ import type {
   TaskCreated,
   TaskEdit,
   TaskField,
+  TaskMove,
   TaskProject,
   TaskSearch,
+  TasksMoved,
   WinsPage,
   TasksCapabilities,
   Workspace,
@@ -108,6 +110,9 @@ export interface TasksApi {
   burndown(options: { project?: string; timeZone?: string }, signal?: AbortSignal): Promise<BurndownPage>;
   createTask(input: NewTask, options?: WriteOptions): Promise<TaskCreated>;
   updateTask(id: string, project: string, edit: TaskEdit, options?: WriteOptions): Promise<void>;
+  /** Move tasks to a project, at its top or under one of its epics. A task moved to another project takes an id
+   * with that project's prefix, and its old id still reads it. */
+  moveTasks(input: TaskMove, options?: WriteOptions): Promise<TasksMoved>;
   /** A close needs its reason: the evidence, or why nothing shipped. No resolution means done. */
   closeTask(id: string, project: string, reason: string, options?: CloseOptions & WriteOptions): Promise<void>;
   comment(id: string, project: string, text: string, options?: WriteOptions): Promise<void>;
@@ -591,6 +596,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     burndown: (options, signal) => scope().burndown(options, signal),
     createTask: (input, options) => scope().createTask(input, options),
     updateTask: (id, project, edit, options) => scope().updateTask(id, project, edit, options),
+    moveTasks: (input, options) => scope().moveTasks(input, options),
     closeTask: (id, project, reason, options) => scope().closeTask(id, project, reason, options),
     comment: (id, project, text, options) => scope().comment(id, project, text, options),
     respond: (id, project, response, options) => scope().respond(id, project, response, options),
@@ -768,6 +774,22 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     },
     async updateTask(id, project, edit, options) {
       await write('PATCH', taskPath(id), { ...edit, projectId: await projectId(project) }, `Task ${id}`, options);
+    },
+    async moveTasks({ ids, project, parent, withChildren }, options) {
+      const body = {
+        tasks: [...ids],
+        projectId: await projectId(project),
+        ...(parent === undefined ? {} : { parent: parent ?? '' }),
+        ...(withChildren === undefined ? {} : { withChildren }),
+      };
+      const what = ids.length === 1 ? `Task ${ids[0]}` : 'The move';
+      const response = await write('POST', '/api/tasks/move', body, what, options);
+      const unreadable = 'The move was made, but the answer could not be read.';
+      const answer = await answerJson(response, unreadable);
+      const moved = isRecord(answer) ? answer.moved : null;
+      if (!isRecord(moved) || !Object.values(moved).every((id) => typeof id === 'string'))
+        throw new UnreadableAnswer(unreadable);
+      return { moved: Object.freeze({ ...(moved as Record<string, string>) }) };
     },
     async closeTask(id, project, reason, { resolution, duplicateOf, ...sending } = {}) {
       await act(id, project, 'close', { reason, ...ended(resolution, 'done', duplicateOf) }, sending);

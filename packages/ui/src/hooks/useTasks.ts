@@ -19,6 +19,7 @@ import type {
   StepMarking,
   TaskChoiceKey,
   TaskEdit,
+  TaskMove,
   TaskProject,
   TaskSearch,
   TasksCapabilities,
@@ -286,6 +287,17 @@ export function useUpdateTask() {
       edit: TaskEdit;
       idempotencyKey?: string;
     }) => api.updateTask(id, project, edit, idempotencyKey === undefined ? undefined : { idempotencyKey }),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Moves tasks to a project or an epic, and answers each new id; the reads refresh before it answers. */
+export function useMoveTasks() {
+  const api = useTasksApi();
+  const refresh = useTaskRefresh();
+  return useMutation({
+    mutationFn: ({ idempotencyKey, ...move }: TaskMove & { idempotencyKey?: string }) =>
+      api.moveTasks(move, idempotencyKey === undefined ? undefined : { idempotencyKey }),
     onSuccess: () => refresh(),
   });
 }

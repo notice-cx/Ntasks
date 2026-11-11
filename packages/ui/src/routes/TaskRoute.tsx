@@ -4,6 +4,7 @@ import {
   Copy,
   Ellipsis,
   FileText,
+  FolderInput,
   GitPullRequest,
   Hand,
   Link as LinkIcon,
@@ -14,7 +15,7 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ACCEPTED_REASON, type TaskResolution } from '@ntasks/domain';
 import { ApiError } from '../api/client';
@@ -79,6 +80,7 @@ import { cn } from '../lib/utils';
 import { AnswerForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
+import { MoveForm } from './tasks/move-form';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
@@ -109,6 +111,8 @@ export function TaskRoute() {
     (detail.error instanceof ApiError && detail.error.status === 404);
   // The id leads: people find a tab, a bookmark or a page in their history by it.
   usePageTitle(id, notFound ? 'Not found' : task?.title);
+  // The id was a moved task's old id, which the server answers with the task as it is now.
+  if (task !== null && task.id !== id && !detail.isError) return <Navigate to={paths.task(task.id)} replace />;
   const path = (parent: { id: string; title: string | null } | null) => (
     <TaskPath
       id={id}
@@ -200,7 +204,7 @@ export function TaskRoute() {
 }
 
 /** The panel under the title where an action that needs words is finished. */
-type Panel = { kind: 'close-done' } | { kind: 'accept' } | { kind: 'answer' } | null;
+type Panel = { kind: 'close-done' } | { kind: 'accept' } | { kind: 'answer' } | { kind: 'move' } | null;
 
 /** The task's Markdown fields, each read and edited in place. */
 type TextField = 'description' | 'acceptance' | 'design' | 'notes';
@@ -394,6 +398,8 @@ function TaskPage({
         proposalVersion={shown}
         onDone={() => setPanel(null)}
       />
+    ) : panel?.kind === 'move' ? (
+      <MoveForm task={task} project={project} parentTitle={parentTitle} onDone={() => setPanel(null)} />
     ) : panel?.kind === 'answer' && ask === 'answer' ? (
       <AnswerForm
         id={task.id}
@@ -435,7 +441,20 @@ function TaskPage({
             onClick={() => void copyText(window.location.href, 'the link')}
             className="max-sm:hidden"
           />
-          <MoreMenu task={task} onEdit={setEditing} onAddLink={() => setAddingLink(true)} canEdit={writable} />
+          <MoreMenu
+            task={task}
+            onEdit={setEditing}
+            onAddLink={() => setAddingLink(true)}
+            onMove={
+              !closed && operationAvailable(capabilities, 'move')
+                ? () => {
+                    closeAs.cancel();
+                    setPanel({ kind: 'move' });
+                  }
+                : null
+            }
+            canEdit={writable}
+          />
           {actions ? <span className="ms-1 flex items-center gap-2">{actions}</span> : null}
         </div>
       </TopBar>
@@ -655,16 +674,19 @@ const TEXT_WORDS: Readonly<Record<TextField, string>> = {
   notes: 'notes',
 };
 
-/** The top bar's menu: adding or editing the task's text and links, which a pointer also reaches on the page, and copying. */
+/** The top bar's menu: adding or editing the task's text and links, which a pointer also reaches on the page, moving it, and copying. */
 function MoreMenu({
   task,
   onEdit,
   onAddLink,
+  onMove,
   canEdit,
 }: {
   task: Pick<LiveTask, 'id' | 'description' | 'acceptance' | 'design' | 'notes'>;
   onEdit: (field: TextField) => void;
   onAddLink: () => void;
+  /** Opens Move to…; null where this sign-in may not move the task. */
+  onMove: (() => void) | null;
   canEdit: (field: string) => boolean;
 }) {
   const fields: TextField[] = ['description', 'acceptance', 'design', 'notes'];
@@ -691,6 +713,11 @@ function MoreMenu({
         {canEdit('addExternalLinks') ? (
           <MenuItem icon={<Plus aria-hidden />} onSelect={onAddLink}>
             Add link
+          </MenuItem>
+        ) : null}
+        {onMove ? (
+          <MenuItem icon={<FolderInput aria-hidden />} onSelect={onMove}>
+            Move to…
           </MenuItem>
         ) : null}
         <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>

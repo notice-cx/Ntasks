@@ -30,6 +30,11 @@ task in an epic also shows From the epic: the comments pinned on the epic
 for its tasks, and the epic's most recently closed tasks with their close
 reasons. A pinned comment is marked Pinned among its own task's comments.
 
+**Move to…**, in a task page's More menu, picks a project and one of its open
+epics, or No epic, and moves the task there with every task under it. A task
+moved to another project takes a new id that starts with that project's
+prefix, and the address with its old id opens its page under the new id.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/task-dark.webp">
   <img src="images/task-light.webp" width="800" alt="The page of the bug web-b2r6: its description with headings, lists and a code block, a Done when checklist, activity and a comment box, beside a panel of its status, priority, assignee, type, project, epic and labels.">
