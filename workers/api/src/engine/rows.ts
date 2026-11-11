@@ -11,6 +11,8 @@ import type {
   HeldTask,
   JsonObject,
   Project,
+  ProjectIconType,
+  StoredProjectIcon,
   Task,
   TaskAcceptance,
   TaskComment,
@@ -123,6 +125,17 @@ export interface ProjectRow {
   readonly prefix: string;
   readonly created_at: string;
   readonly deploys: number;
+  readonly disabled_at: string | null;
+  readonly website_url: string | null;
+  /** From project_icons, joined in. */
+  readonly icon_at: string | null;
+}
+
+export interface ProjectIconRow {
+  readonly source_url: string;
+  readonly content_type: string;
+  readonly bytes: ArrayBuffer;
+  readonly read_at: string;
 }
 
 export interface CommentRow {
@@ -276,6 +289,18 @@ export function toProject(row: ProjectRow): Project {
     prefix: row.prefix,
     deploys: row.deploys === 1,
     createdAt: row.created_at,
+    disabledAt: row.disabled_at,
+    websiteUrl: row.website_url,
+    iconAt: row.icon_at,
+  };
+}
+
+export function toProjectIcon(row: ProjectIconRow): StoredProjectIcon {
+  return {
+    sourceUrl: row.source_url,
+    contentType: row.content_type as ProjectIconType,
+    bytes: row.bytes,
+    readAt: row.read_at,
   };
 }
 

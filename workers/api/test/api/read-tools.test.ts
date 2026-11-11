@@ -245,7 +245,7 @@ describe('the workspace and scope of a call', () => {
 });
 
 describe('list_projects', () => {
-  it('lists each project with its id, key, name, prefix and whether it deploys', async () => {
+  it('lists each project with its id, key, name, prefix, whether it deploys and is disabled, and its website', async () => {
     const { projects } = await read<{ projects: Record<string, unknown>[] }>(target, 'list_projects');
     expect(projects).toContainEqual({
       projectId: project.id,
@@ -253,6 +253,8 @@ describe('list_projects', () => {
       name: project.name,
       prefix: project.prefix,
       deploys: false,
+      disabled: false,
+      websiteUrl: null,
     });
   });
 });

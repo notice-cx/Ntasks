@@ -113,7 +113,8 @@ export function schema(properties: Record<string, unknown>, required: readonly s
 export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'list_projects',
-    description: 'List the task projects in this workspace.',
+    description:
+      'List the task projects in this workspace, each with its website. A disabled project takes no new tasks; its tasks stay readable.',
     inputSchema: schema({}),
     annotations: READ,
     scope: 'tasks:read',
@@ -125,6 +126,8 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           name: project.name,
           prefix: project.prefix,
           deploys: project.deploys,
+          disabled: project.disabledAt !== null,
+          websiteUrl: project.websiteUrl,
         })),
       };
     },

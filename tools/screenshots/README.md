@@ -78,7 +78,7 @@ decodes it with Chrome's `ImageDecoder` and stops if Chrome does not read
 every frame.
 
 The `shipped` walkthrough first ticks "Changes go live by a deploy" for the
-docs project on the Projects page, which no frame shows, so the docs
+docs project in Settings, Projects, which no frame shows, so the docs
 project's merged task waits for a deploy.
 
 ## What it needs

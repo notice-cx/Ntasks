@@ -37,7 +37,8 @@ or prefix, since no query reads across stores.
 
 | Table | Holds |
 |---|---|
-| `projects` | Each project's id, key, name and task id prefix, and whether its changes go live by a deploy (`deploys`) |
+| `projects` | Each project's id, key, name and task id prefix, whether its changes go live by a deploy (`deploys`), when an owner disabled it (`disabled_at`, null while it takes new tasks), and its website (`website_url`) |
+| `project_icons` | The icon read from each project's website: the address it came from, its image type, its bytes and when it was read. A new website replaces it, and a backup leaves it out ([API](api.md#a-projects-website-and-icon)) |
 | `tasks` | One row per task: its fields, its current close and delivery, its version |
 | `task_labels` | A task's labels, one row each |
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates`, `supersedes` and `merges-after` |
@@ -223,8 +224,11 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   `recordedWrite` reads it as the write does. A key a caller chose keeps
   rule 3 unchanged.
 - **Projects:** `listProjects`, `createProject`, which
-  `POST /api/tasks/projects` ([API](api.md#writes)) calls, and
-  `setProjectDeploys`; an import writes its projects' rows itself.
+  `POST /api/tasks/projects` ([API](api.md#writes)) calls, `updateProject`,
+  which renames a project, sets whether it deploys and whether it is
+  disabled, and replaces its website with the icon read from it in one
+  batch, and `projectIcon`, which reads that icon; an import writes its
+  projects' rows itself.
 - **Delivery:** `reportDelivery` moves the closed tasks of the projects named
   whose pull request, commit or merge commit a signal matches, each move with
   its history, in one batch ([API](api.md#delivery)). A close as done that

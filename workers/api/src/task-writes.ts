@@ -369,6 +369,13 @@ export async function createTask(
   retryRequest?: RetryRequest,
 ): Promise<Written> {
   const project = await projectOf(context, projectId, 'write');
+  if (project.disabledAt !== null) {
+    throw refused(
+      `refused: ${projectNamed(project)} is disabled, so it takes no new tasks; its tasks stay readable. ` +
+        "A workspace owner enables it again on the web app's Settings page, under Projects.",
+      `${project.name} is disabled, so it takes no new tasks. An owner can enable it in Settings.`,
+    );
+  }
   const links = task.links ?? [];
   if (task.done !== undefined && task.labels?.includes('human')) {
     throw refused(

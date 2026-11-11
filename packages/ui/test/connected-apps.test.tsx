@@ -17,7 +17,7 @@ async function appRow(clientId: string): Promise<HTMLElement> {
 describe('connected apps on the Settings page', () => {
   it('lets an owner register an app, copy its client ID and remove it for everyone', async () => {
     const api = createFixtureTasksApi();
-    renderApp('/tasks/settings', api);
+    renderApp('/tasks/settings/apps', api);
     fireEvent.click(await enabledButton('Register app'));
     const form = await screen.findByRole('form', { name: 'Register app' });
     fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'Example Portal' } });
@@ -69,7 +69,7 @@ describe('connected apps on the Settings page', () => {
           ]
         : [],
     });
-    renderApp('/tasks/settings', api);
+    renderApp('/tasks/settings/apps', api);
     const row = await appRow('c-example-portal');
     expect(screen.queryByRole('button', { name: 'Register app' })).toBeNull();
     expect(within(row).queryByRole('button', { name: 'Remove' })).toBeNull();

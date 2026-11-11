@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Component, lazy, Suspense, useState, type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
-import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { retryRead, type TasksApi } from './api/client';
 import type { TokenSource } from './api/connection';
 import { TasksApiProvider } from './api/context';
@@ -27,8 +27,6 @@ const TaskRoute = lazy(() => import('./routes/TaskRoute'));
 const FocusRoute = lazy(() => import('./routes/FocusRoute'));
 const LiveRoute = lazy(() => import('./routes/LiveRoute'));
 const ProductivityRoute = lazy(() => import('./routes/ProductivityRoute'));
-const ProjectsRoute = lazy(() => import('./routes/ProjectsRoute'));
-const MembersRoute = lazy(() => import('./routes/MembersRoute'));
 const SettingsRoute = lazy(() => import('./routes/SettingsRoute'));
 
 export function newQueryClient(): QueryClient {
@@ -77,9 +75,9 @@ export function App({
                       <Route path=":id" element={<TaskRoute />} />
                       <Route path="live" element={<LiveRoute />} />
                       <Route path="productivity" element={<ProductivityRoute />} />
-                      <Route path="projects" element={<ProjectsRoute />} />
-                      <Route path="members" element={<MembersRoute />} />
-                      <Route path="settings" element={<SettingsRoute />} />
+                      <Route path="projects" element={<MovedTo page="projects" />} />
+                      <Route path="members" element={<MovedTo page="members" />} />
+                      <Route path="settings/:tab?" element={<SettingsRoute />} />
                       <Route path="*" element={<NoPage />} />
                     </Route>
                   </Route>
@@ -154,6 +152,13 @@ function Shell({ sidebar }: { sidebar: SidebarPlace }) {
       </AccountTimeZone>
     </BoardsProvider>
   );
+}
+
+/** Projects and Members once had pages of their own; a link to one opens its tab in Settings, with what it carried. */
+function MovedTo({ page }: { page: 'projects' | 'members' }) {
+  const paths = usePaths();
+  const { search, hash, state } = useLocation();
+  return <Navigate to={{ pathname: paths[page], search, hash }} state={state} replace />;
 }
 
 function NoPage() {

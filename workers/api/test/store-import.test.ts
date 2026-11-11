@@ -200,7 +200,7 @@ describe('an import into the task store', () => {
     expect(result.rowsWritten).toBeGreaterThanOrEqual(12);
     const stored: StoreRows = {
       ...ROWS,
-      projects: ROWS.projects.map((row) => ({ deploys: 0, ...row })),
+      projects: ROWS.projects.map((row) => ({ deploys: 0, disabled_at: null, website_url: null, ...row })),
       tasks: ROWS.tasks.map((row) => ({
         notes: '',
         design: '',

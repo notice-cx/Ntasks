@@ -26,6 +26,10 @@ export interface ProjectRow {
   readonly created_at: string;
   /** 1 when the project's changes go live by a deploy. Left out, 0. */
   readonly deploys?: number;
+  /** When an owner disabled it. Left out, null: it is enabled. */
+  readonly disabled_at?: string | null;
+  /** Its website. Left out, null. */
+  readonly website_url?: string | null;
 }
 
 export interface TaskRow {
@@ -160,7 +164,7 @@ type RowOf<T extends StoreTable> = NonNullable<StoreRows[T]>[number];
 
 /** Each table's columns, in the order the statements below name them. */
 export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<T> & string)[] } = Object.freeze({
-  projects: ['id', 'key', 'name', 'prefix', 'created_at', 'deploys'],
+  projects: ['id', 'key', 'name', 'prefix', 'created_at', 'deploys', 'disabled_at', 'website_url'],
   tasks: [
     'id',
     'project_id',

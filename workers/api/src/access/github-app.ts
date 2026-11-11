@@ -17,8 +17,8 @@ import { cookieValue, manifestConversion } from './setup.ts';
 
 /** Where GitHub sends the browser back with the code for the new app. */
 export const GITHUB_APP_RETURN_PATH = '/api/access/github/app/created';
-/** The web app's Settings page, where GitHub sends the browser after an installation. */
-export const SETTINGS_PAGE = '/tasks/settings';
+/** The GitHub tab of the web app's Settings page, where GitHub sends the browser after an installation. */
+export const SETTINGS_PAGE = '/tasks/settings/github';
 /** Where the browser posts the manifest: an app owned by the GitHub account signed in there. */
 const GITHUB_NEW_APP = 'https://github.com/settings/apps/new';
 /** How long the browser has from Connect GitHub to GitHub's code coming back. */

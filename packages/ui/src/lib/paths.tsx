@@ -4,9 +4,10 @@ import { createContext, useContext, type ReactNode } from 'react';
  * The addresses of the app's pages. Every page sits under the base path the
  * host mounts the app at: the board is the base path itself, a task is
  * `<base>/<id>`, and the other pages are `<base>/focus`, `<base>/live`,
- * `<base>/productivity`, `<base>/projects`, `<base>/members` and
- * `<base>/settings`. A task id
- * always holds a hyphen, so none of those words is ever a task's address.
+ * `<base>/productivity` and `<base>/settings`, whose tabs are
+ * `<base>/settings/<tab>`, Projects and Members among them.
+ * `<base>/projects` and `<base>/members` open those tabs. A task id always
+ * holds a hyphen, so none of those words is ever a task's address.
  */
 export interface AppPaths {
   /** The board: the base path itself. */
@@ -14,9 +15,15 @@ export interface AppPaths {
   readonly focus: string;
   readonly live: string;
   readonly productivity: string;
+  /** Settings's Projects tab. */
   readonly projects: string;
+  /** Settings's Members tab. */
   readonly members: string;
   readonly settings: string;
+  /** One of Settings's tabs. */
+  settingsTab(tab: string): string;
+  /** Whether a path is Settings or one of its tabs. */
+  isSettings(pathname: string): boolean;
   task(id: string): string;
   /** Whether a path on this site is one of the app's pages, which a link routes to instead of loading. */
   isAppPage(pathname: string): boolean;
@@ -41,9 +48,11 @@ export function appPaths(basePath: string): AppPaths {
     focus: under('focus'),
     live: under('live'),
     productivity: under('productivity'),
-    projects: under('projects'),
-    members: under('members'),
+    projects: under('settings/projects'),
+    members: under('settings/members'),
     settings: under('settings'),
+    settingsTab: (tab) => under(`settings/${encodeURIComponent(tab)}`),
+    isSettings: (pathname) => pathname === under('settings') || pathname.startsWith(`${under('settings')}/`),
     task: (id) => under(encodeURIComponent(id)),
     isAppPage: (pathname) => pathname === board || pathname.startsWith(`${board}/`),
   };

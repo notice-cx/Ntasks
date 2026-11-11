@@ -369,7 +369,7 @@ export function TasksBoard() {
         <TaskComposer
           open
           onClose={closeComposer}
-          projects={board.catalog.data ?? []}
+          projects={board.active}
           loading={board.catalog.isPending}
           prefill={filters.project === 'all' ? null : { project: filters.project }}
         />

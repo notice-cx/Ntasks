@@ -13,6 +13,7 @@ import type {
   NewApp,
   NewInvitation,
   NewProject,
+  ProjectEdit,
   Workspace,
   WorkspaceMembers,
 } from '../api/types';
@@ -118,13 +119,13 @@ export function useCreateProject() {
   });
 }
 
-/** An owner's setting of whether a project's changes go live by a deploy. */
-export function useSetDeploys() {
+/** An owner's settings of a project. The project list is read again, so the sidebar, the board and the Waiting
+ * for you view, which lists merged work by the deploy setting, all follow. */
+export function useUpdateProject() {
   const api = useTasksApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ project, deploys }: { project: string; deploys: boolean }) => api.setDeploys(project, deploys),
-    // The Waiting for you view lists merged work by this setting.
+    mutationFn: ({ project, edit }: { project: string; edit: ProjectEdit }) => api.updateProject(project, edit),
     onSettled: () => client.invalidateQueries({ queryKey: ['task-projects'] }),
   });
 }

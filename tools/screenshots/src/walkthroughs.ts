@@ -143,13 +143,18 @@ const WALKTHROUGHS: readonly Walkthrough[] = [
   {
     // Waiting for you lists the work waiting for a merge and a deploy; the Done view shows each stage and a close with no proof.
     name: 'shipped',
-    address: '/tasks/projects',
+    address: '/tasks/settings/projects',
     // The docs project goes live by a deploy, so its merged work waits for one.
     prepare: async ({ send }, recorder) => {
-      const box = `document.querySelector('[data-project-deploys="docs"] input')`;
-      await recorder.waitFor('the projects', drawn('[data-project-deploys="docs"] input'));
-      await send('Runtime.evaluate', { expression: `${box}.click()` });
-      await recorder.waitFor('the docs project to deploy', `${box}.checked && !${box}.disabled`);
+      const edit = `document.querySelector('button[aria-label="Edit Example docs"]')`;
+      const editor = `document.querySelector('[data-project-editor="docs"]')`;
+      await recorder.waitFor('the projects', drawn('button[aria-label="Edit Example docs"]'));
+      await send('Runtime.evaluate', { expression: `${edit}.click()` });
+      await recorder.waitFor('the docs editor', `${editor} !== null`);
+      await send('Runtime.evaluate', {
+        expression: `${editor}.querySelector('[data-project-deploys="docs"] input').click(); ${editor}.querySelector('button[type="submit"]').click()`,
+      });
+      await recorder.waitFor('the docs project to deploy', `${editor} === null`);
       await send('Runtime.evaluate', { expression: goWithin('/tasks?view=waiting') });
     },
     ready: 'section[data-group="delivery-deploy"] [data-task-row]',

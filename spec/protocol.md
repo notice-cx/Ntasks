@@ -123,7 +123,7 @@ cite.
 | Model | The AI model an agent says it runs as, recorded beside its actor. |
 | Display name | The name a reader is shown for an actor or a model, worked out from it ([3.1.1](#311-display-names)). |
 | Workspace | The set of projects, people, agents and services that work together. A request acts in one workspace; nothing reaches across two. |
-| Project | The tasks of one body of work, such as one repository. Its **prefix** starts every task id in it. |
+| Project | The tasks of one body of work, such as one repository. Its **prefix** starts every task id in it. A server MAY let an owner disable a project: a disabled project refuses new tasks, and its tasks stay readable. |
 | Task | One piece of work ([3.2](#32-task)). |
 | Epic | A task whose work is done by its children. |
 | Link | A connection from one task to another ([3.5](#35-links)). A **blocking link** (`blocks`) makes the task wait until the other closes. |

@@ -20,7 +20,8 @@ export function createEngine(db: Database, options: EngineOptions = {}): TaskEng
   return {
     listProjects: () => reads.listProjects(),
     createProject: (input) => writes.createProject(input),
-    setProjectDeploys: (projectId, deploys) => writes.setProjectDeploys(projectId, deploys),
+    updateProject: (projectId, change) => writes.updateProject(projectId, change),
+    projectIcon: (projectId) => reads.projectIcon(projectId),
     getTask: (projectId, taskId) => reads.getTask(projectId, taskId),
     getTasks: (projectId, taskIds) => reads.getTasks(projectId, taskIds),
     listWork: (projectIds, closedSince) => reads.listWork(projectIds, closedSince),

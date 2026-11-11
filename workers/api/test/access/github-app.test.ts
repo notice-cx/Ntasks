@@ -210,7 +210,7 @@ describe('Connect GitHub', () => {
       url: ORIGIN,
       hook_attributes: { url: `${ORIGIN}/api/github/${TEST_WORKSPACE.id}`, active: true },
       redirect_url: `${ORIGIN}/api/access/github/app/created`,
-      setup_url: `${ORIGIN}/tasks/settings`,
+      setup_url: `${ORIGIN}/tasks/settings/github`,
       public: true,
       default_permissions: { metadata: 'read', pull_requests: 'read', checks: 'read', deployments: 'read' },
       default_events: ['pull_request', 'check_run', 'deployment_status'],
@@ -257,7 +257,7 @@ describe('Connect GitHub', () => {
     ] as const) {
       const back = await returnFromGitHub(browser, code, given);
       expect(back.status).toBe(302);
-      expect(back.headers.get('location')).toBe(`${ORIGIN}/tasks/settings?github=retry`);
+      expect(back.headers.get('location')).toBe(`${ORIGIN}/tasks/settings/github?github=retry`);
     }
     expect((await inWorkspace(owner, 'GET', '/api/access/github')).body).toMatchObject({ github: { app: null } });
   });

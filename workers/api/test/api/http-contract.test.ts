@@ -83,6 +83,27 @@ async function signed(secret: string, body: string): Promise<string> {
   return `sha256=${hex(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body))))}`;
 }
 
+/** Runs `work` while https://contract.example.com answers with a page and its icon, in place of the network. */
+async function withWebsite<T>(work: () => Promise<T>): Promise<T> {
+  const before = globalThis.fetch;
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  globalThis.fetch = async (input, init) => {
+    const url = new Request(input, init).url;
+    if (url === 'https://contract.example.com/')
+      return new Response('<link rel="icon" href="/icon.png" sizes="64x64">', {
+        headers: { 'content-type': 'text/html' },
+      });
+    if (url === 'https://contract.example.com/icon.png')
+      return new Response(png, { headers: { 'content-type': 'image/png' } });
+    return before(input, init);
+  };
+  try {
+    return await work();
+  } finally {
+    globalThis.fetch = before;
+  }
+}
+
 /** Sends every route the contract records, in states that give each field a value. */
 async function drive(): Promise<readonly Sample[]> {
   const samples: Sample[] = [];
@@ -104,6 +125,14 @@ async function drive(): Promise<readonly Sample[]> {
   const projectId = project.projectId;
   const inProject = (body: Body = {}) => ({ projectId, ...body });
   await as('PATCH /api/tasks/projects', '/api/tasks/projects', inProject({ deploys: true }));
+  await as(
+    'PATCH /api/tasks/projects',
+    '/api/tasks/projects',
+    inProject({ displayName: 'Contract', disabled: false, websiteUrl: null }),
+  );
+  await withWebsite(() =>
+    as('PATCH /api/tasks/projects', '/api/tasks/projects', inProject({ websiteUrl: 'https://contract.example.com' })),
+  );
   const field = (body: Body) => as('POST /api/fields', '/api/fields', inProject(body));
   await field({ key: 'severity', name: 'Severity', type: 'single-choice', options: ['low', 'high'] });
   await field({ key: 'points', name: 'Points', type: 'number' });

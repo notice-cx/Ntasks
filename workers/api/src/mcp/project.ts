@@ -3,7 +3,7 @@
  * or prefix. A call that names a task needs none, since a task id's prefix
  * names its project; a new task without one is filed beside the first task it
  * names that stays in its project, else in the sender's only writable
- * project. Each answers with the project as the task writes take it, which
+ * project that is not disabled. Each answers with the project as the task writes take it, which
  * then check the sender's access, so a project the sender cannot reach is
  * refused as one that does not exist.
  */
@@ -26,15 +26,16 @@ export async function projectFor(reader: Reader, args: Args, taskId: string): Pr
  * The project a new task is filed in: the one the call names, else that of
  * the first of `named` that is a task id (its parent, then the tasks it
  * depends on, blocks or was found from, which stay in its project), else the
- * sender's only writable project.
+ * sender's only writable project that is not disabled.
  */
 export async function projectForNew(reader: Reader, args: Args, named: readonly unknown[]): Promise<string> {
   if (args.project !== undefined) return projectArg(args);
   const first = named.find(isTaskId);
   if (first !== undefined) return (await projectOfTask(reader, first)).id;
   const { engine, principal } = reader;
-  const writable = reachable(principal, await engine.listProjects()).filter((project) =>
-    mayReach(principal, project.id, 'write'),
+  // A disabled project takes no new tasks, so it is never the one a task goes to unnamed.
+  const writable = reachable(principal, await engine.listProjects()).filter(
+    (project) => project.disabledAt === null && mayReach(principal, project.id, 'write'),
   );
   if (writable.length === 1) return writable[0]!.id;
   if (writable.length === 0) {

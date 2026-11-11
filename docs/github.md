@@ -61,8 +61,8 @@ move it from there:
   also a deploy by the rules above still counts the first time it is seen
   ([API](api.md#set-up-by-hand)).
 - **A project that deploys.** The first deploy seen for a project's tasks
-  turns on **Changes go live by a deploy** for that project, on the Projects
-  page. A project with no deploy, such as a library, stops at Merged. An
+  turns on **Changes go live by a deploy** for that project, in Settings,
+  Projects. A project with no deploy, such as a library, stops at Merged. An
   owner who turns the setting off keeps it off.
 - **A pull request merged before its task closed.** Its merge event came too
   early to move the task, so Ntasks asks GitHub about 5 seconds after the
@@ -84,7 +84,7 @@ move it from there:
   to move it to Live; GitHub keeps them for 3 days, and after that a signal
   (below) does it. The event turns on **Changes go live by a deploy** for
   a project no deploy has turned it on for; where an owner turned it off,
-  turn it on again on the Projects page first.
+  turn it on again in Settings, Projects first.
 - **Many tasks waiting at once.** Each check reads up to about 40 pull
   requests, starting from the newest waiting task, within the free plan's
   limit on requests. While many newer tasks wait, an older one can stay at
@@ -93,8 +93,8 @@ move it from there:
 In each case, a signal that names the pull request or commit moves the task:
 `report_delivery` from an agent, or `POST /api/delivery`
 ([Delivery](api.md#delivery)). A `live` signal moves a task to Live only in
-a project with **Changes go live by a deploy** turned on, on the Projects
-page; in any other project it stops at Merged.
+a project with **Changes go live by a deploy** turned on, in Settings,
+Projects; in any other project it stops at Merged.
 
 ## Check that it works
 

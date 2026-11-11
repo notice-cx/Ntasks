@@ -8,7 +8,7 @@
 import type { TaskEngine } from '@ntasks/domain';
 import { SCOPES, type Principal } from './auth.ts';
 import { backupRoute } from './http/backup.ts';
-import { deliveryRoute, projectSettingsRoute } from './http/delivery.ts';
+import { deliveryRoute, projectIconRoute, projectSettingsRoute } from './http/delivery.ts';
 import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
@@ -110,12 +110,16 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
 
 /** POST /api/fields/:key/retire. */
 const RETIRE_PATH = /^\/api\/fields\/([a-z][a-z0-9_-]{0,63})\/retire$/u;
+/** GET /api/tasks/projects/:projectId/icon. */
+const ICON_PATH = /^\/api\/tasks\/projects\/([A-Za-z0-9_.-]{1,64})\/icon$/u;
 
 function routesOf(pathname: string): Routes | null {
   const routes = PATHS[pathname];
   if (routes) return routes;
   const retire = RETIRE_PATH.exec(pathname);
   if (retire) return { POST: (context, url, request) => retireFieldRoute(context, url, request, retire[1]!) };
+  const icon = ICON_PATH.exec(pathname);
+  if (icon) return { GET: (context, url) => projectIconRoute(context, url, icon[1]!) };
   const gate = gatePath(pathname);
   if (gate !== null) {
     const { gateId } = gate;

@@ -171,6 +171,32 @@ export interface Project {
   /** Its changes go live by a deploy; when false, merged is the last stage of a task's delivery. */
   readonly deploys: boolean;
   readonly createdAt: string;
+  /** When an owner disabled it: it takes no new tasks, and its tasks stay readable. Null while it is enabled. */
+  readonly disabledAt: string | null;
+  /** Its website, an http or https URL. */
+  readonly websiteUrl: string | null;
+  /** When the icon kept for it was read from its website; null when it has none. */
+  readonly iconAt: string | null;
+}
+
+/** The image types a project's icon may have: rasters a browser draws, never an SVG, which can run script. */
+export const PROJECT_ICON_TYPES = ['image/png', 'image/x-icon', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+export type ProjectIconType = (typeof PROJECT_ICON_TYPES)[number];
+
+/** The largest project icon kept, in bytes. */
+export const PROJECT_ICON_MAX_BYTES = 100 * 1024;
+
+/** The icon read from a project's website. */
+export interface ProjectIcon {
+  /** The address it was read from, after redirects. */
+  readonly sourceUrl: string;
+  readonly contentType: ProjectIconType;
+  readonly bytes: ArrayBuffer;
+}
+
+/** A project's icon as the store keeps it. */
+export interface StoredProjectIcon extends ProjectIcon {
+  readonly readAt: string;
 }
 
 /** Another task this one links to, with enough of it to show the link. */

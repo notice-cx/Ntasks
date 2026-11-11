@@ -210,9 +210,9 @@ describe("the viewer's time zone", () => {
 
   it('regroups the feed when the person chooses a time zone in Settings, and saves it with their account', async () => {
     const api = answered();
-    renderApp('/tasks/settings', api);
+    renderApp('/tasks/settings/you', api);
     const pick = async (zone: string) => {
-      const select = (await screen.findByLabelText('Your time zone')) as HTMLSelectElement;
+      const select = (await screen.findByLabelText('Time zone')) as HTMLSelectElement;
       await waitFor(() => expect(select.disabled).toBe(false));
       fireEvent.change(select, { target: { value: zone } });
       await waitFor(async () => expect((await api.account()).timeZone).toBe(zone));
@@ -226,6 +226,7 @@ describe("the viewer's time zone", () => {
     await pick('America/Los_Angeles');
     expect(await decidedDay()).toBe('Mon, Nov 9');
     fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'You' }));
     await pick('UTC');
     await waitFor(async () => expect(await decidedDay()).toBe('Tue, Nov 10'));
     // Two pages and a list of every time zone, rendered twice.

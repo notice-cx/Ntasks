@@ -1,7 +1,7 @@
 # @notice-cx/ntasks-ui
 
 The Ntasks web app as a React component: the board, a task's page, Focus,
-Live, Projects, Members and Settings. The Ntasks Worker serves it as its own
+Live and Settings, with its Projects and Members tabs. The Ntasks Worker serves it as its own
 web app ([`apps/web`](../../apps/web/README.md)), and another site renders it
 inside one of its own pages, where it reads and writes as the person signed
 in.
@@ -50,7 +50,7 @@ With `basePath="/tasks"`:
 | A task | `/tasks/<id>`, such as `/tasks/web-b2r6` |
 | Focus | `/tasks/focus` |
 | Live | `/tasks/live` |
-| Projects, Members, Settings | `/tasks/projects`, `/tasks/members`, `/tasks/settings` |
+| Settings | `/tasks/settings/<tab>`: `workspace`, `projects`, `members`, `github`, `apps` or `you`; `/tasks/settings` opens `workspace`, and `/tasks/projects` and `/tasks/members` open their tabs |
 
 A task id always holds a hyphen, so it is never the name of another page.
 An address under `basePath` that is none of these shows No page.
@@ -170,25 +170,28 @@ resolution, Vite's default.
 | `/tasks/:id` | One task: its title, description, a decision's options, Done when, design, notes, links, epic tasks and activity, with a side panel of its facts. A fact this sign-in may change opens a menu of values; the others are plain words. |
 | `/tasks/focus` | Your decisions one at a time, each on a card: an option's letter selects it, Enter answers or approves, → skips. |
 | `/tasks/live` | Every task in progress, grouped by its holder's last activity: Active (changed or commented on within the hour), Quiet (until the Stalled after choice: 4 hours, 1 day, 3 days or 1 week, kept in this browser) and Stalled (after it, or with nothing recorded, the five most recent first and the rest under Show more). Each row shows the next step, the pull request or else the branch, the helper, the holder and how long since their last change. Stalled changes nothing on the task (`src/lib/live.ts`). |
-| `/tasks/projects` | The workspace's projects, each with its prefix and open tasks. An owner creates one with New project (`N`): Name and Prefix, both required. |
-| `/tasks/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else sees neither. |
-| `/tasks/settings` | The workspace's icon, name and ID, with Copy ID, and its connected apps. An owner edits the name and saves it, registers an app, copies its client ID and removes it; anyone else reads the name and revokes their own sign-in to an app. |
+| `/tasks/settings/workspace` | The workspace's icon, name and ID, with Copy ID. An owner edits the name and saves it; anyone else reads it. |
+| `/tasks/settings/projects` | The workspace's projects, each with its icon, prefix, Deploys when its changes go live by a deploy, and Disabled when it takes no new tasks. An owner creates one with New project (`N`): Name and Prefix, both required. Edit sets a project's Name, its Website, whose icon then stands for the project, Changes go live by a deploy and Enabled. A disabled project leaves the sidebar, the board and the composer; its task pages still open. |
+| `/tasks/settings/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else has no such tab. |
+| `/tasks/settings/github` | For an owner: Connect GitHub, where it is installed, the deploys it saw, Disconnect, and the webhook set up by hand. |
+| `/tasks/settings/apps` | The workspace's connected apps. An owner registers an app, copies its client ID and removes it; anyone else revokes their own sign-in to an app. |
+| `/tasks/settings/you` | The person's own name and the time zone every date shows in, in every workspace. |
 
 Every page opens in a workspace (`src/components/WorkspaceGate.tsx`): the
 one chosen last in this browser, kept in local storage, else the first
 `GET /api/workspaces` lists. A sign-in that reaches none sees one step
 instead: a deployment admin (`deploymentAdmin` in `GET /api/access/me`)
-creates a workspace and goes on to its Projects page; anyone else sees No
+creates a workspace and goes on to Settings's Projects tab; anyone else sees No
 workspace. Opening another workspace sends an answer still in its Undo window
 in the workspace it was given in, drops every read of the last workspace, and
 draws the pages again.
 
 Every page sits in one frame (`src/App.tsx`): the sidebar
 (`src/components/AppSidebar.tsx`) with the workspace's icon and name, Waiting
-for you, Tasks, Live with its count of active tasks, Focus, each project and
-each person or agent with open work, those active within the hour first and
-marked with a dot, then Projects, Members (for an owner), Settings and the
-source-code link. With two or more workspaces, the name is a menu that
+for you, Tasks, Live with its count of active tasks, Focus, each project that is not
+disabled, with the icon read from its website or else its letter, and each
+person or agent with open work, those active within the hour first and
+marked with a dot, then Settings and the source-code link. With two or more workspaces, the name is a menu that
 switches between them and opens Settings. A rename shows in the sidebar and
 the menu at once. The frame reads every project's board once, for the
 sidebar's counts and the page alike, and runs the one change feed

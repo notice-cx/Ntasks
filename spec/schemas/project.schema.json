@@ -9,7 +9,12 @@
     "key": { "description": "The name people know the project by.", "type": "string", "minLength": 1, "maxLength": 128 },
     "name": { "type": "string", "minLength": 1, "maxLength": 128 },
     "prefix": { "type": "string", "pattern": "^[a-z0-9]{1,32}$" },
-    "deploys": { "type": "boolean" }
+    "deploys": { "type": "boolean" },
+    "disabled": {
+      "description": "A disabled project refuses new tasks; its tasks stay readable. Left out, the project takes new tasks.",
+      "type": "boolean"
+    },
+    "websiteUrl": { "description": "The project's website.", "type": ["string", "null"], "format": "uri" }
   },
   "required": ["projectId", "key", "name", "prefix", "deploys"]
 }

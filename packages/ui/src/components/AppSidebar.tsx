@@ -1,10 +1,11 @@
-import { Activity, ChartNoAxesColumn, Folder, List, Search, Settings, Target, Users } from 'lucide-react';
+import { Activity, ChartNoAxesColumn, List, Search, Settings, Target } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from './ui/avatar';
 import { Count } from './ui/badge';
 import { IconButton } from './ui/button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
-import { NavItem, NavSection, ProjectBadge, Sidebar, SidebarHeader, SidebarSpacer, WorkspaceButton } from './ui/shell';
+import { ProjectIcon } from './ProjectIcon';
+import { NavItem, NavSection, Sidebar, SidebarHeader, SidebarSpacer, WorkspaceButton } from './ui/shell';
 import { GitHubMark, StatusMark, WorkspaceIcon } from './ui/symbols';
 import { useBoard } from '../hooks/useBoard';
 import { useNow } from '../hooks/useNow';
@@ -58,7 +59,7 @@ function WorkspaceSwitcher() {
   const paths = usePaths();
   const { pathname } = useLocation();
   // Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board.
-  const sameInEvery = [paths.live, paths.projects, paths.members, paths.settings].includes(pathname);
+  const sameInEvery = pathname === paths.live || paths.isSettings(pathname);
   return (
     <Menu>
       <MenuTrigger asChild>
@@ -91,12 +92,11 @@ function WorkspaceSwitcher() {
 /**
  * The app's navigation: the workspace, Waiting for you, Tasks, Live, Focus and Productivity, then
  * each project and each person or agent with open work, each a view of the
- * board, and at its foot the workspace's projects, members and settings and
- * the link to the source code.
+ * board, and at its foot Settings, where the projects and members are
+ * managed, and the link to the source code.
  */
 export function AppSidebar() {
   const { workspace, workspaces } = useWorkspace();
-  const owner = workspace.role === 'owner';
   const board = useBoard(NO_FILTERS);
   const hides = useAnswerHides();
   const navigate = useNavigate();
@@ -159,7 +159,7 @@ export function AppSidebar() {
             <NavItem
               key={project.key}
               asChild
-              icon={<ProjectBadge prefix={project.prefix} />}
+              icon={<ProjectIcon project={project} />}
               count={project.ok ? open(project.tasks) : undefined}
               active={onBoard && params.get('project') === project.key}
             >
@@ -192,15 +192,7 @@ export function AppSidebar() {
         </NavSection>
       ) : null}
       <SidebarSpacer />
-      <NavItem asChild icon={<Folder aria-hidden />} active={pathname === paths.projects}>
-        <Link to={paths.projects}>Projects</Link>
-      </NavItem>
-      {owner ? (
-        <NavItem asChild icon={<Users aria-hidden />} active={pathname === paths.members}>
-          <Link to={paths.members}>Members</Link>
-        </NavItem>
-      ) : null}
-      <NavItem asChild icon={<Settings aria-hidden />} active={pathname === paths.settings}>
+      <NavItem asChild icon={<Settings aria-hidden />} active={paths.isSettings(pathname)}>
         <Link to={paths.settings}>Settings</Link>
       </NavItem>
       <NavItem href={SOURCE_URL} icon={<GitHubMark size={16} />} data-source-link="">

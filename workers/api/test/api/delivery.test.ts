@@ -52,7 +52,7 @@ async function signal(sender: TestApi, body: Record<string, unknown>) {
 
 async function deployingProject(): Promise<Project> {
   const project = await newProject(engine);
-  return engine.setProjectDeploys(project.id, true);
+  return engine.updateProject(project.id, { deploys: true });
 }
 
 describe('a closed task’s delivery', () => {

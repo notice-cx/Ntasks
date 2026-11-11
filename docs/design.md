@@ -484,7 +484,9 @@ A decision's options are named by letter, `a` to `f`.
   `readOnly` draws a choice already made: nothing to press, the chosen option
   ringed with Chosen and a tick.
 - `Tabs` switches a page's view, such as All, Active and Done: the current
-  view is ringed on Surface, the others are Text 3.
+  view is ringed on Surface, the others are Text 3. `TabLinks` draws a page's
+  sections the same way, each a link to its own address, the current one
+  marked as the page: Settings's tabs.
 
 `choiceForKey` maps a key press to an option on offer.
 
@@ -552,9 +554,9 @@ group that folds starts with a chevron and is a button with `aria-expanded`.
 The sidebar holds `SidebarHeader` (the workspace's icon and name, and the
 search button), `NavItem`s (a 16 px icon, a name and a count; the current
 one on Hover), `NavSection`s with their headings (Projects, People),
-`ProjectBadge` (a project prefix's first letter in a ringed square) and
-`SidebarSpacer`, which pushes Projects, Members, Settings and Source code to
-the foot. `NavItem asChild` makes a router link the item. For a person in
+`ProjectBadge` (the icon read from a project's website, or its prefix's
+first letter in a ringed square) and `SidebarSpacer`, which pushes Settings
+and Source code to the foot. `NavItem asChild` makes a router link the item. For a person in
 two or more workspaces, the name is a `WorkspaceButton`: the name and a
 14 px `chevrons-up-down` in Text 3, Hover under the pointer and while its
 menu is open. Its menu lists the workspaces, each with its icon and the open
@@ -817,34 +819,46 @@ reaches back 8 weeks. Seven days with no wins show `EmptyState`'s No wins in
 the last 7 days, and an earlier seven days with none a line in Text 3, No wins
 from Oct 28 to Nov 3.
 
-### Projects, Members, Settings and the first workspace
+### Settings and the first workspace
 
-Projects and Members are lists of `Row`s under a `TopBar` whose primary
-button is the owner's one action, with its key: New project (`N`) and Invite
-(`I`). A member sees neither button, and Members is not in the sidebar. The
-button opens a Surface panel under the top bar, as Add link does on a task's
-page: Name\* and Prefix\* for a project; GitHub username\* and Role (Member
-or Owner) for an invitation. A refusal shows under the field it is about, as
-`Field` draws an error, or under the fields when it names none.
+Settings is one tab at a time under a `TopBar` whose `TabLinks` name the
+tabs: Workspace, Projects, Members, GitHub, Apps and You, each at its own
+address; a member has no Members or GitHub tab. Below 1024 px the tabs leave
+the top bar for a row of their own under it, which scrolls sideways with the
+current tab in view. Each tab is a `SettingsSection` (`settings.tsx`), 720 px
+at most: its title in `text-heading`, one line in Text 2 saying what it
+controls, the tab's one primary button at the end with its key, then its
+`SettingsGroup`s, flat panels with `rounded-xl` whose `SettingsRow`s hold a
+label on the left and its control on the right, under the label on a phone.
+A refusal shows under the row, as `Field` draws an error.
 
-A project's row is its `ProjectBadge`, its name as a link to its board, its
-prefix in Text 3, its open tasks, and at the end the checkbox Changes go live
-by a deploy, a 15 px native box filled in Accent once ticked. An owner ticks
-it; a member sees it disabled. Members has a `GroupHeader`
-for Members and, while any are pending, one for Invitations: a member's row is
-an `Avatar`, the name, the GitHub username, a role `Badge` and Remove, which
-asks again in the row before it removes; an invitation's row is the username,
-its role, its age and Revoke.
+Workspace is the workspace's 32 px icon beside the title, then Name and ID.
+An owner's Name is a required field with Save, which stays disabled until the
+name changes; a member sees the name as words. ID is the id in `text-code`
+with a Copy ID `IconButton`. You is the person's name and Time zone, a
+`Select` of every time zone the browser knows and UTC, led by Your browser’s
+with the browser's zone named; it applies to the person in every workspace,
+is saved with their account as soon as it is picked, and a toast names the
+zone dates now show in.
 
-Settings is one column under a `TopBar`: the workspace's 32 px icon beside
-one sentence in Text 2, then Name and ID. An owner's Name is a required
-`Field` with Save, the page's primary button, which stays disabled until the
-name changes; a refusal shows under the field. A member sees the name as
-words. ID is the id in `text-code` with a Copy ID `IconButton`. Your time
-zone follows, a `Select` of every time zone the browser knows and UTC, led by
-Your browser’s with the browser's zone named; it applies to the person in
-every workspace, is saved with their account as soon as it is picked, and a
-toast names the zone dates now show in.
+Projects lists each project as a `Row`: its 20 px `ProjectBadge`, its name as
+a link to its board, its prefix in Text 3, a Deploys `Badge` when its changes
+go live by a deploy and a Disabled one when it takes no new tasks. An owner's
+New project (`N`) opens a Surface panel above the list: Name\* and Prefix\*.
+Each row's Edit opens a Surface panel under it: Name\* and Website side by
+side, then the checkboxes Changes go live by a deploy and Enabled, 15 px
+native boxes filled in Accent once ticked, then Save and Cancel. Save sends
+only what changed; a website with no icon the server keeps ends with a toast
+naming the host. Members is Invite (`I`), which opens GitHub username\* and
+Role (Member or Owner) above the list, then a group of member rows and,
+while any are pending, one of invitation rows: a member's row is an
+`Avatar`, the name, the GitHub username, a role `Badge` and Remove, which
+asks again in the row before it removes; an invitation's row is the
+username, its role, its age and Revoke.
+
+`ProjectBadge` draws the icon read from a project's website, through
+`ProjectIcon`, which reads it with the page's sign-in, and the prefix's
+letter in a ringed square until it is read or when there is none.
 
 A sign-in in no workspace sees a page of its own on Canvas, outside the
 frame: a 400 px card on Background with `shadow-pop`, the 28 px logo, New
@@ -895,8 +909,8 @@ Each action's key:
 | `A` | Assign to |
 | `P` | Priority |
 | `Z` | Park |
-| `N` | New project, on the Projects page |
-| `I` | Invite, on the Members page |
+| `N` | New project, in Settings, Projects |
+| `I` | Invite, in Settings, Members |
 | `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover, the composer or an open form |

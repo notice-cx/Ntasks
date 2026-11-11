@@ -1,0 +1,15 @@
+{
+  "added": "`displayName`, `disabled` and `websiteUrl` on `PATCH /api/tasks/projects`; `disabled`, `websiteUrl` and `icon` on each project it and `GET /api/tasks/projects` answer; and `GET /api/tasks/projects/:projectId/icon`, which answers the icon read from the project's website",
+  "routes": {
+    "GET /api/tasks/projects": {
+      "projects[].disabled": "boolean",
+      "projects[].websiteUrl": "null|string",
+      "projects[].icon": "null|string"
+    },
+    "PATCH /api/tasks/projects": {
+      "project.disabled": "boolean",
+      "project.websiteUrl": "null|string",
+      "project.icon": "null|string"
+    }
+  }
+}

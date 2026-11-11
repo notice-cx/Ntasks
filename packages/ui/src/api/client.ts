@@ -36,6 +36,7 @@ import type {
   NewInvitation,
   NewProject,
   NewTask,
+  ProjectEdit,
   ProjectFields,
   StepMarking,
   TaskChoiceKey,
@@ -145,8 +146,11 @@ export interface TasksApi {
   markStep(id: string, project: string, marking: StepMarking, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Only the workspace's owners may create a project. */
   createProject(input: NewProject, options?: WriteOptions): Promise<void>;
-  /** Says whether a project's changes go live by a deploy: an owner's setting. */
-  setDeploys(project: string, deploys: boolean): Promise<void>;
+  /** An owner's settings of a project: its name, whether its changes go live by a deploy, whether it takes new
+   * tasks, and its website, whose icon the server reads. Answers the project as it stands after. */
+  updateProject(project: string, edit: ProjectEdit): Promise<TaskProject>;
+  /** The image `icon` names: a project's `icon`, as the project list gives it. */
+  projectIcon(icon: string, signal?: AbortSignal): Promise<Blob>;
   /** The workspace's members and pending invitations; only its owners may read them. */
   members(signal?: AbortSignal): Promise<WorkspaceMembers>;
   /** Invite a GitHub account: it joins the workspace when it first signs in. */
@@ -279,29 +283,36 @@ async function answerJson(response: Response, unreadable: string): Promise<unkno
   }
 }
 
+/** One project as the server answers it; fields an older server leaves out stay absent. */
+function readProject(row: unknown, unreadable: string): TaskProject {
+  if (
+    !isRecord(row) ||
+    typeof row.projectId !== 'string' ||
+    typeof row.logicalKey !== 'string' ||
+    typeof row.displayName !== 'string' ||
+    typeof row.prefix !== 'string'
+  ) {
+    throw new UnreadableAnswer(unreadable);
+  }
+  const textOrNull = (value: unknown) => (typeof value === 'string' || value === null ? { ok: true, value } : null);
+  const website = textOrNull(row.websiteUrl);
+  const icon = textOrNull(row.icon);
+  return Object.freeze({
+    projectId: row.projectId,
+    logicalKey: row.logicalKey,
+    displayName: row.displayName,
+    prefix: row.prefix,
+    ...(typeof row.deploys === 'boolean' ? { deploys: row.deploys } : {}),
+    ...(typeof row.disabled === 'boolean' ? { disabled: row.disabled } : {}),
+    ...(website ? { websiteUrl: website.value as string | null } : {}),
+    ...(icon ? { icon: icon.value as string | null } : {}),
+  });
+}
+
 function readProjects(payload: unknown): readonly TaskProject[] {
-  if (!isRecord(payload) || !Array.isArray(payload.projects))
-    throw new UnreadableAnswer('The project list could not be read.');
-  return Object.freeze(
-    payload.projects.map((row: unknown) => {
-      if (
-        !isRecord(row) ||
-        typeof row.projectId !== 'string' ||
-        typeof row.logicalKey !== 'string' ||
-        typeof row.displayName !== 'string' ||
-        typeof row.prefix !== 'string'
-      ) {
-        throw new UnreadableAnswer('The project list could not be read.');
-      }
-      return Object.freeze({
-        projectId: row.projectId,
-        logicalKey: row.logicalKey,
-        displayName: row.displayName,
-        prefix: row.prefix,
-        ...(typeof row.deploys === 'boolean' ? { deploys: row.deploys } : {}),
-      });
-    }),
-  );
+  const unreadable = 'The project list could not be read.';
+  if (!isRecord(payload) || !Array.isArray(payload.projects)) throw new UnreadableAnswer(unreadable);
+  return Object.freeze(payload.projects.map((row: unknown) => readProject(row, unreadable)));
 }
 
 function readFields(payload: unknown, project: string): ProjectFields {
@@ -591,7 +602,8 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
     markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
-    setDeploys: (project, deploys) => scope().setDeploys(project, deploys),
+    updateProject: (project, edit) => scope().updateProject(project, edit),
+    projectIcon: (icon, signal) => scope().projectIcon(icon, signal),
     members: (signal) => scope().members(signal),
     invite: (input, options) => scope().invite(input, options),
     revokeInvitation: (invitationId, options) => scope().revokeInvitation(invitationId, options),
@@ -826,8 +838,21 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
     async createProject({ name, prefix }, options) {
       await write('POST', '/api/tasks/projects', { name, prefix }, 'The new project', options);
     },
-    async setDeploys(project, deploys) {
-      await write('PATCH', '/api/tasks/projects', { projectId: await projectId(project), deploys }, project);
+    async updateProject(project, edit) {
+      const response = await write(
+        'PATCH',
+        '/api/tasks/projects',
+        { ...edit, projectId: await projectId(project) },
+        project,
+      );
+      const unreadable = `${project} was saved, but the answer could not be read.`;
+      const answer = await answerJson(response, unreadable);
+      return readProject(isRecord(answer) ? answer.project : null, unreadable);
+    },
+    async projectIcon(icon, signal) {
+      const response = await fetch(icon, { headers: { accept: 'image/*' }, ...(signal ? { signal } : {}) });
+      if (!response.ok) throw await refusal(response, 'The project icon');
+      return response.blob();
     },
     async members(signal) {
       return readMembers(await read<unknown>('/api/access/members', 'The member list', signal));

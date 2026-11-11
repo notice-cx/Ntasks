@@ -31,6 +31,8 @@ import { ApiError, type TasksApi } from './client';
 import {
   emptySeed,
   FIXTURE_ACTOR,
+  FIXTURE_ICON_PNG,
+  fixtureIconPath,
   FIXTURE_ACTORS,
   FIXTURE_USER,
   fixtureWorkspaces,
@@ -129,6 +131,8 @@ export function createFixtureTasksApi({
   let space: FixtureWorkspace | null = spaces[0] ?? null;
   let state = space?.seed ?? emptySeed();
   let made = 0;
+  /** Names each icon read, as the server's icon addresses do. */
+  let iconVersion = 1;
   /** Each retry key's write and its answer: the same write again gets the
    * answer without being applied twice, and a different write is refused. */
   const receipts = new Map<string, { write: string; answer: unknown }>();
@@ -716,7 +720,13 @@ export function createFixtureTasksApi({
     async createTask(input, options) {
       reach();
       return once(options?.idempotencyKey, ['create', input], () => {
-        const { prefix } = project(input.project);
+        const { prefix, displayName, disabled } = project(input.project);
+        if (disabled === true)
+          throw new ApiError(
+            `${displayName} is disabled, so it takes no new tasks. An owner can enable it in Settings.`,
+            409,
+            'task_refused',
+          );
         const title = input.title.trim();
         if (title === '') throw new ApiError('A task needs a title.', 400, 'invalid');
         let id: string;
@@ -947,13 +957,56 @@ export function createFixtureTasksApi({
         const taken = state.projects.find((row) => row.prefix === prefix);
         if (taken)
           throw new ApiError(`Prefix ${prefix} is taken by ${taken.displayName}.`, 409, 'project_exists', 'prefix');
-        state.projects.push({ projectId: `p-${prefix}`, logicalKey: prefix, displayName, prefix, deploys: false });
+        state.projects.push({
+          projectId: `p-${prefix}`,
+          logicalKey: prefix,
+          displayName,
+          prefix,
+          deploys: false,
+          disabled: false,
+          websiteUrl: null,
+          icon: null,
+        });
         state.fields.set(prefix, []);
       });
     },
-    async setDeploys(key, deploys) {
+    async updateProject(key, edit) {
       owned();
-      project(key).deploys = deploys;
+      const found = project(key);
+      const name = edit.displayName?.trim();
+      if (name !== undefined && (name === '' || name.length > NAME_LIMIT))
+        throw new ApiError('the name is one line of 1 to 128 characters', 400, 'invalid_request', 'displayName');
+      let website: string | null | undefined = edit.websiteUrl;
+      if (typeof website === 'string' && website.trim() !== '') {
+        const typed = website.trim();
+        website = httpUrl(/^[a-z][a-z0-9+.-]*:/iu.test(typed) ? typed : `https://${typed}`);
+        if (website === null)
+          throw new ApiError(
+            'the website is an http or https address, such as https://example.com',
+            400,
+            'invalid_request',
+            'websiteUrl',
+          );
+      } else if (website !== undefined) website = null;
+      if (name !== undefined) found.displayName = name;
+      if (edit.deploys !== undefined) found.deploys = edit.deploys;
+      if (edit.disabled !== undefined) found.disabled = edit.disabled;
+      if (website !== undefined) {
+        found.websiteUrl = website;
+        iconVersion += 1;
+        // Every invented website under example.com serves the fixture's icon; any other serves none.
+        found.icon =
+          website !== null && /(^|\.)example\.com$/u.test(new URL(website).hostname)
+            ? fixtureIconPath(found.projectId, iconVersion)
+            : null;
+      }
+      return copy(found);
+    },
+    async projectIcon(icon) {
+      reach();
+      if (!state.projects.some((row) => row.icon === icon))
+        throw new ApiError('This project has no icon.', 404, 'not_found');
+      return new Blob([Uint8Array.from(atob(FIXTURE_ICON_PNG), (char) => char.charCodeAt(0))], { type: 'image/png' });
     },
     async members() {
       const { members, invitations } = owned();

@@ -2,8 +2,8 @@
 
 The npm package [`@notice-cx/ntasks-ui`](../packages/ui/README.md) holds the web app's
 pages as one React component, `NtasksApp`. Another site renders it inside one
-of its own pages: the board, a task's page, Focus, Live, Projects, Members and
-Settings appear under an address the site picks, and every read and write
+of its own pages: the board, a task's page, Focus, Live and Settings, with its
+Projects and Members tabs, appear under an address the site picks, and every read and write
 goes to an Ntasks as the person signed in, never as the site. The Worker's
 own web app ([`apps/web`](../apps/web/README.md)) renders the same component
 on the Worker's origin.

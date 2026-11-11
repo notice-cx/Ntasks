@@ -455,6 +455,21 @@ export interface TaskProject {
   prefix: string;
   /** Its changes go live by a deploy, when the server says; merged is its tasks' last stage otherwise. */
   deploys?: boolean;
+  /** It takes no new tasks, and the app leaves it out of the sidebar and the board; its tasks stay readable. */
+  disabled?: boolean;
+  /** Its website, when the server says. */
+  websiteUrl?: string | null;
+  /** The address of the icon read from its website, on the API's origin; null or absent when it has none. */
+  icon?: string | null;
+}
+
+/** An owner's change to a project: each field it names, and only those. */
+export interface ProjectEdit {
+  displayName?: string;
+  deploys?: boolean;
+  disabled?: boolean;
+  /** An http or https address, or null to clear it; saving one reads its icon. */
+  websiteUrl?: string | null;
 }
 
 /** A new task. */
