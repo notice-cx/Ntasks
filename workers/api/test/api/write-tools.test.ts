@@ -15,7 +15,7 @@ import {
   titleHolds,
 } from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
-import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
+import { AGENT, clock, everyTask, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
   callTool,
@@ -301,7 +301,7 @@ describe('a write that names only what it needs', () => {
   it('answers the same new task sent again without a key with its first result, while it is unchanged and for a day', async () => {
     const project = await newProject(engine);
     const args = { project: project.id, title: 'Once' };
-    const filed = async () => (await engine.listTasks(project.id, { limit: 10 })).tasks.length;
+    const filed = async () => (await everyTask(engine, project.id)).length;
     const first = await write<{ id: string }>(target, 'create_task', args);
     expect(await write(target, 'create_task', args)).toEqual({ ...first, replayed: true });
     expect(await filed()).toBe(1);
@@ -353,7 +353,7 @@ describe('a write that names only what it needs', () => {
       [newEpic, true],
       [newChild, true],
     ]);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
+    expect(await everyTask(engine, project.id)).toHaveLength(4);
   });
 
   it('runs the same write sent again without a key once the task has changed since its answer', async () => {
@@ -524,7 +524,7 @@ describe('create_task', () => {
       idempotency_key: key(),
     });
     expect(reply.lint).toEqual({
-      missing: ['## Steps to Reproduce', '## Acceptance Criteria'],
+      missing: ['## Steps to Reproduce', 'acceptance'],
       advice: [CHOICES_ADVICE],
     });
   });
@@ -705,7 +705,7 @@ describe('create_task', () => {
     const first = await write<{ id: string; approval: { id: string } }>(target, 'create_task', args);
     const again = await write<{ id: string; replayed: boolean; approval: { id: string } }>(target, 'create_task', args);
     expect(again).toMatchObject({ id: first.id, replayed: true, approval: { id: first.approval.id } });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+    expect(await everyTask(engine, project.id)).toHaveLength(2);
     expect(await refusal(target, 'create_task', { workspace: WORKSPACE.id, ...args, title: 'Something else' })).toBe(
       'conflict: this idempotency_key was first used for a different change. Resend that call unchanged to read its result, or choose a new key for this one.',
     );
@@ -771,7 +771,7 @@ describe('create_task', () => {
       `refused: ${elsewhere.id} is not in projectId ${project.id} (${project.name}), whose tasks start ${project.prefix}-; tasks with prefix ${other.prefix} are in projectId ${other.id} (${other.name}).`,
     );
     expect(await refused({ project: 'missing' })).toBe(missingProject('missing'));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(engine, project.id)).toEqual([]);
   });
 
   it('reads an object argument sent as text, saying the client is out of date', async () => {
@@ -899,7 +899,7 @@ describe('create_tasks', () => {
     const [epic, child, gated] = reply.results.map((entry) => entry.id);
     expect(reply).toMatchObject({
       results: [
-        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['## Success Criteria'] } },
+        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['acceptance'] } },
         { index: 1, id: `${epic}.1`, status: 'open', replayed: false },
         { index: 2, id: gated, replayed: false, approval: { status: 'open', reason: 'Approve it.' }, held: true },
       ],
@@ -911,7 +911,7 @@ describe('create_tasks', () => {
     expect(again.results.map((entry) => [entry.id, entry.replayed])).toEqual(
       reply.results.map((entry) => [entry.id, true]),
     );
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
+    expect(await everyTask(engine, project.id)).toHaveLength(4);
   });
 
   it('files every task it can, refusing one alone, and lets #n name a later task of the call', async () => {
@@ -944,9 +944,7 @@ describe('create_tasks', () => {
       error: expect.stringMatching(/^invalid arguments: tasks\[5\]\.blocks\[0\] /u),
     });
     expect(reply.retry).toEqual(expect.any(String));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
-      [epic!.id, child!.id].sort(),
-    );
+    expect((await everyTask(engine, project.id)).map((row) => row.id).sort()).toEqual([epic!.id, child!.id].sort());
     // Sent again, the tasks filed answer as they were, and the refused ones are tried again.
     const again = await write<{ results: Result[] }>(target, 'create_tasks', args);
     expect(again.results.map((result) => result.id ?? null)).toEqual([child!.id, null, epic!.id, null, null, null]);
@@ -965,7 +963,7 @@ describe('create_tasks', () => {
       expect(looped?.error).toContain('#1');
     }
     expect(third).toMatchObject({ index: 2, status: 'open' });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id)).toEqual([third!.id]);
+    expect((await everyTask(engine, project.id)).map((row) => row.id)).toEqual([third!.id]);
   });
 
   it('refuses a call it cannot file any of, filing nothing', async () => {
@@ -982,7 +980,7 @@ describe('create_tasks', () => {
       'invalid arguments: unknown argument tasks[0].model',
     );
     expect(await refused({ project: 'missing', tasks: [{ title: 'A' }] })).toBe(missingProject('missing'));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(engine, project.id)).toEqual([]);
   });
 });
 
@@ -1404,7 +1402,7 @@ describe('update_task', () => {
       changeClass: 'feature',
       version: 2,
       replayed: false,
-      lint: { missing: ['## Acceptance Criteria'] },
+      lint: { missing: ['acceptance'] },
     });
     expect(reply).not.toHaveProperty('description');
     expect(await current(project, id)).toMatchObject({
@@ -2858,9 +2856,7 @@ describe('create_task with claim and done', () => {
       /^invalid arguments: done\.link /u,
     );
     expect(await refused({ done: { evidence: 'Done.', when: 'today' } })).toMatch(/^invalid arguments: done /u);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
-      [waiting.id, gate].sort(),
-    );
+    expect((await everyTask(engine, project.id)).map((row) => row.id).sort()).toEqual([waiting.id, gate].sort());
   });
 
   it('names open tasks in its project whose titles share most of its words as possible duplicates', async () => {

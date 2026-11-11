@@ -5,6 +5,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# VitePress's cache, which `vitepress dev` writes beside each site's config
+**/.vitepress/cache/
+
 # the HTTP API's versions, listed from workers/api/api-versions/ by
 # workers/api/scripts/api-versions.ts on install and before every build and test
 workers/api/src/api-versions.generated.json

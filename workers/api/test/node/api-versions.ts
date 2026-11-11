@@ -94,8 +94,8 @@ test('refuses a file not named as a version, which would sort where its name put
 
 test('merges two changes that each add a version, in either order, one version up per change', () => {
   // beta's file sorts first though it is written later, as when the change
-  // opened first merges second. Both are dated after every real version, so
-  // they stay the last two whatever versions main gains.
+  // opened first merges second. Both are dated after any real version, so
+  // they stay the last two whatever main gains.
   const repo = repository(
     'two-changes',
     {},
