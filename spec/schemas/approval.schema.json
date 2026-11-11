@@ -14,7 +14,7 @@
       "oneOf": [
         {
           "allOf": [{ "$ref": "answer.schema.json" }],
-          "properties": { "option": { "enum": ["approve", "decline"] } }
+          "properties": { "option": { "enum": ["approve", "done", "decline"] } }
         },
         { "type": "null" }
       ]

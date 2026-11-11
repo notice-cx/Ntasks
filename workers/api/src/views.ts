@@ -84,9 +84,10 @@ const OWNER_ANSWERS: readonly Json[] = ['answer', 'declined', 'owner_performed']
  * The latest owner answer recorded on a task: what was chosen, the owner's
  * words, where they said it, who recorded it and how, and the proposal
  * version it answered; null when none is recorded. `option` is a letter on a
- * task with choices, `approve` or `decline` on an approval, `done` or
+ * task with choices, `approve`, `done` or `decline` on an approval, `done` or
  * `decline` on a request to do steps, and null when the answer chose none of
- * the options.
+ * the options. `done` on either gate is the person's report that they did it
+ * themselves, which permits no agent to do it.
  */
 export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
   const record = objectOrNull(task.metadata[NOTICEOS.maintenance]);
@@ -104,9 +105,9 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
       task.type === 'gate'
         ? answer.action === 'declined'
           ? 'decline'
-          : task.steps === null
-            ? 'approve'
-            : 'done'
+          : answer.action === 'owner_performed' || task.steps !== null
+            ? 'done'
+            : 'approve'
         : text(answer.option),
     quote: text(answer.response),
     source: text(answer.source),

@@ -17,6 +17,7 @@ import {
   chooseRoute,
   dismissRoute,
   disputeRoute,
+  performedRoute,
   releaseRoute,
   resolveRoute,
   respondRoute,
@@ -123,7 +124,7 @@ function routesOf(pathname: string): Routes | null {
   const gate = gatePath(pathname);
   if (gate !== null) {
     const { gateId } = gate;
-    const route = gate.part === 'steps' ? stepRoute : resolveRoute;
+    const route = { resolve: resolveRoute, performed: performedRoute, steps: stepRoute }[gate.part];
     return { POST: (context, url, request) => route(context, url, request, gateId), scope: SCOPES.decide };
   }
   const task = taskPath(pathname);

@@ -98,6 +98,7 @@ export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
   'respond',
   'dismiss',
   'resolve',
+  'performed',
   'choose',
   'dispute',
   'step',

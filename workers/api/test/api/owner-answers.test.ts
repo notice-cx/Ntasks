@@ -686,9 +686,12 @@ describe('relayed approvals and their disputes', () => {
       action: 'owner_performed',
       quote: 'I uploaded all 12 photos and the read-back matches.',
     });
-    expect(done.resolution).toBe('done');
+    expect(done).toMatchObject({ resolution: 'done', answer: { option: 'done', relayed: true } });
     expect(done.metadata.noticeos_maintenance!.permission).toBe('none');
     expect((await current(project, photos.id)).labels).toEqual([]);
+    expect((await comments(project, photos.id)).map((comment) => comment.text)).toEqual([
+      `The owner's report that they did the action of ${gate.id} themselves is recorded, so no agent does it. Check the result yourself before continuing.`,
+    ]);
   });
 
   it('closes obsolete and superseded approvals as no longer needed, and a declined one as wont-do', async () => {

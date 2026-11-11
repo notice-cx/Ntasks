@@ -274,6 +274,13 @@ async function drive(): Promise<readonly Sample[]> {
   );
   await as('POST /api/gates/:id/resolve', `/api/gates/${approval}/resolve`, inProject());
 
+  const update = (await tool(owner, 'create_task', { project: projectId, title: 'Update the server' })).id as string;
+  const performed = idOf(
+    await tool(owner, 'request_human_approval', { task: update, reason: 'Update the server to main.' }),
+    'approval',
+  );
+  await as('POST /api/gates/:id/performed', `/api/gates/${performed}/performed`, inProject({ note: 'Done here.' }));
+
   const mailing = (await tool(owner, 'create_task', { project: projectId, title: 'Email the list' })).id as string;
   const relayed = idOf(
     await tool(owner, 'request_human_approval', { task: mailing, reason: 'Email the list.' }),

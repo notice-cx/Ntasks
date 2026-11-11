@@ -425,8 +425,11 @@ export function taskPath(pathname: string): { readonly taskId: string; readonly 
   return { taskId: match[1]!, part: (match[2] as TaskPart | undefined) ?? null };
 }
 
-/** The gate id and route in /api/gates/:id/resolve or /api/gates/:id/steps, or null for another path. */
-export function gatePath(pathname: string): { readonly gateId: string; readonly part: 'resolve' | 'steps' } | null {
-  const match = /^\/api\/gates\/([^/]+)\/(resolve|steps)$/u.exec(pathname);
-  return match && isTaskId(match[1]) ? { gateId: match[1]!, part: match[2] as 'resolve' | 'steps' } : null;
+/** What a path under /api/gates/:id names: an approval, a report that the action was done, or a step's marks. */
+export type GatePart = 'resolve' | 'performed' | 'steps';
+
+/** The gate id and route in /api/gates/:id/resolve, /performed or /steps, or null for another path. */
+export function gatePath(pathname: string): { readonly gateId: string; readonly part: GatePart } | null {
+  const match = /^\/api\/gates\/([^/]+)\/(resolve|performed|steps)$/u.exec(pathname);
+  return match && isTaskId(match[1]) ? { gateId: match[1]!, part: match[2] as GatePart } : null;
 }
