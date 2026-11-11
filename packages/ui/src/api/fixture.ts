@@ -1130,7 +1130,11 @@ export function createFixtureTasksApi({
       const task = state.tasks.find((row) => row.id === id);
       const delivery = task?.delivery;
       if (!task || task.status !== 'closed' || !delivery || delivery.stage === 'live') return null;
-      const merging = repositoryOf(task);
+      // As the Worker reads it, at any stage: the delivery's repository, or else its GitHub pull request's.
+      const merging =
+        delivery.repository ??
+        /^https:\/\/github\.com\/([a-z0-9-]+\/[a-z0-9._-]+)\/pull\/\d+$/u.exec(delivery.pullRequest ?? '')?.[1] ??
+        null;
       const live =
         state.projects.find((row) => row.logicalKey === task.project)?.deploys === true ||
         (merging !== null && state.mergesLive?.has(merging) === true);

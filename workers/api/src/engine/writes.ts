@@ -263,6 +263,9 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
     OR substr(t.delivery_merge_commit, 1, length(w.value)) = w.value
   UNION
   SELECT t.id FROM json_each(?4) w CROSS JOIN tasks t ON t.id = w.value
+  UNION
+  -- A moved task's old id, such as on a Refs: line written before the move, still names it.
+  SELECT a.task_id FROM json_each(?4) w CROSS JOIN task_aliases a ON a.alias = w.value
 )
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
@@ -1251,11 +1254,6 @@ export class Writes {
       signal.stage !== 'merged'
         ? null
         : (signal.mergeCommit ?? (signal.commits.length === 1 ? signal.commits[0]! : null));
-    // A moved task's old id, such as on a Refs: line written before the move, still names it.
-    const named = [...new Set(signal.taskIds ?? [])];
-    const nowNamed = new Map(named.map((id) => [id, id]));
-    for (const former of await this.#reads.formerIds(named)) nowNamed.set(former.formerId, former.taskId);
-    const taskIds = JSON.stringify([...new Set(named.map((id) => nowNamed.get(id)!))]);
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const { results } = await this.#db
         .prepare(DELIVERY_CANDIDATES)
@@ -1263,7 +1261,7 @@ export class Writes {
           JSON.stringify([...new Set(projectIdsInput)]),
           JSON.stringify(signal.pullRequests),
           JSON.stringify(signal.commits),
-          taskIds,
+          JSON.stringify(signal.taskIds ?? []),
         )
         .all<StoredTaskRow & { readonly deploys: number }>();
       const at = this.#now();
