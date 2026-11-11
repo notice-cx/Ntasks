@@ -375,6 +375,14 @@ export interface TaskChange {
   /** The project's id, as the project list gives it. */
   projectId: string;
   taskId: string;
+  /** `created`, `updated`, `closed`, `reopened` or `commented`, or a kind this build does not know. */
+  kind?: string;
+  /** Who made the change, as the task's fields name a person, an agent or a service. */
+  actor?: string;
+  model?: string | null;
+  at?: string;
+  /** The fields the change set, with their new values; a comment's text. */
+  changes?: Record<string, unknown>;
 }
 
 /** The changes after a sequence number, and the number to ask after next. */

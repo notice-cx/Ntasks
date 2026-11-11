@@ -3,7 +3,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { needsSignIn } from '../api/client';
 import type { LiveTasksPayload, TaskProject } from '../api/types';
 import { fieldsProject, readBoard, type BoardFilters, type ProjectRead } from '../lib/board-read';
-import { useChangeFeed } from './useChangeFeed';
+import { useChangeFeed, type RecentChange } from './useChangeFeed';
 import { useBoards, useFilteredBoard, useTaskProjects, useTaskSearch } from './useTasks';
 
 interface BoardsRead {
@@ -12,6 +12,8 @@ interface BoardsRead {
   active: readonly TaskProject[];
   keys: readonly string[];
   boards: UseQueryResult<LiveTasksPayload, Error>[];
+  /** Each task's latest change the feed brought in the last minute, in words. */
+  recent: ReadonlyMap<string, RecentChange>;
 }
 
 const BoardsContext = createContext<BoardsRead | null>(null);
@@ -33,7 +35,7 @@ export function BoardsProvider({
   const active = useMemo(() => (catalog.data ?? []).filter((project) => project.disabled !== true), [catalog.data]);
   const keys = useMemo(() => active.map((project) => project.logicalKey), [active]);
   const boards = useBoards(keys);
-  useChangeFeed(
+  const recent = useChangeFeed(
     keys.map((project, index) => ({ project, lastSeq: boards[index]?.data?.lastSeq })),
     // Every project, so a change to a disabled project's task still refreshes its open page.
     catalog.data,
@@ -46,7 +48,7 @@ export function BoardsProvider({
   const version = [catalog, ...boards]
     .map((query) => `${query.status}:${query.fetchStatus}:${query.dataUpdatedAt}:${query.errorUpdatedAt}`)
     .join('|');
-  const value = useMemo(() => ({ catalog, active, keys, boards }), [version, active, keys]);
+  const value = useMemo(() => ({ catalog, active, keys, boards, recent }), [version, active, keys, recent]);
   return <BoardsContext.Provider value={value}>{children}</BoardsContext.Provider>;
 }
 
@@ -137,3 +139,10 @@ export function useBoard(filters: BoardFilters) {
 }
 
 export type Board = ReturnType<typeof useBoard>;
+
+/** Each task's latest change the feed brought in the last minute, in words, by task id. Inside a `BoardsProvider`. */
+export function useRecentChanges(): ReadonlyMap<string, RecentChange> {
+  const shared = useContext(BoardsContext);
+  if (!shared) throw new Error('useRecentChanges needs a BoardsProvider around it.');
+  return shared.recent;
+}
