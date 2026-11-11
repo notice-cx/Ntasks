@@ -893,7 +893,10 @@ workspace's task store also asks GitHub itself, as the app:
 
 Each check first reads the pull requests of the newest tasks waiting for a
 merge in repositories an installation reaches, and moves each one merged into
-its repository's default branch to `merged`, with its merge commit. An
+its repository's default branch to `merged`, with its merge commit. The
+tasks waiting for a merge are the closed tasks at `built`, and the tasks in
+progress whose work names a pull request: a merge closes those as its event
+would ([below](#work-still-in-progress-when-its-pull-request-merges)). An
 installation on all of its account's repositories reaches every one; for an
 installation on selected repositories, the check lists them first, up to 200,
 and reads only pull requests in the ones listed.
@@ -988,8 +991,12 @@ moves anything:
 - An epic whose last open task the merge closes closes in the same write, as
   every epic does when its last open task closes
   ([Epics](concepts.md#epics)).
-- Only a delivery Ntasks checked came from GitHub closes a task. A merge
-  sent to `POST /api/delivery` or with `report_delivery` closes nothing.
+- Only GitHub's own word closes a task: a delivery Ntasks checked came from
+  GitHub, or the task store's check, which asks GitHub as the app
+  ([above](#from-github)). It closes a task whose merge event GitHub never
+  delivered, such as one sent during an outage or before the app was
+  installed, with the same proof, comment and exceptions. A merge sent to
+  `POST /api/delivery` or with `report_delivery` closes nothing.
 
 The answer lists the tasks the merge closed as `closed`, and each task it
 left in progress as `kept`, with `why`. Each list is left out when it is
