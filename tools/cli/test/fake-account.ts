@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main } from '../src/cli.ts';
+import { fakeRegistry } from './fake-registry.ts';
 
 /** A binding of a Worker version, as Cloudflare lists it. */
 export type FakeBinding =
@@ -54,9 +55,13 @@ export function emptyAccount(overrides: Partial<FakeAccountState> = {}): FakeAcc
   };
 }
 
-/** A release folder laid out as scripts/build.ts lays out the package, with these D1 migrations. */
-export async function release(version: string, migrations: readonly string[]): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), 'ntasks-cli-release-'));
+/**
+ * A release folder laid out as scripts/build.ts lays out the package, with
+ * these D1 migrations. It is a new temporary folder, or `dir` when given.
+ */
+export async function release(version: string, migrations: readonly string[], dir?: string): Promise<string> {
+  if (dir === undefined) dir = await mkdtemp(path.join(tmpdir(), 'ntasks-cli-release-'));
+  else await mkdir(dir, { recursive: true });
   await mkdir(path.join(dir, 'worker'));
   await mkdir(path.join(dir, 'assets'));
   await mkdir(path.join(dir, 'migrations'));
@@ -92,14 +97,28 @@ export interface Run {
   readonly after: FakeAccountState;
 }
 
+export interface RunOptions {
+  /** The npm registry the command reads the latest release from. Left out, a stand-in whose latest is the release's own. */
+  readonly registry?: string;
+  /** Answers the command's questions, as the person would in a terminal. Left out, there is no terminal. */
+  readonly ask?: (question: string) => Promise<string>;
+}
+
 /** Runs the ntasks command against the account, with wrangler's terminal output kept apart from the command's own. */
-export async function runCli(argv: readonly string[], releaseDir: string, account: FakeAccountState): Promise<Run> {
+export async function runCli(
+  argv: readonly string[],
+  releaseDir: string,
+  account: FakeAccountState,
+  options: RunOptions = {},
+): Promise<Run> {
   const folder = await mkdtemp(path.join(tmpdir(), 'ntasks-cli-account-'));
   const stateFile = path.join(folder, 'account.json');
   await writeFile(stateFile, JSON.stringify(account));
   const out: string[] = [];
   const err: string[] = [];
   const ignore = () => undefined;
+  const { version } = JSON.parse(await readFile(path.join(releaseDir, 'package.json'), 'utf8')) as { version: string };
+  const ownRegistry = options.registry === undefined ? await fakeRegistry(version) : undefined;
   const code = await main(argv, {
     packageDir: releaseDir,
     wrangler: { program: process.execPath, args: [FAKE_WRANGLER] },
@@ -110,10 +129,12 @@ export async function runCli(argv: readonly string[], releaseDir: string, accoun
       HOME: folder,
       FAKE_CLOUDFLARE_STATE: stateFile,
       AUTH_SECRET: 'from-the-environment',
+      npm_config_registry: options.registry ?? ownRegistry?.url,
     },
     io: { out: (line) => out.push(line), err: (line) => err.push(line) },
     terminal: { out: ignore, err: ignore },
-  });
+    ask: options.ask,
+  }).finally(() => ownRegistry?.close());
   const after = JSON.parse(await readFile(stateFile, 'utf8')) as FakeAccountState;
   return { code, out: out.join('\n'), err: err.join('\n'), before: account, after };
 }
