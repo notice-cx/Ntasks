@@ -56,7 +56,8 @@ const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
  * faintly, Stalled not at all. Closed cards keep the plain Background.
  */
 const ACTIVITY_TINTS: Readonly<Record<Activity, string>> = {
-  active: 'border-accent/40 bg-accent-soft',
+  // A 2 px edge, 1 px less padding: Active reads apart from Quiet where colours are forced, as in high contrast.
+  active: 'border-2 border-accent/40 bg-accent-soft p-[9px]',
   quiet: 'border-accent/15 bg-accent-soft/40',
   stalled: 'border-dashed border-border-strong bg-transparent shadow-none',
 };
@@ -220,7 +221,12 @@ function Card({
     >
       <ChangeLabel change={change} />
       <div className="flex min-w-0 items-center gap-1.5 text-meta text-ink-3">
-        {project ? <ProjectIcon project={project} size={16} /> : null}
+        {project ? (
+          <>
+            <ProjectIcon project={project} size={16} />
+            <span className="sr-only">{project.name}</span>
+          </>
+        ) : null}
         <span className="nums whitespace-nowrap">{task.id}</span>
         {/* The tint shows how recently its holder worked on it; a screen reader hears it. */}
         {activity ? <span className="sr-only">{ACTIVITY_LABELS[activity]}</span> : null}

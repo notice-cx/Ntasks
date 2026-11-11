@@ -734,7 +734,8 @@ waiting work. A closed card names who closed it only when the close records
 them.
 
 A card is a Background panel with a Border edge, 8 px corners and the raise
-shadow. Its first line is its project's icon at 16 px (`ProjectIcon`), the
+shadow. Its first line is its project's icon at 16 px (`ProjectIcon`), with
+the project's name for a screen reader, the
 task's id in Text 3 and, at the end, the pull request's number as a link
 after `git-pull-request`. Then the title as a link, two lines at most. Its
 last line, in Text 3, is what is next for it: on a task in progress, Next and
@@ -747,7 +748,8 @@ progress, else since its change reached its stage.
 
 A card in progress is tinted by its activity, and says it to a screen reader
 in a hidden word: an Active card is filled Accent soft with an Accent edge at
-40 % opacity, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
+40 % opacity, 2 px wide so it reads apart from a Quiet one where colours are
+forced, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
 and a Stalled one has a dashed Border strong edge, no fill and no shadow, and
 its title in Text 2. Closed cards keep the plain Background.
 

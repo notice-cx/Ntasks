@@ -256,6 +256,7 @@ describe('the Live board', () => {
     await boardCards('In progress');
     const card = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
     expect(within(card).getByText('Active').className).toContain('sr-only');
+    expect(within(card).getByText('Example web app').className).toContain('sr-only');
     fireEvent.focus(within(card).getByRole('button', { name: 'Codex' }));
     expect((await screen.findByRole('tooltip')).textContent).toBe('Codex · codex-example');
   });
