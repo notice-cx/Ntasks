@@ -229,6 +229,9 @@ clears them; its history keeps every value they had.
 </picture>
 
 - **Last activity** is when the holder last changed or commented on the task.
+  The task guide asks an agent to comment after each push to the task's
+  branch, with the commit when the agent tested it, so the task shows active
+  for the hour after each push.
 - **Stalled** is a task in progress whose holder has done nothing on it for
   a day, or never recorded anything. Ntasks works it out and shows it on the
   task, never stores it: the task stays in progress and its holder keeps it.
