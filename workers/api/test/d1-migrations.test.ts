@@ -106,3 +106,24 @@ it('names every migration when the database records none', async () => {
     await env.DB.exec('ALTER TABLE d1_migrations_kept RENAME TO d1_migrations');
   }
 });
+
+it('answers a sign-in that fails on a missing table with the migrations it lacks', async () => {
+  // The sign-in library catches its own database errors and answers with an
+  // error of its own, so the Worker checks the migrations after that answer.
+  const first = D1_MIGRATIONS[0]!;
+  await env.DB.batch([
+    env.DB.prepare('ALTER TABLE auth_verification RENAME TO auth_verification_kept'),
+    env.DB.prepare('DELETE FROM d1_migrations WHERE name = ?').bind(first),
+  ]);
+  try {
+    const signIn = await new Browser().fetch('/sign-in', { form: { action: 'github' } });
+
+    expect(signIn.status).toBe(503);
+    expect(await signIn.json()).toMatchObject({ error: 'database_behind', missing: [first] });
+  } finally {
+    await env.DB.batch([
+      env.DB.prepare('ALTER TABLE auth_verification_kept RENAME TO auth_verification'),
+      env.DB.prepare('INSERT INTO d1_migrations (name) VALUES (?)').bind(first),
+    ]);
+  }
+});

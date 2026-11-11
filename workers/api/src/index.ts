@@ -19,14 +19,28 @@ export default {
    * the database lacks a migration names the migration instead. */
   async fetch(request, env) {
     const response = await crossOrigin(request, env.DB, async () => {
+      let answer: Response;
       try {
-        return (await handleAccess(request, env)) ?? (await worker.fetch(request, env));
+        answer = (await handleAccess(request, env)) ?? (await worker.fetch(request, env));
       } catch (error) {
         const behind = await databaseBehind(env.DB);
         if (behind === null) throw error;
         return behind;
       }
+      // The sign-in library answers its own database errors as a 5xx or an error redirect.
+      return failed(answer) ? ((await databaseBehind(env.DB)) ?? answer) : answer;
     });
     return new URL(request.url).pathname.startsWith('/api/') ? versioned(response) : response;
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * An answer that reports a fault: a 5xx, or a redirect that carries the
+ * sign-in library's error for one. A 503 is the Worker's own answer, for a
+ * database that lacks migrations or a write to send again, and is kept.
+ */
+function failed(answer: Response): boolean {
+  if (answer.status >= 500) return answer.status !== 503;
+  if (answer.status < 300 || answer.status >= 400) return false;
+  return /[?&]error=(?:internal_server_error|server_error)(?:&|$)/u.test(answer.headers.get('location') ?? '');
+}
