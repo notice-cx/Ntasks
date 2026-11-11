@@ -31,6 +31,8 @@ export interface FixtureSeed {
   fields: Map<string, TaskField[]>;
   /** Each former id of a task moved to another project, and the id it has now; none when left out. */
   aliases?: Map<string, string>;
+  /** The repositories whose merges go live; none when left out. */
+  mergesLive?: Set<string>;
 }
 
 /** A workspace with what it holds: its projects and tasks, its members and its pending invitations. */
@@ -431,6 +433,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
           commit: '9f8e7d6',
           pullRequest: null,
           mergeCommit: '9f8e7d6',
+          repository: 'example/docs',
           builtAt: at(3 * DAY),
           mergedAt: at(3 * DAY - HOUR),
           liveAt: null,

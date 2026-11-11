@@ -872,6 +872,13 @@ export function commitSha(value: unknown, field: string): string {
 /** The most pull requests, and the most commits, one delivery signal names. */
 export const SIGNAL_ITEMS = 100;
 
+/** A GitHub repository as owner/name, in lowercase: GitHub's names ignore case. */
+export function repositoryName(value: unknown): string {
+  if (typeof value !== 'string' || !REPOSITORY_NAME.test(value))
+    invalid('repository must be owner/name, such as example/app');
+  return value.toLowerCase();
+}
+
 export function deliverySignal(value: DeliverySignal): DeliverySignal {
   if (value === null || typeof value !== 'object') invalid('the signal must be an object');
   if (value.stage !== 'merged' && value.stage !== 'live') invalid('stage must be merged or live');
@@ -886,17 +893,12 @@ export function deliverySignal(value: DeliverySignal): DeliverySignal {
   if (pullRequests.length === 0 && commits.length === 0) invalid('a signal names a pull request or a commit');
   if (value.mergedBy !== undefined && value.stage !== 'live') invalid('mergedBy goes with stage live');
   if (value.mergeCommit !== undefined && value.stage !== 'merged') invalid('mergeCommit goes with stage merged');
-  if (
-    value.repository !== undefined &&
-    (typeof value.repository !== 'string' || !REPOSITORY_NAME.test(value.repository))
-  )
-    invalid('repository must be owner/name, such as example/app');
   return {
     stage: value.stage,
     pullRequests,
     commits,
     ...(value.mergeCommit === undefined ? {} : { mergeCommit: commitSha(value.mergeCommit, 'mergeCommit') }),
-    ...(value.repository === undefined ? {} : { repository: value.repository.toLowerCase() }),
+    ...(value.repository === undefined ? {} : { repository: repositoryName(value.repository) }),
     ...(taskIds.length === 0 ? {} : { taskIds }),
     ...(value.mergedBy === undefined ? {} : { mergedBy: instant(value.mergedBy, 'mergedBy') }),
     ...(value.at === undefined ? {} : { at: instant(value.at, 'at') }),

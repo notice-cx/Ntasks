@@ -73,6 +73,13 @@ move it from there:
   turns on **Changes go live by a deploy** for that project, in Settings,
   Projects. A project with no deploy, such as a library, stops at Merged. An
   owner who turns the setting off keeps it off.
+- **A repository with no deploy in a project that deploys.** A project that
+  takes work from a website and from a tool that runs from its default
+  branch keeps the tool's tasks at Merged. Tick the tool's repository under
+  **Merges go live**, in Settings, GitHub: a merge there then moves its
+  tasks straight to Live, and ticking it moves the tasks already at Merged
+  to Live, at the time they merged. A repository shows there once a merge
+  in it moved a task.
 - **A pull request merged before its task closed.** Its merge event came too
   early to move the task, so Ntasks asks GitHub about 5 seconds after the
   close, and moves the task to Merged then. Installing the app does the same
@@ -133,7 +140,8 @@ In each case, a signal that names the pull request or commit moves the task:
 `report_delivery` from an agent, or `POST /api/delivery`
 ([Delivery](api.md#delivery)). A `live` signal moves a task to Live only in
 a project with **Changes go live by a deploy** turned on, in Settings,
-Projects; in any other project it stops at Merged.
+Projects; in any other project it stops at Merged. A task whose repository
+is ticked under **Merges go live** moves to Live on either signal.
 
 ## Approve a pull request in Ntasks
 

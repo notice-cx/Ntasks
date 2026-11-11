@@ -12,6 +12,7 @@ import {
   ICON_SCHEMES,
   PROJECT_ICON_MAX_BYTES,
   PROJECT_ICON_TYPES,
+  REPOSITORY_NAME,
   TASK_LIMITS,
   TaskRefused,
   WORK_DETAILS,
@@ -38,6 +39,7 @@ import {
   type Project,
   type ProjectChange,
   type IconScheme,
+  type RepositoryResult,
   type ProjectIcon,
   type Retry,
   type Task,
@@ -177,6 +179,12 @@ function deliveryJson(delivery: TaskDelivery): JsonObject {
   };
 }
 
+/** The repository a task's change reached: the one its delivery records, or else the one its GitHub pull request is in. */
+function repositoryOf(delivery: TaskDelivery): string | null {
+  if (delivery.repository !== null) return delivery.repository;
+  return delivery.pullRequest === null ? null : (githubPullOf(delivery.pullRequest)?.repository ?? null);
+}
+
 /** The order of the stages: a task moves only to a later one. */
 const STAGE_ORDER: Readonly<Record<DeliveryStage, number>> = Object.freeze({ built: 0, merged: 1, live: 2 });
 
@@ -218,6 +226,15 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
 ORDER BY t.id`;
+
+/**
+ * The tasks at merged whose change reached repository ?1: the one their
+ * delivery records, or else the one their pull request ?2 starts with.
+ */
+const MERGED_IN_REPOSITORY = `SELECT * FROM tasks
+WHERE delivery_stage = 'merged'
+  AND (delivery_repository = ?1 OR (delivery_repository IS NULL AND substr(lower(delivery_pull_request), 1, length(?2)) = ?2))
+ORDER BY id`;
 
 /** The most times one write checks an epic as it climbs from the tasks it changes, so a parent chain that loops, as an import could leave, still ends. */
 const EPIC_CHECKS = 8;
@@ -1194,6 +1211,7 @@ export class Writes {
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
+      const repositories = results.length === 0 ? new Map<string, boolean>() : await this.#repositories();
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
@@ -1202,6 +1220,10 @@ export class Writes {
         // only after its checks pass on its branch, so a preview there starts minutes before the merge.
         if (signal.mergedBy !== undefined && (current.mergedAt === null || current.mergedAt > signal.mergedBy))
           continue;
+        const recorded = current.repository ?? signal.repository ?? null;
+        const repository = repositoryOf({ ...current, repository: recorded });
+        // A repository whose merges go live has no deploy: nothing waits between its merge and live.
+        const mergesLive = repository !== null && repositories.get(repository) === true;
         const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
         if (turnsOn && !turnedOn.has(row.project_id)) {
           turnedOn.add(row.project_id);
@@ -1210,30 +1232,28 @@ export class Writes {
           );
         }
         // A project that does not deploy has nothing after merged.
-        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 && !turnsOn ? 'merged' : signal.stage;
+        const stage: DeliveryStage = mergesLive
+          ? 'live'
+          : signal.stage === 'live' && row.deploys !== 1 && !turnsOn
+            ? 'merged'
+            : signal.stage;
         if (STAGE_ORDER[stage] <= STAGE_ORDER[current.stage]) continue;
         const next: TaskDelivery = {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
-          repository: current.repository ?? signal.repository ?? null,
-          mergedAt: stage === 'merged' ? reached : current.mergedAt,
+          repository: recorded,
+          mergedAt: stage === 'merged' || signal.stage === 'merged' ? reached : current.mergedAt,
           liveAt: stage === 'live' ? reached : null,
         };
-        statements.push(
-          this.#db
-            .prepare(
-              `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
-                 delivery_repository = ?8, version = version + 1, updated_at = ?5
-               WHERE id = ?6 AND version = ?7`,
-            )
-            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
-          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-          this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
-            delivery: deliveryJson(next),
-          }),
-        );
+        statements.push(...this.#delivered(row, next, actor, at));
         moves.push({ taskId: row.id, projectId: row.project_id, stage });
+        if (repository !== null && !repositories.has(repository) && REPOSITORY_NAME.test(repository)) {
+          repositories.set(repository, false);
+          statements.push(
+            this.#db.prepare('INSERT INTO repositories (name) VALUES (?1) ON CONFLICT DO NOTHING').bind(repository),
+          );
+        }
       }
       if (statements.length === 0) return [];
       try {
@@ -1246,6 +1266,70 @@ export class Writes {
       }
     }
     refuse('version_conflict', 'The tasks this signal moves kept changing; send it again.');
+  }
+
+  /** Each repository whose changes moved a task, and whether its merges go live. */
+  async #repositories(): Promise<Map<string, boolean>> {
+    const { results } = await this.#db
+      .prepare('SELECT name, merges_live FROM repositories')
+      .all<{ readonly name: string; readonly merges_live: number }>();
+    return new Map(results.map((row) => [row.name, row.merges_live === 1]));
+  }
+
+  /** The statements that move `row`'s delivery to `next`: the versioned update, its guard and its history event. */
+  #delivered(row: StoredTaskRow, next: TaskDelivery, actor: Actor, at: string): Statement[] {
+    return [
+      this.#db
+        .prepare(
+          `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
+             delivery_repository = ?8, version = version + 1, updated_at = ?5
+           WHERE id = ?6 AND version = ?7`,
+        )
+        .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
+      this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+      this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
+        delivery: deliveryJson(next),
+      }),
+    ];
+  }
+
+  async setRepository(nameInput: string, mergesLive: boolean, actorInput: Actor): Promise<RepositoryResult> {
+    const actor = check.actor(actorInput);
+    const name = check.repositoryName(nameInput);
+    if (typeof mergesLive !== 'boolean') check.invalid('mergesLive must be true or false');
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const known = await this.#db.prepare('SELECT 1 FROM repositories WHERE name = ?1').bind(name).first();
+      if (known === null) refuse('not_found', `No change in ${name} moved a task here.`);
+      const at = this.#now();
+      const statements: Statement[] = [
+        this.#db.prepare('UPDATE repositories SET merges_live = ?2 WHERE name = ?1').bind(name, mergesLive ? 1 : 0),
+      ];
+      const moves: DeliveryMove[] = [];
+      if (mergesLive) {
+        const { results } = await this.#db
+          .prepare(MERGED_IN_REPOSITORY)
+          .bind(name, `https://github.com/${name}/pull/`)
+          .all<StoredTaskRow>();
+        for (const row of results) {
+          const current = deliveryOf(row);
+          if (current?.stage !== 'merged' || repositoryOf(current) !== name) continue;
+          // It went live when it merged: the repository has no deploy.
+          statements.push(
+            ...this.#delivered(row, { ...current, stage: 'live', liveAt: current.mergedAt ?? at }, actor, at),
+          );
+          moves.push({ taskId: row.id, projectId: row.project_id, stage: 'live' });
+        }
+      }
+      try {
+        await this.#db.batch(statements);
+        return { repository: { name, mergesLive }, moved: moves };
+      } catch (error) {
+        // Another write changed a task this moves: read the tasks again and decide again.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') continue;
+        throw error;
+      }
+    }
+    refuse('version_conflict', `The tasks of ${name} kept changing; turn it on again.`);
   }
 
   async createTask(

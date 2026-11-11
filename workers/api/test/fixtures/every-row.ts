@@ -281,6 +281,7 @@ export const ROWS: BackupRows = {
   ],
   // beta-r1 was filed as acme-m1 and moved to Beta.
   task_aliases: [{ alias: 'acme-m1', task_id: 'beta-r1' }],
+  repositories: [{ name: 'example/app', merges_live: 1 }],
   write_receipts: [
     {
       principal: 'service:noticeos/agent',

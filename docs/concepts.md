@@ -330,7 +330,9 @@ automation, or the agent that merges or deploys, sends a signal naming the pull 
 went live, and the tasks that carry them move to that stage. A task only moves forward. A
 project whose changes do not go live by a deploy, such as a library, stops at
 merged; the project's owner says which kind it is, or a deploy that GitHub
-reports for one of its tasks says it the first time.
+reports for one of its tasks says it the first time. In a project whose
+repositories differ, an owner says a repository with no deploy has its
+merges go live, and its tasks move from built straight to live.
 
 The web app's **Waiting for you** list shows built work, which waits for a
 merge, and merged work of a project that deploys, which waits for a deploy.

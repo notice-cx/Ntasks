@@ -299,7 +299,7 @@ describe('a backup through the command line', () => {
     expect(taken.err).toEqual([]);
     expect(taken.code).toBe(0);
     expect(taken.out[0]).toBe(
-      `Backed up 2 projects, 1 custom_fields, 6 tasks, 3 task_labels, 5 task_edges, 2 task_external_links, 1 task_comments, 8 task_events, 0 task_aliases, 1 write_receipts, as the store stood at ${AT}, in 22 pages.`,
+      `Backed up 2 projects, 1 custom_fields, 6 tasks, 3 task_labels, 5 task_edges, 2 task_external_links, 1 task_comments, 8 task_events, 0 task_aliases, 0 repositories, 1 write_receipts, as the store stood at ${AT}, in 23 pages.`,
     );
     expect((await stat(taken.file)).mode & 0o777).toBe(0o600);
 

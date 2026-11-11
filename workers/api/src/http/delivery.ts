@@ -2,15 +2,25 @@
  * The HTTP routes of delivery and of a project's settings: a repository's
  * signal that pull requests or commits merged or went live, an owner's
  * settings of a project (its name, whether its changes go live by a deploy,
- * whether it takes new tasks, and its website), and the icons read from
- * that website. docs/api.md describes them.
+ * whether it takes new tasks, and its website), the icons read from that
+ * website, and whether a repository's merges go live. docs/api.md describes
+ * them.
  */
-import { ICON_SCHEMES, type IconScheme, type Project, type ProjectChange } from '@ntasks/domain';
+import {
+  ICON_SCHEMES,
+  REPOSITORY_NAME,
+  TaskRefused,
+  type IconScheme,
+  type Project,
+  type ProjectChange,
+  type Repository,
+} from '@ntasks/domain';
 import { only, projectArg, refuse } from '../args.ts';
 import { movedView, reportDelivery, signalArgs } from '../delivery.ts';
 import { projectOf } from '../lookup.ts';
 import { readProjectIcons, websiteAddress } from '../project-icons.ts';
 import { ICON_SECURITY_POLICY } from '../svg-icon.ts';
+import { actorOf } from '../task-writes.ts';
 import type { ReadContext } from './tasks.ts';
 import type { WriteContext } from '../task-writes.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
@@ -93,6 +103,44 @@ export async function projectSettingsRoute(context: WriteContext, url: URL, requ
   if (Object.keys(change).length === 0)
     refuse('invalid arguments: name at least one of displayName, deploys, disabled and websiteUrl');
   return json({ project: projectView(await context.engine.updateProject(project.id, change)) });
+}
+
+/** A repository as GET /api/tasks/repositories lists it. */
+function repositoryView(repository: Repository) {
+  return { repository: repository.name, mergesLive: repository.mergesLive };
+}
+
+/** GET /api/tasks/repositories: `{ repositories: [{ repository, mergesLive }] }`, every repository whose changes moved a task, by name. */
+export async function repositoriesRoute(context: ReadContext, url: URL): Promise<Response> {
+  queryOf(url, []);
+  return json({ repositories: (await context.engine.listRepositories()).map(repositoryView) });
+}
+
+/**
+ * PATCH /api/tasks/repositories: `{ repository, mergesLive }`, an owner's
+ * setting of whether a merge there is the change going live. Turned on, it
+ * moves that repository's tasks at merged to live as well. Answers
+ * `{ repository: { repository, mergesLive }, moved: [{ id, stage }] }`.
+ */
+export async function repositorySettingsRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
+  const { body } = await writeOf(request, url, 'update_repository', {});
+  only(body, ['repository', 'mergesLive']);
+  if (typeof body.repository !== 'string' || !REPOSITORY_NAME.test(body.repository))
+    refuse('invalid arguments: repository (owner/name, such as example/app)');
+  if (typeof body.mergesLive !== 'boolean') refuse('invalid arguments: mergesLive (true or false)');
+  try {
+    const result = await context.engine.setRepository(
+      body.repository,
+      body.mergesLive,
+      actorOf(context.principal, undefined),
+    );
+    return json({ repository: repositoryView(result.repository), moved: movedView(result.moved) });
+  } catch (error) {
+    if (!(error instanceof TaskRefused)) throw error;
+    if (error.refusal === 'not_found') throw new HttpRefused(404, 'not_found', error.message, 'repository');
+    if (error.refusal === 'version_conflict') throw new HttpRefused(503, 'unavailable', error.message);
+    throw new HttpRefused(400, 'invalid_request', error.message);
+  }
 }
 
 /**

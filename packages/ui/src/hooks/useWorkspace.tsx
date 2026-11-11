@@ -16,6 +16,7 @@ import type {
   NewServiceCredential,
   ProjectEdit,
   ServiceCredential,
+  TaskRepository,
   Workspace,
   WorkspaceMembers,
 } from '../api/types';
@@ -27,6 +28,7 @@ const MEMBERS_KEY = ['members'] as const;
 const APPS_KEY = ['apps'] as const;
 const SERVICES_KEY = ['services'] as const;
 const GITHUB_KEY = ['github'] as const;
+const REPOSITORIES_KEY = ['repositories'] as const;
 
 /** Whether a cached read belongs to the workspace open now, so a switch drops it. */
 export function inWorkspace(query: Query): boolean {
@@ -281,6 +283,36 @@ export function useDisconnectGitHub() {
   return useMutation({
     mutationFn: () => api.disconnectGitHub(),
     onSuccess: () => client.invalidateQueries({ queryKey: GITHUB_KEY }),
+  });
+}
+
+/** The repositories whose changes moved a task, which only the workspace's owners read. */
+export function useRepositories() {
+  const api = useTasksApi();
+  return useQuery<TaskRepository[]>({
+    queryKey: REPOSITORIES_KEY,
+    queryFn: ({ signal }) => api.repositories(signal),
+    staleTime: 15_000,
+  });
+}
+
+/** Says whether a repository's merges go live and keeps the answer as the read; the tasks it moved are read again. */
+export function useSetRepository() {
+  const api = useTasksApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ repository, mergesLive }: { repository: string; mergesLive: boolean }) =>
+      api.setRepository(repository, mergesLive),
+    onSuccess: async ({ repository, moved }) => {
+      client.setQueryData<TaskRepository[]>(REPOSITORIES_KEY, (known = []) =>
+        known.map((row) => (row.repository === repository.repository ? repository : row)),
+      );
+      if (moved.length > 0)
+        await Promise.all([
+          client.invalidateQueries({ queryKey: ['tasks'] }),
+          client.invalidateQueries({ queryKey: ['task'] }),
+        ]);
+    },
   });
 }
 

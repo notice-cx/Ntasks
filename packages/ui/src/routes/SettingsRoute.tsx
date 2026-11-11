@@ -24,9 +24,11 @@ import {
   useRemoveApp,
   useRemoveGitHubWebhook,
   useRenameWorkspace,
+  useRepositories,
   useRevokeApp,
   useSaveGitHubWebhook,
   useSetDeployCheck,
+  useSetRepository,
   useSetTimeZone,
   useWorkspace,
 } from '../hooks/useWorkspace';
@@ -452,6 +454,8 @@ function GitHubConnect({ github, retry }: { github: GitHubWebhook; retry: boolea
         {/* A save gives the form the saved values to start from again. */}
         <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
       </ByHand>
+      {/* A webhook set up by hand moves tasks too, and the repositories it showed stay after the app is disconnected. */}
+      <MergesGoLive hideEmpty />
     </div>
   );
 }
@@ -531,6 +535,7 @@ function GitHubConnected({ github }: { github: GitHubWebhook }) {
           )}
         </div>
       </SettingsGroup>
+      <MergesGoLive />
       {/* A webhook set up by hand works beside the app: its owner can add, change or remove one at any time. */}
       <ByHand open={false}>
         <GitHubWebhookForm key={github.updatedAt ?? 'none'} webhook={github} />
@@ -566,6 +571,73 @@ function GitHubConnected({ github }: { github: GitHubWebhook }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The repositories whose changes moved a task, each with a box that says its
+ * merges go live, for a repository with no deploy. Ticking one also moves its
+ * tasks at Merged to Live.
+ */
+function MergesGoLive({ hideEmpty = false }: { hideEmpty?: boolean }) {
+  const repositories = useRepositories();
+  const set = useSetRepository();
+  if (repositories.isPending || (hideEmpty && repositories.data?.length === 0)) return null;
+  return (
+    <SettingsGroup title="Merges go live">
+      <div data-github-repositories="">
+        {repositories.isError ? (
+          <ReadFailed
+            title="Couldn't load the repositories"
+            error={repositories.error}
+            retrying={repositories.isFetching}
+            onRetry={() => void repositories.refetch()}
+          />
+        ) : repositories.data.length === 0 ? (
+          <p className="m-0 px-4 py-3 text-label text-ink-3">
+            None seen yet. A repository shows here once a merge in it moves a task.
+          </p>
+        ) : (
+          <>
+            <p className="m-0 px-4 pt-3 text-meta text-ink-2">
+              Tick a repository with no deploy: its merged tasks then show as Live.
+            </p>
+            <ul className="m-0 flex list-none flex-col gap-2 px-4 py-3">
+              {repositories.data.map(({ repository, mergesLive }) => (
+                <li key={repository}>
+                  <label className="flex items-center gap-2 text-label text-ink">
+                    <input
+                      type="checkbox"
+                      className="size-[15px] accent-accent"
+                      checked={
+                        set.isPending && set.variables.repository === repository ? set.variables.mergesLive : mergesLive
+                      }
+                      disabled={set.isPending}
+                      aria-label={`Merges in ${repository} go live`}
+                      onChange={(event) =>
+                        set.mutate(
+                          { repository, mergesLive: event.target.checked },
+                          {
+                            onSuccess: ({ moved }) => {
+                              if (moved.length > 0)
+                                toast.success(
+                                  `Moved ${moved.length} merged ${moved.length === 1 ? 'task' : 'tasks'} of ${repository} to Live`,
+                                );
+                            },
+                            onError: (error) => toast.error(error.message),
+                          },
+                        )
+                      }
+                    />
+                    <span className="min-w-0 truncate">{repository}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </SettingsGroup>
   );
 }
 

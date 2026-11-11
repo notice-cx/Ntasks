@@ -47,6 +47,7 @@ or prefix, since no query reads across stores.
 | `task_comments` | Comments, in the order they were added, each marked when it is pinned, with the test run it reported in `test` |
 | `task_events` | Every change to every task, in order, each with the helper agent (`actor_for`) and agent session (`session`) it was made through |
 | `task_aliases` | Each former id of a task that moved to another project, and the task's id now |
+| `repositories` | Each repository whose changes moved a task, as owner/name in lowercase, and whether a merge there is the change going live (`merges_live`), which an owner sets in Settings |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
 

@@ -234,6 +234,84 @@ describe('a project’s deploy setting', () => {
   });
 });
 
+describe('a repository whose merges go live', () => {
+  /** A repository no other test names. */
+  const newRepository = () => `example/tool-${crypto.randomUUID().slice(0, 8)}`;
+  const pullIn = (repository: string, number: number) => `https://github.com/${repository}/pull/${number}`;
+  const owner = () => api({ principal: OWNER_SENDER, engine, now: time.now });
+  const setting = (sender: TestApi, repository: string, mergesLive: boolean) =>
+    send(sender, 'PATCH', '/api/tasks/repositories', { repository, mergesLive });
+
+  it('moves a merged pull request there to live in a project that deploys, and one in another repository still waits for its deploy', async () => {
+    const project = await deployingProject();
+    const [tool, site] = [newRepository(), newRepository()];
+    // A first merge shows the repository, whose setting starts off.
+    const first = await closedWith(project, { pr: pullIn(tool, 1) });
+    expect((await signal(target, { repository: tool, stage: 'merged', pullRequests: ['1'] })).body).toEqual({
+      moved: [{ id: first, stage: 'merged' }],
+    });
+    expect((await setting(owner(), tool, true)).status).toBe(200);
+
+    const fromTool = await closedWith(project, { pr: pullIn(tool, 2) });
+    const fromSite = await closedWith(project, { pr: pullIn(site, 3) });
+    time.advance(5);
+    const toolMerge = '1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d';
+    expect(
+      (await signal(target, { repository: tool, stage: 'merged', pullRequests: ['2'], commits: [toolMerge] })).body,
+    ).toEqual({ moved: [{ id: fromTool, stage: 'live' }] });
+    expect(await deliveryOf(project, fromTool)).toMatchObject({
+      stage: 'live',
+      mergeCommit: toolMerge,
+      repository: tool,
+      mergedAt: time.now(),
+      liveAt: time.now(),
+    });
+    expect((await signal(target, { repository: site, stage: 'merged', pullRequests: ['3'] })).body).toEqual({
+      moved: [{ id: fromSite, stage: 'merged' }],
+    });
+    expect(await deliveryOf(project, fromSite)).toMatchObject({ stage: 'merged', liveAt: null });
+  });
+
+  it('moves the repository’s tasks at merged to live, at their merge, when an owner turns it on', async () => {
+    const project = await deployingProject();
+    const [tool, other] = [newRepository(), newRepository()];
+    const recorded = await closedWith(project, { pr: pullIn(tool, 1) });
+    await signal(target, { repository: tool, stage: 'merged', pullRequests: ['1'] });
+    const mergedAt = time.now();
+    // A signal that names no repository leaves the task's repository to its pull request.
+    const byPullRequest = await closedWith(project, { pr: pullIn(tool, 2) });
+    await engine.reportDelivery([project.id], { stage: 'merged', pullRequests: [pullIn(tool, 2)], commits: [] }, OWNER);
+    expect(await deliveryOf(project, byPullRequest)).toMatchObject({ stage: 'merged', repository: null });
+    const built = await closedWith(project, { pr: pullIn(tool, 3) });
+    const elsewhere = await closedWith(project, { pr: pullIn(other, 4) });
+    await signal(target, { repository: other, stage: 'merged', pullRequests: ['4'] });
+    time.advance(5);
+
+    expect((await setting(target, tool, true)).status).toBe(403);
+    expect((await setting(owner(), newRepository(), true)).status).toBe(404);
+    const turned = await setting(owner(), tool, true);
+    expect(turned.status).toBe(200);
+    expect(turned.body.repository).toEqual({ repository: tool, mergesLive: true });
+    expect(turned.body.moved).toEqual([recorded, byPullRequest].sort().map((id) => ({ id, stage: 'live' })));
+    expect(await deliveryOf(project, recorded)).toMatchObject({ stage: 'live', mergedAt, liveAt: mergedAt });
+    expect((await deliveryOf(project, byPullRequest))?.stage).toBe('live');
+    expect((await deliveryOf(project, built))?.stage).toBe('built');
+    expect((await deliveryOf(project, elsewhere))?.stage).toBe('merged');
+    const [moved] = await engine.listHistory(project.id, recorded, { limit: 1 });
+    expect(moved).toMatchObject({ actor: 'owner', changes: { delivery: expect.objectContaining({ stage: 'live' }) } });
+
+    const { repositories } = (await get(owner(), '/api/tasks/repositories')).body as {
+      repositories: { repository: string; mergesLive: boolean }[];
+    };
+    expect(repositories.filter((listed) => [tool, other].includes(listed.repository))).toEqual(
+      [
+        { repository: tool, mergesLive: true },
+        { repository: other, mergesLive: false },
+      ].sort((a, b) => a.repository.localeCompare(b.repository)),
+    );
+  });
+});
+
 describe('a close that ships no code', () => {
   type Built = { tasks: { id: string }[] };
   const waitingIn = async (project: Project) =>
