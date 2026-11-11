@@ -192,7 +192,8 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
     if (error instanceof AccessRefused) {
       const status = error.code === 'not_found' ? 404 : error.code === 'name_taken' ? 409 : 400;
       const field = error.field === undefined ? {} : { field: error.field };
-      return json({ error: error.code, detail: error.message, ...field }, status);
+      // `message` holds the same sentence for clients made before `detail` was added.
+      return json({ error: error.code, detail: error.message, ...field, message: error.message }, status);
     }
     if (error instanceof BodyTooLarge) return json({ error: 'body_too_large' }, 413);
     throw error;
