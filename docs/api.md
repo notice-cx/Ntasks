@@ -1444,6 +1444,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
+| The deployment's D1 database lacks a migration the Worker needs, because its deploy skipped them | `503` with `{ "error": "database_behind", "missing": […], "detail": … }`: `missing` names each migration file it lacks ([Deploy](deploy.md#the-database-lacks-a-migration)) |
 | The store changed during a backup | `409` with `store_changed` ([below](#backing-up-the-whole-store)) |
 | A load into a store that is not empty, or that does not fit the store | `409` with the reason ([below](#loading-an-empty-store)) |
 | A method the path does not take | `405` with an `allow` header naming the ones it takes |

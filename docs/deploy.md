@@ -138,6 +138,24 @@ To update a deployment made from a checkout, bring the checkout to the latest
 root. `pnpm run deploy` applies any new D1 migrations, then deploys the
 Worker. A deployment connected to Builds updates on each push instead.
 
+### The database lacks a migration
+
+A deploy that runs `wrangler deploy` alone, such as a Workers Builds
+connection whose deploy command is left at its default, deploys the Worker
+without applying the D1 migrations its code needs. While the database lacks
+one, `GET /healthz` answers `503` with `database_behind` and `missing`, the
+migration files the database lacks, and so does any request that fails, such
+as Settings' read of GitHub; Settings shows the same sentence. Apply the
+missing migrations from a checkout:
+
+```bash
+pnpm --filter @ntasks/api exec wrangler d1 migrations apply DB --remote
+```
+
+Then set the deploy command to `pnpm run deploy`, which applies them before
+it deploys the Worker, in the Cloudflare dashboard under Workers & Pages, the
+Worker, Settings, Builds. `npx ntasks deploy` applies them as well.
+
 ### Set up sign-in
 
 When the deploy finishes, set up sign-in with GitHub on the deployment's
