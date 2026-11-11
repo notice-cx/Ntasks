@@ -20,7 +20,7 @@ It writes WebP files to `docs/images/`:
 | `board-light.webp`, `board-dark.webp` | The Tasks board, 1100 pixels wide: the sidebar, Waiting for you, then every group to Done |
 | `task-light.webp`, `task-dark.webp` | The page of task `web-b2r6`, 1100 pixels wide, whose description uses headings, lists, a code block and a task-id link |
 | `focus-light.webp`, `focus-dark.webp` | Focus on the decision `web-d4x1`, 1100 pixels wide: its card with three options |
-| `live-light.webp`, `live-dark.webp` | The Live page's board, 1100 pixels wide: the three example tasks in progress, then one each in Built, Merged and Live |
+| `live-light.webp`, `live-dark.webp` | The Live page's board, 1100 pixels wide: the three example tasks in progress, one waiting to ship and two live |
 | `phone-light.webp`, `phone-dark.webp` | The Tasks board, 390 pixels wide |
 | `sign-in-light.webp`, `sign-in-dark.webp` | The Worker's sign-in page, 560 pixels wide |
 | `agent-access-light.webp`, `agent-access-dark.webp` | The Worker's agent approval page for an invented agent and the two example projects, 560 pixels wide |

@@ -121,8 +121,11 @@ export type {
   DeliveryOptions,
   DeliverySignal,
   FieldResult,
+  FormerId,
   LabelPage,
   LabelQuery,
+  MovedId,
+  MoveResult,
   NewExternalLink,
   NewTaskLink,
   NewTaskStep,
@@ -133,6 +136,7 @@ export type {
   TaskExternalLinks,
   TaskFieldChanges,
   TaskFilters,
+  TaskPlacement,
   TaskRefusal,
   TaskWrite,
   WinItem,
@@ -142,6 +146,7 @@ export type {
 } from './engine.ts';
 export { insertStatements, isStoreTable, selectAllSql, STORE_COLUMNS, STORE_TABLES, storeKey } from './store-rows.ts';
 export type {
+  AliasRow,
   CommentRow,
   CustomFieldRow,
   EdgeRow,

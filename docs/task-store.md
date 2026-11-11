@@ -46,6 +46,7 @@ or prefix, since no query reads across stores.
 | `custom_fields` | The custom fields each project defines: key, name, type, options, and when it was retired |
 | `task_comments` | Comments, in the order they were added, each marked when it is pinned, with the test run it reported in `test` |
 | `task_events` | Every change to every task, in order, each with the helper agent (`actor_for`) and agent session (`session`) it was made through |
+| `task_aliases` | Each former id of a task that moved to another project, and the task's id now |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
 
@@ -87,6 +88,22 @@ A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
 `merges-after` `web-1` means web-4's pull request lands only once web-1's
 has. Only `blocks` holds a
 task out of ready work. A task links to another task once, whatever the type.
+
+A task that moves to another project takes an id with that project's
+prefix, and its old id becomes a row of `task_aliases` naming the new one. A
+trigger records it in the statement that changes the task's id, and moves
+the task's labels, links in both directions, external links, comments and
+history to the new id in the same statement; each history event keeps the
+`project_id` the task was in when it was recorded, so a read of a task's
+history reads its events by task, not by project. A task that moves again
+keeps each former id, each naming its id now. The tasks that name a moved
+task as their parent or the task they duplicate are the engine's to change,
+each with a new version and a history event, so the batch defers foreign
+keys until it commits. The move's own event is written twice, once in each
+project's `project_id`, so each project's changes show it, the one in the
+project it left with the task's `formerId` there; a read of the task's
+history keeps the one the project it joined recorded. A retry record
+answers for its task wherever the task moved since.
 
 A task's external links are http or https URLs, kept as the URL standard
 writes them, so one page has one URL and a task links to it once. The
@@ -160,10 +177,16 @@ These hold whatever code writes to the database. Each has a test in
 - A task's helper and work details are empty while nobody holds it, and once
   it is closed.
 - Every update of a task raises its `version` by exactly one.
-- A task keeps its id, its project and its creation time.
+- A task keeps its creation time. It keeps its id and its project too, except
+  in a move to another project, where it takes an id that starts with that
+  project's prefix and is no task's former id.
+- A move records the task's old id in `task_aliases`. A former id is never
+  removed, never becomes a new task's id, and changes only the task id it
+  names, to the id that task moved to.
 - Tasks, their history and their comments are never deleted, and history and
   comments are never edited. The one change a comment takes is being
-  unpinned, and a comment once unpinned is never pinned again.
+  unpinned, and a comment once unpinned is never pinned again; beyond that,
+  a comment and a history event follow their task's move to its new id.
 - A project prefix has no hyphen, and a task never depends on itself.
 - A custom field keeps its project, key, type and options, stays retired once
   retired, and is never deleted. A choice field has options and no other
@@ -192,7 +215,8 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
-- **Reads:** `getTask`, `getTasks`, `findTasks`, `listBoard`,
+- **Reads:** `getTask`, `getTasks`, `findTasks`, `formerIds`, `listUnder`,
+  `listBoard`,
   `listEpics`, `listLabelled`, `listExternalLinks`, `listFields`, `listWork`,
   `listComments`, `parentContext`, `listHistory`, `listChanges`, `lint` and
   `recordedWrite`. `listBoard` takes filters by custom field values. `parentContext` reads, in one statement, a task's parent, the
@@ -207,11 +231,15 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   one round trip. A caller that returns a page of it, as `list_tasks` does,
   reads the board with `withoutExternalLinks: true`, then the page's external
   links with `listExternalLinks`.
+  `formerIds` reads which of some ids are moved tasks' former ids, through
+  the table's key, and `listUnder` every task under some tasks, at any depth,
+  through `tasks_by_parent`.
   `recordedWrite` returns what an earlier write with an idempotency key
   answered, so the API can answer a retry before it checks a rule that the
   write's own effect would break, such as a close's rule that the task is
   open.
-- **Writes:** `createTask`, `writeTask`, `addComment` and `recordUnchanged`.
+- **Writes:** `createTask`, `writeTask`, `moveTasks`, `addComment` and
+  `recordUnchanged`.
   Each is one batch. `createTask` can open an approval the new task waits on.
   `writeTask` takes everything one change does at once: field changes
   (the holder's helper and work details among them), labels, links,
@@ -223,6 +251,12 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   when one of them moved since; one that only comments leaves its task's
   version as `addComment` does, and so does a write whose comment comes with
   a helper and work details that change nothing.
+  `moveTasks` puts up to 50 tasks (`TASK_LIMITS.move`), each named with the
+  version it read and the task it goes under, into one project in one batch.
+  A task from another project takes its new parent's next child id, which
+  counts the child ids former ids hold, or a new key, and moves only with
+  every task under it among the tasks placed. `recordedMove` answers a
+  retried move as `recordedWrite` answers a retried write.
   `recordUnchanged` writes only the retry record of a change that
   found nothing to change, so its key answers a retry and cannot be reused
   for another change; the task's version and history stay as they were.

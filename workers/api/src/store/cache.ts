@@ -97,6 +97,9 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
   return Object.freeze({
     ...engine,
     listProjects: () => cached('projects', () => engine.listProjects()),
+    formerIds: (taskIds) => cached(JSON.stringify(['former-ids', taskIds]), () => engine.formerIds(taskIds)),
+    listUnder: (projectId, taskIds, limit) =>
+      cached(JSON.stringify(['under', projectId, taskIds, limit]), () => engine.listUnder(projectId, taskIds, limit)),
     listBoard: (projectId, query) =>
       cached(JSON.stringify(['board', projectId, query]), () => engine.listBoard(projectId, query)),
     listEpics: (projectId) => cached(JSON.stringify(['epics', projectId]), () => engine.listEpics(projectId)),
@@ -119,6 +122,7 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
     reportDelivery: writes(engine.reportDelivery),
     createTask: writes(engine.createTask),
     writeTask: writes(engine.writeTask),
+    moveTasks: writes(engine.moveTasks),
     addComment: writes(engine.addComment),
     defineField: writes(engine.defineField),
     retireField: writes(engine.retireField),

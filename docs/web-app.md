@@ -30,6 +30,11 @@ task in an epic also shows From the epic: the comments pinned on the epic
 for its tasks, and the epic's most recently closed tasks with their close
 reasons. A pinned comment is marked Pinned among its own task's comments.
 
+**Move to…**, in a task page's More menu, picks a project and one of its open
+epics, or No epic, and moves the task there with every task under it. A task
+moved to another project takes a new id that starts with that project's
+prefix, and the address with its old id opens its page under the new id.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/task-dark.webp">
   <img src="images/task-light.webp" width="800" alt="The page of the bug web-b2r6: its description with headings, lists and a code block, a Done when checklist, activity and a comment box, beside a panel of its status, priority, assignee, type, project, epic and labels.">
@@ -42,11 +47,13 @@ reasons. A pinned comment is marked Pinned among its own task's comments.
   <img src="images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
 </picture>
 
-**Live.** A board of work moving to production, in four columns: In
-progress, then Built, Merged and Live, the stages a closed task's change goes
-through as GitHub reports its merge and its deploy. When a task moves to the
-next column, its card travels there, and when its holder changes or comments
-on it a blue ring grows from its mark and fades. Each card in progress is marked Active, Quiet or
+**Live.** A board of work moving to production, in three columns: In
+progress, Waiting to ship, for closed work not yet merged or not yet
+deployed, and Live, as GitHub reports each merge and deploy. When a task
+moves to the next column, its card travels there, and when its holder changes or comments
+on it a blue ring grows from its mark and fades. For a moment the card also
+shows who changed it and how, such as "Claude pushed a commit" or "GitHub
+merged #42". Each card in progress is marked Active, Quiet or
 Stalled, after a day without activity. While the page is open it checks for
 changes every 5 seconds. **List** shows the tasks in progress grouped as
 Active, Quiet and Stalled, each under its epic with the epic's progress bar.
@@ -55,7 +62,7 @@ hands it back for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
-  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then four columns. In progress holds three cards, each with its task's activity mark, pull request, next step, holder, model and last activity; Built, Merged and Live hold one closed task each.">
+  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then three columns. In progress holds three cards, each with its task's activity mark, pull request, next step, holder, model and last activity; Waiting to ship holds one task not merged yet, and Live holds two.">
 </picture>
 
 **Productivity.** What you and your agents got done that matters, day by

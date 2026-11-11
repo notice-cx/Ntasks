@@ -41,6 +41,7 @@ every parameter, body and answer in full. The route paths and the
 | Claim | `PATCH /api/tasks/:id` | `projectId` and `claim: true`, optionally `for` and `work` |
 | Comment | `POST /api/tasks/:id/comments` | `projectId`, `text` |
 | Close | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` |
+| Move | `POST /api/tasks/move` | `tasks`, and `projectId`, `parent` or both, and optionally `withChildren` ([STATE-24](protocol.md#state-24)). A route under `/api/tasks/:id` whose path names a former id answers for the task in its project now |
 
 Ntasks has no HTTP route that links two tasks, asks for an approval,
 records a relayed answer or releases another holder's task; those are MCP

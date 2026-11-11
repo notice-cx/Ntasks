@@ -301,6 +301,40 @@ export interface OtherTaskWrite extends Omit<
   readonly taskId: string;
 }
 
+/** Where a move puts one task: under `parentId`, in the project the move names. */
+export interface TaskPlacement {
+  readonly taskId: string;
+  /** The task's version when the caller read it (rule 2). */
+  readonly expectedVersion: number;
+  /** The task it goes under: one of the project's, or another task of the same
+   * move, named by its id before the move. Null puts it under none. */
+  readonly parentId: string | null;
+}
+
+/** A task a move gave a new id: its id before the move, and after. */
+export interface MovedId {
+  readonly from: string;
+  readonly to: string;
+}
+
+export interface MoveResult {
+  /** Each task the move placed, as it stands after it, in the order placed. */
+  readonly tasks: readonly Task[];
+  /** The tasks whose id the move changed, in the order placed. */
+  readonly moved: readonly MovedId[];
+  /** The epics the move closed or reopened on its own, deepest first, when it changed any. */
+  readonly epics?: readonly Task[];
+  /** True when a retry returned the recorded answer and nothing was written. */
+  readonly replayed: boolean;
+}
+
+/** A former id of a moved task, and the task's id and project now. */
+export interface FormerId {
+  readonly formerId: string;
+  readonly taskId: string;
+  readonly projectId: string;
+}
+
 /** The filters every list of tasks takes. */
 export interface TaskFilters {
   /** Only tasks someone can start now. */
@@ -512,8 +546,15 @@ export interface TaskEngine {
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;
+  /** Of these ids, the ones that are a moved task's former id, each with the
+   * task's id and project now, in one read through the former ids' key. */
+  formerIds(taskIds: readonly string[]): Promise<readonly FormerId[]>;
   /** These tasks of the project, in one read; an id the project does not hold is left out. */
   getTasks(projectId: string, taskIds: readonly string[]): Promise<readonly Task[]>;
+  /** Every task under these tasks of the project, at any depth and in any
+   * status, at most `limit` (1 to TASK_LIMITS.page), in one read through the
+   * parent index: its cost follows the tasks under them, not the project. */
+  listUnder(projectId: string, taskIds: readonly string[], limit: number): Promise<readonly Task[]>;
   /** Which of these ids the project holds, closed or not. */
   findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
   /** A board, in one project or, with `projectId` null, in every project:
@@ -600,9 +641,28 @@ export interface TaskEngine {
    * `expectedVersion`, so the caller reads the task again and decides again. */
   recordUnchanged(projectId: string, taskId: string, expectedVersion: number, retry: Retry): Promise<WriteResult>;
 
+  /** The answer of an earlier moveTasks with this retry identity, its tasks as
+   * they stand now, wherever they moved since, and `replayed: true`, or null
+   * when no move in the last seven days used the key; refused as
+   * `retry_conflict` as recordedWrite is. */
+  recordedMove(retry: Retry): Promise<MoveResult | null>;
+
   createTask(projectId: string, input: CreateTaskInput, actor: Actor, retry?: Retry): Promise<WriteResult>;
   /** Changes an existing task in one batch (rules 1 to 4). */
   writeTask(projectId: string, taskId: string, write: TaskWrite, actor: Actor, retry?: Retry): Promise<WriteResult>;
+  /**
+   * Puts tasks of any project of the store into project `projectId`, each
+   * under the parent its placement names, in one batch (rules 2 to 4). A task
+   * from another project takes a new id with this project's prefix: the next
+   * child id of its new parent, or a new key; its old id becomes a former id
+   * (formerIds) and everything filed under it follows it. A task from another
+   * project moves only with every task under it among the placements, which
+   * keep their parents. Other tasks that name a moved task as their parent or
+   * the task they duplicate follow it too, each with its own history event.
+   * The epics a task leaves or joins close or reopen as a write's do. A
+   * placement that leaves a task where it is changes nothing.
+   */
+  moveTasks(projectId: string, placements: readonly TaskPlacement[], actor: Actor, retry?: Retry): Promise<MoveResult>;
   /** Defines a custom field in the project. A key the project has used,
    * retired or not, is refused as `invalid`. */
   defineField(projectId: string, input: DefineFieldInput, actor: Actor, retry?: Retry): Promise<FieldResult>;

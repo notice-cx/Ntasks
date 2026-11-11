@@ -14,6 +14,7 @@ import {
   type EpicProgress,
   type Project,
   type TaskEngine,
+  type TaskEvent,
   type TaskStatus,
 } from '@ntasks/domain';
 import { mayReach, reachable, SCOPES, type Principal } from '../auth.ts';
@@ -404,9 +405,22 @@ export async function changesRoute(context: ReadContext, url: URL): Promise<Resp
   const links = await linksSeenBy(context);
   // lastSeq still moves past events the sender cannot see, so it asks after them next.
   return json({
-    events: page.events.filter((event) => mayReach(principal, event.projectId)).map(links.event),
+    events: page.events
+      .filter((event) => mayReach(principal, event.projectId))
+      .map((event) => links.event(departureSeenBy(principal, event))),
     lastSeq: page.lastSeq,
   });
+}
+
+/**
+ * A move as the project the task left records it, for a sender who cannot
+ * reach the project it went to: the task by the id it had here, with nothing
+ * of where it went.
+ */
+function departureSeenBy(principal: Principal, event: TaskEvent): TaskEvent {
+  const { formerId, projectId } = event.changes;
+  if (typeof formerId !== 'string' || typeof projectId !== 'string' || mayReach(principal, projectId)) return event;
+  return { ...event, taskId: formerId, changes: { formerId } };
 }
 
 /** What a path under /api/tasks/:id names: its history, its comments, its

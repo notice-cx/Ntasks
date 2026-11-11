@@ -375,6 +375,14 @@ export interface TaskChange {
   /** The project's id, as the project list gives it. */
   projectId: string;
   taskId: string;
+  /** `created`, `updated`, `closed`, `reopened` or `commented`, or a kind this build does not know. */
+  kind?: string;
+  /** Who made the change, as the task's fields name a person, an agent or a service. */
+  actor?: string;
+  model?: string | null;
+  at?: string;
+  /** The fields the change set, with their new values; a comment's text. */
+  changes?: Record<string, unknown>;
 }
 
 /** The changes after a sequence number, and the number to ask after next. */
@@ -502,6 +510,25 @@ export interface NewTask {
   parent?: string;
   acceptance?: string;
   metadata?: Record<string, unknown>;
+}
+
+/** Tasks to move to a project, or to an epic in it, as `POST /api/tasks/move` takes them. */
+export interface TaskMove {
+  /** The tasks' ids: 1 to 50. */
+  ids: readonly string[];
+  /** The destination project's key. */
+  project: string;
+  /** The task to put them under, an epic in that project; null or left out puts them at its top. */
+  parent?: string | null;
+  /** Every task under each named task moves with it. */
+  withChildren?: boolean;
+}
+
+/** What a move answers with. */
+export interface TasksMoved {
+  /** Each task whose id changed, by its old id: a move to another project gives every task it moves an id with
+   * that project's prefix, and a move inside a project changes none. */
+  readonly moved: Readonly<Record<string, string>>;
 }
 
 /** The fields an edit may change. */
