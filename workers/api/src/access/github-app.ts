@@ -12,6 +12,7 @@
 import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
 import { isSecure } from './config.ts';
 import { base64url, hex, hmac, randomSecret, sameBytes, sha256 } from './crypto.ts';
+import type { CheckRun } from './github-api.ts';
 import { githubWebhookUrl } from './github-webhook.ts';
 import { cookieValue, manifestConversion } from './setup.ts';
 
@@ -364,6 +365,39 @@ export function deployOf(name: string, names: DeployNames, looksLikeOne: boolean
 export function deployBranchOf(branch: string | null | undefined, defaultBranch: string): 'default' | 'queue' | null {
   if (branch === defaultBranch) return 'default';
   return branch?.startsWith(`gh-readonly-queue/${defaultBranch}/`) === true ? 'queue' : null;
+}
+
+/** Conclusions of a deploy check that ship nothing, so they hold nothing back: a build its host skipped or called neutral. */
+const NOTHING_DEPLOYED = new Set(['neutral', 'skipped']);
+
+/**
+ * The deploy checks that hold a commit's tasks back from Live: each deploy
+ * on the default branch or the merge queue's whose latest run is still
+ * running, or ended without success. A commit that changes two Workers, such
+ * as an app and its website, has a deploy check for each, and its tasks go
+ * live once both passed. `passed` names a deploy whose own event said it
+ * passed, which GitHub's list of the commit's checks may not show yet.
+ */
+export function heldBy(
+  runs: readonly CheckRun[],
+  names: DeployNames,
+  defaultBranch: string,
+  passed?: string,
+): string[] {
+  // A run that has not started, queued after the others, is the latest of its name.
+  const startOf = (run: CheckRun) => run.startedAt ?? '￿';
+  const latest = new Map<string, CheckRun>();
+  for (const run of runs) {
+    if (run.name === passed || deployBranchOf(run.branch, defaultBranch) === null) continue;
+    const verdict = deployOf(run.name, names, isDeployCheck(run.name));
+    if (verdict !== 'yes' && verdict !== 'new') continue;
+    const seen = latest.get(run.name);
+    if (seen === undefined || startOf(run) > startOf(seen)) latest.set(run.name, run);
+  }
+  return [...latest.values()]
+    .filter((run) => run.conclusion !== 'success' && !NOTHING_DEPLOYED.has(run.conclusion ?? ''))
+    .map((run) => run.name)
+    .sort();
 }
 
 /** Records what a delivery showed: a deploy check seen for the first time, and projects a deploy turned on. */

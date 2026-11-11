@@ -7,7 +7,7 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import type { Task } from '@ntasks/domain';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hex } from '../../src/access/crypto.ts';
+import { hex, randomSecret } from '../../src/access/crypto.ts';
 import type { TaskStore } from '../../src/store/index.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
@@ -435,6 +435,102 @@ describe('the app’s deliveries', () => {
     expect(
       await inWorkspace(owner, 'POST', '/api/access/github/checks', { name: 'Never seen', on: false }),
     ).toMatchObject({ status: 404, body: { field: 'name' } });
+  });
+
+  it('moves a merge to live once every deploy check on its commit passed, such as an app’s and its website’s', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 40);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 40, merge));
+    const startedAt = ago(60_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: ago(30_000) },
+      { name: 'Workers Builds: app', conclusion: null, startedAt, completedAt: null },
+      // A build its host skipped deploys nothing, so it holds nothing back.
+      { name: 'Workers Builds: docs', conclusion: 'skipped', startedAt, completedAt: startedAt },
+    ]);
+
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).body).toMatchObject({ moved: [] });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    // GitHub's list may not show the app's own run finished when its event comes.
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: app', merge))).body).toEqual({
+      moved: [{ id, stage: 'live' }],
+    });
+  });
+
+  it('never moves a merge to live once a deploy check on its commit failed, whatever the others do', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 41);
+    const merge = newCommit();
+    const startedAt = ago(60_000);
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: app', conclusion: 'failure', startedAt, completedAt },
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 41, merge, ago(120_000)));
+
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).body).toMatchObject({ moved: [] });
+    // Nor does the check that the merge set off, which reads the same checks.
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(github.checkReads).toContain(merge);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+  });
+
+  it('moves nothing while GitHub does not answer for the commit’s other deploy checks, and reads them again', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 42);
+    const merge = newCommit();
+    const startedAt = ago(60_000);
+    const completedAt = ago(30_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: app', conclusion: 'success', startedAt, completedAt },
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt },
+    ]);
+    await deliver('pull_request', mergedAt(mine, 42, merge, ago(120_000)));
+    await runInDurableObject(store(), (_instance: TaskStore, state) => state.storage.deleteAlarm());
+    github.checkOutages.add(merge);
+
+    expect(await deliver('check_run', passed(mine, 'Workers Builds: site', merge))).toMatchObject({
+      status: 503,
+      body: { error: 'unavailable' },
+    });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    github.checkOutages.clear();
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'live', liveAt: completedAt });
+  });
+
+  it('holds a deploy that a webhook set up by hand reports, reading its commit through the app on the repository’s account', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const secret = randomSecret();
+    expect((await inWorkspace(owner, 'POST', '/api/access/github', { secret, deployChecks: [] })).status).toBe(200);
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 43);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 43, merge));
+    const startedAt = ago(60_000);
+    github.checkRuns.set(merge, [
+      { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: ago(30_000) },
+      { name: 'Workers Builds: app', conclusion: null, startedAt, completedAt: null },
+    ]);
+
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge), secret)).body).toMatchObject({
+      moved: [],
+    });
+    expect(github.checkReads).toContain(merge);
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
   });
 
   it('counts a successful deployment to production as a deploy, and one to preview as none', async () => {

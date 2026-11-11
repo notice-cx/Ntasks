@@ -52,6 +52,11 @@ move it from there:
   deployment to the production environment. Each one counts from the first
   time it is seen, and Settings then lists it under **Deploys**, with a box
   that switches it off for later events.
+- **More than one deploy on a commit.** A merge that changes both an app
+  and its website carries a deploy check for each, such as
+  `Workers Builds: app` and `Workers Builds: site`. Its tasks move to Live
+  once all of them passed; while one still runs, they stay at Merged
+  ([API](api.md#more-than-one-deploy-on-a-commit)).
 - **A check with another name** counts once it is typed under **Deploy
   checks**, in **Set up by hand** under GitHub in Settings, and saved. Saving
   needs a secret: press **Make a secret** only when none is saved, since a
@@ -75,6 +80,8 @@ move it from there:
 - **Closed with only a commit.** GitHub's events name the pull request and
   its merge commit, so a task closed with a commit from its branch matches
   neither. Close tasks with their pull request.
+- **A deploy on its commit failed.** The task stays at Merged, whatever the
+  commit's other deploys did, until a later merge's deploy ships it.
 - **One deploy shipped several merges.** A deploy names the one commit it
   ran on, so it moves the task merged as that commit. Tasks merged before it
   stay at Merged unless their own merge was deployed too.

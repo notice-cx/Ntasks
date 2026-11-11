@@ -14,11 +14,11 @@ import { COMMIT_SHA, type DeliverySignal, type Task, type TaskEngine } from '@nt
 import { signInSecrets } from './access/config.ts';
 import {
   appToken,
+  checksOf,
   inHistoryOf,
   installationRepositories,
   installationSelection,
   installationToken,
-  passedChecksOf,
   pullRequestState,
   REPOSITORY_PAGES,
   RETRY,
@@ -28,6 +28,7 @@ import {
   deployOf,
   detectedOf,
   githubAppOf,
+  heldBy,
   installationsByAccount,
   isDeployCheck,
   recordDetected,
@@ -237,7 +238,8 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
  * host built only the last of several merges in a row; or else when a deploy
  * check on its merge commit passed on the default branch or the merge
  * queue's and started at or after its merge, as when GitHub reported the
- * deploy before the merge. Answers how many tasks it moved, and whether a
+ * deploy before the merge, and no other deploy check on it is still running
+ * or failed (heldBy). Answers how many tasks it moved, and whether a
  * read may be answered on another try.
  */
 async function moveDeployed(
@@ -279,14 +281,15 @@ async function moveDeployed(
     }
     if (requests >= budget) break;
     requests += 1;
-    const checks = await passedChecksOf(token, change.repository, change.mergeCommit);
+    const checks = await checksOf(token, change.repository, change.mergeCommit);
     if (checks === RETRY) retry = true;
     if (checks === RETRY || checks === null || checks.runs.length === 0) continue;
     if (names === null) names = await deployNamesOf(env, secret, workspaceId);
     const known = names;
     const deploys = checks.runs.flatMap((run) => {
       // On the default branch or the merge queue's, as a delivery of it counts it; a preview elsewhere moves nothing.
-      if (run.startedAt === null || deployBranchOf(run.branch, checks.defaultBranch) === null) return [];
+      if (run.conclusion !== 'success' || run.startedAt === null) return [];
+      if (deployBranchOf(run.branch, checks.defaultBranch) === null) return [];
       const verdict = deployOf(run.name, known, isDeployCheck(run.name));
       return verdict === 'yes' || verdict === 'new' ? [{ ...run, startedAt: run.startedAt, verdict }] : [];
     });
@@ -294,6 +297,8 @@ async function moveDeployed(
     // Listed in Settings as a delivery of it would list it, with its switch.
     const fresh = [...new Set(deploys.filter((run) => run.verdict === 'new').map((run) => run.name))];
     if (fresh.length > 0) await recordDetected(env.DB, workspaceId, { checks: fresh });
+    // Another deploy of the commit is still running or failed, as the receiver would find for a delivery.
+    if (heldBy(checks.runs, known, checks.defaultBranch).length > 0) continue;
     // The deploy that started last: one that started before the merge was a
     // preview of it, which the move leaves at merged, as a delivery would.
     const last = deploys.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));

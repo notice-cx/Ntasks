@@ -210,28 +210,30 @@ function at(value: unknown, ...path: readonly string[]): unknown {
   return found;
 }
 
-/** A check run of a commit that passed: its name, the branch of its check suite, and when it started and completed. */
+/** A check run of a commit: its name, the branch of its check suite, when it started and completed, and how it ended. */
 export interface CheckRun {
   readonly name: string;
   /** The branch GitHub ran its check suite for, or null when it names none. */
   readonly branch: string | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
+  /** GitHub's conclusion in lowercase, such as success or failure; null while the run is queued or running. */
+  readonly conclusion: string | null;
 }
 
-/** The check runs of a commit that passed, and its repository's default branch, which tells a deploy from a preview. */
-export interface PassedChecks {
+/** The check runs of a commit, and its repository's default branch, which tells a deploy from a preview. */
+export interface CommitChecks {
   readonly defaultBranch: string;
   readonly runs: readonly CheckRun[];
 }
 
-/** The most check suites of a commit read, and the most passing runs of each, in one request. */
+/** The most check suites of a commit read, and the most runs of each, in one request. */
 const CHECK_SUITES = 50;
 const CHECK_RUNS = 50;
 
 // The REST API names a check run's suite by its id alone; the GraphQL API
 // gives the suite's branch with its runs, so one request answers all of it.
-const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!) {
+const COMMIT_CHECKS = `query ($owner: String!, $name: String!, $commit: String!) {
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     object(expression: $commit) {
@@ -239,8 +241,8 @@ const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!)
         checkSuites(last: ${CHECK_SUITES}) {
           nodes {
             branch { name }
-            checkRuns(last: ${CHECK_RUNS}, filterBy: { checkType: ALL, conclusions: [SUCCESS] }) {
-              nodes { name startedAt completedAt }
+            checkRuns(last: ${CHECK_RUNS}, filterBy: { checkType: ALL }) {
+              nodes { name startedAt completedAt conclusion }
             }
           }
         }
@@ -250,17 +252,17 @@ const PASSED_CHECKS = `query ($owner: String!, $name: String!, $commit: String!)
 }`;
 
 /**
- * The check runs of `commit` in `repository` that passed, up to CHECK_RUNS
- * in each of up to CHECK_SUITES check suites, with the branch of each run's
- * suite and the repository's default branch, read with an installation's
- * token in one request; RETRY when GitHub may answer on another try, and
- * null when it does not answer.
+ * The check runs of `commit` in `repository`, finished or not, up to
+ * CHECK_RUNS in each of up to CHECK_SUITES check suites, with the branch of
+ * each run's suite and the repository's default branch, read with an
+ * installation's token in one request; RETRY when GitHub may answer on
+ * another try, and null when it does not answer.
  */
-export async function passedChecksOf(
+export async function checksOf(
   token: string,
   repository: string,
   commit: string,
-): Promise<PassedChecks | typeof RETRY | null> {
+): Promise<CommitChecks | typeof RETRY | null> {
   const [owner = '', name = ''] = repository.split('/');
   const response = await fetch(`${API}/graphql`, {
     method: 'POST',
@@ -269,7 +271,7 @@ export async function passedChecksOf(
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ query: PASSED_CHECKS, variables: { owner, name, commit } }),
+    body: JSON.stringify({ query: COMMIT_CHECKS, variables: { owner, name, commit } }),
   }).catch(() => null);
   if (response?.status !== 200) {
     await response?.body?.cancel();
@@ -288,12 +290,14 @@ export async function passedChecksOf(
     return (Array.isArray(nodes) ? nodes : []).flatMap((run: unknown): CheckRun[] => {
       const runName = at(run, 'name');
       if (typeof runName !== 'string') return [];
+      const conclusion = at(run, 'conclusion');
       return [
         {
           name: runName,
           branch: typeof branch === 'string' ? branch : null,
           startedAt: timeOf(at(run, 'startedAt')),
           completedAt: timeOf(at(run, 'completedAt')),
+          conclusion: typeof conclusion === 'string' ? conclusion.toLowerCase() : null,
         },
       ];
     });
