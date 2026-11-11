@@ -84,6 +84,8 @@ export type Task = Readonly<Record<string, unknown>> & {
   readonly dependencies?: readonly { readonly id: string; readonly type: string }[];
   /** The links other tasks hold onto this one, each naming the task that holds it. */
   readonly dependents?: readonly { readonly id: string; readonly type: string }[];
+  /** The tasks it relies on that closed as wont-do or no-longer-needed after it last changed (STATE-23). */
+  readonly reliesOnDropped?: readonly { readonly id: string; readonly title: string; readonly resolution: string }[];
   readonly for?: string | null;
   readonly work?: Readonly<Record<string, string | readonly string[]>> | null;
   readonly metadata?: Readonly<Record<string, unknown>> | null;
