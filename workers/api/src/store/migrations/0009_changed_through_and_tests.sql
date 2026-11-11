@@ -1,14 +1,14 @@
 -- Who each change was made through, and the test results a comment or a
 -- close carries.
 
--- The helper agent and the agent session a change was made through: the ones
--- its call named, or, for a change by the task's holder, the task's helper
--- and session as they stood. list_tasks finds the tasks a helper or a session
--- changed by them. Every change a store already holds names neither.
+-- The helper agent and the agent session a change was made through: for a
+-- change by the task's holder, the task's assignee_for and work's session as
+-- they stood. They take whatever those hold, as an imported or restored task
+-- may hold more than a new write accepts. list_tasks finds the tasks a helper
+-- or a session changed by them. Every change a store already holds names neither.
 ALTER TABLE task_events ADD COLUMN actor_for TEXT
-  CHECK (actor_for IS NULL OR length(actor_for) BETWEEN 1 AND 64);
-ALTER TABLE task_events ADD COLUMN session TEXT
-  CHECK (session IS NULL OR length(session) BETWEEN 1 AND 512);
+  CHECK (actor_for IS NULL OR length(actor_for) BETWEEN 1 AND 255);
+ALTER TABLE task_events ADD COLUMN session TEXT;
 
 -- A task's changes through one helper or one session, from their own entries.
 CREATE INDEX task_events_by_helper ON task_events (task_id, actor_for) WHERE actor_for IS NOT NULL;

@@ -228,6 +228,22 @@ test('a store that holds history, comments and closes takes helpers, sessions an
 
   const events = db.prepare('SELECT actor_for, session FROM task_events').all();
   assert.ok(events.length > 0 && events.every((row) => row.actor_for === null && row.session === null));
+  // A change keeps whatever helper and session an imported task holds, past a new write's limits.
+  const change = (actorFor: string, session: string) =>
+    insert(db, 'task_events', {
+      task_id: 'web-a1.1',
+      project_id: 'p1',
+      version: 1,
+      kind: 'commented',
+      actor: 'agent-a',
+      at: LATER,
+      changes: '{}',
+      actor_for: actorFor,
+      session,
+    });
+  change('h'.repeat(255), 's'.repeat(2048));
+  change('helper-1', '');
+  assert.throws(() => change('h'.repeat(256), 'session-1'), /CHECK constraint/u, 'a helper longer than a task holds');
   assert.deepEqual(
     db
       .prepare('SELECT id, test FROM task_comments')
