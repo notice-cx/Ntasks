@@ -609,7 +609,7 @@ describe('create_task', () => {
       'invalid arguments: approval (title and description only; not reason)',
     );
     expect(await ask(5)).toBe('invalid arguments: approval (an object with title and description, or one text)');
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(engine, project.id)).toEqual([]);
   });
 
   it('names the sections lint finds missing, and advises choices for lettered options', async () => {
