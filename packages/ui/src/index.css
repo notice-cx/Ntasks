@@ -252,6 +252,17 @@
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8d98' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
+/* Safari on a phone zooms in on a text field drawn under 16 px when it takes
+   focus, and the page then scrolls sideways, so on a touch screen every field
+   draws at 16 px. Outside any layer, so it wins over a field's text utility. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Motion shows a change and nothing else: a hover recolours in 120 ms, a
    menu appears in 120 ms, a page arrives by fading in and rising 6 px, and
    a loading block shimmers. Movement stops under prefers-reduced-motion;

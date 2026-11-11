@@ -243,10 +243,10 @@ export function TaskFacts({
           {task.assignee && holder ? (
             <>
               <Avatar name={holder} agent={isAgentActor(task.assignee)} model={model} decorative />
-              {/* The name keeps its room; the model gives way first. */}
-              <span className="shrink-0">{holder}</span>
-              {helper ? <span className="font-normal text-ink-2">for {helper}</span> : null}
-              {model ? <span className="font-normal text-ink-3">{model}</span> : null}
+              {/* The name keeps its room; the helper and the model give way first. */}
+              <span>{holder}</span>
+              {helper ? <span className="shrink-[100] font-normal text-ink-2">for {helper}</span> : null}
+              {model ? <span className="shrink-[100] font-normal text-ink-3">{model}</span> : null}
             </>
           ) : (
             'Nobody'

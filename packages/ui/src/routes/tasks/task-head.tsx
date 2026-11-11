@@ -9,6 +9,7 @@ import { OptionList } from '../../components/ui/choice';
 import { ProjectIcon } from '../../components/ProjectIcon';
 import { StatusMark } from '../../components/ui/symbols';
 import { ageMs, formatAge } from '../../lib/format';
+import { cn } from '../../lib/utils';
 import { choiceName, RESOLUTION_LABELS, stageLabel, waivedCount } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { cardOptions } from './decision-card';
@@ -39,24 +40,25 @@ export function TaskPath({
   const crumb = 'flex min-w-0 items-center gap-1.5 text-ink-3 no-underline hover:text-ink';
   return (
     <nav aria-label="Path" className="flex min-w-0 items-center gap-1.5 text-label font-medium text-ink-3">
+      {/* On a phone the path is this task alone: its project and its epic are facts on the page. */}
       {project ? (
         <>
-          <Link to={project.to} aria-label={project.name} className={crumb}>
+          <Link to={project.to} aria-label={project.name} className={cn(crumb, 'max-sm:hidden')}>
             <ProjectIcon project={project} />
-            <span className="truncate max-sm:hidden">{project.name}</span>
+            <span className="truncate">{project.name}</span>
           </Link>
-          <ChevronRight aria-hidden size={14} className="shrink-0" />
+          <ChevronRight aria-hidden size={14} className="shrink-0 max-sm:hidden" />
         </>
       ) : null}
       {parent ? (
         <>
-          <Link to={paths.task(parent.id)} title={parent.title ?? undefined} className={crumb}>
-            <span className="nums whitespace-nowrap">{parent.id}</span>
+          <Link to={paths.task(parent.id)} title={parent.title ?? undefined} className={cn(crumb, 'max-sm:hidden')}>
+            <span className="nums truncate">{parent.id}</span>
           </Link>
-          <ChevronRight aria-hidden size={14} className="shrink-0" />
+          <ChevronRight aria-hidden size={14} className="shrink-0 max-sm:hidden" />
         </>
       ) : null}
-      <span ref={here} className="nums whitespace-nowrap text-ink-2" aria-current="page">
+      <span ref={here} className="nums min-w-0 truncate text-ink-2" aria-current="page">
         {id}
       </span>
       <CopyButton label="Copy the task id" target={here} text={() => id} className="-my-1 -ms-1" />

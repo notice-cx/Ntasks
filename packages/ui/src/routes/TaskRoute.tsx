@@ -322,6 +322,7 @@ function TaskPage({
       subject={task.id}
       done={done}
       variant={variant}
+      iconOnPhone={variant === 'secondary'}
       disabledReason={closeReason}
       onPick={pickClose}
       {...(acceptOffered

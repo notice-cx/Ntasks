@@ -424,7 +424,10 @@ key with `aria-keyshortcuts` (`IconButton` does this from `shortcut`).
 ### Field, Input, Textarea and Select (`field.tsx`)
 
 A field is 30 px tall (36 px on a touch screen), Background with a Border
-ring, 13 px text and a Text 3 placeholder. `Input` takes an `icon` at the
+ring, 13 px text and a Text 3 placeholder. On a touch screen every text
+field, text area and select draws its text at 16 px, because Safari on a
+phone zooms in on a field under 16 px when it takes focus and the page then
+scrolls sideways. `Input` takes an `icon` at the
 start and an `end`, such as the `Kbd` of the key that focuses it.
 
 | State | Look |
@@ -476,7 +479,8 @@ A decision's options are named by letter, `a` to `f`.
 
 - `Segmented` answers in place on a row: the options side by side in one
   ringed strip, each its key, its label and a star when recommended; one press
-  is the answer. On a phone the options wrap, each in its own ring.
+  is the answer. On a phone the options wrap, each in its own ring, and a
+  label longer than the screen takes more lines.
 - `OptionList` is a decision card's list: each option is its key, its label
   in 14 px semibold, its detail in Text 3, and Recommended with a star at the
   end of its line. A press or the option's letter selects it, and the card's
@@ -564,7 +568,11 @@ one ticked, then Settings under a divider.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions. Below 768 px the board's views leave the top bar for a
-row of their own under it.
+row of their own under it. On a phone a task page's top bar holds the task's
+id alone as its path, since the project and the epic are facts on the page,
+and Close or Close as shows its icons alone when another button is the main
+action; an id longer than the room left ends in an ellipsis rather than
+widening the page.
 
 On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
 with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a
