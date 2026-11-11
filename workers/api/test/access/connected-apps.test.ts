@@ -23,6 +23,7 @@ import {
   meWithToken,
   ORIGIN,
   OWNER_GITHUB_ID,
+  pkce,
   REDIRECT_URI,
   userIdOf,
 } from './client.ts';
@@ -706,7 +707,12 @@ describe('an app at an http address on a home network', () => {
   it.each([
     ['a .local name', () => homeAddress().redirect],
     ['a private IPv4 address', () => `http://10.${crypto.getRandomValues(new Uint8Array(1))[0]}.0.20:5173/signed-in`],
-    ['an IPv6 unique-local address', () => `http://[fd12:${crypto.randomUUID().slice(0, 4)}::20]:5173/signed-in`],
+    // A group with no leading zero, which URL would drop and so change the origin.
+    [
+      'an IPv6 unique-local address',
+      () =>
+        `http://[fd12:${(0x1000 + (crypto.getRandomValues(new Uint16Array(1))[0]! % 0xf000)).toString(16)}::20]:5173/signed-in`,
+    ],
   ])('registers on %s, held until an owner allows it', async (_, address) => {
     const owner = new Browser();
     await owner.signInAsOwner();
@@ -785,6 +791,30 @@ describe('an app at an http address on a home network', () => {
 
     const { landing } = await authorizeApp(owner, { clientId: app.clientId, redirect: home.redirect }, EVERY_SCOPE);
     expect(landing.pathname).toBe('/agent-access');
+    // Naming Ntasks's return page itself as the address meets the same approval page.
+    const returnPage = new URL(`${ORIGIN}/api/access/return`);
+    returnPage.searchParams.set('to', home.redirect);
+    const direct = await authorizeApp(owner, { clientId: app.clientId, redirect: returnPage.toString() }, EVERY_SCOPE);
+    expect(direct.landing.pathname).toBe('/agent-access');
+    // Asking for no page at all is refused at the app's address, with no code.
+    const { challenge } = await pkce();
+    const silent = new URLSearchParams({
+      response_type: 'code',
+      client_id: app.clientId,
+      redirect_uri: home.redirect,
+      scope: EVERY_SCOPE,
+      state: 'app-state',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource: MCP_RESOURCE,
+      prompt: 'none',
+    });
+    const refused = locationOf(await owner.fetch(`/api/auth/oauth2/authorize?${silent}`));
+    expect(`${refused.origin}${refused.pathname}`).toBe(home.redirect);
+    expect(refused.searchParams.get('error')).toBe('consent_required');
+    expect(refused.searchParams.get('state')).toBe('app-state');
+    expect(refused.searchParams.has('code')).toBe(false);
+
     const relayed = new URL(`${ORIGIN}/api/access/return`);
     relayed.searchParams.set('to', home.redirect);
     relayed.searchParams.set('code', 'a-code-for-the-held-address');

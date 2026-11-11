@@ -345,7 +345,9 @@ the tokens cross that network unencrypted, so Ntasks holds each such address
 until an owner of the app's workspace allows it:
 
 - While it is held, no sign-in completes there and its origin gets no CORS
-  answers. The approval page names the address: an owner sees one line
+  answers. Every authorization request for it shows the approval page, even
+  to a person who allowed the app before, and one with `prompt=none` is
+  answered `consent_required` at the address. The approval page names the address: an owner sees one line
   saying the token crosses the network unencrypted, and **Allow** allows the
   address for everyone in the workspace as it signs the owner in. A member
   who is not an owner reads that an owner has to allow it first, and has

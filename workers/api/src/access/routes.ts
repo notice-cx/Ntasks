@@ -338,7 +338,8 @@ async function library(request: Request, env: AccessEnv, config: SignInConfig, u
   if (!method) return json({ error: 'not_found' }, 404);
   if (request.method !== method) return json({ error: 'method_not_allowed' }, 405, { allow: method });
   if (url.pathname === AUTHORIZE_PATH) {
-    return createAuth(env.DB, config).handler(await libraryAuthorization(request, env, config, url));
+    const authorization = await libraryAuthorization(request, env, config, url);
+    return authorization instanceof Response ? authorization : createAuth(env.DB, config).handler(authorization);
   }
   if (method === 'GET') return createAuth(env.DB, config).handler(request);
   const text = await boundedText(request);
@@ -355,25 +356,42 @@ const AUTHORIZE_PATH = `${AUTH_BASE_PATH}/oauth2/authorize`;
 const TOKEN_PATH = `${AUTH_BASE_PATH}/oauth2/token`;
 
 /**
- * An authorization request as the library takes it: a home-network redirect
- * address in its library form, and, until an owner allows the address,
- * asking for consent even from a person who allowed the app before, so the
- * approval page, where an owner allows it, is never skipped.
+ * An authorization request as the library takes it. A home-network redirect
+ * address, whether the request names it or its library form, reaches the
+ * library in its library form. Until an owner allows the address, the
+ * request asks for consent even from a person who allowed the app before, so
+ * the approval page, where an owner allows it, is never skipped; one that
+ * asks for no page at all is answered consent_required at that address,
+ * which the app registered.
  */
 async function libraryAuthorization(
   request: Request,
   env: AccessEnv,
   config: SignInConfig,
   url: URL,
-): Promise<Request> {
-  const address = url.searchParams.get('redirect_uri');
-  if (address === null || !isHomeNetworkHttp(address)) return request;
+): Promise<Request | Response> {
+  const given = url.searchParams.get('redirect_uri');
+  if (given === null) return request;
+  const address = appAddress(config.origin, given);
+  if (!isHomeNetworkHttp(address)) return request;
   const target = new URL(url);
   target.searchParams.set('redirect_uri', libraryAddress(config.origin, address));
-  if ((await addressState(env.DB, address, url.searchParams.get('client_id') ?? '')) !== 'allowed') {
+  const state = await addressState(env.DB, address, url.searchParams.get('client_id') ?? '');
+  if (state === 'held') {
     const prompt = new Set((url.searchParams.get('prompt') ?? '').split(' ').filter(Boolean));
-    // prompt=none asks for no page at all; the library refuses it as consent_required.
-    if (!prompt.has('none')) target.searchParams.set('prompt', [...prompt, 'consent'].join(' '));
+    if (prompt.has('none')) {
+      const refused = new URL(address);
+      refused.searchParams.set('error', 'consent_required');
+      refused.searchParams.set('error_description', 'a workspace owner has not allowed this address yet');
+      const appState = url.searchParams.get('state');
+      if (appState !== null) refused.searchParams.set('state', appState);
+      refused.searchParams.set('iss', config.origin + AUTH_BASE_PATH);
+      return new Response(null, {
+        status: 302,
+        headers: { location: refused.toString(), 'cache-control': 'no-store' },
+      });
+    }
+    target.searchParams.set('prompt', [...prompt, 'consent'].join(' '));
   }
   return new Request(target, request);
 }
