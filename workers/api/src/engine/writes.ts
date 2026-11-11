@@ -106,6 +106,30 @@ interface PushedCommit {
 export const NAMED_LINKS = 20;
 
 /**
+ * Whether a write beside another task's only comments on it, which leaves
+ * that task's version, and so its dropped list, as they were (#prepare).
+ */
+function commentsOnly(write: check.CheckedWrite): boolean {
+  return (
+    write.comment !== null &&
+    Object.keys(write.set).length === 0 &&
+    write.close === null &&
+    !write.reopen &&
+    write.metadata === null &&
+    // Field values that change nothing leave the version too; an empty set of them is the one case read here.
+    (write.setFields === null || Object.keys(write.setFields).length === 0) &&
+    write.requestApproval === null &&
+    write.requestAction === null &&
+    write.addLabels.length === 0 &&
+    write.removeLabels.length === 0 &&
+    write.addLinks.length === 0 &&
+    write.removeLinks.length === 0 &&
+    write.addExternalLinks.length === 0 &&
+    write.removeExternalLinks.length === 0
+  );
+}
+
+/**
  * Whether a text names this task id as a whole id: not inside a longer
  * word, and not as the start of a child's id, as `web-a1.2` starts with
  * `web-a1`. A sentence's full stop after it still names it.
@@ -915,6 +939,7 @@ export class Writes {
     moved: readonly Moved[],
     at: string,
     unkept: readonly string[] = [],
+    commented: ReadonlySet<string> = new Set(),
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
     const formerIds = moved.flatMap((task) => (task.formerId === undefined ? [] : [task.formerId]));
     // A task this write moves to another project is read by its old id, and the batch gives it its new one.
@@ -1030,7 +1055,11 @@ export class Writes {
     const statements: Statement[] = [...guards.values()];
     const epics: string[] = [];
     // An epic this batch closes, such as a child epic closing with its parent, is no open task to link to.
-    const unlinked = new Set([...written, ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : []))]);
+    // A task the write only comments on stays as it was, so it can still take a link.
+    const unlinked = new Set([
+      ...[...written].filter((id) => !commented.has(id)),
+      ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : [])),
+    ]);
     for (const [epicId, placed] of decided) {
       const epic = read.get(epicId)!;
       // An epic closed and opened again in one write is left as it was.
@@ -1516,8 +1545,11 @@ export class Writes {
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
     const commentId = write.comment === null ? null : crypto.randomUUID();
-    // A task this write changes takes no named link: the change clears its dropped list anyway.
-    const written = new Set([taskId, ...write.others.map((other) => other.taskId)]);
+    // A task this write changes takes no named link: the change clears its dropped list anyway. A comment changes nothing.
+    const written = new Set([
+      taskId,
+      ...write.others.flatMap((other) => (commentsOnly(other.write) ? [] : [other.taskId])),
+    ]);
     const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId, written);
     const moved = [movedBy(toTask(row), write)];
     const unkept = unkeptBy(toTask(row), write) ? [taskId] : [];
@@ -1532,7 +1564,8 @@ export class Writes {
         return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment, written);
       }),
     );
-    const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept);
+    const commented = new Set(write.others.flatMap((other) => (commentsOnly(other.write) ? [other.taskId] : [])));
+    const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept, commented);
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const opens = write.requestApproval !== null || write.requestAction !== null;
@@ -2046,7 +2079,13 @@ export class Writes {
     for (const link of addLinks) links.set(link.taskId, link.type);
     // A task dropped here relates to each open task whose text names it, so that task relies on it (droppedSince).
     if (write.close !== null && DROPPED.includes(write.close.resolution)) {
-      const linked = new Set([...links.keys(), ...current.dependents.map((link) => link.taskId), ...written]);
+      // A link the close itself removes stays removed.
+      const linked = new Set([
+        ...links.keys(),
+        ...current.dependents.map((link) => link.taskId),
+        ...written,
+        ...write.removeLinks,
+      ]);
       for (const naming of await this.#namedBy(taskId, linked)) {
         addLinks.push({ taskId: naming, type: 'related' });
         links.set(naming, 'related');
