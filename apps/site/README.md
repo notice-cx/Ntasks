@@ -77,10 +77,11 @@ and icons in `apps/web/public/brand/` that `vite.config.ts` copies, and
 started no build, so the connection builds every push.
 
 Each build shows on its commit as the check `Workers Builds: ntasks-site`. A
-failing check means the site still serves the previous build. Ntasks moves a
-merge's tasks to Live only once every deploy check on its commit has passed,
-so a failing site build also holds that merge's app tasks at Merged until a
-later merge's deploys pass.
+failing check means the site still serves the previous build. Every commit
+now carries this check beside the app's deploy check, so a site build that is
+still running or has failed holds that merge's app tasks at Merged; what
+releases them is in
+[More than one deploy on a commit](../../docs/api.md#more-than-one-deploy-on-a-commit).
 
 When that check fails, publish by hand: run these two commands from the
 repository root of a clean checkout of `main`'s latest commit. After the

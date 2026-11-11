@@ -1,7 +1,7 @@
 // The website at ntasks.notice.cx: a Worker with no script that serves the
 // files `pnpm build:site` writes to dist/. Its own Workers Builds connection,
-// with apps/site as its root directory, deploys it on a merge that changes
-// the site (README.md, "Publishing"). The app's connection and the Deploy to
+// with apps/site as its root directory, deploys it on every push to main
+// (README.md, "Publishing"). The app's connection and the Deploy to
 // Cloudflare button read the app's wrangler.jsonc at the repository root.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
