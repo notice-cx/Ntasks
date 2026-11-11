@@ -1,4 +1,5 @@
 import { Activity, ChartNoAxesColumn, List, Search, Settings, Target } from 'lucide-react';
+import { useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar } from './ui/avatar';
 import { Count } from './ui/badge';
@@ -45,6 +46,10 @@ export function peopleOf(tasks: readonly BoardTask[], nowMs: number): Person[] {
     });
   }
   return [...people.values()].sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
+}
+
+function openCount(tasks: readonly BoardTask[]): number {
+  return tasks.filter((task) => task.status !== 'closed').length;
 }
 
 /** Whether a filter's assignee, in any spelling, names this sender. */
@@ -105,13 +110,19 @@ export function AppSidebar() {
   const onBoard = pathname === paths.board;
   const params = new URLSearchParams(onBoard ? search : '');
   const narrowed = ['view', 'project', 'assignee', 'status', 'priority', 'label', 'q'].some((name) => params.has(name));
-  const fetchedAt = (task: BoardTask) =>
-    board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
-  const waiting = board.inbox.filter((task) => !hides(task.id, fetchedAt(task))).length;
-  const open = (tasks: readonly BoardTask[]) => tasks.filter((task) => task.status !== 'closed').length;
   const now = useNow();
-  const people = peopleOf(board.allTasks, now).slice(0, PEOPLE);
-  const active = board.allTasks.filter((task) => activeNow(task, now)).length;
+  // Worked out once per read, answer and clock tick: a change of address alone draws the sidebar again.
+  const { waiting, tasks, projects, people, active } = useMemo(() => {
+    const fetchedAt = (task: BoardTask) =>
+      board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
+    return {
+      waiting: board.inbox.filter((task) => !hides(task.id, fetchedAt(task))).length,
+      tasks: openCount(board.allTasks),
+      projects: new Map(board.available.map((project) => [project.key, openCount(project.tasks)])),
+      people: peopleOf(board.allTasks, now).slice(0, PEOPLE),
+      active: board.allTasks.filter((task) => activeNow(task, now)).length,
+    };
+  }, [board, hides, now]);
   const boardSearch = onBoard ? search : '';
 
   return (
@@ -136,7 +147,7 @@ export function AppSidebar() {
       >
         <Link to={`${paths.board}?view=waiting`}>Waiting for you</Link>
       </NavItem>
-      <NavItem asChild icon={<List aria-hidden />} count={open(board.allTasks)} active={onBoard && !narrowed}>
+      <NavItem asChild icon={<List aria-hidden />} count={tasks} active={onBoard && !narrowed}>
         <Link to={paths.board}>Tasks</Link>
       </NavItem>
       <NavItem
@@ -160,7 +171,7 @@ export function AppSidebar() {
               key={project.key}
               asChild
               icon={<ProjectIcon project={project} />}
-              count={project.ok ? open(project.tasks) : undefined}
+              count={project.ok ? projects.get(project.key) : undefined}
               active={onBoard && params.get('project') === project.key}
             >
               <Link to={`${paths.board}?project=${encodeURIComponent(project.key)}`}>{project.name}</Link>
