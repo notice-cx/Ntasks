@@ -735,6 +735,50 @@ describe('the app’s deliveries', () => {
       expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
     });
 
+    it('moves to live through the check when another task’s write closes it', async () => {
+      const owner = await connected();
+      const mine = newInstallation();
+      await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+      const projectId = await deployingProject(owner);
+      const pushed = newCommit();
+      await deliver('push', pushOf(mine, pushed));
+      const startedAt = new Date().toISOString();
+      github.checkRuns.set(pushed, [
+        { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: startedAt },
+      ]);
+      const ids: string[] = [];
+      for (const title of ['Approve the footer', 'Fix the footer']) {
+        ids.push((await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title })).body.id as string);
+      }
+      const [primary, other] = ids as [string, string];
+      const [first, second] = [await taskOf(projectId, primary), await taskOf(projectId, other)];
+      // The check the install set off runs first, so only the write below can set the next one.
+      await runDurableObjectAlarm(store());
+      expect(await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm())).toBeNull();
+      // The write leaves its own task open and closes the other one with the pushed commit.
+      await runInDurableObject(store(), (instance: TaskStore) =>
+        instance.tasks.writeTask(
+          projectId,
+          primary,
+          {
+            expectedVersion: first.version,
+            comment: 'Shipped with the footer fix.',
+            others: [
+              {
+                taskId: other,
+                expectedVersion: second.version,
+                close: { reason: 'Done.', resolution: 'done', commit: pushed },
+              },
+            ],
+          },
+          { name: 'Person 1001' },
+        ),
+      );
+      expect((await taskOf(projectId, other)).delivery?.stage).toBe('merged');
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect((await taskOf(projectId, other)).delivery?.stage).toBe('live');
+    });
+
     it('stays at built when no push brought its commit onto the default branch', async () => {
       const owner = await connected();
       const mine = newInstallation();

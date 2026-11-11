@@ -121,8 +121,10 @@ An app connected before Ntasks read pushes receives none until you
 - **One deploy shipped several merges.** A deploy names the one commit it
   ran on, so it moves the task merged as that commit. Tasks merged before it
   stay at Merged unless their own merge was deployed too.
-- **The deploy passed before the task closed.** The check after the close
-  asks GitHub only about the merge, so the task stops at Merged. Redeliver
+- **The deploy passed before the task closed.** For a task closed with a
+  pull request, the check after the close asks GitHub only about the merge,
+  so the task stops at Merged; a task closed with a commit a push brought in
+  within the day moves on to Live through that check. Redeliver
   the deploy's event from **Recent Deliveries** ([below](#check-that-it-works))
   to move it to Live; GitHub keeps them for 3 days, and after that a signal
   (below) does it. The event turns on **Changes go live by a deploy** for

@@ -107,7 +107,17 @@ export class TaskStore extends DurableObject<Env> {
     return Object.freeze({
       ...engine,
       createTask: async (...args: Parameters<TaskEngine['createTask']>) => checked(await engine.createTask(...args)),
-      writeTask: async (...args: Parameters<TaskEngine['writeTask']>) => checked(await engine.writeTask(...args)),
+      writeTask: async (...args: Parameters<TaskEngine['writeTask']>) => {
+        const result = await checked(await engine.writeTask(...args));
+        // A write can close other tasks of its project beside its own, which may wait on GitHub as well.
+        const [projectId, , write] = args;
+        const closed = (write.others ?? []).flatMap((other) => (other.close === undefined ? [] : [other.taskId]));
+        if (closed.length > 0 && !result.replayed && !waitsOnGitHub(result.task)) {
+          const others = await engine.getTasks(projectId, closed);
+          if (others.some(waitsOnGitHub)) await this.#checkGitHubIn(CHECK_DELAY_MS);
+        }
+        return result;
+      },
     } satisfies TaskEngine);
   }
 
