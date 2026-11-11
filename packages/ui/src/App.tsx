@@ -113,7 +113,8 @@ function AccountTimeZone({ children }: { children: ReactNode }) {
 /**
  * The frame every task page shares: the sidebar, the page, and the keys that
  * work on any of them: `C` for a new task, `/` to search the board, `F` for
- * Focus and `L` for Live.
+ * Focus and `L` for Live. `AppShell` adds `[`, which hides or shows the
+ * sidebar.
  */
 function Shell({ sidebar }: { sidebar: SidebarPlace }) {
   const { pathname, search } = useLocation();

@@ -38,7 +38,7 @@ const person: TokenSource = {
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
 | `onTitle` | none | Receives each page's title, such as `web-b2r6 · Fix the reset link — Ntasks`, in place of the app setting the document's title, so the host keeps its own tab title |
-| `sidebar` | `beside` | `beside` draws the app's sidebar beside its pages, and on a phone behind the Sidebar button at the start of each page's top bar. `sheet` keeps it behind that button at every width, for a host page with its own navigation beside the app; the pages then fill the host's area |
+| `sidebar` | `beside` | `beside` draws the app's sidebar beside its pages, where its own Sidebar button hides it until the one at the start of each page's top bar shows it again, and on a phone behind that top-bar button. `sheet` keeps it behind that button at every width, for a host page with its own navigation beside the app; the pages then fill the host's area |
 
 ### Addresses
 
@@ -198,8 +198,8 @@ always that menu, and it ends with New workspace. A rename shows in the sidebar 
 the menu at once. The frame reads every project's board once, for the
 sidebar's counts and the page alike, and runs the one change feed
 (`BoardsProvider` in `src/hooks/useBoard.tsx`). On any page, `C` opens the
-composer, `/` puts the cursor in the board's search, `F` opens Focus and `L`
-opens Live.
+composer, `/` puts the cursor in the board's search, `F` opens Focus, `L`
+opens Live and `[` hides or shows the sidebar.
 
 Every page draws with the design system's tokens and the components in
 `src/components/ui/`; [the design system](../../docs/design.md) gives the
