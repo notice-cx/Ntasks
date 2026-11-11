@@ -857,6 +857,8 @@ export class Writes {
     unkept: readonly string[] = [],
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
     const formerIds = moved.flatMap((task) => (task.formerId === undefined ? [] : [task.formerId]));
+    // A task this write moves to another project is read by its old id, and the batch gives it its new one.
+    const renamed = new Map(moved.flatMap((task) => (task.formerId === undefined ? [] : [[task.formerId, task.id]])));
     const written = new Set([...moved.map((task) => task.id), ...formerIds]);
     const left = new Map<string, Placed>(moved.map((task) => [task.id, task]));
     // Each epic waits in the queue at most once, with the first cause that reached it.
@@ -975,9 +977,10 @@ export class Writes {
       const actor: Actor = { name: NTASKS_ACTOR };
       if (placed.closed) {
         const work = JSON.parse(epic.work) as Record<string, unknown>;
+        // An epic this write also changes is left without them: its links may change in the same batch.
         const named =
-          placed.resolution !== null && DROPPED.includes(placed.resolution)
-            ? await this.#namedLinksOf(epicId, actor, at)
+          placed.resolution !== null && DROPPED.includes(placed.resolution) && !written.has(epicId)
+            ? await this.#namedLinksOf(epicId, actor, at, renamed)
             : { statements: [], links: null };
         statements.push(
           this.#db
@@ -2103,6 +2106,7 @@ export class Writes {
     epicId: string,
     actor: Actor,
     at: string,
+    renamed: ReadonlyMap<string, string>,
   ): Promise<{ statements: Statement[]; links: Json | null }> {
     const { results } = await this.#db
       .prepare(
@@ -2111,9 +2115,13 @@ export class Writes {
       )
       .bind(epicId)
       .all<{ id: string; type: DependencyType | null }>();
-    const naming = await this.#namedBy(epicId, new Set(results.map((row) => row.id)));
+    const naming = (await this.#namedBy(epicId, new Set(results.map((row) => row.id)))).map(
+      (id) => renamed.get(id) ?? id,
+    );
     if (naming.length === 0) return { statements: [], links: null };
-    const links = new Map(results.flatMap((row) => (row.type === null ? [] : [[row.id, row.type] as const])));
+    const links = new Map(
+      results.flatMap((row) => (row.type === null ? [] : [[renamed.get(row.id) ?? row.id, row.type] as const])),
+    );
     for (const id of naming) links.set(id, 'related');
     const statements = naming.map((id) =>
       this.#db

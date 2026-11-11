@@ -686,6 +686,30 @@ describe('dropped links', () => {
     ]);
   });
 
+  it('links a task that names its epic by the id a move gives it, when the move leaves the epic dropped', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const other = await newProject(tasks);
+    const plan = await make(tasks, project.id, 'Plan the move', { title: '', type: 'epic' });
+    const dropped = await make(tasks, project.id, 'Move the images', { title: '', parentId: plan.id });
+    const leaving = await make(tasks, project.id, 'Move the fonts', {
+      title: '',
+      parentId: plan.id,
+      description: `Part of ${plan.id}.`,
+    });
+    await drop(tasks, project.id, dropped, 'wont-do');
+    time.advance(1);
+    const current = (await tasks.getTask(project.id, leaving.id))!;
+    const [moved] = (
+      await tasks.moveTasks(other.id, [{ taskId: leaving.id, expectedVersion: current.version, parentId: null }], AGENT)
+    ).tasks;
+
+    const epic = await tasks.getTask(project.id, plan.id);
+    expect(epic?.close).toMatchObject({ resolution: 'no-longer-needed' });
+    expect(epic?.dependencies.map((link) => [link.taskId, link.type])).toEqual([[moved!.id, 'related']]);
+  });
+
   it('links at most NAMED_LINKS of the open tasks that name a dropped task, newest change first', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
