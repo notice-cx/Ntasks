@@ -2,16 +2,19 @@
 // the account that holds it signs in and becomes a member, and an owner
 // removes members. GitHub accounts 1001 to 1004 are deployment admins
 // (vitest.config.ts); the people they invite are 2101 and up.
+import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { setAgentGrants } from '../../src/access/grants.ts';
 import { INVITATION_DAYS } from '../../src/access/members.ts';
 import { projectChoice } from '../../src/access/pages.ts';
+import type { TaskStore } from '../../src/store/index.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
+import { store } from '../store.ts';
 import { Browser, call, connectAgent, meWithToken, userIdOf } from './client.ts';
 import { standInForGitHub } from './github.ts';
 
-standInForGitHub();
+const github = standInForGitHub();
 
 interface Answer {
   readonly status: number;
@@ -427,5 +430,66 @@ describe('a member', () => {
     expect(listed.members.map((row) => row.userId)).toContain(ownerId);
     expect(listed.invitations.map((row) => row.githubLogin)).toEqual(['person-2109']);
     expect((await as(owner, 'GET', '/api/access/services', { workspace })).body).toEqual({ services: [] });
+  });
+});
+
+describe('two people with the same GitHub display name', () => {
+  it('are recorded as different people, so one cannot finish the other’s pick', async () => {
+    github.names.set(2301, 'Alex');
+    github.names.set(2302, 'Alex');
+    const { owner, workspace } = await adminWithWorkspace(1001, 'Shared');
+    await invited(owner, workspace, 'alex-one');
+    await invited(owner, workspace, 'alex-two');
+    const first = await admitted(2301, 'alex-one');
+    const second = await admitted(2302, 'alex-two');
+    const named = (await members(owner, workspace)).body.members as { userId: string; name: string }[];
+    const [firstId, secondId] = [await idOf(2301), await idOf(2302)];
+    expect(named.find(({ userId }) => userId === firstId)?.name).toBe('Alex');
+    expect(named.find(({ userId }) => userId === secondId)?.name).toBe('Alex (alex-two)');
+
+    const made = await as(owner, 'POST', '/api/tasks/projects', {
+      workspace,
+      json: { name: 'Shared', prefix: 'shr', key: 'shared.example.com' },
+    });
+    const projectId = (made.body.project as { projectId: string }).projectId;
+    const taskId = await runInDurableObject(store(workspace), async (instance: TaskStore) => {
+      const choices = {
+        question: 'Which day?',
+        options: [
+          { key: 'a', label: 'Monday' },
+          { key: 'b', label: 'Friday' },
+        ],
+      };
+      return (
+        await instance.tasks.createTask(projectId, { title: 'Pick a launch day', choices }, { name: 'Person 1001' })
+      ).task.id;
+    });
+    for (const [browser, text] of [
+      [first, 'Monday suits me.'],
+      [second, 'Friday suits me.'],
+    ] as const) {
+      const said = await as(browser, 'POST', `/api/tasks/${taskId}/comments`, { workspace, json: { projectId, text } });
+      expect(said.status).toBe(200);
+    }
+    const authors = await runInDurableObject(store(workspace), async (instance: TaskStore) =>
+      (await instance.tasks.listComments(projectId, taskId)).map((comment) => comment.author),
+    );
+    expect(authors).toEqual(['Alex', 'Alex (alex-two)']);
+
+    // A pick recorded without its comment, as an interrupted one is: only the person who made it may finish it.
+    await runInDurableObject(store(workspace), async (instance: TaskStore) => {
+      const task = await instance.tasks.getTask(projectId, taskId);
+      const choice = { option: 'b', label: 'Friday', by: 'Alex', at: '2026-11-06T12:00:00.000Z' };
+      await instance.tasks.writeTask(
+        projectId,
+        taskId,
+        { expectedVersion: task!.version, set: { choice } },
+        { name: 'Alex' },
+      );
+    });
+    const choose = (browser: Browser) =>
+      as(browser, 'POST', `/api/tasks/${taskId}/choose`, { workspace, json: { projectId, option: 'b' } });
+    expect((await choose(second)).status).toBe(409);
+    expect((await choose(first)).status).toBe(200);
   });
 });

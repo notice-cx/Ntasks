@@ -197,6 +197,13 @@ export function projectChoice(workspaceId: string, projectId: string): string {
   return `${workspaceId}/${projectId}`;
 }
 
+/**
+ * The most workspaces whose projects one request of the approval page lists.
+ * Each is one task store call, and a request on the free plan may make 50
+ * subrequests; a person in more workspaces chooses which to list.
+ */
+export const APPROVAL_WORKSPACES = 10;
+
 /** A workspace and its projects, as the approval page lists them. */
 export interface WorkspaceProjects {
   readonly id: string;
@@ -208,7 +215,9 @@ export interface WorkspaceProjects {
  * The page where a person allows or denies an agent and chooses its
  * projects, in each workspace they belong to: who asks, for what access, for
  * whom and where the answer goes. Allow is left out when the agent asked for
- * no access to tasks or there is no project to choose.
+ * no access to tasks or there is no project to choose. A person in more than
+ * APPROVAL_WORKSPACES workspaces gets `choosable`, every one of them, and
+ * picks which to list with Show projects; `workspaces` holds the listed ones.
  */
 export function agentAccessPage(input: {
   readonly personName: string;
@@ -222,6 +231,14 @@ export function agentAccessPage(input: {
   /** The most the agent's scopes let it do; null when it asked for no access to tasks. */
   readonly access: ProjectAccess | null;
   readonly workspaces: readonly WorkspaceProjects[];
+  /** Every workspace of a person in more than APPROVAL_WORKSPACES, to choose which to list. */
+  readonly choosable?: readonly { readonly id: string; readonly name: string }[];
+  /**
+   * The projects the person had ticked, as `projectChoice` values: those in a
+   * listed workspace stay ticked. A tick in a workspace no longer listed is
+   * dropped, so Allow grants only projects the page shows.
+   */
+  readonly chosen?: readonly string[];
   readonly oauthQuery: string;
   readonly error: string | null;
 }): Response {
@@ -229,21 +246,39 @@ export function agentAccessPage(input: {
   const access = input.access === null ? '<span class="quiet">None</span>' : ACCESS_WORDS[input.access];
   const listed = input.workspaces.filter((workspace) => workspace.projects.length > 0);
   const choosing = input.access !== null && listed.length > 0;
-  const projects = choosing
-    ? listed
-        .map(
-          (workspace) => `<fieldset>
-<legend>${listed.length === 1 ? 'Projects' : `Projects in ${escape(workspace.name)}`}</legend>
+  const chosen = new Set(input.chosen ?? []);
+  const shown = new Set(input.workspaces.map((workspace) => workspace.id));
+  const tick = (on: boolean) => (on ? ' checked' : '');
+  const chooser =
+    input.access !== null && input.choosable !== undefined
+      ? `<fieldset>
+<legend>Workspaces</legend>
+<p class="sub">Choose up to ${APPROVAL_WORKSPACES}, then Show projects.</p>
 <div class="options">
-${workspace.projects
+${input.choosable
   .map(
-    (project) =>
-      `<label><input type="checkbox" name="project" value="${escape(projectChoice(workspace.id, project.id))}">${escape(project.name)}<span class="key">${escape(project.key)}</span></label>`,
+    (workspace) =>
+      `<label><input type="checkbox" name="workspace" value="${escape(workspace.id)}"${tick(shown.has(workspace.id))}>${escape(workspace.name)}</label>`,
   )
   .join('\n')}
 </div>
-</fieldset>`,
-        )
+<div class="actions"><button type="submit" name="decision" value="show" class="button secondary">Show projects</button></div>
+</fieldset>`
+      : '';
+  const projects = choosing
+    ? listed
+        .map((workspace) => {
+          const options = workspace.projects.map((project) => {
+            const value = projectChoice(workspace.id, project.id);
+            return `<label><input type="checkbox" name="project" value="${escape(value)}"${tick(chosen.has(value))}>${escape(project.name)}<span class="key">${escape(project.key)}</span></label>`;
+          });
+          return `<fieldset>
+<legend>${listed.length === 1 ? 'Projects' : `Projects in ${escape(workspace.name)}`}</legend>
+<div class="options">
+${options.join('\n')}
+</div>
+</fieldset>`;
+        })
         .join('\n')
     : '';
   return page(
@@ -259,6 +294,7 @@ ${input.access !== null && listed.length === 0 ? '<dt>Projects</dt><dd><span cla
 </dl>
 <form method="post" action="${AGENT_ACCESS_PAGE}">
 <input type="hidden" name="oauth_query" value="${escape(input.oauthQuery)}">
+${chooser}
 ${projects}
 <div class="actions">
 <button type="submit" name="decision" value="deny" class="button secondary">Deny</button>

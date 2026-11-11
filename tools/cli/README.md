@@ -8,9 +8,10 @@ it again to update that deployment to the latest release.
 npx ntasks deploy
 ```
 
-It needs Node.js and a Cloudflare account. No copy of the Ntasks repository
-is involved: this package holds the built Worker, the web app and the D1
-migrations, and deploys them with [wrangler](https://developers.cloudflare.com/workers/wrangler/).
+It needs Node.js 22 or later and a Cloudflare account. No copy of the Ntasks
+repository is involved: this package holds the built Worker, the web app and
+the D1 migrations, and deploys them with
+[wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
 ## What it does
 
@@ -38,6 +39,16 @@ The command keeps nothing on your machine between runs. Each deploy tags the
 Worker's version with its release, such as `v0.1.0`, which is how a later run
 knows the release deployed; the Cloudflare dashboard shows the tag on the
 Worker's Deployments page.
+
+npx looks for a newer release only of a package in its own cache, and runs a
+global or project install of `ntasks` as it is. So before it deploys, such a
+copy reads the latest release from the npm registry, or from the registry npm
+is configured with. When the latest is newer, it prints both releases and
+the same command with its options run as `npx ntasks@latest deploy`, and
+deploys its own release only when you answer
+`y` in the terminal; with no terminal, it stops. `--dry-run` prints them and
+asks nothing. When the registry cannot be reached, the command says the check
+was skipped and deploys.
 
 ## Options
 

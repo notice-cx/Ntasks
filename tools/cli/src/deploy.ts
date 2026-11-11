@@ -73,20 +73,45 @@ function releaseOfTag(tag: unknown): string | undefined {
   return /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/u.exec(tag)?.[1];
 }
 
-/** Orders two release numbers: negative when a is older, positive when newer. A pre-release comes before its release. */
+/** A release number's core and its pre-release identifiers: `1.2.0-beta.10` is [1, 2, 0] and ['beta', '10']. */
+function releaseParts(release: string): { core: number[]; pre: string[] | undefined } {
+  const dash = release.indexOf('-');
+  const core = (dash < 0 ? release : release.slice(0, dash)).split('.').map(Number);
+  return { core, pre: dash < 0 ? undefined : release.slice(dash + 1).split('.') };
+}
+
+/** Orders two pre-release identifiers as SemVer does: numbers by value, and before any word. */
+function compareIdentifiers(a: string, b: string): number {
+  const numeric = /^\d+$/u;
+  if (numeric.test(a) && numeric.test(b)) return Number(a) - Number(b);
+  if (numeric.test(a)) return -1;
+  if (numeric.test(b)) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * Orders two release numbers: negative when a is older, positive when newer.
+ * A pre-release comes before its release, and pre-releases are ordered by
+ * their identifiers in turn, as SemVer orders them: beta.2 before beta.10.
+ */
 export function compareReleases(a: string, b: string): number {
-  const [coreA = '', preA] = a.split('-', 2);
-  const [coreB = '', preB] = b.split('-', 2);
-  const numbersA = coreA.split('.').map(Number);
-  const numbersB = coreB.split('.').map(Number);
+  const partsA = releaseParts(a);
+  const partsB = releaseParts(b);
   for (let index = 0; index < 3; index += 1) {
-    const difference = (numbersA[index] ?? 0) - (numbersB[index] ?? 0);
+    const difference = (partsA.core[index] ?? 0) - (partsB.core[index] ?? 0);
     if (difference !== 0) return difference;
   }
-  if (preA === preB) return 0;
-  if (preA === undefined) return 1;
-  if (preB === undefined) return -1;
-  return preA < preB ? -1 : 1;
+  const { pre: preA } = partsA;
+  const { pre: preB } = partsB;
+  if (preA === undefined || preB === undefined) {
+    if (preA === preB) return 0;
+    return preA === undefined ? 1 : -1;
+  }
+  for (let index = 0; index < Math.min(preA.length, preB.length); index += 1) {
+    const difference = compareIdentifiers(preA[index] ?? '', preB[index] ?? '');
+    if (difference !== 0) return difference;
+  }
+  return preA.length - preB.length;
 }
 
 /** A value for AUTH_SECRET as `openssl rand -base64 32` makes one: 44 characters. */

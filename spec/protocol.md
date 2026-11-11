@@ -539,7 +539,10 @@ A task is ready when:
 1. its status is `open`;
 2. every task it has a `blocks` link onto is closed;
 3. its parent is not waiting either: a parent that waits on an open task
-   holds every task under it, at any depth;
+   holds every task under it, at any depth, except a task labelled `human`
+   that is not an epic. Only its own `blocks` links hold such a task, so a
+   person is asked while the work above them waits; the tasks under it stay
+   held;
 4. neither it nor its parent is deferred to a later time;
 5. no approval it waits on is open; and
 6. it is not an approval.
@@ -647,7 +650,8 @@ when the repository's host reports that the pull request its work in hand
 names (`pr`, [3.3](#33-claim-and-work-in-hand)) merged into the
 repository's default branch. Only a report the server verified came from
 the host, through a credential an owner of the workspace set up, such as a
-signed webhook delivery from an app an owner installed, MAY close one. A
+signed webhook delivery from an app an owner installed, or the host's answer
+when the server asks it through that app, MAY close one. A
 signal a sender reports ([STATE-12](#state-12)) MUST NOT close a task. The
 close:
 

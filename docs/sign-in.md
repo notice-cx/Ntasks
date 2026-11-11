@@ -236,7 +236,10 @@ MCP clients follow these steps on their own; the person sees steps 5 and 6.
    it asks to do, chooses its projects among those of each workspace they
    belong to, and allows or denies it. Allowing records the project grants,
    each with its workspace, then the consent. The page reads the projects of
-   each of the person's workspaces from that workspace's task store.
+   each of the person's workspaces from that workspace's task store, 10
+   workspaces at most. A person in more than 10 ticks which ones to list
+   under Workspaces and presses Show projects; one approval grants projects
+   in up to 10 workspaces.
 7. The agent exchanges the code for an access token and a refresh token at
    `POST /api/auth/oauth2/token`.
 8. It calls the MCP endpoint with `Authorization: Bearer <access token>`.
@@ -504,11 +507,18 @@ API passes it to the task engine as the retry principal. `actorOf(principal,
 model)` makes the engine's `Actor`, the name the task's history records:
 `agent:` followed by the agent's registered name; `service:` followed by the
 credential's name, and by `/<agent>` when the service names the agent it acts
-for ([below](#a-service-acting-for-its-agents)); or the person's GitHub name, with `person:` in front when
+for ([below](#a-service-acting-for-its-agents)); or the person's name, with `person:` in front when
 that name itself starts with `agent:`, `service:` or `person:`. An agent
 chooses its own name when it registers and could choose a person's, so an
 actor that starts with `agent:` is always an agent and one that starts with
 `service:` always a service.
+
+A person's name is their GitHub display name, recorded when they first sign
+in. When another person here already has that name, theirs adds their GitHub
+login, such as `Alex (alex-gh)`, so no two people share an actor and one
+person's decisions never read as another's. Ntasks never renames a person
+afterwards, so their history stays under one actor, and two people who
+already share a name keep it.
 
 The history keeps the actor as recorded. The web app and the agent tools
 show it by its display name (`actorIdentity` in

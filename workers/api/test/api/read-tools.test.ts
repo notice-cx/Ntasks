@@ -1,7 +1,14 @@
 // The MCP read tools, as an agent calls them: their results, the workspace
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
-import { PARENT_CONTEXT_LIMITS, type HeldTask, type Project, type TaskEngine } from '@ntasks/domain';
+import {
+  PARENT_CONTEXT_LIMITS,
+  requiredSections,
+  TASK_TYPES,
+  type HeldTask,
+  type Project,
+  type TaskEngine,
+} from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
@@ -181,6 +188,15 @@ describe('list_workspaces and get_task_guide', () => {
     expect(note).toContain('list_workspaces');
     expect(note).toContain('list_projects');
     expect(note).not.toContain('list_tasks');
+  });
+
+  it('come from a guide that asks for each part lint finds missing', () => {
+    const rules = TASK_QUALITY.join('\n');
+    for (const type of TASK_TYPES)
+      for (const part of requiredSections(type)) {
+        if (part === 'acceptance') expect(rules, type).toMatch(/^- acceptance: /mu);
+        else expect(rules, `${type}: ${part}`).toContain(part);
+      }
   });
 
   it('come from a guide that names every tool it lists', () => {
@@ -756,6 +772,35 @@ describe('get_task', () => {
       task: ids.blocker,
     });
     expect(answer.task.awaitingHuman).toBe(true);
+  });
+
+  it('marks a decision under a parent that waits on an open task as waiting on a person', async () => {
+    const own = await newProject(engine);
+    const create = async (input: Parameters<TaskEngine['createTask']>[1]) =>
+      (await engine.createTask(own.id, input, AGENT)).task.id;
+    const blocker = await create({ title: 'Ship the API' });
+    const parent = await create({
+      title: 'Build the page',
+      links: [{ direction: 'depends-on', taskId: blocker, type: 'blocks' }],
+    });
+    const decision = await create({
+      title: 'Pick the page layout',
+      type: 'decision',
+      labels: ['human'],
+      parentId: parent,
+      choices: {
+        question: 'Which layout?',
+        options: [
+          { key: 'a', label: 'One column', recommended: true },
+          { key: 'b', label: 'Two columns' },
+        ],
+      },
+    });
+
+    const answer = await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: decision });
+    expect(answer.task).toMatchObject({ ready: true, awaitingHuman: true });
+    const listed = await read<{ tasks: { id: string }[] }>(target, 'list_tasks', { project: own.id, ready: true });
+    expect(listed.tasks.map((task) => task.id).sort()).toEqual([blocker, decision].sort());
   });
 
   it('names the project that holds a task from another one', async () => {

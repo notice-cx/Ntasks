@@ -115,6 +115,25 @@ export const core: readonly Check[] = [
     },
   },
   {
+    id: 'state-3-waiting-parent-leaves-a-person-s-task',
+    rule: 'STATE-3',
+    level: 'core',
+    title: 'A task labelled human under a parent that waits on an open task is ready, and the tasks under it are not',
+    async run(context) {
+      const blocker = await file(context);
+      const parent = await file(context, { dependsOn: [blocker] });
+      const asked = await file(context, { parent, labels: ['human'] });
+      const under = await file(context, { parent: asked });
+      const api = context.api();
+      same((await taskOf(api, asked)).ready, true, `${asked}'s readiness while ${parent} waits on ${blocker}`);
+      same((await taskOf(api, under)).ready, false, `${under}'s readiness while ${parent} waits on ${blocker}`);
+      expect(
+        answered(await api.ready(), 'listing ready work').includes(asked),
+        `${asked} is not listed as ready work while ${parent} waits on ${blocker}`,
+      );
+    },
+  },
+  {
     id: 'state-3-deferred-is-not-ready',
     rule: 'STATE-3',
     level: 'core',

@@ -17,6 +17,7 @@ protocol appears in neither table.
 | STATE-1 | `workers/api/test/schema.test.ts` › "refuses a closed task that does not record its close" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task until every task blocking it is closed" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds every descendant of a blocked parent, at any depth, and only while the parent is open" |
+| STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task labelled human only by its own links, not by a waiting parent, and holds the tasks under it" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task deferred to a later time, and the children of a parent deferred to one" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "opens a gate the task waits on, which no agent sees as work, until a person closes it" |
 | STATE-4 | `workers/api/test/api/write-tools.test.ts` › "refuses a task someone else holds, a closed one and one that is not open" |
