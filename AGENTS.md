@@ -139,8 +139,9 @@ These are the checks CI runs. Run the ones the change reaches before pushing.
   passing.
 - **Prettier formats `.ts`, `.tsx`, `.js` and `.mjs` files**
   (`.prettierrc.json`). `.prettierignore` lists only the generated file and
-  the agent worktrees; never add a source file to it. Run `pnpm format`
-  before committing.
+  the agent worktrees; never add a source file to it. Prettier also skips
+  what the root `.gitignore` lists, and reads no other `.gitignore`, so
+  generated output is ignored there. Run `pnpm format` before committing.
 - **This repository is public.** Code, tests, fixtures, docs and commit
   messages name no private installation, account, real task or personal data.
   Fixtures use `example.com` and `.test` hosts and invented task ids.
