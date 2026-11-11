@@ -1238,8 +1238,8 @@ export class Writes {
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
+      // A task it moves adds its repository to this list itself, by a trigger (store migration 0014).
       const repositories = results.length === 0 ? new Map<string, boolean>() : await this.#repositories();
-      // The tasks it moves add their repositories to the list (store migration 0014).
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;

@@ -939,8 +939,8 @@ projects of the workspace the sender may change, to its stage:
   `live` signal moves a task whose change reached such a repository to
   `live`, whatever its project's `deploys` says. A task's change reached the
   `repository` its delivery records, or else the repository its GitHub pull
-  request is in. Ntasks sees a repository once a signal moves a task whose
-  change reached it. Its owner sets it in Settings, GitHub, under **Merges
+  request is in. Ntasks lists a repository once a task whose change reached
+  it moves to `merged` or `live`. Its owner sets it in Settings, GitHub, under **Merges
   go live**, or with `PATCH /api/tasks/repositories`, which, turned on, also
   moves that repository's tasks at `merged` to `live`, at the time they
   merged.
