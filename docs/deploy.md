@@ -12,8 +12,8 @@ npx ntasks deploy
 This deploys the latest Ntasks release to your Cloudflare account: one
 Worker, its D1 database and the Durable Object that holds the tasks.
 
-- **You need** Node.js and a Cloudflare account, and no copy of this
-  repository.
+- **You need** Node.js 22 or later and a Cloudflare account, and no copy of
+  this repository.
 - **It ships** the npm package [`ntasks`](../tools/cli/README.md), which holds
   the built Worker, the web app and the D1 migrations, and deploys them with
   wrangler.
