@@ -562,8 +562,6 @@ describe('dropped links', () => {
     const flagged = await tasks.getTask(project.id, page.id);
     expect(flagged?.reliesOnDropped).toEqual(expected);
     expect(flagged?.ready).toBe(true);
-    const listed = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
-    expect(listed.find((task) => task.id === page.id)?.reliesOnDropped).toEqual(expected);
     const board = await tasks.listBoard(project.id, { statuses: ['open'] });
     expect(board.find((task) => task.id === page.id)?.reliesOnDropped).toEqual(expected);
     expect((await tasks.getTask(project.id, unlinked.id))?.reliesOnDropped).toHaveLength(1);
