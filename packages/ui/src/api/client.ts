@@ -49,6 +49,7 @@ import type {
   TaskField,
   TaskMove,
   TaskProject,
+  TaskRepository,
   TaskSearch,
   TasksMoved,
   WinsPage,
@@ -194,6 +195,11 @@ export interface TasksApi {
   disconnectGitHub(): Promise<void>;
   /** Count a detected deploy check as a deploy, or switch it off. */
   setDeployCheck(name: string, on: boolean): Promise<GitHubWebhook>;
+  /** The repositories whose changes moved a task, by name; only the workspace's owners may read them. */
+  repositories(signal?: AbortSignal): Promise<TaskRepository[]>;
+  /** Say whether a repository's merges go live; turned on, its tasks at Merged move to Live. Answers the
+   * repository and the ids of the tasks it moved. */
+  setRepository(repository: string, mergesLive: boolean): Promise<{ repository: TaskRepository; moved: string[] }>;
 }
 
 /** The calls made in one workspace. */
@@ -443,6 +449,13 @@ function readApp(row: unknown, unreadable: string): ConnectedApp {
   };
 }
 
+/** A repository as `GET` and `PATCH /api/tasks/repositories` answer it. */
+function readRepository(row: unknown, unreadable: string): TaskRepository {
+  if (!isRecord(row) || typeof row.repository !== 'string' || typeof row.mergesLive !== 'boolean')
+    throw new UnreadableAnswer(unreadable);
+  return { repository: row.repository, mergesLive: row.mergesLive };
+}
+
 /** The webhook in an answer of `GET` or `POST /api/access/github`; `unreadable` says what failed when it is not there. */
 function readGitHubWebhook(payload: unknown, unreadable: string): GitHubWebhook {
   const row = isRecord(payload) ? payload.github : null;
@@ -660,6 +673,8 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     connectGitHub: () => scope().connectGitHub(),
     disconnectGitHub: () => scope().disconnectGitHub(),
     setDeployCheck: (name, on) => scope().setDeployCheck(name, on),
+    repositories: (signal) => scope().repositories(signal),
+    setRepository: (repository, mergesLive) => scope().setRepository(repository, mergesLive),
   };
 }
 
@@ -1002,6 +1017,23 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
       const response = await write('POST', '/api/access/github/checks', { name, on }, name);
       const unreadable = 'The deploy check was changed, but the answer could not be read.';
       return readGitHubWebhook(await answerJson(response, unreadable), unreadable);
+    },
+    async repositories(signal) {
+      const unreadable = 'The repositories could not be read.';
+      const answer = await read<unknown>('/api/tasks/repositories', 'The repositories', signal);
+      if (!isRecord(answer) || !Array.isArray(answer.repositories)) throw new UnreadableAnswer(unreadable);
+      return answer.repositories.map((row: unknown) => readRepository(row, unreadable));
+    },
+    async setRepository(repository, mergesLive) {
+      const body = { repository, mergesLive };
+      const response = await write('PATCH', '/api/tasks/repositories', body, repository);
+      const unreadable = `${repository} was saved, but the answer could not be read.`;
+      const answer = await answerJson(response, unreadable);
+      if (!isRecord(answer) || !Array.isArray(answer.moved)) throw new UnreadableAnswer(unreadable);
+      return {
+        repository: readRepository(answer.repository, unreadable),
+        moved: answer.moved.flatMap((row: unknown) => (isRecord(row) && typeof row.id === 'string' ? [row.id] : [])),
+      };
     },
   };
 }

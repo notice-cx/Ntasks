@@ -1,0 +1,20 @@
+{
+  "added": "`GET /api/tasks/repositories`, the repositories whose changes moved a task, and `PATCH /api/tasks/repositories`, an owner's setting of whether a repository's merges go live",
+  "routes": {
+    "GET /api/tasks/repositories": {
+      "repositories": "array",
+      "repositories[]": "object",
+      "repositories[].repository": "string",
+      "repositories[].mergesLive": "boolean"
+    },
+    "PATCH /api/tasks/repositories": {
+      "repository": "object",
+      "repository.repository": "string",
+      "repository.mergesLive": "boolean",
+      "moved": "array",
+      "moved[]": "object",
+      "moved[].id": "string",
+      "moved[].stage": "string"
+    }
+  }
+}

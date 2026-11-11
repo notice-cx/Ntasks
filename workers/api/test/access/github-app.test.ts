@@ -791,6 +791,34 @@ describe('the app’s deliveries', () => {
       const later = await closedWithCommit(owner, projectId, newCommit());
       expect((await taskOf(projectId, later)).delivery?.stage).toBe('built');
     });
+
+    it('moves to live at its close in a repository whose merges go live', async () => {
+      const owner = await connected();
+      const mine = newInstallation();
+      await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+      const projectId = await deployingProject(owner);
+      const tool = 'example/push-tool';
+      const pushedTo = (...commits: string[]) => ({
+        ...pushOf(mine, ...commits),
+        repository: { full_name: tool, default_branch: 'main' },
+      });
+      const [first, second] = [newCommit(), newCommit()];
+      await deliver('push', pushedTo(first));
+      // Its close at merged adds the repository, which the owner then says has no deploy.
+      const shown = await closedWithCommit(owner, projectId, first);
+      expect((await taskOf(projectId, shown)).delivery?.stage).toBe('merged');
+      const turned = await inWorkspace(owner, 'PATCH', '/api/tasks/repositories', {
+        repository: tool,
+        mergesLive: true,
+      });
+      expect(turned.body.moved).toEqual([{ id: shown, stage: 'live' }]);
+
+      await deliver('push', pushedTo(second));
+      const id = await closedWithCommit(owner, projectId, second);
+      const delivery = (await taskOf(projectId, id)).delivery;
+      expect(delivery).toMatchObject({ stage: 'live', mergeCommit: second, repository: tool });
+      expect(delivery?.liveAt).toBe(delivery?.mergedAt);
+    });
   });
 
   it('holds a deploy that a webhook set up by hand reports, reading its commit through the app on the repository’s account', async () => {

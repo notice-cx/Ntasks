@@ -8,6 +8,8 @@
 /** The tables that hold tasks, in an order their foreign keys accept. */
 export const STORE_TABLES = [
   'projects',
+  // Before tasks: a task loaded at merged or live adds its repository, which must not take the loaded row's place.
+  'repositories',
   'custom_fields',
   'tasks',
   'task_labels',
@@ -145,6 +147,13 @@ export interface AliasRow {
   readonly task_id: string;
 }
 
+export interface RepositoryRow {
+  /** owner/name, in lowercase. */
+  readonly name: string;
+  /** 1 when a merge there is the change going live. Left out, 0. */
+  readonly merges_live?: number;
+}
+
 export interface EventRow {
   /** Kept as given, so an imported history keeps its order. */
   readonly seq: number;
@@ -176,6 +185,8 @@ export interface StoreRows {
   readonly task_events: readonly EventRow[];
   /** Left out, an import writes none. */
   readonly task_aliases?: readonly AliasRow[];
+  /** Left out, an import writes none. */
+  readonly repositories?: readonly RepositoryRow[];
 }
 
 type RowOf<T extends StoreTable> = NonNullable<StoreRows[T]>[number];
@@ -261,6 +272,7 @@ export const STORE_COLUMNS: { readonly [T in StoreTable]: readonly (keyof RowOf<
     'session',
   ],
   task_aliases: ['alias', 'task_id'],
+  repositories: ['name', 'merges_live'],
 });
 
 /** The order a table's rows are read back in: its primary key, which storeKey gives as columns. */
@@ -274,6 +286,7 @@ const STORE_ORDER: { readonly [T in StoreTable]: string } = Object.freeze({
   task_comments: 'id',
   task_events: 'seq',
   task_aliases: 'alias',
+  repositories: 'name',
 });
 
 export type StoreValue = string | number | null;

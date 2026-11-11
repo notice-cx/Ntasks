@@ -525,6 +525,25 @@ export interface DeliveryMove {
   readonly stage: DeliveryStage;
 }
 
+/**
+ * A repository whose changes moved a task, and whether a merge there is the
+ * change going live, as in a repository with no deploy. A task's change
+ * reached the repository its delivery records, or else the one its GitHub
+ * pull request is in.
+ */
+export interface Repository {
+  /** owner/name, in lowercase. */
+  readonly name: string;
+  /** A merged signal moves the tasks whose change reached it straight to live. */
+  readonly mergesLive: boolean;
+}
+
+/** A repository's setting as a write left it, and the tasks at merged it moved to live. */
+export interface RepositoryResult {
+  readonly repository: Repository;
+  readonly moved: readonly DeliveryMove[];
+}
+
 export interface WriteResult {
   readonly task: Task;
   /** Tasks the write made as well, such as the gate of a requested approval. */
@@ -564,6 +583,16 @@ export interface TaskEngine {
   updateProject(projectId: string, change: ProjectChange): Promise<Project>;
   /** The project's icon for the colour scheme, or null when it has none. */
   projectIcon(projectId: string, scheme: IconScheme): Promise<StoredProjectIcon | null>;
+  /** The repositories whose changes moved a task, by name. */
+  listRepositories(): Promise<readonly Repository[]>;
+  /**
+   * Sets whether a merge in a repository is its change going live. Turned
+   * on, it also moves each task at merged whose change reached the
+   * repository to live, at the time it merged, in the same batch, each move
+   * a change with its history (rules 2 and 4). Refused as not_found for a
+   * repository whose changes moved no task.
+   */
+  setRepository(name: string, mergesLive: boolean, actor: Actor): Promise<RepositoryResult>;
 
   /** Null when the project holds no such task. */
   getTask(projectId: string, taskId: string): Promise<Task | null>;
@@ -695,7 +724,8 @@ export interface TaskEngine {
    * stage: each built or merged task whose pull request, commit or merge
    * commit matches one the signal names. Two commits match when one is a
    * prefix of the other. A project that does not deploy stops its tasks at
-   * merged. A task never moves back, so a repeated signal moves nothing. A
+   * merged, and a repository whose merges go live moves its tasks to live on
+   * either signal. A task never moves back, so a repeated signal moves nothing. A
    * merged signal that names exactly one commit records it as the merge
    * commit of each task it moves. Each move is a change with its history
    * (rules 2 and 4), all in one batch.

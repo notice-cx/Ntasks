@@ -133,6 +133,17 @@ function copy<T>(value: T): T {
 /** A GitHub pull request's page, as the Worker records one. */
 const GITHUB_PULL = /^https:\/\/github\.com\/[a-z0-9-]+\/[a-z0-9._-]+\/pull\/\d{1,9}$/u;
 
+/** The repository a task's change reached, as the Worker reads it: the one its delivery records, or else the one its
+ * GitHub pull request is in; null before it merged. */
+function repositoryOf(task: FixtureTask): string | null {
+  const delivery = task.delivery;
+  if (!delivery || (delivery.stage !== 'merged' && delivery.stage !== 'live')) return null;
+  if (delivery.repository) return delivery.repository;
+  return (
+    /^https:\/\/github\.com\/([a-z0-9-]+\/[a-z0-9._-]+)\/pull\/\d+$/u.exec(delivery.pullRequest ?? '')?.[1] ?? null
+  );
+}
+
 /** The pull request an approval gates, as the Worker reads it: the approval's first link of kind pull-request on
  * GitHub; null on any other task, a request to do steps included. */
 function gatedPullRequest(task: FixtureTask): string | null {
@@ -1458,6 +1469,30 @@ export function createFixtureTasksApi({
         throw new ApiError('no delivery showed a deploy check with this name', 404, 'not_found', 'name');
       check.on = on;
       return webhookOf(workspace);
+    },
+    async repositories() {
+      owned();
+      const live = state.mergesLive ?? new Set<string>();
+      const seen = new Set(state.tasks.flatMap((task) => repositoryOf(task) ?? []));
+      return [...seen].sort().map((repository) => ({ repository, mergesLive: live.has(repository) }));
+    },
+    /** Sets it as the Worker does: turned on, the repository's tasks at merged go live at the time they merged. */
+    async setRepository(repository, mergesLive) {
+      owned();
+      const name = repository.toLowerCase();
+      if (!state.tasks.some((task) => repositoryOf(task) === name))
+        throw new ApiError(`No change in ${name} moved a task here.`, 404, 'not_found', 'repository');
+      state.mergesLive ??= new Set();
+      if (mergesLive) state.mergesLive.add(name);
+      else state.mergesLive.delete(name);
+      const moved: string[] = [];
+      for (const task of state.tasks) {
+        const delivery = task.delivery;
+        if (!mergesLive || !delivery || delivery.stage !== 'merged' || repositoryOf(task) !== name) continue;
+        task.delivery = { ...delivery, stage: 'live', liveAt: delivery.mergedAt ?? new Date(now()).toISOString() };
+        moved.push(task.id);
+      }
+      return { repository: { repository: name, mergesLive }, moved };
     },
   };
 }

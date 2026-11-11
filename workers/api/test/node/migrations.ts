@@ -429,3 +429,67 @@ test('a store that holds project icons keeps each one as its light icon when the
   assert.throws(() => add('dim'), /CHECK constraint/u, 'a scheme that is not light or dark');
   db.close();
 });
+
+test('a store that holds delivered tasks lists their repositories, each with its merges not live', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  const index = FILES.indexOf('0014_repositories.sql');
+  assert.ok(index > 0, 'the repositories migration is among the files');
+  migrated(db, FILES.slice(0, index));
+  heldRows(db);
+  const delivered = (id: string, fields: Row) =>
+    insert(db, 'tasks', {
+      id,
+      project_id: 'p1',
+      type: 'task',
+      status: 'closed',
+      priority: 2,
+      title: `Task ${id}`,
+      resolution: 'done',
+      closed_at: LATER,
+      created_at: AT,
+      updated_at: LATER,
+      built_at: LATER,
+      ...fields,
+    });
+  // A signal recorded the first one's repository; the rest name theirs only through their pull request.
+  delivered('web-d1', {
+    delivery_stage: 'merged',
+    delivery_pull_request: 'https://github.com/example/site/pull/1',
+    delivery_repository: 'example/site',
+    merged_at: LATER,
+  });
+  delivered('web-d2', {
+    delivery_stage: 'merged',
+    delivery_pull_request: 'https://github.com/Example/Tool/pull/2',
+    merged_at: LATER,
+  });
+  delivered('web-d3', { delivery_stage: 'built', delivery_pull_request: 'https://github.com/example/tool/pull/3' });
+  delivered('web-d4', {
+    delivery_stage: 'built',
+    delivery_pull_request: 'https://git.example.com/app/merge_requests/4',
+  });
+  delivered('web-d5', { delivery_stage: 'built', delivery_commit: 'abcdef1' });
+  const tasks = db.prepare('SELECT * FROM tasks ORDER BY id').all();
+
+  migrated(db, FILES.slice(index));
+
+  assert.deepEqual(
+    db
+      .prepare('SELECT name, merges_live FROM repositories ORDER BY name')
+      .all()
+      .map((row) => ({ ...row })),
+    [
+      { name: 'example/site', merges_live: 0 },
+      { name: 'example/tool', merges_live: 0 },
+    ],
+  );
+  assert.deepEqual(db.prepare('SELECT * FROM tasks ORDER BY id').all(), tasks, 'every task is as it was');
+  assert.throws(
+    () => insert(db, 'repositories', { name: 'Example/Other' }),
+    /CHECK constraint/u,
+    'a name that is not in lowercase',
+  );
+  assert.throws(() => insert(db, 'repositories', { name: 'example/site' }), /UNIQUE|PRIMARY KEY/u, 'a second row');
+  db.close();
+});

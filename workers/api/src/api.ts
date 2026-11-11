@@ -8,7 +8,13 @@
 import type { TaskEngine } from '@ntasks/domain';
 import { SCOPES, type Principal } from './auth.ts';
 import { backupRoute } from './http/backup.ts';
-import { deliveryRoute, projectIconRoute, projectSettingsRoute } from './http/delivery.ts';
+import {
+  deliveryRoute,
+  projectIconRoute,
+  projectSettingsRoute,
+  repositoriesRoute,
+  repositorySettingsRoute,
+} from './http/delivery.ts';
 import { loadAbortRoute, loadBeginRoute, loadCommitRoute, loadRowsRoute } from './http/load.ts';
 import { HttpRefused, json } from './http/respond.ts';
 import {
@@ -102,6 +108,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
     PATCH: projectSettingsRoute,
     scope: { POST: SCOPES.manage, PATCH: SCOPES.manage },
   },
+  '/api/tasks/repositories': { GET: repositoriesRoute, PATCH: repositorySettingsRoute, scope: SCOPES.manage },
   '/api/tasks/capabilities': { GET: capabilities },
   '/api/tasks/move': { POST: moveRoute },
   '/api/tasks/search': { GET: searchRoute },

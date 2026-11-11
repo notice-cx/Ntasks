@@ -93,6 +93,31 @@ describe('Connect GitHub on the Settings page', () => {
   });
 });
 
+describe('Merges go live on the Settings page', () => {
+  it('lists each repository a merge moved a task in, and ticking one moves its merged tasks to Live', async () => {
+    const api = connectedApi();
+    renderApp('/tasks/settings/github', api);
+    const group = await screen.findByRole('group', { name: 'Merges go live' });
+    const docs = (await within(group).findByRole('checkbox', {
+      name: 'Merges in example/docs go live',
+    })) as HTMLInputElement;
+    expect(
+      within(group)
+        .getAllByRole('checkbox')
+        .map((box) => box.getAttribute('aria-label')),
+    ).toEqual(['Merges in example/docs go live', 'Merges in example/web go live']);
+    expect(docs.checked).toBe(false);
+
+    fireEvent.click(docs);
+    await waitFor(() => expect(api.state.tasks.find((task) => task.id === 'docs-y5u2')?.delivery?.stage).toBe('live'));
+    await waitFor(() => expect(docs.checked).toBe(true));
+    expect(await api.repositories()).toEqual([
+      { repository: 'example/docs', mergesLive: true },
+      { repository: 'example/web', mergesLive: false },
+    ]);
+  });
+});
+
 describe('the GitHub webhook on the Settings page', () => {
   it('lets an owner make a secret, save it with deploy checks, change the checks alone and remove the webhook', async () => {
     const api = createFixtureTasksApi();

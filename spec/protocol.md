@@ -790,6 +790,7 @@ stateDiagram-v2
   built --> merged: merged signal
   built --> live: live signal, project deploys
   merged --> live: live signal, project deploys
+  built --> live: merged signal, repository's merges go live
 ```
 
 **STATE-12.** <a id="state-12"></a>A close as `done` that names a commit or
@@ -806,7 +807,10 @@ commit matches one it names, in the projects the sender may change:
 - a `merged` signal that names exactly one commit records it as the merge
   commit, which a later `live` signal matches;
 - a `live` signal moves a task of a project that does not deploy to
-  `merged`.
+  `merged`;
+- a server MAY let an owner say that a repository's merges go live, for a
+  repository with no deploy; either signal then moves a task whose change
+  reached that repository to `live`, whatever its project's `deploys` says.
 
 A reopen clears the delivery; history keeps each stage and each move.
 

@@ -85,6 +85,7 @@ protocol appears in neither table.
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "goes from built to merged with its merge commit, then live, and a repeated signal moves nothing" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "matches a commit the task closed with when the signal names a longer one" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "stops a task of a project that does not deploy at merged" |
+| STATE-12 | `workers/api/test/api/delivery.test.ts` › "moves a merged pull request there to live in a project that deploys, and one in another repository still waits for its deploy" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "starts no delivery for a decision, and keeps a pull request it names as its link" |
 | STATE-12 | `workers/api/test/api/delivery.test.ts` › "starts no delivery when it names only a link, whatever its work details name" |
 | STATE-12 | `workers/api/test/access/github-webhook.test.ts` › "moves nothing when GitHub sends the same delivery again" |

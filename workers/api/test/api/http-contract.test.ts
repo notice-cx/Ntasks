@@ -663,6 +663,10 @@ async function drive(): Promise<readonly Sample[]> {
     });
     await keep(samples, 'POST /api/auth/oauth2/register', '/api/auth/oauth2/register', registered);
   }
+  // The merges above showed their repository; turning its merges live moves its tasks still at merged.
+  const repository = { repository: 'example/launch', mergesLive: true };
+  await as('PATCH /api/tasks/repositories', '/api/tasks/repositories', repository);
+  await as('GET /api/tasks/repositories', '/api/tasks/repositories');
   return samples;
 }
 

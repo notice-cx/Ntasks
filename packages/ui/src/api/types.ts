@@ -709,6 +709,13 @@ export interface DetectedDeploy {
   seenAt: string;
 }
 
+/** A repository whose changes moved a task, and whether a merge there is the change going live, as in one with no deploy. */
+export interface TaskRepository {
+  /** owner/name, in lowercase. */
+  repository: string;
+  mergesLive: boolean;
+}
+
 /** Where the browser posts the manifest that makes the workspace's GitHub App. */
 export interface GitHubAppStart {
   action: string;

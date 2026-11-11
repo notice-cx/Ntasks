@@ -120,6 +120,7 @@ export function cachedReads(engine: TaskEngine, now: () => string, limits: Cache
     createProject: writes(engine.createProject),
     updateProject: writes(engine.updateProject),
     reportDelivery: writes(engine.reportDelivery),
+    setRepository: writes(engine.setRepository),
     createTask: writes(engine.createTask),
     writeTask: writes(engine.writeTask),
     moveTasks: writes(engine.moveTasks),

@@ -933,6 +933,17 @@ projects of the workspace the sender may change, to its stage:
   `false` when it is made). Its owner sets it in the web app, in Settings,
   Projects, Edit, or with `PATCH /api/tasks/projects`. For a project that does not deploy,
   merged is the last stage: a `live` signal moves its tasks to `merged`.
+- A repository says whether a merge there is the change going live
+  (`mergesLive`, `false` when Ntasks first sees it), for a repository with
+  no deploy in a project whose other repositories deploy. A `merged` or
+  `live` signal moves a task whose change reached such a repository to
+  `live`, whatever its project's `deploys` says. A task's change reached the
+  `repository` its delivery records, or else the repository its GitHub pull
+  request is in. Ntasks lists a repository once a task whose change reached
+  it moves to `merged` or `live`. Its owner sets it in Settings, GitHub, under **Merges
+  go live**, or with `PATCH /api/tasks/repositories`, which, turned on, also
+  moves that repository's tasks at `merged` to `live`, at the time they
+  merged.
 
 The answer lists each task moved, as `{ id, stage }`; a task in a project
 the sender may only read is left as it is. `get_task` returns a task's
@@ -1425,6 +1436,7 @@ misspelt filter fails instead of being ignored.
 | Route | Parameters | Answer |
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, `icon`: the address of the light icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none, and `darkIcon`: the address of the icon it declares for a dark colour scheme, such as `/api/tasks/projects/<projectId>/icon?scheme=dark&v=20261110120000000`, or null |
+| `GET /api/tasks/repositories` | none | `{ repositories }`: each repository whose changes moved a task, by name, as `{ repository, mergesLive }`, with `repository` as owner/name in lowercase ([delivery](#delivery)). It needs `workspace:manage`. |
 | `GET /api/tasks/projects/:projectId/icon` | optionally `scheme`, `light` (the default) or `dark`, and `v`, as `icon` and `darkIcon` give them | The icon's bytes, with the image type the bytes show (`image/svg+xml`, `image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` or `darkIcon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon for that scheme. |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, `move`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `performed`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays`, `field.<key>` and `externalLinks=none` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. `externalLinks=none` leaves the tasks' external links unread: each task's `externalLinks` is empty, and `GET /api/tasks/:id` reads them; the web app's board sends it, with `stage` and `activity` too. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
@@ -1461,6 +1473,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |
+| `PATCH /api/tasks/repositories` | `repository`, owner/name, and `mergesLive`, `true` or `false` | `{ repository, moved }`: the repository as `GET /api/tasks/repositories` lists it, and each task at `merged` whose change reached it that turning it on moved to `live`, as `{ id, stage }`. It needs `workspace:manage`. A repository whose changes moved no task is refused with `404` and `field` `repository`. |
 | `PATCH /api/tasks/projects` | `projectId` and at least one of: `displayName`, one line of 1 to 128 characters; `deploys`, `true` or `false`; `disabled`, `true` or `false`; `websiteUrl`, an http or https address, where `example.com` means `https://example.com/`, or null or `""` to clear it | `{ project }`, as `GET /api/tasks/projects` lists it. Like creating a project, it needs `workspace:manage`. A new `websiteUrl` is read for its icon before anything is written ([below](#a-projects-website-and-icon)), and an empty name or an address that is not a public web page is refused with `400` and `field` naming it. A disabled project refuses `POST /api/tasks` and `create_task` with `409` and a sentence saying an owner can enable it in Settings; its tasks stay readable and changeable. Renaming changes only `displayName`: the key and prefix stay. |
 
 A refused project names the body field at fault in `field`: `400` with

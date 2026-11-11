@@ -23,6 +23,7 @@ import {
   type LabelQuery,
   type ParentContext,
   type Project,
+  type Repository,
   type Task,
   type TaskComment,
   type TaskExternalLinks,
@@ -779,6 +780,13 @@ export class Reads {
   async listProjects(): Promise<Project[]> {
     const { results } = await this.#db.prepare(`${PROJECT_SELECT} ORDER BY p.key`).all<ProjectRow>();
     return results.map(toProject);
+  }
+
+  async listRepositories(): Promise<Repository[]> {
+    const { results } = await this.#db
+      .prepare('SELECT name, merges_live FROM repositories ORDER BY name')
+      .all<{ readonly name: string; readonly merges_live: number }>();
+    return results.map((row) => ({ name: row.name, mergesLive: row.merges_live === 1 }));
   }
 
   async project(projectId: string): Promise<Project | null> {

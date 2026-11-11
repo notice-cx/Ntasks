@@ -38,6 +38,7 @@ import {
   type Project,
   type ProjectChange,
   type IconScheme,
+  type RepositoryResult,
   type ProjectIcon,
   type Retry,
   type Task,
@@ -100,6 +101,14 @@ interface PushedCommit {
   readonly repository: string;
   readonly head: string;
   readonly pushedAt: string;
+  /** A merge in the repository is the change going live, so the push shipped it. */
+  readonly mergesLive: boolean;
+}
+
+/** Where a task closed with a commit starts: at built, or where the push that brought its commit in left it. */
+function pushedStage(pushed: PushedCommit | null): DeliveryStage {
+  if (pushed === null) return 'built';
+  return pushed.mergesLive ? 'live' : 'merged';
 }
 
 /** The most open tasks one drop links to for naming it, which bounds the close's write. */
@@ -211,6 +220,12 @@ function deliveryJson(delivery: TaskDelivery): JsonObject {
   };
 }
 
+/** The repository a task's change reached: the one its delivery records, or else the one its GitHub pull request is in. */
+function repositoryOf(delivery: TaskDelivery): string | null {
+  if (delivery.repository !== null) return delivery.repository;
+  return delivery.pullRequest === null ? null : (githubPullOf(delivery.pullRequest)?.repository ?? null);
+}
+
 /** The order of the stages: a task moves only to a later one. */
 const STAGE_ORDER: Readonly<Record<DeliveryStage, number>> = Object.freeze({ built: 0, merged: 1, live: 2 });
 
@@ -252,6 +267,15 @@ const DELIVERY_CANDIDATES = `WITH matched(id) AS (
 SELECT t.*, p.deploys AS deploys FROM matched CROSS JOIN tasks t ON t.id = matched.id JOIN projects p ON p.id = t.project_id
 WHERE t.project_id IN (SELECT value FROM json_each(?1)) AND t.delivery_stage IN ('built', 'merged')
 ORDER BY t.id`;
+
+/**
+ * The tasks at merged whose change reached repository ?1: the one their
+ * delivery records, or else the one their pull request ?2 starts with.
+ */
+const MERGED_IN_REPOSITORY = `SELECT * FROM tasks
+WHERE delivery_stage = 'merged'
+  AND (delivery_repository = ?1 OR (delivery_repository IS NULL AND substr(lower(delivery_pull_request), 1, length(?2)) = ?2))
+ORDER BY id`;
 
 /** The most times one write checks an epic as it climbs from the tasks it changes, so a parent chain that loops, as an import could leave, still ends. */
 const EPIC_CHECKS = 8;
@@ -335,24 +359,30 @@ function filedState(fields: check.CreateFields, actor: Actor, at: string, pushed
       close_link: close.link,
     });
     if (close.commit !== null || close.pullRequest !== null) {
+      const liveAt = pushed?.mergesLive === true ? pushed.pushedAt : null;
       Object.assign(columns, {
-        delivery_stage: pushed === null ? 'built' : 'merged',
+        delivery_stage: pushedStage(pushed),
         delivery_commit: close.commit,
         delivery_pull_request: close.pullRequest,
         built_at: at,
         ...(pushed === null
           ? {}
-          : { delivery_merge_commit: pushed.head, delivery_repository: pushed.repository, merged_at: pushed.pushedAt }),
+          : {
+              delivery_merge_commit: pushed.head,
+              delivery_repository: pushed.repository,
+              merged_at: pushed.pushedAt,
+              live_at: liveAt,
+            }),
       });
       delivery = deliveryJson({
-        stage: pushed === null ? 'built' : 'merged',
+        stage: pushedStage(pushed),
         commit: close.commit,
         pullRequest: close.pullRequest,
         mergeCommit: pushed?.head ?? null,
         repository: pushed?.repository ?? null,
         builtAt: at,
         mergedAt: pushed?.pushedAt ?? null,
-        liveAt: null,
+        liveAt,
       });
     }
   }
@@ -1237,6 +1267,8 @@ export class Writes {
       const statements: Statement[] = [];
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
+      // A task it moves adds its repository to this list itself, by a trigger (store migration 0014).
+      const repositories = results.length === 0 ? new Map<string, boolean>() : await this.#repositories();
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
@@ -1245,6 +1277,10 @@ export class Writes {
         // only after its checks pass on its branch, so a preview there starts minutes before the merge.
         if (signal.mergedBy !== undefined && (current.mergedAt === null || current.mergedAt > signal.mergedBy))
           continue;
+        const recorded = current.repository ?? signal.repository ?? null;
+        const repository = repositoryOf({ ...current, repository: recorded });
+        // A repository whose merges go live has no deploy: nothing waits between its merge and live.
+        const mergesLive = repository !== null && repositories.get(repository) === true;
         const turnsOn = turnOn !== undefined && row.deploys !== 1 && !kept.has(row.project_id);
         if (turnsOn && !turnedOn.has(row.project_id)) {
           turnedOn.add(row.project_id);
@@ -1253,29 +1289,21 @@ export class Writes {
           );
         }
         // A project that does not deploy has nothing after merged.
-        const stage: DeliveryStage = signal.stage === 'live' && row.deploys !== 1 && !turnsOn ? 'merged' : signal.stage;
+        const stage: DeliveryStage = mergesLive
+          ? 'live'
+          : signal.stage === 'live' && row.deploys !== 1 && !turnsOn
+            ? 'merged'
+            : signal.stage;
         if (STAGE_ORDER[stage] <= STAGE_ORDER[current.stage]) continue;
         const next: TaskDelivery = {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
-          repository: current.repository ?? signal.repository ?? null,
-          mergedAt: stage === 'merged' ? reached : current.mergedAt,
+          repository: recorded,
+          mergedAt: stage === 'merged' || signal.stage === 'merged' ? reached : current.mergedAt,
           liveAt: stage === 'live' ? reached : null,
         };
-        statements.push(
-          this.#db
-            .prepare(
-              `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
-                 delivery_repository = ?8, version = version + 1, updated_at = ?5
-               WHERE id = ?6 AND version = ?7`,
-            )
-            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
-          this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-          this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
-            delivery: deliveryJson(next),
-          }),
-        );
+        statements.push(...this.#delivered(row, next, actor, at));
         moves.push({ taskId: row.id, projectId: row.project_id, stage });
       }
       statements.push(...this.#pushed(signal, reached, at));
@@ -1290,6 +1318,70 @@ export class Writes {
       }
     }
     refuse('version_conflict', 'The tasks this signal moves kept changing; send it again.');
+  }
+
+  /** Each repository whose changes moved a task, and whether its merges go live. */
+  async #repositories(): Promise<Map<string, boolean>> {
+    const { results } = await this.#db
+      .prepare('SELECT name, merges_live FROM repositories')
+      .all<{ readonly name: string; readonly merges_live: number }>();
+    return new Map(results.map((row) => [row.name, row.merges_live === 1]));
+  }
+
+  /** The statements that move `row`'s delivery to `next`: the versioned update, its guard and its history event. */
+  #delivered(row: StoredTaskRow, next: TaskDelivery, actor: Actor, at: string): Statement[] {
+    return [
+      this.#db
+        .prepare(
+          `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
+             delivery_repository = ?8, version = version + 1, updated_at = ?5
+           WHERE id = ?6 AND version = ?7`,
+        )
+        .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
+      this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
+      this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
+        delivery: deliveryJson(next),
+      }),
+    ];
+  }
+
+  async setRepository(nameInput: string, mergesLive: boolean, actorInput: Actor): Promise<RepositoryResult> {
+    const actor = check.actor(actorInput);
+    const name = check.repositoryName(nameInput);
+    if (typeof mergesLive !== 'boolean') check.invalid('mergesLive must be true or false');
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const known = await this.#db.prepare('SELECT 1 FROM repositories WHERE name = ?1').bind(name).first();
+      if (known === null) refuse('not_found', `No change in ${name} moved a task here.`);
+      const at = this.#now();
+      const statements: Statement[] = [
+        this.#db.prepare('UPDATE repositories SET merges_live = ?2 WHERE name = ?1').bind(name, mergesLive ? 1 : 0),
+      ];
+      const moves: DeliveryMove[] = [];
+      if (mergesLive) {
+        const { results } = await this.#db
+          .prepare(MERGED_IN_REPOSITORY)
+          .bind(name, `https://github.com/${name}/pull/`)
+          .all<StoredTaskRow>();
+        for (const row of results) {
+          const current = deliveryOf(row);
+          if (current?.stage !== 'merged' || repositoryOf(current) !== name) continue;
+          // It went live when it merged: the repository has no deploy.
+          statements.push(
+            ...this.#delivered(row, { ...current, stage: 'live', liveAt: current.mergedAt ?? at }, actor, at),
+          );
+          moves.push({ taskId: row.id, projectId: row.project_id, stage: 'live' });
+        }
+      }
+      try {
+        await this.#db.batch(statements);
+        return { repository: { name, mergesLive }, moved: moves };
+      } catch (error) {
+        // Another write changed a task this moves: read the tasks again and decide again.
+        if (guardRefusalOf(messageOf(error)) === 'version_conflict') continue;
+        throw error;
+      }
+    }
+    refuse('version_conflict', `The tasks of ${name} kept changing; turn it on again.`);
   }
 
   /**
@@ -1322,15 +1414,18 @@ export class Writes {
     const since = new Date(Date.parse(at) - PUSH_KEPT_MS).toISOString();
     const row = await this.#db
       .prepare(
-        `SELECT repository, head, pushed_at FROM pushed_commits
-         WHERE commit_sha >= substr(?1, 1, 7) AND commit_sha < substr(?1, 1, 7) || 'g'
-           AND (substr(?1, 1, length(commit_sha)) = commit_sha OR substr(commit_sha, 1, length(?1)) = ?1)
-           AND pushed_at >= ?2
-         ORDER BY pushed_at LIMIT 1`,
+        `SELECT c.repository, c.head, c.pushed_at, coalesce(r.merges_live, 0) AS merges_live
+         FROM pushed_commits c LEFT JOIN repositories r ON r.name = c.repository
+         WHERE c.commit_sha >= substr(?1, 1, 7) AND c.commit_sha < substr(?1, 1, 7) || 'g'
+           AND (substr(?1, 1, length(c.commit_sha)) = c.commit_sha OR substr(c.commit_sha, 1, length(?1)) = ?1)
+           AND c.pushed_at >= ?2
+         ORDER BY c.pushed_at LIMIT 1`,
       )
       .bind(commit, since)
-      .first<{ repository: string; head: string; pushed_at: string }>();
-    return row === null ? null : { repository: row.repository, head: row.head, pushedAt: row.pushed_at };
+      .first<{ repository: string; head: string; pushed_at: string; merges_live: number }>();
+    return row === null
+      ? null
+      : { repository: row.repository, head: row.head, pushedAt: row.pushed_at, mergesLive: row.merges_live === 1 };
   }
 
   async createTask(
@@ -2007,7 +2102,8 @@ export class Writes {
       if (commit !== null || pullRequest !== null) {
         // A commit pushed to a default branch before the close is merged already, as its push would have moved it.
         const pushed = commit !== null && pullRequest === null ? await this.#pushOf(commit, at) : null;
-        columns.delivery_stage = pushed === null ? 'built' : 'merged';
+        const liveAt = pushed?.mergesLive === true ? pushed.pushedAt : null;
+        columns.delivery_stage = pushedStage(pushed);
         columns.delivery_commit = commit;
         columns.delivery_pull_request = pullRequest;
         columns.built_at = at;
@@ -2015,16 +2111,17 @@ export class Writes {
           columns.delivery_merge_commit = pushed.head;
           columns.delivery_repository = pushed.repository;
           columns.merged_at = pushed.pushedAt;
+          columns.live_at = liveAt;
         }
         changes.delivery = deliveryJson({
-          stage: pushed === null ? 'built' : 'merged',
+          stage: pushedStage(pushed),
           commit,
           pullRequest,
           mergeCommit: pushed?.head ?? null,
           repository: pushed?.repository ?? null,
           builtAt: at,
           mergedAt: pushed?.pushedAt ?? null,
-          liveAt: null,
+          liveAt,
         });
       }
     } else if (write.reopen) {
