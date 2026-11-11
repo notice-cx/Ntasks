@@ -11,7 +11,7 @@
     "pullRequest": {
       "type": ["string", "null"],
       "format": "uri",
-      "description": "The pull request the approval gates, such as one the agent may merge only once approved. It is part of the approval's proposal, and a server keeps it as the approval's link of kind pull-request. Null, or left out, when the approval gates none. STATE-24 says what an answer does to it."
+      "description": "The pull request the approval gates, such as one the agent may merge only once approved. It is part of the approval's proposal, and a server keeps it as the approval's link of kind pull-request. Null, or left out, when the approval gates none. STATE-25 says what an answer does to it."
     },
     "choices": { "type": "null" },
     "choice": { "type": "null" },
