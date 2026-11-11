@@ -131,7 +131,7 @@ export interface GitHubCalls {
   readonly checkOutages: Set<string>;
   /** The commits whose check runs GitHub answers in part, with an error and no check suites, which a test sets. */
   readonly checkErrors: Set<string>;
-  /** The commits whose check runs GitHub refuses with a rate limit's 403, which a test sets. */
+  /** The commits whose check runs GitHub refuses with a rate limit's 403 and no header, which a test sets. */
   readonly checkRateLimits: Set<string>;
   /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
   readonly histories: Map<string, string[]>;
@@ -281,11 +281,9 @@ export function standInForGitHub(): GitHubCalls {
         const { variables } = (await request.json()) as { variables: { commit: string } };
         calls.checkReads.push(variables.commit);
         if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
+        // A secondary rate limit, which GitHub may answer with no retry-after or rate-limit header.
         if (calls.checkRateLimits.has(variables.commit))
-          return Response.json(
-            { message: 'You have exceeded a secondary rate limit.' },
-            { status: 403, headers: { 'retry-after': '60' } },
-          );
+          return Response.json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 });
         // As GitHub answers a query past its resource limits: 200, the parts it read, and null for the rest.
         if (calls.checkErrors.has(variables.commit))
           return Response.json({

@@ -197,12 +197,7 @@ export const RETRY = 'retry';
 
 /** Whether a read GitHub did not answer with 200 may be answered on another try. */
 function retryable(response: Response | null): boolean {
-  if (response === null || response.status === 429 || response.status >= 500) return true;
-  // GitHub answers a rate limit with 403 too, naming when to try again or that no requests are left.
-  return (
-    response.status === 403 &&
-    (response.headers.has('retry-after') || response.headers.get('x-ratelimit-remaining') === '0')
-  );
+  return response === null || response.status === 429 || response.status >= 500;
 }
 
 /** The value at `path` in an answer, or undefined when any step of it is missing. */
@@ -282,7 +277,10 @@ export async function checksOf(
   }).catch(() => null);
   if (response?.status !== 200) {
     await response?.body?.cancel();
-    return retryable(response) ? RETRY : null;
+    // GraphQL answers a repository the token does not reach with 200 and an
+    // error, so its 403 is a rate limit, which GitHub may send without a
+    // header that says so.
+    return retryable(response) || response?.status === 403 ? RETRY : null;
   }
   const body: unknown = await response.json().catch(() => null);
   // GraphQL answers with 200 and errors: a rate limit as an error of type
