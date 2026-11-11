@@ -15,13 +15,20 @@ import type { TaskProject } from '../api/types';
 /** How often the feed is asked while the page is visible. A hidden page asks nothing. */
 export const CHANGE_POLL_MS = 30_000;
 
+/** How often the Live page asks, so a card moves within seconds of the change; a poll that finds nothing costs almost nothing. */
+export const LIVE_POLL_MS = 5_000;
+
 /** One board on screen: its project's key, and the latest change it reflects. */
 export interface BoardPosition {
   project: string;
   lastSeq: number | undefined;
 }
 
-export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonly TaskProject[] | undefined): void {
+export function useChangeFeed(
+  boards: readonly BoardPosition[],
+  catalog: readonly TaskProject[] | undefined,
+  intervalMs: number = CHANGE_POLL_MS,
+): void {
   const api = useTasksApi();
   const client = useQueryClient();
   const reflected = new Map(
@@ -44,23 +51,43 @@ export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonl
   // later poll names those changes again.
   const unread = useRef(new Set<string>());
 
+  // Projects whose pages are being read again, and those a poll found a newer
+  // change in meanwhile. A poll never cancels a read under way, which on a
+  // slow board would restart it on every poll and never finish; the change it
+  // found is read once that read is done.
+  const reading = useRef(new Set<string>());
+  const behind = useRef(new Set<string>());
+
   async function readAgain(project: string): Promise<void> {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: ['tasks', project] }),
-      client.invalidateQueries({ queryKey: ['task', project] }),
-    ]);
-    const failure = [
-      ...client.getQueryCache().findAll({ queryKey: ['tasks', project], type: 'active' }),
-      ...client.getQueryCache().findAll({ queryKey: ['task', project], type: 'active' }),
-    ].find((query) => query.state.status === 'error')?.state.error;
-    // A refusal answers the same way every time, so only a failure worth retrying keeps the project here.
-    if (failure === undefined || !retryRead(0, failure)) unread.current.delete(project);
+    if (reading.current.has(project)) {
+      behind.current.add(project);
+      return;
+    }
+    reading.current.add(project);
+    try {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['tasks', project] }),
+        client.invalidateQueries({ queryKey: ['task', project] }),
+      ]);
+      const failure = [
+        ...client.getQueryCache().findAll({ queryKey: ['tasks', project], type: 'active' }),
+        ...client.getQueryCache().findAll({ queryKey: ['task', project], type: 'active' }),
+      ].find((query) => query.state.status === 'error')?.state.error;
+      // A refusal answers the same way every time, so only a failure worth retrying keeps the project here.
+      if (failure === undefined || !retryRead(0, failure)) unread.current.delete(project);
+    } finally {
+      reading.current.delete(project);
+    }
+    if (behind.current.delete(project)) {
+      unread.current.add(project);
+      await readAgain(project);
+    }
   }
 
   useQuery({
     queryKey: ['changes'],
     enabled: start !== null,
-    refetchInterval: CHANGE_POLL_MS,
+    refetchInterval: intervalMs,
     // Stopped while the page is hidden; asked again the moment it shows.
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }) => {

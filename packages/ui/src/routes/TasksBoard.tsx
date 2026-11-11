@@ -2,7 +2,7 @@ import { CircleAlert, Inbox, ListFilter, Plus, Search, X } from 'lucide-react';
 import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
-import { PageSkeleton, ReadFailed } from '../components/surface';
+import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
 import { Badge, Count } from '../components/ui/badge';
 import { Button, IconButton } from '../components/ui/button';
 import { Tabs } from '../components/ui/choice';
@@ -387,33 +387,6 @@ export function TasksBoard() {
   );
 }
 
-/** A line across the board saying what could not be read, with a way to read it again. */
-function ReadBanner({
-  title,
-  children,
-  onRetry,
-  ...data
-}: {
-  title: string;
-  children?: ReactNode;
-  onRetry: () => void;
-} & Record<`data-${string}`, string>) {
-  return (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-5.5 py-2 text-label text-ink"
-      {...data}
-    >
-      <CircleAlert aria-hidden size={15} className="text-ink-2" />
-      <span className="font-medium">{title}</span>
-      {children === undefined ? null : <span>{children}</span>}
-      <Button size="sm" className="ms-auto" onClick={onRetry}>
-        Retry
-      </Button>
-    </div>
-  );
-}
-
 /** The board's groups in the view's order, each folding, each showing 25 rows a press. */
 function Groups({
   board,
@@ -477,12 +450,19 @@ function Groups({
   }, [board.inbox, board.rows, board.statuses, board.held, projects, hides, sort]);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
+  // The holders of every task read for the projects in view, not only of the rows the filters keep, and of rows only the search found.
+  // Kept as one list per read: a row compares its context field by field, so a new list would draw every row again.
+  const people = useMemo(
+    () => [...board.allTasks, ...board.rows].flatMap((task) => (task.assignee ? [task.assignee] : [])),
+    [board.allTasks, board.rows],
+  );
   const contextOf = (task: BoardTask): RowContext => ({
     capabilities,
     statuses: board.statuses,
     held: board.held,
     epicProgress: projects.get(task.project)?.epicProgress ?? NO_PROGRESS,
     actionable: projects.get(task.project)?.ok === true && writable,
+    people,
     age: formatAge(ageMs(now, task.updatedAt)),
     nowMs: now,
   });

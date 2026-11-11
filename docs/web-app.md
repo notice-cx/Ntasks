@@ -47,15 +47,20 @@ prefix, and the address with its old id opens its page under the new id.
   <img src="images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
 </picture>
 
-**Live.** Every task in progress, grouped by when its holder last changed or
-commented on it: Active, Quiet and Stalled, after a day without activity. In
-each group a task sits under its epic, with the epic's progress bar. A stalled
-task's page shows where its work stopped and **Free it**, which hands it back
-for another agent to claim, keeping that record as a comment.
+**Live.** A board of work moving to production, in four columns: In
+progress, then Built, Merged and Live, the stages a closed task's change goes
+through as GitHub reports its merge and its deploy. When a task moves to the
+next column, its card travels there, and when its holder changes or comments
+on it a blue ring grows from its mark and fades. Each card in progress is marked Active, Quiet or
+Stalled, after a day without activity. While the page is open it checks for
+changes every 5 seconds. **List** shows the tasks in progress grouped as
+Active, Quiet and Stalled, each under its epic with the epic's progress bar.
+A stalled task's page shows where its work stopped and **Free it**, which
+hands it back for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
-  <img src="images/live-light.webp" width="800" alt="The Live page: 1 active, 1 quiet and 1 stalled at the top beside Stalled after 1 day, then the Active, Quiet and Stalled groups, each row with its task's next step, pull request or branch, helper, holder and how long since the holder's last change.">
+  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then four columns. In progress holds three cards, each with its task's activity mark, pull request, next step, holder, model and last activity; Built, Merged and Live hold one closed task each.">
 </picture>
 
 **Productivity.** What you and your agents got done that matters, day by

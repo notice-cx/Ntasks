@@ -21,16 +21,31 @@ export const DELIVERY_GROUPS: readonly {
   { wait: 'deploy', label: 'Waiting for deploy', icon: <GitMerge aria-hidden size={14} /> },
 ];
 
+/** The work waiting for a merge or a deploy, and how its reads went. */
+export interface DeliveryWaits extends Record<DeliveryWait, BoardTask[]> {
+  /** Some project's read has not answered yet. */
+  readonly loading: boolean;
+  /** The names of the projects whose read failed with nothing read before, whose waiting work is missing. */
+  readonly unread: readonly string[];
+  /** Reads those projects again. */
+  readonly retry: () => void;
+}
+
 /** The projects in view's work waiting for a merge or a deploy, read while `enabled`, with the board's filters applied. */
-export function useDeliveryWaits(
-  board: Board,
-  filters: BoardFilters,
-  enabled: boolean,
-): Record<DeliveryWait, BoardTask[]> {
+export function useDeliveryWaits(board: Board, filters: BoardFilters, enabled: boolean): DeliveryWaits {
   const keys = board.projects.map((project) => project.key);
   const reads = useDeliveryBoards(keys, enabled);
   const deploys = new Map((board.catalog.data ?? []).map((project) => [project.logicalKey, project.deploys === true]));
-  const waits: Record<DeliveryWait, BoardTask[]> = { merge: [], deploy: [] };
+  const failed = enabled ? reads.filter((read) => read.data === undefined && read.isError) : [];
+  const waits: DeliveryWaits = {
+    merge: [],
+    deploy: [],
+    loading: enabled && reads.some((read) => read.isPending && read.fetchStatus === 'fetching'),
+    unread: failed.map((read) => board.projects[reads.indexOf(read)]?.name ?? ''),
+    retry: () => {
+      for (const read of failed) void read.refetch();
+    },
+  };
   if (!enabled) return waits;
   reads.forEach((read, index) => {
     const key = keys[index];

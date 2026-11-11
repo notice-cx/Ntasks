@@ -78,8 +78,8 @@ const SHOTS: readonly Shot[] = [
     scale: 1.5,
     ready: '[data-focus-decision] [role="radio"]',
   },
-  // Active, Quiet and Stalled each hold a task of the example data.
-  { name: 'live', address: '/tasks/live', width: 1100, height: 560, scale: 1.5, ready: '[data-live-row]' },
+  // The board: the example data's tasks in progress, then one each built, merged and live.
+  { name: 'live', address: '/tasks/live', width: 1100, height: 520, scale: 1.5, ready: '[data-board-card]' },
   { name: 'phone', address: '/tasks', width: 390, height: 844, scale: 2, ready: '[data-task-row]' },
   {
     name: 'sign-in',

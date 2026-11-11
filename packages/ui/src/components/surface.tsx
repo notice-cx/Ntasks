@@ -1,8 +1,10 @@
 /**
  * The states the task page and Focus share while their read is not in hand:
- * a read that failed, a visitor who must sign in, and loading.
+ * a read that failed, a visitor who must sign in, and loading; and the banner
+ * a board shows over what it could read.
  */
 import { CircleAlert, LogIn, RotateCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { needsSignIn } from '../api/client';
 import { useSignIn } from '../api/context';
 import { Button } from './ui/button';
@@ -87,6 +89,33 @@ export function PageSkeleton({ shape }: { shape: 'list' | 'page' }) {
           <div key={index} className="skeleton h-10 w-full rounded-md" />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** A line across the board saying what could not be read, with a way to read it again. */
+export function ReadBanner({
+  title,
+  children,
+  onRetry,
+  ...data
+}: {
+  title: string;
+  children?: ReactNode;
+  onRetry: () => void;
+} & Record<`data-${string}`, string>) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-5.5 py-2 text-label text-ink"
+      {...data}
+    >
+      <CircleAlert aria-hidden size={15} className="text-ink-2" />
+      <span className="font-medium">{title}</span>
+      {children === undefined ? null : <span>{children}</span>}
+      <Button size="sm" className="ms-auto" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }

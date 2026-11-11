@@ -22,7 +22,13 @@ const BoardsContext = createContext<BoardsRead | null>(null);
  * A disabled project's board is not read: it leaves the sidebar, the board
  * and its menus, and its tasks still open on their own pages.
  */
-export function BoardsProvider({ children }: { children: ReactNode }) {
+export function BoardsProvider({
+  children,
+  pollMs,
+}: {
+  children: ReactNode;
+  /** How often to ask the change feed. */ pollMs?: number;
+}) {
   const catalog = useTaskProjects();
   const active = useMemo(() => (catalog.data ?? []).filter((project) => project.disabled !== true), [catalog.data]);
   const keys = useMemo(() => active.map((project) => project.logicalKey), [active]);
@@ -31,6 +37,7 @@ export function BoardsProvider({ children }: { children: ReactNode }) {
     keys.map((project, index) => ({ project, lastSeq: boards[index]?.data?.lastSeq })),
     // Every project, so a change to a disabled project's task still refreshes its open page.
     catalog.data,
+    pollMs,
   );
   // The query results are new objects on every draw, and the frame draws on
   // every navigation; the shared read changes only when a read's state does,

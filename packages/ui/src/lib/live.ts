@@ -50,3 +50,65 @@ export function liveGroups(tasks: readonly BoardTask[], nowMs: number): LiveGrou
   }
   return groups;
 }
+
+/** The Live board's columns, in the order work moves through them. */
+export const STAGES = ['progress', 'built', 'merged', 'live'] as const;
+export type Stage = (typeof STAGES)[number];
+
+export const STAGE_LABELS: Readonly<Record<Stage, string>> = Object.freeze({
+  progress: 'In progress',
+  built: 'Built',
+  merged: 'Merged',
+  live: 'Live',
+});
+
+export type LiveBoard = Readonly<Record<Stage, readonly BoardTask[]>>;
+
+/**
+ * When a task reached its column: its holder's last activity while it is in
+ * progress, else the time its change reached the stage it is at.
+ */
+export function stageTime(task: BoardTask, stage: Stage): string | null {
+  if (stage === 'progress') return task.lastActivityAt ?? null;
+  const delivery = task.delivery;
+  if (!delivery) return null;
+  if (stage === 'built') return delivery.builtAt;
+  return stage === 'merged' ? (delivery.mergedAt ?? delivery.builtAt) : (delivery.liveAt ?? delivery.mergedAt);
+}
+
+/**
+ * The Live board's columns. In progress holds every task in progress in the
+ * Live list's order: Active, then Quiet, then Stalled, so the stalled ones
+ * are the first a short column leaves out. The others hold closed tasks by
+ * where their change is, the latest first: every task still waiting for a
+ * merge or a deploy (`waits`, whenever it closed), and the board's own
+ * closes, which reach back 7 days, for merged work of a project that does not
+ * deploy and for work that went live. A task the board read holds is placed
+ * by that read, never by a wait, which comes from a read of its own that can
+ * lag behind or fail: a task reopened, or moved on, sits where the board
+ * read puts it. A decision or an approval ships nothing.
+ */
+export function liveBoard(
+  tasks: readonly BoardTask[],
+  waits: { readonly merge: readonly BoardTask[]; readonly deploy: readonly BoardTask[] },
+  nowMs: number,
+): LiveBoard {
+  const groups = liveGroups(tasks, nowMs);
+  const columns: Record<Exclude<Stage, 'progress'>, BoardTask[]> = { built: [], merged: [], live: [] };
+  const placed = new Set<string>();
+  const onBoard = new Set(tasks.map((task) => task.id));
+  const closes = tasks.filter((task) => task.status === 'closed');
+  const waiting = [...waits.merge, ...waits.deploy].filter((task) => !onBoard.has(task.id));
+  for (const task of [...closes, ...waiting]) {
+    if (placed.has(task.id) || task.issueType === 'decision' || task.issueType === 'gate') continue;
+    const stage = task.delivery?.stage;
+    if (stage !== 'built' && stage !== 'merged' && stage !== 'live') continue;
+    placed.add(task.id);
+    columns[stage].push(task);
+  }
+  for (const [stage, column] of Object.entries(columns) as [Exclude<Stage, 'progress'>, BoardTask[]][]) {
+    const at = (task: BoardTask) => Date.parse(stageTime(task, stage) ?? '') || 0;
+    column.sort((a, b) => at(b) - at(a) || a.id.localeCompare(b.id));
+  }
+  return { progress: [...groups.active, ...groups.quiet, ...groups.stalled], ...columns };
+}

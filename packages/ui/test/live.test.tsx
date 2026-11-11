@@ -1,8 +1,9 @@
-import { fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed, type FixtureTask } from '@/api/fixture-data';
-import { activeNow, activityOf, liveGroups } from '@/lib/live';
+import { activeNow, activityOf, liveBoard, liveGroups } from '@/lib/live';
 import type { BoardTask } from '@/lib/task-model';
 import { renderApp } from './render';
 
@@ -93,6 +94,200 @@ describe('the Live page’s groups', () => {
   });
 });
 
+describe('the Live board’s columns', () => {
+  const closed = (id: string, stage: string, at: number, fields: Partial<BoardTask> = {}) =>
+    task(id, {
+      status: 'closed',
+      closedAt: ago(at),
+      delivery: {
+        stage,
+        commit: null,
+        pullRequest: null,
+        mergeCommit: null,
+        builtAt: ago(at),
+        mergedAt: stage === 'built' ? null : ago(at),
+        liveAt: stage === 'live' ? ago(at) : null,
+      },
+      ...fields,
+    });
+
+  it('hold work in progress in the list’s order, then closed work by where its change is, the latest first', () => {
+    const waitingMerge = closed('web-b1', 'built', 20 * DAY);
+    const waitingDeploy = closed('web-m1', 'merged', 3 * HOUR);
+    const board = liveBoard(
+      [
+        task('web-1', { lastActivityAt: ago(3 * HOUR) }),
+        task('web-2', { lastActivityAt: null }),
+        task('web-3', { lastActivityAt: ago(5 * 60_000) }),
+        // The board's own closes, which reach back 7 days; web-m1 is also among them.
+        waitingDeploy,
+        closed('docs-m2', 'merged', HOUR, { project: 'docs' }),
+        closed('web-l1', 'live', 2 * DAY),
+        closed('web-l2', 'live', HOUR),
+        closed('web-d1', 'live', HOUR, { issueType: 'decision' }),
+        closed('web-x1', 'shipped somewhere', HOUR),
+        task('web-c1', { status: 'closed', closedAt: ago(HOUR) }),
+      ],
+      // Waiting for a merge or a deploy, whenever they closed.
+      { merge: [waitingMerge], deploy: [waitingDeploy] },
+      NOW,
+    );
+    expect(ids(board.progress)).toEqual(['web-3', 'web-1', 'web-2']);
+    expect(ids(board.built)).toEqual(['web-b1']);
+    expect(ids(board.merged)).toEqual(['docs-m2', 'web-m1']);
+    expect(ids(board.live)).toEqual(['web-l2', 'web-l1']);
+  });
+
+  it('place a task the board read holds by that read, not by a wait read apart from it', () => {
+    const board = liveBoard(
+      [closed('web-m1', 'merged', HOUR), task('web-r1', { lastActivityAt: ago(5 * 60_000) })],
+      // A delivery read that lags behind: web-m1 merged since, and web-r1 was reopened.
+      { merge: [closed('web-m1', 'built', HOUR), closed('web-r1', 'built', DAY)], deploy: [] },
+      NOW,
+    );
+    expect(ids(board.built)).toEqual([]);
+    expect(ids(board.merged)).toEqual(['web-m1']);
+    expect(ids(board.progress)).toEqual(['web-r1']);
+  });
+});
+
+/** The ids of the cards in a column of the Live board, in order. */
+async function boardCards(name: 'In progress' | 'Built' | 'Merged' | 'Live'): Promise<string[]> {
+  const column = await screen.findByRole('region', { name });
+  return [...column.querySelectorAll('[data-board-card]')].map((card) => card.getAttribute('data-board-card') ?? '');
+}
+
+/** Records each animation the board starts, by the card or mark it moves. */
+function recordAnimations() {
+  const started: { element: Element; frames: Keyframe[] }[] = [];
+  const animate = vi.fn(function (this: Element, frames: Keyframe[]) {
+    started.push({ element: this, frames });
+    return { onfinish: null, oncancel: null, cancel() {} } as unknown as Animation;
+  });
+  Element.prototype.animate = animate as unknown as typeof Element.prototype.animate;
+  return started;
+}
+
+/** Answers the reduced-motion query as the system would with that setting on. */
+function preferReducedMotion() {
+  const matchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    ...matchMedia(query),
+    matches: query.includes('prefers-reduced-motion: reduce'),
+  })) as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = matchMedia;
+  };
+}
+
+/** Moves web-k3m9.1's change from Built to Merged, as GitHub's report of its merge would, and reads the boards again. */
+async function mergeBuiltTask(api: ReturnType<typeof createFixtureTasksApi>, queryClient: QueryClient) {
+  const built = api.state.tasks.find((entry) => entry.id === 'web-k3m9.1') as FixtureTask;
+  built.delivery = { ...built.delivery!, stage: 'merged', mergedAt: new Date().toISOString() };
+  await act(async () => {
+    await queryClient.invalidateQueries();
+  });
+}
+
+describe('the Live board', () => {
+  const restore: (() => void)[] = [];
+  afterEach(() => {
+    for (const undo of restore.splice(0)) undo();
+    Reflect.deleteProperty(Element.prototype, 'animate');
+  });
+
+  it('opens on the board: work in progress, then built, merged and live work, and List shows the groups', async () => {
+    renderApp('/tasks/live');
+    expect(await boardCards('In progress')).toEqual(['web-k3m9.2', 'docs-n6j1', 'web-w6n2']);
+    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
+    expect(await boardCards('Merged')).toEqual(['docs-y5u2']);
+    expect(await boardCards('Live')).toEqual(['web-j6y4']);
+    const held = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
+    expect(within(held).getByRole('link', { name: '#42' }).getAttribute('href')).toBe(
+      'https://github.example.com/example/web/pull/42',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(await liveRows('Active')).toEqual(['web-k3m9.2']);
+    expect(document.querySelector('[data-live-board]')).toBeNull();
+  });
+
+  it('says which projects’ waiting work could not be read, and reads it again on Retry', async () => {
+    const seed = fixtureSeed(Date.now());
+    const model = seed.tasks.find((entry) => entry.id === 'web-k3m9.1') as FixtureTask;
+    // Closed three weeks ago and still waiting for its merge, so only the read of waiting work holds it.
+    const closedAt = new Date(Date.now() - 21 * DAY).toISOString();
+    seed.tasks.push({ ...model, id: 'web-old1', title: 'Old built task', closedAt, updatedAt: closedAt });
+    const api = createFixtureTasksApi({ seed });
+    let failing = true;
+    renderApp('/tasks/live', {
+      ...api,
+      delivery: (project: string, signal?: AbortSignal) =>
+        failing ? Promise.reject(new Error('The read timed out.')) : api.delivery(project, signal),
+    });
+    const banner = await screen.findByRole('alert');
+    expect(banner.hasAttribute('data-live-unread')).toBe(true);
+    expect(banner.textContent).toContain('Example web app');
+    expect(await boardCards('Built')).not.toContain('web-old1');
+    failing = false;
+    fireEvent.click(within(banner).getByRole('button', { name: 'Retry' }));
+    await waitFor(async () => expect(await boardCards('Built')).toContain('web-old1'));
+    expect(document.querySelector('[data-live-unread]')).toBeNull();
+  });
+
+  it('names who closed a task only when its close names them', async () => {
+    const seed = fixtureSeed(Date.now());
+    const live = seed.tasks.find((entry) => entry.id === 'web-j6y4') as FixtureTask;
+    Object.assign(live, { metadata: null, closedBy: null, assignee: 'agent:claude' });
+    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    expect(await boardCards('Live')).toEqual(['web-j6y4']);
+    const card = document.querySelector('[data-board-card="web-j6y4"]') as HTMLElement;
+    expect(within(card).queryByText('Claude')).toBeNull();
+  });
+
+  it('shows the latest tasks in a column and counts the rest', async () => {
+    const seed = fixtureSeed(Date.now());
+    const model = seed.tasks.find((entry) => entry.id === 'web-k3m9.2') as FixtureTask;
+    for (let n = 1; n <= 6; n += 1) {
+      seed.tasks.push({
+        ...model,
+        id: `web-a${n}`,
+        title: `Held task ${n}`,
+        lastActivityAt: new Date(Date.now() - n * 60_000).toISOString(),
+      });
+    }
+    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    expect(await boardCards('In progress')).toEqual(['web-a1', 'web-a2', 'web-a3', 'web-a4', 'web-a5', 'web-a6']);
+    const column = screen.getByRole('region', { name: 'In progress' });
+    expect(column.querySelector('[data-live-more]')?.textContent).toBe('3 more');
+  });
+
+  it('moves a card to its new column when a read finds its task there, and sends it travelling', async () => {
+    const started = recordAnimations();
+    const api = createFixtureTasksApi();
+    const { queryClient } = renderApp('/tasks/live', api);
+    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
+    await mergeBuiltTask(api, queryClient);
+    await waitFor(async () => expect(await boardCards('Merged')).toEqual(['web-k3m9.1', 'docs-y5u2']));
+    expect(await boardCards('Built')).toEqual([]);
+    const card = document.querySelector('[data-board-card="web-k3m9.1"]');
+    const travel = started.find((entry) => entry.element === card);
+    expect(travel?.frames.some((frame) => String(frame.transform).startsWith('translate('))).toBe(true);
+  });
+
+  it('with reduced motion, tints a card that changed column and moves nothing', async () => {
+    restore.push(preferReducedMotion());
+    const started = recordAnimations();
+    const api = createFixtureTasksApi();
+    const { queryClient } = renderApp('/tasks/live', api);
+    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
+    await mergeBuiltTask(api, queryClient);
+    await waitFor(async () => expect(await boardCards('Merged')).toContain('web-k3m9.1'));
+    const card = document.querySelector('[data-board-card="web-k3m9.1"]') as HTMLElement;
+    expect(card.hasAttribute('data-landed')).toBe(true);
+    expect(started).toEqual([]);
+  });
+});
+
 /** The ids of the rows in a group of the Live page, in order. */
 async function liveRows(name: 'Active' | 'Quiet' | 'Stalled'): Promise<string[]> {
   const region = await screen.findByRole('region', { name });
@@ -101,7 +296,7 @@ async function liveRows(name: 'Active' | 'Quiet' | 'Stalled'): Promise<string[]>
 
 describe('the Live page', () => {
   it('groups every task in progress by its holder’s last activity, with what they recorded', async () => {
-    renderApp('/tasks/live');
+    renderApp('/tasks/live?view=list');
     expect(await liveRows('Active')).toEqual(['web-k3m9.2']);
     expect(await liveRows('Quiet')).toEqual(['docs-n6j1']);
     expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
@@ -120,7 +315,7 @@ describe('the Live page', () => {
 
   it('shows a stalled task and changes nothing on it', async () => {
     const api = createFixtureTasksApi();
-    renderApp('/tasks/live', api);
+    renderApp('/tasks/live?view=list', api);
     expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
     expect(api.state.tasks.find((entry) => entry.id === 'web-w6n2')).toMatchObject({ status: 'in_progress' });
   });
@@ -136,7 +331,7 @@ describe('the Live page', () => {
         lastActivityAt: new Date(Date.now() - (3 + n) * DAY).toISOString(),
       });
     }
-    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    renderApp('/tasks/live?view=list', createFixtureTasksApi({ seed }));
     expect(await liveRows('Stalled')).toEqual(['web-w6n2', 'web-s1', 'web-s2', 'web-s3', 'web-s4']);
     fireEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
     expect(await liveRows('Stalled')).toEqual(['web-w6n2', 'web-s1', 'web-s2', 'web-s3', 'web-s4', 'web-s5', 'web-s6']);
@@ -147,7 +342,7 @@ describe('the Live page', () => {
     const seed = fixtureSeed(Date.now());
     const held = seed.tasks.find((entry) => entry.id === 'web-k3m9.2') as FixtureTask;
     held.work = { ...held.work, pr: 'javascript:alert(1)' };
-    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    renderApp('/tasks/live?view=list', createFixtureTasksApi({ seed }));
     await liveRows('Active');
     const row = document.querySelector('[data-live-row="web-k3m9.2"]') as HTMLElement;
     expect(row.querySelector('[data-live-pr]')).toBeNull();
@@ -163,7 +358,7 @@ describe('the Live page', () => {
       { ...model, id: 'web-e8.1', title: 'Cache the search results', parent: 'web-e8', lastActivityAt: at(2 * 60_000) },
       { ...model, id: 'web-n1', title: 'Answer the support backlog', parent: null, lastActivityAt: at(5 * 60_000) },
     );
-    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    renderApp('/tasks/live?view=list', createFixtureTasksApi({ seed }));
     const active = await screen.findByRole('region', { name: 'Active' });
     const lines = [...active.querySelectorAll('[data-live-epic], [data-live-row]')].map(
       (line) => line.getAttribute('data-live-epic') ?? line.getAttribute('data-live-row'),
@@ -181,7 +376,7 @@ describe('the Live page', () => {
   it('says so when nothing is in progress', async () => {
     const seed = fixtureSeed(Date.now());
     seed.tasks = seed.tasks.filter((entry) => entry.status !== 'in_progress');
-    renderApp('/tasks/live', createFixtureTasksApi({ seed }));
+    renderApp('/tasks/live?view=list', createFixtureTasksApi({ seed }));
     expect(await screen.findByText('No tasks in progress')).toBeTruthy();
   });
 
