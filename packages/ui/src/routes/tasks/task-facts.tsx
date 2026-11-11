@@ -49,6 +49,44 @@ export type FieldSave = (input: {
   idempotencyKey?: string;
 }) => Promise<boolean>;
 
+/** The priorities to pick from, the task's own ticked. */
+export function priorityEditor(task: Pick<LiveTask, 'priority'>): FactEditor {
+  return { kind: 'choice', value: String(task.priority), choices: PRIORITY_CHOICES };
+}
+
+export function priorityChange(task: Pick<LiveTask, 'priority'>, next: string): Parameters<FieldSave>[0] {
+  return { label: 'the priority', edit: { priority: Number(next) }, undo: { priority: task.priority } };
+}
+
+/** Who to give the task to: the people who hold work beside it, Nobody, or someone else typed. */
+export function assigneeEditor(
+  task: Pick<LiveTask, 'assignee'>,
+  people: readonly string[],
+  actors: readonly TaskActor[] | undefined,
+): FactEditor {
+  return {
+    kind: 'choice',
+    value: task.assignee ?? '',
+    choices: [
+      ...oneSpellingEach(people, task.assignee).map((actor) => actorChoice(actor, actors)),
+      { value: '', label: 'Nobody' },
+    ],
+    other: 'Someone else',
+  };
+}
+
+/** Gives the task to `next`, or with "" releases it. */
+export function assigneeChange(task: Pick<LiveTask, 'status' | 'assignee'>, next: string): Parameters<FieldSave>[0] {
+  return {
+    label: 'the assignee',
+    edit: { assignee: next },
+    // A new holder owns an in-progress claim, so taking it back is theirs to agree to, not an Undo.
+    ...(task.status === 'in_progress' && next !== '' && next !== task.assignee
+      ? {}
+      : { undo: { assignee: task.assignee ?? '' } }),
+  };
+}
+
 /** Save one field with a toast that offers Undo, the contract every editable fact keeps. */
 export function useFieldSave(id: string, project: string): FieldSave {
   const update = useUpdateTask();
@@ -177,10 +215,7 @@ export function TaskFacts({
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
   const helper = task.assignee ? (task.for ?? null) : null;
-  const people = oneSpellingEach(
-    siblings.flatMap((row) => (row.assignee ? [row.assignee] : [])),
-    task.assignee,
-  );
+  const people = siblings.flatMap((row) => (row.assignee ? [row.assignee] : []));
 
   const labels = [...new Set([...siblings.flatMap((row) => row.labels), ...task.labels])].sort();
   const parked = (task.deferUntil ?? '').slice(0, 10);
@@ -223,41 +258,21 @@ export function TaskFacts({
           </Fact>
           <Fact
             label="Priority"
+            shortcut="p"
             valueText={priorityLabel(task.priority)}
-            editor={
-              can('priority') ? { kind: 'choice', value: String(task.priority), choices: PRIORITY_CHOICES } : null
-            }
-            onSave={(next) =>
-              save({ label: 'the priority', edit: { priority: Number(next) }, undo: { priority: task.priority } })
-            }
+            editor={can('priority') ? priorityEditor(task) : null}
+            onSave={(next) => save(priorityChange(task, next))}
           >
             <PriorityMark priority={task.priority} label={null} />
             {priorityLabel(task.priority)}
           </Fact>
           <Fact
             label="Assignee"
+            shortcut="a"
             valueText={holder === null ? 'Nobody' : helper ? `${holder} for ${helper}` : holder}
             muted={holder === null}
-            editor={
-              can('assignee')
-                ? {
-                    kind: 'choice',
-                    value: task.assignee ?? '',
-                    choices: [...people.map((actor) => actorChoice(actor, actors)), { value: '', label: 'Nobody' }],
-                    other: 'Someone else',
-                  }
-                : null
-            }
-            // A new holder owns an in-progress claim, so taking it back is theirs to agree to, not an Undo.
-            onSave={(next) =>
-              save({
-                label: 'the assignee',
-                edit: { assignee: next },
-                ...(task.status === 'in_progress' && next !== '' && next !== task.assignee
-                  ? {}
-                  : { undo: { assignee: task.assignee ?? '' } }),
-              })
-            }
+            editor={can('assignee') ? assigneeEditor(task, people, actors) : null}
+            onSave={(next) => save(assigneeChange(task, next))}
           >
             {task.assignee && holder ? (
               <>
@@ -340,6 +355,7 @@ export function TaskFacts({
           {parked !== '' || can('defer') ? (
             <Fact
               label="Parked until"
+              shortcut="z"
               valueText={parked === '' ? 'None' : calendarDay(parked, nowMs, zone)}
               muted={parked === ''}
               editor={

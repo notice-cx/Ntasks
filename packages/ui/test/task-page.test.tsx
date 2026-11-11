@@ -106,6 +106,49 @@ describe('a task page', () => {
     expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
   });
 
+  describe("the action keys act on the page's task", () => {
+    async function open(api: ReturnType<typeof createFixtureTasksApi>) {
+      renderApp('/tasks/web-b2r6', api);
+      // The keys wait for the sign-in's permissions, as the page's buttons do.
+      await enabledButton('Claim');
+    }
+    const press = (key: string) => fireEvent.keyDown(document.body, { key });
+
+    it('M claims it', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('m');
+      await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe(FIXTURE_ACTOR));
+    });
+
+    it('A opens Assignee', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('a');
+      const menu = await screen.findByRole('menu', { name: 'Assignee' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Codex' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe('agent:codex'));
+    });
+
+    it('P opens Priority', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('p');
+      const menu = await screen.findByRole('menu', { name: 'Priority' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Low' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.priority).toBe(3));
+    });
+
+    it('Z opens Parked until', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('z');
+      const menu = await screen.findByRole('menu', { name: 'Parked until' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Tomorrow' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.deferUntil).not.toBeNull());
+    });
+  });
+
   it('shows a fact it may not change as words, not as a control', async () => {
     renderApp('/tasks/web-b2r6');
     await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });

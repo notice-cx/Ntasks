@@ -918,15 +918,22 @@ Each action's key:
 | `L` | Live, the tasks in progress by their holders' last activity |
 | `↵` | Open the task; answer a decision with the option selected; approve on the Focus page |
 | `⌘↵` | Send a comment; file a task from the composer |
-| `M` | Claim |
-| `A` | Assign to |
-| `P` | Priority |
-| `Z` | Park |
+| `M` | Claim the task |
+| `A` | Assign the task to someone |
+| `P` | Set the task's priority |
+| `Z` | Park the task |
 | `N` | New project, in Settings, Projects |
 | `I` | Invite, in Settings, Members |
 | `a` to `f` | Select a decision's option, on the Focus page or where a decision has focus |
 | `→` | Skip a decision on the Focus page |
 | `Esc` | Close a menu, a popover, the composer or an open form |
+
+`M`, `A`, `P` and `Z` act on the task whose page is open, and on the board
+on the row that holds focus. On a task's page, Claim shows `M`, and Priority,
+Assignee and Parked until open their menu and show their key while pointed
+at or focused. On a row, `M` claims, `Z` opens Park, and `A` and `P` open the
+row's menu at Assign to or Priority, where the row's menu lists them beside
+their keys.
 
 ## Dates
 

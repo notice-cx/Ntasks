@@ -1,7 +1,9 @@
 import { useId, useState, type ReactNode } from 'react';
 import { ChevronDown, CornerDownLeft, LoaderCircle } from 'lucide-react';
+import { useShortcut } from '../hooks/useShortcut';
 import { IconButton } from './ui/button';
 import { FieldError, Input } from './ui/field';
+import { Kbd } from './ui/kbd';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
 import { PopoverAnchor } from './ui/popover';
 import { cn } from '../lib/utils';
@@ -59,11 +61,14 @@ export function Fact({
   wrap = false,
   editor,
   onSave,
+  shortcut,
   className,
 }: {
   label: string;
   /** The value in words, for the control's name. */
   valueText: string;
+  /** The page's single key that opens the fact's menu, shown while the line is pointed at or focused. */
+  shortcut?: string;
   children: ReactNode;
   /** The value is an absence, such as None or Nobody, drawn in Text 3. */
   muted?: boolean;
@@ -80,6 +85,7 @@ export function Fact({
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const saving = picking || pending.size > 0;
   const editable = editor != null && onSave !== undefined;
+  useShortcut(shortcut ?? '', () => setOpen(true), editable && shortcut !== undefined && !open);
   const face = (end?: ReactNode) => (
     <dd
       className={cn(
@@ -143,26 +149,38 @@ export function Fact({
         <div className={cn(row, 'group/fact')} data-fact={label}>
           {name}
           {face(
-            <MenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={`${label}: ${valueText}`}
-                className={cn(
-                  // The button reaches over the whole line, so a press on the name or the value opens it.
-                  'ms-auto inline-grid size-5 shrink-0 place-items-center self-start rounded-sm text-ink-3 outline-none',
-                  'after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-accent',
-                  'opacity-0 group-hover/fact:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-100',
-                  saving && 'opacity-100',
-                )}
-                data-fact-edit=""
-              >
-                {saving ? (
-                  <LoaderCircle aria-hidden size={14} className="motion-safe:animate-spin" />
-                ) : (
-                  <ChevronDown aria-hidden size={14} />
-                )}
-              </button>
-            </MenuTrigger>,
+            <>
+              {shortcut ? (
+                <Kbd
+                  aria-hidden
+                  // Shown only while it can be read, so at rest the value keeps the room.
+                  className="ms-auto hidden self-start group-hover/fact:inline-grid group-focus-within/fact:inline-grid pointer-coarse:hidden!"
+                >
+                  {shortcut.toUpperCase()}
+                </Kbd>
+              ) : null}
+              <MenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`${label}: ${valueText}`}
+                  aria-keyshortcuts={shortcut?.toUpperCase()}
+                  className={cn(
+                    // The button reaches over the whole line, so a press on the name or the value opens it.
+                    'ms-auto inline-grid size-5 shrink-0 place-items-center self-start rounded-sm text-ink-3 outline-none',
+                    'after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-accent',
+                    'opacity-0 group-hover/fact:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-100',
+                    saving && 'opacity-100',
+                  )}
+                  data-fact-edit=""
+                >
+                  {saving ? (
+                    <LoaderCircle aria-hidden size={14} className="motion-safe:animate-spin" />
+                  ) : (
+                    <ChevronDown aria-hidden size={14} />
+                  )}
+                </button>
+              </MenuTrigger>
+            </>,
           )}
         </div>
       </PopoverAnchor>

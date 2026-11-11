@@ -451,11 +451,13 @@ function Groups({
     for (const mark of Object.keys(groups) as StatusMarkKey[]) groups[mark] = sorted(groups[mark], sort);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
+  const people = board.rows.flatMap((task) => (task.assignee ? [task.assignee] : []));
   const contextOf = (task: BoardTask): RowContext => ({
     statuses: board.statuses,
     held: board.held,
     epicProgress: projects.get(task.project)?.epicProgress ?? new Map(),
     actionable: projects.get(task.project)?.ok === true && writable,
+    people,
     age: formatAge(ageMs(now, task.updatedAt)),
     nowMs: now,
   });
