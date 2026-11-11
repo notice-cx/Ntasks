@@ -15,13 +15,20 @@ import type { TaskProject } from '../api/types';
 /** How often the feed is asked while the page is visible. A hidden page asks nothing. */
 export const CHANGE_POLL_MS = 30_000;
 
+/** How often the Live page asks, so a card moves within seconds of the change; a poll that finds nothing costs almost nothing. */
+export const LIVE_POLL_MS = 5_000;
+
 /** One board on screen: its project's key, and the latest change it reflects. */
 export interface BoardPosition {
   project: string;
   lastSeq: number | undefined;
 }
 
-export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonly TaskProject[] | undefined): void {
+export function useChangeFeed(
+  boards: readonly BoardPosition[],
+  catalog: readonly TaskProject[] | undefined,
+  intervalMs: number = CHANGE_POLL_MS,
+): void {
   const api = useTasksApi();
   const client = useQueryClient();
   const reflected = new Map(
@@ -60,7 +67,7 @@ export function useChangeFeed(boards: readonly BoardPosition[], catalog: readonl
   useQuery({
     queryKey: ['changes'],
     enabled: start !== null,
-    refetchInterval: CHANGE_POLL_MS,
+    refetchInterval: intervalMs,
     // Stopped while the page is hidden; asked again the moment it shows.
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }) => {

@@ -1,8 +1,8 @@
 import { focusManager } from '@tanstack/react-query';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
-import { CHANGE_POLL_MS } from '@/hooks/useChangeFeed';
+import { CHANGE_POLL_MS, LIVE_POLL_MS } from '@/hooks/useChangeFeed';
 import { renderApp } from './render';
 
 /** The fixture API, counting each project's board reads and each feed poll's starting point. */
@@ -116,5 +116,23 @@ describe('the change feed', () => {
     await api.updateTask('web-t5w3', 'web', { title: 'Rename the Settings tab to Profile' });
     await waitOnePoll();
     expect(await screen.findByRole('heading', { level: 1, name: 'Rename the Settings tab to Profile' })).toBeTruthy();
+  });
+
+  it('asks every few seconds while the Live page is open, and every half minute elsewhere', async () => {
+    const { wrapped, pollsAfter } = counted();
+    renderApp('/tasks/live', wrapped);
+    await screen.findByRole('region', { name: 'In progress' });
+    await waitFor(() => expect(pollsAfter.length).toBe(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    expect(pollsAfter.length).toBe(2);
+    fireEvent.click(screen.getByRole('link', { name: /^Tasks/ }));
+    await screen.findByRole('region', { name: 'Waiting for you' });
+    const left = pollsAfter.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    expect(pollsAfter.length).toBe(left);
   });
 });

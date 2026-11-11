@@ -13,6 +13,7 @@ import { EmptyState } from './components/ui/empty-state';
 import { AppToaster } from './components/ui/toaster';
 import { AppShell, TopBar, type SidebarPlace } from './components/ui/shell';
 import { BoardsProvider } from './hooks/useBoard';
+import { CHANGE_POLL_MS, LIVE_POLL_MS } from './hooks/useChangeFeed';
 import { useShortcut } from './hooks/useShortcut';
 import { useCapabilities, writesAvailable } from './hooks/useTasks';
 import { useAccount } from './hooks/useWorkspace';
@@ -131,7 +132,7 @@ function Shell({ sidebar }: { sidebar: SidebarPlace }) {
   );
   useShortcut('l', () => void navigate(paths.live), pathname !== paths.live);
   return (
-    <BoardsProvider>
+    <BoardsProvider pollMs={pathname === paths.live ? LIVE_POLL_MS : CHANGE_POLL_MS}>
       <AccountTimeZone>
         <AppShell sidebar={<AppSidebar />} place={sidebar}>
           <div className="page-arrive">

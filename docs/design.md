@@ -682,11 +682,72 @@ Stalled, with the holder's last activity, in place of Active.
 
 ### Live
 
-`/tasks/live` lists every task in progress under a `TopBar` titled Live. The bar
-holds each group's count after its activity mark (`6 active`, `3 quiet`,
-`50 stalled`, from 640 px wide).
+`/tasks/live` has two views under a `TopBar` titled Live: Board, which the
+page opens on, and List, at `?view=list`. `Tabs` at the bar's end switch them.
+The bar also holds each activity group's count after its activity mark
+(`6 active`, `3 quiet`, `50 stalled`, from 640 px wide). While the page is
+open the change feed is asked every 5 seconds instead of every 30, so a card
+moves within seconds of the change.
 
-The page is three groups, each a `GroupHeader` with its activity mark, its
+#### Board
+
+Four columns in the order a change moves: In progress, Built, Merged and
+Live (`liveBoard` in `src/lib/live.ts`). The board is one column under a
+576 px wide board, two from 576 px and four from 832 px, by container width,
+so the sidebar's width counts. Each column is a Canvas panel with 12 px
+corners: a heading with its mark (the In progress mark, `git-pull-request`,
+`git-merge`, the Done mark), its name and its count, then its cards, then
+`N more` in Text 3 for the cards it leaves out, or None when it has no tasks.
+Live's heading ends with Last 7 days in Text 3.
+
+| Column | Holds | Order | Shows |
+|---|---|---|---|
+| In progress | every task in progress | Active, then Quiet, then Stalled, each the latest activity first | 6, 3 on a phone |
+| Built | closed tasks waiting for a merge, whenever they closed | latest built first | 4, 2 on a phone |
+| Merged | closed tasks waiting for a deploy, whenever they closed, and merged tasks of a project that does not deploy, closed in the last 7 days | latest merge first | 4, 2 on a phone |
+| Live | closed tasks whose change went live, closed in the last 7 days | latest deploy first | 4, 2 on a phone |
+
+A decision or an approval ships no code and has no card in the closed
+columns. A board with no card in any column shows `EmptyState`'s No tasks in
+progress or shipped this week.
+
+A card is a Background panel with a Border edge, 8 px corners and the raise
+shadow. Its first line is the activity mark for a task in progress, the
+task's id in Text 3 and, at the end, the pull request's number as a link
+after `git-pull-request`. Then the title as a link, two lines at most. On a
+task in progress, a line in Text 3: Next and the next step, else the branch
+after `git-branch` when there is no pull request, else Nothing recorded.
+Last, the holder's `Avatar` at 18 px, their name in Text 2, the model in Text
+3, and how long the task has been in its column: since its holder's last
+activity in progress, else since its change reached its stage. A closed
+card names who closed it. A card in progress is tinted by its activity: an
+Active card is filled Accent soft with an Accent edge at 40 % opacity, a
+Quiet one Accent soft at 40 % with an Accent edge at 15 %, and a Stalled one
+has a dashed Border strong edge, no fill and no shadow, and its title in Text
+2. Closed cards keep the plain Background. An Active card's mark sits on an
+Accent halo at 30 % opacity that grows from 0.6 to 1.35 times the mark's size
+and fades, over and over, every 2.4 seconds: the one motion on the board that
+repeats while nothing changes.
+
+Between two reads, each card is compared with where it was, and:
+
+- a card in another column travels there over 700 ms, lifted with the pop
+  shadow and an Accent edge, rising 10 px and growing 3 % halfway; cards that
+  move in one read start 110 ms apart; it lands tinted Accent soft, which
+  fades over 700 ms;
+- a card that moved within its column slides there over 350 ms;
+- a new card fades in, rising 6 px, over 300 ms;
+- a task whose holder changed or commented on it since gets a 1.5 px Accent
+  ring that grows from its activity mark to 2.6 times its size and fades,
+  once, over 900 ms.
+
+With `prefers-reduced-motion`, nothing travels, slides, fades in, rings or
+breathes: a card in another column is drawn there tinted Accent soft for
+700 ms. The first draw animates nothing.
+
+#### List
+
+Three groups, each a `GroupHeader` with its activity mark, its
 name, its count and, at its end from 640 px wide, what it holds in Text 3
 (Changed in the last hour; Last change 1 hour to 1 day ago; Nothing for 1 day
 or more). A group with no tasks takes no room, and a page with none shows
