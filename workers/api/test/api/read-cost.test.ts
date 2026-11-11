@@ -444,4 +444,24 @@ describe('the cost of each read', () => {
     expect(unlinked.first.rowsRead).toBeLessThan(10 * LINKED.tasks);
     expect(unlinked.again).toEqual(newMeter());
   }, 60_000);
+
+  it('looks for the open tasks that name a dropped task among the open tasks only, not the closed history', async () => {
+    // Last of the store's own measurements, since it closes one seeded task.
+    const open = SIZES.reduce((sum, [, count]) => sum + count, 0);
+    const total = SIZES.reduce((sum, [count]) => sum + count, 0);
+    const task = `${big.prefix}-t4`;
+    const writer = api({ now: () => NOW, meter, principal: WRITER });
+    const cost = await costOf(async () =>
+      expect(
+        await send(writer, 'POST', `/api/tasks/${task}/close`, {
+          projectId: big.id,
+          reason: 'Not needed.',
+          resolution: 'wont-do',
+        }),
+      ).toMatchObject({ status: 200 }),
+    );
+    // One index entry and one row for each task not closed, and the close's own reads.
+    expect(cost.rowsRead).toBeLessThan(2 * open + 300);
+    expect(cost.rowsRead).toBeLessThan(total / 3);
+  });
 });

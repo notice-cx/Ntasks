@@ -1489,6 +1489,16 @@ already returns, and leaves out a task the reader cannot reach. Any change
 to the task, such as an edit, a claim or a removed link, empties the list,
 and so does reopening the dropped task.
 
+A task that names another only in its text relies on it too. When a close
+drops a task, the same write links the dropped task as `related` to each
+open task, in any project, whose description, acceptance, notes or design
+names its id as a whole id (not inside a longer word or a child's id, such as
+`web-a1.2` for `web-a1`), and that it has no link with yet: at most 20, the
+most recently changed first. The link is the dropped task's own, recorded in
+its history with the close, so the tasks that name it are unchanged and list
+it in `reliesOnDropped`. Finding them reads one index entry and one row for
+each task not closed: about 1,200 rows on a workspace of 1,000 open tasks.
+
 ### A project's website and icon
 
 When an owner saves a project's website, the Worker reads the website's icon

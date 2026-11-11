@@ -594,7 +594,9 @@ premise still holds. A server MUST work it out at the time of the read,
 MUST leave out a task the reader cannot reach, and MUST NOT change a task
 because of it. Any change to the task, such as an edit, a claim or a link
 removed, leaves its list empty, and a dropped task that reopens leaves the
-list.
+list. When a task is dropped, a server MAY also link it as `related` to open
+tasks whose text names its id, in the same write as the close, so that those
+tasks rely on it; such a link changes only the dropped task.
 
 **STATE-9.** <a id="state-9"></a>An epic MAY close once every child is
 closed, and a server SHOULD list the epics that can.

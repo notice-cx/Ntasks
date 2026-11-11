@@ -7,6 +7,7 @@
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
 import type { Task, TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
+import { NAMED_LINKS } from '../../src/engine/writes.ts';
 import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OWNER } from './helpers.ts';
 
 async function make(
@@ -611,6 +612,72 @@ describe('dropped links', () => {
     ]);
     expect((await tasks.getTask(project.id, plan.id))?.reliesOnDropped).toEqual([]);
     expect((await tasks.getTask(project.id, done.id))?.reliesOnDropped).toEqual([]);
+  });
+
+  it('counts an open task whose text names the dropped task, in any project, by linking the two as related', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const other = await newProject(tasks);
+    const shelved = await make(tasks, project.id, 'Shelve the old site');
+    const child = await make(tasks, project.id, 'Move the old images', { title: '', parentId: shelved.id });
+    const page = await make(tasks, project.id, 'Build the page', {
+      title: '',
+      description: `Builds on what ${shelved.id} leaves behind.`,
+    });
+    const runbook = await make(tasks, other.id, 'Write the runbook', { title: '', notes: `After ${shelved.id}.` });
+    const childOnly = await make(tasks, project.id, 'Check the images', {
+      title: '',
+      acceptance: `- ${child.id} is done`,
+    });
+    const longer = await make(tasks, project.id, 'Name a longer id', { title: '', description: `${shelved.id}x` });
+    const done = await make(tasks, project.id, 'Fix the header', { title: '', description: `See ${shelved.id}` });
+    await close(tasks, project.id, done);
+    const replaced = await make(tasks, project.id, 'Shelve the site differently', {
+      title: '',
+      description: `Replaces ${shelved.id}.`,
+      links: [{ direction: 'depends-on', taskId: shelved.id, type: 'supersedes' }],
+    });
+    time.advance(1);
+    await drop(tasks, project.id, shelved, 'wont-do');
+
+    const dropped = [{ taskId: shelved.id, title: 'Shelve the old site', resolution: 'wont-do' }];
+    expect((await tasks.getTask(project.id, page.id))?.reliesOnDropped).toEqual(dropped);
+    expect((await tasks.getTask(other.id, runbook.id))?.reliesOnDropped).toEqual(dropped);
+    for (const id of [childOnly.id, longer.id, done.id, replaced.id])
+      expect((await tasks.getTask(project.id, id))?.reliesOnDropped).toEqual([]);
+    // The link is the dropped task's own, recorded by its close; the tasks that name it are unchanged.
+    expect((await tasks.getTask(project.id, page.id))?.version).toBe(page.version);
+    const links = (await tasks.getTask(project.id, shelved.id))?.dependencies.map((link) => [link.taskId, link.type]);
+    expect(links?.sort()).toEqual(
+      [
+        [page.id, 'related'],
+        [runbook.id, 'related'],
+      ].sort(),
+    );
+  });
+
+  it('links at most NAMED_LINKS of the open tasks that name a dropped task, newest change first', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const shelved = await make(tasks, project.id, 'Shelve the old site');
+    const naming: Task[] = [];
+    for (let index = 0; index <= NAMED_LINKS; index += 1) {
+      time.advance(1);
+      naming.push(
+        await make(tasks, project.id, `Follow up ${index}`, { title: '', description: `After ${shelved.id}` }),
+      );
+    }
+    time.advance(1);
+    await drop(tasks, project.id, shelved, 'no-longer-needed');
+    const linked = (await tasks.getTask(project.id, shelved.id))?.dependencies.map((link) => link.taskId);
+    expect(linked?.sort()).toEqual(
+      naming
+        .slice(1)
+        .map((task) => task.id)
+        .sort(),
+    );
   });
 
   it('takes a task off the list once the dropped task reopens', async () => {

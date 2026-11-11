@@ -54,7 +54,7 @@ import {
 } from '@ntasks/domain';
 import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
+import { deliveryOf, DROPPED, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** The helper agent and the agent session a change was made through, as its history event records them. */
@@ -88,6 +88,20 @@ const STALE = (dayAgo: string) => `((json_extract(result, '$.newTask') = 1 AND c
 /** How many times a write tries again, with a new task id or a fresh read,
  * after another write took its id or changed a task it also changes. */
 const ATTEMPTS = 5;
+
+/** The most open tasks one drop links to for naming it, which bounds the close's write. */
+export const NAMED_LINKS = 20;
+
+/**
+ * Whether a text names this task id as a whole id: not inside a longer
+ * word, and not as the start of a child's id, as `web-a1.2` starts with
+ * `web-a1`. A sentence's full stop after it still names it.
+ */
+function namesTask(taskId: string): (text: string) => boolean {
+  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const whole = new RegExp(`(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'u');
+  return (text) => whole.test(text);
+}
 
 const MESSAGES: Readonly<Record<TaskRefusal, string>> = Object.freeze({
   not_found: 'The task does not exist in this project.',
@@ -1898,6 +1912,14 @@ export class Writes {
     );
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
+    // A task dropped here relates to each open task whose text names it, so that task relies on it (droppedSince).
+    if (write.close !== null && DROPPED.includes(write.close.resolution)) {
+      const linked = new Set([...links.keys(), ...current.dependents.map((link) => link.taskId)]);
+      for (const naming of await this.#namedBy(taskId, linked)) {
+        addLinks.push({ taskId: naming, type: 'related' });
+        links.set(naming, 'related');
+      }
+    }
 
     const values = new Map(Object.entries(current.fields));
     const setValues: [string, FieldValue][] = [];
@@ -2024,6 +2046,32 @@ export class Writes {
       statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes, through));
       return statements;
     };
+  }
+
+  /**
+   * The open tasks, in any project, whose description, acceptance, notes or
+   * design name this task's id as a whole id, newest change first, at most
+   * NAMED_LINKS of them, leaving out those in `linked`. It reads one index
+   * entry and one row for each task that is not closed.
+   */
+  async #namedBy(taskId: string, linked: ReadonlySet<string>): Promise<string[]> {
+    const { results } = await this.#db
+      .prepare(
+        `SELECT t.id, t.description, t.acceptance, t.notes, t.design FROM projects p
+           CROSS JOIN tasks t INDEXED BY tasks_by_project_status
+             ON t.project_id = p.id AND t.status IN ('open', 'in_progress', 'blocked', 'deferred')
+         WHERE t.id <> ?1
+           AND (instr(t.description, ?1) > 0 OR instr(t.acceptance, ?1) > 0 OR instr(t.notes, ?1) > 0
+             OR instr(t.design, ?1) > 0)
+         ORDER BY t.updated_at DESC, t.id`,
+      )
+      .bind(taskId)
+      .all<{ id: string; description: string; acceptance: string; notes: string; design: string }>();
+    const named = namesTask(taskId);
+    return results
+      .filter((row) => !linked.has(row.id) && [row.description, row.acceptance, row.notes, row.design].some(named))
+      .slice(0, NAMED_LINKS)
+      .map((row) => row.id);
   }
 
   /** The project's field with this key, or null. */
