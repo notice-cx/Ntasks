@@ -24,6 +24,13 @@ function typedField(name: string): HTMLInputElement {
   return input as HTMLInputElement;
 }
 
+/** Opens the Add field menu and picks `name`, which shows that field's editor in the same menu. */
+async function addField(name: string): Promise<void> {
+  fireEvent.click(await enabledButton('Add field'));
+  const menu = await screen.findByRole('menu', { name: 'Add field' });
+  fireEvent.click(within(menu).getByRole('menuitem', { name }));
+}
+
 describe('a task page', () => {
   it('shows the task whole: its path, title, description, Done when and facts', async () => {
     renderApp('/tasks/web-b2r6');
@@ -337,7 +344,7 @@ describe('a task page', () => {
     fireEvent.click(await enabledButton('Customer facing: Yes'));
     expect(picks(await screen.findByRole('menu', { name: 'Customer facing' }))).toEqual(['Yes ✓', 'No', 'None']);
     close();
-    fireEvent.click(await enabledButton('Release date: None'));
+    await addField('Release date');
     expect(picks(await screen.findByRole('menu', { name: 'Release date' }))).toEqual([
       'Today',
       'Tomorrow',
@@ -350,10 +357,10 @@ describe('a task page', () => {
     expect([(points as HTMLInputElement).value, points.getAttribute('inputmode')]).toEqual(['3', 'decimal']);
     expect(picks(screen.getByRole('menu', { name: 'Points' }))).toEqual(['None']);
     close();
-    fireEvent.click(await enabledButton('Spec: None'));
+    await addField('Spec');
     expect(((await screen.findByRole('textbox', { name: 'Spec' })) as HTMLInputElement).type).toBe('url');
     close();
-    fireEvent.click(await enabledButton('Team: None'));
+    await addField('Team');
     expect(((await screen.findByRole('textbox', { name: 'Team' })) as HTMLInputElement).type).toBe('text');
     close();
     // A retired field keeps its value, as words only.
@@ -385,18 +392,24 @@ describe('a task page', () => {
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'No' }));
     await waitFor(() => expect(values().customer_facing).toBe(false));
 
+    // A field taken off leaves the panel, and Add field offers it again.
     fireEvent.click(await enabledButton('Product area: Email'));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'None' }));
     await waitFor(() => expect(values().area).toBeUndefined());
-    expect(await screen.findByRole('button', { name: 'Product area: None' })).toBeTruthy();
+    await waitFor(() => expect(fact('Product area')).toBeNull());
+    fireEvent.click(await enabledButton('Add field'));
+    const offered = await screen.findByRole('menu', { name: 'Add field' });
+    expect(within(offered).getByRole('menuitem', { name: 'Product area' })).toBeTruthy();
   });
 
   it('edits a number, a text, a date and a URL field through the API, refusing a value of the wrong type', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-k3m9.2', api);
     const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
-    async function type(button: string, field: string, value: string) {
-      fireEvent.click(await enabledButton(button));
+    /** Types `value` into `field`'s editor, opened from its line's button or, for a field with no value, from Add field. */
+    async function type(button: string | null, field: string, value: string) {
+      if (button === null) await addField(field);
+      else fireEvent.click(await enabledButton(button));
       await waitFor(() => typedField(field));
       fireEvent.change(typedField(field), { target: { value } });
       fireEvent.click(screen.getByRole('button', { name: `Save ${field.toLowerCase()}` }));
@@ -409,24 +422,69 @@ describe('a task page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save points' }));
     await waitFor(() => expect(values().story_points).toBe(5));
 
-    await type('Spec: None', 'Spec', 'example.com/spec');
+    await type(null, 'Spec', 'example.com/spec');
     expect(screen.getByText('Not an http or https address')).toBeTruthy();
     expect(values().spec).toBeUndefined();
     fireEvent.change(typedField('Spec'), { target: { value: 'https://example.com/spec' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save spec' }));
     await waitFor(() => expect(values().spec).toBe('https://example.com/spec'));
-    const spec = await within(fact('Spec')).findByRole('link', { name: 'example.com/spec' });
+    const spec = await waitFor(() => within(fact('Spec')).getByRole('link', { name: 'example.com/spec' }));
     expect([spec.getAttribute('href'), spec.getAttribute('target')]).toEqual(['https://example.com/spec', '_blank']);
 
-    await type('Release date: None', 'Release date', '2030-02-01');
+    await type(null, 'Release date', '2030-02-01');
     await waitFor(() => expect(values().release_date).toBe('2030-02-01'));
-    expect(await within(fact('Release date')).findByText('Feb 1, 2030')).toBeTruthy();
+    await waitFor(() => expect(fact('Release date')?.textContent).toContain('Feb 1, 2030'));
 
-    await type('Team: None', 'Team', 'Accessibility guild');
+    await type(null, 'Team', 'Accessibility guild');
     await waitFor(() => expect(values().team).toBe('Accessibility guild'));
     fireEvent.click(await enabledButton('Team: Accessibility guild'));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'None' }));
     await waitFor(() => expect(values().team).toBeUndefined());
+  });
+
+  it('lists only the custom fields a task holds, and sets another from Add field, which then gives it a line', async () => {
+    const api = createFixtureTasksApi();
+    const five = ['area', 'story_points', 'release_date', 'spec', 'team'];
+    api.state.fields.set(
+      'web',
+      (api.state.fields.get('web') ?? []).filter((field) => five.includes(field.key)),
+    );
+    const held = task(api, 'web-b2r6');
+    if (!held) throw new Error('The seed has no web-b2r6');
+    held.fields = { area: 'Email', story_points: 2 };
+    renderApp('/tasks/web-b2r6', api);
+    await enabledButton('Product area: Email');
+    const lines = () =>
+      [...screen.getByRole('complementary', { name: 'Facts' }).querySelectorAll('[data-task-field-value]')].map(
+        (value) => value.getAttribute('data-task-field-value'),
+      );
+    const offered = async () => {
+      fireEvent.click(await enabledButton('Add field'));
+      const menu = await screen.findByRole('menu', { name: 'Add field' });
+      return within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent);
+    };
+    expect(lines()).toEqual(['area', 'story_points']);
+    expect(await offered()).toEqual(['Release date', 'Spec', 'Team']);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Team' }));
+    fireEvent.change(typedField('Team'), { target: { value: 'Growth' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save team' }));
+    await waitFor(() => expect(task(api, 'web-b2r6')?.fields?.team).toBe('Growth'));
+    await waitFor(() => expect(lines()).toEqual(['area', 'story_points', 'team']));
+    expect(await offered()).toEqual(['Release date', 'Spec']);
+  });
+
+  it('offers no Add field once every field of the project holds a value', async () => {
+    const api = createFixtureTasksApi();
+    api.state.fields.set(
+      'web',
+      (api.state.fields.get('web') ?? []).filter((field) => field.key === 'area'),
+    );
+    renderApp('/tasks/web-b2r6', api);
+    await enabledButton('Product area: Email');
+    expect(screen.queryByRole('button', { name: 'Add field' })).toBeNull();
   });
 
   it("names a custom field from its key, read-only, while the project's fields cannot be read", async () => {
