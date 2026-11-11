@@ -280,8 +280,9 @@ header when they belong to several:
   The approval page shows it to each person who signs in.
 - `redirectUris` lists 1 to 10 addresses the browser returns to after
   sign-in. Each is an `https` address on a host other than `localhost`,
-  `127.0.0.1` or `[::1]`, or an `http` one on one of those three for an app
-  that runs on the same machine, without a fragment. It starts with its
+  `127.0.0.1` or `[::1]`, an `http` one on one of those three for an app
+  that runs on the same machine, or an `http` one on a home network
+  ([below](#an-app-on-a-home-network)), without a fragment. It starts with its
   origin written as a browser writes one: the scheme and host in lowercase,
   and no port when it is the scheme's default, so
   `https://app.example.com:443/callback` is refused. The path follows, in the
@@ -318,10 +319,12 @@ owner copies a client id from one product to the other:
   `scope` lists some of `tasks:read tasks:write tasks:decide offline_access`,
   and all four when left out.
 - The answer is `201` with `client_id`, `client_name`, `redirect_uris`,
-  `token_endpoint_auth_method`, `grant_types`, `response_types` and `scope`.
-  The same request again, from any of the workspace's services, answers `200`
-  with the app already registered under that name and those addresses, so a
-  service that lost the answer registers no second app.
+  `token_endpoint_auth_method`, `grant_types`, `response_types`, `scope` and
+  `held_redirect_uris`, the home-network addresses no owner has allowed yet
+  ([below](#an-app-on-a-home-network)). The same request again, from any of
+  the workspace's services, answers `200` with the app already registered
+  under that name and those addresses, so a service that lost the answer
+  registers no second app.
 - A refusal is RFC 7591's: `400` with `invalid_redirect_uri` or
   `invalid_client_metadata` and an `error_description`, or `401` with
   `invalid_token` for a credential that is unknown or revoked.
@@ -330,6 +333,34 @@ The credential only registers the app. Each person still allows it on
 `/agent-access` before it acts as them, and an owner lists and removes it on
 the Connected apps page like any other app. Without a service credential the
 endpoint registers agents only.
+
+### An app on a home network
+
+An app whose page runs at an `http` address on a home network, such as a
+NoticeOS Tower opened at `http://tower.local:5173` from another device, may
+register that address. A home-network host is a name under `.local`, a
+private IPv4 address (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) or an
+IPv6 unique-local address (`fc00::/7`). Over `http`, the sign-in code and
+the tokens cross that network unencrypted, so Ntasks holds each such address
+until an owner of the app's workspace allows it:
+
+- While it is held, no sign-in completes there and its origin gets no CORS
+  answers. The approval page names the address: an owner sees one line
+  saying the token crosses the network unencrypted, and **Allow** allows the
+  address for everyone in the workspace as it signs the owner in. A member
+  who is not an owner reads that an owner has to allow it first, and has
+  **Deny** only.
+- Once allowed, the address works like any other redirect address: anyone in
+  the workspace signs in from it, its origin gets CORS answers, and removing
+  the app ends it.
+- A service's registration answer lists the addresses still held in
+  `held_redirect_uris`.
+
+The OAuth library accepts `http` only on this machine, so Ntasks gives it the
+address as `<origin>/api/access/return?to=<address>`. The authorization and
+token requests name the address itself, and that page passes the library's
+answer on to it: a code only to an allowed address, a refusal to any. No
+registration may name that page itself.
 
 ### Signing a person in
 

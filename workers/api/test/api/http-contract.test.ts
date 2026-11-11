@@ -560,7 +560,8 @@ async function drive(): Promise<readonly Sample[]> {
       headers: { authorization: `Bearer ${host.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         client_name: 'Contract Tower',
-        redirect_uris: ['https://contract.example.com/signed-in'],
+        // A home-network address, so the answer holds one in held_redirect_uris.
+        redirect_uris: ['https://contract.example.com/signed-in', 'http://contract.local:5173/signed-in'],
       }),
     });
     await keep(samples, 'POST /api/auth/oauth2/register', '/api/auth/oauth2/register', registered);

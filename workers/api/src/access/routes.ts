@@ -56,9 +56,17 @@ import {
 } from './github-webhook.ts';
 import { createInvitation, githubLoginOf, listMembers, removeMember, revokeInvitation } from './members.ts';
 import {
+  addressState,
+  allowAddress,
+  APP_RETURN_PATH,
+  appAddress,
+  namesReturnPage,
   appRegistrationOf,
   clientOf,
   isAppOf,
+  isHomeNetworkHttp,
+  libraryAddress,
+  libraryRegistration,
   listApps,
   markApp,
   registeredApp,
@@ -66,6 +74,7 @@ import {
   serviceAppRegistrationOf,
 } from './apps.ts';
 import {
+  addressHeldPage,
   agentAccessPage,
   appAccessPage,
   AUTH_SECRET_FIELD,
@@ -151,6 +160,7 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   try {
     // The token verifier answers for these when sign-in is off.
     if (url.pathname === WORKSPACES_API) return await workspacesApi(request, env);
+    if (url.pathname === APP_RETURN_PATH) return await appReturn(request, env, url);
     if (url.pathname === ACCESS_API || url.pathname.startsWith(`${ACCESS_API}/`)) {
       return await accessApi(request, env, url);
     }
@@ -292,10 +302,12 @@ async function serviceRegistration(
     accept: 'application/json',
     authorization: `Bearer ${token}`,
   });
+  const library = libraryRegistration(config.origin, registration);
+  if ('detail' in library) return registrationRefused(400, 'invalid_redirect_uri', library.detail);
   const metadata = {
     client_name: registration.name,
-    redirect_uris: [...registration.redirectUris],
-    application_type: registration.applicationType,
+    redirect_uris: library.redirectUris,
+    application_type: library.applicationType,
     token_endpoint_auth_method: 'none',
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
@@ -306,7 +318,10 @@ async function serviceRegistration(
   }).handler(new Request(config.origin + REGISTER_PATH, { method: 'POST', headers, body: JSON.stringify(metadata) }));
   if (created.status !== 201) return created;
   // Answered in Ntasks's own recorded shape, not the library's, which may grow on an upgrade.
-  await created.body?.cancel();
+  const answer: unknown = await created.json().catch(() => null);
+  const newId = isRecord(answer) && typeof answer.client_id === 'string' ? answer.client_id : null;
+  if (newId === null) return json({ error: 'server_error' }, 500);
+  await markApp(env.DB, newId, registration.redirectUris);
   const app = await registeredApp(env.DB, workspaceId, registration);
   return app ? json(app, 201, { 'cache-control': 'no-store' }) : json({ error: 'server_error' }, 500);
 }
@@ -322,11 +337,97 @@ async function library(request: Request, env: AccessEnv, config: SignInConfig, u
   const method = PUBLIC_AUTH_ROUTES[url.pathname];
   if (!method) return json({ error: 'not_found' }, 404);
   if (request.method !== method) return json({ error: 'method_not_allowed' }, 405, { allow: method });
-  const forwarded =
-    method === 'POST'
-      ? new Request(request.url, { method, headers: request.headers, body: await boundedText(request) })
-      : request;
-  return createAuth(env.DB, config).handler(forwarded);
+  if (url.pathname === AUTHORIZE_PATH) {
+    return createAuth(env.DB, config).handler(await libraryAuthorization(request, env, config, url));
+  }
+  if (method === 'GET') return createAuth(env.DB, config).handler(request);
+  const text = await boundedText(request);
+  const body = url.pathname === TOKEN_PATH ? libraryTokenBody(text, request.headers, config.origin) : text;
+  if (url.pathname === REGISTER_PATH && namesReturnAddress(text, config.origin)) {
+    return registrationRefused(400, 'invalid_redirect_uri', `${APP_RETURN_PATH} is not a redirect address`);
+  }
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  return createAuth(env.DB, config).handler(new Request(request.url, { method, headers, body }));
+}
+
+const AUTHORIZE_PATH = `${AUTH_BASE_PATH}/oauth2/authorize`;
+const TOKEN_PATH = `${AUTH_BASE_PATH}/oauth2/token`;
+
+/**
+ * An authorization request as the library takes it: a home-network redirect
+ * address in its library form, and, until an owner allows the address,
+ * asking for consent even from a person who allowed the app before, so the
+ * approval page, where an owner allows it, is never skipped.
+ */
+async function libraryAuthorization(
+  request: Request,
+  env: AccessEnv,
+  config: SignInConfig,
+  url: URL,
+): Promise<Request> {
+  const address = url.searchParams.get('redirect_uri');
+  if (address === null || !isHomeNetworkHttp(address)) return request;
+  const target = new URL(url);
+  target.searchParams.set('redirect_uri', libraryAddress(config.origin, address));
+  if ((await addressState(env.DB, address, url.searchParams.get('client_id') ?? '')) !== 'allowed') {
+    const prompt = new Set((url.searchParams.get('prompt') ?? '').split(' ').filter(Boolean));
+    // prompt=none asks for no page at all; the library refuses it as consent_required.
+    if (!prompt.has('none')) target.searchParams.set('prompt', [...prompt, 'consent'].join(' '));
+  }
+  return new Request(target, request);
+}
+
+/** A token request's body with a home-network redirect address in its library form, as the code was issued for it. */
+function libraryTokenBody(text: string, headers: Headers, origin: string): string {
+  const type = headers.get('content-type')?.split(';')[0]?.trim();
+  if (type === 'application/x-www-form-urlencoded') {
+    const form = new URLSearchParams(text);
+    const address = form.get('redirect_uri');
+    if (address === null || !isHomeNetworkHttp(address)) return text;
+    form.set('redirect_uri', libraryAddress(origin, address));
+    return form.toString();
+  }
+  if (type !== 'application/json') return text;
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (!isRecord(body) || typeof body.redirect_uri !== 'string' || !isHomeNetworkHttp(body.redirect_uri)) return text;
+  return JSON.stringify({ ...body, redirect_uri: libraryAddress(origin, body.redirect_uri) });
+}
+
+/** Whether an agent's registration body names APP_RETURN_PATH as a redirect address: only Ntasks gives the library that page. */
+function namesReturnAddress(text: string, origin: string): boolean {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  return isRecord(body) && Array.isArray(body.redirect_uris) && namesReturnPage(origin, body.redirect_uris);
+}
+
+/**
+ * GET APP_RETURN_PATH: the library's answer for a home-network redirect
+ * address, passed on to that address. An answer with a code goes only to an
+ * address an owner allowed; one without, such as a refusal, goes to any
+ * enabled connected app's address.
+ */
+async function appReturn(request: Request, env: AccessEnv, url: URL): Promise<Response> {
+  if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, { allow: 'GET' });
+  const to = url.searchParams.get('to') ?? '';
+  const state = isHomeNetworkHttp(to) ? await addressState(env.DB, to) : 'unknown';
+  if (state === 'unknown') return expiredPage();
+  const target = new URL(to);
+  if (state === 'held' && url.searchParams.has('code')) return addressHeldPage({ address: target.origin });
+  for (const [name, value] of url.searchParams) if (name !== 'to') target.searchParams.append(name, value);
+  return new Response(null, {
+    status: 303,
+    headers: { location: target.toString(), 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' },
+  });
 }
 
 /** Calls a Better Auth endpoint for one of this Worker's pages, as the browser that submitted the page. */
@@ -602,10 +703,16 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   const clientId = params.get('client_id') ?? '';
   const client = await clientOf(env.DB, clientId);
   if (!client) return expiredPage();
+  const given = params.get('redirect_uri') ?? '';
+  // The library holds a home-network address in its form on this origin; the
+  // page names the address itself, which only a connected app listing it has.
+  const address = appAddress(config.origin, given);
+  const home = address === given ? null : await addressState(env.DB, address, clientId);
+  if (home === 'unknown' || (home !== null && !client.app)) return expiredPage();
   let returnsTo: string;
   try {
     // A native app's own scheme, such as myapp://callback, has no web origin.
-    const target = new URL(params.get('redirect_uri') ?? '');
+    const target = new URL(address);
     returnsTo = target.origin !== 'null' ? target.origin : `${target.protocol}//${target.host}`;
   } catch {
     return expiredPage();
@@ -613,8 +720,11 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
   const scopes = (params.get('scope') ?? '').split(' ');
   if (client.app) {
     const { workspaceId, workspaceName } = client.app;
-    const member = person.memberships.some(({ workspace }) => workspace.id === workspaceId);
+    const role = person.memberships.find(({ workspace }) => workspace.id === workspaceId)?.role ?? null;
+    const member = role !== null;
     const words = appAccessWords(scopes);
+    // Until an owner allows a home-network address, only an owner's Allow completes a sign-in from it.
+    const held = home === 'held' ? { owner: role === 'owner' } : null;
     const show = (error: string | null) =>
       appAccessPage({
         personName: person.name,
@@ -622,6 +732,7 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
         workspaceName: workspaceName ?? workspaceId,
         access: words,
         member,
+        held,
         returnsTo,
         oauthQuery,
         error,
@@ -629,7 +740,10 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
     if (!form) return show(null);
     const decision = form.get('decision');
     if (decision !== 'allow' && decision !== 'deny') return show('Choose Allow or Deny.');
-    if (decision === 'allow' && (!member || words === null)) return show(null);
+    if (decision === 'allow' && (!member || words === null || held?.owner === false)) return show(null);
+    if (decision === 'allow' && held && !(await allowAddress(env.DB, workspaceId, clientId, address))) {
+      return expiredPage();
+    }
     return answerConsent(request, env, config, oauthQuery, decision === 'allow');
   }
   const access = scopeAccess(scopes);
@@ -920,12 +1034,14 @@ async function appsApi(
   // The library creates the client as the owner's own, with the token
   // settings every client shares; it never takes a reference id from a
   // request, so marking it as this workspace's app is Ntasks's own write.
+  const library = libraryRegistration(signIn.config.origin, app);
+  if ('detail' in library) return json({ error: 'invalid_request', ...library }, 400);
   const created: unknown = await createAuth(env.DB, signIn.config).api.adminCreateOAuthClient({
     headers: request.headers,
     body: {
       client_name: app.name,
-      redirect_uris: [...app.redirectUris],
-      application_type: app.applicationType,
+      redirect_uris: library.redirectUris,
+      application_type: library.applicationType,
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -936,7 +1052,7 @@ async function appsApi(
   });
   const newId = isRecord(created) && typeof created.client_id === 'string' ? created.client_id : null;
   if (newId === null) return json({ error: 'internal_error' }, 500);
-  await markApp(env.DB, newId, workspaceId);
+  await markApp(env.DB, newId, app.redirectUris, workspaceId);
   const [listed] = (await listApps(env.DB, workspaceId, principal.userId)).filter((entry) => entry.clientId === newId);
   return json({ app: listed }, 201);
 }

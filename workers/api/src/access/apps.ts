@@ -13,13 +13,84 @@ import { APP_SCOPES, appReference, appWorkspaceOf, OFFLINE_ACCESS } from './prot
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
 const MOST_REDIRECTS = 10;
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+/** The client metadata key that lists the home-network addresses an owner allowed (allowAddress). */
+const ALLOWED_KEY = 'allowed_http_redirect_uris';
+/**
+ * Where the sign-in library sends a code meant for a home-network address:
+ * the library takes http only on this machine, so it is given this https
+ * page of Ntasks's own, with the address in `to`, and the page passes the
+ * answer on (appReturn in routes.ts).
+ */
+export const APP_RETURN_PATH = '/api/access/return';
 
-/** A connected app to register, checked: the OAuth client the provider creates from it. */
+/**
+ * Whether a host is on a home network: a name under .local, which mDNS
+ * answers on the local network, a private IPv4 address (RFC 1918), or an
+ * IPv6 unique-local address (fc00::/7). `hostname` is as URL writes it.
+ */
+export function isHomeNetworkHost(hostname: string): boolean {
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.local$/u.test(hostname)) return true;
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(hostname);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  const ipv6 = /^\[([0-9a-f]{1,4}):[0-9a-f:.]*\]$/u.exec(hostname);
+  return ipv6 !== null && (Number.parseInt(ipv6[1] ?? '', 16) & 0xfe00) === 0xfc00;
+}
+
+/** Whether an address is an http one on a home network, which an owner of the app's workspace allows before anyone signs in from it. */
+export function isHomeNetworkHttp(address: string): boolean {
+  const url = urlOf(address);
+  return url !== null && url.protocol === 'http:' && isHomeNetworkHost(url.hostname);
+}
+
+/** The address the sign-in library is given for a redirect address: APP_RETURN_PATH for a home-network one, else the address itself. */
+export function libraryAddress(origin: string, address: string): string {
+  if (!isHomeNetworkHttp(address)) return address;
+  const relay = new URL(APP_RETURN_PATH, origin);
+  relay.searchParams.set('to', address);
+  return relay.toString();
+}
+
+/** The redirect address a library address stands for: the reverse of libraryAddress. */
+export function appAddress(origin: string, address: string): string {
+  const url = urlOf(address);
+  const to = url?.searchParams.get('to');
+  return url !== null && url.origin === origin && url.pathname === APP_RETURN_PATH && to && isHomeNetworkHttp(to)
+    ? to
+    : address;
+}
+
+/**
+ * The library's form of a registration: its addresses, and the application
+ * type they need (RFC 8252 for this machine), or why it is refused. Only
+ * Ntasks gives the library APP_RETURN_PATH, so no registration names it.
+ */
+export function libraryRegistration(
+  origin: string,
+  registration: AppRegistration,
+): { readonly redirectUris: string[]; readonly applicationType: 'web' | 'native' } | RegistrationRefused {
+  if (namesReturnPage(origin, registration.redirectUris)) {
+    return { detail: `${APP_RETURN_PATH} is not a redirect address`, field: 'redirectUris' };
+  }
+  const redirectUris = registration.redirectUris.map((address) => libraryAddress(origin, address));
+  const local = redirectUris.some((address) => LOOPBACK.has(urlOf(address)?.hostname ?? ''));
+  return { redirectUris, applicationType: local ? 'native' : 'web' };
+}
+
+/** Whether any of these addresses is APP_RETURN_PATH on this origin. */
+export function namesReturnPage(origin: string, addresses: readonly unknown[]): boolean {
+  return addresses.some((value) => {
+    const url = typeof value === 'string' ? urlOf(value) : null;
+    return url !== null && url.origin === origin && url.pathname === APP_RETURN_PATH;
+  });
+}
+
+/** A connected app to register, checked: the OAuth client the provider creates from it (libraryRegistration). */
 export interface AppRegistration {
   readonly name: string;
   readonly redirectUris: readonly string[];
-  /** `native` when an address is on this machine, which the provider allows only for a native app. */
-  readonly applicationType: 'web' | 'native';
 }
 
 /** Why a registration is refused: a sentence, and the body field it is about. */
@@ -30,9 +101,10 @@ export interface RegistrationRefused {
 
 /**
  * A registration from untrusted input, or why it is refused. Each redirect
- * address is an https address on a public host, or an http one on
- * localhost, 127.0.0.1 or [::1] for an app running on the same machine, with
- * no fragment or credentials.
+ * address is an https address on a public host, an http one on localhost,
+ * 127.0.0.1 or [::1] for an app running on the same machine, or an http one
+ * on a home network (isHomeNetworkHost), which no one signs in from until an
+ * owner allows it; none has a fragment or credentials.
  */
 export function appRegistrationOf(body: Readonly<Record<string, unknown>>): AppRegistration | RegistrationRefused {
   const unknown = Object.keys(body).filter((key) => key !== 'name' && key !== 'redirectUris');
@@ -110,11 +182,11 @@ function checkedRegistration(
   if (!Array.isArray(given) || given.length === 0 || given.length > MOST_REDIRECTS) {
     return { detail: `${words.redirectUris} lists 1 to ${MOST_REDIRECTS} addresses`, field: 'redirectUris' };
   }
-  let local = false;
   const redirectUris: string[] = [];
   for (const value of given as unknown[]) {
     const url = typeof value === 'string' && value.length <= 2048 ? urlOf(value) : null;
     const loopback = url !== null && LOOPBACK.has(url.hostname);
+    const home = url !== null && isHomeNetworkHost(url.hostname);
     // Written as its origin and then a path, so the address names the
     // origin the app runs at exactly as a browser sends it (isAppOrigin).
     const allowed =
@@ -123,21 +195,20 @@ function checkedRegistration(
       url.password === '' &&
       !String(value).includes('#') &&
       String(value).startsWith(`${url.origin}/`) &&
-      ((url.protocol === 'https:' && !loopback) || (url.protocol === 'http:' && loopback));
+      ((url.protocol === 'https:' && !loopback) || (url.protocol === 'http:' && (loopback || home)));
     if (!allowed) {
       return {
         detail:
-          'each redirect address is an https address, or an http one on localhost, 127.0.0.1 or [::1], written in lowercase with a path, such as https://app.example.com/callback, without a fragment',
+          'each redirect address is an https address, or an http one on localhost, 127.0.0.1, [::1] or a home network (a .local name, 10.x, 172.16-31.x, 192.168.x or fc00::/7), written in lowercase with a path, such as https://app.example.com/callback, without a fragment',
         field: 'redirectUris',
       };
     }
-    local ||= loopback;
     redirectUris.push(String(value));
   }
   if (new Set(redirectUris).size !== redirectUris.length) {
     return { detail: `${words.redirectUris} lists each address once`, field: 'redirectUris' };
   }
-  return { name, redirectUris, applicationType: local ? 'native' : 'web' };
+  return { name, redirectUris };
 }
 
 /** A connected app as a registration answers it (RFC 7591 section 3.2.1). */
@@ -149,6 +220,8 @@ export interface RegisteredClient {
   readonly grant_types: readonly string[];
   readonly response_types: readonly string[];
   readonly scope: string;
+  /** The home-network addresses no owner has allowed yet, which no one signs in from. */
+  readonly held_redirect_uris: readonly string[];
 }
 
 /**
@@ -163,7 +236,7 @@ export async function registeredApp(
 ): Promise<RegisteredClient | null> {
   const { results } = await db
     .prepare(
-      `SELECT client_id, redirect_uris, scopes, grant_types, response_types FROM auth_oauth_client
+      `SELECT client_id, redirect_uris, scopes, grant_types, response_types, metadata FROM auth_oauth_client
        WHERE reference_id = ? AND name = ? AND coalesce(disabled, 0) = 0
        ORDER BY created_at DESC LIMIT 50`,
     )
@@ -174,27 +247,116 @@ export async function registeredApp(
       scopes: string | null;
       grant_types: string | null;
       response_types: string | null;
+      metadata: string | null;
     }>();
   const wanted = [...registration.redirectUris].sort().join('\n');
   const row = results.find((found) => stringsOf(found.redirect_uris).sort().join('\n') === wanted);
   if (!row) return null;
+  const redirectUris = stringsOf(row.redirect_uris);
+  const allowed = allowedOf(row.metadata);
   return {
     client_id: row.client_id,
     client_name: registration.name,
-    redirect_uris: stringsOf(row.redirect_uris),
+    redirect_uris: redirectUris,
     token_endpoint_auth_method: 'none',
     grant_types: stringsOf(row.grant_types ?? '[]'),
     response_types: stringsOf(row.response_types ?? '[]'),
     scope: stringsOf(row.scopes ?? '[]').join(' '),
+    held_redirect_uris: redirectUris.filter((address) => isHomeNetworkHttp(address) && !allowed.includes(address)),
   };
 }
 
-/** Marks a client the provider just created as a connected app of the workspace. */
-export async function markApp(db: D1Database, clientId: string, workspaceId: string): Promise<void> {
+/**
+ * Gives a client the provider just created its redirect addresses as
+ * registered, in place of their library forms (libraryAddress), and, with
+ * `workspaceId`, marks it as a connected app of that workspace.
+ */
+export async function markApp(
+  db: D1Database,
+  clientId: string,
+  redirectUris: readonly string[],
+  workspaceId?: string,
+): Promise<void> {
   await db
-    .prepare('UPDATE auth_oauth_client SET reference_id = ? WHERE client_id = ?')
-    .bind(appReference(workspaceId), clientId)
+    .prepare(
+      'UPDATE auth_oauth_client SET redirect_uris = ?, reference_id = coalesce(?, reference_id) WHERE client_id = ?',
+    )
+    .bind(JSON.stringify(redirectUris), workspaceId === undefined ? null : appReference(workspaceId), clientId)
     .run();
+}
+
+/** Where a home-network address stands for an app: no app of that workspace lists it, held, or allowed by an owner. */
+export type AddressState = 'unknown' | 'held' | 'allowed';
+
+/**
+ * The state of a home-network redirect address of an enabled connected app,
+ * `clientId`'s or, without one, any app's: allowed when an owner allowed it
+ * for an app that lists it.
+ */
+export async function addressState(db: D1Database, address: string, clientId?: string): Promise<AddressState> {
+  const { results } = await db
+    .prepare(
+      `SELECT c.metadata FROM auth_oauth_client c
+       WHERE substr(c.reference_id, 1, length(?1)) = ?1 AND coalesce(c.disabled, 0) = 0
+         AND (?3 IS NULL OR c.client_id = ?3)
+         AND EXISTS (SELECT 1 FROM json_each(c.redirect_uris) r WHERE r.value = ?2)
+       LIMIT 50`,
+    )
+    .bind(appReference(''), address, clientId ?? null)
+    .all<{ metadata: string | null }>();
+  if (results.length === 0) return 'unknown';
+  return results.some((row) => allowedOf(row.metadata).includes(address)) ? 'allowed' : 'held';
+}
+
+/**
+ * Records that an owner of the app's workspace allowed one of its
+ * home-network addresses, so its sign-ins complete and its page may call the
+ * API (isAppOrigin). False when the workspace has no such enabled app
+ * listing the address.
+ */
+export async function allowAddress(
+  db: D1Database,
+  workspaceId: string,
+  clientId: string,
+  address: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT metadata FROM auth_oauth_client c
+       WHERE c.client_id = ? AND c.reference_id = ? AND coalesce(c.disabled, 0) = 0
+         AND EXISTS (SELECT 1 FROM json_each(c.redirect_uris) r WHERE r.value = ?)`,
+    )
+    .bind(clientId, appReference(workspaceId), address)
+    .first<{ metadata: string | null }>();
+  if (!row) return false;
+  let seen = row.metadata;
+  // Written only over the metadata just read, so two owners allowing two
+  // addresses at once both keep theirs.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const allowed = allowedOf(seen);
+    if (allowed.includes(address)) return true;
+    const written = await db
+      .prepare(
+        `UPDATE auth_oauth_client SET metadata = ?1, updated_at = ?2
+         WHERE client_id = ?3 AND reference_id = ?4 AND metadata IS ?5`,
+      )
+      .bind(
+        JSON.stringify({ ...objectOf(seen), [ALLOWED_KEY]: [...allowed, address] }),
+        new Date().toISOString(),
+        clientId,
+        appReference(workspaceId),
+        seen,
+      )
+      .run();
+    if (written.meta.changes === 1) return true;
+    const again = await db
+      .prepare('SELECT metadata FROM auth_oauth_client WHERE client_id = ? AND reference_id = ?')
+      .bind(clientId, appReference(workspaceId))
+      .first<{ metadata: string | null }>();
+    if (!again) return false;
+    seen = again.metadata;
+  }
+  return false;
 }
 
 /** A workspace's connected app, as GET /api/access/apps lists it. */
@@ -306,7 +468,8 @@ export async function removeApp(db: D1Database, workspaceId: string, clientId: s
 
 /**
  * Whether a page at this origin may read the API's answers: it is the origin
- * of a redirect address of an enabled connected app. A redirect address is
+ * of a redirect address of an enabled connected app, and, for an http
+ * address on a home network, one an owner allowed. A redirect address is
  * the app's own page, so its origin is where the app runs.
  */
 export async function isAppOrigin(db: D1Database, origin: string): Promise<boolean> {
@@ -315,10 +478,16 @@ export async function isAppOrigin(db: D1Database, origin: string): Promise<boole
       `SELECT 1 AS found FROM auth_oauth_client c
        WHERE substr(c.reference_id, 1, length(?1)) = ?1 AND coalesce(c.disabled, 0) = 0
          AND EXISTS (SELECT 1 FROM json_each(c.redirect_uris) r
-           WHERE r.value = ?2 OR substr(r.value, 1, length(?2) + 1) = ?2 || '/')
+           WHERE (r.value = ?2 OR substr(r.value, 1, length(?2) + 1) = ?2 || '/')
+             AND (?3 = 0 OR EXISTS (SELECT 1 FROM json_each(
+               CASE WHEN json_valid(c.metadata) THEN
+                 CASE WHEN json_type(c.metadata, '$.${ALLOWED_KEY}') = 'array'
+                   THEN json_extract(c.metadata, '$.${ALLOWED_KEY}') ELSE '[]' END
+               ELSE '[]' END) a
+               WHERE a.value = r.value)))
        LIMIT 1`,
     )
-    .bind(appReference(''), origin)
+    .bind(appReference(''), origin, isHomeNetworkHttp(`${origin}/`) ? 1 : 0)
     .first<{ found: number }>();
   return row !== null;
 }
@@ -329,6 +498,24 @@ function urlOf(value: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/** A client's metadata column as an object, or an empty one. */
+function objectOf(text: string | null): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(text ?? '{}');
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The home-network addresses an owner allowed, from a client's metadata column. */
+function allowedOf(text: string | null): string[] {
+  const value = objectOf(text)[ALLOWED_KEY];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 /** The strings of a JSON array column, or none. */

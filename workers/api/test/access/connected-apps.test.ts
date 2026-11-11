@@ -151,6 +151,9 @@ describe('registering a connected app', () => {
 
   it.each([
     ['http on a public host', 'http://tower.example.com/tasks'],
+    ['http on a public IPv4 address beside the private ranges', 'http://172.32.0.1/tasks'],
+    ['http on an IPv6 link-local address', 'http://[fe80::1]/tasks'],
+    ['Ntasks’s own return page', `${ORIGIN}/api/access/return?to=http%3A%2F%2Ftower.local%2Ftasks`],
     ['https on this machine', 'https://localhost/tasks'],
     ['an address with a fragment', 'https://tower.example.com/tasks#signed-in'],
     ['an address with no path', 'https://tower.example.com'],
@@ -649,5 +652,161 @@ describe('calls from a page at another origin', () => {
     });
     expect(preflight.status).toBe(403);
     expect(preflight.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+/** An http address on a home network that no other test's app uses. */
+function homeAddress(): { readonly origin: string; readonly redirect: string } {
+  const origin = `http://tower-${crypto.randomUUID().slice(0, 8)}.local:5173`;
+  return { origin, redirect: `${origin}/tasks/signed-in` };
+}
+
+/** A browser's preflight from a page at `origin` before it calls the API with a bearer token. */
+function preflightFrom(origin: string): Promise<Response> {
+  return call('/api/tasks/projects', {
+    method: 'OPTIONS',
+    headers: { origin, 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' },
+  });
+}
+
+/** The addresses Ntasks holds for a service's app: it registers the app again, which answers the same one. */
+async function heldFor(token: string, redirect: string): Promise<readonly string[]> {
+  const again = await registerAsService(token, { client_name: 'NoticeOS Tower', redirect_uris: [redirect] });
+  expect(again.status).toBe(200);
+  return (await again.json<{ held_redirect_uris: string[] }>()).held_redirect_uris;
+}
+
+/** Follows the approval page's answer through Ntasks's return page to where it sends the browser. */
+async function passedOn(browser: Browser, answered: Response): Promise<URL> {
+  const relay = locationOf(answered);
+  expect(`${relay.origin}${relay.pathname}`).toBe(`${ORIGIN}/api/access/return`);
+  return locationOf(await browser.fetch(`${relay.pathname}${relay.search}`));
+}
+
+/** Signs the person in to an app at a home-network address: authorize, Allow, and exchange the code from that address. */
+async function connectAtHome(browser: Browser, app: App): Promise<Response> {
+  const { landing, verifier } = await authorizeApp(browser, app, EVERY_SCOPE);
+  expect(landing.pathname).toBe('/agent-access');
+  const allowed = await browser.fetch('/agent-access', {
+    form: { oauth_query: landing.search.slice(1), decision: 'allow' },
+  });
+  const back = await passedOn(browser, allowed);
+  expect(`${back.origin}${back.pathname}`).toBe(app.redirect);
+  expect(back.searchParams.get('state')).toBe('app-state');
+  return appTokenRequest(app, {
+    grant_type: 'authorization_code',
+    code: back.searchParams.get('code') ?? '',
+    redirect_uri: app.redirect,
+    code_verifier: verifier,
+    resource: MCP_RESOURCE,
+  });
+}
+
+describe('an app at an http address on a home network', () => {
+  it.each([
+    ['a .local name', () => homeAddress().redirect],
+    ['a private IPv4 address', () => `http://10.${crypto.getRandomValues(new Uint8Array(1))[0]}.0.20:5173/signed-in`],
+    ['an IPv6 unique-local address', () => `http://[fd12:${crypto.randomUUID().slice(0, 4)}::20]:5173/signed-in`],
+  ])('registers on %s, held until an owner allows it', async (_, address) => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const redirect = address();
+    const first = await registerAsService(service.token, { client_name: 'NoticeOS Tower', redirect_uris: [redirect] });
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({ redirect_uris: [redirect], held_redirect_uris: [redirect] });
+  });
+
+  it('completes no sign-in and answers no call from the address until an owner allows it, then signs anyone in', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const service = await serviceOf(owner);
+    const { origin, redirect } = homeAddress();
+    const registered = await registerAsService(service.token, {
+      client_name: 'NoticeOS Tower',
+      redirect_uris: [redirect],
+    });
+    const app = { clientId: (await registered.json<{ client_id: string }>()).client_id, origin, redirect };
+    expect((await preflightFrom(origin)).status).toBe(403);
+
+    // A member who is not an owner reaches the approval page but cannot allow
+    // the address, and Deny returns them to the app.
+    const member = new Browser({ joinTestWorkspace: false });
+    await member.signInWithGitHub(1002);
+    await addMember(TEST_WORKSPACE, (await userIdOf(1002))!, 'member');
+    const asked = await authorizeApp(member, app, EVERY_SCOPE);
+    expect(asked.landing.pathname).toBe('/agent-access');
+    expect(await (await member.fetch(`/agent-access${asked.landing.search}`)).text()).not.toContain('value="allow"');
+    const tried = await member.fetch('/agent-access', {
+      form: { oauth_query: asked.landing.search.slice(1), decision: 'allow' },
+    });
+    expect(tried.status).toBe(200);
+    expect(await heldFor(service.token, redirect)).toEqual([redirect]);
+    const denied = await passedOn(
+      member,
+      await member.fetch('/agent-access', { form: { oauth_query: asked.landing.search.slice(1), decision: 'deny' } }),
+    );
+    expect(`${denied.origin}${denied.pathname}`).toBe(redirect);
+    expect(denied.searchParams.get('error')).toBe('access_denied');
+    expect(denied.searchParams.has('code')).toBe(false);
+
+    // An owner's one Allow allows the address and signs them in from it.
+    const ownerTokens = await connectAtHome(owner, app);
+    expect(ownerTokens.status).toBe(200);
+    expect(ownerTokens.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(await heldFor(service.token, redirect)).toEqual([]);
+    const allowedPreflight = await preflightFrom(origin);
+    expect(allowedPreflight.status).toBe(204);
+    expect(allowedPreflight.headers.get('access-control-allow-origin')).toBe(origin);
+
+    const memberTokens = await connectAtHome(member, app);
+    expect(memberTokens.status).toBe(200);
+    const { access_token } = await memberTokens.json<{ access_token: string }>();
+    expect(await (await meWithToken(access_token)).json()).toMatchObject({ app: { clientId: app.clientId } });
+    expect((await appsSeenBy(owner)).find((listed) => listed.clientId === app.clientId)).toMatchObject({
+      redirectUris: [redirect],
+    });
+  });
+
+  it('asks for the approval page while held, even from an owner who allowed the app before, and passes no code on', async () => {
+    const owner = new Browser();
+    await owner.signInAsOwner();
+    const https = `${newOrigin()}/tasks/signed-in`;
+    const home = homeAddress();
+    const registered = await owner.fetch('/api/access/apps', {
+      method: 'POST',
+      json: { name: 'Example Tower', redirectUris: [https, home.redirect] },
+      headers: { 'x-ntasks-workspace': TEST_WORKSPACE.id },
+    });
+    expect(registered.status).toBe(201);
+    const { app } = await registered.json<{ app: ListedApp }>();
+    expect(app.redirectUris).toEqual([https, home.redirect]);
+    await connectApp(owner, { clientId: app.clientId, redirect: https });
+
+    const { landing } = await authorizeApp(owner, { clientId: app.clientId, redirect: home.redirect }, EVERY_SCOPE);
+    expect(landing.pathname).toBe('/agent-access');
+    const relayed = new URL(`${ORIGIN}/api/access/return`);
+    relayed.searchParams.set('to', home.redirect);
+    relayed.searchParams.set('code', 'a-code-for-the-held-address');
+    const stopped = await owner.fetch(`${relayed.pathname}${relayed.search}`);
+    expect(stopped.status).toBe(403);
+    expect(stopped.headers.get('location')).toBeNull();
+    expect((await preflightFrom(home.origin)).status).toBe(403);
+  });
+
+  it('refuses an agent that names Ntasks’s own return page as its redirect address', async () => {
+    const relay = new URL(`${ORIGIN}/api/access/return`);
+    relay.searchParams.set('to', homeAddress().redirect);
+    const refused = await call('/api/auth/oauth2/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Relaying agent',
+        redirect_uris: [relay.toString()],
+        token_endpoint_auth_method: 'none',
+      }),
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ error: 'invalid_redirect_uri' });
   });
 });
