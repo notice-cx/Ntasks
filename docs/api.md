@@ -425,14 +425,17 @@ too.
   project, as any write needs. Listing a project's fields needs only reading
   it.
 - **Lint**: `create_task`, `create_tasks` and `update_task` return `lint`
-  when it finds something: the sections the task's type expects that it still
-  lacks, and advice. Advice names a title over 70 characters or holding a
-  command, a file path or a commit hash; a description that writes a command
-  inline, or has a fenced block with no language tag or a `$` prompt; a
-  description whose first line repeats the title; an ask to a person, an
-  approval or a task labelled `human`, that names no link, control to press
-  or command; and lettered options to pass as `choices`. Nothing is refused
-  for it.
+  when it finds something: in `missing`, what the task's type expects that
+  it still lacks, and advice. A bug lacks `## Steps to Reproduce` when its
+  description never names it, and a bug, task, feature or epic lacks
+  `acceptance` when that field is blank, as the
+  [rules for writing a task](concepts.md#writing-a-task) ask. Advice names a
+  title over 70 characters or holding a command, a file path or a commit
+  hash; a description that writes a command inline, or has a fenced block
+  with no language tag or a `$` prompt; a description whose first line
+  repeats the title; an ask to a person, an approval or a task labelled
+  `human`, that names no link, control to press or command; and lettered
+  options to pass as `choices`. Nothing is refused for it.
 
 ## Filing, claiming and closing in one call
 
@@ -562,7 +565,7 @@ and hand-backs of the tasks waiting on an approval.
 | `declined` | On an approval or a request to do steps only: closes it as `wont-do`, tells each task waiting on it that the action must not happen, or that the steps are not done, and hands back the same waiting tasks as `answer`. |
 | `accepted` | On any open task but an approval or a request to do steps, from a sender that acts for a person (a service, which acts for nobody, is refused): the owner accepts it as done on their own call. `met` lists the numbers of the criteria they found met, counting each line or list item of `acceptance` from 1, `[]` when none is; the rest are recorded as waived. The task closes as `done` with the reason `explanation`, or `Accepted as done`, and its `closeAcceptance` names the owner as `by` and the sender in `relayed`, with the quote and the source ([Done on a person's call](#done-on-a-persons-call)). |
 | `owner_performed` | On an approval or a request to do steps only: the owner did the action, or the steps, themselves. On an open one it closes it as `done` and hands back the same waiting tasks as `answer`; on a closed approval it records the report. Either way it records `permission: none`. A request's steps stay as the person left them: ticks come only from the person. |
-| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
+| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. An approval, a request to do steps and a decision are never retired as `completed`. |
 | `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
 

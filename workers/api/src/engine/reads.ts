@@ -131,11 +131,21 @@ blocked(id) AS (
  * open, not a gate, not blocked, and neither it nor its parent is deferred
  * past ?2. This is Beads' ready work; both the ready filter and every task's
  * `ready` flag use this one expression.
+ *
+ * A task labelled `human` that is not an epic is a person's to answer, and
+ * only its own `blocks` links hold it: a parent's wait does not, so the
+ * person is asked while the work above them waits. The tasks under it stay
+ * held, because `blocked` still lists it.
  */
 const READY = `(t.status = 'open' AND t.type <> 'gate'
   AND (t.defer_until IS NULL OR t.defer_until <= ?2)
   AND (p.defer_until IS NULL OR p.defer_until <= ?2)
-  AND t.id NOT IN (SELECT id FROM blocked))`;
+  AND (t.id NOT IN (SELECT id FROM blocked)
+    OR (t.type <> 'epic'
+      AND EXISTS (SELECT 1 FROM task_labels l WHERE l.task_id = t.id AND l.label = 'human')
+      AND NOT EXISTS (
+        SELECT 1 FROM task_edges e JOIN tasks blocker ON blocker.id = e.depends_on_id
+        WHERE e.task_id = t.id AND e.type = 'blocks' AND blocker.status <> 'closed'))))`;
 
 /** When task t's assignee last wrote to it: their latest event in its
  * history, which task_events_by_actor answers from one entry. */
