@@ -4,8 +4,7 @@ import { useShortcut } from '../hooks/useShortcut';
 import { IconButton } from './ui/button';
 import { FieldError, Input } from './ui/field';
 import { Kbd } from './ui/kbd';
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
-import { PopoverAnchor } from './ui/popover';
+import { Menu, MenuAnchor, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from './ui/menu';
 import { cn } from '../lib/utils';
 
 export interface FactChoice {
@@ -145,7 +144,7 @@ export function Fact({
 
   return (
     <Menu open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
+      <MenuAnchor>
         <div className={cn(row, 'group/fact')} data-fact={label}>
           {name}
           {face(
@@ -183,7 +182,7 @@ export function Fact({
             </>,
           )}
         </div>
-      </PopoverAnchor>
+      </MenuAnchor>
       <FactMenu label={label} editor={editor} onSave={(next, on) => void save(next, on)} />
     </Menu>
   );

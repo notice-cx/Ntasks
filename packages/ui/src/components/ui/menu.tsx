@@ -1,3 +1,4 @@
+import { Slot } from '@radix-ui/react-slot';
 import { Check, ChevronRight } from 'lucide-react';
 import {
   Children,
@@ -5,27 +6,48 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
+  type ComponentProps,
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { cn } from '../../lib/utils';
 import { Kbd } from './kbd';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Popover, PopoverAnchor, PopoverContent } from './popover';
 import { roveFocus } from './rove';
+
+/** What a menu's parts share. */
+interface MenuState {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  close: () => void;
+  trigger: RefObject<HTMLButtonElement | null>;
+  /** What the panel is placed against in place of the trigger, set by `MenuAnchor`. */
+  anchor: RefObject<HTMLElement | null>;
+  contentId: string;
+}
+
+const MenuContext = createContext<MenuState | null>(null);
+
+function useMenu(part: string): MenuState {
+  const menu = useContext(MenuContext);
+  if (!menu) throw new Error(`${part} needs a Menu around it.`);
+  return menu;
+}
+
+const ITEM = '[role^="menuitem"]:not([disabled])';
 
 /**
  * A menu of actions, on a Popover. Each item has a 15 px icon, a label and
  * its key. While the menu is open, ↑ and ↓ move between items, Enter runs
- * the focused one, and an item's letter runs it directly; Escape closes it.
- * A menu that picks a value marks the value held with a tick (`checked`) and
- * opens on it.
+ * the focused one, and an item's letter runs it directly; Escape closes it,
+ * and focus goes back to its trigger. A menu that picks a value marks the
+ * value held with a tick (`checked`) and opens on it.
  */
-const MenuContext = createContext<{ open: boolean; close: () => void } | null>(null);
-
-const ITEM = '[role^="menuitem"]:not([disabled])';
-
 export function Menu({
   children,
   open: openProp,
@@ -45,16 +67,44 @@ export function Menu({
     [onOpenChange],
   );
   const close = useCallback(() => setOpen(false), [setOpen]);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const anchor = useRef<HTMLElement>(null);
+  const contentId = useId();
   return (
-    <MenuContext.Provider value={{ open, close }}>
-      <Popover open={open} onOpenChange={setOpen}>
-        {children}
-      </Popover>
-    </MenuContext.Provider>
+    <MenuContext.Provider value={{ open, setOpen, close, trigger, anchor, contentId }}>{children}</MenuContext.Provider>
   );
 }
 
-export const MenuTrigger = PopoverTrigger;
+/** The button that opens and closes the menu: a button, or with `asChild` its one child. */
+export function MenuTrigger({
+  asChild = false,
+  onClick,
+  ...props
+}: Omit<ComponentProps<'button'>, 'ref'> & { asChild?: boolean }) {
+  const menu = useMenu('MenuTrigger');
+  const Comp = asChild ? Slot : 'button';
+  return (
+    <Comp
+      type="button"
+      aria-haspopup="dialog"
+      aria-expanded={menu.open}
+      aria-controls={menu.open ? menu.contentId : undefined}
+      data-state={menu.open ? 'open' : 'closed'}
+      {...props}
+      ref={menu.trigger}
+      onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented) menu.setOpen(!menu.open);
+      }}
+    />
+  );
+}
+
+/** The element the panel is placed against in place of the trigger, as its one child: a whole line with the trigger at its end. */
+export function MenuAnchor({ children }: { children: ReactElement }) {
+  const { anchor } = useMenu('MenuAnchor');
+  return <Slot ref={anchor}>{children}</Slot>;
+}
 
 export function MenuContent({
   children,
@@ -75,24 +125,40 @@ export function MenuContent({
   footer?: ReactNode;
   className?: string;
 }) {
-  const menu = useContext(MenuContext);
-  // A closed menu draws nothing, so a list of rows, each with its own menu, keeps none of their parts.
-  if (menu?.open === false) return null;
+  const menu = useMenu('MenuContent');
+  // A press or a focus outside the menu leaves focus where it went; any other close puts it back on the trigger.
+  const wentOutside = useRef(false);
+  // A closed menu mounts no popover, so a list of rows, each with its own menu, keeps none of their parts.
+  if (!menu.open) return null;
   const items = Children.toArray(children).length > 0;
   return (
-    <PopoverContent
-      align={align}
-      className={cn('w-58 p-0', className)}
-      // The panel puts focus on its first item instead of on itself.
-      onOpenAutoFocus={(event) => event.preventDefault()}
-    >
-      {items ? (
-        <MenuPanel key={panelKey} label={label} autoFocus>
-          {children}
-        </MenuPanel>
-      ) : null}
-      {footer ? <div className={cn('p-1', items && 'border-t border-border')}>{footer}</div> : null}
-    </PopoverContent>
+    <Popover open onOpenChange={menu.setOpen}>
+      <PopoverAnchor virtualRef={menu.anchor.current ? menu.anchor : menu.trigger} />
+      <PopoverContent
+        id={menu.contentId}
+        align={align}
+        className={cn('w-58 p-0', className)}
+        // The panel puts focus on its first item instead of on itself.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={(event) => {
+          // A press on the trigger closes the menu through the trigger's own press.
+          if (event.target instanceof Node && menu.trigger.current?.contains(event.target)) event.preventDefault();
+          else wentOutside.current = true;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (!wentOutside.current) menu.trigger.current?.focus();
+          wentOutside.current = false;
+        }}
+      >
+        {items ? (
+          <MenuPanel key={panelKey} label={label} autoFocus>
+            {children}
+          </MenuPanel>
+        ) : null}
+        {footer ? <div className={cn('p-1', items && 'border-t border-border')}>{footer}</div> : null}
+      </PopoverContent>
+    </Popover>
   );
 }
 
