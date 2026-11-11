@@ -18,13 +18,14 @@ import type {
 } from '@ntasks/domain';
 import { DurableObject } from 'cloudflare:workers';
 import { serveApi } from '../api.ts';
+import { tellGitHub } from '../approval-github.ts';
 import type { Principal } from '../auth.ts';
 import { reportDelivery } from '../delivery.ts';
 import { createEngine } from '../engine/index.ts';
 import { checkGitHubWork } from '../github-check.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { Refused } from '../refused.ts';
-import { closeMerged, type MergeCloses } from '../task-writes.ts';
+import { closeMerged, type ApprovalAnswer, type MergeCloses } from '../task-writes.ts';
 import { storeName, type Workspace } from '../workspaces.ts';
 import { readBackupPage, type BackupAnswer } from './backup.ts';
 import { cachedReads } from './cache.ts';
@@ -110,6 +111,18 @@ export class TaskStore extends DurableObject<Env> {
     if (set === null || set > at) await this.ctx.storage.setAlarm(at);
   }
 
+  /** The workspace this store holds, from its name (storeName); null for an object no workspace names. */
+  #workspaceId(): string | null {
+    const name = this.ctx.id.name;
+    return name?.startsWith('workspace:') ? name.slice('workspace:'.length) : null;
+  }
+
+  /** Posts an answer to an approval that gates a pull request on GitHub, once it landed (approval-github.ts). */
+  readonly #approvalAnswered = async (answer: ApprovalAnswer): Promise<void> => {
+    const workspaceId = this.#workspaceId();
+    if (workspaceId !== null) await tellGitHub(this.env, workspaceId, this.tasks, answer);
+  };
+
   /** Asks GitHub about the workspace's waiting work now, as when an owner installs the workspace's GitHub App (github.ts). */
   async checkGitHub(): Promise<void> {
     await this.#checkGitHubIn(0);
@@ -125,9 +138,9 @@ export class TaskStore extends DurableObject<Env> {
    * of, which is also the first once no merged work waits on a deploy.
    */
   override async alarm(): Promise<void> {
-    const name = this.ctx.id.name;
-    if (name === undefined || !name.startsWith('workspace:')) return;
-    const checked = await checkGitHubWork(this.env, name.slice('workspace:'.length), this.tasks);
+    const workspaceId = this.#workspaceId();
+    if (workspaceId === null) return;
+    const checked = await checkGitHubWork(this.env, workspaceId, this.tasks);
     const retries = await this.ctx.storage.get<number>(GITHUB_RETRIES);
     if (!checked.retry) {
       if (retries !== undefined) await this.ctx.storage.delete(GITHUB_RETRIES);
@@ -200,7 +213,12 @@ export class TaskStore extends DurableObject<Env> {
     principal: Principal,
     workspace: Workspace,
   ): Promise<ToolAnswer> {
-    return runTaskTool({ engine: this.tasks, workspace, principal, now: () => new Date().toISOString() }, name, args);
+    const now = () => new Date().toISOString();
+    return runTaskTool(
+      { engine: this.tasks, workspace, principal, now, approvalAnswered: this.#approvalAnswered },
+      name,
+      args,
+    );
   }
 
   /** The open tasks `principal` holds in the projects it reads here, which
@@ -248,6 +266,7 @@ export class TaskStore extends DurableObject<Env> {
     return serveApi(request, principal, {
       engine: this.tasks,
       now: () => new Date().toISOString(),
+      approvalAnswered: this.#approvalAnswered,
       backup: (token) => this.backupPage(token),
       load: {
         begin: (migrations, by) => this.loadBegin(migrations, by),

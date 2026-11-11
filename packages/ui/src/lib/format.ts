@@ -63,6 +63,18 @@ export function parseMinutes(text: string, max: number): number | null {
   return whole <= max ? whole : null;
 }
 
+/** A pull request's name: `owner/name#12` for GitHub's, its host and path for any other, the URL as given when unreadable. */
+export function pullRequestName(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const pull = /^\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(parsed.pathname);
+  return parsed.hostname === 'github.com' && pull ? `${pull[1]}#${pull[2]}` : `${parsed.host}${parsed.pathname}`;
+}
+
 /** A custom field's key as a name, until the page reads the field's own: `story_points` is Story points. */
 export function fieldKeyName(key: string): string {
   const words = key.replace(/[_-]+/g, ' ').trim();

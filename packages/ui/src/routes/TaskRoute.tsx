@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import {
   Check,
   Copy,
@@ -80,7 +80,7 @@ import { usePaths } from '../lib/paths';
 import { activityOf } from '../lib/live';
 import { taskPrefix } from '../lib/task-path';
 import { cn } from '../lib/utils';
-import { AnswerForm, PerformedButton, PerformedForm } from './tasks/ask-actions';
+import { AnswerForm, AutoMergeNote, PerformedButton, PerformedForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { MoveForm } from './tasks/move-form';
@@ -274,6 +274,8 @@ function TaskPage({
   const answered = hides(task.id, fetchedAt);
   const ask = answered ? null : inboxAsk(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
+  const gated = ask === 'approve' ? (task.pullRequest ?? null) : null;
+  const mergeId = useId();
   const scope = { id: task.id, title: task.title, project: key, proposalVersion: task.proposalVersion ?? null };
   const reasonFor = (available: boolean) => verbReason(capabilities, available, UNAVAILABLE);
   const askReason = reasonFor(
@@ -361,6 +363,7 @@ function TaskPage({
           variant="primary"
           disabled={askReason !== null}
           title={askReason ?? undefined}
+          aria-describedby={gated ? mergeId : undefined}
           onClick={() => answer({ kind: 'approve', ...scope })}
           data-task-action="approve"
         >
@@ -490,6 +493,7 @@ function TaskPage({
           <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
             <LinkedText text={task.title} />
           </h1>
+          {gated ? <AutoMergeNote pullRequest={gated} id={mergeId} /> : null}
           {panelBody ? (
             <div className="rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border" data-task-panel="">
               {panelBody}

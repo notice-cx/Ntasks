@@ -17,6 +17,7 @@ import {
   type TaskComment,
   type TaskEvent,
 } from '@ntasks/domain';
+import { gatedPullRequest } from './delivery.ts';
 import { NOTICEOS_METADATA as NOTICEOS, TASK_CHANGE_CLASSES } from './noticeos-fields.ts';
 import { shortHash } from './short-hash.ts';
 
@@ -55,15 +56,26 @@ export function waitsOnPerson(task: Task): boolean {
  * when asked. An answer recorded later must name this exact text, so a task
  * edited after the question was asked cannot borrow the answer. A request's
  * steps count with their text and commands, not with anyone's marks on them,
- * so a tick leaves the proposal as it was.
+ * so a tick leaves the proposal as it was. The pull request an approval
+ * gates counts too, since approving it turns on that pull request's
+ * auto-merge; an approval that gates none keeps the proposal it had.
  */
-export function proposalOf(
-  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices' | 'steps'>,
-): string {
+export function proposalOf(task: Proposed): string {
   const asked = [task.id, task.title, task.description, task.acceptance, task.type, task.choices];
   const steps = task.steps?.map((step) => [step.text, step.command]);
-  return JSON.stringify(steps === undefined ? asked : [...asked, steps]);
+  const pullRequest = gatedPullRequest(task);
+  return JSON.stringify([
+    ...asked,
+    ...(steps === undefined ? [] : [steps]),
+    ...(pullRequest === null ? [] : [{ pullRequest }]),
+  ]);
 }
+
+/** What a task's proposal is made of. */
+type Proposed = Pick<
+  Task,
+  'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices' | 'steps' | 'externalLinks'
+>;
 
 /** A proposal version as an answer names it. 128 bits, so nobody can write two
  * proposals with one version and swap one for the other under an answer. */
@@ -71,9 +83,7 @@ export const PROPOSAL_VERSION = /^[0-9a-f]{32}$/u;
 
 /** The proposal's version, which an owner's answer names: the first 32
  * hexadecimal characters of the SHA-256 of `proposalOf(task)`. */
-export function proposalVersionOf(
-  task: Pick<Task, 'id' | 'title' | 'description' | 'acceptance' | 'type' | 'choices' | 'steps'>,
-): Promise<string> {
+export function proposalVersionOf(task: Proposed): Promise<string> {
   return shortHash(proposalOf(task), 32);
 }
 
@@ -199,6 +209,8 @@ export function webTask(task: Task, now: string) {
     awaitType: task.awaitType,
     /** On a request that a person do steps: each step, with who ticked it, their note and where they got stuck. */
     steps: task.steps,
+    /** On an approval: the pull request it gates, whose auto-merge a person's approval turns on; null otherwise. */
+    pullRequest: gatedPullRequest(task),
     choices: task.choices,
     choice: task.choice,
     answer: answerOf(task),
@@ -249,6 +261,7 @@ export function mcpTask(task: Task, now: string) {
     design: task.design,
     estimateMinutes: task.estimateMinutes,
     steps: task.steps,
+    ...(web.pullRequest === null ? {} : { pullRequest: web.pullRequest }),
     choices: task.choices,
     choice: task.choice,
     answer: web.answer,

@@ -110,10 +110,12 @@ export interface NewTaskLink {
 
 /** An approval to open. `reason` is its description: the request a person
  * answers. `title` is its title; left out, the reason's first line that is
- * not blank. */
+ * not blank. `pullRequest` is the URL of the pull request it gates, which
+ * the approval keeps as its link of kind pull-request. */
 export interface ApprovalRequest {
   readonly reason: string;
   readonly title?: string;
+  readonly pullRequest?: string;
 }
 
 /** A step of a new request that a person do steps: its text, and the command it runs when it runs one. */

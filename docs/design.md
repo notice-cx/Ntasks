@@ -501,7 +501,8 @@ beside it (Not now on Focus) and Answer with its `↵`. Answer is disabled
 until an option is selected; Enter sends the selected option, and Enter on a
 focused option sends that one. Focus draws it on a card with `shadow-pop`,
 headed by Your choice, the id, the project and the age; a task's page draws
-it under the description.
+it under the description. On Focus, an approval that gates a pull request
+shows the same auto-merge line as a task's page just above its buttons.
 
 ### Rows (`row.tsx`)
 
@@ -524,9 +525,13 @@ not reset how long it has waited, and its tip says so (`Created 3d ago`).
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
 row puts its answer in `RowAnswer`: Approve after Did it myself, which opens
-a Note under the row, a `Segmented` choice, or Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
-its options take a line of their own under the title, so the title is never
-cut to make room for them. When this sign-in cannot answer, the controls are
+a Note under the row, a `Segmented` choice, or Answer. An approval that
+gates a pull request puts the compact `AutoMergeNote` before Did it myself:
+a pull request icon, Auto-merge and the pull request as a link, in Text 3,
+which Approve takes as its description. A row whose answer is a choice, or
+an approval's note and buttons, is `answer="wide"`: below 1240 px wide
+its answer takes a line of its own under the title, and wraps there, so the
+title is never cut to make room for it. When this sign-in cannot answer, the controls are
 disabled and each carries the reason as its description (`aria-describedby`;
 `Segmented` takes `describedBy`), shown to a pointer as a tip.
 
@@ -595,7 +600,10 @@ id, then its id. Its end holds Copy link, the More menu (add or edit the
 description, Done when, design and notes, add a link, move the task to
 another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
 someone holds it; on a task waiting for you, Approve after Did it myself,
-which opens a Note in the reading column, or Answer beside Close as.
+which opens a Note in the reading column, or Answer beside Close as. On an
+approval that gates a pull request, a line in `text-label` Text 3 under the
+title says that Approve turns on that pull request's auto-merge, with the
+pull request as an Accent text link; Approve takes it as its description.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),

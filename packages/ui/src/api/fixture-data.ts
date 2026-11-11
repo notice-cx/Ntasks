@@ -245,6 +245,14 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
         'Scope: The /sign-in route only. The old page stays in the code, so rolling back is one revert.',
         'Verification: Sign in with a test account, then check that a wrong password shows its error.',
       ].join('\n'),
+      // The pull request this approval gates: approving it turns on the pull request's auto-merge.
+      externalLinks: [
+        {
+          url: 'https://github.com/example/web/pull/57',
+          title: 'Send every visitor to the new sign-in page',
+          kind: 'pull-request',
+        },
+      ],
     }),
     // An approval an agent recorded for a person, which the person can still dispute.
     base('web', 'web-r2v9', 'Approve turning on the new sign-in page for staff', {

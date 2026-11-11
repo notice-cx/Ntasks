@@ -11,7 +11,10 @@ import { hex, randomSecret } from '../../src/access/crypto.ts';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { githubSender } from '../../src/github-check.ts';
 import type { TaskStore } from '../../src/store/index.ts';
-import { createTask } from '../../src/task-writes.ts';
+import { createTask, requestApproval } from '../../src/task-writes.ts';
+import { turnOnAutoMerge, UNCONFIRMED } from '../../src/access/github-api.ts';
+import { pullRequestComment } from '../../src/approval-github.ts';
+import { proposalVersionOf } from '../../src/views.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
 import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
@@ -263,8 +266,8 @@ describe('Connect GitHub', () => {
       public: true,
       default_permissions: {
         metadata: 'read',
-        contents: 'read',
-        pull_requests: 'read',
+        contents: 'write',
+        pull_requests: 'write',
         checks: 'read',
         deployments: 'read',
       },
@@ -1120,5 +1123,179 @@ describe('merged work a deploy shipped that no delivery named', () => {
     expect(await runDurableObjectAlarm(store())).toBe(true);
     expect(github.apiRequests.length).toBe(45);
     for (const id of waiting) expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+  });
+});
+
+describe('an answer to an approval that gates a pull request', () => {
+  const WAITING: Principal = Object.freeze({
+    id: 'agent:waiting',
+    name: 'agent:waiting',
+    scopes: [SCOPES.read, SCOPES.write],
+    projects: 'all',
+    person: 'Person 1001',
+  });
+
+  /** The owner, with the app installed on the repository's account. */
+  async function installed(): Promise<{ owner: Browser; installation: number }> {
+    const owner = await connected();
+    const id = newInstallation();
+    await deliver('installation', installation(id, 'created', OWNER_GITHUB_ID));
+    return { owner, installation: id };
+  }
+
+  /** A task of a new project waiting on an approval that gates pull request `number` of the repository, or none. */
+  async function approvalFor(number: number | null): Promise<{ projectId: string; gate: string }> {
+    const projectId = await createProject('Site');
+    return runInDurableObject(store(), async (instance: TaskStore) => {
+      const context = { engine: instance.tasks, principal: WAITING, now: () => new Date().toISOString() };
+      const task = (await createTask(context, projectId, { title: 'Ship the migration' }, undefined)).result.task;
+      const pullRequest = number === null ? {} : { pullRequest: `https://github.com/${REPOSITORY}/pull/${number}` };
+      const request = { title: 'Approve merging the migration', reason: 'You: press Approve.', ...pullRequest };
+      const { gate } = await requestApproval(context, projectId, task.id, request);
+      return { projectId, gate: gate.id };
+    });
+  }
+
+  /** The owner's answer, relayed by the waiting agent through reconcile_task. */
+  async function relay(projectId: string, gate: string, action: 'answer' | 'declined' | 'owner_performed') {
+    const answer = await runInDurableObject(store(), async (instance: TaskStore) => {
+      const current = await instance.tasks.getTask(projectId, gate);
+      const args = {
+        task: gate,
+        action,
+        proposal_version: await proposalVersionOf(current!),
+        quote: 'Go ahead.',
+        source: 'test:conversation',
+      };
+      return instance.callTool('reconcile_task', args, WAITING, TEST_WORKSPACE);
+    });
+    expect(answer.ok).toBe(true);
+  }
+
+  /** The approval's comments by service:GitHub: what GitHub did. */
+  async function recorded(projectId: string, gate: string): Promise<string[]> {
+    const comments = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.listComments(projectId, gate),
+    );
+    return comments.filter((comment) => comment.author === 'service:GitHub').map((comment) => comment.text);
+  }
+
+  it('turns on auto-merge when a person approves, and posts one comment naming them and the approval', async () => {
+    const { owner } = await installed();
+    github.mergeables.set(`${REPOSITORY}#51`, {});
+    const { projectId, gate } = await approvalFor(51);
+    expect((await inWorkspace(owner, 'POST', `/api/gates/${gate}/resolve`, { projectId })).status).toBe(200);
+
+    expect(github.autoMerges).toEqual([{ pull: `${REPOSITORY}#51`, method: 'SQUASH' }]);
+    expect(github.merges).toEqual([]);
+    expect(github.comments).toHaveLength(1);
+    const [posted] = github.comments;
+    const approver = (await taskOf(projectId, gate)).close?.by ?? '';
+    expect(posted?.pull).toBe(`${REPOSITORY}#51`);
+    expect(posted?.body).toContain(`[${gate}](${ORIGIN}/tasks/${gate})`);
+    expect(posted?.body).toContain(approver);
+    expect(await recorded(projectId, gate)).toHaveLength(1);
+  });
+
+  it('merges at once a pull request GitHub can merge already, and leaves a merge queue to choose its own method', async () => {
+    const { owner } = await installed();
+    github.mergeables.set(`${REPOSITORY}#52`, { mergeStateStatus: 'CLEAN' });
+    github.mergeables.set(`${REPOSITORY}#53`, { mergeStateStatus: 'CLEAN', mergeQueue: true });
+    for (const number of [52, 53]) {
+      const { projectId, gate } = await approvalFor(number);
+      expect((await inWorkspace(owner, 'POST', `/api/gates/${gate}/resolve`, { projectId })).status).toBe(200);
+    }
+    expect(github.merges).toEqual([{ pull: `${REPOSITORY}#52`, method: 'SQUASH' }]);
+    expect(github.autoMerges).toEqual([{ pull: `${REPOSITORY}#53`, method: null }]);
+    expect(github.comments.map((comment) => comment.pull)).toEqual([`${REPOSITORY}#52`, `${REPOSITORY}#53`]);
+  });
+
+  it.each([
+    ['a relayed approval', 'answer'],
+    ['a relayed decline', 'declined'],
+    ['a relayed report that the owner did it', 'owner_performed'],
+  ] as const)(
+    'posts %s on the pull request, naming the owner and the agent, and turns on no auto-merge',
+    async (_, action) => {
+      await installed();
+      github.mergeables.set(`${REPOSITORY}#54`, {});
+      const { projectId, gate } = await approvalFor(54);
+      await relay(projectId, gate, action);
+
+      expect(github.autoMerges).toEqual([]);
+      expect(github.merges).toEqual([]);
+      expect(github.comments).toHaveLength(1);
+      expect(github.comments[0]?.body).toContain(WAITING.person);
+      expect(github.comments[0]?.body).toContain(WAITING.name);
+      expect(github.comments[0]?.body).toContain(gate);
+      expect(await recorded(projectId, gate)).toHaveLength(1);
+    },
+  );
+
+  it('posts a person’s report that they did it themselves, and turns on no auto-merge', async () => {
+    const { owner } = await installed();
+    github.mergeables.set(`${REPOSITORY}#55`, {});
+    const { projectId, gate } = await approvalFor(55);
+    expect((await inWorkspace(owner, 'POST', `/api/gates/${gate}/performed`, { projectId })).status).toBe(200);
+
+    expect(github.autoMerges).toEqual([]);
+    expect(github.comments.map((comment) => comment.pull)).toEqual([`${REPOSITORY}#55`]);
+  });
+
+  it('records on the approval that GitHub refused for lack of permission, with the links that give it', async () => {
+    const { owner, installation: id } = await installed();
+    github.mergeables.set(`${REPOSITORY}#56`, {});
+    github.readOnly = true;
+    const { projectId, gate } = await approvalFor(56);
+    expect((await inWorkspace(owner, 'POST', `/api/gates/${gate}/resolve`, { projectId })).status).toBe(200);
+
+    expect(github.autoMerges).toEqual([]);
+    expect(github.comments).toEqual([]);
+    const [record = ''] = await recorded(projectId, gate);
+    expect(record).toContain(`https://github.com/settings/apps/${SLUG}/permissions`);
+    expect(record).toContain(`https://github.com/organizations/example/settings/installations/${id}`);
+    // The approval stands whatever GitHub refused.
+    expect((await taskOf(projectId, gate)).close?.resolution).toBe('done');
+  });
+
+  it('posts an approval’s title and its people as plain words, linking and mentioning nothing', async () => {
+    const { projectId, gate: id } = await approvalFor(57);
+    const gate = { ...(await taskOf(projectId, id)), title: 'Merge [this](https://x.example) @team' };
+    const comment = pullRequestComment(
+      {
+        projectId,
+        gate,
+        pullRequest: `https://github.com/${REPOSITORY}/pull/57`,
+        answer: 'declined',
+        by: '@owner',
+        relayedBy: null,
+      },
+      null,
+      ORIGIN,
+    );
+    expect(comment).not.toContain('[this](https://x.example)');
+    expect(comment).not.toMatch(/@(team|owner)/u);
+    expect(comment).toContain(`[${gate.id}](${ORIGIN}/tasks/${gate.id})`);
+  });
+
+  it('counts a change whose answer broke off after its status as unconfirmed, not as made', async () => {
+    github.mergeables.set(`${REPOSITORY}#58`, {});
+    github.mergeables.set(`${REPOSITORY}#59`, { mergeStateStatus: 'CLEAN' });
+    github.changeAnswersBreak = true;
+    expect(await turnOnAutoMerge('installation-token-1', REPOSITORY, 58)).toBe(UNCONFIRMED);
+    expect(await turnOnAutoMerge('installation-token-1', REPOSITORY, 59)).toBe(UNCONFIRMED);
+    // GitHub made both changes; only their answers were lost.
+    expect(github.autoMerges.map((entry) => entry.pull)).toEqual([`${REPOSITORY}#58`]);
+    expect(github.merges.map((entry) => entry.pull)).toEqual([`${REPOSITORY}#59`]);
+  });
+
+  it('asks nothing of GitHub for an approval that gates no pull request', async () => {
+    const { owner } = await installed();
+    github.apiRequests.length = 0;
+    const { projectId, gate } = await approvalFor(null);
+    expect((await inWorkspace(owner, 'POST', `/api/gates/${gate}/resolve`, { projectId })).status).toBe(200);
+
+    expect(github.apiRequests).toEqual([]);
+    expect(await recorded(projectId, gate)).toEqual([]);
   });
 });

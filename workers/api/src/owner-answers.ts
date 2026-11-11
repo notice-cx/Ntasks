@@ -24,9 +24,11 @@ import {
   type StepMarking,
   type TaskResolution,
   type TaskWrite,
+  type WriteResult,
 } from '@ntasks/domain';
 import { listed } from './args.ts';
 import { SCOPES } from './auth.ts';
+import { gatedPullRequest } from './delivery.ts';
 import { linksSeenBy, projectOf, taskOf, tasksIn } from './lookup.ts';
 import {
   askedOf,
@@ -44,6 +46,7 @@ import {
   OPEN_STATUSES,
   recorded,
   retryOf,
+  type ApprovalAnswer,
   type RetryRequest,
   type WriteContext,
   type Written,
@@ -1240,11 +1243,12 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       (duplicate.type !== 'gate' ||
         duplicate.awaitType !== 'human' ||
         duplicate.description !== task.description ||
-        stepsAsked(duplicate) !== stepsAsked(task))
+        stepsAsked(duplicate) !== stepsAsked(task) ||
+        gatedPullRequest(duplicate) !== gatedPullRequest(task))
     ) {
       return refuse(
         task.steps === null
-          ? 'Duplicate approvals must retain exactly the same requested scope.'
+          ? 'Duplicate approvals must retain exactly the same requested scope, pull request included.'
           : 'A duplicate request must ask for exactly the same steps, with the same context.',
       );
     }
@@ -1298,6 +1302,42 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
 }
 
 // ─── Running them ─────────────────────────────────────────────────────────────
+
+/**
+ * The answer `write` recorded on an approval that gates a pull request, as
+ * approvalAnswered takes it: `person` is whose answer it is, and `relayedBy`
+ * the agent that relayed it. Null when the write landed no new answer, as a
+ * replay or a retirement does, or the approval gates no pull request.
+ */
+function landedAnswer(
+  projectId: string,
+  result: WriteResult,
+  write: TaskWrite | null,
+  person: string,
+  relayedBy: string | null,
+): ApprovalAnswer | null {
+  const record = write?.metadata?.[MAINTENANCE];
+  const gate = result.task;
+  if (result.replayed || !isRecord(record) || gate.type !== 'gate') return null;
+  const pullRequest = gatedPullRequest(gate);
+  if (pullRequest === null) return null;
+  // A dispute keeps the record it withdraws, marked disputed.
+  const answer = isRecord(record.disputed)
+    ? 'withdrawn'
+    : record.action === 'answer'
+      ? 'approved'
+      : record.action === 'owner_performed'
+        ? 'performed'
+        : record.action === 'declined'
+          ? 'declined'
+          : null;
+  return answer === null ? null : { projectId, gate, pullRequest, answer, by: person, relayedBy };
+}
+
+/** Hands a landed answer to the context's approvalAnswered, which posts it on GitHub. */
+async function told(context: WriteContext, answer: ApprovalAnswer | null): Promise<void> {
+  if (answer !== null) await context.approvalAnswered?.(answer);
+}
 
 /** What a decision on `task` reads besides it, in one read of the tasks it touches. */
 async function surroundings(context: WriteContext, project: Project, task: Task): Promise<Surroundings> {
@@ -1362,17 +1402,21 @@ async function decide(
   const replay = await recorded(context, project, retry);
   if (replay !== null) return { project, result: replay };
   const actor = actorOf(principal, undefined);
+  // The write of the plan that landed: a retry after another write plans again.
+  const planned: { write: TaskWrite | null } = { write: null };
   const result = await changing(context, project, task, actor, retry, async (current) => {
     const proposalVersion = await proposalVersionOf(current);
     if (shown !== undefined && shown !== proposalVersion) throw changedSinceShown(current.id);
     const around = await surroundings(context, project, current);
-    return plan(current, around, {
+    planned.write = plan(current, around, {
       actor: actor.name,
       at: context.now(),
       proposalVersion,
       ...(principal.app === undefined ? {} : { app: principal.app }),
     });
+    return planned.write;
   });
+  await told(context, landedAnswer(project.id, result, planned.write, actor.name, null));
   return { project, result };
 }
 
@@ -1563,24 +1607,28 @@ export async function reconcileTask(
   const replay = await recorded(context, project, retry);
   if (replay !== null) return { project, result: replay };
   const actor = actorOf(context.principal, operation.model);
+  const owner = context.principal.person ?? actor.name;
+  const planned: { write: TaskWrite | null } = { write: null };
   const result = await changing(context, project, task, actor, retry, async (current) => {
     const [around, duplicate, proposalVersion] = await Promise.all([
       surroundings(context, project, current),
       operation.duplicateOf === undefined ? null : context.engine.getTask(project.id, operation.duplicateOf),
       proposalVersionOf(current),
     ]);
-    return maintenanceWrite({
+    planned.write = maintenanceWrite({
       ...around,
       operation,
       task: current,
       proposalVersion,
       ...(duplicate === null ? {} : { duplicate }),
       actor: actor.name,
-      owner: context.principal.person ?? actor.name,
+      owner,
       person: context.principal.person ?? null,
       at: context.now(),
     });
+    return planned.write;
   });
+  await told(context, landedAnswer(project.id, result, planned.write, owner, actor.name));
   return { project, result };
 }
 

@@ -130,6 +130,16 @@ function copy<T>(value: T): T {
   return structuredClone(value);
 }
 
+/** A GitHub pull request's page, as the Worker records one. */
+const GITHUB_PULL = /^https:\/\/github\.com\/[a-z0-9-]+\/[a-z0-9._-]+\/pull\/\d{1,9}$/u;
+
+/** The pull request an approval gates, as the Worker reads it: the approval's first link of kind pull-request on
+ * GitHub; null on any other task, a request to do steps included. */
+function gatedPullRequest(task: FixtureTask): string | null {
+  if (task.issueType !== 'gate' || (task.steps ?? null) !== null) return null;
+  return task.externalLinks?.find((link) => link.kind === 'pull-request' && GITHUB_PULL.test(link.url))?.url ?? null;
+}
+
 export interface FixtureOptions {
   /** The seed's clock and every change's time. */
   now?: () => number;
@@ -252,6 +262,7 @@ export function createFixtureTasksApi({
     return {
       ...row,
       ready: ready(task),
+      pullRequest: gatedPullRequest(task),
       comments: state.comments.get(task.id)?.length ?? 0,
       dependencies: task.dependencies.map((edge) => {
         const other = state.tasks.find((candidate) => candidate.id === edge.id);

@@ -145,7 +145,7 @@ cite.
 | Decision | A task that asks a person to choose between options. |
 | Approval | A task of type `gate` that holds the tasks waiting on it until a person approves the action it names ([3.7](#37-approval)). |
 | Request to do steps | A task of type `gate` with `steps` that holds the tasks waiting on it until a person ticks every step: steps only that person can do ([3.7](#37-approval)). |
-| Proposal | The text a person answers: a task's id, title, description, acceptance, type and choices, and a request's steps without their marks. Its **proposal version** is a hash of it. |
+| Proposal | The text a person answers: a task's id, title, description, acceptance, type and choices, a request's steps without their marks, and the pull request an approval gates. Its **proposal version** is a hash of it. |
 | Answer | A person's recorded decision on a human request: **direct** when the person made it in the server's own interface, **relayed** when another sender records what the person said elsewhere. |
 | Dispute | A person withdrawing an approval, or an acceptance as done, that was relayed for them. |
 | Idempotency key | A name a caller gives one change, so that sending it again does not repeat it. |
@@ -389,7 +389,8 @@ a person to choose SHOULD carry the `human` label, which makes it a human
 request that waits on a person ([OQ-12](open-questions.md#oq-12)).
 
 The **proposal** is what a person answers: the task's id, title,
-description, acceptance, type and choices. Its **proposal version** is the
+description, acceptance, type and choices, a request's steps, and the pull
+request an approval gates ([STATE-25](#state-25)). Its **proposal version** is the
 first 32 hexadecimal characters (128 bits) of the SHA-256 of the proposal,
 so it changes whenever the proposal does, and nobody can write two
 proposals with one version. A server returns it with every read of a task
@@ -421,7 +422,9 @@ each line a labelled measure such as downtime, cost, risk or how to undo it;
 how the result will be confirmed; and what happens if the person declines.
 The task that asked for it waits on it through a `blocks`
 link, so it is not ready while the approval is open. An approval is never
-ready work itself, since only a person answers it.
+ready work itself, since only a person answers it. An approval MAY name the
+pull request it gates as `pullRequest`, such as one the agent may merge only
+once approved ([STATE-25](#state-25)).
 
 The permission an approval grants is recorded with its answer
 ([OQ-9](open-questions.md#oq-9)): `approved-scope-only` while it stands,
@@ -719,6 +722,30 @@ After an approval closes, the only further answer it takes is the person's
 report that they did the action themselves, and only while the approval it
 follows still stands and still covers the request as written.
 
+**STATE-25.** <a id="state-25"></a>An approval that names the pull
+request it gates counts the pull request as part of its proposal, so an
+answer covers only the pull request the person was shown. A server that
+acts on the pull request's host, as Ntasks does through a workspace's
+GitHub App:
+
+- SHOULD, when a person approves it directly, turn on the pull request's
+  auto-merge, or merge it at once when the host can merge it already. A
+  relayed approval, a decline, the person's report that they did the action
+  and a dispute MUST NOT turn it on: a relayed approval can be disputed, and
+  the agent that relayed it acts within its scope;
+- SHOULD post each answer, and each dispute of a relayed approval, on the
+  pull request as one comment that names the answer, the person whose answer
+  it is, the agent that relayed it if one did, and the approval, so an agent
+  that watches the pull request learns the answer from it;
+- MUST record on the approval what the host did, or why it did not,
+  including a refusal for lack of permission. The answer stands whatever the
+  host does;
+- MUST change nothing on the host for an approval that names no pull
+  request;
+- MUST refuse a change to the pull request an approval gates once it is
+  asked for, as it refuses a change to a request's steps, so no answer comes
+  to cover another pull request.
+
 **STATE-14.** <a id="state-14"></a>A request to do steps:
 
 - opens when a task asks for one. Asking again with the same title and
@@ -1011,10 +1038,10 @@ the ones above it in this table.
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that
-offers custom fields, and STATE-24 to one that offers moving tasks. The
-levels are independent above Core: a server MAY claim Core and Delivery
-without Human decisions and approvals. How a server states the levels it
-claims is
+offers custom fields, STATE-24 to one that offers moving tasks, and
+STATE-25 to one that acts on a repository's host. The levels are
+independent above Core: a server MAY claim Core and Delivery without Human
+decisions and approvals. How a server states the levels it claims is
 [OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
 [conformance suite](conformance/README.md) checks that claim;
 [the spec's README](README.md#implementations) lists each server and the

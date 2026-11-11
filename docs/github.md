@@ -4,7 +4,9 @@ Connect GitHub once, and each task your agents close with a pull request or
 a commit moves on by itself: to **Merged** when the pull request merges or
 the commit is pushed to the default branch, and to **Live** when its deploy
 passes. No agent reports either step, so a task
-moves on even after the agent that did the work has stopped.
+moves on even after the agent that did the work has stopped. An approval
+that names a pull request turns on its auto-merge when you approve it
+([below](#approve-a-pull-request-in-ntasks)).
 
 A workspace's owner connects it on the web app's **Settings** page. It takes
 one button and an install on each GitHub account or organization whose
@@ -100,15 +102,8 @@ message, `Refs: web-a1b2`, and the push moves it all the same. Only a
 `Refs:` line counts; a task id anywhere else in the message moves nothing.
 GitHub lists up to 2,048 commits of one push, and Ntasks reads every one.
 
-An app connected before Ntasks read pushes asks GitHub for neither. To add
-them, open the app's page on GitHub (**Settings**, **Developer settings**,
-**GitHub Apps**, the app, **Edit**), and under **Permissions and events**:
-
-1. Set **Repository permissions**, **Contents**, to **Read-only**.
-2. Tick **Push** under **Subscribe to events**, and press **Save changes**.
-3. Accept the new permission on each installation: GitHub lists the request
-   under **Settings**, **Applications**, **Installed GitHub Apps**, the app,
-   **Review request**.
+An app connected before Ntasks read pushes receives none until you
+[update it](#update-an-app-connected-earlier).
 
 ## When a task stays at a stage
 
@@ -146,6 +141,45 @@ In each case, a signal that names the pull request or commit moves the task:
 ([Delivery](api.md#delivery)). A `live` signal moves a task to Live only in
 a project with **Changes go live by a deploy** turned on, in Settings,
 Projects; in any other project it stops at Merged.
+
+## Approve a pull request in Ntasks
+
+An agent that may merge a pull request only once you approve it, such as
+one that changes the database, names the pull request when it asks for
+your approval. The approval shows it, and **Approve** then turns on the
+pull request's auto-merge through the app, so GitHub merges it once its
+checks pass; one GitHub can merge already merges at once. The agent leaves
+auto-merge off and waits.
+
+Every answer is also posted on the pull request as one comment: Approve,
+**Did it myself**, and an answer an agent relays for you, such as a
+decline. The comment names the answer, who gave it and the approval, so the
+agent that asked learns it from the pull request. Only your own Approve
+turns on auto-merge. What GitHub did, or why it refused, shows as a comment
+on the approval in Ntasks. The [API](api.md#an-approval-that-gates-a-pull-request)
+gives the full rules.
+
+The app needs **Read and write** access to **Contents** and **Pull
+requests** for this. An app connected before Ntasks asked for them reads
+only; until you [update it](#update-an-app-connected-earlier), the comment
+on each approval names the missing permission and the two links that grant
+it.
+
+## Update an app connected earlier
+
+An app made with Connect GitHub asks for everything above. One connected
+earlier lacks some of it; give it all in one visit:
+
+1. On GitHub, open your apps at <https://github.com/settings/apps>, press
+   **Edit** beside the workspace's app, and open **Permissions & events**.
+2. Under **Repository permissions**, set **Contents** and **Pull requests**
+   to **Read and write**.
+3. Under **Subscribe to events**, tick **Push**, and press **Save changes**.
+4. On each account or organization the app is installed on, open the
+   installation (**Settings**, **Applications**, **Installed GitHub Apps**;
+   for an organization,
+   `https://github.com/organizations/<name>/settings/installations`), press
+   **Review request**, then **Accept new permissions**.
 
 ## Check that it works
 
