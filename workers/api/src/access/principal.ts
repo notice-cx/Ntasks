@@ -119,10 +119,12 @@ const PREFIXED = /^(?:agent|service|person|visitor):/u;
 /**
  * Whether a person with this name is recorded as `person:<name>`: when the
  * name starts like one of the prefixes actorOf adds, or when the display rule
- * would show the bare name as an agent or a service, as it does `Claude`.
+ * would show the bare name, or the name cut to an actor's length, as an
+ * agent or a service, as it does `Claude`.
  */
 function needsPersonPrefix(name: string): boolean {
-  return PREFIXED.test(name) || actorIdentity(name).kind !== 'person';
+  const reads = (actor: string) => actorIdentity(actor).kind !== 'person';
+  return PREFIXED.test(name) || reads(name) || reads(name.slice(0, TASK_LIMITS.actor));
 }
 
 /**
@@ -174,11 +176,13 @@ export function uniquePersonName(
   held: (actor: string) => boolean,
 ): string {
   const shown = displayName(name, 'owner');
-  const room = (suffix: string) =>
-    TASK_LIMITS.actor - suffix.length - (needsPersonPrefix(`${shown}${suffix}`) ? 'person:'.length : 0);
-  const named = [` (${account.login})`, ` (GitHub ${account.id})`].map(
-    (suffix) => `${shown.slice(0, room(suffix)).trimEnd()}${suffix}`,
-  );
+  const cut = (suffix: string, room: number) => `${shown.slice(0, room - suffix.length).trimEnd()}${suffix}`;
+  // Whether the name takes the prefix depends on where it is cut, so the cut name decides.
+  const fitted = (suffix: string) => {
+    const whole = cut(suffix, TASK_LIMITS.actor);
+    return needsPersonPrefix(whole) ? cut(suffix, TASK_LIMITS.actor - 'person:'.length) : whole;
+  };
+  const named = [` (${account.login})`, ` (GitHub ${account.id})`].map(fitted);
   return [name, ...named].find((candidate) => !held(personActor(displayName(candidate, 'owner')))) ?? named.at(-1)!;
 }
 
