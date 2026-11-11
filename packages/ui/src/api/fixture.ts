@@ -929,6 +929,15 @@ export function createFixtureTasksApi({
         close(task, reason ? `Approved: ${reason}` : 'Approved');
       });
     },
+    async reportPerformed(id, key, note, options) {
+      reach();
+      once(options?.idempotencyKey, ['performed', id, key, note ?? null], () => {
+        const task = find(id, key);
+        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
+          throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        close(task, note ? `Did it myself: ${note}` : 'Did it myself');
+      });
+    },
     async markStep(id, key, marking, options) {
       reach();
       once(options?.idempotencyKey, ['step', id, key, marking], () => {

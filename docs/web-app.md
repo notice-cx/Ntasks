@@ -13,7 +13,7 @@ close or title, either way, and the address keeps the order.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.webp">
-  <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
+  <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Did it myself, Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
 </picture>
 
 **Epics.** With one project in view, the Epics tab lists the project's open
@@ -130,6 +130,11 @@ shown as having relayed it, and you can dispute it.
 An approval covers the action, environment and scope you read, and nothing
 beyond it. An answer an agent relays from a chat shows your words, and you
 can dispute it.
+
+**Did it myself**, beside Approve, is for an action you already did. It
+takes a note, and closes the approval as done by you, not approved: no agent
+does the action, and each task that waited on it goes back to its agent to
+check the result.
 
 ### Tick off your steps
 

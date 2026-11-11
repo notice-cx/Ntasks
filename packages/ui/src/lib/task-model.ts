@@ -47,6 +47,9 @@ export const RESOLUTION_LABELS: Readonly<Record<TaskResolution, string>> = Objec
 /** The close as done on a person's own call, as the Close menu names it. */
 export const ACCEPT_LABEL = 'Done, my call';
 
+/** A person's answer to an approval whose action they did themselves, as its button names it. */
+export const PERFORMED_LABEL = 'Did it myself';
+
 /** A number of criteria waived, as the pages word it: 1 criterion, 2 criteria. */
 export function waivedCount(count: number): string {
   return count === 1 ? '1 criterion' : `${count} criteria`;
