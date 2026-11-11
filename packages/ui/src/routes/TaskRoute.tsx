@@ -42,6 +42,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from '../components/ui/menu'
 import { BarSpacer, TopBar } from '../components/ui/shell';
 import { StatusMark } from '../components/ui/symbols';
 import { useNow } from '../hooks/useNow';
+import { useShortcut } from '../hooks/useShortcut';
 import {
   fieldAvailable,
   operationAvailable,
@@ -611,24 +612,28 @@ function actorOf(actor: string, model: string | null, actors: readonly TaskActor
 
 function ClaimAction({ id, project, disabledReason }: { id: string; project: string; disabledReason: string | null }) {
   const claim = useClaimTask();
+  const enabled = disabledReason === null && !claim.isPending;
+  const take = () =>
+    claim.mutate(
+      { id, project },
+      {
+        onSuccess: () => toast.success(`Claimed ${id}`),
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  useShortcut('m', take, enabled);
   return (
     <Button
       variant="primary"
-      disabled={disabledReason !== null || claim.isPending}
+      disabled={!enabled}
       title={disabledReason ?? undefined}
+      aria-keyshortcuts="M"
       data-task-action="claim"
-      onClick={() =>
-        claim.mutate(
-          { id, project },
-          {
-            onSuccess: () => toast.success(`Claimed ${id}`),
-            onError: (error) => toast.error(error.message),
-          },
-        )
-      }
+      onClick={take}
     >
       <Hand aria-hidden />
       {claim.isPending ? 'Claiming…' : 'Claim'}
+      <Kbd className="max-sm:hidden">M</Kbd>
     </Button>
   );
 }

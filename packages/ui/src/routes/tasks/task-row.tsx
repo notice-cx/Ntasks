@@ -17,11 +17,13 @@ import {
   ListChecks,
   MessageSquare,
   Moon,
+  UserPlus,
 } from 'lucide-react';
-import { memo, useState, type FormEvent, type ReactNode } from 'react';
+import { memo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CloseDoneForm } from '../../components/CloseResolution';
+import { factMenuFooter, factMenuItems } from '../../components/Fact';
 import { Avatar } from '../../components/ui/avatar';
 import { Badge, Progress } from '../../components/ui/badge';
 import { Button, IconButton } from '../../components/ui/button';
@@ -44,6 +46,7 @@ import { ageMs, formatAge, formatMinutes } from '../../lib/format';
 import { activityOf } from '../../lib/live';
 import {
   isAgentActor,
+  isShortcut,
   statusMarkFor,
   TYPE_MARK_LABELS,
   typeMarkFor,
@@ -65,6 +68,7 @@ import {
 import { usePaths } from '../../lib/paths';
 import { useAskActions } from './ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './close-actions';
+import { assigneeChange, assigneeEditor, priorityChange, priorityEditor, useFieldSave } from './task-facts';
 
 const UNAVAILABLE = 'This sign-in cannot answer it.';
 
@@ -78,6 +82,8 @@ export interface RowContext {
   epicProgress: ReadonlyMap<string, { closed: number; total: number }>;
   /** Its project's read answered and this sign-in may write, so its actions can run. */
   actionable: boolean;
+  /** Who holds work on the board, offered first when a task is assigned. */
+  people: readonly string[];
   /** How long ago the task changed, as `40m`, or in the waiting groups how long ago it was created. */
   age: string;
   /** What `age` counts from, in words, where it is not the last change: `Created 3d ago`. */
@@ -223,6 +229,8 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
   const close = useCloseTask();
   const update = useUpdateTask();
   const [form, setForm] = useState<null | 'park' | 'close'>(null);
+  const [menu, setMenu] = useState<MenuList | null>(null);
+  const save = useFieldSave(task.id, task.project);
   const closeAs = useCloseAs({
     id: task.id,
     title: task.title,
@@ -239,7 +247,26 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
     park: context.actionable && !done && fieldAvailable(capabilities, 'defer'),
     closeDone: context.actionable && !done && !declinedOnClose(task) && operationAvailable(capabilities, 'close'),
     closeAs: context.actionable && !done && operationAvailable(capabilities, closeOperation(task)),
+    assign: context.actionable && !done && fieldAvailable(capabilities, 'assignee'),
+    priority: context.actionable && !done && fieldAvailable(capabilities, 'priority'),
   };
+  const park = () => {
+    closeAs.cancel();
+    setForm('park');
+  };
+  // The action keys act on the row that holds focus; a key typed in its menu or a field is theirs.
+  const keys: readonly (readonly [string, boolean, () => void])[] = [
+    ['m', can.claim, () => void claimIt()],
+    ['a', can.assign, () => setMenu('assign')],
+    ['p', can.priority, () => setMenu('priority')],
+    ['z', can.park, park],
+  ];
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const hit = keys.find(([key, allowed]) => allowed && isShortcut(event, key));
+    if (!hit) return;
+    event.preventDefault();
+    hit[2]();
+  }
 
   async function claimIt() {
     try {
@@ -253,7 +280,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
 
   return (
     <>
-      <Row data-task-row={task.id}>
+      <Row data-task-row={task.id} onKeyDown={onKeyDown}>
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
         <StatusMark status={mark} muted={done && (task.resolution ?? 'done') !== 'done'} />
@@ -273,13 +300,15 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
           ) : null}
           <TaskMenu
             task={task}
+            list={menu}
+            onList={setMenu}
             can={can}
+            people={context.people}
             onOpen={() => void navigate(paths.task(task.id))}
             onClaim={() => void claimIt()}
-            onPark={() => {
-              closeAs.cancel();
-              setForm('park');
-            }}
+            onAssign={(next) => void save(assigneeChange(task, next))}
+            onPriority={(next) => void save(priorityChange(task, next))}
+            onPark={park}
             onCloseDone={() => {
               closeAs.cancel();
               setForm('close');
@@ -349,6 +378,7 @@ export const WaitingRow = memo(function WaitingRow({
   });
   const closable = writable && !isGate(task) && operationAvailable(capabilities, 'dismiss');
   const choosing = askVerb(task) === 'choose' && (task.choices ?? null) !== null;
+  const [menu, setMenu] = useState<MenuList | null>(null);
   return (
     <>
       <Row answer={choosing ? 'wide' : true} data-inbox-row={task.id} data-task-row={task.id}>
@@ -365,7 +395,10 @@ export const WaitingRow = memo(function WaitingRow({
         <RowActions className="ms-0">
           <TaskMenu
             task={task}
-            can={{ claim: false, park: false, closeDone: false, closeAs: closable }}
+            list={menu}
+            onList={setMenu}
+            can={{ claim: false, park: false, closeDone: false, closeAs: closable, assign: false, priority: false }}
+            people={context.people}
             onOpen={() => void navigate(paths.task(task.id))}
             onCloseAs={closeAs.pick}
           />
@@ -380,79 +413,153 @@ export const WaitingRow = memo(function WaitingRow({
   );
 }, sameRow);
 
+/** The lists a row's menu shows: its actions, the ways a close ends, who to give the task to, its priorities. */
+type MenuList = 'main' | 'close' | 'assign' | 'priority';
+
 /**
- * A row's menu: Open, Claim, Park, then Close as, which lists the ways a
- * close can end, and Copy id. An item this sign-in cannot run is left out.
+ * A row's menu: Open, Claim, Assign to, Priority, Park, then Close as, which
+ * lists the ways a close can end, and Copy id. Assign to, Priority and Close
+ * as show their list in the menu's place. An item this sign-in cannot run is
+ * left out. `list` is the list shown, null while the menu is closed.
  */
 function TaskMenu({
   task,
+  list,
+  onList,
   can,
+  people,
   onOpen,
   onClaim,
+  onAssign,
+  onPriority,
   onPark,
   onCloseDone,
   onCloseAs,
 }: {
   task: BoardTask;
-  can: { claim: boolean; park: boolean; closeDone: boolean; closeAs: boolean };
+  list: MenuList | null;
+  onList: (list: MenuList | null) => void;
+  can: { claim: boolean; park: boolean; closeDone: boolean; closeAs: boolean; assign: boolean; priority: boolean };
+  people: readonly string[];
   onOpen: () => void;
   onClaim?: () => void;
+  onAssign?: (assignee: string) => void;
+  onPriority?: (priority: string) => void;
   onPark?: () => void;
   onCloseDone?: () => void;
   onCloseAs: (resolution: NotDone) => void;
 }) {
-  const [closing, setClosing] = useState(false);
   const closable = can.closeDone || can.closeAs;
+  const back = (
+    <MenuItem key="back" icon={<ChevronLeft aria-hidden />} keepOpen onSelect={() => onList('main')}>
+      Back
+    </MenuItem>
+  );
+  const close = () => onList(null);
+  const editor =
+    list === 'assign' ? assigneeEditor(task, people, task.actors) : list === 'priority' ? priorityEditor(task) : null;
+  const pick = list === 'assign' ? onAssign : onPriority;
+  const choose = (next: string) => {
+    close();
+    pick?.(next);
+  };
+  const label =
+    list === 'close'
+      ? `Close ${task.id} as`
+      : list === 'assign'
+        ? `Assign ${task.id} to`
+        : list === 'priority'
+          ? `Priority of ${task.id}`
+          : `Actions for ${task.id}`;
   return (
-    <Menu onOpenChange={(open) => (open ? undefined : setClosing(false))}>
+    <Menu open={list !== null} onOpenChange={(open) => onList(open ? 'main' : null)}>
       <MenuTrigger asChild>
         <IconButton size="sm" label={`Actions for ${task.id}`} icon={<Ellipsis aria-hidden />} />
       </MenuTrigger>
-      {closing ? (
-        <MenuContent key="close" label={`Close ${task.id} as`} align="end">
-          <MenuItem icon={<ChevronLeft aria-hidden />} keepOpen onSelect={() => setClosing(false)}>
-            Back
-          </MenuItem>
-          <MenuSeparator />
-          {can.closeDone ? (
-            <MenuItem icon={<Check aria-hidden />} onSelect={onCloseDone}>
-              Done
-            </MenuItem>
-          ) : null}
-          {can.closeAs
-            ? NOT_DONE.map((resolution) => (
-                <MenuItem key={resolution} onSelect={() => onCloseAs(resolution)}>
-                  {RESOLUTION_LABELS[resolution]}
-                </MenuItem>
-              ))
-            : null}
-        </MenuContent>
-      ) : (
-        <MenuContent key="main" label={`Actions for ${task.id}`} align="end">
-          <MenuItem icon={<ArrowUpRight aria-hidden />} shortcut="↵" onSelect={onOpen}>
-            Open
-          </MenuItem>
-          {can.claim && onClaim ? (
-            <MenuItem icon={<Hand aria-hidden />} shortcut="M" onSelect={onClaim}>
-              Claim
-            </MenuItem>
-          ) : null}
-          {can.park && onPark ? (
-            <MenuItem icon={<Moon aria-hidden />} shortcut="Z" onSelect={onPark}>
-              Park
-            </MenuItem>
-          ) : null}
-          <MenuSeparator />
-          {closable ? (
-            <MenuItem icon={<Check aria-hidden />} submenu onSelect={() => setClosing(true)}>
-              Close as
-            </MenuItem>
-          ) : null}
-          <MenuItem icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
-            Copy id
-          </MenuItem>
-        </MenuContent>
-      )}
+      <MenuContent
+        label={label}
+        align="end"
+        panelKey={list ?? 'main'}
+        footer={editor ? factMenuFooter(label, editor, choose) : null}
+      >
+        {list === 'close'
+          ? [
+              back,
+              <MenuSeparator key="separator" />,
+              ...(can.closeDone
+                ? [
+                    <MenuItem key="done" icon={<Check aria-hidden />} onSelect={onCloseDone}>
+                      Done
+                    </MenuItem>,
+                  ]
+                : []),
+              ...(can.closeAs
+                ? NOT_DONE.map((resolution) => (
+                    <MenuItem key={resolution} onSelect={() => onCloseAs(resolution)}>
+                      {RESOLUTION_LABELS[resolution]}
+                    </MenuItem>
+                  ))
+                : []),
+            ]
+          : editor
+            ? [back, <MenuSeparator key="separator" />, ...factMenuItems(editor, choose)]
+            : [
+                <MenuItem key="open" icon={<ArrowUpRight aria-hidden />} shortcut="↵" onSelect={onOpen}>
+                  Open
+                </MenuItem>,
+                ...(can.claim && onClaim
+                  ? [
+                      <MenuItem key="claim" icon={<Hand aria-hidden />} shortcut="M" onSelect={onClaim}>
+                        Claim
+                      </MenuItem>,
+                    ]
+                  : []),
+                ...(can.assign && onAssign
+                  ? [
+                      <MenuItem
+                        key="assign"
+                        icon={<UserPlus aria-hidden />}
+                        shortcut="A"
+                        keepOpen
+                        onSelect={() => onList('assign')}
+                      >
+                        Assign to
+                      </MenuItem>,
+                    ]
+                  : []),
+                ...(can.priority && onPriority
+                  ? [
+                      <MenuItem
+                        key="priority"
+                        icon={<PriorityMark priority={task.priority} label={null} />}
+                        shortcut="P"
+                        keepOpen
+                        onSelect={() => onList('priority')}
+                      >
+                        Priority
+                      </MenuItem>,
+                    ]
+                  : []),
+                ...(can.park && onPark
+                  ? [
+                      <MenuItem key="park" icon={<Moon aria-hidden />} shortcut="Z" onSelect={onPark}>
+                        Park
+                      </MenuItem>,
+                    ]
+                  : []),
+                <MenuSeparator key="separator" />,
+                ...(closable
+                  ? [
+                      <MenuItem key="close" icon={<Check aria-hidden />} submenu onSelect={() => onList('close')}>
+                        Close as
+                      </MenuItem>,
+                    ]
+                  : []),
+                <MenuItem key="copy" icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
+                  Copy id
+                </MenuItem>,
+              ]}
+      </MenuContent>
     </Menu>
   );
 }

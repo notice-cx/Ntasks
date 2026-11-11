@@ -450,12 +450,19 @@ function Groups({
   }, [board.inbox, board.rows, board.statuses, board.held, projects, hides, sort]);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
+  // The holders of every task read for the projects in view, not only of the rows the filters keep, and of rows only the search found.
+  // Kept as one list per read: a row compares its context field by field, so a new list would draw every row again.
+  const people = useMemo(
+    () => [...board.allTasks, ...board.rows].flatMap((task) => (task.assignee ? [task.assignee] : [])),
+    [board.allTasks, board.rows],
+  );
   const contextOf = (task: BoardTask): RowContext => ({
     capabilities,
     statuses: board.statuses,
     held: board.held,
     epicProgress: projects.get(task.project)?.epicProgress ?? NO_PROGRESS,
     actionable: projects.get(task.project)?.ok === true && writable,
+    people,
     age: formatAge(ageMs(now, task.updatedAt)),
     nowMs: now,
   });

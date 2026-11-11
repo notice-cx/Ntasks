@@ -180,6 +180,74 @@ describe('the board', () => {
     expect(task?.status).toBe('in_progress');
   });
 
+  describe('the action keys on the row that holds focus', () => {
+    /** Puts focus on a row's title, as Tab does, and presses `key` there. */
+    async function press(key: string, id = 'web-t5w3'): Promise<HTMLElement> {
+      await group('Open');
+      const row = document.querySelector(`[data-task-row="${id}"]`) as HTMLElement;
+      // The keys wait for the sign-in's permissions, as the row's buttons do.
+      await enabledButton('Claim', row);
+      const title = within(row).getByRole('link');
+      title.focus();
+      fireEvent.keyDown(title, { key });
+      return row;
+    }
+    const task = (api: ReturnType<typeof createFixtureTasksApi>, id = 'web-t5w3') =>
+      api.state.tasks.find((entry) => entry.id === id);
+
+    it('M claims the task', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('m');
+      await waitFor(() => expect(task(api)?.assignee).toBe(FIXTURE_ACTOR));
+    });
+
+    it('A gives the task to someone picked from the people on the board', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('a');
+      const menu = await screen.findByRole('menu', { name: 'Assign web-t5w3 to' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Codex' }));
+      await waitFor(() => expect(task(api)?.assignee).toBe('agent:codex'));
+    });
+
+    it('A offers the people holding work the filters hide', async () => {
+      renderApp('/tasks?status=open');
+      // Codex holds web-k3m9.2, which is in progress.
+      await press('a', 'web-b2r6');
+      const menu = await screen.findByRole('menu', { name: 'Assign web-b2r6 to' });
+      expect(within(menu).getByRole('menuitemradio', { name: 'Codex' })).toBeTruthy();
+    });
+
+    it('P sets its priority', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('p');
+      const menu = await screen.findByRole('menu', { name: 'Priority of web-t5w3' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Top' }));
+      await waitFor(() => expect(task(api)?.priority).toBe(0));
+    });
+
+    it('Z opens the form that parks it', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('z');
+      fireEvent.change(await screen.findByLabelText(/Park until/), { target: { value: '2030-01-15' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Park' }));
+      await waitFor(() => expect(task(api)?.deferUntil).toContain('2030-01-15'));
+    });
+
+    it('leaves a key typed into the row menu to the menu', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('p');
+      // The menu renders outside the row, but React passes its keys up to the row.
+      const menu = await screen.findByRole('menu', { name: 'Priority of web-t5w3' });
+      fireEvent.keyDown(within(menu).getByRole('menuitem', { name: 'Back' }), { key: 'm' });
+      expect(task(api)?.assignee).toBeNull();
+    });
+  });
+
   it('parks a task from its menu, until the date given', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);

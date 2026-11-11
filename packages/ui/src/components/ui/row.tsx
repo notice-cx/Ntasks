@@ -88,7 +88,8 @@ export function RowActions({ className, ...props }: ComponentProps<'span'>) {
   return (
     <span
       className={cn(
-        'ms-2 hidden items-center gap-1 group-hover/row:inline-flex group-focus-within/row:inline-flex max-sm:hidden!',
+        // A menu opened from here keeps its actions shown, so the menu stays anchored once focus moves into it.
+        'ms-2 hidden items-center gap-1 group-hover/row:inline-flex group-focus-within/row:inline-flex has-[[aria-expanded=true]]:inline-flex max-sm:hidden!',
         className,
       )}
       {...props}

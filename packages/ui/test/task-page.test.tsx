@@ -106,6 +106,49 @@ describe('a task page', () => {
     expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
   });
 
+  describe("the action keys act on the page's task", () => {
+    async function open(api: ReturnType<typeof createFixtureTasksApi>) {
+      renderApp('/tasks/web-b2r6', api);
+      // The keys wait for the sign-in's permissions, as the page's buttons do.
+      await enabledButton('Claim');
+    }
+    const press = (key: string) => fireEvent.keyDown(document.body, { key });
+
+    it('M claims it', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('m');
+      await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe(FIXTURE_ACTOR));
+    });
+
+    it('A opens Assignee', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('a');
+      const menu = await screen.findByRole('menu', { name: 'Assignee' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Codex' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe('agent:codex'));
+    });
+
+    it('P opens Priority', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('p');
+      const menu = await screen.findByRole('menu', { name: 'Priority' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Low' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.priority).toBe(3));
+    });
+
+    it('Z opens Parked until', async () => {
+      const api = createFixtureTasksApi();
+      await open(api);
+      press('z');
+      const menu = await screen.findByRole('menu', { name: 'Parked until' });
+      fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Tomorrow' }));
+      await waitFor(() => expect(task(api, 'web-b2r6')?.deferUntil).not.toBeNull());
+    });
+  });
+
   it('names who filed the task with their avatar, and an import that recorded nobody as Filed alone', async () => {
     const api = createFixtureTasksApi();
     const imported = task(api, 'web-q8n5');
@@ -448,6 +491,70 @@ describe('a task page', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Web', checked: true }));
     (release as unknown as () => void)();
     await waitFor(() => expect(values().platforms).toEqual(['iOS', 'Android']));
+  });
+
+  it("undoes a field's save to what the task held, after a refused save and after another field", async () => {
+    const api = createFixtureTasksApi();
+    const update = api.updateTask.bind(api);
+    let refuse = true;
+    api.updateTask = async (...args) => {
+      if (refuse) {
+        refuse = false;
+        throw new ApiError('The server answered 503.', 503, null);
+      }
+      return update(...args);
+    };
+    renderApp('/tasks/web-k3m9.2', api);
+    const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
+    const undo = async (said: string) => {
+      const saved = (await screen.findByText(said)).closest('li') as HTMLElement;
+      fireEvent.click(within(saved).getByRole('button', { name: 'Undo' }));
+    };
+    // The first press is refused; the second, built on it, saves, and its Undo returns to the value the task held.
+    fireEvent.click(await enabledButton('Platforms: Web, iOS'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Android' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Web', checked: true }));
+    await waitFor(() => expect(values().platforms).toEqual(['iOS', 'Android']));
+    await undo('Saved Platforms');
+    await waitFor(() => expect(values().platforms).toEqual(['Web', 'iOS']));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+
+    // Two fields set one after the other from Add field: the second's Undo takes off only its own value.
+    await addField('Team');
+    fireEvent.change(typedField('Team'), { target: { value: 'Growth' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save team' }));
+    await waitFor(() => expect(values().team).toBe('Growth'));
+    await addField('Spec');
+    fireEvent.change(typedField('Spec'), { target: { value: 'https://example.com/spec' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save spec' }));
+    await waitFor(() => expect(values().spec).toBe('https://example.com/spec'));
+    await undo('Saved Spec');
+    await waitFor(() => expect(values().spec).toBeUndefined());
+    expect(values().team).toBe('Growth');
+  });
+
+  it('undoes a field set twice before the page reads it back to its first value, with another field set between', async () => {
+    const api = createFixtureTasksApi();
+    // The page keeps the task as first read, so Add field still offers Team after its first save.
+    const first = await api.task('web-k3m9.2', 'web');
+    api.task = async () => structuredClone(first);
+    renderApp('/tasks/web-k3m9.2', api);
+    const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
+    const save = async (field: string, value: string) => {
+      await addField(field);
+      fireEvent.change(typedField(field), { target: { value } });
+      fireEvent.click(screen.getByRole('button', { name: `Save ${field.toLowerCase()}` }));
+    };
+    await save('Team', 'Growth');
+    await waitFor(() => expect(values().team).toBe('Growth'));
+    await save('Spec', 'https://example.com/spec');
+    await waitFor(() => expect(values().spec).toBe('https://example.com/spec'));
+    await save('Team', 'Platform');
+    await waitFor(() => expect(values().team).toBe('Platform'));
+    // Toasts list the newest first.
+    const saved = screen.getAllByText('Saved Team')[0]?.closest('li') as HTMLElement;
+    fireEvent.click(within(saved).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(values().team).toBe('Growth'));
   });
 
   it('edits a number, a text, a date and a URL field through the API, refusing a value of the wrong type', async () => {
