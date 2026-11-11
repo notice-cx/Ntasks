@@ -802,6 +802,14 @@ export interface MergeCloses {
   readonly kept: readonly { readonly id: string; readonly why: string }[];
 }
 
+/** Why no merge ever closes this task, whatever its pull request, or null when one may. */
+export function neverClosedByMerge(task: Pick<Task, 'type' | 'labels'>): string | null {
+  if (task.type === 'epic') return 'an epic closes once its tasks do, never by a merge';
+  if (isDecision(task)) return "it is a person's request, which only their answer closes";
+  if (task.labels.includes(KEEP_OPEN)) return `it is labelled ${KEEP_OPEN}, so its holder closes it`;
+  return null;
+}
+
 /** Why a merge of `pullRequest` leaves this task as it is, or null when it closes it. */
 async function keptByMerge(
   context: WriteContext,
@@ -812,9 +820,8 @@ async function keptByMerge(
   const named = task.work.pr === undefined ? null : pullRequestUrl(task.work.pr);
   if (task.status !== 'in_progress' || named !== pullRequest)
     return 'it is no longer in progress with its work naming this pull request';
-  if (task.type === 'epic') return 'an epic closes once its tasks do, never by a merge';
-  if (isDecision(task)) return "it is a person's request, which only their answer closes";
-  if (task.labels.includes(KEEP_OPEN)) return `it is labelled ${KEEP_OPEN}, so its holder closes it`;
+  const never = neverClosedByMerge(task);
+  if (never !== null) return never;
   const gates = await openGates(context, project, task);
   if (gates.length > 0) return `it waits on ${listed(gates.map((gate) => gate.id))}, still open`;
   const children = await context.engine.listBoard(project.id, { statuses: OPEN_STATUSES, parentId: task.id });

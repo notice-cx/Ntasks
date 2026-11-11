@@ -633,6 +633,21 @@ describe('work waiting for a merge GitHub already made', () => {
     // Newest first: the last task filed is the first asked about.
     expect(github.pullReads).toContain(`${REPOSITORY}#349`);
   });
+
+  it('never asks about work in progress that no merge closes, which would take the check from older work', async () => {
+    await connected();
+    const projectId = await createProject('Site');
+    const [older = ''] = await heldNaming(projectId, [398]);
+    const numbers = Array.from({ length: 45 }, (_, index) => 400 + index);
+    await heldNaming(projectId, numbers, ['keep-open']);
+    for (const number of [398, ...numbers])
+      github.pulls.set(`${REPOSITORY}#${number}`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+
+    await deliver('installation', installation(newInstallation(), 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, older)).status).toBe('closed');
+    expect(github.pullReads.filter((read) => numbers.some((number) => read === `${REPOSITORY}#${number}`))).toEqual([]);
+  });
 });
 
 describe('merged work a deploy shipped that no delivery named', () => {

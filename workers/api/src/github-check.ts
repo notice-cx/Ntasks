@@ -38,7 +38,7 @@ import {
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { SCOPES, type Principal } from './auth.ts';
 import { pullRequestUrl, reportDelivery } from './delivery.ts';
-import { closeMerged, type WriteContext } from './task-writes.ts';
+import { closeMerged, neverClosedByMerge, type WriteContext } from './task-writes.ts';
 
 /**
  * The most requests one check makes to GitHub: installation tokens, the
@@ -182,7 +182,11 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
   // sent before the app was installed, never closed.
   const waiting = [
     ...(await engine.listBoard(null, { statuses: [], stages: ['built'], withoutExternalLinks: true })),
-    ...(await engine.listBoard(null, { statuses: ['in_progress'], withoutExternalLinks: true })),
+    // Work no merge closes, such as a task labelled keep-open, is left out: asked about on every check, enough of
+    // it would take the whole budget from the work after it.
+    ...(await engine.listBoard(null, { statuses: ['in_progress'], withoutExternalLinks: true })).filter(
+      (task) => neverClosedByMerge(task) === null,
+    ),
   ];
   // Newest first: a pull request still open keeps waiting, and must not keep a task closed after it from being asked about.
   const newest = waiting.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
