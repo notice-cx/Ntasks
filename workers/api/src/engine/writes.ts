@@ -969,6 +969,8 @@ export class Writes {
     }
     const statements: Statement[] = [...guards.values()];
     const epics: string[] = [];
+    // An epic this batch closes, such as a child epic closing with its parent, is no open task to link to.
+    const unlinked = new Set([...written, ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : []))]);
     for (const [epicId, placed] of decided) {
       const epic = read.get(epicId)!;
       // An epic closed and opened again in one write is left as it was.
@@ -980,7 +982,7 @@ export class Writes {
         // An epic this write also changes is left without them: its links may change in the same batch.
         const named =
           placed.resolution !== null && DROPPED.includes(placed.resolution) && !written.has(epicId)
-            ? await this.#namedLinksOf(epicId, actor, at, renamed, written)
+            ? await this.#namedLinksOf(epicId, actor, at, renamed, unlinked)
             : { statements: [], links: null };
         statements.push(
           this.#db

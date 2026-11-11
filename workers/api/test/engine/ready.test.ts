@@ -728,6 +728,28 @@ describe('dropped links', () => {
     expect((await tasks.getTask(other.id, moved!.id))?.reliesOnDropped).toEqual([]);
   });
 
+  it('leaves out a child epic that closes with the parent epic it names', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const parent = await make(tasks, project.id, 'Retire the old app', { title: '', type: 'epic' });
+    const child = await make(tasks, project.id, 'Retire its pages', {
+      title: '',
+      type: 'epic',
+      parentId: parent.id,
+      description: `Part of ${parent.id}.`,
+    });
+    const page = await make(tasks, project.id, 'Remove the help page', { title: '', parentId: child.id });
+    const outside = await make(tasks, project.id, 'Tell support', { title: '', notes: `Once ${parent.id} is done.` });
+    time.advance(1);
+    await drop(tasks, project.id, page, 'wont-do');
+
+    expect((await tasks.getTask(project.id, child.id))?.close).toMatchObject({ resolution: 'no-longer-needed' });
+    const closed = await tasks.getTask(project.id, parent.id);
+    expect(closed?.close).toMatchObject({ resolution: 'no-longer-needed' });
+    expect(closed?.dependencies.map((link) => [link.taskId, link.type])).toEqual([[outside.id, 'related']]);
+  });
+
   it('links at most NAMED_LINKS of the open tasks that name a dropped task, newest change first', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
