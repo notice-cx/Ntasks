@@ -1,0 +1,8 @@
+{
+  "added": "`repository` on a task's `delivery`: the repository its merge reached, as owner/name, when the merge's signal named one",
+  "shapes": {
+    "task": {
+      "delivery.repository": "null|string"
+    }
+  }
+}

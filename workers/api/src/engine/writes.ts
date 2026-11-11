@@ -150,8 +150,17 @@ function externalList(links: ReadonlyMap<string, ExternalLink>): Json {
 
 /** A delivery as history events record it. */
 function deliveryJson(delivery: TaskDelivery): JsonObject {
-  const { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt } = delivery;
-  return { stage, commit, pullRequest, mergeCommit, builtAt, mergedAt, liveAt };
+  const { stage, commit, pullRequest, mergeCommit, repository, builtAt, mergedAt, liveAt } = delivery;
+  return {
+    stage,
+    commit,
+    pullRequest,
+    mergeCommit,
+    ...(repository === null ? {} : { repository }),
+    builtAt,
+    mergedAt,
+    liveAt,
+  };
 }
 
 /** The order of the stages: a task moves only to a later one. */
@@ -163,6 +172,7 @@ const DELIVERY_COLUMNS = [
   'delivery_commit',
   'delivery_pull_request',
   'delivery_merge_commit',
+  'delivery_repository',
   'built_at',
   'merged_at',
   'live_at',
@@ -287,6 +297,7 @@ function filedState(fields: check.CreateFields, actor: Actor, at: string) {
         commit: close.commit,
         pullRequest: close.pullRequest,
         mergeCommit: null,
+        repository: null,
         builtAt: at,
         mergedAt: null,
         liveAt: null,
@@ -1180,6 +1191,7 @@ export class Writes {
           ...current,
           stage,
           mergeCommit: current.mergeCommit ?? mergeCommit,
+          repository: current.repository ?? signal.repository ?? null,
           mergedAt: stage === 'merged' ? reached : current.mergedAt,
           liveAt: stage === 'live' ? reached : null,
         };
@@ -1187,10 +1199,10 @@ export class Writes {
           this.#db
             .prepare(
               `UPDATE tasks SET delivery_stage = ?1, delivery_merge_commit = ?2, merged_at = ?3, live_at = ?4,
-                 version = version + 1, updated_at = ?5
+                 delivery_repository = ?8, version = version + 1, updated_at = ?5
                WHERE id = ?6 AND version = ?7`,
             )
-            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version),
+            .bind(next.stage, next.mergeCommit, next.mergedAt, next.liveAt, at, row.id, row.version, next.repository),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
           this.#event({ id: row.id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, {
             delivery: deliveryJson(next),
@@ -1880,6 +1892,7 @@ export class Writes {
           commit,
           pullRequest,
           mergeCommit: null,
+          repository: null,
           builtAt: at,
           mergedAt: null,
           liveAt: null,

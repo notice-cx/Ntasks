@@ -67,6 +67,7 @@ describe('a closed task’s delivery', () => {
       commit: 'abc1234def',
       pullRequest: 'https://github.com/example/app/pull/12',
       mergeCommit: null,
+      repository: null,
       builtAt: time.now(),
       mergedAt: null,
       liveAt: null,
@@ -76,7 +77,12 @@ describe('a closed task’s delivery', () => {
     const merge = 'feedbeef0123456789abcdef0123456789abcdef';
     const merged = { repository: 'example/app', stage: 'merged', pullRequests: ['12'], commits: [merge] };
     expect(await signal(target, merged)).toEqual({ status: 200, body: { moved: [{ id, stage: 'merged' }] } });
-    expect(await deliveryOf(project, id)).toMatchObject({ stage: 'merged', mergeCommit: merge, mergedAt: time.now() });
+    expect(await deliveryOf(project, id)).toMatchObject({
+      stage: 'merged',
+      mergeCommit: merge,
+      repository: 'example/app',
+      mergedAt: time.now(),
+    });
     const version = (await engine.getTask(project.id, id))!.version;
     expect(await signal(target, merged)).toEqual({ status: 200, body: { moved: [] } });
     expect((await engine.getTask(project.id, id))!.version).toBe(version);

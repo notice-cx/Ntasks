@@ -118,6 +118,8 @@ export interface TaskDelivery {
   /** The pull request's URL. */
   pullRequest: string | null;
   mergeCommit: string | null;
+  /** The repository the change reached, as owner/name; left out by servers that record none. */
+  repository?: string | null;
   builtAt: string;
   mergedAt: string | null;
   liveAt: string | null;

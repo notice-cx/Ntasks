@@ -3,6 +3,7 @@
 import {
   CHOICE_FIELD_TYPES,
   COMMIT_SHA,
+  REPOSITORY_NAME,
   FIELD_TYPES,
   IDEMPOTENCY_KEY,
   isDependencyType,
@@ -885,11 +886,17 @@ export function deliverySignal(value: DeliverySignal): DeliverySignal {
   if (pullRequests.length === 0 && commits.length === 0) invalid('a signal names a pull request or a commit');
   if (value.mergedBy !== undefined && value.stage !== 'live') invalid('mergedBy goes with stage live');
   if (value.mergeCommit !== undefined && value.stage !== 'merged') invalid('mergeCommit goes with stage merged');
+  if (
+    value.repository !== undefined &&
+    (typeof value.repository !== 'string' || !REPOSITORY_NAME.test(value.repository))
+  )
+    invalid('repository must be owner/name, such as example/app');
   return {
     stage: value.stage,
     pullRequests,
     commits,
     ...(value.mergeCommit === undefined ? {} : { mergeCommit: commitSha(value.mergeCommit, 'mergeCommit') }),
+    ...(value.repository === undefined ? {} : { repository: value.repository.toLowerCase() }),
     ...(taskIds.length === 0 ? {} : { taskIds }),
     ...(value.mergedBy === undefined ? {} : { mergedBy: instant(value.mergedBy, 'mergedBy') }),
     ...(value.at === undefined ? {} : { at: instant(value.at, 'at') }),

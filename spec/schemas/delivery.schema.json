@@ -19,6 +19,11 @@
       "description": "The commit that merged the change, when the merged signal named exactly one.",
       "oneOf": [{ "$ref": "#/$defs/commit" }, { "type": "null" }]
     },
+    "repository": {
+      "description": "The repository the change reached, as owner/name in lowercase, when a signal that moved it named one. A server MAY leave it out.",
+      "type": ["string", "null"],
+      "pattern": "^[a-z0-9][a-z0-9-]{0,38}/[a-z0-9._-]{1,100}$"
+    },
     "builtAt": { "type": "string", "format": "date-time" },
     "mergedAt": {
       "description": "Null until a merged signal; a task can go live without one.",

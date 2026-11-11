@@ -74,6 +74,7 @@ export interface StoredTaskRow {
   readonly delivery_commit: string | null;
   readonly delivery_pull_request: string | null;
   readonly delivery_merge_commit: string | null;
+  readonly delivery_repository: string | null;
   readonly built_at: string | null;
   readonly merged_at: string | null;
   readonly live_at: string | null;
@@ -244,6 +245,7 @@ export function deliveryOf(row: StoredTaskRow): TaskDelivery | null {
     commit: row.delivery_commit,
     pullRequest: row.delivery_pull_request,
     mergeCommit: row.delivery_merge_commit,
+    repository: row.delivery_repository,
     builtAt: row.built_at,
     mergedAt: row.merged_at,
     liveAt: row.live_at,
