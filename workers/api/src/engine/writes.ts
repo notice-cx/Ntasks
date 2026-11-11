@@ -57,7 +57,7 @@ import {
 import { githubPullOf } from '../delivery.ts';
 import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
-import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
+import { deliveryOf, DROPPED, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
 
 /** The helper agent and the agent session a change was made through, as its history event records them. */
@@ -91,6 +91,20 @@ const STALE = (dayAgo: string) => `((json_extract(result, '$.newTask') = 1 AND c
 /** How many times a write tries again, with a new task id or a fresh read,
  * after another write took its id or changed a task it also changes. */
 const ATTEMPTS = 5;
+
+/** The most open tasks one drop links to for naming it, which bounds the close's write. */
+export const NAMED_LINKS = 20;
+
+/**
+ * Whether a text names this task id as a whole id: not inside a longer
+ * word, and not as the start of a child's id, as `web-a1.2` starts with
+ * `web-a1`. A sentence's full stop after it still names it.
+ */
+function namesTask(taskId: string): (text: string) => boolean {
+  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const whole = new RegExp(`(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'u');
+  return (text) => whole.test(text);
+}
 
 const MESSAGES: Readonly<Record<TaskRefusal, string>> = Object.freeze({
   not_found: 'The task does not exist in this project.',
@@ -889,6 +903,8 @@ export class Writes {
     unkept: readonly string[] = [],
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
     const formerIds = moved.flatMap((task) => (task.formerId === undefined ? [] : [task.formerId]));
+    // A task this write moves to another project is read by its old id, and the batch gives it its new one.
+    const renamed = new Map(moved.flatMap((task) => (task.formerId === undefined ? [] : [[task.formerId, task.id]])));
     const written = new Set([...moved.map((task) => task.id), ...formerIds]);
     const left = new Map<string, Placed>(moved.map((task) => [task.id, task]));
     // Each epic waits in the queue at most once, with the first cause that reached it.
@@ -999,6 +1015,8 @@ export class Writes {
     }
     const statements: Statement[] = [...guards.values()];
     const epics: string[] = [];
+    // An epic this batch closes, such as a child epic closing with its parent, is no open task to link to.
+    const unlinked = new Set([...written, ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : []))]);
     for (const [epicId, placed] of decided) {
       const epic = read.get(epicId)!;
       // An epic closed and opened again in one write is left as it was.
@@ -1007,6 +1025,11 @@ export class Writes {
       const actor: Actor = { name: NTASKS_ACTOR };
       if (placed.closed) {
         const work = JSON.parse(epic.work) as Record<string, unknown>;
+        // An epic this write also changes is left without them: its links may change in the same batch.
+        const named =
+          placed.resolution !== null && DROPPED.includes(placed.resolution) && !written.has(epicId)
+            ? await this.#namedLinksOf(epicId, actor, at, renamed, unlinked)
+            : { statements: [], links: null };
         statements.push(
           this.#db
             .prepare(
@@ -1032,7 +1055,9 @@ export class Writes {
             // An epic the write changes may have taken a helper or work details in it, so both are recorded cleared.
             ...(epic.assignee_for === null && !written.has(epicId) ? {} : { assigneeFor: null }),
             ...(Object.keys(work).length === 0 && !written.has(epicId) ? {} : { work: {} }),
+            ...(named.links === null ? {} : { dependencies: named.links }),
           }),
+          ...named.statements,
         );
       } else {
         statements.push(
@@ -1430,7 +1455,9 @@ export class Writes {
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
     const commentId = write.comment === null ? null : crypto.randomUUID();
-    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId);
+    // A task this write changes takes no named link: the change clears its dropped list anyway.
+    const written = new Set([taskId, ...write.others.map((other) => other.taskId)]);
+    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId, written);
     const moved = [movedBy(toTask(row), write)];
     const unkept = unkeptBy(toTask(row), write) ? [taskId] : [];
     const others = await Promise.all(
@@ -1441,7 +1468,7 @@ export class Writes {
         const otherComment = other.write.comment === null ? null : crypto.randomUUID();
         moved.push(movedBy(toTask(found), other.write));
         if (unkeptBy(toTask(found), other.write)) unkept.push(other.taskId);
-        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
+        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment, written);
       }),
     );
     const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept);
@@ -1769,6 +1796,7 @@ export class Writes {
     at: string,
     beside: boolean,
     commentId: string | null,
+    written: ReadonlySet<string>,
   ): Promise<(gateId: string | null) => Statement[]> {
     const taskId = current.id;
     const set = write.set;
@@ -1948,6 +1976,14 @@ export class Writes {
     );
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
+    // A task dropped here relates to each open task whose text names it, so that task relies on it (droppedSince).
+    if (write.close !== null && DROPPED.includes(write.close.resolution)) {
+      const linked = new Set([...links.keys(), ...current.dependents.map((link) => link.taskId), ...written]);
+      for (const naming of await this.#namedBy(taskId, linked)) {
+        addLinks.push({ taskId: naming, type: 'related' });
+        links.set(naming, 'related');
+      }
+    }
 
     const values = new Map(Object.entries(current.fields));
     const setValues: [string, FieldValue][] = [];
@@ -2088,6 +2124,82 @@ export class Writes {
       statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes, through));
       return statements;
     };
+  }
+
+  /**
+   * The open tasks, in any project, whose description, acceptance, notes or
+   * design name this task by its id or a former id, as a whole id, newest
+   * change first, at most NAMED_LINKS of them, leaving out those in `linked`.
+   * It reads one index entry and one row for each task that is not closed.
+   */
+  async #namedBy(taskId: string, linked: ReadonlySet<string>): Promise<string[]> {
+    const { results: aliases } = await this.#db
+      .prepare('SELECT alias FROM task_aliases INDEXED BY task_aliases_by_task WHERE task_id = ?1')
+      .bind(taskId)
+      .all<{ alias: string }>();
+    const ids = [taskId, ...aliases.map((row) => row.alias)];
+    // One condition per id, bound as ?1, ?2…: a json_each over the ids would read a row more for each task.
+    const names = ids
+      .map((_, index) =>
+        ['description', 'acceptance', 'notes', 'design'].map((column) => `instr(t.${column}, ?${index + 1}) > 0`),
+      )
+      .flat()
+      .join(' OR ');
+    const { results } = await this.#db
+      .prepare(
+        `SELECT t.id, t.description, t.acceptance, t.notes, t.design FROM projects p
+           CROSS JOIN tasks t INDEXED BY tasks_by_project_status
+             ON t.project_id = p.id AND t.status IN ('open', 'in_progress', 'blocked', 'deferred')
+         WHERE t.id <> ?1 AND (${names})
+         ORDER BY t.updated_at DESC, t.id`,
+      )
+      .bind(...ids)
+      .all<{ id: string; description: string; acceptance: string; notes: string; design: string }>();
+    const named = ids.map(namesTask);
+    return results
+      .filter(
+        (row) =>
+          !linked.has(row.id) &&
+          [row.description, row.acceptance, row.notes, row.design].some((text) => named.some((test) => test(text))),
+      )
+      .slice(0, NAMED_LINKS)
+      .map((row) => row.id);
+  }
+
+  /**
+   * The related links an epic Ntasks drops takes to the open tasks that name
+   * it, as a close that drops a task adds them (#prepare), and its links once
+   * they are added, for its history; none when no open task names it.
+   */
+  async #namedLinksOf(
+    epicId: string,
+    actor: Actor,
+    at: string,
+    renamed: ReadonlyMap<string, string>,
+    written: ReadonlySet<string>,
+  ): Promise<{ statements: Statement[]; links: Json | null }> {
+    const { results } = await this.#db
+      .prepare(
+        `SELECT depends_on_id AS id, type FROM task_edges WHERE task_id = ?1
+         UNION ALL SELECT task_id AS id, NULL AS type FROM task_edges INDEXED BY task_edges_by_dependency WHERE depends_on_id = ?1`,
+      )
+      .bind(epicId)
+      .all<{ id: string; type: DependencyType | null }>();
+    const naming = await this.#namedBy(epicId, new Set([...results.map((row) => row.id), ...written]));
+    if (naming.length === 0) return { statements: [], links: null };
+    const links = new Map(
+      results.flatMap((row) => (row.type === null ? [] : [[renamed.get(row.id) ?? row.id, row.type] as const])),
+    );
+    for (const id of naming) links.set(id, 'related');
+    const statements = naming.map((id) =>
+      this.#db
+        .prepare(
+          `INSERT INTO task_edges (task_id, depends_on_id, type, created_at, created_by) VALUES (?1, ?2, 'related', ?3, ?4)
+           ON CONFLICT (task_id, depends_on_id) DO NOTHING`,
+        )
+        .bind(epicId, id, at, actor.name),
+    );
+    return { statements, links: linkList(links) };
   }
 
   /** The project's field with this key, or null. */

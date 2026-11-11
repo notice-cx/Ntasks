@@ -153,8 +153,13 @@ other way round, replaces it.
 A task closed as won't do or no longer needed is **dropped**. An open task
 that links to a dropped task, other than one it replaces, or that a dropped
 task waited on or related to, lists it under `reliesOnDropped` when the drop
-came after the open task last changed. Whoever picks the open task up checks
-that it still makes sense; any change to it clears the list.
+came after the open task last changed. When a task is dropped, it also
+relates to each open task whose description, acceptance, notes or design
+names its id or a former id, up to 20 of them, so those tasks list it too:
+each one with no link to it yet that the same write does not change. A task
+that replaces it keeps that link and does not list it. Whoever picks the
+open task up checks that it still makes sense; any change to it clears the
+list.
 
 ## Ready work
 

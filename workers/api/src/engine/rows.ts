@@ -207,7 +207,7 @@ function links(entries: readonly LinkJson[]): TaskLink[] {
     .sort(byId);
 }
 
-const DROPPED: readonly TaskResolution[] = ['wont-do', 'no-longer-needed'];
+export const DROPPED: readonly TaskResolution[] = ['wont-do', 'no-longer-needed'];
 
 /** The links another task holds onto this one that this one relies on: that
  * task waits on it, or is about the same subject. */
