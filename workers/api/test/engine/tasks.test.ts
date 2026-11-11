@@ -268,7 +268,7 @@ describe('comments', () => {
 });
 
 describe('lint', () => {
-  it('names the sections each task lacks and leaves out the tasks lacking none', async () => {
+  it('names what each task lacks and leaves out the tasks lacking none', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const bare = (await tasks.createTask(project.id, { title: 'Bare task' }, AGENT)).task;
@@ -280,7 +280,7 @@ describe('lint', () => {
     const missing = await tasks.lint(project.id, [bare.id, bug.id, complete.id]);
 
     expect(Object.fromEntries(missing)).toEqual({
-      [bare.id]: ['## Acceptance Criteria'],
+      [bare.id]: ['acceptance'],
       [bug.id]: ['## Steps to Reproduce'],
     });
   });

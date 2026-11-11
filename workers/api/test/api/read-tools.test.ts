@@ -1,7 +1,14 @@
 // The MCP read tools, as an agent calls them: their results, the workspace
 // and scope every call is checked against, and the sentences a refused call
 // returns. Names, arguments and result fields are NoticeOS's task tools'.
-import { PARENT_CONTEXT_LIMITS, type HeldTask, type Project, type TaskEngine } from '@ntasks/domain';
+import {
+  PARENT_CONTEXT_LIMITS,
+  requiredSections,
+  TASK_TYPES,
+  type HeldTask,
+  type Project,
+  type TaskEngine,
+} from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/auth.ts';
@@ -181,6 +188,15 @@ describe('list_workspaces and get_task_guide', () => {
     expect(note).toContain('list_workspaces');
     expect(note).toContain('list_projects');
     expect(note).not.toContain('list_tasks');
+  });
+
+  it('come from a guide that asks for each part lint finds missing', () => {
+    const rules = TASK_QUALITY.join('\n');
+    for (const type of TASK_TYPES)
+      for (const part of requiredSections(type)) {
+        if (part === 'acceptance') expect(rules, type).toMatch(/^- acceptance: /mu);
+        else expect(rules, `${type}: ${part}`).toContain(part);
+      }
   });
 
   it('come from a guide that names every tool it lists', () => {
