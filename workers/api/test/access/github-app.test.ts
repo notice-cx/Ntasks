@@ -130,11 +130,19 @@ function merged(id: number, number: number, mergeCommit: string) {
 }
 
 /** A check run that passed on main, from installation `id`. */
-function passed(id: number, name: string, sha: string, branch = 'main', startedAt = new Date().toISOString()) {
+function passed(
+  id: number,
+  name: string,
+  sha: string,
+  branch = 'main',
+  startedAt = new Date().toISOString(),
+  runId?: number,
+) {
   return {
     action: 'completed',
     installation: { id },
     check_run: {
+      ...(runId === undefined ? {} : { id: runId }),
       name,
       head_sha: sha,
       conclusion: 'success',
@@ -577,6 +585,33 @@ describe('the app’s deliveries', () => {
     expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
   });
 
+  it('tells the passing run from another run of its check that started in the same second, by its id', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const id = await closedWithPullRequest(owner, projectId, 46);
+    const merge = newCommit();
+    await deliver('pull_request', merged(mine, 46, merge));
+    const at = ago(60_000);
+    const run = (runId: number, conclusion: 'success' | null) => ({
+      id: runId,
+      name: 'Workers Builds: site',
+      conclusion,
+      startedAt: at,
+      completedAt: conclusion === null ? null : ago(30_000),
+    });
+
+    // GitHub's list shows neither run finished yet when run 7's delivery comes.
+    github.checkRuns.set(merge, [run(7, null), run(8, null)]);
+    const first = await deliver('check_run', passed(mine, 'Workers Builds: site', merge, 'main', at, 7));
+    expect(first.body).toMatchObject({ moved: [] });
+    expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    github.checkRuns.set(merge, [run(7, 'success'), run(8, null)]);
+    const second = await deliver('check_run', passed(mine, 'Workers Builds: site', merge, 'main', at, 8));
+    expect(second.body).toEqual({ moved: [{ id, stage: 'live' }] });
+  });
+
   it('reads the commit again once the deploy its tasks waited on completes as skipped', async () => {
     const owner = await connected();
     const mine = newInstallation();
@@ -621,6 +656,10 @@ describe('the app’s deliveries', () => {
       { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: ago(30_000) },
       { name: 'Workers Builds: app', conclusion: null, startedAt, completedAt: null },
     ]);
+    // A rate limit's 403 is no answer, not a repository the installation does not reach.
+    github.checkRateLimits.add(merge);
+    expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge), secret)).status).toBe(503);
+    github.checkRateLimits.clear();
 
     expect((await deliver('check_run', passed(mine, 'Workers Builds: site', merge), secret)).body).toMatchObject({
       moved: [],

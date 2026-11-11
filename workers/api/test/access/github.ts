@@ -44,6 +44,8 @@ export interface StandInPull {
 
 /** A check run on a commit, as the stand-in lists it. */
 export interface StandInCheckRun {
+  /** GitHub's id of the run; none when a test names none. */
+  readonly id?: number;
   readonly name: string;
   /** How it ended, or null while it runs. */
   readonly conclusion: 'success' | 'failure' | 'skipped' | null;
@@ -129,6 +131,8 @@ export interface GitHubCalls {
   readonly checkOutages: Set<string>;
   /** The commits whose check runs GitHub answers in part, with an error and no check suites, which a test sets. */
   readonly checkErrors: Set<string>;
+  /** The commits whose check runs GitHub refuses with a rate limit's 403, which a test sets. */
+  readonly checkRateLimits: Set<string>;
   /** The earlier commits in each commit's history, which a test sets; a commit not set has none GitHub compares it with. */
   readonly histories: Map<string, string[]>;
   /** Each request the Worker made to GitHub's API, as `<method> <path>`. */
@@ -163,6 +167,7 @@ export function standInForGitHub(): GitHubCalls {
     checkReads: [] as string[],
     checkOutages: new Set<string>(),
     checkErrors: new Set<string>(),
+    checkRateLimits: new Set<string>(),
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
   };
@@ -178,6 +183,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.checkReads.length = 0;
     calls.checkOutages.clear();
     calls.checkErrors.clear();
+    calls.checkRateLimits.clear();
     calls.histories.clear();
     calls.apiRequests.length = 0;
     appTokens.clear();
@@ -275,6 +281,11 @@ export function standInForGitHub(): GitHubCalls {
         const { variables } = (await request.json()) as { variables: { commit: string } };
         calls.checkReads.push(variables.commit);
         if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
+        if (calls.checkRateLimits.has(variables.commit))
+          return Response.json(
+            { message: 'You have exceeded a secondary rate limit.' },
+            { status: 403, headers: { 'retry-after': '60' } },
+          );
         // As GitHub answers a query past its resource limits: 200, the parts it read, and null for the rest.
         if (calls.checkErrors.has(variables.commit))
           return Response.json({
@@ -296,6 +307,7 @@ export function standInForGitHub(): GitHubCalls {
                     branch: { name: branch },
                     checkRuns: {
                       nodes: runs.map((run) => ({
+                        databaseId: run.id ?? null,
                         name: run.name,
                         startedAt: run.startedAt,
                         completedAt: run.completedAt,

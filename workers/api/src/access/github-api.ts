@@ -197,7 +197,12 @@ export const RETRY = 'retry';
 
 /** Whether a read GitHub did not answer with 200 may be answered on another try. */
 function retryable(response: Response | null): boolean {
-  return response === null || response.status === 429 || response.status >= 500;
+  if (response === null || response.status === 429 || response.status >= 500) return true;
+  // GitHub answers a rate limit with 403 too, naming when to try again or that no requests are left.
+  return (
+    response.status === 403 &&
+    (response.headers.has('retry-after') || response.headers.get('x-ratelimit-remaining') === '0')
+  );
 }
 
 /** The value at `path` in an answer, or undefined when any step of it is missing. */
@@ -212,6 +217,8 @@ function at(value: unknown, ...path: readonly string[]): unknown {
 
 /** A check run of a commit: its name, the branch of its check suite, when it started and completed, and how it ended. */
 export interface CheckRun {
+  /** GitHub's id of the run, as a check_run event names it; null when GitHub gives none. */
+  readonly id: number | null;
   readonly name: string;
   /** The branch GitHub ran its check suite for, or null when it names none. */
   readonly branch: string | null;
@@ -242,7 +249,7 @@ const COMMIT_CHECKS = `query ($owner: String!, $name: String!, $commit: String!)
           nodes {
             branch { name }
             checkRuns(last: ${CHECK_RUNS}, filterBy: { checkType: ALL }) {
-              nodes { name startedAt completedAt conclusion }
+              nodes { databaseId name startedAt completedAt conclusion }
             }
           }
         }
@@ -297,8 +304,10 @@ export async function checksOf(
       const runName = at(run, 'name');
       if (typeof runName !== 'string') return [];
       const conclusion = at(run, 'conclusion');
+      const id = at(run, 'databaseId');
       return [
         {
+          id: typeof id === 'number' && Number.isSafeInteger(id) ? id : null,
           name: runName,
           branch: typeof branch === 'string' ? branch : null,
           startedAt: timeOf(at(run, 'startedAt')),

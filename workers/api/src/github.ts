@@ -125,7 +125,12 @@ export type GitHubEvent =
       readonly mergedBy?: string;
       readonly at?: string;
       /** The deploy check run that passed, when the event is a check run: the commit's other deploy checks may hold it. */
-      readonly check?: { readonly name: string; readonly commit: string; readonly startedAt: string | null };
+      readonly check?: {
+        readonly id: number | null;
+        readonly name: string;
+        readonly commit: string;
+        readonly startedAt: string | null;
+      };
     }
   | {
       readonly ignored: string;
@@ -182,7 +187,8 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       const kind = deployBranchOf(branch, defaultBranch);
       const sha = textAt(payload, 'check_run', 'head_sha');
       const startedAt = textAt(payload, 'check_run', 'started_at');
-      const check = sha === undefined ? {} : { check: { name, commit: sha, startedAt: startedAt ?? null } };
+      const id = numberAt(payload, 'check_run', 'id') ?? null;
+      const check = sha === undefined ? {} : { check: { id, name, commit: sha, startedAt: startedAt ?? null } };
       if (kind === 'default') return { ...live(name, verdict, sha), ...check };
       if (kind === null || startedAt === undefined)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
@@ -218,7 +224,12 @@ async function heldDeploys(
   app: GitHubApp | null,
   installation: { readonly id: number; readonly sentEvent: boolean } | undefined,
   repository: string,
-  check: { readonly name: string; readonly commit: string; readonly startedAt: string | null },
+  check: {
+    readonly id: number | null;
+    readonly name: string;
+    readonly commit: string;
+    readonly startedAt: string | null;
+  },
   names: DeployNames,
 ): Promise<readonly string[] | typeof RETRY> {
   if (app === null || installation === undefined) return [];

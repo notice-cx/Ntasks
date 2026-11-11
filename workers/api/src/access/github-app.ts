@@ -381,31 +381,40 @@ export function deployedNothing(conclusion: string | null): boolean {
  * running, or ended without success. A commit that changes two Workers, such
  * as an app and its website, has a deploy check for each, and its tasks go
  * live once both passed. `passed` is the run whose own event said it passed:
- * it and the earlier runs of its check are left out, since GitHub's list of
- * the commit's checks may not show it finished yet, while a later run of that
- * check, such as a rerun, still counts.
+ * it and the runs of its check that started before it are left out, since
+ * GitHub's list of the commit's checks may not show it finished yet, while
+ * any other run of that check, such as a rerun, still counts.
  */
 export function heldBy(
   runs: readonly CheckRun[],
   names: DeployNames,
   defaultBranch: string,
-  passed?: { readonly name: string; readonly startedAt: string | null },
+  passed?: { readonly id: number | null; readonly name: string; readonly startedAt: string | null },
 ): string[] {
   // A run that has not started, queued after the others, is the latest of its name.
   const startOf = (run: { readonly startedAt: string | null }) =>
     run.startedAt === null ? Number.POSITIVE_INFINITY : Date.parse(run.startedAt);
-  const latest = new Map<string, CheckRun>();
+  const replaced = (run: CheckRun): boolean => {
+    if (passed === undefined || run.name !== passed.name) return false;
+    if (passed.id !== null && run.id === passed.id) return true;
+    // GitHub gives times to the second, so a run that started in the same second is told apart only by its id.
+    if (passed.startedAt === null) return passed.id === null;
+    const [started, since] = [startOf(run), startOf(passed)];
+    return started < since || (started === since && passed.id === null);
+  };
+  // Each check's latest runs: every one that started in the latest second, since none of them is known to be later.
+  const latest = new Map<string, CheckRun[]>();
   for (const run of runs) {
-    if (deployBranchOf(run.branch, defaultBranch) === null) continue;
-    if (run.name === passed?.name && (passed.startedAt === null || startOf(run) <= startOf(passed))) continue;
+    if (deployBranchOf(run.branch, defaultBranch) === null || replaced(run)) continue;
     const verdict = deployOf(run.name, names, isDeployCheck(run.name));
     if (verdict !== 'yes' && verdict !== 'new') continue;
-    const seen = latest.get(run.name);
-    if (seen === undefined || startOf(run) > startOf(seen)) latest.set(run.name, run);
+    const [seen] = latest.get(run.name) ?? [];
+    if (seen === undefined || startOf(run) > startOf(seen)) latest.set(run.name, [run]);
+    else if (startOf(run) === startOf(seen)) latest.set(run.name, [...latest.get(run.name)!, run]);
   }
-  return [...latest.values()]
-    .filter((run) => run.conclusion !== 'success' && !deployedNothing(run.conclusion))
-    .map((run) => run.name)
+  return [...latest]
+    .filter(([, tied]) => tied.some((run) => run.conclusion !== 'success' && !deployedNothing(run.conclusion)))
+    .map(([name]) => name)
     .sort();
 }
 
