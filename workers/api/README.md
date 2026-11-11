@@ -19,7 +19,7 @@ every other path. Wrangler commands run in this folder read that file.
 
 | Route | Answer |
 |---|---|
-| `GET /healthz` | `200` with `{"ok":true}`. It shows the Worker is running and reads no binding |
+| `GET /healthz` | `200` with `{"ok":true}` when the Worker is running and its D1 database has every migration in [`migrations/`](migrations/); `503` with `{"ok":false,"error":"database_behind","missing":[…],"detail":…}` naming the ones it lacks ([Deploy](../../docs/deploy.md#the-database-lacks-a-migration)) |
 | `/sign-in`, `/agent-access`, `/api/auth/`, `/api/access/` and the OAuth discovery documents under `/.well-known/` | Sign-in; [Sign-in](../../docs/sign-in.md#routes) lists each route |
 | Any other path under `/api/` | `404` with `{"error":"not_found"}` |
 
