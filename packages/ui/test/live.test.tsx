@@ -130,12 +130,15 @@ describe('the Live board’s columns', () => {
       ],
       // Waiting for a merge or a deploy, whenever they closed.
       { merge: [waitingMerge], deploy: [waitingDeploy] },
+      // The web project goes live by a deploy; the docs project stops at merged.
+      (project) => project === 'web',
       NOW,
     );
     expect(ids(board.progress)).toEqual(['web-3', 'web-1', 'web-2']);
-    expect(ids(board.built)).toEqual(['web-b1']);
-    expect(ids(board.merged)).toEqual(['docs-m2', 'web-m1']);
-    expect(ids(board.live)).toEqual(['web-l2', 'web-l1']);
+    // Built work waits for its merge, and merged work of a project that deploys for its deploy.
+    expect(ids(board.shipping)).toEqual(['web-m1', 'web-b1']);
+    // Merged is the last stage of a project that does not deploy.
+    expect(ids(board.live)).toEqual(['docs-m2', 'web-l2', 'web-l1']);
   });
 
   it('place a task the board read holds by that read, not by a wait read apart from it', () => {
@@ -143,16 +146,17 @@ describe('the Live board’s columns', () => {
       [closed('web-m1', 'merged', HOUR), task('web-r1', { lastActivityAt: ago(5 * 60_000) })],
       // A delivery read that lags behind: web-m1 merged since, and web-r1 was reopened.
       { merge: [closed('web-m1', 'built', HOUR), closed('web-r1', 'built', DAY)], deploy: [] },
+      () => true,
       NOW,
     );
-    expect(ids(board.built)).toEqual([]);
-    expect(ids(board.merged)).toEqual(['web-m1']);
+    expect(ids(board.shipping)).toEqual(['web-m1']);
+    expect(board.shipping[0]?.delivery?.stage).toBe('merged');
     expect(ids(board.progress)).toEqual(['web-r1']);
   });
 });
 
 /** The ids of the cards in a column of the Live board, in order. */
-async function boardCards(name: 'In progress' | 'Built' | 'Merged' | 'Live'): Promise<string[]> {
+async function boardCards(name: 'In progress' | 'Waiting to ship' | 'Live'): Promise<string[]> {
   const column = await screen.findByRole('region', { name });
   return [...column.querySelectorAll('[data-board-card]')].map((card) => card.getAttribute('data-board-card') ?? '');
 }
@@ -180,10 +184,11 @@ function preferReducedMotion() {
   };
 }
 
-/** Moves web-k3m9.1's change from Built to Merged, as GitHub's report of its merge would, and reads the boards again. */
-async function mergeBuiltTask(api: ReturnType<typeof createFixtureTasksApi>, queryClient: QueryClient) {
+/** Moves web-k3m9.1's change on to Live, as GitHub's report of its merge and deploy would, and reads the boards again. */
+async function shipBuiltTask(api: ReturnType<typeof createFixtureTasksApi>, queryClient: QueryClient) {
   const built = api.state.tasks.find((entry) => entry.id === 'web-k3m9.1') as FixtureTask;
-  built.delivery = { ...built.delivery!, stage: 'merged', mergedAt: new Date().toISOString() };
+  const at = new Date().toISOString();
+  built.delivery = { ...built.delivery!, stage: 'live', mergedAt: at, liveAt: at };
   await act(async () => {
     await queryClient.invalidateQueries();
   });
@@ -196,12 +201,14 @@ describe('the Live board', () => {
     Reflect.deleteProperty(Element.prototype, 'animate');
   });
 
-  it('opens on the board: work in progress, then built, merged and live work, and List shows the groups', async () => {
+  it('opens on the board: work in progress, waiting to ship and live, and List shows the groups', async () => {
     renderApp('/tasks/live');
     expect(await boardCards('In progress')).toEqual(['web-k3m9.2', 'docs-n6j1', 'web-w6n2']);
-    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
-    expect(await boardCards('Merged')).toEqual(['docs-y5u2']);
-    expect(await boardCards('Live')).toEqual(['web-j6y4']);
+    expect(await boardCards('Waiting to ship')).toEqual(['web-k3m9.1']);
+    // The docs project does not deploy, so its merged work is live.
+    expect(await boardCards('Live')).toEqual(['web-j6y4', 'docs-y5u2']);
+    const waiting = document.querySelector('[data-board-card="web-k3m9.1"]') as HTMLElement;
+    expect(waiting.querySelector('[data-live-context]')?.textContent).toBe('Not merged yet');
     const held = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
     expect(within(held).getByRole('link', { name: '#42' }).getAttribute('href')).toBe(
       'https://github.example.com/example/web/pull/42',
@@ -227,10 +234,10 @@ describe('the Live board', () => {
     const banner = await screen.findByRole('alert');
     expect(banner.hasAttribute('data-live-unread')).toBe(true);
     expect(banner.textContent).toContain('Example web app');
-    expect(await boardCards('Built')).not.toContain('web-old1');
+    expect(await boardCards('Waiting to ship')).not.toContain('web-old1');
     failing = false;
     fireEvent.click(within(banner).getByRole('button', { name: 'Retry' }));
-    await waitFor(async () => expect(await boardCards('Built')).toContain('web-old1'));
+    await waitFor(async () => expect(await boardCards('Waiting to ship')).toContain('web-old1'));
     expect(document.querySelector('[data-live-unread]')).toBeNull();
   });
 
@@ -239,7 +246,7 @@ describe('the Live board', () => {
     const live = seed.tasks.find((entry) => entry.id === 'web-j6y4') as FixtureTask;
     Object.assign(live, { metadata: null, closedBy: null, assignee: 'agent:claude' });
     renderApp('/tasks/live', createFixtureTasksApi({ seed }));
-    expect(await boardCards('Live')).toEqual(['web-j6y4']);
+    expect(await boardCards('Live')).toContain('web-j6y4');
     const card = document.querySelector('[data-board-card="web-j6y4"]') as HTMLElement;
     expect(within(card).queryByText('Claude')).toBeNull();
   });
@@ -265,10 +272,10 @@ describe('the Live board', () => {
     const started = recordAnimations();
     const api = createFixtureTasksApi();
     const { queryClient } = renderApp('/tasks/live', api);
-    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
-    await mergeBuiltTask(api, queryClient);
-    await waitFor(async () => expect(await boardCards('Merged')).toEqual(['web-k3m9.1', 'docs-y5u2']));
-    expect(await boardCards('Built')).toEqual([]);
+    expect(await boardCards('Waiting to ship')).toEqual(['web-k3m9.1']);
+    await shipBuiltTask(api, queryClient);
+    await waitFor(async () => expect(await boardCards('Live')).toEqual(['web-k3m9.1', 'web-j6y4', 'docs-y5u2']));
+    expect(await boardCards('Waiting to ship')).toEqual([]);
     const card = document.querySelector('[data-board-card="web-k3m9.1"]');
     const travel = started.find((entry) => entry.element === card);
     expect(travel?.frames.some((frame) => String(frame.transform).startsWith('translate('))).toBe(true);
@@ -292,9 +299,9 @@ describe('the Live board', () => {
     const started = recordAnimations();
     const api = createFixtureTasksApi();
     const { queryClient } = renderApp('/tasks/live', api);
-    expect(await boardCards('Built')).toEqual(['web-k3m9.1']);
-    await mergeBuiltTask(api, queryClient);
-    await waitFor(async () => expect(await boardCards('Merged')).toContain('web-k3m9.1'));
+    expect(await boardCards('Waiting to ship')).toEqual(['web-k3m9.1']);
+    await shipBuiltTask(api, queryClient);
+    await waitFor(async () => expect(await boardCards('Live')).toContain('web-k3m9.1'));
     const card = document.querySelector('[data-board-card="web-k3m9.1"]') as HTMLElement;
     expect(card.hasAttribute('data-landed')).toBe(true);
     expect(started).toEqual([]);
