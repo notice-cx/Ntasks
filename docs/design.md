@@ -561,10 +561,11 @@ one on Hover), `NavSection`s with their headings (Projects, People),
 `ProjectBadge` (the icon read from a project's website, or its prefix's
 first letter in a ringed square) and `SidebarSpacer`, which pushes Settings
 and Source code to the foot. `NavItem asChild` makes a router link the item. For a person in
-two or more workspaces, the name is a `WorkspaceButton`: the name and a
+two or more workspaces, and for a deployment admin, the name is a `WorkspaceButton`: the name and a
 14 px `chevrons-up-down` in Text 3, Hover under the pointer and while its
 menu is open. Its menu lists the workspaces, each with its icon and the open
-one ticked, then Settings under a divider.
+one ticked, then Settings under a divider, and for a deployment admin New
+workspace, which shows the first step's New workspace form in place of the page.
 
 `TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
 search and actions. Below 768 px the board's views leave the top bar for a
