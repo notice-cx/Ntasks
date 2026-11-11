@@ -30,6 +30,7 @@ import type {
 } from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
+import { TestRun } from '../components/TestRun';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Badge, Progress } from '../components/ui/badge';
 import { LinkedText } from '../components/ui/linked-text';
@@ -78,7 +79,7 @@ import { usePaths } from '../lib/paths';
 import { activityOf } from '../lib/live';
 import { taskPrefix } from '../lib/task-path';
 import { cn } from '../lib/utils';
-import { AnswerForm } from './tasks/ask-actions';
+import { AnswerForm, PerformedButton, PerformedForm } from './tasks/ask-actions';
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { MoveForm } from './tasks/move-form';
@@ -205,7 +206,8 @@ export function TaskRoute() {
 }
 
 /** The panel under the title where an action that needs words is finished. */
-type Panel = { kind: 'close-done' } | { kind: 'accept' } | { kind: 'answer' } | { kind: 'move' } | null;
+type Panel =
+  { kind: 'close-done' } | { kind: 'accept' } | { kind: 'answer' } | { kind: 'performed' } | { kind: 'move' } | null;
 
 /** The task's Markdown fields, each read and edited in place. */
 type TextField = 'description' | 'acceptance' | 'design' | 'notes';
@@ -277,6 +279,7 @@ function TaskPage({
   );
   const steps = task.steps ?? null;
   const chooseReason = reasonFor(operationAvailable(capabilities, 'choose'));
+  const performedReason = reasonFor(operationAvailable(capabilities, 'performed'));
   const closeReason = reasonFor(operationAvailable(capabilities, closeOperation(task)));
   const claimReason = reasonFor(fieldAvailable(capabilities, 'claim'));
   // An approval, or a report that the steps are done, an agent relayed closed this gate, and nobody has disputed it yet.
@@ -345,16 +348,24 @@ function TaskPage({
   let actions: ReactNode = null;
   if (ask === 'approve') {
     actions = (
-      <Button
-        variant="primary"
-        disabled={askReason !== null}
-        title={askReason ?? undefined}
-        onClick={() => answer({ kind: 'approve', ...scope })}
-        data-task-action="approve"
-      >
-        <Check aria-hidden strokeWidth={2} />
-        Approve
-      </Button>
+      <>
+        <PerformedButton
+          open={panel?.kind === 'performed'}
+          onToggle={() => setPanel(panel?.kind === 'performed' ? null : { kind: 'performed' })}
+          disabledReason={performedReason}
+          iconOnPhone
+        />
+        <Button
+          variant="primary"
+          disabled={askReason !== null}
+          title={askReason ?? undefined}
+          onClick={() => answer({ kind: 'approve', ...scope })}
+          data-task-action="approve"
+        >
+          <Check aria-hidden strokeWidth={2} />
+          Approve
+        </Button>
+      </>
     );
   } else if (ask !== null && ask !== 'do') {
     actions = (
@@ -401,6 +412,15 @@ function TaskPage({
       />
     ) : panel?.kind === 'move' ? (
       <MoveForm task={task} project={project} parentTitle={parentTitle} onDone={() => setPanel(null)} />
+    ) : panel?.kind === 'performed' && ask === 'approve' ? (
+      <PerformedForm
+        id={task.id}
+        onSend={(note) => {
+          answer({ kind: 'performed', ...scope, ...(note === undefined ? {} : { note }) });
+          setPanel(null);
+        }}
+        onCancel={() => setPanel(null)}
+      />
     ) : panel?.kind === 'answer' && ask === 'answer' ? (
       <AnswerForm
         id={task.id}
@@ -1508,7 +1528,12 @@ function Activity({
             ) : null}
           </>
         ),
-        body: <MarkdownText source={comment.text} />,
+        body: (
+          <>
+            <MarkdownText source={comment.text} />
+            {comment.test ? <TestRun run={comment.test} /> : null}
+          </>
+        ),
       });
     }
     if (task.closedAt) {
@@ -1540,6 +1565,7 @@ function Activity({
         ) : (
           `Closed${how}`
         ),
+        ...(task.closeTest ? { body: <TestRun run={task.closeTest} /> } : {}),
       });
     }
     return out;

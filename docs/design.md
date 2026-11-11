@@ -523,8 +523,8 @@ not reset how long it has waited, and its tip says so (`Created 3d ago`).
 
 `RowActions` (Claim, the row's menu) show while the row is hovered or holds
 focus, and never on a phone; every one is also in the row's menu. A waiting
-row puts its answer in `RowAnswer`: Approve, a `Segmented` choice, or
-Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
+row puts its answer in `RowAnswer`: Approve after Did it myself, which opens
+a Note under the row, a `Segmented` choice, or Answer. A row whose answer is a choice is `answer="wide"`: below 1240 px wide
 its options take a line of their own under the title, so the title is never
 cut to make room for them. When this sign-in cannot answer, the controls are
 disabled and each carries the reason as its description (`aria-describedby`;
@@ -594,8 +594,8 @@ The top bar holds the task's path: its project's badge and name, its epic's
 id, then its id. Its end holds Copy link, the More menu (add or edit the
 description, Done when, design and notes, add a link, move the task to
 another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
-someone holds it; Approve or Answer on a task waiting for you, beside Close
-as.
+someone holds it; on a task waiting for you, Approve after Did it myself,
+which opens a Note in the reading column, or Answer beside Close as.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),

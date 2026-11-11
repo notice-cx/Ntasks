@@ -44,8 +44,8 @@ or prefix, since no query reads across stores.
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates`, `supersedes` and `merges-after` |
 | `task_external_links` | Links from a task to pages outside Ntasks: a URL, a title and optionally a kind, `pull-request`, `document` or `other` |
 | `custom_fields` | The custom fields each project defines: key, name, type, options, and when it was retired |
-| `task_comments` | Comments, in the order they were added, each marked when it is pinned |
-| `task_events` | Every change to every task, in order |
+| `task_comments` | Comments, in the order they were added, each marked when it is pinned, with the test run it reported in `test` |
+| `task_events` | Every change to every task, in order, each with the helper agent (`actor_for`) and agent session (`session`) it was made through |
 | `task_aliases` | Each former id of a task that moved to another project, and the task's id now |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
@@ -71,6 +71,16 @@ closes it. A task's last activity is not stored: a read takes the latest
 `task_events` row its assignee made, which the `task_events_by_actor` index
 `(task_id, actor, at)` answers from one entry, so every write and comment
 the holder makes moves it without a write of its own.
+
+Each `task_events` row records the helper and session the change was made
+through: for a change by the task's holder, the task's `assignee_for` and
+`work.session`, which a close or a release clears from the task and the
+history keeps. The partial indexes `task_events_by_helper` and
+`task_events_by_session`, on `(task_id, actor_for)` and `(task_id, session)`,
+hold only the changes that name one, and answer `list_tasks` with
+`changed_for` or `changed_in` from a task's own entries; `changed_by` reads
+`task_events_by_actor`. A close's test run is `close_test` on `tasks`, as
+JSON, only on a closed task.
 
 A link in `task_edges` reads from `task_id` to `depends_on_id`: `web-2`
 `duplicates` `web-1` means web-2 is the same work as web-1, filed again, and

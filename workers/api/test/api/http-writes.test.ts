@@ -581,7 +581,14 @@ describe('POST /api/tasks/:id/comments', () => {
     expect(first).toEqual({
       status: 200,
       body: {
-        comment: { id: expect.any(String), author: WRITER.name, text: 'Noted.', createdAt: time.now(), pinned: false },
+        comment: {
+          id: expect.any(String),
+          author: WRITER.name,
+          text: 'Noted.',
+          createdAt: time.now(),
+          pinned: false,
+          test: null,
+        },
       },
     });
     expect(

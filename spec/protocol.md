@@ -401,7 +401,7 @@ recorded on the task:
 
 | Field | Holds |
 |---|---|
-| `option` | A letter on a task with choices; `approve` or `decline` on an approval; `done` or `decline` on a request to do steps; null when the answer chose none |
+| `option` | A letter on a task with choices; `approve`, `done` or `decline` on an approval; `done` or `decline` on a request to do steps; null when the answer chose none. `done` on either is the person's report that they did it themselves |
 | `quote` | The person's exact words, recorded as given; null for a direct answer made without words |
 | `source` | Where the person said it, as the relaying sender named it, such as a conversation URL; null for a direct answer |
 | `recordedBy` | The person who answered directly, or the sender that relayed the answer |
@@ -678,15 +678,16 @@ someone else holds the task.
 stateDiagram-v2
   [*] --> waiting: request
   waiting --> approved: a person approves, directly or relayed
+  waiting --> performed: the person reports doing it, directly or relayed
   waiting --> declined: a person's refusal, relayed
   waiting --> retired: retired with evidence
   approved --> waiting: dispute of a relayed approval
   approved --> approved: the person reports doing it
 ```
 
-`waiting` is an open gate; `approved`, `declined` and `retired` are a
-closed gate, as `done`, `wont-do` and `already-handled`,
-`no-longer-needed` or `duplicate`.
+`waiting` is an open gate; `approved`, `performed`, `declined` and
+`retired` are a closed gate, as `done`, `done`, `wont-do` and
+`already-handled`, `no-longer-needed` or `duplicate`.
 
 **STATE-10.** <a id="state-10"></a>An approval:
 
@@ -699,6 +700,13 @@ closed gate, as `done`, `wont-do` and `already-handled`,
   decision nor an approval and offers no options goes back to agents: open,
   unassigned, without the label, with a comment to keep within the
   approval;
+- closes as `done` when the person reports that they did the action
+  themselves, directly or relayed. The answer is recorded as theirs, with
+  `option` `done` rather than `approve`, and records no permission: no agent
+  does the action ([AUTH-7](#auth-7)). Each waiting task is told that the
+  person did it, and to check the result, and each labelled `human` that is
+  neither a decision nor a gate and offers no options goes back to agents:
+  open, unassigned, without the label;
 - closes as `wont-do` when a person's refusal is relayed, and each waiting
   task is told that the action must not happen. In Ntasks a person declines
   an approval only through a relayed answer
@@ -806,8 +814,9 @@ was granted.
 
 **AUTH-1.** <a id="auth-1"></a>Only a person MAY answer a human request
 directly: pick an option, answer in words, dismiss a task labelled
-`human`, approve an approval, tick, note or mark as stuck a step of a
-request to do steps, or dispute a relayed approval. A server MUST
+`human`, approve an approval, report that they did its action themselves,
+tick, note or mark as stuck a step of a request to do steps, or dispute a
+relayed approval. A server MUST
 refuse a direct answer from an agent or a service, whatever projects or
 scopes it was granted, and MUST change nothing
 ([OQ-15](open-questions.md#oq-15), [OQ-21](open-questions.md#oq-21)).

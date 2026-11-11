@@ -530,6 +530,7 @@ describe('a row waiting for you that this sign-in cannot answer', () => {
     );
     const controls = [
       within(row('web-g7p2')).getByRole('button', { name: 'Approve' }),
+      within(row('web-g7p2')).getByRole('button', { name: 'Did it myself' }),
       ...within(row('web-d4x1')).getAllByRole('button', { name: /^\([abc]\)/ }),
       within(row('web-q8n5')).getByRole('button', { name: 'Answer' }),
     ];
@@ -618,6 +619,29 @@ describe('a row waiting for you', () => {
       vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
     });
     expect(await screen.findByText('Only a person signed in to the web app can approve web-g7p2.')).toBeTruthy();
+  });
+
+  it('closes an approval whose action the person did themselves, with their note, after the Undo window', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    const row = (await group('Waiting for you')).querySelector('[data-task-row="web-g7p2"]') as HTMLElement;
+    fireEvent.click(await enabledButton('Did it myself', row));
+    const form = (await screen.findByRole('form', { name: 'Did it myself: web-g7p2' })) as HTMLElement;
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Turned it on from the console.' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() =>
+      expect(api.state.tasks.find((entry) => entry.id === 'web-g7p2')).toMatchObject({
+        status: 'closed',
+        resolution: 'done',
+        closeReason: 'Did it myself: Turned it on from the console.',
+        answer: { option: 'done', quote: 'Turned it on from the console.', relayed: false },
+      }),
+    );
   });
 
   it('answers a decision with one press of an option, sent after the Undo window', async () => {

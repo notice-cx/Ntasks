@@ -168,10 +168,34 @@ describe('a move and the approvals and retries around it', () => {
 
     const gate = answer.moved[asked.approval.id]!;
     expect(gate.startsWith(`${to.prefix}-`)).toBe(true);
+    expect(Object.keys(answer.moved).sort()).toEqual([asked.approval.id, moving.id].sort());
     expect((await stored(to, [answer.moved[moving.id]!]))[0]!.dependencies).toMatchObject([
       { taskId: gate, type: 'blocks', status: 'open' },
     ]);
     expect(refused).toContain(gate);
+  });
+
+  it('leaves an answered approval where it was', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Deploy the API' });
+    const opened = await engine.writeTask(
+      from.id,
+      moving.id,
+      { expectedVersion: moving.version, requestApproval: { reason: 'Approve deploying the API' } },
+      OWNER,
+    );
+    const [gate] = opened.created;
+    await engine.writeTask(
+      from.id,
+      gate!.id,
+      { expectedVersion: gate!.version, close: { reason: 'Approved', resolution: 'done' } },
+      OWNER,
+    );
+
+    const answer = await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key });
+
+    expect(Object.keys(answer.moved)).toEqual([moving.id]);
+    expect(await stored(from, [gate!.id])).toEqual([expect.objectContaining({ id: gate!.id, status: 'closed' })]);
   });
 
   it('keeps an approval that another task still waits on where it is, and the moved task still waits on it', async () => {

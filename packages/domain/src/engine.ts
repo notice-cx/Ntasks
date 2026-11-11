@@ -38,6 +38,7 @@ import type {
   TaskResolution,
   TaskStatus,
   TaskStep,
+  TaskTestResult,
   TaskType,
   TaskWork,
 } from './task.ts';
@@ -258,6 +259,8 @@ export interface TaskWrite {
      * acceptance of the task as done on their own call. The API layer decides
      * that the sender may record it; only a person's decision does. */
     readonly acceptance?: TaskAcceptance;
+    /** The test run that shows the close: its command, result, counts and commit. */
+    readonly test?: TaskTestResult;
   };
   /** Opens a closed task again. Its earlier close stays in its history (rule 6). */
   readonly reopen?: true;
@@ -265,6 +268,8 @@ export interface TaskWrite {
   readonly comment?: string;
   /** How `comment` changes the task's pinned comments. Only with `comment`. */
   readonly pins?: CommentPins;
+  /** The test run `comment` reports. Only with `comment`. */
+  readonly test?: TaskTestResult;
   /** Changes to other tasks of the same project, in the same batch: a decision
    * on an approval that also tells, or hands back, the tasks waiting on it. */
   readonly others?: readonly OtherTaskWrite[];
@@ -288,7 +293,10 @@ export interface CommentPins {
  * `version_conflict` when the task moved since. One that only adds a comment
  * leaves the task's version as it is, as `addComment` does.
  */
-export interface OtherTaskWrite extends Omit<TaskWrite, 'requestApproval' | 'requestAction' | 'others' | 'pins'> {
+export interface OtherTaskWrite extends Omit<
+  TaskWrite,
+  'requestApproval' | 'requestAction' | 'others' | 'pins' | 'test'
+> {
   readonly taskId: string;
 }
 
@@ -348,6 +356,11 @@ export interface TaskFilters {
   /** Only tasks whose custom fields hold these values, by key. A
    * multiple-choice field matches a task whose options include the one named. */
   readonly fields?: Readonly<Record<string, string | number | boolean>>;
+  /** Only tasks with a change in their history by this writer, through this
+   * helper agent, or in this agent session (TaskEvent's actor, actorFor and session). */
+  readonly changedBy?: string;
+  readonly changedFor?: string;
+  readonly changedIn?: string;
 }
 
 /** What a board shows: the tasks in the statuses named, and those closed from a time. */
@@ -680,6 +693,7 @@ export interface TaskEngine {
     actor: Actor,
     retry?: Retry,
     pins?: CommentPins,
+    test?: TaskTestResult,
   ): Promise<CommentResult>;
 }
 

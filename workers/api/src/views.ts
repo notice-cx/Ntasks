@@ -84,9 +84,10 @@ const OWNER_ANSWERS: readonly Json[] = ['answer', 'declined', 'owner_performed']
  * The latest owner answer recorded on a task: what was chosen, the owner's
  * words, where they said it, who recorded it and how, and the proposal
  * version it answered; null when none is recorded. `option` is a letter on a
- * task with choices, `approve` or `decline` on an approval, `done` or
+ * task with choices, `approve`, `done` or `decline` on an approval, `done` or
  * `decline` on a request to do steps, and null when the answer chose none of
- * the options.
+ * the options. `done` on either gate is the person's report that they did it
+ * themselves, which permits no agent to do it.
  */
 export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
   const record = objectOrNull(task.metadata[NOTICEOS.maintenance]);
@@ -104,9 +105,9 @@ export function answerOf(task: Pick<Task, 'type' | 'metadata' | 'steps'>) {
       task.type === 'gate'
         ? answer.action === 'declined'
           ? 'decline'
-          : task.steps === null
-            ? 'approve'
-            : 'done'
+          : answer.action === 'owner_performed' || task.steps !== null
+            ? 'done'
+            : 'approve'
         : text(answer.option),
     quote: text(answer.response),
     source: text(answer.source),
@@ -191,6 +192,8 @@ export function webTask(task: Task, now: string) {
     closeLink: task.close?.link ?? null,
     /** On a task a person accepted as done on their own call: who, who relayed it for them, and each criterion met or waived. */
     closeAcceptance: task.close?.acceptance ?? null,
+    /** The test run the close reported: its command, passed or failed, its counts and commit. */
+    closeTest: task.close?.test ?? null,
     /** "none" for a task, bug, feature or chore closed as done with no commit, pull request or link. */
     proof: lacksProof(task) ? ('none' as const) : null,
     awaitType: task.awaitType,
@@ -267,6 +270,7 @@ export function mcpTask(task: Task, now: string) {
     closeReason: web.closeReason,
     closeLink: web.closeLink,
     closeAcceptance: web.closeAcceptance,
+    closeTest: web.closeTest,
     resolution: web.resolution,
     duplicateOf: web.duplicateOf,
     ...(task.delivery === null ? {} : { delivery: task.delivery }),
@@ -368,6 +372,8 @@ export function commentView(comment: TaskComment) {
     text: comment.text,
     createdAt: comment.createdAt,
     pinned: comment.pinned,
+    /** The test run it reported: its command, passed or failed, its counts and commit. */
+    test: comment.test,
   };
 }
 
@@ -448,6 +454,7 @@ function snapshotView(state: Record<string, Json>) {
     closedAt: close?.at ?? null,
     closeReason: close?.reason ?? null,
     closeAcceptance: objectOrNull(close?.acceptance),
+    closeTest: objectOrNull(close?.test),
     resolution: close?.resolution ?? null,
     duplicateOf: close?.duplicateOf ?? null,
     delivery: objectOrNull(state.delivery),
@@ -468,13 +475,22 @@ export function historyView(events: readonly TaskEvent[], limit: number, snapsho
       // Who pinned a comment, or unpinned earlier ones, and which.
       if (event.changes.pinned === true) fields.pinned = { old: false, new: true };
       if (event.changes.unpinned !== undefined) fields.unpinned = { old: null, new: event.changes.unpinned };
+      if (event.changes.test !== undefined) fields.test = { old: null, new: event.changes.test };
     } else {
       for (const [field, value] of Object.entries(event.changes)) {
         fields[field] = { old: state[field] ?? null, new: value };
         state[field] = value;
       }
     }
-    const base = { revision: String(event.seq), at: event.at, actor: event.actor, model: event.model };
+    const base = {
+      revision: String(event.seq),
+      at: event.at,
+      actor: event.actor,
+      model: event.model,
+      // The helper agent and session the change was made through, when it names them.
+      ...(event.actorFor === null ? {} : { for: event.actorFor }),
+      ...(event.session === null ? {} : { session: event.session }),
+    };
     // A comment leaves the task as it was, so it is no version of its own.
     if (snapshots) return event.kind === 'commented' ? null : { ...base, task: snapshotView({ ...state }) };
     return { ...base, actions: [actionOf(event)], fields };

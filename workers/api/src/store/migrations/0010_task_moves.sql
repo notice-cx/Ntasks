@@ -81,6 +81,7 @@ CREATE TRIGGER task_events_fixed BEFORE UPDATE ON task_events
 WHEN NEW.seq IS NOT OLD.seq OR NEW.project_id IS NOT OLD.project_id OR NEW.version IS NOT OLD.version
   OR NEW.kind IS NOT OLD.kind OR NEW.actor IS NOT OLD.actor OR NEW.model IS NOT OLD.model
   OR NEW.at IS NOT OLD.at OR NEW.changes IS NOT OLD.changes
+  OR NEW.actor_for IS NOT OLD.actor_for OR NEW.session IS NOT OLD.session
   OR NOT EXISTS (SELECT 1 FROM task_aliases WHERE alias = OLD.task_id AND task_id = NEW.task_id)
 BEGIN
   SELECT raise(ABORT, 'ntasks: history is never edited');
@@ -89,7 +90,7 @@ END;
 DROP TRIGGER task_comments_fixed;
 CREATE TRIGGER task_comments_fixed BEFORE UPDATE ON task_comments
 WHEN NEW.id IS NOT OLD.id OR NEW.author IS NOT OLD.author OR NEW.text IS NOT OLD.text
-  OR NEW.created_at IS NOT OLD.created_at OR NEW.pinned > OLD.pinned
+  OR NEW.created_at IS NOT OLD.created_at OR NEW.pinned > OLD.pinned OR NEW.test IS NOT OLD.test
   OR (NEW.task_id IS NOT OLD.task_id
     AND NOT EXISTS (SELECT 1 FROM task_aliases WHERE alias = OLD.task_id AND task_id = NEW.task_id))
 BEGIN

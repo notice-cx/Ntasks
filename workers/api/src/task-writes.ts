@@ -35,6 +35,7 @@ import {
   type TaskPlacement,
   type TaskResolution,
   type TaskStatus,
+  type TaskTestResult,
   type TaskType,
   type TaskWrite,
   type WorkDetail,
@@ -943,6 +944,8 @@ export interface TaskClosing {
   readonly pullRequest?: string;
   /** With done: a URL that shows work no commit or pull request shows. */
   readonly link?: string;
+  /** The test run that shows the close. */
+  readonly test?: TaskTestResult;
 }
 
 /** A new task's close as done, its evidence and proof, as the engine takes them (closeProof). */
@@ -1023,6 +1026,7 @@ export async function closeTask(
         resolution,
         ...(duplicateOf === undefined ? {} : { duplicateOf }),
         ...(resolution === 'done' ? closeProof(closing, current.type, current.work) : {}),
+        ...(closing.test === undefined ? {} : { test: closing.test }),
       },
       ...(shipped === null ? {} : { metadata: { [NOTICEOS_METADATA.cardShipped]: shipped } }),
       // The two are linked as related, so either task's page reaches the other.
@@ -1213,6 +1217,7 @@ export async function commentOnTask(
   update?: WorkArgs,
   model?: string,
   pins?: CommentPins,
+  test?: TaskTestResult,
 ): Promise<{ readonly project: Project; readonly comment: TaskComment; readonly replayed: boolean }> {
   const project = await projectOf(context, projectId, 'write');
   const task = await taskOf(context, project, taskId);
@@ -1225,7 +1230,13 @@ export async function commentOnTask(
       const refusal = notHolding(current, actor);
       if (refusal !== null) throw refusal;
       // Details that change nothing leave the version as a plain comment does.
-      return { expectedVersion: current.version, set: update, comment: text, ...(pins === undefined ? {} : { pins }) };
+      return {
+        expectedVersion: current.version,
+        set: update,
+        comment: text,
+        ...(pins === undefined ? {} : { pins }),
+        ...(test === undefined ? {} : { test }),
+      };
     });
     if (result.comment === undefined) throw unavailable(retry !== undefined);
     return { project, comment: result.comment, replayed: result.replayed };
@@ -1238,6 +1249,7 @@ export async function commentOnTask(
       actorOf(context.principal, model),
       retry,
       pins,
+      test,
     );
     return { project, comment, replayed };
   } catch (error) {

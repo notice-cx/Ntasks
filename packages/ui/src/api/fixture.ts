@@ -109,6 +109,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'respond',
   'dismiss',
   'resolve',
+  'performed',
   'choose',
   'dispute',
   'step',
@@ -364,6 +365,20 @@ export function createFixtureTasksApi({
     task.proof = resolution === 'done' && (PROVED_TYPES as readonly string[]).includes(task.issueType) ? 'none' : null;
     task.closeAcceptance = null;
     task.metadata = { ...task.metadata, noticeos_closed_by: FIXTURE_ACTOR, noticeos_closed_at: at };
+  }
+
+  /** A person's own answer to an approval, recorded on it as the Worker records one. */
+  function answerHere(task: FixtureTask, option: 'approve' | 'done', quote: string | null): void {
+    task.answer = {
+      option,
+      quote,
+      source: null,
+      recordedBy: FIXTURE_ACTOR,
+      relayed: false,
+      proposalVersion: task.proposalVersion ?? null,
+      at: task.closedAt ?? new Date(now()).toISOString(),
+      disputedBy: null,
+    };
   }
 
   /** An answered question goes back to ready work without its `human` label. */
@@ -1120,6 +1135,17 @@ export function createFixtureTasksApi({
         if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
           throw new ApiError(`Task ${id} is not an approval.`, 409, 'task_refused');
         close(task, reason ? `Approved: ${reason}` : 'Approved');
+        answerHere(task, 'approve', reason ?? null);
+      });
+    },
+    async reportPerformed(id, key, note, options) {
+      reach();
+      once(options?.idempotencyKey, ['performed', id, key, note ?? null], () => {
+        const task = find(id, key);
+        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
+          throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        close(task, note ? `Did it myself: ${note}` : 'Did it myself');
+        answerHere(task, 'done', note ?? null);
       });
     },
     async markStep(id, key, marking, options) {

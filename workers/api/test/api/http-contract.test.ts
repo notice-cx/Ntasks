@@ -234,12 +234,21 @@ async function drive(): Promise<readonly Sample[]> {
   const checked = (
     await tool(owner, 'create_task', { project: projectId, title: 'Check the links', model: 'claude-sonnet-5-5' })
   ).id as string;
-  await tool(owner, 'claim_task', { task: checked, model: 'claude-sonnet-5-5' });
+  // Through a helper agent and a session, with a test run on the comment and on the close.
+  await tool(owner, 'claim_task', {
+    task: checked,
+    model: 'claude-sonnet-5-5',
+    for: 'link-check-1',
+    session: 'session-1',
+  });
+  const linksPass = { command: 'pnpm test', result: 'passed', passed: 12, failed: 0, commit: 'c0ffee12' };
+  await tool(owner, 'comment_on_task', { task: checked, text: 'Every link answers.', test: linksPass });
   await tool(owner, 'close_task', {
     task: checked,
     reason: 'Checked.',
     commit: 'c0ffee12',
     model: 'claude-sonnet-5-5',
+    test: linksPass,
   });
   const held = (await tool(owner, 'create_task', { project: projectId, title: 'Fix the links' })).id as string;
   await tool(owner, 'claim_task', { task: held, model: 'claude-sonnet-5-5' });
@@ -279,6 +288,13 @@ async function drive(): Promise<readonly Sample[]> {
     'approval',
   );
   await as('POST /api/gates/:id/resolve', `/api/gates/${approval}/resolve`, inProject());
+
+  const update = (await tool(owner, 'create_task', { project: projectId, title: 'Update the server' })).id as string;
+  const performed = idOf(
+    await tool(owner, 'request_human_approval', { task: update, reason: 'Update the server to main.' }),
+    'approval',
+  );
+  await as('POST /api/gates/:id/performed', `/api/gates/${performed}/performed`, inProject({ note: 'Done here.' }));
 
   const mailing = (await tool(owner, 'create_task', { project: projectId, title: 'Email the list' })).id as string;
   const relayed = idOf(
@@ -362,6 +378,7 @@ async function drive(): Promise<readonly Sample[]> {
     done,
     donations,
     translation,
+    checked,
   ])
     await as('GET /api/tasks/:id', `${task(id)}?project=${projectId}`);
   for (const id of [post, checked])

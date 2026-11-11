@@ -47,6 +47,7 @@ import {
   type TaskResolution,
   type TaskStatus,
   type TaskStep,
+  type TaskTestResult,
   type TaskWork,
   type TaskWrite,
   type WriteResult,
@@ -55,6 +56,20 @@ import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
 import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
+
+/** The helper agent and the agent session a change was made through, as its history event records them. */
+interface Through {
+  readonly actorFor: string | null;
+  readonly session: string | null;
+}
+const THROUGH_NONE: Through = Object.freeze({ actorFor: null, session: null });
+
+/** What a change by `actor` to `task` was made through: the task's helper and session when `actor` holds it. */
+function heldThrough(actor: Actor, task: Pick<Task, 'assignee' | 'assigneeFor' | 'work'>): Through {
+  return task.assignee === actor.name
+    ? { actorFor: task.assigneeFor, session: task.work.session ?? null }
+    : THROUGH_NONE;
+}
 
 /** How long a retry record answers a repeated key. */
 const RECEIPT_DAYS = 7;
@@ -324,6 +339,7 @@ export class Writes {
     actor: Actor,
     at: string,
     changes: JsonObject,
+    through: Through = THROUGH_NONE,
   ) {
     return this.#insert('task_events', {
       task_id: task.id,
@@ -334,6 +350,8 @@ export class Writes {
       model: actor.model ?? null,
       at,
       changes: JSON.stringify(changes),
+      actor_for: through.actorFor,
+      session: through.session,
     });
   }
 
@@ -342,7 +360,9 @@ export class Writes {
    * pinned or not as `pins` says, and unpin the comments `pins` names. The
    * event records both, so the task's history says who pinned and unpinned
    * what, and when. The task's version stays as it is: the event records
-   * `version`, or with null the version the task stands at when the batch runs.
+   * `version` and `through`, or with null the version the task stands at
+   * when the batch runs and, for a comment by its holder, the task's helper
+   * and session then.
    */
   #comment(
     task: { id: string; projectId: string },
@@ -350,8 +370,10 @@ export class Writes {
     id: string,
     text: string,
     pins: check.CheckedPins | null,
+    test: TaskTestResult | null,
     actor: Actor,
     at: string,
+    through: Through = THROUGH_NONE,
   ): Statement[] {
     const unpin = pins?.unpin ?? [];
     const changes: JsonObject = {
@@ -359,16 +381,20 @@ export class Writes {
       text,
       ...(pins?.pin === true ? { pinned: true } : {}),
       ...(unpin.length > 0 ? { unpinned: [...unpin] } : {}),
+      ...(test === null ? {} : { test: { ...test } }),
     };
     const event =
       version === null
         ? this.#db
             .prepare(
-              `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes)
-               SELECT id, project_id, version, 'commented', ?2, ?3, ?4, ?5 FROM tasks WHERE id = ?1`,
+              `INSERT INTO task_events (task_id, project_id, version, kind, actor, model, at, changes, actor_for, session)
+               SELECT id, project_id, version, 'commented', ?2, ?3, ?4, ?5,
+                 CASE WHEN assignee = ?2 THEN assignee_for END,
+                 CASE WHEN assignee = ?2 THEN json_extract(work, '$.session') END
+               FROM tasks WHERE id = ?1`,
             )
             .bind(task.id, actor.name, actor.model ?? null, at, JSON.stringify(changes))
-        : this.#event(task, version, 'commented', actor, at, changes);
+        : this.#event(task, version, 'commented', actor, at, changes, through);
     return [
       this.#insert('task_comments', {
         id,
@@ -377,6 +403,7 @@ export class Writes {
         text,
         created_at: at,
         pinned: pins?.pin === true ? 1 : 0,
+        test: test === null ? null : JSON.stringify(test),
       }),
       ...unpin.map((commentId) =>
         this.#db.prepare('UPDATE task_comments SET pinned = 0 WHERE id = ?1 AND task_id = ?2').bind(commentId, task.id),
@@ -936,7 +963,7 @@ export class Writes {
           this.#db
             .prepare(
               `UPDATE tasks SET status = 'closed', closed_at = ?1, close_reason = ?2, resolution = ?3,
-                 duplicate_of = NULL, closed_by = ?4, closed_model = NULL, close_link = NULL, close_acceptance = NULL,
+                 duplicate_of = NULL, closed_by = ?4, closed_model = NULL, close_link = NULL, close_acceptance = NULL, close_test = NULL,
                  assignee_for = NULL, work = '{}', version = version + 1, updated_at = ?1
                WHERE id = ?5 AND project_id = ?6 AND status <> 'closed'`,
             )
@@ -964,7 +991,7 @@ export class Writes {
           this.#db
             .prepare(
               `UPDATE tasks SET status = 'open', closed_at = NULL, close_reason = NULL, resolution = NULL,
-                 duplicate_of = NULL, closed_by = NULL, closed_model = NULL, close_link = NULL, close_acceptance = NULL,
+                 duplicate_of = NULL, closed_by = NULL, closed_model = NULL, close_link = NULL, close_acceptance = NULL, close_test = NULL,
                  ${DELIVERY_COLUMNS.map((column) => `${column} = NULL`).join(', ')},
                  version = version + 1, updated_at = ?1
                WHERE id = ?2 AND project_id = ?3 AND status = 'closed' AND closed_by = ?4`,
@@ -1251,7 +1278,15 @@ export class Writes {
             .prepare('UPDATE tasks SET version = version + 1, updated_at = ?1 WHERE id = ?2 AND version = ?3')
             .bind(at, other.id, other.version),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-          this.#event(other, other.version + 1, 'updated', actor, at, { dependencies: linkList(otherLinks) }),
+          this.#event(
+            other,
+            other.version + 1,
+            'updated',
+            actor,
+            at,
+            { dependencies: linkList(otherLinks) },
+            heldThrough(actor, other),
+          ),
         );
       }
       statements.push(
@@ -1387,6 +1422,7 @@ export class Writes {
           text: write.comment,
           createdAt: at,
           pinned: write.pins?.pin === true,
+          test: write.test,
         };
         return { ...result, comment };
       } catch (error) {
@@ -1552,6 +1588,11 @@ export class Writes {
           continue;
         }
         const changes: Record<string, Json> = {};
+        const through = heldThrough(actor, {
+          assignee: row.assignee,
+          assigneeFor: row.assignee_for,
+          work: JSON.parse(row.work) as TaskWork,
+        });
         if (id !== taskId) Object.assign(changes, { id, projectId });
         if (parent !== row.parent_id) changes.parentId = parent;
         if (duplicateOf !== row.duplicate_of) {
@@ -1577,8 +1618,10 @@ export class Writes {
           // A client that reads one project's changes sees the task leave it as well as arrive in the other.
           ...(id === taskId
             ? []
-            : [this.#event({ id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, changes)]),
-          this.#event({ id, projectId }, row.version + 1, 'updated', actor, at, changes),
+            : [
+                this.#event({ id, projectId: row.project_id }, row.version + 1, 'updated', actor, at, changes, through),
+              ]),
+          this.#event({ id, projectId }, row.version + 1, 'updated', actor, at, changes, through),
         );
         if (parent !== null) loops.push(this.#noParentLoop(parent, id));
         const closed = row.status === 'closed';
@@ -1732,6 +1775,17 @@ export class Writes {
     if (helper !== current.assigneeFor) change('assignee_for', 'assigneeFor', helper);
     if (JSON.stringify(work) !== JSON.stringify(workIn(current.work)))
       change('work', 'work', JSON.stringify(work), work);
+    // A change by the holder was made through its helper and session: as the
+    // write leaves them while it keeps the hold, or as they stood when the
+    // write ends it, whatever it names for the next holder.
+    const through: Through =
+      current.assignee === actor.name
+        ? ended
+          ? heldThrough(actor, current)
+          : { actorFor: helper ?? current.assigneeFor, session: work.session ?? current.work.session ?? null }
+        : holder === actor.name
+          ? { actorFor: helper, session: work.session ?? null }
+          : THROUGH_NONE;
 
     let kind: TaskEventKind = 'updated';
     if (write.close !== null) {
@@ -1748,8 +1802,9 @@ export class Writes {
       columns.closed_by = actor.name;
       columns.closed_model = actor.model ?? null;
       columns.close_link = write.close.link;
-      const { acceptance } = write.close;
+      const { acceptance, test } = write.close;
       columns.close_acceptance = acceptance === null ? null : JSON.stringify(acceptance);
+      columns.close_test = test === null ? null : JSON.stringify(test);
       changes.status = 'closed';
       changes.close = {
         at,
@@ -1760,6 +1815,7 @@ export class Writes {
         model: actor.model ?? null,
         link: write.close.link,
         acceptance: acceptance as unknown as JsonObject | null,
+        test: test as unknown as JsonObject | null,
       };
       const { commit, pullRequest } = write.close;
       if (commit !== null || pullRequest !== null) {
@@ -1788,6 +1844,7 @@ export class Writes {
         'closed_model',
         'close_link',
         'close_acceptance',
+        'close_test',
         ...DELIVERY_COLUMNS,
       ])
         columns[column] = null;
@@ -1879,7 +1936,7 @@ export class Writes {
     return (gateId) => {
       const comment = (version: number): Statement[] => {
         if (write.comment === null || commentId === null) return [];
-        return this.#comment(current, version, commentId, write.comment, write.pins, actor, at);
+        return this.#comment(current, version, commentId, write.comment, write.pins, write.test, actor, at, through);
       };
       if (commentOnly) {
         // The write was planned from this version of the task; the batch fails whole if it moved since.
@@ -1949,7 +2006,7 @@ export class Writes {
             setValues.map(([key]) => key),
           ),
         );
-      statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes));
+      statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes, through));
       return statements;
     };
   }
@@ -2066,11 +2123,13 @@ export class Writes {
     actorInput: Actor,
     retryInput?: Retry,
     pinsInput?: CommentPins,
+    testInput?: TaskTestResult,
   ): Promise<CommentResult> {
     const actor = check.actor(actorInput);
     const retry = check.retry(retryInput);
     const text = check.text(textInput, 'comment', 4096, true);
     const pins = check.pins(pinsInput);
+    const test = testInput === undefined ? null : check.testResult(testInput, 'test');
     const [row] = await this.#reads.taskRows(projectId, [taskId]);
     if (row === undefined) refuse('not_found');
     const replayComment = async (): Promise<CommentResult | null> => {
@@ -2090,7 +2149,7 @@ export class Writes {
       await this.#db.batch([
         ...this.#staleReceipt(retry),
         // A write may land between the read above and this batch: the event records the version then.
-        ...this.#comment({ id: taskId, projectId: row.project_id }, null, id, text, pins, actor, at),
+        ...this.#comment({ id: taskId, projectId: row.project_id }, null, id, text, pins, test, actor, at),
         ...this.#receipt(retry, projectId, { commentId: id }, at, [taskId]),
       ]);
     } catch (error) {
@@ -2098,7 +2157,7 @@ export class Writes {
       return (await replayComment()) ?? refuse('retry_conflict');
     }
     return {
-      comment: { id, taskId, author: actor.name, text, createdAt: at, pinned: pins?.pin === true },
+      comment: { id, taskId, author: actor.name, text, createdAt: at, pinned: pins?.pin === true, test },
       replayed: false,
     };
   }

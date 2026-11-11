@@ -15,6 +15,8 @@ import {
   TASK_LIMITS,
   TASK_PRIORITY,
   TaskRefused,
+  TEST_LIMITS,
+  TEST_RESULTS,
   TOUCHES_LIMITS,
   WORK_DETAILS,
   WORK_LIMITS,
@@ -22,6 +24,8 @@ import {
   type Actor,
   type ApprovalRequest,
   type CommentPins,
+  type TaskTestResult,
+  type TestResult,
   type CreateTaskInput,
   type CustomField,
   type DefineFieldInput,
@@ -595,11 +599,14 @@ export interface CheckedWrite {
     pullRequest: string | null;
     link: string | null;
     acceptance: TaskAcceptance | null;
+    test: TaskTestResult | null;
   } | null;
   readonly reopen: boolean;
   readonly comment: string | null;
   /** How the comment changes the task's pinned comments; null when it changes none. */
   readonly pins: CheckedPins | null;
+  /** The test run the comment reports; null when it reports none. */
+  readonly test: TaskTestResult | null;
   /** Changes to other tasks in the same batch, each checked as a write of its own. */
   readonly others: readonly { readonly taskId: string; readonly write: CheckedWrite }[];
 }
@@ -617,7 +624,8 @@ function otherWrites(value: unknown): CheckedWrite['others'] {
       change.requestApproval !== undefined ||
       change.requestAction !== undefined ||
       change.others !== undefined ||
-      (change as TaskWrite).pins !== undefined
+      (change as TaskWrite).pins !== undefined ||
+      (change as TaskWrite).test !== undefined
     )
       invalid(`others[${index}] changes another task's fields, links or comments, and opens no request`);
     return { taskId: taskId(id, `others[${index}].taskId`), write: write(change) };
@@ -709,9 +717,11 @@ export function write(input: TaskWrite): CheckedWrite {
     reopen: input.reopen === true,
     comment: input.comment === undefined ? null : text(input.comment, 'comment', TASK_LIMITS.comment, true),
     pins: pins(input.pins),
+    test: input.test === undefined ? null : testResult(input.test, 'test'),
     others: otherWrites(input.others),
   };
   if (checked.pins !== null && checked.comment === null) invalid('pins changes pinned comments with a comment');
+  if (checked.test !== null && checked.comment === null) invalid('test is reported by a comment, so it needs one');
   const empty =
     Object.keys(set).length === 0 &&
     checked.addLabels.length === 0 &&
@@ -729,6 +739,33 @@ export function write(input: TaskWrite): CheckedWrite {
     checked.comment === null;
   if (empty) invalid('the write changes nothing');
   return checked;
+}
+
+/**
+ * A test run as a comment or a close reports it: the command on one line,
+ * passed or failed, whole counts when given, and the commit as COMMIT_SHA.
+ */
+export function testResult(value: unknown, at: string): TaskTestResult {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid(`${at} must be an object`);
+  const given = value as Record<string, unknown>;
+  const extra = Object.keys(given).filter((key) => !['command', 'result', 'passed', 'failed', 'commit'].includes(key));
+  if (extra.length > 0) invalid(`${at} takes command, result, passed, failed and commit, not ${extra.join(', ')}`);
+  const result = given.result;
+  if (!TEST_RESULTS.includes(result as TestResult)) invalid(`${at}.result must be passed or failed`);
+  const count = (name: 'passed' | 'failed'): { [key: string]: number } => {
+    const counted = given[name];
+    if (counted === undefined) return {};
+    if (!Number.isInteger(counted) || (counted as number) < 0 || (counted as number) > TEST_LIMITS.count)
+      invalid(`${at}.${name} must be a whole number from 0 to ${TEST_LIMITS.count}`);
+    return { [name]: counted as number };
+  };
+  return {
+    command: line(given.command, `${at}.command`, TEST_LIMITS.command),
+    result: result as TestResult,
+    ...count('passed'),
+    ...count('failed'),
+    ...(given.commit === undefined ? {} : { commit: commitSha(given.commit, `${at}.commit`) }),
+  };
 }
 
 /** A new comment's pins: whether it is pinned, and the pinned comments it unpins, each once. */
@@ -766,6 +803,7 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
     invalid('close.acceptance accepts a task as done, so it closes a task as done');
   if (acceptance !== null && (commit !== null || pullRequest !== null || link !== null))
     invalid('close.acceptance is what shows the task done, so it takes no commit, pullRequest or link');
+  const test = value.test === undefined ? null : testResult(value.test, 'close.test');
   if (value.resolution === 'duplicate') {
     return {
       reason,
@@ -775,10 +813,11 @@ function closing(value: NonNullable<TaskWrite['close']>): NonNullable<CheckedWri
       pullRequest,
       link,
       acceptance,
+      test,
     };
   }
   if (value.duplicateOf !== undefined) invalid('close.duplicateOf is only for a close as duplicate');
-  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest, link, acceptance };
+  return { reason, resolution: value.resolution, duplicateOf: null, commit, pullRequest, link, acceptance, test };
 }
 
 /** A person's acceptance of a task as done, as a close records it. Each

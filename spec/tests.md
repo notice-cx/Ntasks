@@ -63,6 +63,8 @@ protocol appears in neither table.
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |
 | STATE-10 | `workers/api/test/api/owner-answers.test.ts` › "refuses any relayed answer on a closed approval but the owner’s report, so a person’s approval stays as given" |
+| STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "closes the approval as done by the person, read as done and not approved, and tells the waiting task no agent does it" |
+| STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "closes without a note, and refuses a request to do steps, a task that is not an approval and a closed approval, writing nothing" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "closes a decision on the pick, past an open blocker and another holder" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "hands a task that is not a decision back to ready work with the answer as a comment" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "refuses a second pick, and finishes an interrupted one for the same person and option" |

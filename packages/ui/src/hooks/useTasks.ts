@@ -407,6 +407,8 @@ export type InboxAnswer = {
   readonly proposalVersion?: string | null;
 } & (
   | { kind: 'approve' }
+  /** The person did the approval's action themselves, so no agent does it. */
+  | { kind: 'performed'; note?: string }
   | { kind: 'answer'; text: string }
   | { kind: 'choose'; option: TaskChoiceKey; label?: string; note?: string }
   /** A close where nothing shipped. A task waiting on a person is declined
@@ -421,6 +423,8 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
   switch (answer.kind) {
     case 'approve':
       return api.resolveGate(answer.id, answer.project, undefined, shown);
+    case 'performed':
+      return api.reportPerformed(answer.id, answer.project, answer.note, shown);
     case 'answer':
       return api.respond(answer.id, answer.project, answer.text, shown);
     case 'choose':
@@ -442,6 +446,7 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
 
 const ANSWERED: Record<InboxAnswer['kind'], string> = {
   approve: 'Approved',
+  performed: 'Done by you',
   answer: 'Answered',
   choose: 'Chosen',
   close: 'Closed',

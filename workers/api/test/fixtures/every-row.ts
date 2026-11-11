@@ -68,6 +68,7 @@ export const TASKS: TaskRow[] = [
     resolution: 'duplicate',
     duplicate_of: 'acme-c3',
     closed_by: 'owner',
+    close_test: JSON.stringify({ command: 'pnpm test', result: 'failed', passed: 3, failed: 1 }),
   },
   {
     ...task,
@@ -220,6 +221,15 @@ export const ROWS: BackupRows = {
   task_comments: [
     { id: 'k-0001', task_id: 'acme-a1', author: 'owner', text: 'Looks right.', created_at: LATER, pinned: 0 },
     { id: 'k-0002', task_id: 'acme-a1', author: 'agent-a', text: 'The plan holds.', created_at: LATER, pinned: 1 },
+    {
+      id: 'k-0003',
+      task_id: 'acme-a1',
+      author: 'agent-a',
+      text: 'The tests pass.',
+      created_at: LATER,
+      pinned: 0,
+      test: JSON.stringify({ command: 'pnpm test', result: 'passed', passed: 12, failed: 0, commit: 'abc1234' }),
+    },
   ],
   task_events: [
     ...TASKS.map((row, index) => ({
@@ -243,6 +253,19 @@ export const ROWS: BackupRows = {
       model: null,
       at: LATER,
       changes: JSON.stringify({ status: 'closed' }),
+    },
+    {
+      seq: TASKS.length + 3,
+      task_id: 'acme-a1',
+      project_id: ACME,
+      version: 1,
+      kind: 'commented',
+      actor: 'agent-a',
+      model: 'model-a',
+      at: LATER,
+      changes: JSON.stringify({ commentId: 'k-0003', text: 'The tests pass.' }),
+      actor_for: 'helper-1',
+      session: 'session-1',
     },
     {
       seq: TASKS.length + 2,

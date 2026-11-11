@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ntasks.notice.cx/spec/v0/schemas/answer.schema.json",
   "title": "Answer",
-  "description": "The latest answer recorded on a task that waits on a person: made directly by a person in the server's own interface (relayed false), or relayed by an agent or a service that names where the person said it (relayed true). option is a letter on a task with choices, approve or decline on an approval, null when the answer chose none. Only a relayed answer can be disputed. Section 3.6 of the protocol.",
+  "description": "The latest answer recorded on a task that waits on a person: made directly by a person in the server's own interface (relayed false), or relayed by an agent or a service that names where the person said it (relayed true). option is a letter on a task with choices, approve, done or decline on an approval, done or decline on a request to do steps, and null when the answer chose none; done is the person's report that they did it themselves, which permits no agent to do it. Only a relayed answer can be disputed. Section 3.6 of the protocol.",
   "$defs": {
     "proposalVersion": {
       "description": "The first 32 hexadecimal characters of the SHA-256 of the task's proposal.",
@@ -12,7 +12,7 @@
   },
   "type": "object",
   "properties": {
-    "option": { "enum": ["a", "b", "c", "d", "e", "f", "approve", "decline", null] },
+    "option": { "enum": ["a", "b", "c", "d", "e", "f", "approve", "done", "decline", null] },
     "quote": { "description": "The person's exact words, recorded as given; nothing reads them.", "type": ["string", "null"] },
     "source": {
       "description": "Where the person said it, as the relaying sender named it; null for a direct answer.",
