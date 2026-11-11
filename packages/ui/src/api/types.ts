@@ -512,8 +512,19 @@ export interface TaskEdit {
   addExternalLinks?: NewExternalLink[];
   /** The URLs of links to take off. */
   removeExternalLinks?: string[];
+  /** Links to other tasks, sent with no other field. Two tasks hold one link, so a new type replaces the pair's. */
+  addLinks?: NewTaskLink[];
+  /** The task ids whose link with this task to take off, whichever way it points. */
+  removeLinks?: string[];
   /** Custom field values by key; null takes a value off. */
   fields?: Record<string, TaskFieldValue | null>;
+}
+
+/** A link to another task, as a write sends it: `blocks` (this task waits on that one), `related`,
+ * `discovered-from`, `duplicates`, `supersedes` or `merges-after`. */
+export interface NewTaskLink {
+  taskId: string;
+  type: string;
 }
 
 /** A page a task links to, as a write sends it. */
