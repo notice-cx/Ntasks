@@ -160,16 +160,19 @@ describe('reading a website’s icon', () => {
   });
 
   it('skips an icon whose read fails part-way, so a cut-off image is never kept', async () => {
-    const cutOff = () =>
-      new Response(
+    // The first read hands over a valid PNG start; the next one fails, as a dropped connection does.
+    const cutOff = () => {
+      let reads = 0;
+      return new Response(
         new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(PNG);
-            controller.error(new TypeError('connection reset'));
+          pull(controller) {
+            if (reads++ === 0) controller.enqueue(PNG);
+            else controller.error(new TypeError('connection reset'));
           },
         }),
         { headers: { 'content-type': 'image/png' } },
       );
+    };
     const { fetchImpl } = website({
       'https://example.com/': page('<link rel="icon" href="/cut.png" sizes="64x64">'),
       'https://example.com/cut.png': cutOff,
