@@ -233,7 +233,11 @@ export function agentAccessPage(input: {
   readonly workspaces: readonly WorkspaceProjects[];
   /** Every workspace of a person in more than APPROVAL_WORKSPACES, to choose which to list. */
   readonly choosable?: readonly { readonly id: string; readonly name: string }[];
-  /** The projects the person had ticked, as `projectChoice` values, which stay ticked. */
+  /**
+   * The projects the person had ticked, as `projectChoice` values: those in a
+   * listed workspace stay ticked. A tick in a workspace no longer listed is
+   * dropped, so Allow grants only projects the page shows.
+   */
   readonly chosen?: readonly string[];
   readonly oauthQuery: string;
   readonly error: string | null;
