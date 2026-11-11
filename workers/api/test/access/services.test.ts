@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { signInAuthenticator, type SignedIn } from '../../src/access/authenticator.ts';
+import { SERVICE_LIST_LIMIT } from '../../src/access/grants.ts';
 import { mayReach, type Principal } from '../../src/auth.ts';
 import { scopedTo } from '../../src/workspaces.ts';
 import { TEST_WORKSPACE } from '../store.ts';
@@ -353,5 +354,37 @@ describe('the restore route through the Worker', () => {
     }
     const notBoolean = await browser.fetchJson('/api/access/services', { name: 'yes-restore', restore: 'yes' });
     expect(await notBoolean.json()).toMatchObject({ error: 'invalid_request', field: 'restore' });
+  });
+});
+
+describe('the list of service credentials', () => {
+  it('lists an older live credential before as many newer revoked ones as the list holds', async () => {
+    const project = await createProject('Listed');
+    const browser = new Browser();
+    await browser.signInAsOwner();
+    const { service: live } = await (
+      await createService(browser, 'still-live', [{ projectId: project, access: 'read' }])
+    ).json<{ service: CreatedService }>();
+    const { createdBy } = (await env.DB.prepare(
+      'SELECT created_by AS createdBy FROM access_service_credentials WHERE id = ?',
+    )
+      .bind(live.id)
+      .first<{ createdBy: string }>())!;
+    const later = Date.now() + 60_000;
+    const revoked = Array.from({ length: SERVICE_LIST_LIMIT }, (_, index) => {
+      const at = new Date(later + index * 1000).toISOString();
+      return env.DB.prepare(
+        'INSERT INTO access_service_credentials (id, workspace_id, name, secret_hash, created_by, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(crypto.randomUUID(), TEST_WORKSPACE.id, `revoked-${index}`, '0'.repeat(64), createdBy, at, at);
+    });
+    await env.DB.batch(revoked);
+
+    const listed = await (
+      await browser.fetch('/api/access/services')
+    ).json<{ services: { id: string; revokedAt: string | null }[] }>();
+    expect(listed.services).toHaveLength(SERVICE_LIST_LIMIT);
+    expect(listed.services.find((service) => service.id === live.id)).toMatchObject({ revokedAt: null });
+    const states = listed.services.map((service) => service.revokedAt === null);
+    expect(states).toEqual([...states].sort((a, b) => Number(b) - Number(a)));
   });
 });
