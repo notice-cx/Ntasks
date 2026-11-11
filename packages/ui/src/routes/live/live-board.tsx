@@ -1,6 +1,6 @@
 /**
  * The Live page's board: every task in progress, then the closed work whose
- * change is built, merged or live, in four columns. Between two reads a card
+ * change is on its way or live, in three columns. Between two reads a card
  * travels to its new column instead of jumping there.
  */
 import { GitBranch, GitMerge, GitPullRequest } from 'lucide-react';
@@ -25,8 +25,8 @@ const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /** The cards a column shows before its count of the rest. In progress is the column people watch, so it shows more. */
 const SHOWN: Readonly<Record<'wide' | 'phone', Readonly<Record<Stage, number>>>> = {
-  wide: { progress: 6, built: 4, merged: 4, live: 4 },
-  phone: { progress: 3, built: 2, merged: 2, live: 2 },
+  wide: { progress: 6, shipping: 5, live: 4 },
+  phone: { progress: 3, shipping: 3, live: 2 },
 };
 
 /** What a column holds, where its heading has room to say it. Only Live's needs saying: it reaches back a week. */
@@ -34,8 +34,7 @@ const COLUMN_RULES: Readonly<Partial<Record<Stage, string>>> = { live: 'Last 7 d
 
 const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
   progress: <StatusMark status="in-progress" label={null} />,
-  built: <GitPullRequest aria-hidden size={14} className="shrink-0 text-ink-3" />,
-  merged: <GitMerge aria-hidden size={14} className="shrink-0 text-ink-3" />,
+  shipping: <GitMerge aria-hidden size={14} className="shrink-0 text-ink-3" />,
   live: <StatusMark status="done" label={null} />,
 };
 
@@ -68,7 +67,7 @@ export function LiveBoardView({ columns, nowMs }: { columns: LiveBoard; nowMs: n
     <div className="@container">
       <div
         ref={root}
-        className="relative grid grid-cols-1 items-start gap-3 p-4 max-sm:p-3 @xl:grid-cols-2 @min-[52rem]:grid-cols-4"
+        className="relative grid grid-cols-1 items-start gap-3 p-4 max-sm:p-3 @2xl:grid-cols-3"
         data-live-board=""
       >
         {STAGES.map((stage) => (
@@ -162,6 +161,9 @@ function Card({
       </>
     );
   } else if (held && age === null) context = <span>Nothing recorded</span>;
+  else if (stage === 'shipping') {
+    context = <span>{task.delivery?.stage === 'built' ? 'Not merged yet' : 'Not deployed yet'}</span>;
+  }
   return (
     <article
       data-board-card={task.id}

@@ -46,13 +46,26 @@ protocol appears in neither table.
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "reopens, with the epic above it, when a task under it reopens" |
 | STATE-22 | `workers/api/test/engine/epics.test.ts` › "takes a close by an agent in place of its own, which a reopened task then leaves closed" |
 | STATE-22 | `workers/api/test/access/github-webhook.test.ts` › "closes the epic above the task a merge closes when that was its last open task" |
-| STATE-24 | `workers/api/test/api/write-tools.test.ts` › "opens an approval that gates a pull request, which its reads name and its proposal covers" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "turns on auto-merge when a person approves, and posts one comment naming them and the approval" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "merges at once a pull request GitHub can merge already, and leaves a merge queue to choose its own method" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "posts %s on the pull request, naming the owner and the agent, and turns on no auto-merge" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "posts a person’s report that they did it themselves, and turns on no auto-merge" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "records on the approval that GitHub refused for lack of permission, with the links that give it" |
-| STATE-24 | `workers/api/test/access/github-app.test.ts` › "asks nothing of GitHub for an approval that gates no pull request" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "gives the task an id with its prefix and takes its comments, history, labels, links and field values along" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "moves the tasks under it along, each taking the next child id of its new parent" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "keeps every former id naming the task as it moves again, and never gives one to a new task" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "keeps the id in the same project, and records the new parent" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "when a task leaves its project without a task under it" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "moves a task to another project, and its old id names it in get_task, update_task and link_tasks" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "refuses a project of another workspace, a disabled project, a parent in another project and too many tasks, moving nothing" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "keeps field values the new project does not define, and names them" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "moves the tasks, and the old id’s task routes answer for the moved task in its new project" |
+| STATE-24 | `workers/api/test/engine/moves.test.ts` › "shows in the changes of the project the task left and of the one it joined, and once in its history" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "takes an open approval along with the task waiting on it, which still waits until it is answered" |
+| STATE-24 | `workers/api/test/api/moves.test.ts` › "keeps an approval that another task still waits on where it is, and the moved task still waits on it" |
+| STATE-22 | `workers/api/test/engine/moves.test.ts` › "closes the epic left with no open task, and the epic a closed task joins when that leaves none open" |
+| STATE-25 | `workers/api/test/api/write-tools.test.ts` › "opens an approval that gates a pull request, which its reads name and its proposal covers" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "turns on auto-merge when a person approves, and posts one comment naming them and the approval" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "merges at once a pull request GitHub can merge already, and leaves a merge queue to choose its own method" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "posts %s on the pull request, naming the owner and the agent, and turns on no auto-merge" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "posts a person’s report that they did it themselves, and turns on no auto-merge" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "records on the approval that GitHub refused for lack of permission, with the links that give it" |
+| STATE-25 | `workers/api/test/access/github-app.test.ts` › "asks nothing of GitHub for an approval that gates no pull request" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval once, returning the open one when asked the same again" |
 | STATE-10 | `workers/api/test/api/write-tools.test.ts` › "opens an approval with the title and Markdown description it is given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |
@@ -135,16 +148,22 @@ protocol appears in neither table.
 | INV-3 | `workers/api/test/engine/writes.test.ts` › "refuses a key reused for a different request, or in another project" |
 | INV-3 | `workers/api/test/api/write-tools.test.ts` › "answers a retry with the same claim, and refuses the key for a different claim" |
 | INV-3 | `workers/api/test/api/http-writes.test.ts` › "answers a retried change once, and refuses its key for the same change to another task" |
+| INV-3 | `workers/api/test/api/moves.test.ts` › "answers the same move sent again with its key, naming the old ids, without moving again" |
+| INV-3 | `workers/api/test/engine/moves.test.ts` › "answers an earlier write repeated with its key after its task moved, with the task where it is now" |
+| INV-4 | `workers/api/test/engine/moves.test.ts` › "plans again when a task it leaves in place changes before its batch, moving nothing until then" |
 | INV-4 | `workers/api/test/engine/writes.test.ts` › "refuses a write based on an older version (rule 2)" |
 | INV-4 | `workers/api/test/api/write-tools.test.ts` › "reads the task again when another write changed it first (rule 2), and gives up after a few tries" |
 | INV-4 | `workers/api/test/schema.test.ts` › "refuses an update that does not raise the version by one" |
 | INV-5 | `workers/api/test/schema.test.ts` › "writes nothing, history included, when the version has moved on" |
 | INV-5 | `workers/api/test/engine/writes.test.ts` › "answers again once a refused write is retried with its key, as a new attempt" |
+| INV-5 | `workers/api/test/engine/moves.test.ts` › "when a parent is in another project, a task would go under itself, or a task changed since it was read" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never deletes a task" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never edits or deletes history" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never edits or deletes a comment" |
 | INV-6 | `workers/api/test/schema.test.ts` › "lets a pinned comment be unpinned, and never pins an unpinned one again" |
 | INV-6 | `workers/api/test/schema.test.ts` › "keeps a task in its project" |
+| INV-6 | `workers/api/test/schema.test.ts` › "refuses a new id without the new project’s prefix, a new id in the same project, and a new creation time" |
+| INV-6 | `workers/api/test/schema.test.ts` › "never removes a former id, nor points it at a task it did not move to, and moves history and comments only with their task" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "shows proof none on a task done with no commit, pull request or link, and warns its closer" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics" |
 | INV-7 | `workers/api/test/api/http-decisions.test.ts` › "closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason" |

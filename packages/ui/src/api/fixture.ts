@@ -97,6 +97,33 @@ const DAY = 24 * 3_600_000;
 /** The most tasks a search answers, and the longest text it takes, as the Worker's search route. */
 const SEARCH_PAGE = 100;
 const SEARCH_TEXT = 512;
+/** The most tasks one move names, as the Worker's move route. */
+const MOVE_LIMIT = 50;
+/** Every write the fixture takes, as an Ntasks lists them for a person who may change its projects. */
+const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
+  'create',
+  'update',
+  'comment',
+  'close',
+  'move',
+  'respond',
+  'dismiss',
+  'resolve',
+  'performed',
+  'choose',
+  'dispute',
+  'step',
+  'accept',
+  'release',
+]);
+const ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+function randomKey(length: number): string {
+  return Array.from(
+    crypto.getRandomValues(new Uint8Array(length)),
+    (byte) => ID_CHARACTERS[byte % ID_CHARACTERS.length],
+  ).join('');
+}
 
 function copy<T>(value: T): T {
   return structuredClone(value);
@@ -211,6 +238,10 @@ export function createFixtureTasksApi({
   }
 
   function find(id: string, key: string): FixtureTask {
+    // A moved task's old id names it in the project it moved to, as the Worker reads it.
+    const current = state.aliases?.get(id);
+    const moved = current === undefined ? undefined : state.tasks.find((row) => row.id === current);
+    if (moved !== undefined) return moved;
     project(key);
     const task = state.tasks.find((row) => row.id === id && row.project === key);
     if (!task) throw new ApiError(`Task ${id}: not found.`, 404, null);
@@ -526,6 +557,98 @@ export function createFixtureTasksApi({
     );
   }
 
+  /** Whether `id` is free for a moved task: no task holds it and no moved task held it, so an old id never names two tasks. */
+  function free(id: string): boolean {
+    return !state.tasks.some((row) => row.id === id) && !(state.aliases?.has(id) ?? false);
+  }
+
+  /** The id a task takes in the project it moves to: its new parent's next child id, else the prefix and a new key. */
+  function movedId(prefix: string, parent: string | null): string {
+    if (parent !== null) {
+      let child = state.tasks.filter((row) => row.parent === parent).length + 1;
+      while (!free(`${parent}.${child}`)) child += 1;
+      return `${parent}.${child}`;
+    }
+    let id = `${prefix}-${randomKey(4)}`;
+    while (!free(id)) id = `${prefix}-${randomKey(4)}`;
+    return id;
+  }
+
+  /** Every other record that names a moved task by id names its new id: parents, links, duplicates, comments and former ids. */
+  function repoint(renamed: ReadonlyMap<string, string>): void {
+    const to = (id: string) => renamed.get(id) ?? id;
+    for (const task of state.tasks) {
+      if (task.parent !== null) task.parent = to(task.parent);
+      if (task.duplicateOf) task.duplicateOf = to(task.duplicateOf);
+      task.dependencies = task.dependencies.map((edge) => ({ ...edge, id: to(edge.id) }));
+    }
+    for (const [from, id] of renamed) {
+      const comments = state.comments.get(from);
+      if (comments !== undefined) {
+        state.comments.delete(from);
+        state.comments.set(id, comments);
+      }
+    }
+    const aliases = (state.aliases ??= new Map());
+    for (const [alias, id] of aliases) aliases.set(alias, to(id));
+    for (const [from, id] of renamed) aliases.set(from, id);
+  }
+
+  /**
+   * Moves the named tasks, with every task under them when `withChildren`, as
+   * the Worker does. A task that changes project takes an id under its new
+   * parent or with the project's prefix, and the tasks under it follow it.
+   */
+  function move(ids: readonly string[], key: string, parent: string | null, withChildren: boolean) {
+    if (ids.length === 0 || ids.length > MOVE_LIMIT) invalid(`tasks names 1 to ${MOVE_LIMIT} task ids`);
+    const destination = project(key);
+    if (destination.disabled === true)
+      throw new ApiError(
+        `${destination.displayName} is disabled, so it takes no new tasks. An owner can enable it in Settings.`,
+        409,
+        'task_refused',
+      );
+    const roots = ids.map((id) => {
+      // A former id names the task it moved to, as the Worker's move reads it.
+      const current = state.aliases?.get(id) ?? id;
+      const found = state.tasks.find((row) => row.id === current);
+      if (!found) throw new ApiError(`Task ${id}: not found.`, 404, 'not_found');
+      return found;
+    });
+    // Parents before the tasks under them, so each child's new parent id is known when it moves.
+    const moving: FixtureTask[] = [...roots];
+    for (let at = 0; withChildren && at < moving.length; at++) {
+      const above = moving[at]!;
+      moving.push(...state.tasks.filter((row) => row.parent === above.id && !moving.includes(row)));
+    }
+    const under = parent === null ? null : find(parent, key);
+    if (under !== null && moving.includes(under))
+      throw new ApiError(`${under.id} is one of the tasks moving, so they cannot move under it.`, 409, 'cycle');
+    const leaving = new Set(moving.filter((task) => task.project !== key).map((task) => task.id));
+    const left = state.tasks.find((row) => !moving.includes(row) && row.parent !== null && leaving.has(row.parent));
+    if (left !== undefined)
+      throw new ApiError(`${left.parent} has tasks under it: move them with it.`, 409, 'task_refused');
+
+    const renamed = new Map<string, string>();
+    for (const task of moving) {
+      const next = roots.includes(task)
+        ? (under?.id ?? null)
+        : task.parent === null
+          ? null
+          : (renamed.get(task.parent) ?? task.parent);
+      if (task.project !== key) {
+        const id = movedId(destination.prefix, next);
+        renamed.set(task.id, id);
+        task.id = id;
+        task.project = key;
+      }
+      task.parent = next;
+      touch(task);
+    }
+    repoint(renamed);
+    return { moved: Object.fromEntries(renamed) };
+  }
+
   return {
     get state() {
       return state;
@@ -585,7 +708,7 @@ export function createFixtureTasksApi({
     },
     async capabilities() {
       reach();
-      return { live: true, writable: true, projectSelection: true, reason: null };
+      return { live: true, writable: true, projectSelection: true, operations: FIXTURE_OPERATIONS, reason: null };
     },
     async projects() {
       reach();
@@ -772,14 +895,17 @@ export function createFixtureTasksApi({
     async task(id, key) {
       reach();
       const task = find(id, key);
-      const { prefix, logicalKey } = project(key);
+      const { prefix, logicalKey } = project(task.project);
       return copy({
         project: logicalKey,
         prefix,
         repo: '',
         readAt: new Date(now()).toISOString(),
         task: withLinks(task),
-        comments: (state.comments.get(id) ?? []).map((comment) => ({ ...comment, pinned: comment.pinned === true })),
+        comments: (state.comments.get(task.id) ?? []).map((comment) => ({
+          ...comment,
+          pinned: comment.pinned === true,
+        })),
         actors: FIXTURE_ACTORS,
         proposalVersion: task.proposalVersion ?? null,
         parent: parentContext(task),
@@ -913,6 +1039,11 @@ export function createFixtureTasksApi({
         applyLinks(task, edit);
         touch(task, 'updated', held === task.assignee ? {} : { assignee: task.assignee });
       });
+    },
+    async moveTasks({ ids, project: key, parent, withChildren = false }, options) {
+      reach();
+      const write = ['move', [...ids], key, parent ?? null, withChildren];
+      return copy(once(options?.idempotencyKey, write, () => move(ids, key, parent ?? null, withChildren)));
     },
     async closeTask(id, key, reason, { resolution, duplicateOf, idempotencyKey } = {}) {
       reach();

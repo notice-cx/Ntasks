@@ -390,7 +390,7 @@ request that waits on a person ([OQ-12](open-questions.md#oq-12)).
 
 The **proposal** is what a person answers: the task's id, title,
 description, acceptance, type and choices, a request's steps, and the pull
-request an approval gates ([STATE-24](#state-24)). Its **proposal version** is the
+request an approval gates ([STATE-25](#state-25)). Its **proposal version** is the
 first 32 hexadecimal characters (128 bits) of the SHA-256 of the proposal,
 so it changes whenever the proposal does, and nobody can write two
 proposals with one version. A server returns it with every read of a task
@@ -424,7 +424,7 @@ The task that asked for it waits on it through a `blocks`
 link, so it is not ready while the approval is open. An approval is never
 ready work itself, since only a person answers it. An approval MAY name the
 pull request it gates as `pullRequest`, such as one the agent may merge only
-once approved ([STATE-24](#state-24)).
+once approved ([STATE-25](#state-25)).
 
 The permission an approval grants is recorded with its answer
 ([OQ-9](open-questions.md#oq-9)): `approved-scope-only` while it stands,
@@ -722,7 +722,7 @@ After an approval closes, the only further answer it takes is the person's
 report that they did the action themselves, and only while the approval it
 follows still stands and still covers the request as written.
 
-**STATE-24.** <a id="state-24"></a>An approval that names the pull
+**STATE-25.** <a id="state-25"></a>An approval that names the pull
 request it gates counts the pull request as part of its proposal, so an
 answer covers only the pull request the person was shown. A server that
 acts on the pull request's host, as Ntasks does through a workspace's
@@ -803,6 +803,33 @@ commit matches one it names, in the projects the sender may change:
   `merged`.
 
 A reopen clears the delivery; history keeps each stage and each move.
+
+### 4.8 Moves
+
+**STATE-24.** <a id="state-24"></a>A server that offers moving MUST move
+every task a move names, or none of them, to the project and the parent the
+move names, within one workspace; a move to a project of another workspace
+MUST be refused. A task that stays in its project MUST keep its id. A task
+that goes to another project MUST take an id that starts with that project's
+prefix, so a task id's prefix still names its project, and its old id becomes
+its **former id**:
+
+- a server MUST read a former id, wherever a call names a task, as the task
+  it moved to, and SHOULD say in its answer which former ids it read;
+- a server MUST NOT give a former id to another task;
+- the task's comments, history, labels, links in both directions, external
+  links, delivery, claim and custom field values MUST come along, and a value
+  of a field the new project does not define MUST be kept;
+- a task with tasks under it MUST go to another project only with every task
+  under it, each keeping its parent;
+- an approval or a request to do steps that a moved task waits on MUST still
+  hold it back until it is answered, and SHOULD move with it when every task
+  waiting on it moves.
+
+A server MUST record each move in the history of each task it moves, with
+the old and new id and project, and SHOULD show it in the changes of the
+project the task left as well as the one it joined. The epic a task leaves and the epic it joins
+close and reopen as [STATE-22](#state-22) says.
 
 ## 5. Authority rules
 
@@ -952,7 +979,9 @@ commit as one.
 **INV-6. History is kept.** <a id="inv-6"></a>A server MUST NOT delete a
 task, a history event or a comment, and MUST NOT edit a history event or a
 comment's author, text or time; unpinning is the one change a comment takes
-([STATE-17](#state-17)). A task MUST keep its id, project and creation time
+([STATE-17](#state-17)). A task MUST keep its creation time, and MUST keep
+its id and project except in a move to another project ([STATE-24](#state-24)),
+where its comments and history follow it to its new id
 ([OQ-17](open-questions.md#oq-17)).
 
 **INV-7. Done carries proof.** <a id="inv-7"></a>A sender closing a task,
@@ -1005,11 +1034,11 @@ the ones above it in this table.
 | **Live work** | Work in hand, activity, pinned comments, parent context, overlaps, dropped tasks a task relies on | STATE-13, STATE-16, STATE-17, STATE-19, STATE-20, STATE-21, STATE-23, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; list tasks in progress by activity; claim by pull request; pin and unpin a comment; read a task's parent context; answer overlaps on a claim |
 
 A server that offers no way for anyone but the holder to release a task
-keeps AUTH-9 by refusing such releases. STATE-24 applies to a server
-that acts on a repository's host, and EXT-2 to a server that
-offers custom fields. The levels are independent above
-Core: a server MAY claim Core and Delivery without Human decisions and
-approvals. How a server states the levels it claims is
+keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that
+offers custom fields, STATE-24 to one that offers moving tasks, and
+STATE-25 to one that acts on a repository's host. The levels are
+independent above Core: a server MAY claim Core and Delivery without Human
+decisions and approvals. How a server states the levels it claims is
 [OQ-18](open-questions.md#oq-18). Ntasks implements all four, and the
 [conformance suite](conformance/README.md) checks that claim;
 [the spec's README](README.md#implementations) lists each server and the

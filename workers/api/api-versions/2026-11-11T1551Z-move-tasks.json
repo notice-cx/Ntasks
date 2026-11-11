@@ -1,0 +1,15 @@
+{
+  "added": "`POST /api/tasks/move`, `move` among a sender's `operations` in `GET /api/tasks/capabilities`, and a task's routes answering for a moved task when their path names its former id",
+  "routes": {
+    "POST /api/tasks/move": {
+      "tasks": "array",
+      "tasks[]": "@task",
+      "moved": "map",
+      "fieldsKept": "absent|map",
+      "epics": "absent|array",
+      "epics[]": "object",
+      "epics[].id": "string",
+      "epics[].status": "string"
+    }
+  }
+}

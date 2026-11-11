@@ -46,8 +46,8 @@ const VIEWS: readonly { value: LiveView; label: string }[] = [
 
 /**
  * Live, `<base>/live`. The board shows every task in progress, then the
- * closed work whose change is built, merged or live, and moves a card to its
- * new column as it ships. The list shows the tasks in progress grouped by how
+ * closed work waiting to ship and the work that went live, and moves a card
+ * to its new column as it ships. The list shows the tasks in progress grouped by how
  * recently their holder changed or commented on them: Active within the hour,
  * Quiet until a day, and Stalled after it or with nothing recorded, as the
  * server marks it. The page shows Stalled and changes nothing: the task stays
@@ -61,7 +61,14 @@ export function LiveRoute() {
   const [allStalled, setAllStalled] = useState(false);
   const groups = useMemo(() => liveGroups(board.allTasks, now), [board.allTasks, now]);
   const waits = useDeliveryWaits(board, NO_FILTERS, view === 'board');
-  const columns = useMemo(() => liveBoard(board.allTasks, waits, now), [board.allTasks, waits, now]);
+  const deploying = useMemo(
+    () => new Set((board.catalog.data ?? []).filter((project) => project.deploys === true).map((p) => p.logicalKey)),
+    [board.catalog.data],
+  );
+  const columns = useMemo(
+    () => liveBoard(board.allTasks, waits, (project) => deploying.has(project), now),
+    [board.allTasks, waits, deploying, now],
+  );
   const onBoard = STAGES.reduce((sum, stage) => sum + columns[stage].length, 0);
   // Each project's open epics, so a task in progress sits under its own.
   const epics = useMemo(

@@ -44,9 +44,14 @@ import {
   createProjectRoute,
   createRoute,
   defineFieldRoute,
+  FORMER_PROJECT_HEADER,
+  FORMER_TASK_HEADER,
+  moveRoute,
   retireFieldRoute,
   updateRoute,
 } from './http/writes.ts';
+import { readBoundedBytes } from './http/json-body.ts';
+import { formerIdsOf, type Reader } from './lookup.ts';
 import { notAPerson } from './owner-answers.ts';
 import { Refused, type RefusalKind } from './refused.ts';
 import type { BackupAnswer } from './store/backup.ts';
@@ -98,6 +103,7 @@ const PATHS: Readonly<Record<string, Routes>> = Object.freeze({
     scope: { POST: SCOPES.manage, PATCH: SCOPES.manage },
   },
   '/api/tasks/capabilities': { GET: capabilities },
+  '/api/tasks/move': { POST: moveRoute },
   '/api/tasks/search': { GET: searchRoute },
   // Before a task's own paths: agent-stats is also the form of a task id.
   '/api/tasks/agent-stats': { GET: agentStatsRoute },
@@ -200,9 +206,96 @@ export function lacking(scope: string): string {
   return `this route needs ${scope}`;
 }
 
-/** Answers one HTTP request from a signed-in sender, in one workspace's store. */
-export async function serveApi(request: Request, principal: Principal, context: ApiContext): Promise<Response> {
-  const url = new URL(request.url);
+/** The most bytes of a write's body read to follow a former task id: more than any write route takes. */
+const FOLLOWED_BODY_BYTES = 64 * 1024;
+
+/**
+ * The request again with the former task id `id` in its path read as the
+ * task's id now, or null when `id` is no moved task's former id. A `project`
+ * in its query, or `projectId` in its JSON body, that names the project the
+ * former id's prefix names is read as the task's project now, so a page or a
+ * client that kept the old id reaches the moved task.
+ */
+async function followingMove(
+  reader: Reader,
+  request: Request,
+  url: URL,
+  id: string,
+): Promise<{ request: Request; url: URL } | null> {
+  const former = (await formerIdsOf(reader, [id])).get(id);
+  if (former === undefined) return null;
+  // Only compared with what the request names, so a sender who no longer reaches the old project still reaches the task.
+  const prefix = id.slice(0, id.indexOf('-'));
+  const before = (await reader.engine.listProjects()).find((project) => project.prefix === prefix)?.id;
+  const now = new URL(url);
+  now.pathname = url.pathname
+    .split('/')
+    .map((part) => (part === id ? former.taskId : part))
+    .join('/');
+  if (before !== undefined && now.searchParams.get('project') === before)
+    now.searchParams.set('project', former.projectId);
+  if (request.body === null) return { request: new Request(now, request), url: now };
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  headers.set(FORMER_TASK_HEADER, id);
+  let body: string;
+  try {
+    const bytes = await readBoundedBytes(request, FOLLOWED_BODY_BYTES);
+    body = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    // The route refuses a body too large, too slow or not UTF-8; it reads this one as no body.
+    body = '';
+  }
+  try {
+    const sent: unknown = JSON.parse(body);
+    if (sent !== null && typeof sent === 'object' && !Array.isArray(sent) && before !== undefined) {
+      const fields = sent as Record<string, unknown>;
+      if (fields.projectId === before) {
+        body = JSON.stringify({ ...fields, projectId: former.projectId });
+        headers.set(FORMER_PROJECT_HEADER, before);
+      }
+    }
+  } catch {
+    // A body that is not JSON goes on as it came, for the route to refuse.
+  }
+  return { request: new Request(now, { method: request.method, headers, body }), url: now };
+}
+
+/** The request without the headers only the API sets when it follows a move. */
+function withoutFormerHeaders(request: Request): Request {
+  if (!request.headers.has(FORMER_TASK_HEADER) && !request.headers.has(FORMER_PROJECT_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.delete(FORMER_TASK_HEADER);
+  headers.delete(FORMER_PROJECT_HEADER);
+  return new Request(request, { headers });
+}
+
+/**
+ * Answers one HTTP request from a signed-in sender, in one workspace's store.
+ * A task's route that finds no task answers again for the task its path names
+ * by a former id, so only a request that names an old id reads the former ids.
+ */
+export async function serveApi(given: Request, principal: Principal, context: ApiContext): Promise<Response> {
+  const sent = withoutFormerHeaders(given);
+  const url = new URL(sent.url);
+  const id = Object.hasOwn(PATHS, url.pathname)
+    ? undefined
+    : (taskPath(url.pathname)?.taskId ?? gatePath(url.pathname)?.gateId);
+  const spare = id !== undefined && sent.body !== null ? sent.clone() : null;
+  const first = await answer(sent, url, principal, context);
+  const followed =
+    id === undefined || first.status !== 404
+      ? null
+      : await followingMove({ engine: context.engine, principal }, spare ?? sent, url, id);
+  if (followed === null) {
+    // An unread copy of a body would wait in memory for the request's whole life.
+    await spare?.body?.cancel();
+    return first;
+  }
+  return answer(followed.request, followed.url, principal, context);
+}
+
+async function answer(request: Request, url: URL, principal: Principal, context: ApiContext): Promise<Response> {
   const { engine, now, backup, load, approvalAnswered } = context;
   const routes = routesOf(url.pathname);
   if (!routes) return json({ error: 'not_found' }, 404);

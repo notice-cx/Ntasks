@@ -230,7 +230,8 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
-`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`,
+`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`,
+`folder-input`, `users`,
 `building-2`, `arrow-up-down`, `arrow-up-narrow-wide`,
 `arrow-down-wide-narrow`, `chart-no-axes-column` and
 `git-commit-horizontal`.
@@ -596,8 +597,8 @@ you"), and the action that fills it, when there is one.
 
 The top bar holds the task's path: its project's badge and name, its epic's
 id, then its id. Its end holds Copy link, the More menu (add or edit the
-description, Done when, design and notes, add a link, copy the id or the
-link) and the task's verbs, the primary one last: Claim, or Close once
+description, Done when, design and notes, add a link, move the task to
+another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
 someone holds it; on a task waiting for you, Approve after Did it myself,
 which opens a Note in the reading column, or Answer beside Close as. On an
 approval that gates a pull request, a line in `text-label` Text 3 under the
@@ -710,21 +711,24 @@ moves within seconds of the change.
 
 #### Board
 
-Four columns in the order a change moves: In progress, Built, Merged and
+Three columns in the order a change moves: In progress, Waiting to ship and
 Live (`liveBoard` in `src/lib/live.ts`). The board is one column under a
-576 px wide board, two from 576 px and four from 832 px, by container width,
-so the sidebar's width counts. Each column is a Canvas panel with 12 px
-corners: a heading with its mark (the In progress mark, `git-pull-request`,
-`git-merge`, the Done mark), its name and its count, then its cards, then
-`N more` in Text 3 for the cards it leaves out, or None when it has no tasks.
-Live's heading ends with Last 7 days in Text 3.
+672 px wide board and three from 672 px, by container width, so the
+sidebar's width counts. Each column is a Canvas panel with 12 px corners: a
+heading with its mark (the In progress mark, `git-merge`, the Done mark), its
+name and its count, then its cards, then `N more` in Text 3 for the cards it
+leaves out, or None when it has no tasks. Live's heading ends with Last 7
+days in Text 3.
 
 | Column | Holds | Order | Shows |
 |---|---|---|---|
 | In progress | every task in progress | Active, then Quiet, then Stalled, each the latest activity first | 6, 3 on a phone |
-| Built | closed tasks waiting for a merge, whenever they closed | latest built first | 4, 2 on a phone |
-| Merged | closed tasks waiting for a deploy, whenever they closed, and merged tasks of a project that does not deploy, closed in the last 7 days | latest merge first | 4, 2 on a phone |
-| Live | closed tasks whose change went live, closed in the last 7 days | latest deploy first | 4, 2 on a phone |
+| Waiting to ship | closed tasks waiting for a merge, and merged tasks of a project that deploys, waiting for a deploy, whenever they closed | latest stage reached first | 5, 3 on a phone |
+| Live | closed tasks whose change went live, and merged tasks of a project that does not deploy, closed in the last 7 days | latest stage reached first | 4, 2 on a phone |
+
+A card in Waiting to ship says the step left in Text 3: Not merged yet, or
+Not deployed yet. A merge moves a card within the column; a deploy, or a
+merge in a project that does not deploy, moves it to Live.
 
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in
