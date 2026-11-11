@@ -5,23 +5,23 @@ The Ntasks Worker. It answers the paths that
 `assets.run_worker_first`, and Cloudflare serves the web app's build for
 every other path. Wrangler commands run in this folder read that file.
 
-| Path                           | Holds                                                                                                                                                                                                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`src/index.ts`](src/index.ts) | The request handler                                                                                                                                                                                                                                                 |
-| [`src/access/`](src/access/)   | Sign-in: people, AI agents over OAuth, service credentials, the workspace routes, and the token verifier ([Sign-in](../../docs/sign-in.md))                                                                                                                         |
-| [`src/engine/`](src/engine/)   | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md))                                                                                                                                                                       |
-| [`migrations/`](migrations/)   | The D1 schema, as numbered SQL files ([rules](migrations/README.md))                                                                                                                                                                                                |
-| [`test/`](test/)               | Tests that run in workerd on a local D1 database                                                                                                                                                                                                                    |
-| [`test/node/`](test/node/)     | The tests Node runs: the routing test, which puts the Worker behind Cloudflare's static-file layer, with the real `wrangler.jsonc` and a fixture web build, and the migration test, which applies the task store's migrations to a database that already holds rows |
-| `worker-configuration.d.ts`    | The Worker's `Env` and runtime types, generated from `wrangler.jsonc`                                                                                                                                                                                               |
+| Path | Holds |
+|---|---|
+| [`src/index.ts`](src/index.ts) | The request handler |
+| [`src/access/`](src/access/) | Sign-in: people, AI agents over OAuth, service credentials, the workspace routes, and the token verifier ([Sign-in](../../docs/sign-in.md)) |
+| [`src/engine/`](src/engine/) | The task engine: the `TaskEngine` contract on D1 ([The task store](../../docs/task-store.md)) |
+| [`migrations/`](migrations/) | The D1 schema, as numbered SQL files ([rules](migrations/README.md)) |
+| [`test/`](test/) | Tests that run in workerd on a local D1 database |
+| [`test/node/`](test/node/) | The tests Node runs: the routing test, which puts the Worker behind Cloudflare's static-file layer, with the real `wrangler.jsonc` and a fixture web build, and the migration test, which applies the task store's migrations to a database that already holds rows |
+| `worker-configuration.d.ts` | The Worker's `Env` and runtime types, generated from `wrangler.jsonc` |
 
 ## Routes
 
-| Route                                                                                                             | Answer                                                                                                                                                                                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /healthz`                                                                                                    | `200` with `{"ok":true}` when the Worker is running and its D1 database has every migration in [`migrations/`](migrations/); `503` with `{"ok":false,"error":"database_behind","missing":[…],"detail":…}` naming the ones it lacks ([Deploy](../../docs/deploy.md#the-database-lacks-a-migration)) |
-| `/sign-in`, `/agent-access`, `/api/auth/`, `/api/access/` and the OAuth discovery documents under `/.well-known/` | Sign-in; [Sign-in](../../docs/sign-in.md#routes) lists each route                                                                                                                                                                                                                                  |
-| Any other path under `/api/`                                                                                      | `404` with `{"error":"not_found"}`                                                                                                                                                                                                                                                                 |
+| Route | Answer |
+|---|---|
+| `GET /healthz` | `200` with `{"ok":true}` when the Worker is running and its D1 database has every migration in [`migrations/`](migrations/); `503` with `{"ok":false,"error":"database_behind","missing":[…],"detail":…}` naming the ones it lacks ([Deploy](../../docs/deploy.md#the-database-lacks-a-migration)) |
+| `/sign-in`, `/agent-access`, `/api/auth/`, `/api/access/` and the OAuth discovery documents under `/.well-known/` | Sign-in; [Sign-in](../../docs/sign-in.md#routes) lists each route |
+| Any other path under `/api/` | `404` with `{"error":"not_found"}` |
 
 ## Commands
 
