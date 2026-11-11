@@ -56,9 +56,20 @@ interface DeclaredIcon {
 
 const DARK_SCHEME = /prefers-color-scheme\s*:\s*dark/iu;
 
-/** Dark when the media query asks for prefers-color-scheme: dark; light otherwise, no query included. */
-export function iconScheme(media: string | null): IconScheme {
-  return media !== null && DARK_SCHEME.test(media) && !/\bnot\b/iu.test(media) ? 'dark' : 'light';
+/**
+ * The schemes a `media` attribute names an icon for. Each query of its
+ * comma-separated list that asks for prefers-color-scheme: dark, without
+ * `not`, names dark; every other query names light, as no attribute does. A
+ * list such as `(prefers-color-scheme: dark), (prefers-color-scheme: light)`
+ * names both.
+ */
+export function iconSchemes(media: string | null): readonly IconScheme[] {
+  const queries = (media ?? '').split(',');
+  const dark = queries.map((query) => DARK_SCHEME.test(query) && !/\bnot\b/iu.test(query));
+  return [
+    ...(dark.some((isDark) => !isDark) ? ['light' as const] : []),
+    ...(dark.some(Boolean) ? ['dark' as const] : []),
+  ];
 }
 
 // --- addresses --------------------------------------------------------------
@@ -194,7 +205,7 @@ export function declaredIcons(html: string, pageUrl: string): Record<IconScheme,
   const end = text.search(HEAD_END);
   const head = end === -1 ? text : text.slice(0, end);
   let base: string | null = null;
-  const icons: { url: string; scheme: IconScheme; rank: [number, number]; index: number }[] = [];
+  const icons: { url: string; schemes: readonly IconScheme[]; rank: [number, number]; index: number }[] = [];
   const declared: DeclaredIcon[] = [];
   for (const match of head.matchAll(TAG)) {
     const attributes = attributesOf(match[2] ?? '');
@@ -215,11 +226,11 @@ export function declaredIcons(html: string, pageUrl: string): Record<IconScheme,
   }
   declared.forEach((icon, index) => {
     const url = webAddress(icon.href, base ?? pageUrl);
-    if (url !== null) icons.push({ url, scheme: iconScheme(icon.media), rank: rank(icon), index });
+    if (url !== null) icons.push({ url, schemes: iconSchemes(icon.media), rank: rank(icon), index });
   });
   icons.sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] || a.index - b.index);
   const of = (scheme: IconScheme) => [
-    ...new Set(icons.filter((icon) => icon.scheme === scheme).map((icon) => icon.url)),
+    ...new Set(icons.filter((icon) => icon.schemes.includes(scheme)).map((icon) => icon.url)),
   ];
   return { light: of('light'), dark: of('dark') };
 }
@@ -359,11 +370,11 @@ async function readIcon(fetchImpl: typeof fetch, candidate: string, signal: Abor
   return svg === null ? null : { sourceUrl: url, contentType: 'image/svg+xml', bytes: svg.slice().buffer };
 }
 
-/** The first of `candidates` that is an icon this Worker keeps, or null. */
+/** The first of `candidates` that is an icon this Worker keeps, or null. A candidate whose read fails, even in closing it, is skipped. */
 async function firstIcon(fetchImpl: typeof fetch, candidates: readonly string[], signal: AbortSignal) {
   for (const candidate of candidates) {
     if (signal.aborted) return null;
-    const icon = await readIcon(fetchImpl, candidate, signal);
+    const icon = await readIcon(fetchImpl, candidate, signal).catch(() => null);
     if (icon !== null) return icon;
   }
   return null;
@@ -384,7 +395,7 @@ export async function readProjectIcons(websiteUrl: string, fetchImpl: typeof fet
     pageUrl = page.url;
     const type = page.response.headers.get('content-type') ?? '';
     if (/html/iu.test(type) || type === '') declared = declaredIcons(await readHead(page.response), page.url);
-    else await page.response.body?.cancel();
+    else await page.response.body?.cancel().catch(() => undefined);
   }
   // /favicon.ico is always asked for the light icon, last unless the page declares it, however many icons it declares.
   const favicon = webAddress('/favicon.ico', pageUrl);
@@ -393,7 +404,8 @@ export async function readProjectIcons(websiteUrl: string, fetchImpl: typeof fet
   // Both searches run at once, so a slow light candidate never spends the dark icon's share of the deadline.
   const [lightIcon, darkIcon] = await Promise.all([
     firstIcon(fetchImpl, light, signal),
-    firstIcon(fetchImpl, declared.dark.slice(0, MAX_CANDIDATES - 1), signal),
+    // A dark icon has no /favicon.ico to fall back to, so all its candidates are its page's.
+    firstIcon(fetchImpl, declared.dark.slice(0, MAX_CANDIDATES), signal),
   ]);
   return { light: lightIcon, dark: darkIcon };
 }

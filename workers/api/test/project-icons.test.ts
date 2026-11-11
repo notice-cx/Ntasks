@@ -79,6 +79,14 @@ describe('the icons a page declares for a dark colour scheme', () => {
       dark: ['https://example.com/dark.svg', 'https://example.com/dark.png'],
     });
   });
+
+  it('names an icon whose media list asks for both schemes in both', () => {
+    const html = `<link rel="icon" href="/both.png" media="(prefers-color-scheme: dark), (prefers-color-scheme: light)">`;
+    expect(declaredIcons(html, 'https://example.com/')).toEqual({
+      light: ['https://example.com/both.png'],
+      dark: ['https://example.com/both.png'],
+    });
+  });
 });
 
 describe('a website address an owner types', () => {
@@ -263,6 +271,41 @@ describe('reading a website’s icon', () => {
     const icons = await readProjectIcons('https://example.com/', slowLight);
     expect(icons.light).toMatchObject({ sourceUrl: 'https://example.com/light.png' });
     expect(icons.dark).toMatchObject({ sourceUrl: 'https://example.com/dark.png' });
+  });
+
+  it('keeps the other scheme’s icon when closing a refused candidate fails', async () => {
+    const failsToClose = () =>
+      new Response(
+        new ReadableStream({
+          cancel() {
+            throw new Error('the connection could not be closed');
+          },
+        }),
+        { headers: { 'content-type': 'text/html' } },
+      );
+    const { fetchImpl } = website({
+      'https://example.com/': page(
+        '<link rel="icon" href="/light.png"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)">',
+      ),
+      'https://example.com/light.png': image(PNG, 'image/png'),
+      'https://example.com/dark.png': failsToClose,
+    });
+    const icons = await readProjectIcons('https://example.com/', fetchImpl);
+    expect(icons.light).toMatchObject({ sourceUrl: 'https://example.com/light.png' });
+    expect(icons.dark).toBeNull();
+  });
+
+  it('asks every one of five declared dark icons, since a dark icon has no /favicon.ico', async () => {
+    const dark = [1, 2, 3, 4, 5].map(
+      (n) => `<link rel="icon" href="/dark${n}.png" media="(prefers-color-scheme: dark)">`,
+    );
+    const { fetchImpl } = website({
+      'https://example.com/': page(dark.join('')),
+      'https://example.com/dark5.png': image(PNG, 'image/png'),
+    });
+    expect((await readProjectIcons('https://example.com/', fetchImpl)).dark).toMatchObject({
+      sourceUrl: 'https://example.com/dark5.png',
+    });
   });
 
   it('keeps a dark SVG icon made safe, as the light ones are', async () => {
