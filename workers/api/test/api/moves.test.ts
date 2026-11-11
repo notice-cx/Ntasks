@@ -289,6 +289,51 @@ describe('POST /api/tasks/move', () => {
     expect(page).toMatchObject({ status: 200, body: { task: { id: newId } } });
   });
 
+  it('answers a keyed change repeated by its old id after the task moved, without changing it again', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Write the runbook' });
+    const key = { 'idempotency-key': `key-${crypto.randomUUID()}` };
+    const edit = { projectId: from.id, priority: 0 };
+    const first = await send(target, 'PATCH', `/api/tasks/${moving.id}`, edit, key);
+    const newId = (await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key })).moved[moving.id]!;
+    const moved = (await stored(to, [newId]))[0]!;
+
+    const again = await send(target, 'PATCH', `/api/tasks/${moving.id}`, edit, key);
+    const spoofed = await send(
+      target,
+      'PATCH',
+      `/api/tasks/${newId}`,
+      { ...edit, projectId: to.id },
+      {
+        ...key,
+        'x-ntasks-former-task': moving.id,
+        'x-ntasks-former-project': from.id,
+      },
+    );
+
+    expect(first.status).toBe(200);
+    expect(again).toMatchObject({ status: 200, body: { task: { id: newId } } });
+    expect(spoofed.status).toBe(409);
+    expect((await stored(to, [newId]))[0]!.version).toBe(moved.version);
+  });
+
+  it('shows a reader of only the project a task left that it left, by its old id and nothing of where it went', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Write the runbook' });
+    const after = await engine.latestChange();
+    const newId = (await write<Moved>(target, 'move_tasks', { task: moving.id, project: to.key })).moved[moving.id]!;
+    const reader = api({ principal: granted({ [from.id]: 'read' }), engine });
+
+    const seen = await get(reader, `/api/changes?after=${after}&project=${from.id}`);
+    const everything = await get(target, `/api/changes?after=${after}&project=${from.id}`);
+
+    expect(
+      (seen.body.events as { taskId: string; changes: unknown }[]).map((event) => [event.taskId, event.changes]),
+    ).toEqual([[moving.id, { formerId: moving.id }]]);
+    expect(JSON.stringify(seen.body)).not.toContain(to.prefix);
+    expect((everything.body.events as { taskId: string }[]).map((event) => event.taskId)).toEqual([newId]);
+  });
+
   it('refuses a task named twice in place of parent, and a missing destination, moving nothing', async () => {
     const [from] = [await newProject(engine)];
     const moving = await task(from);

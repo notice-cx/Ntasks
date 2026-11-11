@@ -622,7 +622,8 @@ moves at most 50 tasks, counting the tasks that move with them.
   both projects show it ([reading changes](#reading-changes-instead-of-reloading)),
   so a client that reads one project's changes sees the task leave it: the
   change in the project it left also names the id it had there, in
-  `formerId`.
+  `formerId`. A sender who cannot reach the project it went to sees that
+  change by the task's former id, with `formerId` alone in its `changes`.
 - The epic a task leaves and the epic it joins close or reopen as when a task
   under them closes or reopens ([epics](concepts.md#epics)).
 
@@ -644,7 +645,8 @@ the `Idempotency-Key` header, a retry answers the first move without moving
 again ([retrying a write](#retrying-a-write)), even once the project no longer
 takes tasks or the tasks have moved on; it leaves out a task now in a project
 the sender cannot reach. A retry of another write whose task has moved since
-answers with the task where it is now.
+answers with the task where it is now, also over HTTP when it names the old
+id in its path and the old project in its body, as first sent.
 
 ## Recording an owner answer
 

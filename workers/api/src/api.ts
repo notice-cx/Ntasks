@@ -44,6 +44,8 @@ import {
   createProjectRoute,
   createRoute,
   defineFieldRoute,
+  FORMER_PROJECT_HEADER,
+  FORMER_TASK_HEADER,
   moveRoute,
   retireFieldRoute,
   updateRoute,
@@ -231,6 +233,7 @@ async function followingMove(
   if (request.body === null) return { request: new Request(now, request), url: now };
   const headers = new Headers(request.headers);
   headers.delete('content-length');
+  headers.set(FORMER_TASK_HEADER, id);
   let body: string;
   try {
     const bytes = await readBoundedBytes(request, FOLLOWED_BODY_BYTES);
@@ -243,7 +246,10 @@ async function followingMove(
     const sent: unknown = JSON.parse(body);
     if (sent !== null && typeof sent === 'object' && !Array.isArray(sent) && before !== undefined) {
       const fields = sent as Record<string, unknown>;
-      if (fields.projectId === before) body = JSON.stringify({ ...fields, projectId: former.projectId });
+      if (fields.projectId === before) {
+        body = JSON.stringify({ ...fields, projectId: former.projectId });
+        headers.set(FORMER_PROJECT_HEADER, before);
+      }
     }
   } catch {
     // A body that is not JSON goes on as it came, for the route to refuse.
@@ -251,12 +257,22 @@ async function followingMove(
   return { request: new Request(now, { method: request.method, headers, body }), url: now };
 }
 
+/** The request without the headers only the API sets when it follows a move. */
+function withoutFormerHeaders(request: Request): Request {
+  if (!request.headers.has(FORMER_TASK_HEADER) && !request.headers.has(FORMER_PROJECT_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.delete(FORMER_TASK_HEADER);
+  headers.delete(FORMER_PROJECT_HEADER);
+  return new Request(request, { headers });
+}
+
 /**
  * Answers one HTTP request from a signed-in sender, in one workspace's store.
  * A task's route that finds no task answers again for the task its path names
  * by a former id, so only a request that names an old id reads the former ids.
  */
-export async function serveApi(sent: Request, principal: Principal, context: ApiContext): Promise<Response> {
+export async function serveApi(given: Request, principal: Principal, context: ApiContext): Promise<Response> {
+  const sent = withoutFormerHeaders(given);
   const url = new URL(sent.url);
   const id = Object.hasOwn(PATHS, url.pathname)
     ? undefined

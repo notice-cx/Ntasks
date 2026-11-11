@@ -69,6 +69,10 @@ import { HttpRefused, invalidRequest, json, queryOf } from './respond.ts';
 
 /** The header a write's retry key arrives in. */
 export const IDEMPOTENCY_HEADER = 'idempotency-key';
+/** The task id, and the project, a write's path and body named before the API read a moved task's former id as
+ * the task (api.ts): its retry is the request as sent. The API sets them, and drops any a client sends. */
+export const FORMER_TASK_HEADER = 'x-ntasks-former-task';
+export const FORMER_PROJECT_HEADER = 'x-ntasks-former-project';
 /** The largest body a write takes. */
 const BODY_BYTES = 32 * 1024;
 const STATUSES: readonly Exclude<TaskStatus, 'closed'>[] = ['open', 'in_progress', 'blocked', 'deferred'];
@@ -134,10 +138,18 @@ export async function writeOf(
   }
   if (body === null || typeof body !== 'object' || Array.isArray(body))
     invalidRequest('the body must be one JSON object');
+  const formerTask = request.headers.get(FORMER_TASK_HEADER);
+  const formerProject = request.headers.get(FORMER_PROJECT_HEADER);
+  const asSent = (sent: Args): Args => ({
+    ...route,
+    ...sent,
+    ...(formerTask !== null && route.task !== undefined ? { task: formerTask } : {}),
+    ...(formerProject !== null && sent.projectId !== undefined ? { projectId: formerProject } : {}),
+  });
   return {
     body: body as Args,
     // The route names the task, so a key sent again for another task is another request.
-    retry: (sent) => (key === null ? undefined : { operation, key, request: { ...route, ...sent } }),
+    retry: (sent) => (key === null ? undefined : { operation, key, request: asSent(sent) }),
   };
 }
 
