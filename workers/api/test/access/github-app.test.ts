@@ -689,6 +689,63 @@ describe('the app’s deliveries', () => {
     expect(github.checkReads).toContain(commit);
   });
 
+  describe('a task closed with a commit pushed before the close', () => {
+    async function closedWithCommit(owner: Browser, projectId: string, commit: string): Promise<string> {
+      const created = await inWorkspace(owner, 'POST', '/api/tasks', { projectId, title: 'Fix the footer' });
+      const id = created.body.id as string;
+      const closed = await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', commit });
+      expect(closed.status).toBe(200);
+      return id;
+    }
+    const pushOf = (id: number, ...commits: string[]) => ({
+      ref: 'refs/heads/main',
+      after: commits.at(-1),
+      commits: commits.map((commit) => ({ id: commit, message: 'Fix the footer' })),
+      installation: { id },
+      repository,
+    });
+
+    it('moves to merged at its close, with the push’s newest commit, and to live once that commit’s deploy passed', async () => {
+      const owner = await connected();
+      const mine = newInstallation();
+      await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+      const projectId = await deployingProject(owner);
+      const [mine1, newest] = [newCommit(), newCommit()];
+      expect((await deliver('push', pushOf(mine, mine1, newest))).body).toMatchObject({ moved: [] });
+      // The deploy of the push's newest commit passed before the task closed, so its event moved nothing either.
+      const startedAt = new Date().toISOString();
+      github.checkRuns.set(newest, [
+        { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: startedAt },
+      ]);
+      expect(
+        (await deliver('check_run', passed(mine, 'Workers Builds: site', newest, 'main', startedAt))).body,
+      ).toMatchObject({ moved: [] });
+
+      const id = await closedWithCommit(owner, projectId, mine1.slice(0, 12));
+      expect((await taskOf(projectId, id)).delivery).toMatchObject({
+        stage: 'merged',
+        mergeCommit: newest,
+        repository: REPOSITORY,
+      });
+      // The close sets off the check, which reads the deploy of the push's newest commit.
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect((await taskOf(projectId, id)).delivery?.stage).toBe('live');
+    });
+
+    it('stays at built when no push brought its commit onto the default branch', async () => {
+      const owner = await connected();
+      const mine = newInstallation();
+      await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+      const projectId = await deployingProject(owner);
+      const branched = { ...pushOf(mine, newCommit()), ref: 'refs/heads/feature' };
+      await deliver('push', branched);
+      const id = await closedWithCommit(owner, projectId, branched.after!);
+      expect((await taskOf(projectId, id)).delivery).toMatchObject({ stage: 'built', mergeCommit: null });
+      const later = await closedWithCommit(owner, projectId, newCommit());
+      expect((await taskOf(projectId, later)).delivery?.stage).toBe('built');
+    });
+  });
+
   it('holds a deploy that a webhook set up by hand reports, reading its commit through the app on the repository’s account', async () => {
     const owner = await connected();
     const mine = newInstallation();

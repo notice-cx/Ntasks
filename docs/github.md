@@ -116,6 +116,10 @@ them, open the app's page on GitHub (**Settings**, **Developer settings**,
   events name the pull request and its merge commit, so a task closed with a
   commit from its branch matches neither. Close tasks with their pull
   request, or name them on a `Refs:` line of the merge's commit message.
+- **Closed more than a day after its commit was pushed.** Ntasks keeps a
+  push's commits for a day, so a task closed with one of them within that day
+  moves to Merged at its close, and a task closed later stays at Built. Send
+  a `merged` signal for its commit (below) to move it.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
   commit's other deploys did, until that check passes on a rerun (press
   **Re-run** on it in GitHub) or a later merge's deploy ships it.

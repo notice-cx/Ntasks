@@ -41,9 +41,16 @@ export interface StoreBinding {
 /** How long after a close with a pull request, or a delivery that moved a task, the store asks GitHub about waiting work: a few in a row share one check. */
 const CHECK_DELAY_MS = 5_000;
 
-/** Whether a task waits for a merge of a pull request, which GitHub may already have made. */
-function waitsOnPullRequest(task: Task): boolean {
-  return task.delivery?.stage === 'built' && task.delivery.pullRequest !== null;
+/**
+ * Whether a task waits on GitHub for something GitHub may already have done:
+ * the merge of its pull request, or the deploy of a commit pushed before the
+ * task closed, which moved it to merged at its close.
+ */
+function waitsOnGitHub(task: Task): boolean {
+  const delivery = task.delivery;
+  if (delivery === null) return false;
+  if (delivery.stage === 'built') return delivery.pullRequest !== null;
+  return delivery.stage === 'merged' && delivery.pullRequest === null && delivery.repository !== null;
 }
 
 /** The task store of one workspace. Workspaces never share a store. */
@@ -75,9 +82,9 @@ export class TaskStore extends DurableObject<Env> {
   #newEngine(): TaskEngine {
     const now = () => new Date().toISOString();
     const engine = cachedReads(createEngine(objectDatabase(this.ctx.storage, this.meter), { now }), now);
-    // A close as done with a pull request: GitHub may have merged it before the close.
+    // A close as done with a pull request, or with a commit pushed before it: GitHub may have merged or deployed it already.
     const checked = async <R extends { readonly task: Task }>(result: R): Promise<R> => {
-      if (waitsOnPullRequest(result.task)) await this.#checkGitHubIn(CHECK_DELAY_MS);
+      if (waitsOnGitHub(result.task)) await this.#checkGitHubIn(CHECK_DELAY_MS);
       return result;
     };
     return Object.freeze({

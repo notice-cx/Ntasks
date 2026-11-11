@@ -15,6 +15,7 @@ import changedThroughAndTests from './migrations/0009_changed_through_and_tests.
 import taskMoves from './migrations/0010_task_moves.sql';
 import projectIconSchemes from './migrations/0011_project_icon_schemes.sql';
 import deliveryRepository from './migrations/0012_delivery_repository.sql';
+import pushedCommits from './migrations/0013_pushed_commits.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
@@ -29,6 +30,7 @@ export const MIGRATIONS: readonly { readonly name: string; readonly sql: string 
   { name: '0010_task_moves', sql: taskMoves },
   { name: '0011_project_icon_schemes', sql: projectIconSchemes },
   { name: '0012_delivery_repository', sql: deliveryRepository },
+  { name: '0013_pushed_commits', sql: pushedCommits },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */
