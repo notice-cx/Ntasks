@@ -216,12 +216,13 @@ export function useServiceCredentials() {
   });
 }
 
-/** One write to the credential list, which is read again once it lands. */
+/** One write to the credential list, which is read again once it settles: a write whose answer was lost may still
+ * have made a credential, which then shows with Revoke. */
 function useServicesWrite<Input, Output>(send: (input: Input) => Promise<Output>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: send,
-    onSuccess: () => client.invalidateQueries({ queryKey: SERVICES_KEY }),
+    onSettled: () => client.invalidateQueries({ queryKey: SERVICES_KEY }),
   });
 }
 

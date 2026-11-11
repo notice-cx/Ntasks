@@ -143,4 +143,25 @@ describe('service credentials on the Settings page', () => {
     finish();
     expect(await screen.findByRole('region', { name: 'Token for nightly-backup' })).toBeTruthy();
   });
+
+  it('lists a credential whose answer was lost, so the owner can revoke it', async () => {
+    const api = createFixtureTasksApi();
+    const made = api.createServiceCredential.bind(api);
+    vi.spyOn(api, 'createServiceCredential').mockImplementation(async (input, options) => {
+      await made(input, options);
+      throw new TypeError('Failed to fetch');
+    });
+    renderApp('/tasks/settings/services', api);
+    const form = await openForm();
+    fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: 'nightly-backup' } });
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Back up every project' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Make credential' }));
+    const [lost] = await waitFor(async () => {
+      const listed = await api.serviceCredentials();
+      expect(listed).toHaveLength(1);
+      return listed;
+    });
+    const row = await serviceRow(lost!.id);
+    expect(within(row).getByRole('button', { name: 'Revoke' })).toBeTruthy();
+  });
 });
