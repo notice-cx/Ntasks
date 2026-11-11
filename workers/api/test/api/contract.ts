@@ -3,7 +3,10 @@
 // and the fields it added to each route's answer, with the type of each, by
 // path: `tasks[].title` is the title of each task in `tasks`. A shared shape,
 // such as a task, is recorded once under `shapes` and named from a route as
-// `@task`, or as `@task|null` where the answer may be null instead.
+// `@task`, or as `@task|null` where the answer may be null instead. A
+// version can also name arrays that answer empty from then on: they stay in
+// the answer, with their entries' recorded fields, for clients made for
+// earlier versions.
 
 /** What a value is, as the contract names it. `map` is an object whose keys
  * are data, such as a task's custom field values: its entries are not fields.
@@ -19,6 +22,8 @@ export interface ContractVersion {
   readonly added: string;
   readonly shapes?: Readonly<Record<string, Recorded>>;
   readonly routes?: Readonly<Record<string, Recorded>>;
+  /** Each route's arrays, by path, that answer empty from this version on. */
+  readonly emptied?: Readonly<Record<string, readonly string[]>>;
 }
 
 /** Where a shared shape is written out in a route: its name, and the path it starts at. */
@@ -59,10 +64,19 @@ export function merge(versions: readonly ContractVersion[]): {
   readonly version: number;
   readonly shapes: Readonly<Record<string, Recorded>>;
   readonly routes: Readonly<Record<string, Recorded>>;
+  readonly emptied: Readonly<Record<string, readonly string[]>>;
 } {
   const shapes: Record<string, Record<string, string>> = {};
   const routes: Record<string, Record<string, string>> = {};
+  const emptied: Record<string, string[]> = {};
   for (const entry of versions) {
+    for (const [route, paths] of Object.entries(entry.emptied ?? {})) {
+      const merged = (emptied[route] ??= []);
+      for (const path of paths) {
+        if (merged.includes(path)) throw new Error(`${route} ${path} is emptied twice`);
+        merged.push(path);
+      }
+    }
     for (const [into, from] of [
       [shapes, entry.shapes ?? {}],
       [routes, entry.routes ?? {}],
@@ -76,7 +90,7 @@ export function merge(versions: readonly ContractVersion[]): {
       }
     }
   }
-  return { version: versions.length, shapes, routes };
+  return { version: versions.length, shapes, routes, emptied };
 }
 
 /** A route's recorded paths, with each `@shape` it names written out under its path. */
@@ -153,6 +167,8 @@ export interface Differences {
   readonly retyped: readonly string[];
   /** Paths the answers hold that the contract does not record, each as the line that records it. */
   readonly unrecorded: readonly string[];
+  /** Arrays a version emptied that an answer gave an entry. */
+  readonly filled: readonly string[];
   /** Each recorded field that can hold a value, keyed by where it is recorded
    * (its shared shape, or its route) and its path there: whether an answer
    * gave it one. A type can only be checked on a value. */
@@ -167,13 +183,24 @@ function parentOf(path: string): string {
 
 const VALUELESS: ReadonlySet<ValueType> = new Set(['absent', 'null']);
 
-/** How one route's answers differ from its contract. */
-export function compare(route: string, contract: RouteContract, answers: Observed): Differences {
+/** How one route's answers differ from its contract, where `emptied` names
+ * the arrays that answer empty. An emptied array's entries hold no value to
+ * check, so their fields are left out of `valued`. */
+export function compare(
+  route: string,
+  contract: RouteContract,
+  answers: Observed,
+  emptied: readonly string[] = [],
+): Differences {
   const observed = typesOf(answers);
   const removed: string[] = [];
   const retyped: string[] = [];
   const unrecorded: string[] = [];
   const valued = new Map<string, boolean>();
+  for (const path of emptied)
+    if (!contract.get(path)?.types.has('array')) throw new Error(`${route} ${path} is emptied but records no array`);
+  const filled = emptied.filter((path) => observed.has(`${path}[]`)).map((path) => `${route} ${path}`);
+  const inEmptied = (path: string) => emptied.some((at) => path.startsWith(`${at}[]`));
   const named = (path: string, field: Field) =>
     field.in ? `${route} ${path} (shape ${field.in.name})` : `${route} ${path}`;
   for (const [path, field] of contract) {
@@ -186,7 +213,7 @@ export function compare(route: string, contract: RouteContract, answers: Observe
     } else if ([...types].some((type) => !field.types.has(type))) {
       retyped.push(`${named(path, field)}: answered as ${listed(types)}, recorded as ${listed(field.types)}`);
     }
-    if ([...field.types].every((type) => VALUELESS.has(type))) continue;
+    if ([...field.types].every((type) => VALUELESS.has(type)) || inEmptied(path)) continue;
     const key = field.in
       ? `shape ${field.in.name} ${path.slice(field.in.at.length).replace(/^\./u, '')}`
       : `${route} ${path}`;
@@ -205,7 +232,7 @@ export function compare(route: string, contract: RouteContract, answers: Observe
     const line = `"${relative}": "${listed(types)}"`;
     unrecorded.push(shape === null ? `routes["${route}"]: ${line}` : `shapes.${shape.name}: ${line}`);
   }
-  return { removed, retyped, unrecorded, valued };
+  return { removed, retyped, unrecorded, filled, valued };
 }
 
 /** The recorded fields no route's answers gave a value, so their type went unchecked. */

@@ -362,7 +362,8 @@ export interface ChangePage {
 }
 
 /** What agent statistics count of one task: who holds or closed it, with the
- * models they named, and when it started and closed. No text of the task. */
+ * models they named, when it started and closed, and where its change is.
+ * No text of the task. */
 export interface WorkItem {
   readonly id: string;
   readonly projectId: string;
@@ -377,6 +378,12 @@ export interface WorkItem {
   readonly closedAt: string | null;
   readonly closedBy: string | null;
   readonly closedModel: string | null;
+  readonly pullRequest: string | null;
+  readonly commit: string | null;
+  readonly mergeCommit: string | null;
+  readonly stage: DeliveryStage | null;
+  readonly mergedAt: string | null;
+  readonly liveAt: string | null;
 }
 
 /** What the wins feed reads of one task (workers/api/src/wins.ts): a change

@@ -169,7 +169,7 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
 export const GET_AGENT_STATS: TaskTool = Object.freeze({
   name: 'get_agent_stats',
   description:
-    'Agent work statistics grouped by model: current and blocked counts, closes in 7 days and the 7 before, eight weeks of velocity, ranking and leaders. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
+    'Agent work statistics grouped by model, in name order: current and blocked counts, closes in 7 days and the 7 before, changes merged or live in 7 days and the 7 before, and eight weeks of velocity. No ranking or awards: race and trophies are always empty. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
   inputSchema: schema({
     project: { ...PROJECT, description: 'The projectId, key or prefix from list_projects; omit for workspace totals.' },
   }),

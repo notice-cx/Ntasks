@@ -651,18 +651,31 @@ as `answer`, or null:
 `get_agent_stats` and `GET /api/tasks/agent-stats` count the work of agents
 by the model each named, in the shape NoticeOS's Agents page reads
 ([`agent-stats.ts`](../workers/api/src/agent-stats.ts)): the tasks in
-progress and blocked now, and those closed since the start of the day 56 days
-ago. A close counts for the model its closer named, and otherwise for the
-model of the agent that claimed it; a model nobody named, or a name Ntasks
-does not recognize, counts as `Other`. Approvals and epics are left out.
+progress and blocked now, those closed since the start of the day 56 days
+ago, and the changes among them that merged or went live. A task counts for
+the model its closer named, and otherwise for the model of the agent that
+claimed it; a model nobody named, or a name Ntasks does not recognize, counts
+as `Other`. Approvals and epics are left out.
+
+Nothing ranks one model against another or gives one an award. Closes, how
+fast work closes and runs of days are counts an agent can raise by splitting
+or rushing work, so the rows are in name order, with `Other` last. A change
+that shipped counts as the [wins feed](#wins) counts it: once for each pull
+request, at the time it merged, or went live where no merge was recorded.
 
 | Field of `stats` | Holds |
 |---|---|
-| `workers` | One row for each model with work this week or in hand: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), and the median hours from claim to close (`medianHours`) |
+| `workers` | One row for each model with work this week, in hand, or shipped this week, in name order: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), the median hours from claim to close (`medianHours`), and the changes shipped in the last 7 days with one of its tasks (`shipped`) |
 | `velocity` | Closes in each of the last eight weeks, from Monday, by the three models that closed the most |
-| `race` | This week's closes by model, with points by priority |
-| `trophies` | The most closes, the fastest close, the longest run of days and the most urgent closes |
-| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same, for every model together |
+| `shipped`, `shippedLastWeek` | The changes shipped in the last 7 days and the 7 before. A change with tasks of two models counts once here and once in each model's row |
+| `race` | The last 7 days, as `from` and `to`; its `players` is always empty |
+| `trophies` | Always empty |
+| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same as each row's, for every model together |
+
+`shipped`, `shippedLastWeek` and each row's `shipped` are null when no task
+read has merged or gone live, because Ntasks then holds no record of merges
+to count. `race` and `trophies` stay in the answer for clients made before
+they were [emptied](#an-array-that-answers-empty).
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
@@ -1084,7 +1097,8 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added.
+field can hold is added, or an array of an answer is emptied
+([below](#an-array-that-answers-empty)).
 
 Each version is one file in
 [`workers/api/api-versions/`](../workers/api/api-versions/), and the version
@@ -1146,6 +1160,16 @@ addition: the new field beside the old one, which keeps its answer. A
 removal raises the version, and raises `oldest` to that version, so a client
 made for an earlier one finds out that it is too old.
 
+### An array that answers empty
+
+A product change can stop filling an array, such as the awards agent
+statistics no longer give. The array stays in the answer, empty, with the
+fields its entries had, so a client made for an earlier version still reads
+it. The version file of that change lists it under `emptied`, by route and
+path, and the [recorded contract](#the-recorded-contract) test then fails
+when an answer gives it an entry. An array that answers empty is no
+removal: `oldest` stays where it is.
+
 ### The recorded contract
 
 Each file in `api-versions/` records the fields its version added to each
@@ -1156,7 +1180,8 @@ signs in as a person, sends every route the record names through the Worker,
 and compares the answers with the record, so it fails when an answer:
 
 - leaves out a recorded field, or gives it a type the record does not allow;
-- holds a field the record lacks. The failure names the line that records it.
+- holds a field the record lacks. The failure names the line that records it;
+- gives an entry to an array a version emptied.
 
 A recorded field is never edited or removed, and the test refuses a field
 recorded twice. One field was corrected after it was recorded: version 1

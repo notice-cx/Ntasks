@@ -368,14 +368,16 @@ export class Reads {
     return (await this.taskRows(projectId, taskIds)).map(toTask);
   }
 
-  /** The work agent statistics count: in progress or blocked through the
-   * (project_id, status) index, and closed from a time through the
-   * (project_id, closed_at) one, as one statement over every project named. */
+  /** The work agent statistics count, with where its change is: in progress
+   * or blocked through the (project_id, status) index, and closed from a time
+   * through the (project_id, closed_at) one, as one statement over every
+   * project named. */
   async listWork(projectIds: readonly string[], closedSince: string): Promise<WorkItem[]> {
     if (projectIds.length === 0) return [];
     if (!projectIds.every((id) => typeof id === 'string')) invalid('projectIds must be project ids');
     const columns = `t.id, t.project_id, t.type, t.await_type, t.status, t.priority, t.assignee, t.assignee_model,
-      t.started_at, t.updated_at, t.closed_at, t.closed_by, t.closed_model`;
+      t.started_at, t.updated_at, t.closed_at, t.closed_by, t.closed_model, t.delivery_pull_request,
+      t.delivery_commit, t.delivery_merge_commit, t.delivery_stage, t.merged_at, t.live_at`;
     const { results } = await this.#db
       .prepare(
         `SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_status
