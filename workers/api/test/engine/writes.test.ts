@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { Database } from '../../src/engine/database.ts';
 import { createEngine } from '../../src/engine/index.ts';
 import { storeDatabase } from '../store.ts';
-import { AGENT, clock, engine, expectRefusal, newProject, OTHER, OWNER, retryFor } from './helpers.ts';
+import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OTHER, OWNER, retryFor } from './helpers.ts';
 
 async function historyOf(tasks: TaskEngine, projectId: string, taskId: string) {
   return [...(await tasks.listHistory(projectId, taskId, { limit: 200 }))].reverse();
@@ -406,7 +406,7 @@ describe('retries (rule 3)', () => {
 
     expect(second.replayed).toBe(true);
     expect(second.task.id).toBe(first.task.id);
-    expect((await tasks.listTasks(project.id, { limit: 50 })).tasks).toHaveLength(1);
+    expect(await everyTask(tasks, project.id)).toHaveLength(1);
   });
 
   it('answers a repeated write with the same result, without a second change', async () => {
@@ -618,7 +618,7 @@ describe('a new task that asks for an approval', () => {
 
     const again = await tasks.createTask(project.id, input, AGENT, retry);
     expect(again).toMatchObject({ replayed: true, task: { id: task.id }, created: [{ id: gate!.id }] });
-    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+    expect(await everyTask(tasks, project.id)).toHaveLength(2);
   });
 
   it("titles the approval with the reason's first line that is not blank, without its spaces or carriage return", async () => {
@@ -646,7 +646,7 @@ describe('a new task that asks for an approval', () => {
       tasks.createTask(project.id, { title: 'Ask', requestApproval: { reason: ' ' } }, AGENT),
       'invalid',
     );
-    expect((await tasks.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(tasks, project.id)).toEqual([]);
   });
 });
 

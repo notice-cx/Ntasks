@@ -7,7 +7,7 @@
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
 import type { Task, TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { AGENT, clock, engine, expectRefusal, newProject, OWNER } from './helpers.ts';
+import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OWNER } from './helpers.ts';
 
 async function make(
   tasks: TaskEngine,
@@ -19,7 +19,7 @@ async function make(
 }
 
 async function readyIds(tasks: TaskEngine, projectId: string): Promise<string[]> {
-  return (await tasks.listTasks(projectId, { limit: 200, ready: true })).tasks.map((task) => task.id).sort();
+  return (await everyTask(tasks, projectId, { ready: true })).map((task) => task.id).sort();
 }
 
 async function close(tasks: TaskEngine, projectId: string, task: Task) {
@@ -214,7 +214,7 @@ describe('reading one task and listing the project', () => {
 
     const compare = async () => {
       const ready = new Set(await readyIds(tasks, project.id));
-      const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
+      const all = await everyTask(tasks, project.id);
       for (const listed of all) {
         const alone = await tasks.getTask(project.id, listed.id);
         expect(alone?.ready, listed.title).toBe(ready.has(listed.id));
@@ -430,16 +430,14 @@ describe('ready work', () => {
     });
     await make(tasks, project.id, 'Free');
 
-    const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
+    const all = await everyTask(tasks, project.id);
     expect(
       all
         .filter((task) => task.ready)
         .map((task) => task.id)
         .sort(),
     ).toEqual(await readyIds(tasks, project.id));
-    expect((await tasks.listTasks(project.id, { limit: 200, ready: false })).tasks.map((task) => task.title)).toEqual([
-      'Waiting',
-    ]);
+    expect((await everyTask(tasks, project.id, { ready: false })).map((task) => task.title)).toEqual(['Waiting']);
   });
 });
 

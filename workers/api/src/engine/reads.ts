@@ -27,8 +27,6 @@ import {
   type TaskExternalLinks,
   type TaskEvent,
   type TaskFilters,
-  type TaskPage,
-  type TaskQuery,
   type TaskResolution,
   type TaskStatus,
   type StoredProjectIcon,
@@ -260,28 +258,6 @@ interface ParentContextRow {
 
 function invalid(message: string): never {
   throw new TaskRefused('invalid', message);
-}
-
-function encodeCursor(row: TaskRow): string {
-  return btoa(JSON.stringify([row.priority, row.created_at, row.id]));
-}
-
-function decodeCursor(cursor: string): [number, string, string] {
-  try {
-    const value: unknown = JSON.parse(atob(cursor));
-    if (
-      Array.isArray(value) &&
-      value.length === 3 &&
-      typeof value[0] === 'number' &&
-      typeof value[1] === 'string' &&
-      typeof value[2] === 'string'
-    ) {
-      return [value[0], value[1], value[2]];
-    }
-  } catch {
-    // Falls through to the refusal below.
-  }
-  invalid('cursor is not one this engine returned');
 }
 
 /** A statuses list, written into the statement. Each is checked against the
@@ -535,38 +511,6 @@ export class Reads {
       .bind(projectId, JSON.stringify(taskIds))
       .all<{ id: string }>();
     return results.map((row) => row.id);
-  }
-
-  async listTasks(projectId: string, query: TaskQuery): Promise<TaskPage> {
-    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > TASK_LIMITS.page) {
-      invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
-    }
-    const statement = new Query(projectId, this.#now());
-    const { where } = statement;
-    if (query.statuses !== undefined) where.push(`t.status IN ${statusList(query.statuses)}`);
-    if (query.closedSince !== undefined)
-      where.push(`t.closed_at >= ${statement.param(instant(query.closedSince, 'closedSince'))}`);
-    if (query.closedBefore !== undefined)
-      where.push(`t.closed_at < ${statement.param(instant(query.closedBefore, 'closedBefore'))}`);
-    filter(statement, query);
-    if (query.cursor !== undefined) {
-      const [priority, createdAt, id] = decodeCursor(query.cursor);
-      where.push(
-        `(t.priority, t.created_at, t.id) > (${statement.param(priority)}, ${statement.param(createdAt)}, ${statement.param(id)})`,
-      );
-    }
-    const byCloseDate = query.closedSince !== undefined || query.closedBefore !== undefined;
-    const sql = `${tasksIn('project', byCloseDate ? 'tasks_by_project_closed' : null)}${where.map((clause) => ` AND ${clause}`).join('')} ${ORDER} LIMIT ${statement.param(query.limit + 1)}`;
-    const { results } = await this.#db
-      .prepare(sql)
-      .bind(...statement.args)
-      .all<TaskRow>();
-    const page = results.slice(0, query.limit);
-    const last = page.at(-1);
-    return {
-      tasks: page.map(toTask),
-      nextCursor: results.length > query.limit && last !== undefined ? encodeCursor(last) : null,
-    };
   }
 
   /** A board's tasks: the open ones in full and the closed ones from a date,

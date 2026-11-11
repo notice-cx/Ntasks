@@ -182,11 +182,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
-- **Reads:** `getTask`, `getTasks`, `findTasks`, `listTasks`, `listBoard`,
+- **Reads:** `getTask`, `getTasks`, `findTasks`, `listBoard`,
   `listEpics`, `listLabelled`, `listExternalLinks`, `listFields`, `listWork`,
   `listComments`, `parentContext`, `listHistory`, `listChanges`, `lint` and
-  `recordedWrite`. `listTasks` and `listBoard` take filters by custom field
-  values. `parentContext` reads, in one statement, a task's parent, the
+  `recordedWrite`. `listBoard` takes filters by custom field values. `parentContext` reads, in one statement, a task's parent, the
   parent's newest pinned comments through `task_comments_pinned`, and its most
   recently closed other children through `tasks_closed_by_parent`, with the
   totals of each.
@@ -194,8 +193,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   and those closed from a time, with only the columns agent statistics count:
   one statement, through the `(project_id, status)` and
   `(project_id, closed_at)` indexes.
-  `listTasks` reads one project a page at a time; `listBoard` reads a whole
-  board, in one project or in every project, in one round trip.
+  `listBoard` reads a whole board, in one project or in every project, in
+  one round trip. A caller that returns a page of it, as `list_tasks` does,
+  reads the board with `withoutExternalLinks: true`, then the page's external
+  links with `listExternalLinks`.
   `recordedWrite` returns what an earlier write with an idempotency key
   answered, so the API can answer a retry before it checks a rule that the
   write's own effect would break, such as a close's rule that the task is
@@ -284,9 +285,9 @@ decisions and of the owner answers agents record.
 
 | NoticeOS operation | Engine call |
 |---|---|
-| `list` | `listTasks` with statuses or close times |
+| `list` | `listBoard` with statuses or `closedSince` and `withoutExternalLinks: true`, then `listExternalLinks` for the page it returns |
 | `active-board`, `closed-board` | One `listBoard` with the open statuses and `closedSince` |
-| `ready` | `listBoard` or `listTasks` with `ready: true` |
+| `ready` | `listBoard` with `ready: true` |
 | `show` | `getTask` |
 | `find` | `findTasks` |
 | `history` | `listHistory` |
