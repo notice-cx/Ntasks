@@ -194,8 +194,9 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   one statement, through the `(project_id, status)` and
   `(project_id, closed_at)` indexes.
   `listBoard` reads a whole board, in one project or in every project, in
-  one round trip; a caller that returns a page of it, as `list_tasks` does,
-  reads that page's external links with `listExternalLinks`.
+  one round trip. A caller that returns a page of it, as `list_tasks` does,
+  reads the board with `withoutExternalLinks: true`, then the page's external
+  links with `listExternalLinks`.
   `recordedWrite` returns what an earlier write with an idempotency key
   answered, so the API can answer a retry before it checks a rule that the
   write's own effect would break, such as a close's rule that the task is
@@ -281,7 +282,7 @@ decisions and of the owner answers agents record.
 
 | NoticeOS operation | Engine call |
 |---|---|
-| `list` | `listBoard` with statuses or `closedSince`, then `listExternalLinks` for the page it returns |
+| `list` | `listBoard` with statuses or `closedSince` and `withoutExternalLinks: true`, then `listExternalLinks` for the page it returns |
 | `active-board`, `closed-board` | One `listBoard` with the open statuses and `closedSince` |
 | `ready` | `listBoard` with `ready: true` |
 | `show` | `getTask` |
