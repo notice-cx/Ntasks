@@ -186,6 +186,9 @@ export interface LiveTask {
   /** On a request that a person do steps: the steps, with who ticked each, their notes and where they got
    * stuck. Null on every other task, and absent when the server sends none. */
   steps?: readonly TaskStep[] | null;
+  /** Who filed the task and the model they named, when the server sends them; null on a task imported without them. */
+  filedBy?: string | null;
+  filedModel?: string | null;
   /** Who closed the task and the model they named, when the server sends them. */
   closedBy?: string | null;
   closedModel?: string | null;

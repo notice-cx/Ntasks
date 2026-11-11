@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { createHttpTasksApi } from '@/api/client';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureWorkspaces } from '@/api/fixture-data';
 import { enabledButton, renderApp } from './render';
@@ -139,6 +140,16 @@ describe('the GitHub webhook on the Settings page', () => {
     await waitFor(() => expect(secret.getAttribute('aria-invalid')).toBe('true'));
     fireEvent.change(secret, { target: { value: 'still too short' } });
     expect(secret.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it("shows the server's reason when GitHub cannot be read", async () => {
+    const detail = "This Ntasks's database lacks migration 0003_github_apps.sql, which its code needs.";
+    const behind = createHttpTasksApi(async () =>
+      Response.json({ error: 'database_behind', missing: ['0003_github_apps.sql'], detail }, { status: 503 }),
+    );
+    renderApp('/tasks/settings/github', { ...createFixtureTasksApi(), githubWebhook: behind.githubWebhook });
+    const section = await screen.findByRole('region', { name: 'GitHub' });
+    expect(await within(section).findByText(detail)).toBeTruthy();
   });
 
   it('is not shown to a member', async () => {

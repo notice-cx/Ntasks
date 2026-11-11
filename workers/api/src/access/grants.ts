@@ -31,12 +31,13 @@ export interface ProjectSummary {
   readonly name: string;
 }
 
-/** Why a change to access records was refused. */
+/** Why a change to access records was refused, and the body field at fault when one is. */
 export class AccessRefused extends Error {
   override name = 'AccessRefused';
   constructor(
     readonly code: 'invalid_request' | 'unknown_project' | 'name_taken' | 'not_found',
     message: string,
+    readonly field?: string,
   ) {
     super(message);
   }
@@ -88,7 +89,7 @@ const NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$/u;
 /** Grants from untrusted input: each project once, with read or write. */
 export function parseGrants(value: unknown): ProjectGrant[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 200) {
-    throw new AccessRefused('invalid_request', 'grants must list 1 to 200 projects');
+    throw new AccessRefused('invalid_request', 'grants must list 1 to 200 projects', 'grants');
   }
   const seen = new Set<string>();
   return value.map((item: unknown) => {
@@ -102,7 +103,11 @@ export function parseGrants(value: unknown): ProjectGrant[] {
       seen.has(projectId) ||
       (access !== 'read' && access !== 'write')
     ) {
-      throw new AccessRefused('invalid_request', 'each grant names a project once, with access read or write');
+      throw new AccessRefused(
+        'invalid_request',
+        'each grant names a project once, with access read or write',
+        'grants',
+      );
     }
     seen.add(projectId);
     return { projectId, access };
@@ -129,7 +134,7 @@ export async function listProjects(env: ProjectSource, workspaceId: string): Pro
 export function assertProjectsExist(projects: readonly ProjectSummary[], grants: readonly ProjectGrant[]): void {
   const known = new Set(projects.map((project) => project.id));
   if (!grants.every((grant) => known.has(grant.projectId))) {
-    throw new AccessRefused('unknown_project', 'a grant names a project that does not exist');
+    throw new AccessRefused('unknown_project', 'a grant names a project that does not exist', 'grants');
   }
 }
 
@@ -256,15 +261,19 @@ export async function createServiceCredential(
 ): Promise<ServiceCredential & { readonly token: string }> {
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!NAME.test(name)) {
-    throw new AccessRefused('invalid_request', 'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores');
+    throw new AccessRefused(
+      'invalid_request',
+      'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores',
+      'name',
+    );
   }
   // A service's actor is service:<name>, and Ntasks records its own changes as service:Ntasks (NTASKS_ACTOR).
   if (`service:${name}`.toLowerCase() === NTASKS_ACTOR.toLowerCase()) {
-    throw new AccessRefused('invalid_request', `name ${name} is the one Ntasks records its own changes under`);
+    throw new AccessRefused('invalid_request', `name ${name} is the one Ntasks records its own changes under`, 'name');
   }
   for (const choice of ['backup', 'restore'] as const) {
     if (input[choice] !== undefined && typeof input[choice] !== 'boolean') {
-      throw new AccessRefused('invalid_request', `${choice} is true or false`);
+      throw new AccessRefused('invalid_request', `${choice} is true or false`, choice);
     }
   }
   const backup = input.backup === true;
@@ -300,7 +309,7 @@ export async function createServiceCredential(
   } catch (error) {
     // The unique key is the workspace and the name: another workspace may use the same name.
     if (String(error).includes('UNIQUE constraint failed: access_service_credentials.workspace_id')) {
-      throw new AccessRefused('name_taken', 'a service credential in this workspace already has this name');
+      throw new AccessRefused('name_taken', 'a service credential in this workspace already has this name', 'name');
     }
     throw error;
   }

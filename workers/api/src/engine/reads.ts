@@ -27,8 +27,6 @@ import {
   type TaskExternalLinks,
   type TaskEvent,
   type TaskFilters,
-  type TaskPage,
-  type TaskQuery,
   type TaskResolution,
   type TaskStatus,
   type StoredProjectIcon,
@@ -131,11 +129,21 @@ blocked(id) AS (
  * open, not a gate, not blocked, and neither it nor its parent is deferred
  * past ?2. This is Beads' ready work; both the ready filter and every task's
  * `ready` flag use this one expression.
+ *
+ * A task labelled `human` that is not an epic is a person's to answer, and
+ * only its own `blocks` links hold it: a parent's wait does not, so the
+ * person is asked while the work above them waits. The tasks under it stay
+ * held, because `blocked` still lists it.
  */
 const READY = `(t.status = 'open' AND t.type <> 'gate'
   AND (t.defer_until IS NULL OR t.defer_until <= ?2)
   AND (p.defer_until IS NULL OR p.defer_until <= ?2)
-  AND t.id NOT IN (SELECT id FROM blocked))`;
+  AND (t.id NOT IN (SELECT id FROM blocked)
+    OR (t.type <> 'epic'
+      AND EXISTS (SELECT 1 FROM task_labels l WHERE l.task_id = t.id AND l.label = 'human')
+      AND NOT EXISTS (
+        SELECT 1 FROM task_edges e JOIN tasks blocker ON blocker.id = e.depends_on_id
+        WHERE e.task_id = t.id AND e.type = 'blocks' AND blocker.status <> 'closed'))))`;
 
 /** When task t's assignee last wrote to it: their latest event in its
  * history, which task_events_by_actor answers from one entry. */
@@ -250,28 +258,6 @@ interface ParentContextRow {
 
 function invalid(message: string): never {
   throw new TaskRefused('invalid', message);
-}
-
-function encodeCursor(row: TaskRow): string {
-  return btoa(JSON.stringify([row.priority, row.created_at, row.id]));
-}
-
-function decodeCursor(cursor: string): [number, string, string] {
-  try {
-    const value: unknown = JSON.parse(atob(cursor));
-    if (
-      Array.isArray(value) &&
-      value.length === 3 &&
-      typeof value[0] === 'number' &&
-      typeof value[1] === 'string' &&
-      typeof value[2] === 'string'
-    ) {
-      return [value[0], value[1], value[2]];
-    }
-  } catch {
-    // Falls through to the refusal below.
-  }
-  invalid('cursor is not one this engine returned');
 }
 
 /** A statuses list, written into the statement. Each is checked against the
@@ -393,14 +379,16 @@ export class Reads {
     return (await this.taskRows(projectId, taskIds)).map(toTask);
   }
 
-  /** The work agent statistics count: in progress or blocked through the
-   * (project_id, status) index, and closed from a time through the
-   * (project_id, closed_at) one, as one statement over every project named. */
+  /** The work agent statistics count, with where its change is: in progress
+   * or blocked through the (project_id, status) index, and closed from a time
+   * through the (project_id, closed_at) one, as one statement over every
+   * project named. */
   async listWork(projectIds: readonly string[], closedSince: string): Promise<WorkItem[]> {
     if (projectIds.length === 0) return [];
     if (!projectIds.every((id) => typeof id === 'string')) invalid('projectIds must be project ids');
     const columns = `t.id, t.project_id, t.type, t.await_type, t.status, t.priority, t.assignee, t.assignee_model,
-      t.started_at, t.updated_at, t.closed_at, t.closed_by, t.closed_model`;
+      t.started_at, t.updated_at, t.closed_at, t.closed_by, t.closed_model, t.delivery_pull_request,
+      t.delivery_commit, t.delivery_merge_commit, t.delivery_stage, t.merged_at, t.live_at`;
     const { results } = await this.#db
       .prepare(
         `SELECT ${columns} FROM json_each(?1) wanted CROSS JOIN tasks t INDEXED BY tasks_by_project_status
@@ -536,38 +524,6 @@ export class Reads {
       .bind(projectId, JSON.stringify(taskIds))
       .all<{ id: string }>();
     return results.map((row) => row.id);
-  }
-
-  async listTasks(projectId: string, query: TaskQuery): Promise<TaskPage> {
-    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > TASK_LIMITS.page) {
-      invalid(`limit must be a whole number from 1 to ${TASK_LIMITS.page}`);
-    }
-    const statement = new Query(projectId, this.#now());
-    const { where } = statement;
-    if (query.statuses !== undefined) where.push(`t.status IN ${statusList(query.statuses)}`);
-    if (query.closedSince !== undefined)
-      where.push(`t.closed_at >= ${statement.param(instant(query.closedSince, 'closedSince'))}`);
-    if (query.closedBefore !== undefined)
-      where.push(`t.closed_at < ${statement.param(instant(query.closedBefore, 'closedBefore'))}`);
-    filter(statement, query);
-    if (query.cursor !== undefined) {
-      const [priority, createdAt, id] = decodeCursor(query.cursor);
-      where.push(
-        `(t.priority, t.created_at, t.id) > (${statement.param(priority)}, ${statement.param(createdAt)}, ${statement.param(id)})`,
-      );
-    }
-    const byCloseDate = query.closedSince !== undefined || query.closedBefore !== undefined;
-    const sql = `${tasksIn('project', byCloseDate ? 'tasks_by_project_closed' : null)}${where.map((clause) => ` AND ${clause}`).join('')} ${ORDER} LIMIT ${statement.param(query.limit + 1)}`;
-    const { results } = await this.#db
-      .prepare(sql)
-      .bind(...statement.args)
-      .all<TaskRow>();
-    const page = results.slice(0, query.limit);
-    const last = page.at(-1);
-    return {
-      tasks: page.map(toTask),
-      nextCursor: results.length > query.limit && last !== undefined ? encodeCursor(last) : null,
-    };
   }
 
   /** A board's tasks: the open ones in full and the closed ones from a date,

@@ -143,6 +143,34 @@ export function personActor(name: string): string {
   return (PREFIXED.test(name) ? `person:${name}` : name).slice(0, TASK_LIMITS.actor);
 }
 
+/** A name as the task store records it: 1 to 255 characters, `fallback` for none. */
+export function displayName(name: string | null, fallback: string): string {
+  const trimmed = name?.trim() ?? '';
+  return trimmed.length === 0 ? fallback : trimmed.slice(0, 255);
+}
+
+/**
+ * The name a new person is recorded under, so that no two people share an
+ * actor: GitHub's display name; when `held` says a person here already has
+ * its actor, the name with their GitHub login, as `Alex (alex-gh)`; and when
+ * even that is held, with their GitHub id, which no other account has. The
+ * name is cut so the part in brackets always fits in the actor. A person
+ * keeps the name they were created with, so their history stays under one
+ * actor.
+ */
+export function uniquePersonName(
+  name: string,
+  account: { readonly id: string; readonly login: string },
+  held: (actor: string) => boolean,
+): string {
+  const shown = displayName(name, 'owner');
+  const room = (suffix: string) => TASK_LIMITS.actor - suffix.length - (PREFIXED.test(shown) ? 'person:'.length : 0);
+  const named = [` (${account.login})`, ` (GitHub ${account.id})`].map(
+    (suffix) => `${shown.slice(0, room(suffix)).trimEnd()}${suffix}`,
+  );
+  return [name, ...named].find((candidate) => !held(personActor(displayName(candidate, 'owner')))) ?? named.at(-1)!;
+}
+
 /**
  * The actor of the person this sender is, or acts for: a person's own, and
  * for an agent the person who approved it. A comment under this actor holds

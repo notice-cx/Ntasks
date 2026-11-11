@@ -137,16 +137,19 @@ export class Engine {
     );
   }
 
-  /** Whether the task can be started now (protocol.md STATE-3). */
+  /** Whether the task can be started now (protocol.md STATE-3). A parent's
+   * wait does not hold a task labelled `human` that is not an epic. */
   private ready(data: LedgerData, record: TaskRecord): boolean {
     if (record.status !== 'open' || record.type === 'gate' || this.deferred(record)) return false;
     if (this.waitsOnOpen(data, record.id)) return false;
+    const asksAPerson = record.type !== 'epic' && record.labels.includes('human');
     const seen = new Set<string>();
     for (let parent = record.parent; parent !== null && !seen.has(parent);) {
       seen.add(parent);
       const above = data.tasks[parent];
       if (!above) break;
-      if (this.deferred(above) || (above.status !== 'closed' && this.waitsOnOpen(data, above.id))) return false;
+      if (this.deferred(above)) return false;
+      if (!asksAPerson && above.status !== 'closed' && this.waitsOnOpen(data, above.id)) return false;
       parent = above.parent;
     }
     return true;

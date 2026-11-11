@@ -169,6 +169,7 @@ async function checkPackedFiles(): Promise<number> {
     'lib/bin.js',
     'lib/cli.js',
     'lib/deploy.js',
+    'lib/latest.js',
     'lib/release.js',
     'lib/wrangler.js',
     'worker/index.js',

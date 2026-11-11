@@ -1,0 +1,3 @@
+{
+  "added": "`externalLinks=none` on `GET /api/tasks`: a board whose tasks' `externalLinks` are left unread and empty, which `GET /api/tasks/:id` reads"
+}

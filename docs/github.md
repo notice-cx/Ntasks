@@ -69,6 +69,10 @@ move it from there:
   close, and moves the task to Merged then. Installing the app does the same
   for tasks already waiting for a merge, such as those closed before GitHub
   was connected.
+- **A merge whose event never came.** A task still in progress whose work
+  names a pull request closes as done when Ntasks asks GitHub and finds it
+  merged, as the merge event would have closed it. Ntasks asks when the app
+  is installed and on each of its other checks.
 
 ## When a task stays at a stage
 

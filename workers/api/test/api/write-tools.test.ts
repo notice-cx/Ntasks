@@ -15,7 +15,7 @@ import {
   titleHolds,
 } from '../../src/mcp/writing.ts';
 import { CHOICES_ADVICE } from '../../src/noticeos-fields.ts';
-import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
+import { AGENT, clock, everyTask, newProject, OWNER } from '../engine/helpers.ts';
 import {
   api,
   callTool,
@@ -86,6 +86,9 @@ function shape(value: unknown): unknown {
   );
 }
 
+/** The schema keywords that apply to an object alone. */
+const OBJECT_KEYWORDS = ['properties', 'required', 'additionalProperties'];
+
 /**
  * `ours` without the properties `theirs` lacks, at any depth, such as an entry
  * of create_tasks, and without descriptions and required lists. Each property
@@ -103,6 +106,15 @@ function withoutAdded(
       withoutAdded(entry, (theirs as unknown[] | undefined)?.[index], at, found),
     );
   if (!isSchema(ours) || !isSchema(theirs)) return shape(ours);
+  if (Array.isArray(ours.type) && typeof theirs.type === 'string' && ours.type.includes(theirs.type)) {
+    // A type the argument also takes now, named in added, with the keywords
+    // only that type reads; the type it took is compared as before.
+    found.added.push(`${at}:${ours.type.filter((type) => type !== theirs.type).join('|')}`);
+    const before = Object.fromEntries(
+      Object.entries(ours).filter(([key]) => key in theirs || !OBJECT_KEYWORDS.includes(key)),
+    );
+    return withoutAdded({ ...before, type: theirs.type }, theirs, at, found);
+  }
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(ours)) {
     if (key === 'description') continue;
@@ -164,6 +176,7 @@ describe('tools/list', () => {
       'create_task.supersedes',
       'create_task.external_links',
       'create_task.fields',
+      'create_task.approval:object',
       'create_task.claim',
       'create_task.done',
       'create_task.detail',
@@ -174,6 +187,7 @@ describe('tools/list', () => {
       'create_tasks.tasks.supersedes',
       'create_tasks.tasks.external_links',
       'create_tasks.tasks.fields',
+      'create_tasks.tasks.approval:object',
       'create_tasks.tasks.claim',
       'create_tasks.tasks.done',
       ...WORK_ARGS.map((name) => `claim_task.${name}`),
@@ -306,7 +320,7 @@ describe('a write that names only what it needs', () => {
   it('answers the same new task sent again without a key with its first result, while it is unchanged and for a day', async () => {
     const project = await newProject(engine);
     const args = { project: project.id, title: 'Once' };
-    const filed = async () => (await engine.listTasks(project.id, { limit: 10 })).tasks.length;
+    const filed = async () => (await everyTask(engine, project.id)).length;
     const first = await write<{ id: string }>(target, 'create_task', args);
     expect(await write(target, 'create_task', args)).toEqual({ ...first, replayed: true });
     expect(await filed()).toBe(1);
@@ -358,7 +372,7 @@ describe('a write that names only what it needs', () => {
       [newEpic, true],
       [newChild, true],
     ]);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
+    expect(await everyTask(engine, project.id)).toHaveLength(4);
   });
 
   it('runs the same write sent again without a key once the task has changed since its answer', async () => {
@@ -518,6 +532,91 @@ describe('create_task', () => {
     expect(await current(project, reply.approval.id)).toMatchObject({ type: 'gate', awaitType: 'human' });
   });
 
+  it('opens an approval with the title and description it is given, in create_task and create_tasks', async () => {
+    const project = await newProject(engine);
+    const title = 'Approve deploying the Worker to production';
+    const description =
+      'You: press Approve on this task to let the agent deploy the Worker.\n\n## Why this needs you\n\nIt changes production.';
+    const reply = await write<{ id: string; approval: { id: string }; lint?: { advice?: readonly string[] } }>(
+      target,
+      'create_task',
+      { project: project.id, title: 'Deploy the Worker', approval: { title, description }, idempotency_key: key() },
+    );
+    expect(reply).toMatchObject({ approval: { status: 'open', title }, held: true });
+    expect(reply.lint?.advice ?? []).toEqual([]);
+    expect(await current(project, reply.approval.id)).toMatchObject({ type: 'gate', title, description });
+    expect((await current(project, reply.id)).ready).toBe(false);
+
+    const batch = await write<{ results: { approval: { id: string; title: string } }[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Deploy the API', approval: { title: 'Approve deploying the API', description } }],
+      idempotency_key: key(),
+    });
+    expect(batch.results[0]!.approval.title).toBe('Approve deploying the API');
+    expect(await current(project, batch.results[0]!.approval.id)).toMatchObject({ description });
+  });
+
+  it('advises the approval it opens as request_human_approval advises one, naming it approval', async () => {
+    const project = await newProject(engine);
+    const vague = await write<{ approval: { id: string }; lint: { advice: readonly string[] } }>(
+      target,
+      'create_task',
+      {
+        project: project.id,
+        title: 'Merge the column change',
+        acceptance: 'Merged.',
+        approval: { title: 'Approve merging the column change', description: 'The merge adds one column.' },
+        idempotency_key: key(),
+      },
+    );
+    const gate = await current(project, vague.approval.id);
+    expect(vague.lint.advice).toEqual(placeAdvice(gate).map((line) => `approval.${line}`));
+    expect(vague.lint.advice).toHaveLength(1);
+
+    // A text's first line is the title, so the approval repeats it; the advice then names the object form too.
+    type Filed = { approval: { id: string }; lint: { advice: readonly string[] } };
+    const batch = await write<{ results: Filed[] }>(target, 'create_tasks', {
+      project: project.id,
+      tasks: [{ title: 'Merge it', acceptance: 'Merged.', approval: 'Approve the merge.\nIt adds one column.' }],
+      idempotency_key: key(),
+    });
+    const text = batch.results[0]!;
+    const textGate = await current(project, text.approval.id);
+    expect(textGate.title).toBe('Approve the merge.');
+    expect(text.lint.advice).toEqual([
+      ...[...repeatAdvice(textGate.title, textGate.description), ...placeAdvice(textGate)].map(
+        (line) => `approval.${line}`,
+      ),
+      expect.stringMatching(/^approval: /u),
+    ]);
+  });
+
+  it('refuses an approval without a title or a description, a title on two lines, another field, and a value that is neither', async () => {
+    const project = await newProject(engine);
+    const ask = (approval: unknown) =>
+      refusal(target, 'create_task', {
+        workspace: WORKSPACE.id,
+        project: project.id,
+        title: 'Gated',
+        approval,
+        idempotency_key: key(),
+      });
+    expect(await ask({ title: 'Approve the deploy' })).toBe(
+      'invalid arguments: approval.description (required: pass title and description, or approval as one text)',
+    );
+    expect(await ask({ description: 'You: press Approve on this task.' })).toBe(
+      'invalid arguments: approval.title (required: pass title and description, or approval as one text)',
+    );
+    expect(await ask({ title: 'Approve\nthe deploy', description: 'You: press Approve.' })).toBe(
+      'invalid arguments: approval.title (one line, with no tab or line break)',
+    );
+    expect(await ask({ title: 'Approve it', description: 'You: press Approve.', reason: 'Why' })).toBe(
+      'invalid arguments: approval (title and description only; not reason)',
+    );
+    expect(await ask(5)).toBe('invalid arguments: approval (an object with title and description, or one text)');
+    expect(await everyTask(engine, project.id)).toEqual([]);
+  });
+
   it('names the sections lint finds missing, and advises choices for lettered options', async () => {
     const project = await newProject(engine);
     const reply = await write<{ lint: unknown }>(target, 'create_task', {
@@ -529,7 +628,7 @@ describe('create_task', () => {
       idempotency_key: key(),
     });
     expect(reply.lint).toEqual({
-      missing: ['## Steps to Reproduce', '## Acceptance Criteria'],
+      missing: ['## Steps to Reproduce', 'acceptance'],
       advice: [CHOICES_ADVICE],
     });
   });
@@ -710,7 +809,7 @@ describe('create_task', () => {
     const first = await write<{ id: string; approval: { id: string } }>(target, 'create_task', args);
     const again = await write<{ id: string; replayed: boolean; approval: { id: string } }>(target, 'create_task', args);
     expect(again).toMatchObject({ id: first.id, replayed: true, approval: { id: first.approval.id } });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(2);
+    expect(await everyTask(engine, project.id)).toHaveLength(2);
     expect(await refusal(target, 'create_task', { workspace: WORKSPACE.id, ...args, title: 'Something else' })).toBe(
       'conflict: this idempotency_key was first used for a different change. Resend that call unchanged to read its result, or choose a new key for this one.',
     );
@@ -776,7 +875,7 @@ describe('create_task', () => {
       `refused: ${elsewhere.id} is not in projectId ${project.id} (${project.name}), whose tasks start ${project.prefix}-; tasks with prefix ${other.prefix} are in projectId ${other.id} (${other.name}).`,
     );
     expect(await refused({ project: 'missing' })).toBe(missingProject('missing'));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(engine, project.id)).toEqual([]);
   });
 
   it('reads an object argument sent as text, saying the client is out of date', async () => {
@@ -798,6 +897,27 @@ describe('create_task', () => {
       /^card arrived as text: your client's copy of the task tools predates this server \(guide version [0-9a-f]{12}\); reconnect this server to get the current tools$/u,
     );
     expect((await current(project, reply.id)).metadata.noticeos_card).toMatchObject({ measurability: 'holdout' });
+  });
+
+  it('reads an approval sent as object text, and keeps an approval that is plain text as text', async () => {
+    const project = await newProject(engine);
+    const title = 'Approve the deploy';
+    const sent = await write<{ staleClient: string; approval: { id: string; title: string } }>(target, 'create_task', {
+      project: project.id,
+      title: 'Deploy it',
+      approval: JSON.stringify({ title, description: 'You: press Approve on this task.' }),
+      idempotency_key: key(),
+    });
+    expect(sent.staleClient).toMatch(/^approval arrived as text: /u);
+    expect(sent.approval.title).toBe(title);
+    const plain = await write<Record<string, unknown>>(target, 'create_task', {
+      project: project.id,
+      title: 'Deploy it again',
+      approval: 'Approve the second deploy.',
+      idempotency_key: key(),
+    });
+    expect(plain).not.toHaveProperty('staleClient');
+    expect(plain).toMatchObject({ approval: { title: 'Approve the second deploy.' } });
   });
 
   it('reads object text in an entry of create_tasks and a null in update_task, and refuses text that is no object', async () => {
@@ -904,7 +1024,7 @@ describe('create_tasks', () => {
     const [epic, child, gated] = reply.results.map((entry) => entry.id);
     expect(reply).toMatchObject({
       results: [
-        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['## Success Criteria'] } },
+        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['acceptance'] } },
         { index: 1, id: `${epic}.1`, status: 'open', replayed: false },
         { index: 2, id: gated, replayed: false, approval: { status: 'open', reason: 'Approve it.' }, held: true },
       ],
@@ -916,7 +1036,7 @@ describe('create_tasks', () => {
     expect(again.results.map((entry) => [entry.id, entry.replayed])).toEqual(
       reply.results.map((entry) => [entry.id, true]),
     );
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toHaveLength(4);
+    expect(await everyTask(engine, project.id)).toHaveLength(4);
   });
 
   it('files every task it can, refusing one alone, and lets #n name a later task of the call', async () => {
@@ -949,9 +1069,7 @@ describe('create_tasks', () => {
       error: expect.stringMatching(/^invalid arguments: tasks\[5\]\.blocks\[0\] /u),
     });
     expect(reply.retry).toEqual(expect.any(String));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
-      [epic!.id, child!.id].sort(),
-    );
+    expect((await everyTask(engine, project.id)).map((row) => row.id).sort()).toEqual([epic!.id, child!.id].sort());
     // Sent again, the tasks filed answer as they were, and the refused ones are tried again.
     const again = await write<{ results: Result[] }>(target, 'create_tasks', args);
     expect(again.results.map((result) => result.id ?? null)).toEqual([child!.id, null, epic!.id, null, null, null]);
@@ -970,7 +1088,7 @@ describe('create_tasks', () => {
       expect(looped?.error).toContain('#1');
     }
     expect(third).toMatchObject({ index: 2, status: 'open' });
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id)).toEqual([third!.id]);
+    expect((await everyTask(engine, project.id)).map((row) => row.id)).toEqual([third!.id]);
   });
 
   it('refuses a call it cannot file any of, filing nothing', async () => {
@@ -987,7 +1105,7 @@ describe('create_tasks', () => {
       'invalid arguments: unknown argument tasks[0].model',
     );
     expect(await refused({ project: 'missing', tasks: [{ title: 'A' }] })).toBe(missingProject('missing'));
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks).toEqual([]);
+    expect(await everyTask(engine, project.id)).toEqual([]);
   });
 });
 
@@ -1409,7 +1527,7 @@ describe('update_task', () => {
       changeClass: 'feature',
       version: 2,
       replayed: false,
-      lint: { missing: ['## Acceptance Criteria'] },
+      lint: { missing: ['acceptance'] },
     });
     expect(reply).not.toHaveProperty('description');
     expect(await current(project, id)).toMatchObject({
@@ -2870,9 +2988,7 @@ describe('create_task with claim and done', () => {
       /^invalid arguments: done\.link /u,
     );
     expect(await refused({ done: { evidence: 'Done.', when: 'today' } })).toMatch(/^invalid arguments: done /u);
-    expect((await engine.listTasks(project.id, { limit: 10 })).tasks.map((row) => row.id).sort()).toEqual(
-      [waiting.id, gate].sort(),
-    );
+    expect((await everyTask(engine, project.id)).map((row) => row.id).sort()).toEqual([waiting.id, gate].sort());
   });
 
   it('names open tasks in its project whose titles share most of its words as possible duplicates', async () => {

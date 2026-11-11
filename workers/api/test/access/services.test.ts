@@ -183,18 +183,41 @@ describe('a service credential', () => {
     expect(row?.secret_hash).not.toContain(secret);
   });
 
-  it('refuses a name already taken, a project that does not exist, and an empty grant list', async () => {
+  it('refuses a name already taken, a project that does not exist, and an empty grant list, naming the field at fault', async () => {
     const project = await createProject('Checked');
     const browser = new Browser();
     await browser.signInAsOwner();
     expect((await createService(browser, 'taken', [{ projectId: project, access: 'read' }])).status).toBe(201);
+    /** The status and body of a refused credential, whose `message` repeats `detail` for older clients. */
+    const refusalOf = async (response: Response) => {
+      const { message, ...body } = await response.json<Record<string, unknown>>();
+      expect(message).toBe(body.detail);
+      return { status: response.status, body };
+    };
+    const said = expect.any(String);
 
-    expect((await createService(browser, 'taken', [{ projectId: project, access: 'read' }])).status).toBe(409);
-    const unknown = await createService(browser, 'unknown', [{ projectId: crypto.randomUUID(), access: 'read' }]);
-    expect(unknown.status).toBe(400);
-    expect(await unknown.json()).toMatchObject({ error: 'unknown_project' });
-    expect((await createService(browser, 'empty', [])).status).toBe(400);
-    expect((await createService(browser, 'bad access', [{ projectId: project, access: 'admin' }])).status).toBe(400);
+    expect(await refusalOf(await createService(browser, 'taken', [{ projectId: project, access: 'read' }]))).toEqual({
+      status: 409,
+      body: { error: 'name_taken', detail: said, field: 'name' },
+    });
+    expect(
+      await refusalOf(await createService(browser, 'unknown', [{ projectId: crypto.randomUUID(), access: 'read' }])),
+    ).toEqual({ status: 400, body: { error: 'unknown_project', detail: said, field: 'grants' } });
+    expect(await refusalOf(await createService(browser, 'empty', []))).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: said, field: 'grants' },
+    });
+    expect(
+      await refusalOf(await createService(browser, 'bad access', [{ projectId: project, access: 'admin' }])),
+    ).toEqual({ status: 400, body: { error: 'invalid_request', detail: said, field: 'grants' } });
+    expect(await refusalOf(await createService(browser, '', [{ projectId: project, access: 'read' }]))).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: said, field: 'name' },
+    });
+    // A refusal that no one body field causes names none.
+    expect(
+      await refusalOf(await browser.fetch(`/api/access/services/${crypto.randomUUID()}/revoke`, { method: 'POST' })),
+    ).toEqual({ status: 404, body: { error: 'not_found', detail: said } });
   });
 
   it('refuses the name Ntasks records its own changes under, in any case', async () => {
@@ -205,7 +228,7 @@ describe('a service credential', () => {
     for (const name of ['Ntasks', 'ntasks']) {
       const refused = await createService(browser, name, [{ projectId: project, access: 'write' }]);
       expect(refused.status).toBe(400);
-      expect(await refused.json()).toMatchObject({ error: 'invalid_request' });
+      expect(await refused.json()).toMatchObject({ error: 'invalid_request', field: 'name' });
     }
   });
 
@@ -282,7 +305,7 @@ describe('the backup route through the Worker', () => {
     expect((await browser.fetchJson('/api/access/services', { name: 'no-grants' })).status).toBe(400);
     const notBoolean = await browser.fetchJson('/api/access/services', { name: 'yes-backup', backup: 'yes' });
     expect(notBoolean.status).toBe(400);
-    expect(await notBoolean.json()).toEqual({ error: 'invalid_request', message: 'backup is true or false' });
+    expect(await notBoolean.json()).toMatchObject({ error: 'invalid_request', field: 'backup' });
   });
 });
 
@@ -329,6 +352,6 @@ describe('the restore route through the Worker', () => {
       });
     }
     const notBoolean = await browser.fetchJson('/api/access/services', { name: 'yes-restore', restore: 'yes' });
-    expect(await notBoolean.json()).toEqual({ error: 'invalid_request', message: 'restore is true or false' });
+    expect(await notBoolean.json()).toMatchObject({ error: 'invalid_request', field: 'restore' });
   });
 });

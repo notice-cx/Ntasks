@@ -131,6 +131,9 @@ export function webTask(task: Task, now: string) {
     priority: task.priority,
     issueType: task.type,
     assignee: task.assignee,
+    /** Who filed it and the model they named; null on a task imported without them. */
+    filedBy: task.filedBy,
+    filedModel: task.filedModel,
     updatedAt: task.updatedAt,
     closedAt: task.close?.at ?? null,
     /** Who closed it and the model they named; null when imported without them. */
