@@ -188,7 +188,8 @@ A new deployment, or `pnpm dev`, needs `AUTH_SECRET` first
    ([How an AI agent connects](sign-in.md#how-an-ai-agent-connects)).
 
 A person in two or more workspaces switches between them from the workspace
-name at the top of the sidebar.
+name at the top of the sidebar. For a deployment admin that name always opens
+the menu, and its New workspace item creates another workspace.
 
 ## Run it locally
 
