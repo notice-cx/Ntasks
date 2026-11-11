@@ -31,6 +31,7 @@ import { ApiError, type TasksApi } from './client';
 import {
   emptySeed,
   FIXTURE_ACTOR,
+  FIXTURE_DARK_ICON_PNG,
   FIXTURE_ICON_PNG,
   fixtureIconPath,
   FIXTURE_ACTORS,
@@ -1056,6 +1057,7 @@ export function createFixtureTasksApi({
           disabled: false,
           websiteUrl: null,
           icon: null,
+          darkIcon: null,
         });
         state.fields.set(prefix, []);
       });
@@ -1084,19 +1086,20 @@ export function createFixtureTasksApi({
       if (website !== undefined) {
         found.websiteUrl = website;
         iconVersion += 1;
-        // Every invented website under example.com serves the fixture's icon; any other serves none.
-        found.icon =
-          website !== null && /(^|\.)example\.com$/u.test(new URL(website).hostname)
-            ? fixtureIconPath(found.projectId, iconVersion)
-            : null;
+        // Every invented website under example.com serves the fixture's light and dark icons; any other serves none.
+        const served = website !== null && /(^|\.)example\.com$/u.test(new URL(website).hostname);
+        found.icon = served ? fixtureIconPath(found.projectId, iconVersion) : null;
+        found.darkIcon = served ? fixtureIconPath(found.projectId, iconVersion, 'dark') : null;
       }
       return copy(found);
     },
     async projectIcon(icon) {
       reach();
-      if (!state.projects.some((row) => row.icon === icon))
+      const dark = state.projects.some((row) => row.darkIcon === icon);
+      if (!dark && !state.projects.some((row) => row.icon === icon))
         throw new ApiError('This project has no icon.', 404, 'not_found');
-      return new Blob([Uint8Array.from(atob(FIXTURE_ICON_PNG), (char) => char.charCodeAt(0))], { type: 'image/png' });
+      const png = dark ? FIXTURE_DARK_ICON_PNG : FIXTURE_ICON_PNG;
+      return new Blob([Uint8Array.from(atob(png), (char) => char.charCodeAt(0))], { type: 'image/png' });
     },
     async members() {
       const { members, invitations } = owned();

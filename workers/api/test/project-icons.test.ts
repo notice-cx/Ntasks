@@ -3,7 +3,7 @@
 // read goes to an invented website below; none reaches the network.
 import { PROJECT_ICON_MAX_BYTES } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { declaredIcons, readProjectIcon, sniffIcon, websiteAddress } from '../src/project-icons.ts';
+import { declaredIcons, readProjectIcons, sniffIcon, websiteAddress } from '../src/project-icons.ts';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const ICO = new Uint8Array([0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10]);
@@ -29,6 +29,8 @@ const page = (head: string) =>
     headers: { 'content-type': 'text/html; charset=utf-8' },
   });
 const image = (bytes: Uint8Array, type: string) => new Response(bytes, { headers: { 'content-type': type } });
+/** The light icon `readProjectIcons` reads. */
+const lightIcon = async (url: string, fetchImpl: typeof fetch) => (await readProjectIcons(url, fetchImpl)).light;
 const redirect = (location: string) => new Response(null, { status: 301, headers: { location } });
 
 describe('the icons a page declares', () => {
@@ -43,7 +45,7 @@ describe('the icons a page declares', () => {
       <link rel="shortcut icon" href="/48.png" sizes="48x48">
       <!-- <link rel="icon" href="/commented.png" sizes="512x512"> -->
       <script>document.write('<link rel="icon" href="/scripted.png" sizes="512x512">')</script>`;
-    expect(declaredIcons(html, 'https://example.com/app/')).toEqual([
+    expect(declaredIcons(html, 'https://example.com/app/').light).toEqual([
       'https://example.com/mark.svg',
       'https://example.com/vector.svg?v=2',
       'https://example.com/192.png',
@@ -60,7 +62,22 @@ describe('the icons a page declares', () => {
       <link rel="icon" href="data:image/png;base64,AAAA" sizes="128x128">
       <link rel="icon" href="javascript:alert(1)" sizes="128x128">
       <link rel="icon" href="http://localhost/icon.png" sizes="128x128">`;
-    expect(declaredIcons(html, 'https://example.com/')).toEqual(['https://cdn.example.com/assets/icon.png']);
+    expect(declaredIcons(html, 'https://example.com/').light).toEqual(['https://cdn.example.com/assets/icon.png']);
+  });
+});
+
+describe('the icons a page declares for a dark colour scheme', () => {
+  it('names an icon whose media query asks for a dark scheme as dark, and every other one as light', () => {
+    const html = `
+      <link rel="icon" href="/light.png" sizes="64x64" media="(prefers-color-scheme: light)">
+      <link rel="icon" href="/plain.png" sizes="32x32">
+      <link rel="icon" href="/dark.png" sizes="64x64" media="(prefers-color-scheme: dark)">
+      <link rel="icon" href="/dark.svg" media="screen and (prefers-color-scheme:dark)">
+      <link rel="icon" href="/not-dark.png" sizes="128x128" media="not all and (prefers-color-scheme: dark)">`;
+    expect(declaredIcons(html, 'https://example.com/')).toEqual({
+      light: ['https://example.com/not-dark.png', 'https://example.com/light.png', 'https://example.com/plain.png'],
+      dark: ['https://example.com/dark.svg', 'https://example.com/dark.png'],
+    });
   });
 });
 
@@ -104,7 +121,7 @@ describe('reading a website’s icon', () => {
       'https://example.com/touch': image(PNG, 'application/octet-stream'),
       'https://example.com/small.png': image(PNG, 'image/png'),
     });
-    const icon = await readProjectIcon('https://example.com/', fetchImpl);
+    const icon = await lightIcon('https://example.com/', fetchImpl);
     expect(icon).toMatchObject({ sourceUrl: 'https://example.com/touch', contentType: 'image/png' });
     expect(new Uint8Array(icon!.bytes)).toEqual(PNG);
     expect(asked).toEqual(['https://example.com/', 'https://example.com/touch']);
@@ -116,7 +133,7 @@ describe('reading a website’s icon', () => {
       'https://example.com/touch.png': image(SVG, 'image/png'),
       'https://example.com/favicon.ico': image(ICO, 'image/vnd.microsoft.icon'),
     });
-    const icon = await readProjectIcon('https://example.com/', fetchImpl);
+    const icon = await lightIcon('https://example.com/', fetchImpl);
     expect(icon).toMatchObject({ sourceUrl: 'https://example.com/touch.png', contentType: 'image/svg+xml' });
     const kept = new TextDecoder().decode(icon!.bytes);
     expect(kept).toMatch(/^<svg /u);
@@ -132,7 +149,7 @@ describe('reading a website’s icon', () => {
       'https://example.com/favicon.svg': image(mark, 'image/svg+xml'),
       'https://example.com/favicon.ico': page(''),
     });
-    const icon = await readProjectIcon('https://example.com/', fetchImpl);
+    const icon = await lightIcon('https://example.com/', fetchImpl);
     expect(icon).toMatchObject({ sourceUrl: 'https://example.com/favicon.svg', contentType: 'image/svg+xml' });
     expect(new TextDecoder().decode(icon!.bytes)).toBe(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/></svg>',
@@ -147,7 +164,7 @@ describe('reading a website’s icon', () => {
       'https://www.example.com/icon.png': () => redirect('/static/icon.png'),
       'https://www.example.com/static/icon.png': image(PNG, 'image/png'),
     });
-    expect(await readProjectIcon('http://example.com/', fetchImpl)).toMatchObject({
+    expect(await lightIcon('http://example.com/', fetchImpl)).toMatchObject({
       sourceUrl: 'https://www.example.com/static/icon.png',
     });
   });
@@ -157,14 +174,14 @@ describe('reading a website’s icon', () => {
     for (let hop = 0; hop < 7; hop += 1) loop[`https://example.com/${hop}`] = redirect(`/${hop + 1}`);
     loop['https://example.com/7'] = page('');
     const looping = website(loop);
-    expect(await readProjectIcon('https://example.com/0', looping.fetchImpl)).toBeNull();
+    expect(await lightIcon('https://example.com/0', looping.fetchImpl)).toBeNull();
     expect(looping.asked.filter((url) => /\/\d$/u.test(url))).toHaveLength(6);
 
     const local = website({
       'https://example.com/': page('<link rel="icon" href="/icon.png">'),
       'https://example.com/icon.png': redirect('http://169.254.169.254/latest/meta-data'),
     });
-    expect(await readProjectIcon('https://example.com/', local.fetchImpl)).toBeNull();
+    expect(await lightIcon('https://example.com/', local.fetchImpl)).toBeNull();
     expect(local.asked).not.toContain('http://169.254.169.254/latest/meta-data');
   });
 
@@ -176,7 +193,7 @@ describe('reading a website’s icon', () => {
       'https://example.com/large.png': image(large, 'image/png'),
       'https://example.com/favicon.ico': page(''),
     });
-    expect(await readProjectIcon('https://example.com/', fetchImpl)).toBeNull();
+    expect(await lightIcon('https://example.com/', fetchImpl)).toBeNull();
   });
 
   it('skips an icon whose read fails part-way, so a cut-off image is never kept', async () => {
@@ -198,9 +215,49 @@ describe('reading a website’s icon', () => {
       'https://example.com/cut.png': cutOff,
       'https://example.com/favicon.ico': image(ICO, 'image/x-icon'),
     });
-    expect(await readProjectIcon('https://example.com/', fetchImpl)).toMatchObject({
+    expect(await lightIcon('https://example.com/', fetchImpl)).toMatchObject({
       sourceUrl: 'https://example.com/favicon.ico',
     });
+  });
+
+  it('keeps a dark icon only when the page declares one, and never asks /favicon.ico for it', async () => {
+    const DARK_PNG = new Uint8Array([...PNG.slice(0, 8), 9, 9, 9]);
+    const { fetchImpl, asked } = website({
+      'https://example.com/': page(
+        '<link rel="icon" href="/light.png"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)">',
+      ),
+      'https://example.com/light.png': image(PNG, 'image/png'),
+      'https://example.com/dark.png': image(DARK_PNG, 'image/png'),
+    });
+    const icons = await readProjectIcons('https://example.com/', fetchImpl);
+    expect(icons.light).toMatchObject({ sourceUrl: 'https://example.com/light.png' });
+    expect(icons.dark).toMatchObject({ sourceUrl: 'https://example.com/dark.png', contentType: 'image/png' });
+    expect(new Uint8Array(icons.dark!.bytes)).toEqual(DARK_PNG);
+
+    const lightOnly = website({
+      'https://example.com/': page('<link rel="icon" href="/light.png">'),
+      'https://example.com/light.png': image(PNG, 'image/png'),
+      'https://example.com/favicon.ico': image(ICO, 'image/x-icon'),
+    });
+    expect((await readProjectIcons('https://example.com/', lightOnly.fetchImpl)).dark).toBeNull();
+    expect(asked.filter((url) => url.endsWith('/favicon.ico'))).toEqual([]);
+  });
+
+  it('keeps a dark SVG icon made safe, as the light ones are', async () => {
+    const darkSvg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><circle r="4" fill="#fff"/></svg>',
+    );
+    const { fetchImpl } = website({
+      'https://example.com/': page('<link rel="icon" href="/dark.svg" media="(prefers-color-scheme: dark)">'),
+      'https://example.com/dark.svg': image(darkSvg, 'image/svg+xml'),
+      'https://example.com/favicon.ico': image(ICO, 'image/x-icon'),
+    });
+    const icons = await readProjectIcons('https://example.com/', fetchImpl);
+    expect(icons.light).toMatchObject({ sourceUrl: 'https://example.com/favicon.ico' });
+    expect(icons.dark).toMatchObject({ contentType: 'image/svg+xml' });
+    expect(new TextDecoder().decode(icons.dark!.bytes)).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4" fill="#fff"/></svg>',
+    );
   });
 
   it('asks /favicon.ico when the website’s page does not answer', async () => {
@@ -208,16 +265,14 @@ describe('reading a website’s icon', () => {
       'https://example.com/': new Response('Unavailable', { status: 503 }),
       'https://example.com/favicon.ico': image(ICO, 'image/x-icon'),
     });
-    expect(await readProjectIcon('https://example.com/', fetchImpl)).toMatchObject({ contentType: 'image/x-icon' });
+    expect(await lightIcon('https://example.com/', fetchImpl)).toMatchObject({ contentType: 'image/x-icon' });
   });
 
   it('keeps nothing from a website with no icon, and never throws when the network fails', async () => {
-    expect(
-      await readProjectIcon('https://example.com/', website({ 'https://example.com/': page('') }).fetchImpl),
-    ).toBeNull();
+    expect(await lightIcon('https://example.com/', website({ 'https://example.com/': page('') }).fetchImpl)).toBeNull();
     const failing = (async () => {
       throw new TypeError('network connection lost');
     }) as typeof fetch;
-    expect(await readProjectIcon('https://example.com/', failing)).toBeNull();
+    expect(await lightIcon('https://example.com/', failing)).toBeNull();
   });
 });

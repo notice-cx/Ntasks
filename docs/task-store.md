@@ -38,7 +38,7 @@ or prefix, since no query reads across stores.
 | Table | Holds |
 |---|---|
 | `projects` | Each project's id, key, name and task id prefix, whether its changes go live by a deploy (`deploys`), when an owner disabled it (`disabled_at`, null while it takes new tasks), and its website (`website_url`) |
-| `project_icons` | The icon read from each project's website: the address it came from, its image type, its bytes and when it was read. A new website replaces it, and a backup leaves it out ([API](api.md#a-projects-website-and-icon)) |
+| `project_icons` | The icons read from each project's website, one for each colour scheme it declares one for, `light` or `dark`: the address it came from, its image type, its bytes and when it was read. A new website replaces them, and a backup leaves them out ([API](api.md#a-projects-website-and-icon)) |
 | `tasks` | One row per task: its fields, its current close and delivery, its version |
 | `task_labels` | A task's labels, one row each |
 | `task_edges` | Links between tasks: `blocks`, `related`, `discovered-from`, `duplicates`, `supersedes` and `merges-after` |

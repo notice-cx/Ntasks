@@ -12,6 +12,7 @@ import mergeOrder from './migrations/0006_merge_order.sql';
 import projectSettings from './migrations/0007_project_settings.sql';
 import projectIconSvg from './migrations/0008_project_icon_svg.sql';
 import changedThroughAndTests from './migrations/0009_changed_through_and_tests.sql';
+import projectIconSchemes from './migrations/0010_project_icon_schemes.sql';
 
 export const MIGRATIONS: readonly { readonly name: string; readonly sql: string }[] = Object.freeze([
   { name: '0001_task_store', sql: taskStore },
@@ -23,6 +24,7 @@ export const MIGRATIONS: readonly { readonly name: string; readonly sql: string 
   { name: '0007_project_settings', sql: projectSettings },
   { name: '0008_project_icon_svg', sql: projectIconSvg },
   { name: '0009_changed_through_and_tests', sql: changedThroughAndTests },
+  { name: '0010_project_icon_schemes', sql: projectIconSchemes },
 ]);
 
 /** Applies every migration the storage lacks, oldest first. */

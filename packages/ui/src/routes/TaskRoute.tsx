@@ -121,6 +121,7 @@ export function TaskRoute() {
               name: project.displayName,
               prefix: project.prefix,
               icon: project.icon ?? null,
+              darkIcon: project.darkIcon ?? null,
               to: `${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`,
             }
           : null

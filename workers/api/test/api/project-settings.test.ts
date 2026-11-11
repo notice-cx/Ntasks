@@ -158,6 +158,39 @@ describe('a project’s website', () => {
     expect(await served.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
   });
 
+  it('keeps the icon the website declares for a dark scheme, which the project list points to and the route serves', async () => {
+    const project = await newProject(engine);
+    const DARK = new Uint8Array([...PNG.slice(0, 8), 1, 1, 1]);
+    sites['https://duo.example.com/'] = () =>
+      new Response(
+        '<head><link rel="icon" href="/light.png"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)"></head>',
+        { headers: { 'content-type': 'text/html' } },
+      );
+    sites['https://duo.example.com/light.png'] = () => new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    sites['https://duo.example.com/dark.png'] = () => new Response(DARK, { headers: { 'content-type': 'image/png' } });
+
+    const saved = await patch(owner, { projectId: project.id, websiteUrl: 'https://duo.example.com' });
+    const { icon, darkIcon } = saved.body.project as { icon: string; darkIcon: string };
+    expect(darkIcon).toMatch(new RegExp(`^/api/tasks/projects/${project.id}/icon\\?scheme=dark&v=\\d+$`, 'u'));
+    expect(await listed(project)).toMatchObject({ icon, darkIcon });
+    const read = async (path: string) =>
+      new Uint8Array(await (await writer.fetch(new Request(`${ORIGIN}${path}`))).arrayBuffer());
+    expect(await read(icon)).toEqual(PNG);
+    expect(await read(darkIcon)).toEqual(DARK);
+    const refused = await writer.fetch(new Request(`${ORIGIN}/api/tasks/projects/${project.id}/icon?scheme=dim`));
+    expect(refused.status).toBe(400);
+
+    // A website that declares no dark icon leaves the project with none.
+    sites['https://one.example.com/'] = () =>
+      new Response('<head><link rel="icon" href="/light.png"></head>', { headers: { 'content-type': 'text/html' } });
+    sites['https://one.example.com/light.png'] = () => new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    const moved = await patch(owner, { projectId: project.id, websiteUrl: 'https://one.example.com' });
+    expect(moved.body.project).toMatchObject({ darkIcon: null });
+    expect((moved.body.project as { icon: string | null }).icon).not.toBeNull();
+    const gone = await writer.fetch(new Request(`${ORIGIN}/api/tasks/projects/${project.id}/icon?scheme=dark`));
+    expect(gone.status).toBe(404);
+  });
+
   it('refuses an address that is not a public web page under its field, reading nothing', async () => {
     const project = await newProject(engine);
     for (const websiteUrl of ['ftp://example.com', 'http://localhost:8787', 42]) {

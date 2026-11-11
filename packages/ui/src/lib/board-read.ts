@@ -77,8 +77,9 @@ export interface BoardProject {
   key: string;
   name: string;
   prefix: string;
-  /** The address of the icon read from its website; null when it has none. */
+  /** The addresses of the icons read from its website, light and dark; null when it has none. */
   icon: string | null;
+  darkIcon: string | null;
   /** The read answered. */
   ok: boolean;
   error: string | null;
@@ -119,6 +120,7 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     name: project.displayName,
     prefix: project.prefix,
     icon: project.icon ?? null,
+    darkIcon: project.darkIcon ?? null,
   };
   const error = read?.error;
   const payload = error === undefined || error === null ? read?.data : undefined;

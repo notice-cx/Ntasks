@@ -309,6 +309,7 @@ function readProject(row: unknown, unreadable: string): TaskProject {
   const textOrNull = (value: unknown) => (typeof value === 'string' || value === null ? { ok: true, value } : null);
   const website = textOrNull(row.websiteUrl);
   const icon = textOrNull(row.icon);
+  const darkIcon = textOrNull(row.darkIcon);
   return Object.freeze({
     projectId: row.projectId,
     logicalKey: row.logicalKey,
@@ -318,6 +319,7 @@ function readProject(row: unknown, unreadable: string): TaskProject {
     ...(typeof row.disabled === 'boolean' ? { disabled: row.disabled } : {}),
     ...(website ? { websiteUrl: website.value as string | null } : {}),
     ...(icon ? { icon: icon.value as string | null } : {}),
+    ...(darkIcon ? { darkIcon: darkIcon.value as string | null } : {}),
   });
 }
 
