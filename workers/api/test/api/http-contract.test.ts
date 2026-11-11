@@ -339,6 +339,7 @@ async function drive(): Promise<readonly Sample[]> {
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&field.severity=high`);
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&stage=built,merged,live`);
   await as('GET /api/tasks', `/api/tasks?project=${projectId}&activity=active,quiet,stalled`);
+  await as('GET /api/tasks', `/api/tasks?project=${projectId}&externalLinks=none`);
   const page = await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&limit=1`);
   await as('GET /api/tasks?label', `/api/tasks?project=${projectId}&label=copy&after=${String(page.next)}`);
   await as('GET /api/tasks/search', '/api/tasks/search?q=launch');
