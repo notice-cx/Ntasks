@@ -200,6 +200,10 @@ function FirstStep({ create, onCreate }: { create: Creation; onCreate: CreateWor
   );
 }
 
+/**
+ * The New workspace form, on a page of its own: the first step of an admin
+ * with no workspace, and New workspace in the workspace menu, which adds Cancel.
+ */
 function CreateWorkspace({
   create,
   onCreate,
