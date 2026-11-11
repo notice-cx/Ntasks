@@ -350,6 +350,8 @@ describe('a task page', () => {
       'Tomorrow',
       'In a week',
     ]);
+    // The menu shows the editor in its list's place, and focus moves to the editor's first value.
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Today' }));
     expect(typedField('Release date').type).toBe('date');
     close();
     fireEvent.click(await enabledButton('Points: 3'));
