@@ -734,21 +734,24 @@ waiting work. A closed card names who closed it only when the close records
 them.
 
 A card is a Background panel with a Border edge, 8 px corners and the raise
-shadow. Its first line is the activity mark for a task in progress, the
+shadow. Its first line is its project's icon at 16 px (`ProjectIcon`), with
+the project's name for a screen reader, the
 task's id in Text 3 and, at the end, the pull request's number as a link
-after `git-pull-request`. Then the title as a link, two lines at most. On a
-task in progress, a line in Text 3: Next and the next step, else the branch
-after `git-branch` when there is no pull request, else Nothing recorded.
-Last, the holder's `Avatar` at 18 px, their name in Text 2, the model in Text
-3, and how long the task has been in its column: since its holder's last
-activity in progress, else since its change reached its stage. A card in progress is tinted by its activity: an
-Active card is filled Accent soft with an Accent edge at 40 % opacity, a
-Quiet one Accent soft at 40 % with an Accent edge at 15 %, and a Stalled one
-has a dashed Border strong edge, no fill and no shadow, and its title in Text
-2. Closed cards keep the plain Background. An Active card's mark sits on an
-Accent halo at 30 % opacity that grows from 0.6 to 1.35 times the mark's size
-and fades, over and over, every 2.4 seconds: the one motion on the board that
-repeats while nothing changes.
+after `git-pull-request`. Then the title as a link, two lines at most. Its
+last line, in Text 3, is what is next for it: on a task in progress, Next and
+the next step, else the branch after `git-branch` when there is no pull
+request, else Nothing recorded; on a card waiting to ship, the step left.
+That line ends with the `Avatar` of who holds the task, or closed it, at
+18 px, a button whose `Tooltip` names them and the model they named, and how
+long the task has been in its column: since its holder's last activity in
+progress, else since its change reached its stage.
+
+A card in progress is tinted by its activity, and says it to a screen reader
+in a hidden word: an Active card is filled Accent soft with an Accent edge at
+40 % opacity, 2 px wide so it reads apart from a Quiet one where colours are
+forced, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
+and a Stalled one has a dashed Border strong edge, no fill and no shadow, and
+its title in Text 2. Closed cards keep the plain Background.
 
 Between two reads, each card is compared with where it was, and:
 
@@ -757,10 +760,7 @@ Between two reads, each card is compared with where it was, and:
   move in one read start 110 ms apart; it lands tinted Accent soft, which
   fades over 700 ms;
 - a card that moved within its column slides there over 350 ms;
-- a new card fades in, rising 6 px, over 300 ms;
-- a task whose holder changed or commented on it since gets a 1.5 px Accent
-  ring that grows from its activity mark to 2.6 times its size and fades,
-  once, over 900 ms.
+- a new card fades in, rising 6 px, over 300 ms.
 
 When the change feed brings a change to a task, the card shows who made it
 and what it did for 2.4 seconds, such as Claude commented, Codex pushed a
@@ -770,9 +770,9 @@ Accent, across the card's top edge at its right (`changeWords` in
 says nothing a person reads, such as a link added, shows no pill, and a
 change that arrived while another page was open shows none either.
 
-With `prefers-reduced-motion`, nothing travels, slides, fades in, rings or
-breathes, and the pill appears and goes without fading: a card in another column is drawn there tinted Accent soft for
-700 ms. The first draw animates nothing.
+With `prefers-reduced-motion`, nothing travels, slides or fades in, and the
+pill appears and goes without fading: a card in another column is drawn
+there tinted Accent soft for 700 ms. The first draw animates nothing.
 
 #### List
 
