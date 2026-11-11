@@ -239,6 +239,12 @@ async function main(names: readonly string[]) {
     await recordWalkthroughs(names.slice(1));
     return;
   }
+  // `fit` checks that every page fits a phone's screen instead, and draws nothing (fit.ts).
+  if (names[0] === 'fit') {
+    const { checkFit } = await import('./fit.ts');
+    if (!(await checkFit())) process.exitCode = 1;
+    return;
+  }
   const shots = chosenShots(names);
   await mkdir(OUT, { recursive: true });
   await withBrowser(async (tab) => {

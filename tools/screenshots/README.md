@@ -81,6 +81,28 @@ The `shipped` walkthrough first ticks "Changes go live by a deploy" for the
 docs project in Settings, Projects, which no frame shows, so the docs
 project's merged task waits for a deploy.
 
+## Phone fit
+
+```sh
+pnpm screenshots fit
+```
+
+Checks that every page fits a phone's screen, and draws no picture. It opens
+the board's views, Live, Focus, Productivity, each Settings tab and every
+task the board links to, 320 and 390 pixels wide on an emulated touch screen.
+A page fails when:
+
+- it is wider than the screen, as the invented tasks draw it;
+- it is wider than the screen once the text people and agents write is as
+  long as real tasks hold it: each decision option becomes a 66-character
+  label and the task page's id a 14-character id, since the invented tasks
+  keep both short;
+- a text field, text area or select draws its text under 16 px, which Safari
+  on a phone zooms in on when it takes focus.
+
+It prints each failure with the elements that run past the screen's edge,
+and exits with 1 when a page fails. Run it after a change to a page's layout.
+
 ## What it needs
 
 - Google Chrome or Chromium on this machine. The script looks in the usual
