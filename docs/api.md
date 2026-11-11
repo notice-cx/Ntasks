@@ -415,13 +415,17 @@ too.
 - **An approval** asked again with the same title and description, or the
   same reason, returns the open one, with `created: false`. The same
   description under another title opens another approval. A `description`
-  with a line that starts `Reason:` is refused: an approval imported from
-  Beads asks only what follows that line, and every answer reads it so.
+  with a line that starts `Reason:` and has text after it is refused: an
+  approval imported from Beads asks only what follows that label, and every
+  answer reads it so. A `Reason:` line with nothing after it leaves the
+  approval asking its whole description.
   `create_task`, and each entry of `create_tasks`, opens an approval with
   the task from `approval`: `{ title, description }`, checked as
   `request_human_approval` checks them, or one text whose first line is the
-  title. Its answer's `lint` advises on that approval as
-  `request_human_approval` does, each line starting `approval.`.
+  title. Its answer has the approval and `replayed`, not `created`, and its
+  `lint` advises on that approval as `request_human_approval` does, each
+  line starting `approval`: `approval.title` or `approval.description` for
+  advice on either, and `approval` alone for the object form.
 - **Who did it**: the task records the sender's name as its filer, holder,
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the
