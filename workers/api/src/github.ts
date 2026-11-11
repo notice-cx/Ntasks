@@ -18,7 +18,8 @@
  *   request or has open tasks under it (closeMerged in task-writes.ts);
  *   the answer lists the tasks it closed and the ones it kept, with why;
  * - `check_run` completed with success on the default branch, when it is a
- *   deploy: `live`, naming its commit;
+ *   deploy: `live`, naming its commit, once every other deploy check on that
+ *   commit passed too, which the receiver reads through the app (heldBy);
  * - `deployment_status` success, when it is a deploy: `live`, naming the
  *   deployed commit.
  *
@@ -40,24 +41,29 @@
  * that GitHub sends again moves and closes nothing twice.
  * docs/api.md#from-github describes the setup.
  */
+import { appToken, checksOf, installationToken, RETRY } from './access/github-api.ts';
 import {
   addInstallation,
   deployBranchOf,
+  deployedNothing,
   deployOf,
   detectedOf,
   githubAppOf,
   hasInstallation,
+  heldBy,
+  installationsByAccount,
   isDeployCheck,
   isOwnerOnGitHub,
   recordDetected,
   removeInstallation,
   type DeployNames,
+  type GitHubApp,
 } from './access/github-app.ts';
 import { signInSecrets } from './access/config.ts';
 import { fromHex, sameBytes } from './access/crypto.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { notConfigured } from './access/verify.ts';
-import type { Args } from './args.ts';
+import { listed, type Args } from './args.ts';
 import { movedView, signalArgs } from './delivery.ts';
 import { githubSender } from './github-check.ts';
 import { readBoundedBytes } from './http/json-body.ts';
@@ -113,8 +119,24 @@ function numberAt(payload: unknown, ...path: readonly string[]): number | undefi
 
 /** What an event says: the signal it sends, and a deploy name seen for the first time; or why it sends none, as GitHub's list of deliveries shows it. */
 export type GitHubEvent =
-  | { readonly signal: Args; readonly newDeploy?: string; readonly mergedBy?: string; readonly at?: string }
-  | { readonly ignored: string };
+  | {
+      readonly signal: Args;
+      readonly newDeploy?: string;
+      readonly mergedBy?: string;
+      readonly at?: string;
+      /** The deploy check run that passed, when the event is a check run: the commit's other deploy checks may hold it. */
+      readonly check?: {
+        readonly id: number | null;
+        readonly name: string;
+        readonly commit: string;
+        readonly startedAt: string | null;
+      };
+    }
+  | {
+      readonly ignored: string;
+      /** A deploy that deployed nothing: the store's check reads the merged work waiting on its commit again. */
+      readonly recheck?: true;
+    };
 
 /** The signal an event sends, given the names that count as deploys. */
 export function readEvent(event: string | null, payload: unknown, names: DeployNames): GitHubEvent {
@@ -150,19 +172,27 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
       };
     }
     case 'check_run': {
-      if (at(payload, 'action') !== 'completed' || at(payload, 'check_run', 'conclusion') !== 'success')
-        return { ignored: 'only a check run that completed with success moves a task' };
+      const completed = at(payload, 'action') === 'completed';
+      const conclusion = textAt(payload, 'check_run', 'conclusion')?.toLowerCase() ?? null;
       const name = textAt(payload, 'check_run', 'name') ?? '';
       const verdict = deployOf(name, names, isDeployCheck(name));
+      // It may have been the last deploy its commit's tasks waited on (heldBy).
+      if (completed && (verdict === 'yes' || verdict === 'new') && deployedNothing(conclusion))
+        return { ignored: `${name} deployed nothing, so it moves no task itself`, recheck: true };
+      if (!completed || conclusion !== 'success')
+        return { ignored: 'only a check run that completed with success moves a task' };
       if (verdict === 'off') return { ignored: `${name} is switched off in Settings, so it moves no task` };
       if (verdict === 'no') return { ignored: `${name || 'this check'} is not a deploy` };
       const branch = textAt(payload, 'check_run', 'check_suite', 'head_branch');
       const kind = deployBranchOf(branch, defaultBranch);
-      if (kind === 'default') return live(name, verdict, textAt(payload, 'check_run', 'head_sha'));
+      const sha = textAt(payload, 'check_run', 'head_sha');
       const startedAt = textAt(payload, 'check_run', 'started_at');
+      const id = numberAt(payload, 'check_run', 'id') ?? null;
+      const check = sha === undefined ? {} : { check: { id, name, commit: sha, startedAt: startedAt ?? null } };
+      if (kind === 'default') return { ...live(name, verdict, sha), ...check };
       if (kind === null || startedAt === undefined)
         return { ignored: `a deploy check on ${branch ?? 'another branch'}, not the default branch, moves no task` };
-      return { ...live(name, verdict, textAt(payload, 'check_run', 'head_sha')), mergedBy: startedAt };
+      return { ...live(name, verdict, sha), ...check, mergedBy: startedAt };
     }
     case 'deployment_status': {
       if (at(payload, 'deployment_status', 'state') !== 'success')
@@ -181,6 +211,41 @@ export function readEvent(event: string | null, payload: unknown, names: DeployN
         ignored: `Ntasks reads pull_request, check_run and deployment_status events, not ${event ?? 'this one'}`,
       };
   }
+}
+
+/**
+ * The deploy checks of a passing deploy's commit that hold its tasks back
+ * (heldBy), read through the workspace's GitHub App with the installation
+ * that reaches the repository; RETRY when they could not be read. Without the
+ * app or such an installation, Ntasks cannot read the commit's other checks,
+ * and each deploy check counts on its own.
+ */
+async function heldDeploys(
+  app: GitHubApp | null,
+  installation: { readonly id: number; readonly sentEvent: boolean } | undefined,
+  repository: string,
+  check: {
+    readonly id: number | null;
+    readonly name: string;
+    readonly commit: string;
+    readonly startedAt: string | null;
+  },
+  names: DeployNames,
+): Promise<readonly string[] | typeof RETRY> {
+  if (app === null || installation === undefined) return [];
+  // The installation that sent the event reaches its repository, so a read
+  // through it that fails leaves the commit's deploys unknown. One found by
+  // the repository's account, for a webhook set up by hand, may be on other
+  // repositories only, and the deploy then counts on its own.
+  const unread = installation.sentEvent ? RETRY : [];
+  const jwt = await appToken(app.appId, app.privateKey);
+  if (jwt === null) return unread;
+  const token = await installationToken(jwt, installation.id);
+  if (token === null) return RETRY;
+  const checks = await checksOf(token, repository, check.commit);
+  if (checks === RETRY) return RETRY;
+  if (checks === null) return unread;
+  return heldBy(checks.runs, names, checks.defaultBranch, check);
 }
 
 /**
@@ -281,8 +346,12 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
     }
   }
   const detected = await detectedOf(env.DB, workspaceId);
-  const event = readEvent(name, payload, { typed: webhook?.deployChecks ?? [], detected: detected.checks });
-  if ('ignored' in event) return json({ moved: [], ignored: event.ignored }, 200);
+  const names = { typed: webhook?.deployChecks ?? [], detected: detected.checks };
+  const event = readEvent(name, payload, names);
+  if ('ignored' in event) {
+    if (event.recheck === true) await workspaceStore(env, workspaceId).checkGitHub();
+    return json({ moved: [], ignored: event.ignored }, 200);
+  }
   let signal;
   try {
     signal = {
@@ -296,6 +365,32 @@ export async function githubReceiver(request: Request, env: Env, workspaceId: st
   }
   // Recorded before the move, so a delivery GitHub sends again finds it listed whatever happens after.
   if (event.newDeploy !== undefined) await recordDetected(env.DB, workspaceId, { checks: [event.newDeploy] });
+  if (event.check !== undefined) {
+    const repository = String(event.signal.repository);
+    const installationId = fromApp
+      ? numberAt(payload, 'installation', 'id')
+      : (await installationsByAccount(env.DB, workspaceId)).get(repository.split('/')[0]!.toLowerCase());
+    const installation = installationId === undefined ? undefined : { id: installationId, sentEvent: fromApp };
+    const held = await heldDeploys(app, installation, repository, event.check, names);
+    if (held === RETRY) {
+      // The store's check reads the commit's deploys again, and tries again while GitHub does not answer.
+      await workspaceStore(env, workspaceId).checkGitHub();
+      return json(
+        {
+          error: 'unavailable',
+          detail: `GitHub did not answer a read of this commit's other deploy checks, so no task moved; Ntasks reads them again shortly`,
+        },
+        503,
+      );
+    }
+    if (held.length > 0) {
+      const which =
+        held.length === 1
+          ? `${held[0]!}, another deploy of this commit, has`
+          : `${listed(held)}, other deploys of this commit, have`;
+      return json({ moved: [], ignored: `${which} not passed, so no task moves yet` }, 200);
+    }
+  }
   const answer = await workspaceStore(env, workspaceId).deliver(signal, githubSender(workspaceId), {
     turnOnDeploys: { except: detected.projects },
   });

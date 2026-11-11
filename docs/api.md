@@ -888,7 +888,7 @@ of the workspace:
 | GitHub event | Signal |
 |---|---|
 | `pull_request`, closed and merged into the repository's default branch | `merged`, naming the pull request and its merge commit |
-| `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on. A commit the merge queue landed counts too: GitHub names its check suite for the queue's branch, `gh-readonly-queue/<default branch>/…`, and a build there counts only for tasks merged before it started, since one that started earlier was a preview |
+| `check_run`, completed with `success` on the default branch, when it is a deploy | `live`, naming the commit the check ran on, once every other deploy check on that commit passed too ([below](#more-than-one-deploy-on-a-commit)). A commit the merge queue landed counts too: GitHub names its check suite for the queue's branch, `gh-readonly-queue/<default branch>/…`, and a build there counts only for tasks merged before it started, since one that started earlier was a preview |
 | `deployment_status` with `success`, when it is a deploy | `live`, naming the deployed commit |
 
 A **deploy** is a check run whose name starts with `Workers Builds:` or
@@ -932,7 +932,8 @@ task moves to `live` when either of these is true:
   the case when several pull requests merge within a minute and the host
   builds only the last. The task goes live at the time the later merge did.
 - A deploy check on the task's merge commit passed on the default branch or
-  the merge queue's branch, and started at or after the merge. This is the
+  the merge queue's branch, started at or after the merge, and no other
+  deploy check on that commit is still running or failed. This is the
   case when GitHub delivers the deploy before the merge event, or the task
   closed after its deploy. The task goes live at the time the check
   completed. A deploy check that started before the merge was a preview, and
@@ -970,7 +971,8 @@ times with a growing delay. It signs in to GitHub with the app's private key.
   ([below](#work-still-in-progress-when-its-pull-request-merges)).
   When its event moves nothing, such as GitHub's `ping`, an
   installation, a pull request closed without merging, a check that is not a
-  deploy, or another event, the answer also holds `ignored`, a sentence
+  deploy, a deploy whose commit's other deploy check has not passed, or
+  another event, the answer also holds `ignored`, a sentence
   saying why. GitHub shows each answer under the app's, or the webhook's,
   Recent Deliveries.
 - Each move and each close is recorded in the task's history under
@@ -991,6 +993,32 @@ times with a growing delay. It signs in to GitHub with the app's private key.
   key derived from `AUTH_SECRET`. After `AUTH_SECRET` changes they no longer
   decrypt and every delivery is refused, until the owner presses
   **Disconnect**, deletes the old app on its GitHub page and connects again.
+
+#### More than one deploy on a commit
+
+A commit can carry more than one deploy check, such as one for an app's
+Worker and one for its website's Worker. Its tasks move to `live` once every
+deploy check on it passed: for each deploy name on the default branch or the
+merge queue's branch, the latest run completed with `success`, or with
+`skipped` or `neutral`, which deploy nothing.
+
+- While another deploy check on the commit runs, a passing one's delivery
+  answers `200` with `ignored` and moves nothing. The other check's own
+  delivery moves the tasks once it passes. When it completes as `skipped` or
+  `neutral` instead, its delivery moves nothing itself, and the task store's
+  check reads the commit again a few seconds later.
+- Once a deploy check on the commit failed, its tasks stay at `merged` until
+  that check passes on a rerun, which **Re-run** on the check in GitHub
+  starts, or a later merge's deploy ships them ([above](#from-github)).
+- The receiver reads the commit's checks through the app's installation that
+  sent the delivery, with two requests to GitHub. When GitHub does not
+  answer, or answers without every check, the delivery answers `503` with
+  `unavailable` and moves nothing, and the task store's check reads the
+  commit again a few seconds later.
+- A webhook set up by hand reads them through the app's installation on the
+  repository's account. Without one, or when it does not reach the
+  repository, Ntasks cannot read a commit's other checks, and each deploy
+  check counts on its own.
 
 #### Work still in progress when its pull request merges
 
