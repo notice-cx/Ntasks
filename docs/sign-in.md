@@ -508,7 +508,9 @@ model)` makes the engine's `Actor`, the name the task's history records:
 `agent:` followed by the agent's registered name; `service:` followed by the
 credential's name, and by `/<agent>` when the service names the agent it acts
 for ([below](#a-service-acting-for-its-agents)); or the person's name, with `person:` in front when
-that name itself starts with `agent:`, `service:` or `person:`. An agent
+that name itself starts with `agent:`, `service:` or `person:`, or when the
+display rule would show the bare name as an agent's, as it shows `Claude`,
+`Codex` or `Lead` ([Shared Work Protocol 3.1.1](../spec/protocol.md#311-display-names)). An agent
 chooses its own name when it registers and could choose a person's, so an
 actor that starts with `agent:` is always an agent and one that starts with
 `service:` always a service.

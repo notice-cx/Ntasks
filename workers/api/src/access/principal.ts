@@ -4,7 +4,7 @@
  * src/auth.ts checks each project against; the task engine never sees a
  * principal, only the `Actor` and retry principal made from it.
  */
-import { TASK_LIMITS, type Actor } from '@ntasks/domain';
+import { TASK_LIMITS, actorIdentity, type Actor } from '@ntasks/domain';
 import { SCOPES, type ProjectAccess } from '../auth.ts';
 import type { Workspace, WorkspaceRole } from '../workspaces.ts';
 
@@ -117,6 +117,15 @@ export function mayDecide(principal: Principal): boolean {
 const PREFIXED = /^(?:agent|service|person|visitor):/u;
 
 /**
+ * Whether a person with this name is recorded as `person:<name>`: when the
+ * name starts like one of the prefixes actorOf adds, or when the display rule
+ * would show the bare name as an agent or a service, as it does `Claude`.
+ */
+function needsPersonPrefix(name: string): boolean {
+  return PREFIXED.test(name) || actorIdentity(name).kind !== 'person';
+}
+
+/**
  * The engine's actor for a write by this principal, with the model an agent
  * names. The task store records it as the filer, assignee, closer or author.
  * An agent picks its own name when it registers, and could pick the owner's,
@@ -124,8 +133,9 @@ const PREFIXED = /^(?:agent|service|person|visitor):/u;
  * `service:<name>/<agent>` when it acts for an agent it names. A visitor's is
  * `visitor:anyone`, though a visitor writes nothing. An owner's
  * actor is their name, or `person:<name>` when their name itself starts with
- * one of these prefixes. So an actor that starts with `agent:` is always an
- * agent, and one that starts with `service:` always a service. The engine
+ * one of these prefixes or reads as an agent's, such as `Claude`. So an actor
+ * that starts with `agent:` is always an agent, one that starts with
+ * `service:` always a service, and a person is always shown as one. The engine
  * takes at most TASK_LIMITS.actor characters; the authenticator refuses an
  * agent name that would make a service's actor longer, and a longer agent or
  * owner name is cut.
@@ -140,7 +150,7 @@ export function actorOf(principal: Principal, model?: string): Actor {
 
 /** The actor a person with this name is recorded under. */
 export function personActor(name: string): string {
-  return (PREFIXED.test(name) ? `person:${name}` : name).slice(0, TASK_LIMITS.actor);
+  return (needsPersonPrefix(name) ? `person:${name}` : name).slice(0, TASK_LIMITS.actor);
 }
 
 /** A name as the task store records it: 1 to 255 characters, `fallback` for none. */
@@ -164,7 +174,8 @@ export function uniquePersonName(
   held: (actor: string) => boolean,
 ): string {
   const shown = displayName(name, 'owner');
-  const room = (suffix: string) => TASK_LIMITS.actor - suffix.length - (PREFIXED.test(shown) ? 'person:'.length : 0);
+  const room = (suffix: string) =>
+    TASK_LIMITS.actor - suffix.length - (needsPersonPrefix(`${shown}${suffix}`) ? 'person:'.length : 0);
   const named = [` (${account.login})`, ` (GitHub ${account.id})`].map(
     (suffix) => `${shown.slice(0, room(suffix)).trimEnd()}${suffix}`,
   );

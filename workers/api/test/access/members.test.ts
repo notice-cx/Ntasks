@@ -4,6 +4,7 @@
 // (vitest.config.ts); the people they invite are 2101 and up.
 import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
+import { actorIdentity } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
 import { setAgentGrants } from '../../src/access/grants.ts';
 import { INVITATION_DAYS } from '../../src/access/members.ts';
@@ -491,5 +492,32 @@ describe('two people with the same GitHub display name', () => {
       as(browser, 'POST', `/api/tasks/${taskId}/choose`, { workspace, json: { projectId, option: 'b' } });
     expect((await choose(second)).status).toBe(409);
     expect((await choose(first)).status).toBe(200);
+  });
+});
+
+describe('a person whose GitHub display name is an agent’s', () => {
+  it('writes as a person, shown by their own name', async () => {
+    github.names.set(2311, 'Claude');
+    const { owner, workspace } = await adminWithWorkspace(1001, 'Named');
+    await invited(owner, workspace, 'claude-person');
+    const claude = await admitted(2311, 'claude-person');
+    const made = await as(owner, 'POST', '/api/tasks/projects', {
+      workspace,
+      json: { name: 'Named', prefix: 'nmd', key: 'named.example.com' },
+    });
+    const projectId = (made.body.project as { projectId: string }).projectId;
+    const filed = await as(claude, 'POST', '/api/tasks', { workspace, json: { projectId, title: 'Write the notes' } });
+    expect(filed.status).toBe(200);
+    const taskId = filed.body.id as string;
+    const said = await as(claude, 'POST', `/api/tasks/${taskId}/comments`, {
+      workspace,
+      json: { projectId, text: 'Started.' },
+    });
+    expect(said.status).toBe(200);
+
+    const [author] = await runInDurableObject(store(workspace), async (instance: TaskStore) =>
+      (await instance.tasks.listComments(projectId, taskId)).map((comment) => comment.author),
+    );
+    expect(actorIdentity(author!)).toMatchObject({ kind: 'person', name: 'Claude' });
   });
 });
