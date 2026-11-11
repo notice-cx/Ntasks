@@ -1123,6 +1123,24 @@ export function createFixtureTasksApi({
         };
       });
     },
+    /** Moves it as the Worker does: a project that does not deploy stops at merged, and nothing moves back. */
+    async markLive(id) {
+      reach();
+      const task = state.tasks.find((row) => row.id === id);
+      const delivery = task?.delivery;
+      if (!task || task.status !== 'closed' || !delivery || delivery.stage === 'live') return null;
+      const merging = repositoryOf(task);
+      const live =
+        state.projects.find((row) => row.logicalKey === task.project)?.deploys === true ||
+        (merging !== null && state.mergesLive?.has(merging) === true);
+      if (!live && delivery.stage === 'merged') return null;
+      const at = new Date(now()).toISOString();
+      task.delivery = live
+        ? { ...delivery, stage: 'live', liveAt: at }
+        : { ...delivery, stage: 'merged', mergedAt: delivery.mergedAt ?? at };
+      touch(task);
+      return task.delivery.stage === 'live' ? 'live' : 'merged';
+    },
     async dispute(id, key) {
       reach();
       const task = find(id, key);

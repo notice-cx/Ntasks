@@ -148,6 +148,9 @@ export interface TasksApi {
   ): Promise<void>;
   /** Reopen an approval, or a task accepted as done, whose answer an agent recorded and the person disputes. */
   dispute(id: string, project: string): Promise<void>;
+  /** Say that a closed task's change went live, for a deploy no signal reports to Ntasks. Answers the stage it
+   * moved to (Merged in a project that does not deploy), or null when it was already there. */
+  markLive(id: string): Promise<'merged' | 'live' | null>;
   /** Free a task someone holds, on the person's own call: nobody holds it then, and a comment keeps where it stopped. Refused when someone other than `holder`, the holder the page showed, holds it now. */
   release(id: string, project: string, holder: string): Promise<void>;
   /** Approve the action an approval names. */
@@ -649,6 +652,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     dismiss: (id, project, reason, options) => scope().dismiss(id, project, reason, options),
     accept: (id, project, met, options) => scope().accept(id, project, met, options),
     dispute: (id, project) => scope().dispute(id, project),
+    markLive: (id) => scope().markLive(id),
     release: (id, project, holder) => scope().release(id, project, holder),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
     reportPerformed: (id, project, note, options) => scope().reportPerformed(id, project, note, options),
@@ -886,6 +890,14 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         { met, ...(reason === undefined ? {} : { reason }), ...shownIn(sending) },
         sending,
       );
+    },
+    async markLive(id) {
+      const response = await write('POST', '/api/delivery', { stage: 'live', tasks: [id] }, id);
+      const unreadable = `${id} was marked live, but the answer could not be read.`;
+      const answer = await answerJson(response, unreadable);
+      if (!isRecord(answer) || !Array.isArray(answer.moved)) throw new UnreadableAnswer(unreadable);
+      const moved = answer.moved.find((row: unknown) => isRecord(row) && row.id === id);
+      return isRecord(moved) && (moved.stage === 'merged' || moved.stage === 'live') ? moved.stage : null;
     },
     async dispute(id, project) {
       await act(id, project, 'dispute', {});

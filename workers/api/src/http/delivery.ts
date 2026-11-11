@@ -53,15 +53,16 @@ export function projectView(project: Project) {
 }
 
 /**
- * POST /api/delivery: `{ repository, stage, pullRequests?, commits? }`. Moves
- * the closed tasks it names, in the projects the sender may change, and
- * answers `{ moved: [{ id, stage }] }`. A repeated signal moves nothing.
+ * POST /api/delivery: `{ repository?, stage, pullRequests?, commits?, tasks? }`.
+ * Moves the closed tasks it names, in the projects the sender may change,
+ * and answers `{ moved: [{ id, stage }] }`. A repeated signal moves nothing.
+ * The repository may be left out only when the signal names tasks alone.
  */
 export async function deliveryRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
   const { body } = await writeOf(request, url, 'report_delivery', {});
-  only(body, ['repository', 'stage', 'pullRequests', 'commits']);
-  const moves = await reportDelivery(context, signalArgs(body, { pullRequests: 'pullRequests', commits: 'commits' }));
-  return json({ moved: movedView(moves) });
+  only(body, ['repository', 'stage', 'pullRequests', 'commits', 'tasks']);
+  const signal = signalArgs(body, { pullRequests: 'pullRequests', commits: 'commits', tasks: 'tasks' });
+  return json({ moved: movedView(await reportDelivery(context, signal)) });
 }
 
 /**

@@ -167,6 +167,37 @@ describe('a closed task’s delivery', () => {
     expect((await signal(writer, merged)).body).toEqual({ moved: [{ id, stage: 'merged' }] });
   });
 
+  it('moves tasks named by id, with no repository, when their change went live where no signal reports it', async () => {
+    const project = await deployingProject();
+    const id = await closedWith(project, { commit: 'c0ffee1' });
+    const other = await closedWith(project, { commit: 'c0ffee2' });
+    time.advance(5);
+    expect(await signal(target, { stage: 'live', tasks: [id] })).toEqual({
+      status: 200,
+      body: { moved: [{ id, stage: 'live' }] },
+    });
+    expect(await deliveryOf(project, id)).toMatchObject({ stage: 'live', liveAt: time.now(), commit: 'c0ffee1' });
+    expect((await deliveryOf(project, other))?.stage).toBe('built');
+    const { changes } = await read<{ changes: { actor: string; fields: { delivery?: unknown } }[] }>(
+      target,
+      'get_task_history',
+      { project: project.id, task: id },
+    );
+    expect(changes[0]).toMatchObject({ actor: WRITER.name, fields: { delivery: expect.anything() } });
+
+    expect(await write(target, 'report_delivery', { stage: 'live', tasks: [other] })).toEqual({
+      moved: [{ id: other, stage: 'live' }],
+    });
+    // A signal naming commits still needs the repository they are in.
+    expect((await signal(target, { stage: 'live', commits: ['c0ffee2'] })).status).toBe(400);
+
+    const readOnly = await deployingProject();
+    const kept = await closedWith(readOnly, { commit: 'c0ffee3' });
+    const reader = api({ principal: granted({ [readOnly.id]: 'read' }), engine, now: time.now });
+    expect((await signal(reader, { stage: 'live', tasks: [kept] })).body).toEqual({ moved: [] });
+    expect((await deliveryOf(readOnly, kept))?.stage).toBe('built');
+  });
+
   it('is cleared by a reopen and kept in history, and a close without a commit or pull request has none', async () => {
     const project = await newProject(engine);
     const id = await closedWith(project, { commit: 'aaaaaaa' });

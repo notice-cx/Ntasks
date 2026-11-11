@@ -5,6 +5,7 @@
  */
 import {
   COMMIT_SHA,
+  isTaskId,
   REPOSITORY_NAME,
   TaskRefused,
   type DeliveryMove,
@@ -109,12 +110,20 @@ export function shippedArgs(
 
 /**
  * A signal's arguments: the repository, the stage, and the pull requests
- * (URLs, or numbers in the repository) and commits it names, under the
- * names its caller uses for the two lists.
+ * (URLs, or numbers in the repository), commits and tasks it names, under
+ * the names its caller uses for the three lists. Naming a task by id is for
+ * a change that went live where no signal reached Ntasks, such as a deploy
+ * by hand; a signal that names only tasks needs no repository.
  */
-export function signalArgs(args: Args, names: { readonly pullRequests: string; readonly commits: string }) {
+export function signalArgs(
+  args: Args,
+  names: { readonly pullRequests: string; readonly commits: string; readonly tasks?: string },
+) {
+  const named = (name: string | undefined) =>
+    name !== undefined && Array.isArray(args[name]) && (args[name] as unknown[]).length > 0;
+  const onlyTasks = !named(names.pullRequests) && !named(names.commits) && named(names.tasks);
   const repository = args.repository;
-  if (typeof repository !== 'string' || !REPOSITORY_NAME.test(repository))
+  if (!(onlyTasks && repository === undefined) && (typeof repository !== 'string' || !REPOSITORY_NAME.test(repository)))
     refuse('invalid arguments: repository (owner/name, such as example/app)');
   const stage = args.stage;
   if (stage !== 'merged' && stage !== 'live') refuse('invalid arguments: stage (merged or live)');
@@ -127,20 +136,32 @@ export function signalArgs(args: Args, names: { readonly pullRequests: string; r
   const pullRequests = list(names.pullRequests).map((entry, index) => {
     const at = `${names.pullRequests}[${index}]`;
     const number = typeof entry === 'string' ? /^#?(\d{1,9})$/u.exec(entry)?.[1] : undefined;
-    if (number !== undefined) return githubPull(repository, Number(number));
-    if (typeof entry === 'number' && Number.isSafeInteger(entry) && entry > 0) return githubPull(repository, entry);
+    if (number !== undefined) return githubPull(repository as string, Number(number));
+    if (typeof entry === 'number' && Number.isSafeInteger(entry) && entry > 0)
+      return githubPull(repository as string, entry);
     return (
       pullRequestUrl(entry) ?? refuse(`invalid arguments: ${at} (a pull request's URL, or its number in repository)`)
     );
   });
   const commits = list(names.commits).map((entry, index) => commitOf(entry, `${names.commits}[${index}]`));
-  if (pullRequests.length === 0 && commits.length === 0)
-    refuse(`invalid arguments: ${names.pullRequests} or ${names.commits} (name at least one)`);
+  const tasks =
+    names.tasks === undefined
+      ? []
+      : list(names.tasks).map((entry, index) =>
+          isTaskId(entry) ? entry : refuse(`invalid arguments: ${names.tasks}[${index}] (a task id, such as abc-1x2)`),
+        );
+  if (pullRequests.length === 0 && commits.length === 0 && tasks.length === 0)
+    refuse(
+      names.tasks === undefined
+        ? `invalid arguments: ${names.pullRequests} or ${names.commits} (name at least one)`
+        : `invalid arguments: ${names.pullRequests}, ${names.commits} or ${names.tasks} (name at least one)`,
+    );
   return {
     stage,
     pullRequests: [...new Set(pullRequests)],
     commits: [...new Set(commits)],
-    repository: repository.toLowerCase(),
+    ...(typeof repository === 'string' ? { repository: repository.toLowerCase() } : {}),
+    ...(tasks.length === 0 ? {} : { taskIds: [...new Set(tasks)] }),
   } satisfies DeliverySignal;
 }
 

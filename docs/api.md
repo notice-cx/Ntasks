@@ -189,7 +189,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
 | `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `closedEpics` when the close also closed epics whose last open task it was (each `{ id, resolution }`), `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `closedEpics`, `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `test` ([a test run](#a-test-run)), `model`, `idempotency_key` and `detail` |
 | `move_tasks` | `tasks`: each task named, after the move, as `{ id, parent, version }`, or as `get_task` shows it with `detail: "full"`; `moved`: each task whose id changed, old id to new; `fieldsKept` when a task kept field values its new project does not define, by its new id; `epics` when the move closed or reopened epics, each `{ id, status, resolution }`; and `replayed` | `workspace`, `task` or `tasks` (1 to 50 task ids), and `project`, `parent` or both, and optionally `with_children`, `model`, `idempotency_key` and `detail` ([below](#moving-tasks)) |
-| `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
+| `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `stage`, at least one of `pull_requests`, `commits` and `tasks`, `repository` with `pull_requests` or `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
 | `retire_field` | The field as retired, and `replayed` | `workspace`, `project`, `field` (its key), and optionally `model` and `idempotency_key` |
@@ -915,7 +915,7 @@ delivery:
 A **signal** moves tasks on: `report_delivery` over MCP, or
 `POST /api/delivery` over HTTP, which takes the same fields. It names a
 `repository` (`owner/name`), a `stage` (`merged` or `live`), and pull
-requests and commits, at most 100 of each. A pull request is its URL, or its
+requests, commits or tasks, at most 100 of each. A pull request is its URL, or its
 number in the repository, which names
 `https://github.com/<repository>/pull/<number>`; a GitHub pull request's URL
 is kept as that page whatever tab it shows. The signal moves each closed task
@@ -944,6 +944,12 @@ projects of the workspace the sender may change, to its stage:
   go live**, or with `PATCH /api/tasks/repositories`, which, turned on, also
   moves that repository's tasks at `merged` to `live`, at the time they
   merged.
+- A signal may also name closed tasks by id (`tasks` over HTTP and MCP), for
+  a change that went live where no pull request or commit signal reaches
+  Ntasks, such as a deploy by hand or an app-store release. Each moves to
+  the signal's stage by the same rules, and a signal that names only tasks
+  needs no `repository`. The web app's **Mark as live**, on a closed task at
+  Built, or at Merged in a project that deploys, sends one.
 
 The answer lists each task moved, as `{ id, stage }`; a task in a project
 the sender may only read is left as it is. `get_task` returns a task's
@@ -1468,7 +1474,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/tasks/move` | `tasks`, 1 to 50 task ids, and `projectId`, `parent` or both, and optionally `withChildren` ([moving tasks](#moving-tasks)) | `{ tasks, moved }`: each task named, after the move, and each task whose id changed, old id to new; `fieldsKept` as `move_tasks` answers it, and `epics`, each `{ id, status }`, when the move closed or reopened epics |
-| `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
+| `POST /api/delivery` | `stage`, at least one of `pullRequests`, `commits` and `tasks`, and `repository` with `pullRequests` or `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
 | `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, `closed` and `kept` when a merge closed or kept work in progress, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |

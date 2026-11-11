@@ -140,7 +140,7 @@ cite.
 | Acceptance as done | A person closing a task as done on their own call, recording each criterion as met or **waived** ([3.10](#310-acceptance-as-done)). |
 | Proof | What shows work closed as done: a commit, a pull request, a link or a person's acceptance as done. |
 | Delivery | Where a done task's change is: built, merged or live ([3.8](#38-delivery)). |
-| Signal | A message from a repository's automation, or an agent, that named pull requests or commits merged or went live. |
+| Signal | A message from a repository's automation, an agent or a person, that named pull requests, commits or tasks merged or went live. |
 | Human request | A task only a person can answer: an approval, a request to do steps, or a task labelled `human`. |
 | Decision | A task that asks a person to choose between options. |
 | Approval | A task of type `gate` that holds the tasks waiting on it until a person approves the action it names ([3.7](#37-approval)). |
@@ -810,7 +810,10 @@ commit matches one it names, in the projects the sender may change:
   `merged`;
 - a server MAY let an owner say that a repository's merges go live, for a
   repository with no deploy; either signal then moves a task whose change
-  reached that repository to `live`, whatever its project's `deploys` says.
+  reached that repository to `live`, whatever its project's `deploys` says;
+- a server MAY let a signal name closed tasks by id, for a change that went
+  live where no pull request or commit signal reaches it; such a signal
+  needs no repository, and each task it names moves by the rules above.
 
 A reopen clears the delivery; history keeps each stage and each move.
 
