@@ -8,7 +8,10 @@ import { env } from 'cloudflare:workers';
 import type { Task } from '@ntasks/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hex } from '../../src/access/crypto.ts';
+import { SCOPES, type Principal } from '../../src/auth.ts';
+import { githubSender } from '../../src/github-check.ts';
 import type { TaskStore } from '../../src/store/index.ts';
+import { createTask } from '../../src/task-writes.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
 import { store, TEST_WORKSPACE } from '../store.ts';
 import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
@@ -156,6 +159,44 @@ async function closedWithPullRequest(
     (await inWorkspace(owner, 'POST', `/api/tasks/${id}/close`, { projectId, reason: 'Done.', pullRequest })).status,
   ).toBe(200);
   return id;
+}
+
+const FILER: Principal = Object.freeze({
+  id: 'person:filer',
+  name: 'filer',
+  scopes: [SCOPES.read, SCOPES.write],
+  projects: 'all',
+});
+
+/** A task of `projectId` closed with each of these pull requests, filed
+ * inside the store in one call; answers their ids. Through the API, each
+ * would be two signed-in requests, which on a busy CI runner take most of a
+ * test's five seconds. */
+async function closedWithPullRequests(projectId: string, numbers: readonly number[]): Promise<string[]> {
+  return runInDurableObject(store(), async (instance: TaskStore) => {
+    const context = { engine: instance.tasks, principal: FILER, now: () => new Date().toISOString() };
+    const ids: string[] = [];
+    for (const number of numbers) {
+      const pullRequest = `https://github.com/${REPOSITORY}/pull/${number}`;
+      const done = { reason: 'Done.', pullRequest };
+      ids.push((await createTask(context, projectId, { title: 'Ship the page', done }, undefined)).result.task.id);
+    }
+    return ids;
+  });
+}
+
+/** The signal each of these merges sends once the receiver has checked its delivery, sent inside the store in one call. */
+async function mergedInStore(merges: readonly { readonly number: number; readonly commit: string }[]): Promise<void> {
+  await runInDurableObject(store(), async (instance: TaskStore) => {
+    for (const { number, commit } of merges) {
+      const pullRequests = [`https://github.com/${REPOSITORY}/pull/${number}`];
+      const answer = await instance.deliver(
+        { stage: 'merged', pullRequests, commits: [commit] },
+        githubSender(TEST_WORKSPACE.id),
+      );
+      if ('refused' in answer) throw new Error(answer.refused);
+    }
+  });
 }
 
 /** A project of the test workspace that does not deploy yet, and one task closed in it with this pull request. */
@@ -569,6 +610,85 @@ describe('work waiting for a merge GitHub already made', () => {
     expect((await taskOf(notListed.projectId, notListed.id)).delivery?.stage).toBe('built');
     expect(github.pullReads).not.toContain(`${outside}#71`);
   });
+
+  /** A task an agent holds in progress for each number, its work naming that pull request and a branch, filed inside the store. */
+  async function heldNaming(projectId: string, numbers: readonly number[], labels: string[] = []): Promise<string[]> {
+    const builder = { name: 'agent:Builder' };
+    return runInDurableObject(store(), async (instance: TaskStore) => {
+      const ids: string[] = [];
+      for (const number of numbers) {
+        const { task } = await instance.tasks.createTask(
+          projectId,
+          { title: 'Build it', claim: true, labels },
+          builder,
+        );
+        const work = { pr: `https://github.com/${REPOSITORY}/pull/${number}`, branch: `claude/build-${number}` };
+        await instance.tasks.writeTask(projectId, task.id, { expectedVersion: task.version, set: { work } }, builder);
+        ids.push(task.id);
+      }
+      return ids;
+    });
+  }
+
+  it('closes work in progress whose pull request merged before the app was installed, as its merge event would', async () => {
+    await connected();
+    const projectId = await createProject('Site');
+    const [finished = '', open = ''] = await heldNaming(projectId, [54, 55]);
+    const [kept = ''] = await heldNaming(projectId, [56], ['keep-open']);
+    const merge = newCommit();
+    github.pulls.set(`${REPOSITORY}#54`, { merged: true, mergeCommit: merge, base: 'main' });
+    github.pulls.set(`${REPOSITORY}#55`, { merged: false, mergeCommit: null, base: 'main' });
+    github.pulls.set(`${REPOSITORY}#56`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+
+    await deliver('installation', installation(newInstallation(), 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+
+    const pullRequest = `https://github.com/${REPOSITORY}/pull/54`;
+    expect(await taskOf(projectId, finished)).toMatchObject({
+      status: 'closed',
+      close: { resolution: 'done', by: 'service:GitHub' },
+      work: {},
+      delivery: { stage: 'merged', pullRequest, commit: merge, mergeCommit: merge },
+    });
+    const [comment] = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.listComments(projectId, finished),
+    );
+    expect(comment).toMatchObject({ author: 'service:GitHub', text: expect.stringContaining('claude/build-54') });
+    expect((await taskOf(projectId, open)).status).toBe('in_progress');
+    // Labelled keep-open, as with a merge event: its holder closes it.
+    expect((await taskOf(projectId, kept)).status).toBe('in_progress');
+  });
+
+  it('asks GitHub at most 45 times when more work in progress names a pull request than one check reads', async () => {
+    await connected();
+    const projectId = await createProject('Site');
+    await heldNaming(
+      projectId,
+      Array.from({ length: 50 }, (_, index) => 300 + index),
+    );
+    await deliver('installation', installation(newInstallation(), 'created', OWNER_GITHUB_ID, 'example'));
+    github.apiRequests.length = 0;
+
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(github.apiRequests.length).toBeLessThanOrEqual(45);
+    // Newest first: the last task filed is the first asked about.
+    expect(github.pullReads).toContain(`${REPOSITORY}#349`);
+  });
+
+  it('never asks about work in progress that no merge closes, which would take the check from older work', async () => {
+    await connected();
+    const projectId = await createProject('Site');
+    const [older = ''] = await heldNaming(projectId, [398]);
+    const numbers = Array.from({ length: 45 }, (_, index) => 400 + index);
+    await heldNaming(projectId, numbers, ['keep-open']);
+    for (const number of [398, ...numbers])
+      github.pulls.set(`${REPOSITORY}#${number}`, { merged: true, mergeCommit: newCommit(), base: 'main' });
+
+    await deliver('installation', installation(newInstallation(), 'created', OWNER_GITHUB_ID, 'example'));
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect((await taskOf(projectId, older)).status).toBe('closed');
+    expect(github.pullReads.filter((read) => numbers.some((number) => read === `${REPOSITORY}#${number}`))).toEqual([]);
+  });
 });
 
 describe('merged work a deploy shipped that no delivery named', () => {
@@ -700,7 +820,10 @@ describe('merged work a deploy shipped that no delivery named', () => {
     await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
     const projectId = await deployingProject(owner);
     // More tasks waiting on open pull requests than one check reads.
-    for (let number = 150; number < 195; number += 1) await closedWithPullRequest(owner, projectId, number);
+    await closedWithPullRequests(
+      projectId,
+      Array.from({ length: 45 }, (_, index) => 150 + index),
+    );
     const id = await closedWithPullRequest(owner, projectId, 200);
     const merge = newCommit();
     const completedAt = ago(30_000);
@@ -743,11 +866,9 @@ describe('merged work a deploy shipped that no delivery named', () => {
     await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
     const projectId = await deployingProject(owner);
     // Each merge takes two requests: whether the later live merge has it, then its own check runs.
-    const waiting: string[] = [];
-    for (let number = 100; number < 124; number += 1) {
-      waiting.push(await closedWithPullRequest(owner, projectId, number));
-      await deliver('pull_request', merged(mine, number, newCommit()));
-    }
+    const numbers = Array.from({ length: 24 }, (_, index) => 100 + index);
+    const waiting = await closedWithPullRequests(projectId, numbers);
+    await mergedInStore(numbers.map((number) => ({ number, commit: newCommit() })));
     await closedWithPullRequest(owner, projectId, 124);
     const last = newCommit();
     await deliver('pull_request', merged(mine, 124, last));

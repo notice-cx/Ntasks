@@ -202,11 +202,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
 `TaskEngine` in `engine.ts` has three kinds of methods:
 
 - **Reads:** `getTask`, `getTasks`, `findTasks`, `formerIds`, `listUnder`,
-  `listTasks`, `listBoard`,
+  `listBoard`,
   `listEpics`, `listLabelled`, `listExternalLinks`, `listFields`, `listWork`,
   `listComments`, `parentContext`, `listHistory`, `listChanges`, `lint` and
-  `recordedWrite`. `listTasks` and `listBoard` take filters by custom field
-  values. `parentContext` reads, in one statement, a task's parent, the
+  `recordedWrite`. `listBoard` takes filters by custom field values. `parentContext` reads, in one statement, a task's parent, the
   parent's newest pinned comments through `task_comments_pinned`, and its most
   recently closed other children through `tasks_closed_by_parent`, with the
   totals of each.
@@ -214,8 +213,10 @@ The guard reports `not_found`, `version_conflict` and `cycle`.
   and those closed from a time, with only the columns agent statistics count:
   one statement, through the `(project_id, status)` and
   `(project_id, closed_at)` indexes.
-  `listTasks` reads one project a page at a time; `listBoard` reads a whole
-  board, in one project or in every project, in one round trip.
+  `listBoard` reads a whole board, in one project or in every project, in
+  one round trip. A caller that returns a page of it, as `list_tasks` does,
+  reads the board with `withoutExternalLinks: true`, then the page's external
+  links with `listExternalLinks`.
   `formerIds` reads which of some ids are moved tasks' former ids, through
   the table's key, and `listUnder` every task under some tasks, at any depth,
   through `tasks_by_parent`.
@@ -294,7 +295,10 @@ refused write is stored.
 Ready work follows Beads' rule. A task that is not closed is blocked when it
 has a `blocks` link onto a task that is not closed, or when its parent is
 blocked, down any depth. A task is ready when it is open, not blocked, not a
-gate, and neither it nor its parent is deferred past now. `READY` in
+gate, and neither it nor its parent is deferred past now. Ntasks adds one
+exception: a task labelled `human` that is not an epic is held only by its own
+`blocks` links, not by a blocked parent, while the tasks under it stay
+blocked. `READY` in
 [`reads.ts`](../workers/api/src/engine/reads.ts) is that rule, and both the
 ready filter and every task's `ready` flag use it.
 
@@ -311,9 +315,9 @@ decisions and of the owner answers agents record.
 
 | NoticeOS operation | Engine call |
 |---|---|
-| `list` | `listTasks` with statuses or close times |
+| `list` | `listBoard` with statuses or `closedSince` and `withoutExternalLinks: true`, then `listExternalLinks` for the page it returns |
 | `active-board`, `closed-board` | One `listBoard` with the open statuses and `closedSince` |
-| `ready` | `listBoard` or `listTasks` with `ready: true` |
+| `ready` | `listBoard` with `ready: true` |
 | `show` | `getTask` |
 | `find` | `findTasks` |
 | `history` | `listHistory` |

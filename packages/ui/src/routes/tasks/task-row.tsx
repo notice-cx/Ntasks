@@ -18,7 +18,7 @@ import {
   MessageSquare,
   Moon,
 } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { memo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CloseDoneForm } from '../../components/CloseResolution';
@@ -29,10 +29,10 @@ import { Field, Input } from '../../components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
 import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import type { TasksCapabilities } from '../../api/types';
 import {
   fieldAvailable,
   operationAvailable,
-  useCapabilities,
   useClaimTask,
   useCloseTask,
   useUpdateTask,
@@ -70,6 +70,8 @@ const UNAVAILABLE = 'This sign-in cannot answer it.';
 
 /** What a row needs from the board around it. */
 export interface RowContext {
+  /** What this sign-in may do, read once for every row. */
+  capabilities: TasksCapabilities;
   statuses: ReadonlyMap<string, string>;
   /** The tasks a pending approval holds. */
   held: ReadonlySet<string>;
@@ -81,6 +83,25 @@ export interface RowContext {
   /** What `age` counts from, in words, where it is not the last change: `Created 3d ago`. */
   ageTitle?: string;
   nowMs: number;
+}
+
+/** Whether two objects hold the same values under the same keys, each compared by identity. */
+function sameFields(before: object, after: object): boolean {
+  const a = before as Record<string, unknown>;
+  const b = after as Record<string, unknown>;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
+}
+
+/**
+ * A row draws again only when its task or what the board says of it changes.
+ * The board builds each row's context anew on every draw, so the context is
+ * compared field by field.
+ */
+function sameRow<Props extends { context: RowContext }>(before: Props, after: Props): boolean {
+  const { context: was, ...rest } = before;
+  const { context: is, ...next } = after;
+  return sameFields(was, is) && sameFields(rest, next);
 }
 
 /** The box under a row: what an action that needs more than a press asks for. */
@@ -194,8 +215,8 @@ function Holder({ task }: { task: BoardTask }) {
 }
 
 /** A task in one of the board's groups: its marks, id, title and facts, then its actions on hover, holder and age. */
-export function TaskRow({ task, context }: { task: BoardTask; context: RowContext }) {
-  const capabilities = useCapabilities();
+export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTask; context: RowContext }) {
+  const { capabilities } = context;
   const navigate = useNavigate();
   const paths = usePaths();
   const claim = useClaimTask();
@@ -280,14 +301,22 @@ export function TaskRow({ task, context }: { task: BoardTask; context: RowContex
       {closeAs.box ? <RowPanel>{closeAs.box}</RowPanel> : null}
     </>
   );
-}
+}, sameRow);
 
 /**
  * A row in Waiting for you: what it asks answered in place, an approval by
  * Approve, a decision by its options, a question by Answer.
  */
-export function WaitingRow({ task, context, writable }: { task: BoardTask; context: RowContext; writable: boolean }) {
-  const capabilities = useCapabilities();
+export const WaitingRow = memo(function WaitingRow({
+  task,
+  context,
+  writable,
+}: {
+  task: BoardTask;
+  context: RowContext;
+  writable: boolean;
+}) {
+  const { capabilities } = context;
   const navigate = useNavigate();
   const paths = usePaths();
   const closeAs = useCloseAs({
@@ -344,7 +373,7 @@ export function WaitingRow({ task, context, writable }: { task: BoardTask; conte
       {closeAs.box ? <RowPanel>{closeAs.box}</RowPanel> : null}
     </>
   );
-}
+}, sameRow);
 
 /**
  * A row's menu: Open, Claim, Park, then Close as, which lists the ways a

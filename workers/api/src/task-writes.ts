@@ -345,7 +345,7 @@ export interface NewTask {
   /** Values of the project's custom fields, by key; the engine checks each against its field. */
   readonly fields?: Readonly<Record<string, FieldValue>>;
   /** What a person must approve before the task proceeds. */
-  readonly approval?: string;
+  readonly approval?: ApprovalRequest;
   readonly choices?: JsonObject;
   /** A card's figures, without who wrote it and when. */
   readonly card?: JsonObject;
@@ -431,7 +431,7 @@ export async function createTask(
     ...(typeof due === 'string' ? { dueAt: due } : task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
     ...(task.choices === undefined ? {} : { choices: task.choices }),
     metadata,
-    ...(task.approval === undefined ? {} : { requestApproval: { reason: task.approval } }),
+    ...(task.approval === undefined ? {} : { requestApproval: task.approval }),
     ...(task.claim === true ? { claim: true as const } : {}),
     ...(task.done === undefined ? {} : { close: closeOf(task.done, task.type ?? 'task') }),
   };
@@ -986,6 +986,14 @@ export interface MergeCloses {
   readonly kept: readonly { readonly id: string; readonly why: string }[];
 }
 
+/** Why no merge ever closes this task, whatever its pull request, or null when one may. */
+export function neverClosedByMerge(task: Pick<Task, 'type' | 'labels'>): string | null {
+  if (task.type === 'epic') return 'an epic closes once its tasks do, never by a merge';
+  if (isDecision(task)) return "it is a person's request, which only their answer closes";
+  if (task.labels.includes(KEEP_OPEN)) return `it is labelled ${KEEP_OPEN}, so its holder closes it`;
+  return null;
+}
+
 /** Why a merge of `pullRequest` leaves this task as it is, or null when it closes it. */
 async function keptByMerge(
   context: WriteContext,
@@ -996,9 +1004,8 @@ async function keptByMerge(
   const named = task.work.pr === undefined ? null : pullRequestUrl(task.work.pr);
   if (task.status !== 'in_progress' || named !== pullRequest)
     return 'it is no longer in progress with its work naming this pull request';
-  if (task.type === 'epic') return 'an epic closes once its tasks do, never by a merge';
-  if (isDecision(task)) return "it is a person's request, which only their answer closes";
-  if (task.labels.includes(KEEP_OPEN)) return `it is labelled ${KEEP_OPEN}, so its holder closes it`;
+  const never = neverClosedByMerge(task);
+  if (never !== null) return never;
   const gates = await openGates(context, project, task);
   if (gates.length > 0) return `it waits on ${listed(gates.map((gate) => gate.id))}, still open`;
   const children = await context.engine.listBoard(project.id, { statuses: OPEN_STATUSES, parentId: task.id });
@@ -1022,9 +1029,11 @@ function leftByHolder(task: Task, pullRequest: string): string {
 /**
  * Closes as done each task in progress whose work names a pull request a
  * merged signal names (STATE-18), with that pull request and the merge
- * commit as its proof, recording the sender as its closer. Only the GitHub
- * receiver calls it, once the Worker checked that GitHub sent the delivery
- * (github.ts): a signal a sender reports closes nothing, and so does one
+ * commit as its proof, recording the sender as its closer. Only GitHub's
+ * own word calls it: the receiver, once the Worker checked that GitHub sent
+ * the delivery (github.ts), and the task store's check, which asks GitHub as
+ * the workspace's app (github-check.ts). A signal a sender reports closes
+ * nothing, and so does one
  * that names no merge commit, since the merge commit is half the proof. An
  * epic, a person's request, a task labelled keep-open and one that waits on
  * an open request or has open tasks under it stay as they are. Each task closes in its own
@@ -1447,9 +1456,6 @@ export async function retireField(
 
 // ─── Lint ─────────────────────────────────────────────────────────────────────
 
-/** A decision's sections that record its outcome, which a decision with choices records as its pick instead. */
-const OUTCOME = /^(?:##\s*)?(?:Decision|Rationale|Alternatives Considered)$/iu;
-
 /** What lint finds missing from each of these tasks, as they stand after a
  * write, or null when it could not be read: the write has happened either way. */
 export async function lintOf(
@@ -1458,28 +1464,14 @@ export async function lintOf(
   tasks: readonly Task[],
 ): Promise<ReadonlyMap<string, readonly string[]> | null> {
   if (tasks.length === 0) return new Map();
-  let found: ReadonlyMap<string, readonly string[]>;
   try {
-    found = await engine.lint(
+    return await engine.lint(
       projectId,
       tasks.map((task) => task.id),
     );
   } catch {
     return null;
   }
-  const missing = new Map<string, readonly string[]>(tasks.map((task) => [task.id, found.get(task.id) ?? []]));
-  for (const task of tasks) {
-    const sections = found.get(task.id);
-    if (sections === undefined || task.type !== 'decision' || task.choices === null) continue;
-    const kept = sections.filter((section) => !OUTCOME.test(section));
-    if (task.choice !== null) {
-      for (const section of ['Decision', 'Rationale']) {
-        if (!new RegExp(`^#{1,6}\\s+${section}\\s*#*\\s*$`, 'imu').test(task.description)) kept.push(`## ${section}`);
-      }
-    }
-    missing.set(task.id, kept);
-  }
-  return missing;
 }
 
 /** Lint's answer for one task, with advice when there is some; missing is

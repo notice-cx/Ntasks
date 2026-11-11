@@ -176,7 +176,20 @@ test('a first deploy that stops after Cloudflare created the Worker shows the AU
 });
 
 test('releases are ordered by their numbers, with a pre-release before its release', () => {
-  const ordered = ['0.1.0', '0.2.0-beta.1', '0.2.0', '0.10.0', '1.0.0'];
+  // Pre-release identifiers in SemVer's order: a number by value and before a
+  // word, and a shorter list before a longer one it begins.
+  const ordered = [
+    '0.1.0',
+    '0.2.0-1',
+    '0.2.0-beta',
+    '0.2.0-beta.1',
+    '0.2.0-beta.2',
+    '0.2.0-beta.10',
+    '0.2.0-rc.1',
+    '0.2.0',
+    '0.10.0',
+    '1.0.0',
+  ];
   for (const [index, older] of ordered.entries()) {
     for (const newer of ordered.slice(index + 1)) {
       assert.ok(compareReleases(older, newer) < 0, `${older} < ${newer}`);

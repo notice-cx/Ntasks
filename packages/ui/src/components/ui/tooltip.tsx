@@ -51,22 +51,25 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       >
         {children}
       </PopoverAnchor>
-      <PopoverContent
-        id={id}
-        role="tooltip"
-        side="top"
-        align="center"
-        sideOffset={6}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onCloseAutoFocus={(event) => event.preventDefault()}
-        // A press on the control itself shows the tooltip; it must not count as a press elsewhere.
-        onPointerDownOutside={(event) => {
-          if (event.target instanceof Node && anchor.current?.contains(event.target)) event.preventDefault();
-        }}
-        className="w-auto rounded-md px-2 py-1.5 text-meta font-medium whitespace-nowrap"
-      >
-        {content}
-      </PopoverContent>
+      {/* A hidden tip draws nothing, so a list of rows, each with a tip, keeps none of their parts. */}
+      {open ? (
+        <PopoverContent
+          id={id}
+          role="tooltip"
+          side="top"
+          align="center"
+          sideOffset={6}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          // A press on the control itself shows the tooltip; it must not count as a press elsewhere.
+          onPointerDownOutside={(event) => {
+            if (event.target instanceof Node && anchor.current?.contains(event.target)) event.preventDefault();
+          }}
+          className="w-auto rounded-md px-2 py-1.5 text-meta font-medium whitespace-nowrap"
+        >
+          {content}
+        </PopoverContent>
+      ) : null}
     </Popover>
   );
 }

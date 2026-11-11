@@ -64,7 +64,7 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
     'An answer: action answer (declined or owner_performed on an approval), proposal_version (the proposalVersion get_task returned for the proposal you showed the owner), quote (their exact words), source (where they said it) and, on a task with choices, the option they chose. ' +
     'Nothing reads the quote: name the option yourself. It is recorded as relayed by you; the owner can dispute a relayed approval, which reopens it. A refusal names the argument at fault. ' +
     'When the owner calls a task done although some of its criteria are unmet: action accepted, with met, the criteria they found met; it closes as done, accepted by them over the rest, and they can dispute it. Only the owner waives a criterion. ' +
-    'Maintenance, with explanation and evidence: completed, obsolete, superseded or duplicate (with duplicate_of) retires a request; routine takes off the human label; release frees an assignment whose holder stopped. ' +
+    'Maintenance, with explanation and evidence: obsolete, superseded or duplicate (with duplicate_of) retires a request, and completed one that other work did, unless it is an approval, a request to do steps or a decision; routine takes off the human label; release frees an assignment whose holder stopped. ' +
     'Retirement grants no permission; production reads/writes, spending, messages, destructive actions and material commitments still require explicit action-specific approval.',
   inputSchema: schema(
     {
@@ -169,7 +169,7 @@ export const RECONCILE_TASK: TaskTool = Object.freeze({
 export const GET_AGENT_STATS: TaskTool = Object.freeze({
   name: 'get_agent_stats',
   description:
-    'Agent work statistics grouped by model: current and blocked counts, closes in 7 days and the 7 before, eight weeks of velocity, ranking and leaders. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
+    'Agent work statistics grouped by model, in name order: current and blocked counts, closes in 7 days and the 7 before, changes merged or live in 7 days and the 7 before, and eight weeks of velocity. No ranking or awards: race and trophies are always empty. Unknown models share Other. Returns aggregates without task details. Omit project for the whole workspace; failed projects are named in broken.',
   inputSchema: schema({
     project: { ...PROJECT, description: 'The projectId, key or prefix from list_projects; omit for workspace totals.' },
   }),

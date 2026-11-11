@@ -192,7 +192,8 @@ for you, Tasks, Live with its count of active tasks, Focus, each project that is
 disabled, with the icon read from its website or else its letter, and each
 person or agent with open work, those active within the hour first and
 marked with a dot, then Settings and the source-code link. With two or more workspaces, the name is a menu that
-switches between them and opens Settings. A rename shows in the sidebar and
+switches between them and opens Settings. For a deployment admin the name is
+always that menu, and it ends with New workspace. A rename shows in the sidebar and
 the menu at once. The frame reads every project's board once, for the
 sidebar's counts and the page alike, and runs the one change feed
 (`BoardsProvider` in `src/hooks/useBoard.tsx`). On any page, `C` opens the

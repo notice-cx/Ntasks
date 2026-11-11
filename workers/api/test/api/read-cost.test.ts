@@ -8,7 +8,9 @@
 // that allowance is spent; these budgets keep each read far inside it. They
 // measure a read the store has not cached; a cached one reads no rows
 // (store.test.ts).
+import { TASK_LIMITS } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { cachedReads } from '../../src/store/cache.ts';
 import { newMeter, type Meter } from '../../src/store/sqlite.ts';
 import { storeDatabase } from '../store.ts';
 import { api, get, read, send, WRITER, type TestApi } from './helpers.ts';
@@ -201,6 +203,47 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP burn-down, largest project': { statements: 3, rowsRead: 700 },
 };
 
+/** A project whose every task carries the most external links a task may,
+ * each URL as long as a link may be. */
+const LINKED = { tasks: 200, links: TASK_LIMITS.externalLinks, url: TASK_LIMITS.externalLinkUrl } as const;
+let linked: Promise<{ id: string }> | undefined;
+
+/** The project of LINKED, seeded on first use. */
+function linkedProject(): Promise<{ id: string }> {
+  linked ??= (async () => {
+    const prefix = `l${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+    const project = await target.engine.createProject({
+      id: crypto.randomUUID(),
+      key: `${prefix}.example.com`,
+      name: 'Many links',
+      prefix,
+    });
+    const numbers = 'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?3)';
+    await db
+      .prepare(
+        `${numbers}
+         INSERT INTO tasks (id, project_id, type, status, priority, title, created_at, updated_at, filed_by)
+         SELECT ?2 || '-t' || i, ?1, 'task', 'open', 2, 'Linked task ' || i,
+           strftime('%Y-%m-%dT%H:%M:%fZ', ?4, '-' || i || ' minutes'), ?4, 'seed' FROM n`,
+      )
+      .bind(project.id, prefix, LINKED.tasks, NOW)
+      .run();
+    // hex(zeroblob(n)) is 2n zeros: the padding that makes each URL as long as a link may be.
+    await db
+      .prepare(
+        `${numbers}, k(j) AS (SELECT 1 UNION ALL SELECT j + 1 FROM k WHERE j < ?4)
+         INSERT INTO task_external_links (task_id, url, title, kind, created_at)
+         SELECT ?1 || '-t' || i,
+           substr('https://example.com/' || ?1 || '/' || i || '/' || j || '/' || hex(zeroblob(CAST(?5 AS INTEGER))), 1, ?5),
+           'Page ' || j || ' of task ' || i, 'document', ?2 FROM n, k`,
+      )
+      .bind(prefix, NOW, LINKED.tasks, LINKED.links, LINKED.url)
+      .run();
+    return project;
+  })();
+  return linked;
+}
+
 describe('the cost of each read', () => {
   it('stays inside its budget on a store this size', async () => {
     const task = `${big.prefix}-t2`;
@@ -354,45 +397,51 @@ describe('the cost of each read', () => {
     expect(old.task).toMatchObject({ status: 'closed', closedAt: yearAgo });
   }, 60_000);
 
-  // Last, since its project would change what the reads of every project above cost.
+  // Last, since their project would change what the reads of every project above cost.
   it("reads the external links of a page's tasks only, however many the other matching tasks hold", async () => {
-    const tasks = 400;
-    const links = 32;
-    const prefix = `l${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
-    const project = await target.engine.createProject({
-      id: crypto.randomUUID(),
-      key: `${prefix}.example.com`,
-      name: 'Many links',
-      prefix,
-    });
-    const numbers = 'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?3)';
-    await db
-      .prepare(
-        `${numbers}
-         INSERT INTO tasks (id, project_id, type, status, priority, title, created_at, updated_at, filed_by)
-         SELECT ?2 || '-t' || i, ?1, 'task', 'open', 2, 'Linked task ' || i,
-           strftime('%Y-%m-%dT%H:%M:%fZ', ?4, '-' || i || ' minutes'), ?4, 'seed' FROM n`,
-      )
-      .bind(project.id, prefix, tasks, NOW)
-      .run();
-    await db
-      .prepare(
-        `${numbers}, k(j) AS (SELECT 1 UNION ALL SELECT j + 1 FROM k WHERE j < ?4)
-         INSERT INTO task_external_links (task_id, url, title, kind, created_at)
-         SELECT ?1 || '-t' || i, 'https://example.com/' || ?1 || '/' || i || '/' || j,
-           'Page ' || j || ' of task ' || i, 'document', ?2 FROM n, k`,
-      )
-      .bind(prefix, NOW, tasks, links)
-      .run();
-
+    const project = await linkedProject();
     let page: { total: number; tasks: { id: string; externalLinks: unknown[] }[] } | undefined;
     const cost = await costOf(async () => {
       page = await read(target, 'list_tasks', { project: project.id, limit: 5 });
     });
-    console.log(JSON.stringify({ 'list_tasks, 5 of 400 tasks with 32 links each': cost }));
-    expect(page!.total).toBe(tasks);
-    expect(page!.tasks.map((task) => task.externalLinks.length)).toEqual([links, links, links, links, links]);
+    console.log(JSON.stringify({ [`list_tasks, 5 of ${LINKED.tasks} tasks with ${LINKED.links} links each`]: cost }));
+    expect(page!.total).toBe(LINKED.tasks);
+    expect(page!.tasks.map((task) => task.externalLinks.length)).toEqual(Array(5).fill(LINKED.links));
     // Reading every matching task's links would read more than tasks * links rows.
-    expect(cost.rowsRead).toBeLessThan(5 * (links + 1) + 10 * tasks);
+    expect(cost.rowsRead).toBeLessThan(5 * (LINKED.links + 1) + 10 * LINKED.tasks);
+  }, 60_000);
+
+  it('keeps a board without external links in memory, however many long links its tasks hold', async () => {
+    const project = await linkedProject();
+    const cached = api({ now: () => NOW, meter, wrap: (engine) => cachedReads(engine, () => NOW) });
+    const twice = async (path: string) => {
+      let bytes = 0;
+      let tasks: { externalLinks: unknown[] }[] = [];
+      const first = await costOf(async () => {
+        const { body } = await get(cached, path);
+        bytes = JSON.stringify(body).length;
+        tasks = body.tasks as typeof tasks;
+      });
+      const again = await costOf(() => get(cached, path));
+      return { bytes, first, again, tasks };
+    };
+    const full = await twice(`/api/tasks?project=${project.id}`);
+    const unlinked = await twice(`/api/tasks?project=${project.id}&externalLinks=none`);
+    console.log(
+      JSON.stringify({
+        [`HTTP board of ${LINKED.tasks} tasks with ${LINKED.links} links each`]: {
+          withLinks: { bytes: full.bytes, first: full.first, again: full.again },
+          externalLinksNone: { bytes: unlinked.bytes, first: unlinked.first, again: unlinked.again },
+        },
+      }),
+    );
+    expect(full.tasks.map((task) => task.externalLinks.length)).toEqual(Array(LINKED.tasks).fill(LINKED.links));
+    // Too large to keep, so the board with its links is read afresh each time.
+    expect(full.again.rowsRead).toBeGreaterThan(LINKED.tasks * LINKED.links);
+    expect(unlinked.tasks).toHaveLength(LINKED.tasks);
+    expect(unlinked.tasks.every((task) => task.externalLinks.length === 0)).toBe(true);
+    expect(unlinked.first.rowsRead).toBeGreaterThan(0);
+    expect(unlinked.first.rowsRead).toBeLessThan(10 * LINKED.tasks);
+    expect(unlinked.again).toEqual(newMeter());
   }, 60_000);
 });

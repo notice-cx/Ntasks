@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
+import { TASK_LIMITS } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { actorOf, personOf } from '../../src/access/principal.ts';
+import { actorOf, personActor, personOf, uniquePersonName } from '../../src/access/principal.ts';
 import { verifyRequest } from '../../src/access/verify.ts';
 import { TEST_WORKSPACE } from '../store.ts';
 import { Browser, connectAgent, createProjects, McpClient, ORIGIN, OWNER_GITHUB_ID } from './client.ts';
@@ -103,5 +104,31 @@ describe('the actor an agent writes as', () => {
     // The person an agent acts for is named as that person's own writes are.
     expect(personOf(agent)).toBe('person:agent:Alice');
     expect(personOf(owner)).toBe('person:agent:Alice');
+  });
+});
+
+describe('the name a new person is recorded under', () => {
+  const account = { id: '2301', login: 'alex-gh' };
+  const held = (...names: string[]) => {
+    const actors = new Set(names.map(personActor));
+    return (actor: string) => actors.has(actor);
+  };
+
+  it('is their GitHub name, with their login when another person holds it, and their id when that is held too', () => {
+    expect(uniquePersonName('Alex', account, held('Sam'))).toBe('Alex');
+    expect(uniquePersonName('Alex', account, held('Alex'))).toBe('Alex (alex-gh)');
+    expect(uniquePersonName('Alex', account, held('Alex', 'Alex (alex-gh)'))).toBe('Alex (GitHub 2301)');
+    // An owner named like an agent keeps the person: prefix their actor gets.
+    expect(personActor(uniquePersonName('agent:Alice', account, held('agent:Alice')))).toBe(
+      'person:agent:Alice (alex-gh)',
+    );
+  });
+
+  it('keeps the part in brackets whole in an actor cut to its limit', () => {
+    const long = 'A'.repeat(TASK_LIMITS.actor + 20);
+    const named = uniquePersonName(long, account, held(long));
+    expect(personActor(named)).toHaveLength(TASK_LIMITS.actor);
+    expect(personActor(named).endsWith(' (alex-gh)')).toBe(true);
+    expect(personActor(named)).not.toBe(personActor(long));
   });
 });

@@ -179,7 +179,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
+| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval` (an object with `title` and `description`, as `request_human_approval` takes them, or one text of at most 400 characters, its first line the title), `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
 | `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)); with `touches`, `overlaps` when other work in progress changes the same ([below](#work-that-changes-the-same-files)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
@@ -416,8 +416,17 @@ too.
 - **An approval** asked again with the same title and description, or the
   same reason, returns the open one, with `created: false`. The same
   description under another title opens another approval. A `description`
-  with a line that starts `Reason:` is refused: an approval imported from
-  Beads asks only what follows that line, and every answer reads it so.
+  with a line that starts `Reason:` and has text after it is refused: an
+  approval imported from Beads asks only what follows that label, and every
+  answer reads it so. A `Reason:` line with nothing after it leaves the
+  approval asking its whole description.
+  `create_task`, and each entry of `create_tasks`, opens an approval with
+  the task from `approval`: `{ title, description }`, checked as
+  `request_human_approval` checks them, or one text whose first line is the
+  title. Its answer has the approval and `replayed`, not `created`, and its
+  `lint` advises on that approval as `request_human_approval` does, each
+  line starting `approval`: `approval.title` or `approval.description` for
+  advice on either, and `approval` alone for the object form.
 - **Who did it**: the task records the sender's name as its filer, holder,
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the
@@ -426,14 +435,17 @@ too.
   project, as any write needs. Listing a project's fields needs only reading
   it.
 - **Lint**: `create_task`, `create_tasks` and `update_task` return `lint`
-  when it finds something: the sections the task's type expects that it still
-  lacks, and advice. Advice names a title over 70 characters or holding a
-  command, a file path or a commit hash; a description that writes a command
-  inline, or has a fenced block with no language tag or a `$` prompt; a
-  description whose first line repeats the title; an ask to a person, an
-  approval or a task labelled `human`, that names no link, control to press
-  or command; and lettered options to pass as `choices`. Nothing is refused
-  for it.
+  when it finds something: in `missing`, what the task's type expects that
+  it still lacks, and advice. A bug lacks `## Steps to Reproduce` when its
+  description never names it, and a bug, task, feature or epic lacks
+  `acceptance` when that field is blank, as the
+  [rules for writing a task](concepts.md#writing-a-task) ask. Advice names a
+  title over 70 characters or holding a command, a file path or a commit
+  hash; a description that writes a command inline, or has a fenced block
+  with no language tag or a `$` prompt; a description whose first line
+  repeats the title; an ask to a person, an approval or a task labelled
+  `human`, that names no link, control to press or command; and lettered
+  options to pass as `choices`. Nothing is refused for it.
 
 ## Filing, claiming and closing in one call
 
@@ -610,7 +622,7 @@ and hand-backs of the tasks waiting on an approval.
 | `declined` | On an approval or a request to do steps only: closes it as `wont-do`, tells each task waiting on it that the action must not happen, or that the steps are not done, and hands back the same waiting tasks as `answer`. |
 | `accepted` | On any open task but an approval or a request to do steps, from a sender that acts for a person (a service, which acts for nobody, is refused): the owner accepts it as done on their own call. `met` lists the numbers of the criteria they found met, counting each line or list item of `acceptance` from 1, `[]` when none is; the rest are recorded as waived. The task closes as `done` with the reason `explanation`, or `Accepted as done`, and its `closeAcceptance` names the owner as `by` and the sender in `relayed`, with the quote and the source ([Done on a person's call](#done-on-a-persons-call)). |
 | `owner_performed` | On an approval or a request to do steps only: the owner did the action, or the steps, themselves. On an open one it closes it as `done` and hands back the same waiting tasks as `answer`; on a closed approval it records the report. Either way it records `permission: none`. A request's steps stay as the person left them: ticks come only from the person. |
-| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. A decision is never retired as `completed`. |
+| `completed`, `obsolete`, `superseded`, `duplicate` | Retires the request with evidence: `already-handled`, `no-longer-needed` or `duplicate`. A duplicate approval must ask exactly what the one it names asks, and a duplicate request to do steps must have the same context and steps; the tasks waiting on it wait on that one instead. An approval, a request to do steps and a decision are never retired as `completed`. |
 | `routine` | Takes the `human` label off a task that needs no person, returning it to agents. |
 | `release` | Releases a task whose holder stopped working on it: `holder` names the holder, `inactive: true`, `activity_check` how that was checked, and `progress` what they left. A task in progress becomes open; a blocked or deferred one keeps its status. |
 
@@ -696,18 +708,31 @@ as `answer`, or null:
 `get_agent_stats` and `GET /api/tasks/agent-stats` count the work of agents
 by the model each named, in the shape NoticeOS's Agents page reads
 ([`agent-stats.ts`](../workers/api/src/agent-stats.ts)): the tasks in
-progress and blocked now, and those closed since the start of the day 56 days
-ago. A close counts for the model its closer named, and otherwise for the
-model of the agent that claimed it; a model nobody named, or a name Ntasks
-does not recognize, counts as `Other`. Approvals and epics are left out.
+progress and blocked now, those closed since the start of the day 56 days
+ago, and the changes among them that merged or went live. A task counts for
+the model its closer named, and otherwise for the model of the agent that
+claimed it; a model nobody named, or a name Ntasks does not recognize, counts
+as `Other`. Approvals and epics are left out.
+
+Nothing ranks one model against another or gives one an award. Closes, how
+fast work closes and runs of days are counts an agent can raise by splitting
+or rushing work, so the rows are in name order, with `Other` last. A change
+that shipped counts as the [wins feed](#wins) counts it: once for each pull
+request, at the time it merged, or went live where no merge was recorded.
 
 | Field of `stats` | Holds |
 |---|---|
-| `workers` | One row for each model with work this week or in hand: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), and the median hours from claim to close (`medianHours`) |
+| `workers` | One row for each model with work this week, in hand, or shipped this week, in name order: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), the median hours from claim to close (`medianHours`), and the changes shipped in the last 7 days with one of its tasks (`shipped`) |
 | `velocity` | Closes in each of the last eight weeks, from Monday, by the three models that closed the most |
-| `race` | This week's closes by model, with points by priority |
-| `trophies` | The most closes, the fastest close, the longest run of days and the most urgent closes |
-| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same, for every model together |
+| `shipped`, `shippedLastWeek` | The changes shipped in the last 7 days and the 7 before. A change with tasks of two models counts once here and once in each model's row |
+| `race` | The last 7 days, as `from` and `to`; its `players` is always empty |
+| `trophies` | Always empty |
+| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same as each row's, for every model together |
+
+`shipped`, `shippedLastWeek` and each row's `shipped` are null when no task
+read has merged or gone live, because Ntasks then holds no record of merges
+to count. `race` and `trophies` stay in the answer for clients made before
+they were [emptied](#an-array-that-answers-empty).
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
@@ -938,7 +963,10 @@ workspace's task store also asks GitHub itself, as the app:
 
 Each check first reads the pull requests of the newest tasks waiting for a
 merge in repositories an installation reaches, and moves each one merged into
-its repository's default branch to `merged`, with its merge commit. An
+its repository's default branch to `merged`, with its merge commit. The
+tasks waiting for a merge are the closed tasks at `built`, and the tasks in
+progress whose work names a pull request: a merge closes those as its event
+would ([below](#work-still-in-progress-when-its-pull-request-merges)). An
 installation on all of its account's repositories reaches every one; for an
 installation on selected repositories, the check lists them first, up to 200,
 and reads only pull requests in the ones listed.
@@ -1033,8 +1061,12 @@ moves anything:
 - An epic whose last open task the merge closes closes in the same write, as
   every epic does when its last open task closes
   ([Epics](concepts.md#epics)).
-- Only a delivery Ntasks checked came from GitHub closes a task. A merge
-  sent to `POST /api/delivery` or with `report_delivery` closes nothing.
+- Only GitHub's own word closes a task: a delivery Ntasks checked came from
+  GitHub, or the task store's check, which asks GitHub as the app
+  ([above](#from-github)). It closes a task whose merge event GitHub never
+  delivered, such as one sent during an outage or before the app was
+  installed, with the same proof, comment and exceptions. A merge sent to
+  `POST /api/delivery` or with `report_delivery` closes nothing.
 
 The answer lists the tasks the merge closed as `closed`, and each task it
 left in progress as `kept`, with `why`. Each list is left out when it is
@@ -1122,7 +1154,8 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added.
+field can hold is added, or an array of an answer is emptied
+([below](#an-array-that-answers-empty)).
 
 Each version is one file in
 [`workers/api/api-versions/`](../workers/api/api-versions/), and the version
@@ -1184,6 +1217,16 @@ addition: the new field beside the old one, which keeps its answer. A
 removal raises the version, and raises `oldest` to that version, so a client
 made for an earlier one finds out that it is too old.
 
+### An array that answers empty
+
+A product change can stop filling an array, such as the awards agent
+statistics no longer give. The array stays in the answer, empty, with the
+fields its entries had, so a client made for an earlier version still reads
+it. The version file of that change lists it under `emptied`, by route and
+path, and the [recorded contract](#the-recorded-contract) test then fails
+when an answer gives it an entry. An array that answers empty is no
+removal: `oldest` stays where it is.
+
 ### The recorded contract
 
 Each file in `api-versions/` records the fields its version added to each
@@ -1194,7 +1237,8 @@ signs in as a person, sends every route the record names through the Worker,
 and compares the answers with the record, so it fails when an answer:
 
 - leaves out a recorded field, or gives it a type the record does not allow;
-- holds a field the record lacks. The failure names the line that records it.
+- holds a field the record lacks. The failure names the line that records it;
+- gives an entry to an array a version emptied.
 
 A recorded field is never edited or removed, and the test refuses a field
 recorded twice. One field was corrected after it was recorded: version 1
@@ -1262,8 +1306,8 @@ misspelt filter fails instead of being ignored.
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, and `icon`: the address of the icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none |
 | `GET /api/tasks/projects/:projectId/icon` | optionally `v`, as `icon` gives it | The icon's bytes, with the image type the bytes show (`image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon. |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, `move`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
-| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
-| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
+| `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays`, `field.<key>` and `externalLinks=none` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. `externalLinks=none` leaves the tasks' external links unread: each task's `externalLinks` is empty, and `GET /api/tasks/:id` reads them; the web app's board sends it, with `stage` and `activity` too. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
+| `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays`, `field.<key>` and `externalLinks` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
 | `GET /api/tasks` with `activity` | `project` and `activity`, a comma-separated list of `active`, `quiet` and `stalled`; optionally `status` naming `in_progress` and `field.<key>` | The board's answer, holding the project's tasks in progress in those groups of [activity](#work-in-hand), and `activities`, which counts the tasks in progress in each group. A board read with `status` naming `in_progress` answers `activities` too. `stage` is refused with `activity`. |
 | `GET /api/tasks/search` | `q`, 1 to 512 characters, and optionally `limit` (1 to 200, default 100) | `{ readAt, closedSince, total, tasks }`: the tasks of every project the sender reaches whose id, title, description, acceptance or labels hold every word of `q`, ignoring case, among the open ones and those closed in the last 7 days, most urgent first, as `list_tasks` searches with `query`. When `q` is a task id whose prefix names a project the sender reaches, that task comes first, closed at any time. Each task carries `project`, its project's key; `total` counts every match, and `tasks` holds the first `limit`. |
@@ -1339,6 +1383,9 @@ otherwise.
 
 A task answers its holder's work in hand as `for`, `work`,
 `lastActivityAt`, `stalled` and `activity`, as `get_task` does.
+
+A task answers who filed it as `filedBy` and the model they named as
+`filedModel`; each is null on a task imported without them.
 
 ### A project's website and icon
 
@@ -1458,6 +1505,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
+| The deployment's D1 database lacks a migration the Worker needs, because its deploy skipped them | `503` with `{ "error": "database_behind", "missing": […], "detail": … }`: `missing` names each migration file it lacks ([Deploy](deploy.md#the-database-lacks-a-migration)) |
 | The store changed during a backup | `409` with `store_changed` ([below](#backing-up-the-whole-store)) |
 | A load into a store that is not empty, or that does not fit the store | `409` with the reason ([below](#loading-an-empty-store)) |
 | A method the path does not take | `405` with an `allow` header naming the ones it takes |
@@ -1592,6 +1640,11 @@ query:
 - `list_tasks` and `GET /api/tasks/search` read the external links of the
   tasks on the page they return, in one statement after the board, and no
   other task's;
+- a board read with `externalLinks=none` reads no external links, so its
+  answer's size does not grow with them: a project of 200 tasks with 32
+  links of 2,048 characters each answers a board that the store keeps in
+  memory, where the same board with its links passes 8 MB and is read
+  afresh each time;
 - a label read reads about fifteen rows for each task carrying the label in
   that project, however many tasks the project has;
 - a task's custom field values are part of its row, so they cost no row of

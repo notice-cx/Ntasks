@@ -1,5 +1,6 @@
-import { Activity, ChartNoAxesColumn, List, Search, Settings, Target } from 'lucide-react';
+import { Activity, ChartNoAxesColumn, List, Plus, Search, Settings, Target } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
 import { Avatar } from './ui/avatar';
 import { Count } from './ui/badge';
 import { IconButton } from './ui/button';
@@ -10,10 +11,10 @@ import { GitHubMark, StatusMark, WorkspaceIcon } from './ui/symbols';
 import { useBoard } from '../hooks/useBoard';
 import { useNow } from '../hooks/useNow';
 import { useAnswerHides } from '../hooks/useTasks';
-import { useWorkspace } from '../hooks/useWorkspace';
+import { useAccount, useWorkspace } from '../hooks/useWorkspace';
 import { NO_FILTERS } from '../lib/board-read';
 import { activeNow } from '../lib/live';
-import { SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
+import { NEW_WORKSPACE_STATE, SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
 import { isAgentActor } from '../lib/symbols';
 import { actorKey } from '@ntasks/domain';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
@@ -47,17 +48,24 @@ export function peopleOf(tasks: readonly BoardTask[], nowMs: number): Person[] {
   return [...people.values()].sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
 }
 
+function openCount(tasks: readonly BoardTask[]): number {
+  return tasks.filter((task) => task.status !== 'closed').length;
+}
+
 /** Whether a filter's assignee, in any spelling, names this sender. */
 function sameSender(assignee: string | null, actor: string): boolean {
   return assignee !== null && actorKey(assignee) === actorKey(actor);
 }
 
-/** The open workspace's name, which opens the menu of the others and its settings. */
-function WorkspaceSwitcher() {
+/**
+ * The open workspace's name, which opens the menu of the others and its
+ * settings, and for a deployment admin New workspace.
+ */
+function WorkspaceSwitcher({ admin }: { admin: boolean }) {
   const { workspace, workspaces, switchTo } = useWorkspace();
   const navigate = useNavigate();
   const paths = usePaths();
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
   // Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board.
   const sameInEvery = pathname === paths.live || paths.isSettings(pathname);
   return (
@@ -84,6 +92,14 @@ function WorkspaceSwitcher() {
         <MenuItem icon={<Settings aria-hidden />} onSelect={() => void navigate(paths.settings)}>
           Settings
         </MenuItem>
+        {admin ? (
+          <MenuItem
+            icon={<Plus aria-hidden />}
+            onSelect={() => void navigate({ pathname, search, hash }, { state: { [NEW_WORKSPACE_STATE]: true } })}
+          >
+            New workspace
+          </MenuItem>
+        ) : null}
       </MenuContent>
     </Menu>
   );
@@ -97,6 +113,7 @@ function WorkspaceSwitcher() {
  */
 export function AppSidebar() {
   const { workspace, workspaces } = useWorkspace();
+  const admin = useAccount(true).data?.deploymentAdmin === true;
   const board = useBoard(NO_FILTERS);
   const hides = useAnswerHides();
   const navigate = useNavigate();
@@ -105,20 +122,26 @@ export function AppSidebar() {
   const onBoard = pathname === paths.board;
   const params = new URLSearchParams(onBoard ? search : '');
   const narrowed = ['view', 'project', 'assignee', 'status', 'priority', 'label', 'q'].some((name) => params.has(name));
-  const fetchedAt = (task: BoardTask) =>
-    board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
-  const waiting = board.inbox.filter((task) => !hides(task.id, fetchedAt(task))).length;
-  const open = (tasks: readonly BoardTask[]) => tasks.filter((task) => task.status !== 'closed').length;
   const now = useNow();
-  const people = peopleOf(board.allTasks, now).slice(0, PEOPLE);
-  const active = board.allTasks.filter((task) => activeNow(task, now)).length;
+  // Worked out once per read, answer and clock tick: a change of address alone draws the sidebar again.
+  const { waiting, tasks, projects, people, active } = useMemo(() => {
+    const fetchedAt = (task: BoardTask) =>
+      board.projects.find((project) => project.key === task.project)?.fetchedAt ?? null;
+    return {
+      waiting: board.inbox.filter((task) => !hides(task.id, fetchedAt(task))).length,
+      tasks: openCount(board.allTasks),
+      projects: new Map(board.available.map((project) => [project.key, openCount(project.tasks)])),
+      people: peopleOf(board.allTasks, now).slice(0, PEOPLE),
+      active: board.allTasks.filter((task) => activeNow(task, now)).length,
+    };
+  }, [board, hides, now]);
   const boardSearch = onBoard ? search : '';
 
   return (
     <Sidebar aria-label="Ntasks">
       <SidebarHeader
         icon={<WorkspaceIcon workspaceId={workspace.workspaceId} name={workspace.name} />}
-        name={workspaces.length > 1 ? <WorkspaceSwitcher /> : workspace.name}
+        name={workspaces.length > 1 || admin ? <WorkspaceSwitcher admin={admin} /> : workspace.name}
       >
         <IconButton
           size="sm"
@@ -136,7 +159,7 @@ export function AppSidebar() {
       >
         <Link to={`${paths.board}?view=waiting`}>Waiting for you</Link>
       </NavItem>
-      <NavItem asChild icon={<List aria-hidden />} count={open(board.allTasks)} active={onBoard && !narrowed}>
+      <NavItem asChild icon={<List aria-hidden />} count={tasks} active={onBoard && !narrowed}>
         <Link to={paths.board}>Tasks</Link>
       </NavItem>
       <NavItem
@@ -160,7 +183,7 @@ export function AppSidebar() {
               key={project.key}
               asChild
               icon={<ProjectIcon project={project} />}
-              count={project.ok ? open(project.tasks) : undefined}
+              count={project.ok ? projects.get(project.key) : undefined}
               active={onBoard && params.get('project') === project.key}
             >
               <Link to={`${paths.board}?project=${encodeURIComponent(project.key)}`}>{project.name}</Link>

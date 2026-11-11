@@ -14,6 +14,7 @@ import type { SignInConfig } from './config.ts';
 import { sameBytes, sha256 } from './crypto.ts';
 import { acceptInvitations, githubAccountOf, isMember, mayJoin, type GitHubAccount } from './members.ts';
 import { NOT_INVITED } from './pages.ts';
+import { displayName, personActor, uniquePersonName } from './principal.ts';
 import {
   AGENT_ACCESS_PAGE,
   AGENT_ACCESS_TOKEN_SECONDS,
@@ -116,6 +117,18 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
     },
     session: { ...CORE_TABLES.session, cookieCache: { enabled: false } },
     databaseHooks: {
+      user: {
+        create: {
+          // GitHub display names repeat; a person's actor is their name, so a
+          // new person whose name another person here holds gets their login.
+          before: async (user) => {
+            if (!admitted) return;
+            const { results } = await db.prepare('SELECT name FROM auth_user').all<{ name: string }>();
+            const held = new Set(results.map((row) => personActor(displayName(row.name, 'owner'))));
+            return { data: { ...user, name: uniquePersonName(user.name, admitted, (actor) => held.has(actor)) } };
+          },
+        },
+      },
       session: {
         create: {
           // A login matches an invitation only here, while GitHub's profile is

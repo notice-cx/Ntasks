@@ -1,0 +1,3 @@
+{
+  "added": "`503` with `database_behind`, `missing` and `detail` from any route when the D1 database lacks a migration the Worker needs"
+}

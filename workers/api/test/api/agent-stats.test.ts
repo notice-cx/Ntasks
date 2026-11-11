@@ -1,6 +1,6 @@
 // Agent statistics: the counts get_agent_stats and GET /api/tasks/agent-stats
-// give, in the shape NoticeOS's Agents page reads. The aggregation cases are
-// ported from NoticeOS's apps/tower/test/agent-stats.test.ts.
+// give, in the shape NoticeOS's Agents page reads: work in hand, closes and
+// the changes that shipped, by model, with no ranking or award.
 import type { Project, TaskEngine, WorkItem } from '@ntasks/domain';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { canonicalAgentModel, readAgentStats } from '../../src/agent-stats.ts';
@@ -26,6 +26,12 @@ function work(id: string, model: string | null, over: Partial<WorkItem> = {}): W
     closedAt: at(2),
     closedBy: null,
     closedModel: null,
+    pullRequest: null,
+    commit: null,
+    mergeCommit: null,
+    stage: null,
+    mergedAt: null,
+    liveAt: null,
     ...over,
   };
 }
@@ -67,11 +73,6 @@ describe('aggregate agent statistics', () => {
       ['Claude Opus 5.5', 2],
       ['GPT-6.1 Sol', 1],
     ]);
-    expect(counted.race.players[0]).toMatchObject({
-      name: 'Claude Opus 5.5',
-      points: 7,
-      closes: [NOW - 2 * HOUR, NOW - 2 * HOUR],
-    });
     expect(counted.week).toBe(3);
   });
 
@@ -83,7 +84,6 @@ describe('aggregate agent statistics', () => {
     ]);
     expect(counted.workers.map((worker) => worker.name)).toEqual(['Claude Sonnet 5.5', 'Other']);
     expect([counted.week, counted.inHand, counted.blocked]).toEqual([0, 1, 1]);
-    expect(counted.race.players).toEqual([]);
     expect(counted.velocity.weeks.reduce((sum, week) => sum + week.total, 0)).toBe(1);
   });
 
@@ -95,9 +95,7 @@ describe('aggregate agent statistics', () => {
     ]);
     expect(counted.workers).toHaveLength(1);
     expect(counted.workers[0]).toMatchObject({ name: 'Other', week: 3 });
-    expect(counted.race.players).toHaveLength(1);
     expect(counted.velocity.names['']).toBe('Other');
-    expect(counted.trophies).toEqual([]);
   });
 
   it('counts a close for its closer’s model, falls back to the claim, and computes a task-weighted median', () => {
@@ -132,7 +130,76 @@ describe('aggregate agent statistics', () => {
       work('ex-now', 'Opus 5.5', { closedAt: at(0) }),
     ]);
     expect([counted.week, counted.lastWeek]).toEqual([1, 1]);
-    expect(counted.race.players[0]?.closes).toHaveLength(counted.week);
+  });
+
+  it('awards nothing and ranks no model: the rows come in name order, however much each closed, and how fast', () => {
+    const counted = stats([
+      ...Array.from({ length: 9 }, (_, i) =>
+        work(`ex-many-${i}`, 'Sonnet 5.5', { priority: 0, startedAt: at(2.1), closedAt: at(2) }),
+      ),
+      work('ex-one', 'GPT-6.1-Sol', { startedAt: at(30), closedAt: at(2) }),
+      work('ex-other', null),
+      work('ex-held', 'Opus 5.5', { status: 'in_progress', closedAt: null }),
+    ]);
+    expect(counted.workers.map((worker) => worker.name)).toEqual([
+      'Claude Opus 5.5',
+      'Claude Sonnet 5.5',
+      'GPT-6.1 Sol',
+      'Other',
+    ]);
+    expect(counted.trophies).toEqual([]);
+    expect(counted.race).toEqual({ from: NOW - 7 * 24 * HOUR, to: NOW, players: [] });
+  });
+});
+
+describe('changes shipped', () => {
+  const pr = 'https://github.com/example/app/pull/7';
+  const merged = (hours: number, over: Partial<WorkItem> = {}): Partial<WorkItem> => ({
+    pullRequest: pr,
+    stage: 'merged',
+    mergedAt: at(hours),
+    ...over,
+  });
+
+  it('counts a pull request once in all, and once for each model with a task in it', () => {
+    const counted = stats([
+      work('ex-a', 'Opus 5.5', merged(1)),
+      work('ex-b', 'Opus 5.5', merged(1)),
+      work('ex-c', 'GPT-6.1-Sol', merged(1)),
+      // A change that went live with no merge recorded, by its commit.
+      work('ex-d', 'GPT-6.1-Sol', { commit: 'abc1234', stage: 'live', liveAt: at(30) }),
+    ]);
+    expect(counted.shipped).toBe(2);
+    expect(counted.workers.map((worker) => [worker.name, worker.shipped])).toEqual([
+      ['Claude Opus 5.5', 1],
+      ['GPT-6.1 Sol', 2],
+    ]);
+  });
+
+  it('counts the 7 days and the 7 before, and leaves out what has not merged or merged later', () => {
+    const counted = stats([
+      work('ex-now', 'Opus 5.5', merged(0)),
+      work('ex-previous', 'Opus 5.5', merged(7 * 24, { pullRequest: `${pr}1` })),
+      work('ex-older', 'Opus 5.5', merged(14 * 24, { pullRequest: `${pr}2` })),
+      work('ex-built', 'Opus 5.5', { pullRequest: `${pr}3`, stage: 'built' }),
+      work('ex-future', 'Opus 5.5', merged(-1, { pullRequest: `${pr}4` })),
+    ]);
+    expect([counted.shipped, counted.shippedLastWeek]).toEqual([1, 1]);
+  });
+
+  it('lists a model whose only work this week is a change from earlier closes that shipped', () => {
+    const counted = stats([work('ex-late', 'Opus 5.5', { closedAt: at(20 * 24), ...merged(3) })]);
+    expect(counted.week).toBe(0);
+    expect(counted.workers).toMatchObject([{ name: 'Claude Opus 5.5', week: 0, shipped: 1 }]);
+  });
+
+  it('counts no change, rather than none shipped, when no task read reached merged or live', () => {
+    const counted = stats([work('ex-a', 'Opus 5.5', { pullRequest: pr, stage: 'built' })]);
+    expect([counted.shipped, counted.shippedLastWeek]).toEqual([null, null]);
+    expect(counted.workers[0]?.shipped).toBeNull();
+    // One merge recorded, however long ago, means none shipped this week is 0.
+    const quiet = stats([work('ex-a', 'Opus 5.5'), work('ex-b', 'Opus 5.5', merged(40 * 24))]);
+    expect([quiet.shipped, quiet.workers[0]?.shipped]).toEqual([0, 0]);
   });
 
   it('returns aggregates only, even for a large history', () => {
@@ -151,6 +218,7 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
   let engine: TaskEngine;
   let project: Project;
   let hidden: Project;
+  const shippedPr = 'https://github.com/example/app/pull/3';
 
   beforeAll(async () => {
     target = api({ now: time.now });
@@ -191,7 +259,10 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
     await engine.writeTask(
       project.id,
       quick.id,
-      { expectedVersion: 2, close: { reason: 'Done in abc1234', resolution: 'done' } },
+      {
+        expectedVersion: 2,
+        close: { reason: 'Done in abc1234', resolution: 'done', commit: 'abc1234', pullRequest: shippedPr },
+      },
       claude,
     );
     time.advance(60);
@@ -218,6 +289,13 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
       { expectedVersion: 1, close: { reason: 'Done', resolution: 'done' } },
       claude,
     );
+    // The urgent task's pull request merges.
+    const moved = await engine.reportDelivery(
+      [project.id],
+      { stage: 'merged', pullRequests: [shippedPr], commits: [] },
+      OWNER,
+    );
+    expect(moved).toHaveLength(1);
   });
 
   it("answers NoticeOS's payload for one project, counting each model's work", async () => {
@@ -236,22 +314,41 @@ describe('get_agent_stats and GET /api/tasks/agent-stats', () => {
       'inHand',
       'blocked',
       'medianHours',
+      'shipped',
+      'shippedLastWeek',
     ]);
     expect(answer.stats).toMatchObject({
       workers: [
-        { id: 'Claude Opus 5.5', name: 'Claude Opus 5.5', inHand: 1, blocked: 0, week: 1, lastWeek: 0, medianHours: 2 },
-        { id: 'GPT-5.3 Codex', name: 'GPT-5.3 Codex', inHand: 0, blocked: 1, week: 0, lastWeek: 1, medianHours: 1 },
+        {
+          id: 'Claude Opus 5.5',
+          name: 'Claude Opus 5.5',
+          inHand: 1,
+          blocked: 0,
+          week: 1,
+          lastWeek: 0,
+          medianHours: 2,
+          shipped: 1,
+        },
+        {
+          id: 'GPT-5.3 Codex',
+          name: 'GPT-5.3 Codex',
+          inHand: 0,
+          blocked: 1,
+          week: 0,
+          lastWeek: 1,
+          medianHours: 1,
+          shipped: 0,
+        },
       ],
       week: 1,
       lastWeek: 1,
       inHand: 1,
       blocked: 1,
       medianHours: 1.5,
-      trophies: [
-        { key: 'most', holder: 'Claude Opus 5.5', value: '1', detail: 'task' },
-        { key: 'fastest', holder: 'Claude Opus 5.5', value: '2 h', detail: null },
-        { key: 'urgent', holder: 'Claude Opus 5.5', value: '1', detail: 'high-priority close' },
-      ],
+      shipped: 1,
+      shippedLastWeek: 0,
+      race: { players: [] },
+      trophies: [],
     });
     const velocity = answer.stats.velocity as { weeks: { start: string; current: boolean; total: number }[] };
     expect(velocity.weeks).toHaveLength(8);

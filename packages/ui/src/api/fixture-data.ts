@@ -70,7 +70,7 @@ export const FIXTURE_ACTORS: readonly TaskActor[] = [
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-/** An open task, filed six days before `nowMs`, with `fields` set over it. */
+/** An open task, filed by Claude six days before `nowMs`, with `fields` set over it. */
 function taskAt(nowMs: number) {
   const at = (ago: number) => new Date(nowMs - ago).toISOString();
   return (project: string, id: string, title: string, fields: Partial<LiveTask> = {}): FixtureTask => ({
@@ -97,6 +97,8 @@ function taskAt(nowMs: number) {
     dependencies: [],
     comments: 0,
     metadata: {},
+    filedBy: CLAUDE,
+    filedModel: MODELS[CLAUDE],
     startedAt: null,
     closeReason: null,
     awaitType: null,

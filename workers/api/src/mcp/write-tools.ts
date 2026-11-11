@@ -370,6 +370,23 @@ const CHANGE_CLASS = Object.freeze({
   enum: TASK_CHANGE_CLASSES,
   description: "The kind of change the task makes. NoticeOS's autonomy ladder and likelihood priors are kept by it.",
 });
+
+/** The most characters an approval's description holds: what the engine keeps as its request. */
+const APPROVAL_DESCRIPTION_MAX = TASK_LIMITS.reason;
+
+const APPROVAL_TITLE = Object.freeze({
+  type: 'string',
+  maxLength: TITLE_MOST,
+  description: 'The action to approve, in plain words starting with a verb, such as "Approve deploying the API".',
+});
+
+const APPROVAL_DESCRIPTION = Object.freeze({
+  type: 'string',
+  maxLength: APPROVAL_DESCRIPTION_MAX,
+  description:
+    'In Markdown: a first line with the ask and where to answer, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>"; ## Why this needs you; ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we\'ll confirm; ## If you decline.',
+});
+
 /** A new task's fields, for create_task and each entry of create_tasks. */
 const NEW_TASK = Object.freeze({
   title: { type: 'string', maxLength: TASK_LIMITS.title },
@@ -397,10 +414,13 @@ const NEW_TASK = Object.freeze({
   external_links: EXTERNAL_LINKS,
   fields: FIELDS,
   approval: {
-    type: 'string',
+    type: ['string', 'object'],
     maxLength: GATE_REASON_MAX,
+    properties: { title: APPROVAL_TITLE, description: APPROVAL_DESCRIPTION },
+    required: ['title', 'description'],
+    additionalProperties: false,
     description:
-      "What a person must approve before it proceeds, its first line the approval's title. Opens a gate that holds it out of ready work, as request_human_approval does, which also takes a title and a Markdown description.",
+      "What a person must approve before it proceeds: title and description, as request_human_approval takes them, or one text whose first line is the approval's title. Opens a gate that holds it out of ready work, as request_human_approval does.",
   },
   claim: { type: 'boolean', description: 'true files it claimed by you, in progress, as claim_task would.' },
   done: {
@@ -556,7 +576,7 @@ function creation(args: Args, target: (path: string, value: unknown) => string, 
     choices: choicesArg(args),
     card: cardArg(args),
     changeClass: choiceArg(args, 'change_class', TASK_CHANGE_CLASSES),
-    approval: textArg(args, 'approval', GATE_REASON_MAX, false),
+    approval: newApprovalArg(args),
     claim: booleanArg(args, 'claim') === true ? (true as const) : undefined,
     done: doneArg(args),
   };
@@ -746,6 +766,16 @@ function adviceOn(task: Task): readonly string[] {
     ...repeatAdvice(task.title, task.description),
     ...(choice.length > 0 ? choice : placeAdvice(task)),
   ];
+}
+
+const NEW_APPROVAL_FORM =
+  'approval: pass title and description in place of one text: the title names the action, and the description holds the rest in Markdown.';
+
+/** Advice on the approval a new task opened, each line naming it as approval, and the object form when its text drew advice. */
+function newApprovalAdvice(gate: Task | undefined, task: NewTask): readonly string[] {
+  if (gate === undefined) return [];
+  const found = adviceOn(gate).map((line) => `approval.${line}`);
+  return task.approval?.title === undefined && found.length > 0 ? [...found, NEW_APPROVAL_FORM] : found;
 }
 
 /** Lint's answer, when it names a missing section or gives advice. */
@@ -1079,31 +1109,50 @@ const UPDATE_TASK: TaskTool = Object.freeze({
   },
 } satisfies TaskTool);
 
-/** The most characters an approval's description holds: what the engine keeps as its request. */
-const APPROVAL_DESCRIPTION_MAX = TASK_LIMITS.reason;
-
-/** The approval a request_human_approval call asks for: a title with a description, or a reason alone. */
-function approvalArgs(args: Args): ApprovalRequest {
-  const reason = textArg(args, 'reason', GATE_REASON_MAX, false);
-  const title = textArg(args, 'title', TITLE_MOST, false);
-  const description = textArg(args, 'description', APPROVAL_DESCRIPTION_MAX, false);
-  if (reason !== undefined) {
-    if (title !== undefined || description !== undefined)
-      refuse('invalid arguments: reason (pass title and description, or reason alone)');
-    return { reason };
-  }
+/**
+ * An approval's title and description, under `at` (such as "approval."),
+ * checked as every approval's are: a title of one line, and a description
+ * the approval asks whole. `instead` names what may stand in for the pair.
+ */
+function titledApproval(args: Args, at: string, instead: string): ApprovalRequest {
+  const title = textArg(args, `${at}title`, TITLE_MOST, false);
+  const description = textArg(args, `${at}description`, APPROVAL_DESCRIPTION_MAX, false);
   if (title === undefined || description === undefined)
     refuse(
-      `invalid arguments: ${title === undefined ? 'title' : 'description'} (required: pass title and description, or reason alone)`,
+      `invalid arguments: ${at}${title === undefined ? 'title' : 'description'} (required: pass title and description, or ${instead})`,
     );
-  if (/[\t\r\n]/u.test(title)) refuse('invalid arguments: title (one line, with no tab or line break)');
+  if (/[\t\r\n]/u.test(title)) refuse(`invalid arguments: ${at}title (one line, with no tab or line break)`);
   // An approval imported from Beads asks only what follows its first "Reason:"
   // line, and every reader of a request reads it so; a new one asks its whole text.
   if (askedOf(description) !== description.replace(/\r\n?/gu, '\n').trim())
     refuse(
-      'invalid arguments: description (a line that starts "Reason:" makes an approval ask only what follows it, as one imported from Beads does; reword that line)',
+      `invalid arguments: ${at}description (a line that starts "Reason:" makes an approval ask only what follows it, as one imported from Beads does; reword that line)`,
     );
   return { reason: description, title: title.trim() };
+}
+
+/** The approval a request_human_approval call asks for: a title with a description, or a reason alone. */
+function approvalArgs(args: Args): ApprovalRequest {
+  const reason = textArg(args, 'reason', GATE_REASON_MAX, false);
+  if (reason === undefined) return titledApproval(args, '', 'reason alone');
+  if (args.title !== undefined || args.description !== undefined)
+    refuse('invalid arguments: reason (pass title and description, or reason alone)');
+  return { reason };
+}
+
+/** The approval a new task waits on: an object with a title and a description, or one text whose first line is the title. */
+function newApprovalArg(args: Args): ApprovalRequest | undefined {
+  const value = args.approval;
+  if (value === undefined || typeof value === 'string') {
+    const reason = textArg(args, 'approval', GATE_REASON_MAX, false);
+    return reason === undefined ? undefined : { reason };
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    refuse('invalid arguments: approval (an object with title and description, or one text)');
+  const unknown = Object.keys(value).filter((name) => name !== 'title' && name !== 'description');
+  if (unknown.length > 0) refuse(`invalid arguments: approval (title and description only; not ${unknown.join(', ')})`);
+  const named = Object.fromEntries(Object.entries(value).map(([name, entry]) => [`approval.${name}`, entry]));
+  return titledApproval(named, 'approval.', 'approval as one text');
 }
 
 const APPROVAL_FORM =
@@ -1123,17 +1172,8 @@ const REQUEST_HUMAN_APPROVAL: TaskTool = Object.freeze({
     {
       project: PROJECT,
       task: TASK,
-      title: {
-        type: 'string',
-        maxLength: TITLE_MOST,
-        description: 'The action to approve, in plain words starting with a verb, such as "Approve deploying the API".',
-      },
-      description: {
-        type: 'string',
-        maxLength: APPROVAL_DESCRIPTION_MAX,
-        description:
-          'In Markdown: a first line with the ask and where to answer, such as "You: press Approve on this task to let the agent merge <the pull request\'s link>"; ## Why this needs you; ## What the agent will do, with the exact commands in fenced blocks; ## What it changes, each line a bold label such as **Downtime:** or **Undo:** with its value; ## How we\'ll confirm; ## If you decline.',
-      },
+      title: APPROVAL_TITLE,
+      description: APPROVAL_DESCRIPTION,
       reason: {
         type: 'string',
         maxLength: GATE_REASON_MAX,
@@ -1294,7 +1334,12 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         ...(await written(context, detail, result.task, filedShown(result.task), result.replayed)),
         ...(gate === undefined ? {} : approvalOf(id, gate)),
         ...(task.done === undefined
-          ? lintIfAny(lintView(await lintOf(context, project.id, [result.task]), id, adviceOn(result.task)))
+          ? lintIfAny(
+              lintView(await lintOf(context, project.id, [result.task]), id, [
+                ...adviceOn(result.task),
+                ...newApprovalAdvice(gate, task),
+              ]),
+            )
           : {}),
         ...duplicatesIfAny(result.task, open, new Set([id])),
         ...withWarnings([...warnings, ...proofWarnings([result.task], 'done')]),
@@ -1403,7 +1448,9 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
           ...writtenView(task, filedShown(task), context.now()),
           replayed,
           ...(gate === undefined ? {} : { approval: approvalView(gate), held: true }),
-          ...(done ? {} : lintIfAny(lintView(found, task.id, adviceOn(task)))),
+          ...(done
+            ? {}
+            : lintIfAny(lintView(found, task.id, [...adviceOn(task), ...newApprovalAdvice(gate, planned[index]!)]))),
           ...duplicatesIfAny(task, open, ids),
         };
       }
@@ -1830,9 +1877,10 @@ const typed = (property: PropertySchema, type: string) =>
  * A tool's arguments with each object-typed one that arrived as a string read
  * as JSON: a client whose copy of the tool list predates an argument has no
  * schema for it and sends it as text. `text` names those read; `unread` those
- * whose text is not an object (or null, where the schema takes null), which
- * stay strings for their own check to refuse. Each entry of an array of
- * objects is read the same way, named by its place.
+ * whose text is not an object (or null, where the schema takes null) and whose
+ * schema takes no text, which stay strings for their own check to refuse; an
+ * argument that also takes text keeps any other text as given. Each entry of
+ * an array of objects is read the same way, named by its place.
  */
 export function objectsFromText(
   schemaOf: PropertySchema,
@@ -1854,7 +1902,7 @@ export function objectsFromText(
       if (parsed === null ? typed(property, 'null') : typeof parsed === 'object' && !Array.isArray(parsed)) {
         read[name] = parsed;
         text.push(at + name);
-      } else unread.push(at + name);
+      } else if (!typed(property, 'string')) unread.push(at + name);
     } else if (typed(property, 'array') && property.items && typed(property.items, 'object') && Array.isArray(value)) {
       read[name] = value.map((entry: unknown, index) => {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;

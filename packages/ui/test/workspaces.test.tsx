@@ -81,10 +81,40 @@ describe('the workspace switcher', () => {
     expect(sent.find((request) => request.path === '/api/tasks/projects')?.workspace).toBe(TWO);
   });
 
-  it('shows only while the sign-in reaches two or more workspaces', async () => {
-    renderApp('/tasks', createFixtureTasksApi({ workspaces: fixtureWorkspaces(Date.now()).slice(0, 1) }));
+  it('is a plain name for anyone but a deployment admin while the sign-in reaches one workspace', async () => {
+    const api = createFixtureTasksApi({ workspaces: fixtureWorkspaces(Date.now()).slice(0, 1) });
+    const account = vi.spyOn(api, 'account');
+    renderApp('/tasks', api);
     await sidebarLink('Example web app');
+    await waitFor(() => expect(account).toHaveBeenCalled());
+    await account.mock.results[0]?.value;
     expect(document.querySelector('[data-workspace-switcher]')).toBeNull();
+  });
+
+  it('lets a deployment admin with one workspace create a second, which opens on its New project form', async () => {
+    const api = createFixtureTasksApi({ workspaces: fixtureWorkspaces(Date.now()).slice(0, 1), deploymentAdmin: true });
+    renderApp('/tasks?project=web', api);
+    // The form draws in place of the page, so the sidebar is found again each time it returns.
+    const workspaceName = async (name: string) =>
+      within(await screen.findByRole('navigation', { name: 'Ntasks' })).findByRole('button', { name });
+    fireEvent.click(await workspaceName('Example'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New workspace' }));
+    const cancelled = await screen.findByRole('form', { name: 'New workspace' });
+    fireEvent.click(within(cancelled).getByRole('button', { name: 'Cancel' }));
+    // Cancel goes back to the page the form opened over, with its filters.
+    expect((await sidebarLink(/^Example web app/)).getAttribute('aria-current')).toBe('page');
+    expect(screen.queryByRole('form', { name: 'New workspace' })).toBeNull();
+
+    fireEvent.click(await workspaceName('Example'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New workspace' }));
+    const step = await screen.findByRole('form', { name: 'New workspace' });
+    fireEvent.change(within(step).getByLabelText(/^Name/), { target: { value: 'Example Co' } });
+    fireEvent.click(within(step).getByRole('button', { name: 'Create workspace' }));
+    await screen.findByRole('form', { name: 'New project' });
+    expect(await workspaceName('Example Co')).toBeTruthy();
+    expect((await api.workspaces()).map((row) => row.name)).toEqual(['Example', 'Example Co']);
+    // The new workspace is the one every call is made in.
+    expect(await api.projects()).toEqual([]);
   });
 });
 

@@ -73,7 +73,7 @@ describe('the HTTP Tasks API client', () => {
     await api.board('web');
     await api.task('web-a1b2', 'web');
     expect(sent.map((request) => `${request.method} ${request.url}`)).toEqual([
-      'GET /api/tasks?project=p-web',
+      'GET /api/tasks?project=p-web&externalLinks=none',
       'GET /api/tasks/web-a1b2?project=p-web',
     ]);
   });
@@ -204,7 +204,7 @@ describe('the HTTP Tasks API client', () => {
     await api.board('web', undefined, { area: 'Sign-in', customer_facing: 'true' });
     expect(sent.map((request) => `${request.method} ${request.url}`)).toEqual([
       'GET /api/fields?project=p-web',
-      'GET /api/tasks?project=p-web&field.area=Sign-in&field.customer_facing=true',
+      'GET /api/tasks?project=p-web&externalLinks=none&field.area=Sign-in&field.customer_facing=true',
     ]);
   });
 
@@ -400,7 +400,7 @@ describe('the workspace a call is made in', () => {
       ['GET', '/api/workspaces', null, null],
       ['GET', '/api/access/me', null, null],
       ['GET', '/api/tasks/projects', 'ws-a', null],
-      ['GET', '/api/tasks?project=p-ws-a', 'ws-a', null],
+      ['GET', '/api/tasks?project=p-ws-a&externalLinks=none', 'ws-a', null],
       ['POST', '/api/tasks/projects', 'ws-a', { name: 'Example shop', prefix: 'shop' }],
       ['GET', '/api/access/members', 'ws-a', null],
       ['POST', '/api/access/invitations', 'ws-a', { githubLogin: 'example-new', role: 'member' }],
@@ -420,9 +420,9 @@ describe('the workspace a call is made in', () => {
     await api.board('web');
     expect(sent.map((request) => [request.url, request.workspace])).toEqual([
       ['/api/tasks/projects', 'ws-a'],
-      ['/api/tasks?project=p-ws-a', 'ws-a'],
+      ['/api/tasks?project=p-ws-a&externalLinks=none', 'ws-a'],
       ['/api/tasks/projects', 'ws-b'],
-      ['/api/tasks?project=p-ws-b', 'ws-b'],
+      ['/api/tasks?project=p-ws-b&externalLinks=none', 'ws-b'],
     ]);
   });
 

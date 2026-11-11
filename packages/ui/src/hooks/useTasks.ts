@@ -500,9 +500,13 @@ export function useInboxAnswer(): (answer: InboxAnswer) => void {
   );
 }
 
-/** Whether a task's row stays hidden while its answer waits or is on its way. */
+/**
+ * Whether a task's row stays hidden while its answer waits or is on its way.
+ * The function is a new one whenever the queue changes, so what a page works
+ * out from it can be kept until then.
+ */
 export function useAnswerHides(): (id: string, fetchedAt: number | null) => boolean {
   const queue = useAnswerQueue();
-  useSyncExternalStore(queue.subscribe, queue.version, queue.version);
-  return queue.hides;
+  const version = useSyncExternalStore(queue.subscribe, queue.version, queue.version);
+  return useMemo(() => (id: string, fetchedAt: number | null) => queue.hides(id, fetchedAt), [queue, version]);
 }

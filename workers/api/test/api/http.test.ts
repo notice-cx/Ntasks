@@ -12,6 +12,7 @@ let engine: TaskEngine;
 let project: Project;
 let other: Project;
 const ids: Record<string, string> = {};
+const DRAFT = { url: 'https://example.com/pull/1', title: 'The draft', kind: 'pull-request' } as const;
 
 beforeAll(async () => {
   target = api({ now: time.now });
@@ -20,7 +21,11 @@ beforeAll(async () => {
   ids.epic = (await engine.createTask(project.id, { title: 'Launch', type: 'epic' }, AGENT)).task.id;
   time.advance(1);
   ids.child = (
-    await engine.createTask(project.id, { title: 'Write the launch post', parentId: ids.epic, labels: ['copy'] }, AGENT)
+    await engine.createTask(
+      project.id,
+      { title: 'Write the launch post', parentId: ids.epic, labels: ['copy'], externalLinks: [DRAFT] },
+      AGENT,
+    )
   ).task.id;
   time.advance(1);
   ids.done = (await engine.createTask(project.id, { title: 'Pick the date', parentId: ids.epic }, AGENT)).task.id;
@@ -136,11 +141,29 @@ describe('GET /api/tasks', () => {
     });
   });
 
+  it('leaves the external links unread with externalLinks=none, and the task page reads them', async () => {
+    const linksOnBoard = async (query: string) => {
+      const { body } = await get(target, `/api/tasks?project=${project.id}${query}`);
+      return (body.tasks as { id: string; externalLinks: unknown[] }[]).find((task) => task.id === ids.child)!
+        .externalLinks;
+    };
+    expect(await linksOnBoard('')).toEqual([DRAFT]);
+    expect(await linksOnBoard('&externalLinks=none')).toEqual([]);
+    expect(await linksOnBoard('&status=open&externalLinks=none')).toEqual([]);
+    const page = await get(target, `/api/tasks/${ids.child}?project=${project.id}`);
+    expect((page.body.task as { externalLinks: unknown[] }).externalLinks).toEqual([DRAFT]);
+    for (const query of ['&externalLinks=all', '&label=copy&externalLinks=none'])
+      expect(await get(target, `/api/tasks?project=${project.id}${query}`), query).toMatchObject({
+        status: 400,
+        body: { error: 'invalid_request' },
+      });
+  });
+
   it('refuses a parameter it does not take, a repeated one, and a missing or unknown project', async () => {
     expect((await get(target, `/api/tasks?project=${project.id}&colour=red`)).body).toEqual({
       error: 'invalid_request',
       detail:
-        'unknown parameter colour; this route takes project, status, closedDays, label, limit, after, stage, activity',
+        'unknown parameter colour; this route takes project, status, closedDays, label, limit, after, stage, activity, externalLinks',
     });
     expect((await get(target, `/api/tasks?project=${project.id}&project=${project.id}`)).body.detail).toBe(
       'project is given twice',
@@ -302,7 +325,20 @@ describe('where a board starts reading changes', () => {
   });
 });
 
-describe('who closed or claimed a task', () => {
+describe('who filed, closed or claimed a task', () => {
+  it('names the filer with the model they named, and a person with none', async () => {
+    const own = await newProject(engine);
+    const { task: byAgent } = await engine.createTask(own.id, { title: 'Filed by an agent' }, AGENT);
+    const { task: byPerson } = await engine.createTask(own.id, { title: 'Filed by a person' }, OWNER);
+    const { body } = await get(target, `/api/tasks?project=${own.id}`);
+    const tasks = body.tasks as Record<string, unknown>[];
+    expect(tasks.find((entry) => entry.id === byAgent.id)).toMatchObject({
+      filedBy: AGENT.name,
+      filedModel: AGENT.model,
+    });
+    expect(tasks.find((entry) => entry.id === byPerson.id)).toMatchObject({ filedBy: OWNER.name, filedModel: null });
+  });
+
   it('names the closer and the claimer with the models they named', async () => {
     const own = await newProject(engine);
     const { task: open } = await engine.createTask(own.id, { title: 'Still open' }, AGENT);

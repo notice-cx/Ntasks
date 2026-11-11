@@ -350,18 +350,6 @@ export interface TaskFilters {
   readonly fields?: Readonly<Record<string, string | number | boolean>>;
 }
 
-export interface TaskQuery extends TaskFilters {
-  readonly statuses?: readonly TaskStatus[];
-  /** Only tasks closed at or after this time. */
-  readonly closedSince?: string;
-  /** Only tasks closed before this time. */
-  readonly closedBefore?: string;
-  /** At most this many, up to TASK_LIMITS.page. */
-  readonly limit: number;
-  /** The `nextCursor` of the previous page. */
-  readonly cursor?: string;
-}
-
 /** What a board shows: the tasks in the statuses named, and those closed from a time. */
 export interface BoardQuery extends TaskFilters {
   /** Every task in these statuses. */
@@ -383,12 +371,6 @@ export interface BoardQuery extends TaskFilters {
 export interface TaskExternalLinks {
   readonly taskId: string;
   readonly externalLinks: readonly ExternalLink[];
-}
-
-export interface TaskPage {
-  readonly tasks: readonly Task[];
-  /** Null on the last page. */
-  readonly nextCursor: string | null;
 }
 
 /** One project's tasks carrying a label, by id, a page at a time. */
@@ -414,7 +396,8 @@ export interface ChangePage {
 }
 
 /** What agent statistics count of one task: who holds or closed it, with the
- * models they named, and when it started and closed. No text of the task. */
+ * models they named, when it started and closed, and where its change is.
+ * No text of the task. */
 export interface WorkItem {
   readonly id: string;
   readonly projectId: string;
@@ -429,6 +412,12 @@ export interface WorkItem {
   readonly closedAt: string | null;
   readonly closedBy: string | null;
   readonly closedModel: string | null;
+  readonly pullRequest: string | null;
+  readonly commit: string | null;
+  readonly mergeCommit: string | null;
+  readonly stage: DeliveryStage | null;
+  readonly mergedAt: string | null;
+  readonly liveAt: string | null;
 }
 
 /** What the wins feed reads of one task (workers/api/src/wins.ts): a change
@@ -554,10 +543,9 @@ export interface TaskEngine {
   listUnder(projectId: string, taskIds: readonly string[], limit: number): Promise<readonly Task[]>;
   /** Which of these ids the project holds, closed or not. */
   findTasks(projectId: string, taskIds: readonly string[]): Promise<readonly string[]>;
-  /** Most urgent first: priority, then oldest. Ready work is worked out on the server (rule 5). */
-  listTasks(projectId: string, query: TaskQuery): Promise<TaskPage>;
   /** A board, in one project or, with `projectId` null, in every project:
-   * every task it matches, most urgent first, in one round trip and not paged. */
+   * every task it matches, most urgent first (priority, then oldest), in one
+   * round trip and not paged. Ready work is worked out on the server (rule 5). */
   listBoard(projectId: string | null, query: BoardQuery): Promise<readonly Task[]>;
   listEpics(projectId: string): Promise<readonly EpicProgress[]>;
   /** Every task of the project carrying the label, in every status and closed
@@ -618,9 +606,9 @@ export interface TaskEngine {
     readonly limit: number;
     readonly projectId?: string;
   }): Promise<ChangePage>;
-  /** For each of these tasks that lacks a section its type expects, the
-   * missing headings (`missingSections` in lint.ts). A task lacking none, or
-   * not in the project, is left out. */
+  /** For each of these tasks that lacks a part its type expects, what it
+   * lacks (`missingSections` in lint.ts). A task lacking none, or not in the
+   * project, is left out. */
   lint(projectId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
 
   /** The answer of an earlier createTask or writeTask with this retry

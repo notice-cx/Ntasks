@@ -76,6 +76,7 @@ import {
 import {
   addressHeldPage,
   agentAccessPage,
+  APPROVAL_WORKSPACES,
   appAccessPage,
   AUTH_SECRET_FIELD,
   expiredPage,
@@ -191,7 +192,9 @@ export async function handleAccess(request: Request, env: AccessEnv): Promise<Re
   } catch (error) {
     if (error instanceof AccessRefused) {
       const status = error.code === 'not_found' ? 404 : error.code === 'name_taken' ? 409 : 400;
-      return json({ error: error.code, message: error.message }, status);
+      const field = error.field === undefined ? {} : { field: error.field };
+      // `message` holds the same sentence for clients made before `detail` was added.
+      return json({ error: error.code, detail: error.message, ...field, message: error.message }, status);
     }
     if (error instanceof BodyTooLarge) return json({ error: 'body_too_large' }, 413);
     throw error;
@@ -765,9 +768,21 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
     return answerConsent(request, env, config, oauthQuery, decision === 'allow');
   }
   const access = scopeAccess(scopes);
-  // One store read for each workspace the person belongs to.
+  const decision = form?.get('decision') ?? null;
+  if (decision === 'deny') return answerConsent(request, env, config, oauthQuery, false);
+  const reaches = reachesOf(person);
+  const many = reaches.length > APPROVAL_WORKSPACES;
+  const chosen = form?.getAll('project') ?? [];
+  /** The workspace each chosen project names: the part before its slash. */
+  const chosenWorkspaces = new Set(chosen.map((choice) => choice.slice(0, Math.max(0, choice.indexOf('/')))));
+  // Allow lists the workspaces its projects are in, to check them; any other answer, the ones the person chose to show.
+  const named = new Set(decision === 'allow' ? chosenWorkspaces : (form?.getAll('workspace') ?? []));
+  const picked = many ? reaches.filter(({ workspace }) => named.has(workspace.id)) : reaches;
+  const tooMany = picked.length > APPROVAL_WORKSPACES;
+  const listing = (picked.length === 0 ? reaches : picked).slice(0, APPROVAL_WORKSPACES);
+  // One store read for each workspace listed, APPROVAL_WORKSPACES at most.
   const workspaces: WorkspaceProjects[] = await Promise.all(
-    reachesOf(person).map(async ({ workspace }) => ({
+    listing.map(async ({ workspace }) => ({
       id: workspace.id,
       name: workspace.name,
       projects: await listProjects(env, workspace.id),
@@ -780,30 +795,31 @@ async function agentAccess(request: Request, env: AccessEnv, config: SignInConfi
       returnsTo,
       access,
       workspaces,
+      ...(many ? { choosable: reaches.map(({ workspace }) => ({ id: workspace.id, name: workspace.name })) } : {}),
+      chosen,
       oauthQuery,
       error,
     });
+  const overLimit = `Choose at most ${APPROVAL_WORKSPACES} workspaces.`;
   if (!form) return show(null);
-  if (form.get('decision') === 'allow') {
-    if (access === null) return show('This agent asks for no access to tasks.');
-    const chosen = form.getAll('project');
-    if (chosen.length === 0) return show('Choose at least one project.');
-    const grants = chosen.map((choice): AgentGrant | null => {
-      const slash = choice.indexOf('/');
-      const workspace = workspaces.find((candidate) => candidate.id === choice.slice(0, slash));
-      const projectId = choice.slice(slash + 1);
-      return slash > 0 && workspace?.projects.some((project) => project.id === projectId)
-        ? { workspaceId: workspace.id, projectId, access }
-        : null;
-    });
-    if (!grants.every((grant): grant is AgentGrant => grant !== null))
-      return show('A chosen project no longer exists. Choose again.');
-    // Grants first: a consent without grants would let the agent reach nothing.
-    await setAgentGrants(env.DB, person.userId, clientId, grants);
-  } else if (form.get('decision') !== 'deny') {
-    return show('Choose Allow or Deny.');
-  }
-  return answerConsent(request, env, config, oauthQuery, form.get('decision') === 'allow');
+  if (decision === 'show') return show(tooMany ? overLimit : null);
+  if (decision !== 'allow') return show('Choose Allow or Deny.');
+  if (access === null) return show('This agent asks for no access to tasks.');
+  if (chosen.length === 0) return show('Choose at least one project.');
+  if (tooMany) return show(overLimit);
+  const grants = chosen.map((choice): AgentGrant | null => {
+    const slash = choice.indexOf('/');
+    const workspace = workspaces.find((candidate) => candidate.id === choice.slice(0, slash));
+    const projectId = choice.slice(slash + 1);
+    return slash > 0 && workspace?.projects.some((project) => project.id === projectId)
+      ? { workspaceId: workspace.id, projectId, access }
+      : null;
+  });
+  if (!grants.every((grant): grant is AgentGrant => grant !== null))
+    return show('A chosen project no longer exists. Choose again.');
+  // Grants first: a consent without grants would let the agent reach nothing.
+  await setAgentGrants(env.DB, person.userId, clientId, grants);
+  return answerConsent(request, env, config, oauthQuery, true);
 }
 
 /** Records the person's Allow or Deny with the library, and sends the browser back to the client. */
