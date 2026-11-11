@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { emptyAccount, release, runCli, writes, type Run } from './fake-account.ts';
+import { emptyAccount, EXAMPLE_ACCOUNT, release, runCli, writes, type Run } from './fake-account.ts';
 import { fakeRegistry, unreachableRegistry } from './fake-registry.ts';
 
 const FIRST = '0001_sign_in_and_workspaces.sql';
@@ -41,13 +41,23 @@ test('an installed copy older than the latest release names both and deploys onl
     assert.equal(confirmed.code, 0, confirmed.err);
     assert.equal(deployedTag(confirmed), 'v0.1.0');
 
-    const dryRun = await runCli(['deploy', '--dry-run'], dir, emptyAccount(), {
-      registry: registry.url,
-      ask: answering('n'),
-    });
+    // The command it names keeps the options, so it reaches the same Worker.
+    const options = ['deploy', '--name', 'staging', '--account', "Example's team", '--dry-run'];
+    const dryRun = await runCli(
+      options,
+      dir,
+      emptyAccount({ accounts: [{ ...EXAMPLE_ACCOUNT, name: "Example's team" }] }),
+      {
+        registry: registry.url,
+        ask: answering('n'),
+      },
+    );
     assert.equal(dryRun.code, 0, dryRun.err);
     assert.deepEqual(writes(dryRun.after), []);
-    assert.ok(dryRun.out.includes('npx ntasks@latest deploy'));
+    assert.ok(
+      dryRun.out.includes(`npx ntasks@latest deploy --name staging --account 'Example'\\''s team' --dry-run`),
+      dryRun.out,
+    );
     assert.equal(questions.length, 3, '--dry-run asks nothing');
   } finally {
     await registry.close();

@@ -44,12 +44,17 @@ export interface Deps {
 
 class UsageError extends Error {}
 
+/** An argument as a POSIX shell reads it back: as it is when it holds only safe characters, else in single quotes. */
+function shellQuote(arg: string): string {
+  return /^[\w./:=@-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`;
+}
+
 /**
  * Before a deploy, a copy outside npx's cache compares its release with the
- * registry's latest. An older one prints both and the command that deploys
+ * registry's latest. An older one prints both and the same command run with
  * the latest, and deploys only when the person confirms.
  */
-async function checkLatest(release: Release, dryRun: boolean, deps: Deps): Promise<void> {
+async function checkLatest(release: Release, argv: readonly string[], dryRun: boolean, deps: Deps): Promise<void> {
   if (inNpxCache(deps.packageDir)) return;
   const { io } = deps;
   const latest = await latestRelease(registryOf(deps.env));
@@ -61,7 +66,7 @@ async function checkLatest(release: Release, dryRun: boolean, deps: Deps): Promi
   if (compareReleases(release.version, latest) >= 0) return;
   io.out(`This is ntasks ${release.version}, and the latest release is ${latest}. To deploy ${latest}, run:`);
   io.out('');
-  io.out(`  npx ${PACKAGE}@latest deploy`);
+  io.out(`  npx ${[`${PACKAGE}@latest`, ...argv].map(shellQuote).join(' ')}`);
   io.out('');
   if (dryRun) return;
   if (deps.ask === undefined) {
@@ -134,7 +139,7 @@ export async function main(argv: readonly string[], deps: Deps): Promise<number>
       );
     }
     const dryRun = values['dry-run'] ?? false;
-    await checkLatest(release, dryRun, deps);
+    await checkLatest(release, argv, dryRun, deps);
     workDir = await mkdtemp(path.join(tmpdir(), 'ntasks-deploy-'));
     const wrangler = new Wrangler({
       command: deps.wrangler,
