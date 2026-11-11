@@ -577,9 +577,9 @@ export interface TaskEngine {
     readonly limit: number;
     readonly projectId?: string;
   }): Promise<ChangePage>;
-  /** For each of these tasks that lacks a section its type expects, the
-   * missing headings (`missingSections` in lint.ts). A task lacking none, or
-   * not in the project, is left out. */
+  /** For each of these tasks that lacks a part its type expects, what it
+   * lacks (`missingSections` in lint.ts). A task lacking none, or not in the
+   * project, is left out. */
   lint(projectId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
 
   /** The answer of an earlier createTask or writeTask with this retry

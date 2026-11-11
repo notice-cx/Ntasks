@@ -1263,9 +1263,6 @@ export async function retireField(
 
 // ─── Lint ─────────────────────────────────────────────────────────────────────
 
-/** A decision's sections that record its outcome, which a decision with choices records as its pick instead. */
-const OUTCOME = /^(?:##\s*)?(?:Decision|Rationale|Alternatives Considered)$/iu;
-
 /** What lint finds missing from each of these tasks, as they stand after a
  * write, or null when it could not be read: the write has happened either way. */
 export async function lintOf(
@@ -1274,28 +1271,14 @@ export async function lintOf(
   tasks: readonly Task[],
 ): Promise<ReadonlyMap<string, readonly string[]> | null> {
   if (tasks.length === 0) return new Map();
-  let found: ReadonlyMap<string, readonly string[]>;
   try {
-    found = await engine.lint(
+    return await engine.lint(
       projectId,
       tasks.map((task) => task.id),
     );
   } catch {
     return null;
   }
-  const missing = new Map<string, readonly string[]>(tasks.map((task) => [task.id, found.get(task.id) ?? []]));
-  for (const task of tasks) {
-    const sections = found.get(task.id);
-    if (sections === undefined || task.type !== 'decision' || task.choices === null) continue;
-    const kept = sections.filter((section) => !OUTCOME.test(section));
-    if (task.choice !== null) {
-      for (const section of ['Decision', 'Rationale']) {
-        if (!new RegExp(`^#{1,6}\\s+${section}\\s*#*\\s*$`, 'imu').test(task.description)) kept.push(`## ${section}`);
-      }
-    }
-    missing.set(task.id, kept);
-  }
-  return missing;
 }
 
 /** Lint's answer for one task, with advice when there is some; missing is

@@ -94,6 +94,8 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
 
 Creating or changing a task answers with advice when:
 
+- it is a bug whose description never names `## Steps to Reproduce`, or a
+  bug, task, feature or epic with no acceptance;
 - its title is longer than 70 characters or holds a command, a file path or
   a commit hash;
 - its description writes a command inline, has a fenced block with no

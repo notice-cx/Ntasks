@@ -524,7 +524,7 @@ describe('create_task', () => {
       idempotency_key: key(),
     });
     expect(reply.lint).toEqual({
-      missing: ['## Steps to Reproduce', '## Acceptance Criteria'],
+      missing: ['## Steps to Reproduce', 'acceptance'],
       advice: [CHOICES_ADVICE],
     });
   });
@@ -899,7 +899,7 @@ describe('create_tasks', () => {
     const [epic, child, gated] = reply.results.map((entry) => entry.id);
     expect(reply).toMatchObject({
       results: [
-        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['## Success Criteria'] } },
+        { index: 0, id: epic, status: 'open', replayed: false, lint: { missing: ['acceptance'] } },
         { index: 1, id: `${epic}.1`, status: 'open', replayed: false },
         { index: 2, id: gated, replayed: false, approval: { status: 'open', reason: 'Approve it.' }, held: true },
       ],
@@ -1404,7 +1404,7 @@ describe('update_task', () => {
       changeClass: 'feature',
       version: 2,
       replayed: false,
-      lint: { missing: ['## Acceptance Criteria'] },
+      lint: { missing: ['acceptance'] },
     });
     expect(reply).not.toHaveProperty('description');
     expect(await current(project, id)).toMatchObject({
