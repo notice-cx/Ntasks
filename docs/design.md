@@ -610,10 +610,15 @@ in a field of `text-code` with Save and Cancel; a pointer finds Edit beside
 each one. Links are quiet lines grouped under their relation in Text 3
 (Waits on, Holds back, Related, Duplicates, Replaces, a pull request, a
 document): a status mark, the id and the title, or for a page outside
-Ntasks its icon, title and host, opening in a new tab. A page's line ends in
-Remove, and the heading in Add link, while pointed at. Add link opens a
-Surface panel under the links: URL\* and Title\*, both required, and Kind
-(Link, Pull request or Document). Activity is one line per moment, oldest
+Ntasks its icon, title and host, opening in a new tab. A page's line, and
+the line of a link the task itself holds, end in Remove, and the heading in
+Add link, while pointed at; a link another task holds onto this one (Holds
+back, Merges before) is removed from that task's page. Add link opens a
+Surface panel under the links: Kind first, a page's (Link, Pull request or
+Document) and a task's (Waits on, Related, Duplicates, Replaces or Merges
+after), then for a page URL\* and Title\*, both required, or for a task
+Task\*, its id. Two tasks hold one link, so a new kind replaces the one the
+pair had. Activity is one line per moment, oldest
 first: the actor's 20 px avatar (an icon where the read names nobody), what
 they did, and its age at the end; a comment's words sit under its line. The
 comment box ends the page, with Comment and its `⌘↵`.

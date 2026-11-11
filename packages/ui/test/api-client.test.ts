@@ -201,6 +201,10 @@ describe('the HTTP Tasks API client', () => {
       fields: { area: 'Email', platforms: ['Web', 'iOS'], points: 3, customer_facing: false, team: null },
     });
     await api.updateTask('web-a1b2', 'web', { estimateMinutes: null, dueAt: null }, { idempotencyKey: 'retry-one' });
+    await api.updateTask('web-a1b2', 'web', {
+      addLinks: [{ taskId: 'web-c3d4', type: 'duplicates' }],
+      removeLinks: ['web-e5f6'],
+    });
     expect(sent.map((request) => [request.method, request.url, request.body])).toEqual([
       [
         'PATCH',
@@ -217,6 +221,11 @@ describe('the HTTP Tasks API client', () => {
         },
       ],
       ['PATCH', '/api/tasks/web-a1b2', { estimateMinutes: null, dueAt: null, projectId: 'p-web' }],
+      [
+        'PATCH',
+        '/api/tasks/web-a1b2',
+        { addLinks: [{ taskId: 'web-c3d4', type: 'duplicates' }], removeLinks: ['web-e5f6'], projectId: 'p-web' },
+      ],
     ]);
     expect(sent[0]?.headers.get('idempotency-key')?.length).toBeGreaterThanOrEqual(8);
     expect(sent[1]?.headers.get('idempotency-key')).toBe('retry-one');

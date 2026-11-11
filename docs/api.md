@@ -1283,7 +1283,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | Route | Body | Answer |
 |---|---|---|
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes; or `projectId` and one or both of `addLinks` and `removeLinks`, with no other field, to link the task to other tasks ([below](#links-between-tasks)) | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
@@ -1321,6 +1321,23 @@ written again.
 object has a `url`, a `title` and optionally a `kind`, with the limits that
 [`external_links`](#the-mcp-endpoint) has over MCP. `removeExternalLinks` is
 an array of URLs.
+
+#### Links between tasks
+
+`addLinks` is an array of objects, each a `taskId` and a `type`: `blocks`
+(the task waits on that task), `related`, `discovered-from`, `duplicates`,
+`supersedes` or `merges-after`, as `link_tasks` takes them.
+`removeLinks` is an array of task ids. Each array holds 1 to 32 entries,
+each task once, and none is the task itself. Each entry runs the write
+`link_tasks` runs, so the same rules hold: two tasks hold one link, so a
+new type replaces the one the pair had; a `blocks` link that would make two
+tasks wait on each other is refused; only `related`, `duplicates`,
+`supersedes` and `merges-after` may name a task in another project; and a
+link to or from a person's decision changes only when the person decides.
+Removals run first, then additions, in the order sent. A link a rule
+refuses answers `409`, a malformed body `400`, and a `blocks` link to a task
+outside the project `404`; in each case the links before it stay in place.
+Each is safe to send again, so the route keeps no retry record for them.
 
 `fields` is an object of custom field values by key, as `fields` is over MCP,
 and in a change `null` takes a value off. The task answers its values as

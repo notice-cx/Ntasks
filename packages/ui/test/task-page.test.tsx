@@ -802,6 +802,68 @@ describe("a task's links", () => {
     expect(groups[1]?.rows).toEqual([{ kind: 'task', id: 'web-h1', title: 'Task web-h1', status: 'open' }]);
   });
 
+  it('links the task to another as a duplicate by its id, and removes the link', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks/web-b2r6', api);
+    fireEvent.click(await enabledButton('More'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add link' }));
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'duplicates' } });
+    fireEvent.change(screen.getByLabelText(/Task/), { target: { value: 'web-t5w3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    await waitFor(() =>
+      expect(task(api, 'web-b2r6')?.dependencies).toEqual([
+        { id: 'web-t5w3', type: 'duplicates', title: null, status: null },
+      ]),
+    );
+    const links = () => document.querySelector('[data-task-links]') as HTMLElement;
+    await waitFor(() => expect(within(links()).getByText('Duplicates')).toBeTruthy());
+    expect(within(links()).getByRole('link', { name: /Rename the Settings tab to Account/ })).toBeTruthy();
+
+    fireEvent.click(within(links()).getByRole('button', { name: 'Remove the link to web-t5w3' }));
+    await waitFor(() => expect(task(api, 'web-b2r6')?.dependencies).toEqual([]));
+    await waitFor(() => expect(document.querySelector('[data-task-links]')).toBeNull());
+  });
+
+  it('keeps every link as it was when the fixture refuses a change, as the API does', async () => {
+    const api = createFixtureTasksApi();
+    const links = (id: string) => task(api, id)?.dependencies.map(({ id: other, type }) => [other, type]);
+    await api.updateTask('web-k3m9.2', 'web', { addLinks: [{ taskId: 'web-k3m9.4', type: 'related' }] });
+    // web-k3m9.4 waits on web-k3m9.3, which waits on web-k3m9.2: waiting on web-k3m9.4 would loop.
+    await expect(
+      api.updateTask('web-k3m9.2', 'web', { addLinks: [{ taskId: 'web-k3m9.4', type: 'blocks' }] }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(links('web-k3m9.2')).toContainEqual(['web-k3m9.4', 'related']);
+    await expect(
+      api.updateTask('web-b2r6', 'web', { priority: 4, addLinks: [{ taskId: 'web-t5w3', type: 'related' }] }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect([task(api, 'web-b2r6')?.priority, links('web-b2r6')]).toEqual([0, []]);
+    // A link another project's task holds onto this one is changed from that task.
+    task(api, 'docs-k8f2')?.dependencies.push({ id: 'web-b2r6', type: 'related', title: null, status: null });
+    await expect(api.updateTask('web-b2r6', 'web', { removeLinks: ['docs-k8f2'] })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(links('docs-k8f2')).toContainEqual(['web-b2r6', 'related']);
+  });
+
+  it("shows why a link is refused, and offers no Remove on another task's link onto this one", async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks/web-k3m9.2', api);
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    const links = document.querySelector('[data-task-links]') as HTMLElement;
+    // web-k3m9.3 holds it back: that link is web-k3m9.3's own, changed from its page.
+    const held = links.querySelector('[data-linked-task="web-k3m9.3"]') as HTMLElement;
+    expect(within(held).queryByRole('button')).toBeNull();
+
+    fireEvent.click(await enabledButton('Add link', links));
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'blocks' } });
+    fireEvent.change(screen.getByLabelText(/Task/), { target: { value: 'web-k3m9.4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    expect(
+      await screen.findByText('web-k3m9.4 already waits on web-k3m9.2, so web-k3m9.2 cannot wait on it.'),
+    ).toBeTruthy();
+    expect(task(api, 'web-k3m9.2')?.dependencies.map((edge) => edge.id)).not.toContain('web-k3m9.4');
+  });
+
   it('names the order two pull requests merge in, from either task', () => {
     const later = linkGroups(
       {
@@ -812,7 +874,10 @@ describe("a task's links", () => {
       [],
     );
     expect(later).toEqual([
-      { label: 'Merges after', rows: [{ kind: 'task', id: 'web-m1', title: 'First change', status: 'in_progress' }] },
+      {
+        label: 'Merges after',
+        rows: [{ kind: 'task', id: 'web-m1', title: 'First change', status: 'in_progress', type: 'merges-after' }],
+      },
     ]);
     const first = linkGroups({ id: 'web-m1', dependencies: [], externalLinks: [] }, [
       other('web-m2', [{ id: 'web-m1', type: 'merges-after', title: null, status: null }]),

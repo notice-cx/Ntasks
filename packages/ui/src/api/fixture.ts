@@ -427,6 +427,63 @@ export function createFixtureTasksApi({
     }
   }
 
+  /** Sets and removes links between `task` and others as the API does: one link a pair, no waiting loop,
+   * waiting only inside a project, and a link to or from a person's decision kept until they decide. */
+  function applyLinks(task: FixtureTask, edit: TaskEdit): void {
+    const refused = (detail: string): never => {
+      throw new ApiError(detail, 409, 'task_refused');
+    };
+    const decides = (row: FixtureTask) => row.issueType === 'gate' || row.labels.includes('human');
+    const pair = (other: FixtureTask) =>
+      task.dependencies.some((edge) => edge.id === other.id) || other.dependencies.some((edge) => edge.id === task.id);
+    // Takes the pair's link off, and answers what puts it back. Another project's link onto this task is changed there.
+    const unlink = (other: FixtureTask) => {
+      if (other.project !== task.project && other.dependencies.some((edge) => edge.id === task.id))
+        refused(`${other.id} links to ${task.id} from another project; change it there.`);
+      const before = [task.dependencies, other.dependencies] as const;
+      task.dependencies = task.dependencies.filter((edge) => edge.id !== other.id);
+      other.dependencies = other.dependencies.filter((edge) => edge.id !== task.id);
+      return () => {
+        [task.dependencies, other.dependencies] = before;
+      };
+    };
+    // Whether `from` waits on `to`, directly or through the tasks it waits on.
+    const waits = (from: string, to: string, seen = new Set<string>()): boolean => {
+      if (from === to) return true;
+      if (seen.has(from)) return false;
+      seen.add(from);
+      const row = state.tasks.find((candidate) => candidate.id === from);
+      return (row?.dependencies ?? []).some((edge) => edge.type === 'blocks' && waits(edge.id, to, seen));
+    };
+    const other = (id: string, type: string) => {
+      if (id === task.id) invalid('addLinks and removeLinks (another task than this one)');
+      const row = state.tasks.find((candidate) => candidate.id === id);
+      const reach = ['related', 'duplicates', 'supersedes', 'merges-after'].includes(type);
+      if (!row || (!reach && row.project !== task.project))
+        throw new ApiError(`${id} is not a task in this project.`, 404, 'not_found');
+      return row;
+    };
+    for (const id of edit.removeLinks ?? []) {
+      const row = other(id, 'related');
+      if (pair(row) && (decides(task) || decides(row)))
+        refused(`${decides(task) ? task.id : id} is a person's decision.`);
+      unlink(row);
+    }
+    for (const link of edit.addLinks ?? []) {
+      const row = other(link.taskId, link.type);
+      if (task.dependencies.some((edge) => edge.id === row.id && edge.type === link.type)) continue;
+      if (pair(row) && (decides(task) || decides(row)))
+        refused(`${decides(task) ? task.id : row.id} is a person's decision.`);
+      const restore = unlink(row);
+      if (link.type === 'blocks' && waits(row.id, task.id)) {
+        restore();
+        refused(`${row.id} already waits on ${task.id}, so ${task.id} cannot wait on it.`);
+      }
+      task.dependencies = [...task.dependencies, { id: row.id, type: link.type, title: null, status: null }];
+      touch(row);
+    }
+  }
+
   /** Whether a task holds every value a board's filter names. */
   function holds(task: FixtureTask, filters: FieldFilters): boolean {
     return Object.entries(filters).every(([name, wanted]) =>
@@ -779,6 +836,10 @@ export function createFixtureTasksApi({
       reach();
       once(options?.idempotencyKey, ['update', id, key, edit], () => {
         const task = find(id, key);
+        // As the API does, links go in a change of their own, refused whole before anything is written.
+        const others = Object.keys(edit).filter((name) => name !== 'addLinks' && name !== 'removeLinks');
+        if ((edit.addLinks !== undefined || edit.removeLinks !== undefined) && others.length > 0)
+          invalid(`unknown ${others.join(', ')}`);
         if (edit.claim) {
           if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
           if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
@@ -813,6 +874,7 @@ export function createFixtureTasksApi({
         if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
         if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
         applyFields(task, edit);
+        applyLinks(task, edit);
         touch(task);
       });
     },
