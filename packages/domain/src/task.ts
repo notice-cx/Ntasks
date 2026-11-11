@@ -216,6 +216,13 @@ export interface TaskLink {
   readonly status: TaskStatus;
 }
 
+/** A task linked to this one that was dropped: closed as won't do or no longer needed. */
+export interface DroppedLink {
+  readonly taskId: string;
+  readonly title: string;
+  readonly resolution: TaskResolution;
+}
+
 /** A page outside Ntasks that a task links to, such as a pull request. */
 export interface ExternalLink {
   /** An http or https URL, as the URL standard writes it; a task links to a URL once. */
@@ -363,6 +370,11 @@ export interface Task {
   readonly dependencies: readonly TaskLink[];
   /** The tasks that depend on this one. */
   readonly dependents: readonly TaskLink[];
+  /** On a task that is not closed, the tasks it relies on that were dropped
+   * after it last changed, ordered by id: those it links to, apart from one it
+   * replaces, and those that wait on it or relate to it. Any change to the
+   * task empties it. */
+  readonly reliesOnDropped: readonly DroppedLink[];
   /** Pages outside Ntasks, ordered by URL. */
   readonly externalLinks: readonly ExternalLink[];
   /** The values of its project's custom fields that it carries, by field key. */

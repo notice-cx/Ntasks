@@ -238,6 +238,7 @@ Schemas: [`task`](schemas/task.schema.json),
 | `ready`, `awaitingHuman` | Whether someone can start it now, and whether it waits on a person, as the server worked them out |
 | `assignee`, `for`, `work`, `lastActivityAt`, `stalled`, `activity` | Its claim ([3.3](#33-claim-and-work-in-hand)) |
 | `dependencies`, `dependents`, `externalLinks` | Its links, and the links other tasks hold onto it ([3.5](#35-links)) |
+| `reliesOnDropped` | The tasks it relies on that closed as won't do or no longer needed after it last changed ([STATE-23](#state-23)) |
 | `choices`, `choice`, `answer` | A decision's options, the pick and the recorded answer ([3.6](#36-decisions)) |
 | `deferUntil` | The time it is hidden from ready work until |
 | `fields`, `metadata` | Custom field values and other systems' facts ([8](#8-extensions)) |
@@ -581,6 +582,19 @@ MUST be refused on a close with any resolution but `done`.
 **STATE-8.** <a id="state-8"></a>Setting a status on a closed task reopens
 it. The reopen clears the close, its link and its delivery from the task;
 its history keeps them ([INV-9](#inv-9)).
+
+**STATE-23.** <a id="state-23"></a>A task that is not closed relies on
+the tasks it links to, apart from one it `supersedes`, and on the tasks
+that link to it with `blocks` or `related`. A task is **dropped** when it
+closes as `wont-do` or `no-longer-needed`. A server SHOULD answer, as
+`reliesOnDropped` on each task, every task it relies on that was dropped
+after the task last changed, with that task's `id`, `title` and
+`resolution`, ordered by id, so whoever picks the task up checks that its
+premise still holds. A server MUST work it out at the time of the read,
+MUST leave out a task the reader cannot reach, and MUST NOT change a task
+because of it. Any change to the task, such as an edit, a claim or a link
+removed, leaves its list empty, and a dropped task that reopens leaves the
+list.
 
 **STATE-9.** <a id="state-9"></a>An epic MAY close once every child is
 closed, and a server SHOULD list the epics that can.
@@ -980,7 +994,7 @@ the ones above it in this table.
 | **Core** | Actor and provenance, project, task, claim, comment, link, history | STATE-1 to STATE-9, STATE-22, AUTH-2, AUTH-9, AUTH-10, INV-1 to INV-9, INV-11, INV-12, EXT-1, EXT-3, EXT-4 | List projects, list tasks (with ready work), read a task and its history, file, change, claim, release, comment, link, close, reopen |
 | **Human decisions and approvals** | Choices, pick, answer, approval, request to do steps, acceptance as done | STATE-10, STATE-11, STATE-14, STATE-15, AUTH-1, AUTH-3 to AUTH-8, AUTH-11 | Ask for an approval or for steps; a person's pick, answer, dismissal, approval, dispute, marks on a step, acceptance as done and free of a held task ([AUTH-9](#auth-9)); record a relayed answer or acceptance; retire a request with evidence |
 | **Delivery** | Delivery | STATE-12, STATE-18 | Close with a commit or pull request; send a signal |
-| **Live work** | Work in hand, activity, pinned comments, parent context, overlaps | STATE-13, STATE-16, STATE-17, STATE-19, STATE-20, STATE-21, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; list tasks in progress by activity; claim by pull request; pin and unpin a comment; read a task's parent context; answer overlaps on a claim |
+| **Live work** | Work in hand, activity, pinned comments, parent context, overlaps, dropped tasks a task relies on | STATE-13, STATE-16, STATE-17, STATE-19, STATE-20, STATE-21, STATE-23, INV-10 | Record work details on a claim and a comment; list the held tasks when an agent connects; list tasks in progress by activity; claim by pull request; pin and unpin a comment; read a task's parent context; answer overlaps on a claim |
 
 A server that offers no way for anyone but the holder to release a task
 keeps AUTH-9 by refusing such releases. EXT-2 applies to a server that

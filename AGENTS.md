@@ -203,6 +203,14 @@ maintainer work carries its task id in a `Refs:` footer. Release pull
 requests, which release-please opens on `release-please--` branches, are the
 owner's to merge ([above](#never-without-the-owners-explicit-approval)).
 
+CodeRabbit reviews about 10 pull request changes an hour per author, and the
+maintainers' agents all open pull requests as one author, so each new pull
+request and each push spends a review they share. Collect every fix known for
+a pull request into one commit and one push. A nit or a Docstring Coverage
+warning alone is answered on its thread or folded into the next push, never
+pushed by itself. A reply to CodeRabbit's rate-limit notices or
+acknowledgements counts against its limit too, so none is sent.
+
 ## Open work
 
 Public contributors use GitHub issues and pull requests, as

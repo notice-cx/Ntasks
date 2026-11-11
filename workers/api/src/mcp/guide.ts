@@ -41,8 +41,8 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-10: pass model as the id of the model you run as, such as claude-opus-5-5. Ntasks shows it by its name, Claude Opus 5.5, and shows each agent by its product, such as Claude Code, whatever name it signed in under.',
   "2026-11-11: create_task's approval, and each create_tasks entry's, takes title and description as request_human_approval does; one text whose first line is the title still works. The answer's lint also advises on the approval it opens, naming it approval (Writing a task: An approval).",
+  '2026-11-11: get_task and list_tasks show reliesOnDropped on a task that relies on one closed as wont-do or no-longer-needed since the task last changed: one it links to, or one that waits on it or relates to it. Check that the task still makes sense, then edit it, remove the link or close it; any change to the task clears the list.',
   "2026-11-11: move_tasks moves tasks to another epic or project of the workspace. In another project a task takes an id with that project's prefix; its old id still names it in every tool, whose answer then maps it to the new one in formerIds (workflow step 6).",
 ]);
 

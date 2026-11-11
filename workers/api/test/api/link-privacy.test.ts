@@ -147,4 +147,25 @@ describe('links to a task in a project the sender cannot reach', () => {
       expect(JSON.stringify(history), `snapshots ${snapshots}`).toContain(nearOld.id);
     }
   });
+
+  it('are left out of the dropped tasks a task relies on', async () => {
+    time.advance(1);
+    await engine.writeTask(
+      b.id,
+      far.id,
+      {
+        expectedVersion: (await engine.getTask(b.id, far.id))!.version,
+        close: { reason: 'Shelved.', resolution: 'wont-do' },
+      },
+      OWNER,
+    );
+    const dropped = async (as: TestApi) =>
+      (
+        await read<{ task: { reliesOnDropped: { id: string }[] } }>(as, 'get_task', { project: a.id, task: linked.id })
+      ).task.reliesOnDropped.map((link) => link.id);
+    expect(await dropped(owner)).toEqual([far.id]);
+    expect(await dropped(sender)).toEqual([]);
+    expectHidden(await read(sender, 'list_tasks', { project: a.id }), 'list_tasks');
+    expectHidden((await get(sender, `/api/tasks?project=${a.id}`)).body, 'board');
+  });
 });

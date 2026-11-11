@@ -57,6 +57,19 @@
       "type": "array",
       "items": { "$ref": "link.schema.json#/$defs/taskLink" }
     },
+    "reliesOnDropped": {
+      "description": "The tasks this one relies on that closed as wont-do or no-longer-needed after it last changed, ordered by id (STATE-23).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "resolution"],
+        "properties": {
+          "id": { "$ref": "link.schema.json#/$defs/taskId" },
+          "title": { "type": "string" },
+          "resolution": { "enum": ["wont-do", "no-longer-needed"] }
+        }
+      }
+    },
     "externalLinks": {
       "type": "array",
       "maxItems": 32,
