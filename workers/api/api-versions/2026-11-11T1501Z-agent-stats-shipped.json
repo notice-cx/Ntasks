@@ -1,0 +1,13 @@
+{
+  "added": "`shipped` and `shippedLastWeek` in `GET /api/tasks/agent-stats`, and `shipped` on each of its `workers`; its `race.players` and `trophies` answer empty from this version on",
+  "routes": {
+    "GET /api/tasks/agent-stats": {
+      "stats.workers[].shipped": "null|number",
+      "stats.shipped": "null|number",
+      "stats.shippedLastWeek": "null|number"
+    }
+  },
+  "emptied": {
+    "GET /api/tasks/agent-stats": ["stats.race.players", "stats.trophies"]
+  }
+}
