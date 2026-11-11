@@ -711,7 +711,8 @@ Stalled, with the holder's last activity, in place of Active.
 page opens on, and List, at `?view=list`. `Tabs` at the bar's end switch them.
 The bar also holds each activity group's count after its activity mark
 (`6 active`, `3 quiet`, `50 stalled`, from 640 px wide); on the board each
-count is a link to the List view, which groups the tasks it counts. While the page is
+count is a link to the List view, which groups the tasks it counts, keeping
+the rest of the address. While the page is
 open the change feed is asked every 5 seconds instead of every 30, so a card
 moves within seconds of the change.
 
@@ -741,7 +742,8 @@ project that does not deploy, moves it to Live.
 
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in
-progress or shipped this week, or in the last 24 hours. When the read of a project's work waiting for
+progress or shipped this week; one the 24-hour window leaves empty stays, so
+its switch can widen it again. When the read of a project's work waiting for
 a merge or a deploy fails, a banner over the board names the project, with
 Retry, as the Tasks board does for a project it could not read; a task the
 board read itself holds is placed by that read, never by an older read of

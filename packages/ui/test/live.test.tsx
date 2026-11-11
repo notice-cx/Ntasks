@@ -321,6 +321,26 @@ describe('the Live board', () => {
     ).toBe('true');
   });
 
+  it('keeps the board and its switch when nothing shipped in the last 24 hours, and its counts keep the window', async () => {
+    const seed = fixtureSeed(Date.now());
+    // Only work that shipped days ago: nothing in progress, nothing waiting to ship.
+    seed.tasks = seed.tasks.filter((entry) => entry.status !== 'in_progress' && entry.delivery?.stage !== 'built');
+    renderApp('/tasks/live?shipped=day', createFixtureTasksApi({ seed }));
+    const live = await screen.findByRole('region', { name: 'Live' });
+    expect(await boardCards('Live')).toEqual([]);
+    fireEvent.click(within(live).getByRole('button', { name: '7 days' }));
+    expect(await boardCards('Live')).toEqual(['web-j6y4', 'docs-y5u2']);
+  });
+
+  it('opens the List from a top-bar count, keeping the Live column’s window for the way back', async () => {
+    renderApp('/tasks/live?shipped=day');
+    fireEvent.click(await screen.findByRole('link', { name: '1 stalled' }));
+    expect(await liveRows('Stalled')).toEqual(['web-w6n2']);
+    fireEvent.click(screen.getByRole('button', { name: 'Board' }));
+    const live = await screen.findByRole('region', { name: 'Live' });
+    expect(within(live).getByRole('button', { name: '24 hours' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('moves a card to its new column when a read finds its task there, and sends it travelling', async () => {
     const started = recordAnimations();
     const api = createFixtureTasksApi();

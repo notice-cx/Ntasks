@@ -68,6 +68,10 @@ export function LiveRoute() {
   const view: LiveView = params.get('view') === 'list' ? 'list' : 'board';
   // The Live column's reach: 7 days unless the address names the last 24 hours.
   const shipped: ShippedWindow = params.get('shipped') === 'day' ? 'day' : 'week';
+  // The List view's address, keeping the rest of this one, such as the Live column's window.
+  const listParams = new URLSearchParams(params);
+  listParams.set('view', 'list');
+  const listSearch = listParams.toString();
   /** The address with `name` set to `value`, or without it for its default, keeping the rest. */
   function setParam(name: 'view' | 'shipped', value: string | null) {
     const next = new URLSearchParams(params);
@@ -127,7 +131,8 @@ export function LiveRoute() {
     );
   } else if (board.loading || (view === 'board' && onBoard === 0 && waits.loading)) {
     body = <PageSkeleton shape="list" />;
-  } else if (view === 'board' && onBoard > 0) {
+  } else if (view === 'board' && (onBoard > 0 || shipped === 'day')) {
+    // A board left empty by the 24-hour window stays, so its switch can widen it again.
     body = (
       <LiveBoardView
         columns={columns}
@@ -143,9 +148,9 @@ export function LiveRoute() {
         icon={<ActivityIcon />}
         title={
           view === 'board'
-            ? `No tasks in progress or shipped ${shipped === 'day' ? 'in the last 24 hours' : 'this week'}${
-                board.complete && waits.unread.length === 0 ? '' : ' in the projects that could be read'
-              }`
+            ? board.complete && waits.unread.length === 0
+              ? 'No tasks in progress or shipped this week'
+              : 'No tasks in progress or shipped this week in the projects that could be read'
             : board.complete
               ? 'No tasks in progress'
               : 'No tasks in progress in the projects that could be read'
@@ -220,7 +225,7 @@ export function LiveRoute() {
               ) : (
                 <Link
                   key={activity}
-                  to={{ search: '?view=list' }}
+                  to={{ search: `?${listSearch}` }}
                   className={cn(look, 'no-underline outline-none hover:text-ink focus-visible:underline')}
                 >
                   {count}
