@@ -211,6 +211,14 @@ describe('the board', () => {
       await waitFor(() => expect(task(api)?.assignee).toBe('agent:codex'));
     });
 
+    it('A offers the people holding work the filters hide', async () => {
+      renderApp('/tasks?status=open');
+      // Codex holds web-k3m9.2, which is in progress.
+      await press('a', 'web-b2r6');
+      const menu = await screen.findByRole('menu', { name: 'Assign web-b2r6 to' });
+      expect(within(menu).getByRole('menuitemradio', { name: 'Codex' })).toBeTruthy();
+    });
+
     it('P sets its priority', async () => {
       const api = createFixtureTasksApi();
       renderApp('/tasks', api);

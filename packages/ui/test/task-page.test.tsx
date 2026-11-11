@@ -493,6 +493,46 @@ describe('a task page', () => {
     await waitFor(() => expect(values().platforms).toEqual(['iOS', 'Android']));
   });
 
+  it("undoes a field's save to what the task held, after a refused save and after another field", async () => {
+    const api = createFixtureTasksApi();
+    const update = api.updateTask.bind(api);
+    let refuse = true;
+    api.updateTask = async (...args) => {
+      if (refuse) {
+        refuse = false;
+        throw new ApiError('The server answered 503.', 503, null);
+      }
+      return update(...args);
+    };
+    renderApp('/tasks/web-k3m9.2', api);
+    const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
+    const undo = async (said: string) => {
+      const saved = (await screen.findByText(said)).closest('li') as HTMLElement;
+      fireEvent.click(within(saved).getByRole('button', { name: 'Undo' }));
+    };
+    // The first press is refused; the second, built on it, saves, and its Undo returns to the value the task held.
+    fireEvent.click(await enabledButton('Platforms: Web, iOS'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Android' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Web', checked: true }));
+    await waitFor(() => expect(values().platforms).toEqual(['iOS', 'Android']));
+    await undo('Saved Platforms');
+    await waitFor(() => expect(values().platforms).toEqual(['Web', 'iOS']));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+
+    // Two fields set one after the other from Add field: the second's Undo takes off only its own value.
+    await addField('Team');
+    fireEvent.change(typedField('Team'), { target: { value: 'Growth' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save team' }));
+    await waitFor(() => expect(values().team).toBe('Growth'));
+    await addField('Spec');
+    fireEvent.change(typedField('Spec'), { target: { value: 'https://example.com/spec' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save spec' }));
+    await waitFor(() => expect(values().spec).toBe('https://example.com/spec'));
+    await undo('Saved Spec');
+    await waitFor(() => expect(values().spec).toBeUndefined());
+    expect(values().team).toBe('Growth');
+  });
+
   it('edits a number, a text, a date and a URL field through the API, refusing a value of the wrong type', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-k3m9.2', api);

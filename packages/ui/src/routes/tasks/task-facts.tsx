@@ -515,35 +515,49 @@ function customFieldEditor(
  * saved whole, and its menu takes a second press before the first save is
  * read back, so each press builds on the value the last one sent, and the
  * saves run in the order pressed, so an earlier one never lands over a later one.
+ * Each save's Undo puts back what the task held when that save ran. Add field
+ * shows one field after another through the same hook, so what it keeps
+ * belongs to the field it names.
  */
 function useFieldPick(
   field: TaskField | null,
   value: TaskFieldValue | undefined,
   onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>,
 ): (next: string, on?: boolean) => Promise<boolean> {
-  const sent = useRef(value);
+  const key = field?.key ?? null;
+  // What the last press sent, and what the task last held: read back, or saved since.
+  const sent = useRef({ key, value });
+  const held = useRef({ key, value });
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    sent.current = value;
-  }, [value]);
+    sent.current = { key, value };
+    held.current = { key, value };
+  }, [key, value]);
 
   return (next, on) => {
     if (!field) return Promise.resolve(false);
-    const before = sent.current;
+    const own = (kept: { key: string | null; value: TaskFieldValue | undefined }) =>
+      kept.key === field.key ? kept.value : value;
+    const pending = own(sent.current);
     const send = async (value: TaskFieldValue | null) => {
       const intended = value ?? undefined;
-      sent.current = intended;
-      const run = queue.current.then(() => onSave(value, before));
+      sent.current = { key: field.key, value: intended };
+      const run = queue.current.then(async () => {
+        const saved = await onSave(value, own(held.current));
+        if (saved) held.current = { key: field.key, value: intended };
+        return saved;
+      });
       queue.current = run.catch(() => undefined);
       const saved = await run;
       // A refused save leaves the task as it was, and no new read will say so.
-      if (!saved && sent.current === intended) sent.current = before;
+      if (!saved && sent.current.key === field.key && sent.current.value === intended)
+        sent.current = { key: field.key, value: own(held.current) };
       return saved;
     };
     if (next === '' && field.type !== 'multiple-choice') return send(null);
     switch (field.type) {
       case 'multiple-choice':
-        return send(toggledOptions(field, before, next, on ?? true));
+        return send(toggledOptions(field, pending, next, on ?? true));
       case 'yes-no':
         return send(next === 'true');
       case 'text':
