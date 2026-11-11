@@ -316,14 +316,18 @@ export async function createServiceCredential(
   return { id, name, createdAt, revokedAt: null, grants, backup, restore, token: serviceToken(id, secret) };
 }
 
-/** A workspace's service credentials, newest first. */
+/** At most this many service credentials are listed; the limit falls on revoked ones before any live one. */
+export const SERVICE_LIST_LIMIT = 200;
+
+/** A workspace's service credentials: the live ones newest first, then the revoked ones newest first. */
 export async function listServiceCredentials(db: D1Database, workspaceId: string): Promise<ServiceCredential[]> {
   const { results } = await db
     .prepare(
       `SELECT c.id, c.name, c.created_at, c.revoked_at, c.backup, c.restore,
          (SELECT json_group_array(json_object('projectId', g.project_id, 'access', g.access)) FROM access_service_grants g
            WHERE g.credential_id = c.id) AS grants
-       FROM access_service_credentials c WHERE c.workspace_id = ? ORDER BY c.created_at DESC LIMIT 200`,
+       FROM access_service_credentials c WHERE c.workspace_id = ?
+       ORDER BY c.revoked_at IS NOT NULL, c.created_at DESC LIMIT ${SERVICE_LIST_LIMIT}`,
     )
     .bind(workspaceId)
     .all<{
