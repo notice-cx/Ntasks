@@ -144,7 +144,7 @@ waiting to deploy.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.webp">
-  <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
+  <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Did it myself, Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
 </picture>
 
 <details>

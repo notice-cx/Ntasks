@@ -31,7 +31,7 @@ whatever needs you.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.webp">
-    <img src="docs/images/hero-light.webp" width="840" alt="The Ntasks board: Waiting for you lists an approval with an Approve button, two decisions with their options and a task with an Answer button; below it are two tasks in progress, one of them worked on by a helper agent, and four open tasks.">
+    <img src="docs/images/hero-light.webp" width="840" alt="The Ntasks board: Waiting for you lists an approval with Did it myself and Approve buttons, two decisions with their options and a task with an Answer button; below it are two tasks in progress, one of them worked on by a helper agent, and four open tasks.">
   </picture>
 </p>
 

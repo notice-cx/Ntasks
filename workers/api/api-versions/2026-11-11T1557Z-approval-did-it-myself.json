@@ -1,0 +1,8 @@
+{
+  "added": "`POST /api/gates/:id/performed`, a person's report that they did an approval's action themselves, `performed` among a person's `operations` in `GET /api/tasks/capabilities`, and `done` as an approval's `answer.option` for that report, relayed or direct",
+  "routes": {
+    "POST /api/gates/:id/performed": {
+      "task": "@task"
+    }
+  }
+}

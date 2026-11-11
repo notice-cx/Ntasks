@@ -381,14 +381,13 @@ function handedBackWith(dependent: Task): boolean {
 }
 
 /** What an approval of `draft`'s gate does to the tasks waiting on it: each
- * one labelled human goes back to agents, told to keep within the approval. */
-function handBackOnApproval(draft: Draft, around: Surroundings): void {
+ * one labelled human goes back to agents, told to keep within the approval.
+ * `performed`, when a person did the action themselves, is what each waiting
+ * task is told instead, as after a request's steps are done. */
+function handBackOnApproval(draft: Draft, around: Surroundings, performed?: string): void {
   if (draft.task.steps !== null)
-    return handBackOnSteps(
-      draft,
-      around,
-      `The owner's report that they did the steps of ${draft.task.id} is recorded.`,
-    );
+    return handBackOnDone(draft, around, `The owner's report that they did the steps of ${draft.task.id} is recorded.`);
+  if (performed !== undefined) return handBackOnDone(draft, around, performed);
   for (const dependent of waiting(around).filter(handedBackWith)) {
     const other = draft.other(dependent);
     other.comment = `Owner approval recorded on ${draft.task.id}. Continue only within that recorded scope; other approvals are unchanged.`;
@@ -396,10 +395,10 @@ function handBackOnApproval(draft: Draft, around: Surroundings): void {
   }
 }
 
-/** What finishing the steps of `draft`'s request does to the tasks waiting on
- * it: each is told, and each labelled human goes back to agents, who check
- * the result before they go on. */
-function handBackOnSteps(draft: Draft, around: Surroundings, done: string): void {
+/** What a person doing what `draft`'s gate asks, its steps or its action,
+ * does to the tasks waiting on it: each is told, and each labelled human goes
+ * back to agents, who check the result before they go on. */
+function handBackOnDone(draft: Draft, around: Surroundings, done: string): void {
   for (const dependent of waiting(around)) {
     const other = draft.other(dependent);
     other.comment = `${done} Check the result yourself before continuing.`;
@@ -497,12 +496,13 @@ export interface Deciding {
 function recordDirect(
   draft: Draft,
   deciding: Deciding,
-  answer: { readonly option?: TaskChoiceKey; readonly words?: string },
+  answer: { readonly option?: TaskChoiceKey; readonly words?: string; readonly performed?: true },
 ): void {
   const previous = maintenanceOf(draft.task);
   const gate = draft.task.type === 'gate';
+  const performed = answer.performed === true;
   draft.metadata[MAINTENANCE] = {
-    action: 'answer',
+    action: performed ? 'owner_performed' : 'answer',
     taskId: draft.task.id,
     proposalVersion: deciding.proposalVersion,
     ...(answer.option === undefined ? {} : { option: answer.option }),
@@ -511,8 +511,10 @@ function recordDirect(
     ...(deciding.app === undefined ? {} : { app: deciding.app }),
     at: deciding.at,
     verification: 'person',
-    ...(gate ? { outcome: 'approved', approved: true } : {}),
-    permission: gate ? 'approved-scope-only' : 'none',
+    // `approved` keeps NoticeOS's meaning, that the request was met; agents act on `permission`.
+    ...(gate ? { outcome: performed ? 'owner-performed' : 'approved', approved: true } : {}),
+    ...(performed ? { performedBy: deciding.actor } : {}),
+    permission: gate && !performed ? 'approved-scope-only' : 'none',
     events: withPrevious(previous),
   };
 }
@@ -705,6 +707,34 @@ export function approvalWrite(
   return draft.write();
 }
 
+/** The close reason of a person's report that they did an approval's action
+ * themselves; their note, when they give one, follows it after ": ". */
+export const PERFORMED = 'Did it myself';
+
+/**
+ * A person's report that they did an approval's action themselves: the gate
+ * closes as done, recorded as their own answer with no permission for any
+ * agent, and each task waiting on it is told that the person did it, so no
+ * agent does it again; those labelled human go back to agents, who check the
+ * result before they go on.
+ */
+export function performedWrite(
+  task: Task,
+  note: string | undefined,
+  around: Surroundings,
+  deciding: Deciding,
+): TaskWrite | null {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  if (task.steps !== null) throw stepsRefusal(task);
+  if (task.type !== 'gate' || task.awaitType !== 'human')
+    throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
+  const draft = new Draft(task);
+  draft.close = { reason: note === undefined ? PERFORMED : `${PERFORMED}: ${note}`, resolution: 'done' };
+  recordDirect(draft, deciding, { performed: true, ...(note === undefined ? {} : { words: note }) });
+  handBackOnApproval(draft, around, `${deciding.actor} did the action of ${task.id} themselves, so no agent does it.`);
+  return draft.write();
+}
+
 /**
  * A person's marks on one step of a request that they do steps, in any
  * order. When every step is ticked, the request closes as done with them as
@@ -747,7 +777,7 @@ export function stepWrite(
   if (all.every((entry) => entry.done !== null)) {
     decisionClose(task, around);
     draft.close = { reason: 'Every step done', resolution: 'done' };
-    handBackOnSteps(draft, around, `${deciding.actor} ticked the last step of ${task.id}, so every step is done.`);
+    handBackOnDone(draft, around, `${deciding.actor} ticked the last step of ${task.id}, so every step is done.`);
   }
   return draft.write();
 }
@@ -981,7 +1011,7 @@ function answerNote(op: TaskMaintenance, task: Task, actor: string): string {
           ? 'declined'
           : op.action === 'owner_performed'
             ? task.steps === null
-              ? 'approved, and done by the owner'
+              ? 'the action was done by the owner, not by an agent'
               : 'the steps were done by the owner'
             : 'approved'
         : op.option === undefined
@@ -1135,9 +1165,7 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
             ? 'Owner declined the recorded scope; the action must not happen'
             : 'Owner declined to do the steps'
           : performed
-            ? task.steps === null
-              ? 'Approved and done by the owner'
-              : 'Done by the owner'
+            ? 'Done by the owner'
             : 'Owner approved the recorded scope';
         answer = () => {
           draft.close = { reason, resolution: declined ? 'wont-do' : 'done' };
@@ -1254,7 +1282,14 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       ...(op.duplicateOf === undefined ? {} : { duplicateOf: op.duplicateOf }),
     };
   } else if (ownerAnswer) {
-    if (gate && !closed && !declined) handBackOnApproval(draft, input);
+    if (gate && !closed && !declined)
+      handBackOnApproval(
+        draft,
+        input,
+        performed
+          ? `The owner's report that they did the action of ${task.id} themselves is recorded, so no agent does it.`
+          : undefined,
+      );
     answer?.();
   } else if (!closed && (op.action === 'routine' || op.action === 'release') && !(same && holder === '')) {
     draft.handBack(op.action === 'routine', op.action === 'release' && task.status !== 'in_progress');
@@ -1415,6 +1450,25 @@ export function approve(
     projectId,
     taskId,
     (task, around, deciding) => approvalWrite(task, reason, around, deciding),
+    retry,
+    shown,
+  );
+}
+
+/** A person's report that they did an approval's action themselves (performedWrite). */
+export function perform(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  note: string | undefined,
+  retry?: RetryRequest,
+  shown?: string,
+): Promise<Written> {
+  return decide(
+    context,
+    projectId,
+    taskId,
+    (task, around, deciding) => performedWrite(task, note, around, deciding),
     retry,
     shown,
   );

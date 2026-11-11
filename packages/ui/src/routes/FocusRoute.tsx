@@ -19,6 +19,7 @@ import { takesOwnKeys } from '../lib/symbols';
 import { askVerb, isGate, type BoardTask, type InboxAsk } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
+import { PerformedButton, PerformedForm } from './tasks/ask-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { StepList } from './tasks/step-list';
 import { MarkdownText } from './tasks/task-markdown';
@@ -153,8 +154,8 @@ export function FocusRoute() {
 /**
  * One decision on a card: whose turn it is and how long it has waited, the
  * title, the text, then its answer: options with their keys, the steps to
- * tick, an Approve, or a box for words, beside Not now. Letters pick an option, Enter answers or
- * approves, and → passes it over.
+ * tick, Approve beside Did it myself, or a box for words, beside Not now.
+ * Letters pick an option, Enter answers or approves, and → passes it over.
  */
 function FocusDecision({
   task,
@@ -179,12 +180,18 @@ function FocusDecision({
   const [option, setOption] = useState<TaskChoiceKey | null>(null);
   const [note, setNote] = useState('');
   const [text, setText] = useState('');
+  const [performing, setPerforming] = useState(false);
   const ask = askVerb(task);
   const choices = ask === 'choose' ? (task.choices ?? null) : null;
   const steps = ask === 'do' ? (task.steps ?? null) : null;
   const operation = choices ? 'choose' : steps ? 'step' : isGate(task) ? 'resolve' : 'respond';
   const allowed = writable && operationAvailable(capabilities, operation);
   const reason = verbReason(capabilities, allowed, UNAVAILABLE);
+  const performedReason = verbReason(
+    capabilities,
+    writable && operationAvailable(capabilities, 'performed'),
+    UNAVAILABLE,
+  );
   const waited = ageMs(nowMs, task.createdAt ?? task.updatedAt);
   const scope = {
     id: task.id,
@@ -306,20 +313,37 @@ function FocusDecision({
               <div className="flex items-center justify-end gap-2">{notNow}</div>
             </div>
           ) : ask === 'approve' ? (
-            <div className="flex items-center justify-end gap-2">
-              {notNow}
-              <Button
-                variant="primary"
-                type="button"
-                disabled={reason !== null}
-                title={reason ?? undefined}
-                aria-keyshortcuts="Enter"
-                onClick={approve}
-                data-focus-approve=""
-              >
-                <Check aria-hidden strokeWidth={2} />
-                Approve <Kbd>↵</Kbd>
-              </Button>
+            <div className="flex flex-col gap-3">
+              {performing ? (
+                <PerformedForm
+                  id={task.id}
+                  onSend={(note) => {
+                    answer({ kind: 'performed', ...scope, ...(note === undefined ? {} : { note }) });
+                    onSent();
+                  }}
+                  onCancel={() => setPerforming(false)}
+                />
+              ) : null}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {notNow}
+                <PerformedButton
+                  open={performing}
+                  onToggle={() => setPerforming((open) => !open)}
+                  disabledReason={performedReason}
+                />
+                <Button
+                  variant="primary"
+                  type="button"
+                  disabled={reason !== null}
+                  title={reason ?? undefined}
+                  aria-keyshortcuts="Enter"
+                  onClick={approve}
+                  data-focus-approve=""
+                >
+                  <Check aria-hidden strokeWidth={2} />
+                  Approve <Kbd>↵</Kbd>
+                </Button>
+              </div>
             </div>
           ) : (
             <form

@@ -40,8 +40,8 @@ export interface TaskChoice {
 
 /** The latest answer recorded on a task. */
 export interface TaskAnswer {
-  /** A letter on a task with choices, `approve` or `decline` on an approval, `done` or `decline` on a
-   * request to do steps, null when it chose none. */
+  /** A letter on a task with choices, `approve`, `done` or `decline` on an approval, `done` or `decline` on a
+   * request to do steps, null when it chose none. `done` is the person's report that they did it themselves. */
   readonly option: string | null;
   /** The person's words, as given. */
   readonly quote: string | null;

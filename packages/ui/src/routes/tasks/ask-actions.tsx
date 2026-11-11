@@ -1,20 +1,21 @@
 import { lazy, Suspense, useId, useState, type ReactNode } from 'react';
-import { Check, CornerDownLeft, ListChecks, SendHorizontal } from 'lucide-react';
+import { Check, CheckCheck, CornerDownLeft, ListChecks, SendHorizontal } from 'lucide-react';
 import type { TaskChoiceKey, TaskChoices, TaskStep } from '../../api/types';
 import { Button } from '../../components/ui/button';
 import { Segmented } from '../../components/ui/choice';
-import { Textarea } from '../../components/ui/field';
+import { Field, Input, Textarea } from '../../components/ui/field';
 import { useInboxAnswer } from '../../hooks/useTasks';
-import { stepsDone, type InboxAsk } from '../../lib/task-model';
+import { PERFORMED_LABEL, stepsDone, type InboxAsk } from '../../lib/task-model';
 
 // The steps draw Markdown, whose renderer the board loads only when a row opens them.
 const StepList = lazy(() => import('./step-list').then((module) => ({ default: module.StepList })));
 
 /**
- * What a row in Waiting for you offers: Approve on an approval, the options
- * side by side on a decision (one press answers), Answer on a question,
- * which opens a box under the row, and Your steps on a request to do steps,
- * which opens its steps under the row. Every answer waits in the Undo window.
+ * What a row in Waiting for you offers: Approve on an approval, beside Did it
+ * myself, which opens a note under the row, the options side by side on a
+ * decision (one press answers), Answer on a question, which opens a box under
+ * the row, and Your steps on a request to do steps, which opens its steps
+ * under the row. Every answer waits in the Undo window.
  * `buttons` sit beside the title and `box` under it; both are null when
  * nothing is asked. Closing as something else is in the row's menu.
  */
@@ -29,6 +30,7 @@ export function useAskActions({
   nowMs = Date.now(),
   disabledReason = null,
   chooseDisabledReason = disabledReason,
+  performedDisabledReason = disabledReason,
 }: {
   ask: InboxAsk | null;
   id: string;
@@ -43,8 +45,10 @@ export function useAskActions({
   /** Why the verbs cannot run here, or null. */
   disabledReason?: string | null;
   chooseDisabledReason?: string | null;
+  performedDisabledReason?: string | null;
 }): { buttons: ReactNode; box: ReactNode } {
   const [answering, setAnswering] = useState(false);
+  const [performing, setPerforming] = useState(false);
   const [text, setText] = useState('');
   const answer = useInboxAnswer();
   const reasonId = useId();
@@ -87,19 +91,28 @@ export function useAskActions({
       </span>
     </Button>
   ) : ask === 'approve' ? (
-    <Button
-      variant="primary"
-      type="button"
-      size="sm"
-      disabled={disabled}
-      title={disabledReason || undefined}
-      aria-describedby={described}
-      onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
-      data-task-action="approve"
-    >
-      <Check aria-hidden strokeWidth={2} />
-      Approve
-    </Button>
+    <>
+      <PerformedButton
+        size="sm"
+        open={performing}
+        onToggle={() => setPerforming((open) => !open)}
+        disabledReason={performedDisabledReason}
+        describedBy={performedDisabledReason ? reasonId : undefined}
+      />
+      <Button
+        variant="primary"
+        type="button"
+        size="sm"
+        disabled={disabled}
+        title={disabledReason || undefined}
+        aria-describedby={described}
+        onClick={() => answer({ kind: 'approve', id, title, project, proposalVersion })}
+        data-task-action="approve"
+      >
+        <Check aria-hidden strokeWidth={2} />
+        Approve
+      </Button>
+    </>
   ) : choosing ? (
     <Segmented
       question={choices.question}
@@ -127,7 +140,17 @@ export function useAskActions({
       Answer
     </Button>
   );
-  const box = !answering ? null : doing ? (
+  const box = performing ? (
+    <PerformedForm
+      id={id}
+      size="sm"
+      onSend={(note) => {
+        answer({ kind: 'performed', id, title, project, proposalVersion, ...(note === undefined ? {} : { note }) });
+        setPerforming(false);
+      }}
+      onCancel={() => setPerforming(false)}
+    />
+  ) : !answering ? null : doing ? (
     <Suspense fallback={<span className="text-meta text-ink-3">Loading…</span>}>
       <StepList
         id={id}
@@ -142,17 +165,104 @@ export function useAskActions({
   ) : (
     <AnswerForm id={id} text={text} onText={setText} onSend={send} onCancel={() => setAnswering(false)} size="sm" />
   );
+  const shownReason = reason ?? (ask === 'approve' ? performedDisabledReason : null);
   const buttons = (
     <>
       {control}
-      {reason ? (
+      {shownReason ? (
         <span id={reasonId} className="sr-only">
-          {reason}
+          {shownReason}
         </span>
       ) : null}
     </>
   );
   return { buttons, box };
+}
+
+/** Did it myself: the button that opens the note a person's report that they did an approval's action takes. */
+export function PerformedButton({
+  open,
+  onToggle,
+  disabledReason = null,
+  describedBy,
+  size = 'md',
+  iconOnPhone = false,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  /** Why this sign-in cannot send it, or null. */
+  disabledReason?: string | null;
+  describedBy?: string | undefined;
+  size?: 'sm' | 'md';
+  /** On a phone the button shows its icon alone, its words kept for a screen reader, so a top bar fits the screen. */
+  iconOnPhone?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      size={size}
+      aria-expanded={open}
+      disabled={disabledReason !== null}
+      title={disabledReason || undefined}
+      aria-describedby={describedBy}
+      onClick={onToggle}
+      data-task-action="performed"
+    >
+      <CheckCheck aria-hidden />
+      {iconOnPhone ? <span className="max-sm:sr-only">{PERFORMED_LABEL}</span> : PERFORMED_LABEL}
+    </Button>
+  );
+}
+
+/**
+ * The line a person's report that they did an approval's action themselves
+ * takes: its name and a Note. Enter sends, Escape steps back; the caller's
+ * send carries the Undo.
+ */
+export function PerformedForm({
+  id,
+  onSend,
+  onCancel,
+  size = 'md',
+}: {
+  id: string;
+  onSend: (note: string | undefined) => void;
+  onCancel: () => void;
+  size?: 'sm' | 'md';
+}) {
+  const [note, setNote] = useState('');
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      data-task-form="performed"
+      aria-label={`${PERFORMED_LABEL}: ${id}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const words = note.trim();
+        onSend(words === '' ? undefined : words);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <span className="inline-flex h-7.5 shrink-0 items-center gap-1.5 text-label font-semibold text-ink [&_svg]:size-[15px] [&_svg]:text-ink-3">
+        <CheckCheck aria-hidden />
+        {PERFORMED_LABEL}
+      </span>
+      <Field label="Note" className="min-w-0 flex-1 basis-56">
+        <Input autoFocus value={note} onChange={(event) => setNote(event.target.value)} />
+      </Field>
+      <Button variant="primary" type="submit" size={size} data-task-confirm="performed">
+        <SendHorizontal aria-hidden />
+        Send
+      </Button>
+      <Button type="button" size={size} variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+    </form>
+  );
 }
 
 /** A box for the words that answer a question: Enter sends, Shift+Enter is a new line, Escape steps back. */

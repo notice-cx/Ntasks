@@ -8,6 +8,7 @@ import { TASK_LIMITS, WORK_DETAILS, WORK_LIMITS, type Project, type Task, type T
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { createEngine } from '../../src/engine/index.ts';
+import { MAINTENANCE } from '../../src/owner-answers.ts';
 import { cachedReads } from '../../src/store/cache.ts';
 import { AGENT, clock, newProject, OTHER, OWNER } from '../engine/helpers.ts';
 import { storeDatabase } from '../store.ts';
@@ -95,6 +96,7 @@ describe('who may decide', () => {
         [`/api/tasks/${asked.id}/dismiss`, {}],
         [`/api/tasks/${gate.id}/dispute`, {}],
         [`/api/gates/${gate.id}/resolve`, {}],
+        [`/api/gates/${gate.id}/performed`, {}],
         [`/api/gates/${steps}/steps`, { step: 1, done: true }],
         [`/api/gates/${steps}/steps`, { step: 2, stuck: 'Stopped here.' }],
         [`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown }],
@@ -126,6 +128,7 @@ describe('who may decide', () => {
       'respond',
       'dismiss',
       'resolve',
+      'performed',
       'choose',
       'dispute',
       'step',
@@ -405,6 +408,57 @@ describe('POST /api/gates/:id/resolve', () => {
       error: 'task_refused',
       detail: `${created[0]!.id} is already closed.`,
     });
+  });
+});
+
+describe('POST /api/gates/:id/performed', () => {
+  it('closes the approval as done by the person, read as done and not approved, and tells the waiting task no agent does it', async () => {
+    const { task: waiting, created } = await task({
+      requestApproval: { reason: 'Update the server to the merged commit' },
+    });
+    const gate = created[0]!;
+
+    const reported = await post(`/api/gates/${gate.id}/performed`, { note: 'Updated it from my laptop.' });
+
+    expect(reported.body.task).toMatchObject({
+      id: gate.id,
+      status: 'closed',
+      resolution: 'done',
+      closeReason: 'Did it myself: Updated it from my laptop.',
+      closedBy: 'Person',
+      answer: { option: 'done', quote: 'Updated it from my laptop.', recordedBy: 'Person', relayed: false },
+    });
+    expect((await current(gate.id)).metadata[MAINTENANCE]).toMatchObject({
+      action: 'owner_performed',
+      performedBy: 'Person',
+      verification: 'person',
+      permission: 'none',
+    });
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', labels: ['ui'], ready: true });
+    expect(await texts(waiting.id)).toEqual([
+      `Person did the action of ${gate.id} themselves, so no agent does it. Check the result yourself before continuing.`,
+    ]);
+  });
+
+  it('closes without a note, and refuses a request to do steps, a task that is not an approval and a closed approval, writing nothing', async () => {
+    const { created } = await task({ requestApproval: { reason: 'Rotate the key once' } });
+    expect((await post(`/api/gates/${created[0]!.id}/performed`, {})).body.task).toMatchObject({
+      closeReason: 'Did it myself',
+      answer: { option: 'done', quote: null },
+    });
+    const { task: plain } = await task();
+    const steps = (await doRequest()).gate;
+    const before = await Promise.all([plain.id, steps, created[0]!.id].map(current));
+    expect((await post(`/api/gates/${plain.id}/performed`, {})).body).toEqual({
+      error: 'task_refused',
+      detail: `${plain.id} is not an approval.`,
+    });
+    expect((await post(`/api/gates/${steps}/performed`, {})).status).toBe(409);
+    expect((await post(`/api/gates/${created[0]!.id}/performed`, {})).body).toEqual({
+      error: 'task_refused',
+      detail: `${created[0]!.id} is already closed.`,
+    });
+    expect(await Promise.all([plain.id, steps, created[0]!.id].map(current))).toEqual(before);
   });
 });
 

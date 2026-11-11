@@ -305,7 +305,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
 
 /**
  * A row in Waiting for you: what it asks answered in place, an approval by
- * Approve, a decision by its options, a question by Answer.
+ * Approve or Did it myself, a decision by its options, a question by Answer.
  */
 export const WaitingRow = memo(function WaitingRow({
   task,
@@ -341,6 +341,11 @@ export const WaitingRow = memo(function WaitingRow({
       UNAVAILABLE,
     ),
     chooseDisabledReason: verbReason(capabilities, writable && operationAvailable(capabilities, 'choose'), UNAVAILABLE),
+    performedDisabledReason: verbReason(
+      capabilities,
+      writable && operationAvailable(capabilities, 'performed'),
+      UNAVAILABLE,
+    ),
   });
   const closable = writable && !isGate(task) && operationAvailable(capabilities, 'dismiss');
   const choosing = askVerb(task) === 'choose' && (task.choices ?? null) !== null;

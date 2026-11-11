@@ -1,9 +1,10 @@
 /**
  * The HTTP routes of a person's decisions: answering a task that waits on
- * them, picking one of its options, declining it, approving an approval,
- * ticking the steps of a request that they do steps, accepting a task as done
- * on their own call, and disputing an approval or an acceptance an agent
- * recorded for them. Each route and body has
+ * them, picking one of its options, declining it, approving an approval or
+ * reporting that they did its action themselves, ticking the steps of a
+ * request that they do steps, accepting a task as done on their own call, and
+ * disputing an approval or an acceptance an agent recorded for them. Each
+ * route and body has
  * the shape NoticeOS's Tasks API took (scripts/hosted-task-http.mts there),
  * and an answer may also name the `proposalVersion` the person's page showed.
  * owner-answers.ts holds the rules, and each decision is one write. Only a
@@ -33,6 +34,8 @@ import {
   dismiss,
   dispute,
   markStep,
+  perform,
+  PERFORMED,
   release,
   RESPONDED,
   respond,
@@ -189,6 +192,21 @@ export async function resolveRoute(
   const projectId = projectArg(body, 'projectId', 'http');
   const reason = textArg(body, 'reason', TASK_LIMITS.reason, false);
   return decided(context, await approve(context, projectId, gateId, reason, retry(body), shownOf(body)));
+}
+
+/** POST /api/gates/:id/performed: a person's report that they did an approval's action themselves. */
+export async function performedRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  gateId: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'performed', { task: gateId });
+  only(body, ['projectId', 'note', 'proposalVersion']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  // Short enough to fit the close reason as "Did it myself: <note>".
+  const note = textArg(body, 'note', TASK_LIMITS.reason - `${PERFORMED}: `.length, false);
+  return decided(context, await perform(context, projectId, gateId, note, retry(body), shownOf(body)));
 }
 
 /** A note or a reason that may be taken off: text, or null. Undefined when the body leaves it out. */

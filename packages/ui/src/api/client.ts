@@ -146,6 +146,8 @@ export interface TasksApi {
   release(id: string, project: string, holder: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
+  /** Report that the person did the action an approval names themselves: it closes, and no agent does the action. */
+  reportPerformed(id: string, project: string, note?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Tick, untick, note or mark as stuck one step of a request to do steps. */
   markStep(id: string, project: string, marking: StepMarking, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Only the workspace's owners may create a project. */
@@ -628,6 +630,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     dispute: (id, project) => scope().dispute(id, project),
     release: (id, project, holder) => scope().release(id, project, holder),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
+    reportPerformed: (id, project, note, options) => scope().reportPerformed(id, project, note, options),
     markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
     updateProject: (project, edit) => scope().updateProject(project, edit),
@@ -857,6 +860,16 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         'POST',
         path,
         { ...(reason === undefined ? {} : { reason }), ...shownIn(sending), projectId: await projectId(project) },
+        `Approval ${id}`,
+        sending,
+      );
+    },
+    async reportPerformed(id, project, note, sending = {}) {
+      const path = `/api/gates/${encodeURIComponent(id)}/performed`;
+      await write(
+        'POST',
+        path,
+        { ...(note === undefined ? {} : { note }), ...shownIn(sending), projectId: await projectId(project) },
         `Approval ${id}`,
         sending,
       );
