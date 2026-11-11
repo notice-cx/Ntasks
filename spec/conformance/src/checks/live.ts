@@ -97,13 +97,18 @@ export const live: readonly Check[] = [
       const blocker = await file(context);
       const waiting = await file(context, { dependsOn: [blocker] });
       const dropped = async () =>
-        ((await taskOf(api, waiting)).reliesOnDropped ?? []).map((link) => [link.id, link.resolution]);
+        ((await taskOf(api, waiting)).reliesOnDropped ?? []).map((link) => [link.id, link.title, link.resolution]);
       same(await dropped(), [], `${waiting}'s dropped tasks while ${blocker} is open`);
       answered(
         await context.setup().close(blocker, { reason: 'Not needed after all', resolution: 'wont-do' }),
         `closing ${blocker} as wont-do`,
       );
-      same(await dropped(), [[blocker, 'wont-do']], `${waiting}'s dropped tasks once ${blocker} closed as wont-do`);
+      const { title } = await taskOf(api, blocker);
+      same(
+        await dropped(),
+        [[blocker, title, 'wont-do']],
+        `${waiting}'s dropped tasks once ${blocker} closed as wont-do`,
+      );
       answered(await api.update(waiting, { description: 'Still needed without it.' }), `changing ${waiting}`);
       same(await dropped(), [], `${waiting}'s dropped tasks once it changed`);
     },
