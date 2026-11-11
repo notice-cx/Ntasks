@@ -980,7 +980,7 @@ export class Writes {
         // An epic this write also changes is left without them: its links may change in the same batch.
         const named =
           placed.resolution !== null && DROPPED.includes(placed.resolution) && !written.has(epicId)
-            ? await this.#namedLinksOf(epicId, actor, at, renamed)
+            ? await this.#namedLinksOf(epicId, actor, at, renamed, written)
             : { statements: [], links: null };
         statements.push(
           this.#db
@@ -1404,7 +1404,9 @@ export class Writes {
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
     const commentId = write.comment === null ? null : crypto.randomUUID();
-    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId);
+    // A task this write changes takes no named link: the change clears its dropped list anyway.
+    const written = new Set([taskId, ...write.others.map((other) => other.taskId)]);
+    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId, written);
     const moved = [movedBy(toTask(row), write)];
     const unkept = unkeptBy(toTask(row), write) ? [taskId] : [];
     const others = await Promise.all(
@@ -1415,7 +1417,7 @@ export class Writes {
         const otherComment = other.write.comment === null ? null : crypto.randomUUID();
         moved.push(movedBy(toTask(found), other.write));
         if (unkeptBy(toTask(found), other.write)) unkept.push(other.taskId);
-        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment);
+        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment, written);
       }),
     );
     const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept);
@@ -1743,6 +1745,7 @@ export class Writes {
     at: string,
     beside: boolean,
     commentId: string | null,
+    written: ReadonlySet<string>,
   ): Promise<(gateId: string | null) => Statement[]> {
     const taskId = current.id;
     const set = write.set;
@@ -1923,7 +1926,7 @@ export class Writes {
     for (const link of addLinks) links.set(link.taskId, link.type);
     // A task dropped here relates to each open task whose text names it, so that task relies on it (droppedSince).
     if (write.close !== null && DROPPED.includes(write.close.resolution)) {
-      const linked = new Set([...links.keys(), ...current.dependents.map((link) => link.taskId)]);
+      const linked = new Set([...links.keys(), ...current.dependents.map((link) => link.taskId), ...written]);
       for (const naming of await this.#namedBy(taskId, linked)) {
         addLinks.push({ taskId: naming, type: 'related' });
         links.set(naming, 'related');
@@ -2107,6 +2110,7 @@ export class Writes {
     actor: Actor,
     at: string,
     renamed: ReadonlyMap<string, string>,
+    written: ReadonlySet<string>,
   ): Promise<{ statements: Statement[]; links: Json | null }> {
     const { results } = await this.#db
       .prepare(
@@ -2115,9 +2119,7 @@ export class Writes {
       )
       .bind(epicId)
       .all<{ id: string; type: DependencyType | null }>();
-    const naming = (await this.#namedBy(epicId, new Set(results.map((row) => row.id)))).map(
-      (id) => renamed.get(id) ?? id,
-    );
+    const naming = await this.#namedBy(epicId, new Set([...results.map((row) => row.id), ...written]));
     if (naming.length === 0) return { statements: [], links: null };
     const links = new Map(
       results.flatMap((row) => (row.type === null ? [] : [[renamed.get(row.id) ?? row.id, row.type] as const])),

@@ -32,7 +32,7 @@ protocol appears in neither table.
 | STATE-23 | `workers/api/test/engine/ready.test.ts` › "counts a dropped task that waited on this one, and leaves out one it replaces, work found from it and closed tasks" |
 | STATE-23 | `workers/api/test/engine/ready.test.ts` › "counts an open task whose text names the dropped task, in any project, by linking the two as related" |
 | STATE-23 | `workers/api/test/engine/ready.test.ts` › "counts a task named by the id it had before a move, and an epic Ntasks drops once its last task is dropped" |
-| STATE-23 | `workers/api/test/engine/ready.test.ts` › "links a task that names its epic by the id a move gives it, when the move leaves the epic dropped" |
+| STATE-23 | `workers/api/test/engine/ready.test.ts` › "leaves out a task the dropping write changes, whose change clears its list anyway" |
 | STATE-23 | `workers/api/test/engine/ready.test.ts` › "links at most NAMED_LINKS of the open tasks that name a dropped task, newest change first" |
 | STATE-23 | `workers/api/test/engine/ready.test.ts` › "takes a task off the list once the dropped task reopens" |
 | STATE-23 | `workers/api/test/api/read-tools.test.ts` › "names the linked tasks dropped since a task last changed, on the task and only on its list row" |

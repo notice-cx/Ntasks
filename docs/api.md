@@ -1494,9 +1494,11 @@ drops a task, or Ntasks closes an epic as no longer needed because every task
 under it was dropped, the same write links the dropped task as `related` to
 each open task, in any project, whose description, acceptance, notes or
 design names its id or one of its former ids as a whole id (not inside a
-longer word or a child's id, such as `web-a1.2` for `web-a1`), and that it
-has no link with yet: at most 20, the
-most recently changed first. The link is the dropped task's own, recorded in
+longer word or a child's id, such as `web-a1.2` for `web-a1`), that it has
+no link with yet, and that the same write does not change, since any change
+empties the list anyway: at most 20, the most recently changed first. An
+epic that write itself edits, such as by removing its `keep-open` label,
+takes no such links. The link is the dropped task's own, recorded in
 its history with the close, so the tasks that name it are unchanged and list
 it in `reliesOnDropped`. Finding them reads one index entry and one row for
 each task not closed: about 1,200 rows on a workspace of 1,000 open tasks.

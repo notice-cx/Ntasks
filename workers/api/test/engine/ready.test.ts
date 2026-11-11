@@ -686,11 +686,29 @@ describe('dropped links', () => {
     ]);
   });
 
-  it('links a task that names its epic by the id a move gives it, when the move leaves the epic dropped', async () => {
+  it('leaves out a task the dropping write changes, whose change clears its list anyway', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
     const project = await newProject(tasks);
     const other = await newProject(tasks);
+    const shelved = await make(tasks, project.id, 'Shelve the old site');
+    const edited = await make(tasks, project.id, 'Edit the notes', { title: '', notes: `After ${shelved.id}.` });
+    const untouched = await make(tasks, project.id, 'Tell the team', { title: '', notes: `After ${shelved.id}.` });
+    time.advance(1);
+    await tasks.writeTask(
+      project.id,
+      shelved.id,
+      {
+        expectedVersion: shelved.version,
+        close: { reason: 'Dropped', resolution: 'wont-do' },
+        others: [{ taskId: edited.id, expectedVersion: edited.version, set: { priority: 1 } }],
+      },
+      AGENT,
+    );
+    const links = (await tasks.getTask(project.id, shelved.id))?.dependencies.map((link) => link.taskId);
+    expect(links).toEqual([untouched.id]);
+
+    // A move that takes a naming task out of its epic, leaving the epic with only dropped tasks, changes that task.
     const plan = await make(tasks, project.id, 'Plan the move', { title: '', type: 'epic' });
     const dropped = await make(tasks, project.id, 'Move the images', { title: '', parentId: plan.id });
     const leaving = await make(tasks, project.id, 'Move the fonts', {
@@ -704,10 +722,10 @@ describe('dropped links', () => {
     const [moved] = (
       await tasks.moveTasks(other.id, [{ taskId: leaving.id, expectedVersion: current.version, parentId: null }], AGENT)
     ).tasks;
-
     const epic = await tasks.getTask(project.id, plan.id);
     expect(epic?.close).toMatchObject({ resolution: 'no-longer-needed' });
-    expect(epic?.dependencies.map((link) => [link.taskId, link.type])).toEqual([[moved!.id, 'related']]);
+    expect(epic?.dependencies).toEqual([]);
+    expect((await tasks.getTask(other.id, moved!.id))?.reliesOnDropped).toEqual([]);
   });
 
   it('links at most NAMED_LINKS of the open tasks that name a dropped task, newest change first', async () => {
