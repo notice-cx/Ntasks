@@ -519,3 +519,115 @@ describe('epics', () => {
     expect((await tasks.listEpics(project.id))[0]).toMatchObject({ closedChildren: 2, eligibleForClose: true });
   });
 });
+
+describe('dropped links', () => {
+  async function drop(tasks: TaskEngine, projectId: string, task: Task, resolution: 'wont-do' | 'no-longer-needed') {
+    const current = (await tasks.getTask(projectId, task.id))!;
+    await tasks.writeTask(
+      projectId,
+      task.id,
+      { expectedVersion: current.version, close: { reason: 'Dropped', resolution } },
+      AGENT,
+    );
+  }
+
+  it('names the linked tasks dropped after a task last changed, in every read, until it changes again', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const shelved = await make(tasks, project.id, 'Shelve the old site');
+    const retired = await make(tasks, project.id, 'Retire the old app');
+    const shipped = await make(tasks, project.id, 'Ship the API');
+    const page = await make(tasks, project.id, 'Build the page', {
+      title: '',
+      links: [
+        { direction: 'depends-on', taskId: shelved.id, type: 'blocks' },
+        { direction: 'depends-on', taskId: retired.id, type: 'related' },
+        { direction: 'depends-on', taskId: shipped.id, type: 'blocks' },
+      ],
+    });
+    const unlinked = await make(tasks, project.id, 'Move the docs', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: shelved.id, type: 'discovered-from' }],
+    });
+    time.advance(1);
+    await drop(tasks, project.id, shelved, 'wont-do');
+    await drop(tasks, project.id, retired, 'no-longer-needed');
+    await close(tasks, project.id, shipped);
+
+    const expected = [
+      { taskId: shelved.id, title: 'Shelve the old site', resolution: 'wont-do' },
+      { taskId: retired.id, title: 'Retire the old app', resolution: 'no-longer-needed' },
+    ].sort((a, b) => (a.taskId < b.taskId ? -1 : 1));
+    const flagged = await tasks.getTask(project.id, page.id);
+    expect(flagged?.reliesOnDropped).toEqual(expected);
+    expect(flagged?.ready).toBe(true);
+    const board = await tasks.listBoard(project.id, { statuses: ['open'] });
+    expect(board.find((task) => task.id === page.id)?.reliesOnDropped).toEqual(expected);
+    expect((await tasks.getTask(project.id, unlinked.id))?.reliesOnDropped).toHaveLength(1);
+
+    time.advance(1);
+    await tasks.writeTask(
+      project.id,
+      page.id,
+      { expectedVersion: flagged!.version, set: { description: 'Builds on the new site.' } },
+      AGENT,
+    );
+    expect((await tasks.getTask(project.id, page.id))?.reliesOnDropped).toEqual([]);
+    await tasks.writeTask(project.id, unlinked.id, { expectedVersion: 1, removeLinks: [shelved.id] }, AGENT);
+    expect((await tasks.getTask(project.id, unlinked.id))?.reliesOnDropped).toEqual([]);
+  });
+
+  it('counts a dropped task that waited on this one, and leaves out one it replaces, work found from it and closed tasks', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const api = await make(tasks, project.id, 'Ship the API');
+    const page = await make(tasks, project.id, 'Build the page on the API', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: api.id, type: 'blocks' }],
+    });
+    const found = await make(tasks, project.id, 'Fix the typo found on the way', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: api.id, type: 'discovered-from' }],
+    });
+    const old = await make(tasks, project.id, 'Old plan');
+    const plan = await make(tasks, project.id, 'New plan', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: old.id, type: 'supersedes' }],
+    });
+    const done = await make(tasks, project.id, 'Closed already', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: page.id, type: 'related' }],
+    });
+    await close(tasks, project.id, done);
+    time.advance(1);
+    await drop(tasks, project.id, page, 'wont-do');
+    await drop(tasks, project.id, found, 'wont-do');
+    await drop(tasks, project.id, old, 'no-longer-needed');
+
+    expect((await tasks.getTask(project.id, api.id))?.reliesOnDropped).toEqual([
+      { taskId: page.id, title: 'Build the page on the API', resolution: 'wont-do' },
+    ]);
+    expect((await tasks.getTask(project.id, plan.id))?.reliesOnDropped).toEqual([]);
+    expect((await tasks.getTask(project.id, done.id))?.reliesOnDropped).toEqual([]);
+  });
+
+  it('takes a task off the list once the dropped task reopens', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const blocker = await make(tasks, project.id, 'Blocker');
+    const waiting = await make(tasks, project.id, 'Waiting', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
+    time.advance(1);
+    await drop(tasks, project.id, blocker, 'wont-do');
+    expect((await tasks.getTask(project.id, waiting.id))?.reliesOnDropped).toHaveLength(1);
+
+    const closed = (await tasks.getTask(project.id, blocker.id))!;
+    await tasks.writeTask(project.id, blocker.id, { expectedVersion: closed.version, reopen: true }, AGENT);
+    expect((await tasks.getTask(project.id, waiting.id))?.reliesOnDropped).toEqual([]);
+  });
+});

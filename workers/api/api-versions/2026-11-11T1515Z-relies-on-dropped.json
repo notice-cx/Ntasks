@@ -1,0 +1,12 @@
+{
+  "added": "`reliesOnDropped` on a task: the tasks it relies on that closed as won't do or no longer needed after it last changed",
+  "shapes": {
+    "task": {
+      "reliesOnDropped": "array",
+      "reliesOnDropped[]": "object",
+      "reliesOnDropped[].id": "string",
+      "reliesOnDropped[].title": "string",
+      "reliesOnDropped[].resolution": "string"
+    }
+  }
+}

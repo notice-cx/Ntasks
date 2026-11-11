@@ -41,9 +41,9 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-10: list_tasks takes activity, one or more of active, quiet and stalled, to list tasks in progress by how recently their holder changed or commented on them: active within the hour, quiet after that, stalled after a day or with nothing recorded. Each names its activity, and the answer counts each group in activities. Workflow step 2 says how to keep watch.',
   '2026-11-10: pass model as the id of the model you run as, such as claude-opus-5-5. Ntasks shows it by its name, Claude Opus 5.5, and shows each agent by its product, such as Claude Code, whatever name it signed in under.',
   "2026-11-11: create_task's approval, and each create_tasks entry's, takes title and description as request_human_approval does; one text whose first line is the title still works. The answer's lint also advises on the approval it opens, naming it approval (Writing a task: An approval).",
+  '2026-11-11: get_task and list_tasks show reliesOnDropped on a task that relies on one closed as wont-do or no-longer-needed since the task last changed: one it links to, or one that waits on it or relates to it. Check that the task still makes sense, then edit it, remove the link or close it; any change to the task clears the list.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */

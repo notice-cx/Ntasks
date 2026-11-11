@@ -348,6 +348,36 @@ describe('list_tasks', () => {
     expect(await stalled((await make('Write the launch post')).id)).toBe(false);
   });
 
+  it('names the linked tasks dropped since a task last changed, on the task and only on its list row', async () => {
+    const later = clock('2026-11-06T12:00:00.000Z');
+    const own = api({ now: later.now });
+    const where = await newProject(own.engine);
+    const shelved = (await own.engine.createTask(where.id, { title: 'Shelve the old site' }, OWNER)).task;
+    const page = (
+      await own.engine.createTask(
+        where.id,
+        { title: 'Build the page', links: [{ direction: 'depends-on', taskId: shelved.id, type: 'blocks' }] },
+        OWNER,
+      )
+    ).task;
+    const other = (await own.engine.createTask(where.id, { title: 'Write the post' }, OWNER)).task;
+    later.advance(1);
+    await own.engine.writeTask(
+      where.id,
+      shelved.id,
+      { expectedVersion: 1, close: { reason: 'The old site stays.', resolution: 'wont-do' } },
+      OWNER,
+    );
+
+    const answer = await read<{ task: Record<string, unknown> }>(own, 'get_task', { task: page.id });
+    expect(answer.task.reliesOnDropped).toEqual([
+      { id: shelved.id, title: 'Shelve the old site', resolution: 'wont-do' },
+    ]);
+    const rows = (await read<Listed>(own, 'list_tasks', { project: where.id })).tasks;
+    expect(rows.find((row) => row.id === page.id)).toMatchObject({ reliesOnDropped: answer.task.reliesOnDropped });
+    expect(rows.find((row) => row.id === other.id)).not.toHaveProperty('reliesOnDropped');
+  });
+
   it('groups tasks in progress as active within the hour, quiet until a day and stalled after, and lists the groups asked for', async () => {
     const later = clock('2026-11-06T12:00:00.000Z');
     const own = api({ now: later.now });
