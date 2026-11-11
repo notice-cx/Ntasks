@@ -1378,8 +1378,8 @@ misspelt filter fails instead of being ignored.
 
 | Route | Parameters | Answer |
 |---|---|---|
-| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, and `icon`: the address of the icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none |
-| `GET /api/tasks/projects/:projectId/icon` | optionally `v`, as `icon` gives it | The icon's bytes, with the image type the bytes show (`image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon. |
+| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, `icon`: the address of the light icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none, and `darkIcon`: the address of the icon it declares for a dark colour scheme, such as `/api/tasks/projects/<projectId>/icon?scheme=dark&v=20261110120000000`, or null |
+| `GET /api/tasks/projects/:projectId/icon` | optionally `scheme`, `light` (the default) or `dark`, and `v`, as `icon` and `darkIcon` give them | The icon's bytes, with the image type the bytes show (`image/svg+xml`, `image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` or `darkIcon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon for that scheme. |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, `move`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `performed`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays`, `field.<key>` and `externalLinks=none` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. `externalLinks=none` leaves the tasks' external links unread: each task's `externalLinks` is empty, and `GET /api/tasks/:id` reads them; the web app's board sends it, with `stage` and `activity` too. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays`, `field.<key>` and `externalLinks` are refused with `label`, and `limit` and `after` without it. |
@@ -1494,15 +1494,26 @@ and so does reopening the dropped task.
 
 ### A project's website and icon
 
-When an owner saves a project's website, the Worker reads the website's icon
-before it answers, and keeps it in the task store, so no page reads the website
-again. It reads the page's head for `<link rel="apple-touch-icon">` and
-`<link rel="icon">` tags and asks them in this order: an SVG, sharp at any
-size; an apple-touch-icon or an icon of 32 px or more, largest first; an icon
-with no declared size; a smaller one; then `/favicon.ico`. It keeps the first
-one whose own bytes are an SVG, PNG, ICO, JPEG, GIF or WebP image of at most
-100 KB, and serves it with the type the bytes show, whatever type the website
-claimed.
+When an owner saves a project's website, the Worker reads the website's icons
+before it answers, and keeps them in the task store, so no page reads the
+website again: a light icon, and a dark one when the website declares one. It
+reads the page's head for `<link rel="apple-touch-icon">` and
+`<link rel="icon">` tags. A tag whose `media` query asks for
+`prefers-color-scheme: dark`, without `not`, names a dark icon; every other
+tag names a light one. For each scheme it asks them in this order: an SVG,
+sharp at any size; an apple-touch-icon or an icon of 32 px or more, largest
+first; an icon with no declared size; a smaller one. The light icon's last
+candidate is `/favicon.ico`; a dark icon is only one the page declares. For
+each it keeps the first one whose own bytes are an SVG, PNG, ICO, JPEG, GIF or
+WebP image of at most 100 KB, and serves it with the type the bytes show,
+whatever type the website claimed.
+
+The web app draws the dark icon while its own theme is dark, light, dark or
+the system's, and the light one when there is none; while its theme is light
+it draws only the light icon, since a dark-scheme mark is drawn for a dark
+background. An SVG icon that changes its colours with its own
+`prefers-color-scheme` query follows the `color-scheme` of the element it is
+drawn in, which the app's theme sets, in Chromium.
 
 An SVG can run script, so the Worker keeps one only once it has removed from
 it everything that runs or reaches outside it: scripts, `foreignObject`,
@@ -1518,9 +1529,9 @@ web app draws icons only in `<img>`.
 Every read is http or https, sends no cookie, follows at most 5 redirects, none
 to a local or private address, and the whole search stops after 8 seconds. A
 website with no icon the Worker keeps leaves the project with none, and the web
-app shows its letter instead. Saving a new website replaces the icon; saving the
-same website again reads it again. A backup leaves the icons out: after a
-restore, saving each website again reads its icon.
+app shows its letter instead. Saving a new website replaces its icons; saving
+the same website again reads them again. A backup leaves the icons out: after
+a restore, saving each website again reads its icons.
 
 ### Work in hand
 

@@ -1,0 +1,11 @@
+{
+  "added": "`darkIcon` on each project `GET /api/tasks/projects` and `PATCH /api/tasks/projects` answer: the address of the icon its website declares for a dark colour scheme, or null; and `scheme`, `light` or `dark`, on `GET /api/tasks/projects/:projectId/icon`",
+  "routes": {
+    "GET /api/tasks/projects": {
+      "projects[].darkIcon": "null|string"
+    },
+    "PATCH /api/tasks/projects": {
+      "project.darkIcon": "null|string"
+    }
+  }
+}

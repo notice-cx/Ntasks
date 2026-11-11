@@ -1,5 +1,6 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { createContext, useContext, useState, type ComponentProps } from 'react';
+import { ScopeTheme } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 
 /**
@@ -62,7 +63,9 @@ export function ThemeScope({
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   return (
     <div ref={setElement} className={cn(theme !== 'system' && theme, className)} {...props}>
-      <PortalContainer.Provider value={element}>{children}</PortalContainer.Provider>
+      <ScopeTheme.Provider value={theme}>
+        <PortalContainer.Provider value={element}>{children}</PortalContainer.Provider>
+      </ScopeTheme.Provider>
     </div>
   );
 }

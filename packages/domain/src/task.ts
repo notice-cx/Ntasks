@@ -182,7 +182,13 @@ export interface Project {
   readonly websiteUrl: string | null;
   /** When the icon kept for it was read from its website; null when it has none. */
   readonly iconAt: string | null;
+  /** When the icon its website declares for a dark colour scheme was read; null when it has none. */
+  readonly darkIconAt: string | null;
 }
+
+/** The colour schemes a project keeps an icon for: light, which any page may draw, and dark, for a dark page. */
+export const ICON_SCHEMES = ['light', 'dark'] as const;
+export type IconScheme = (typeof ICON_SCHEMES)[number];
 
 /** The image types a project's icon may have. An SVG, which can run script, is kept only once made safe (workers/api/src/svg-icon.ts). */
 export const PROJECT_ICON_TYPES = [
@@ -204,6 +210,12 @@ export interface ProjectIcon {
   readonly sourceUrl: string;
   readonly contentType: ProjectIconType;
   readonly bytes: ArrayBuffer;
+}
+
+/** The icons read from a project's website: the light one, and the dark one when the website declares one. */
+export interface ProjectIcons {
+  readonly light: ProjectIcon | null;
+  readonly dark: ProjectIcon | null;
 }
 
 /** A project's icon as the store keeps it. */
