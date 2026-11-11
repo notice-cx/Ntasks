@@ -246,6 +246,29 @@ describe('the board', () => {
       fireEvent.keyDown(within(menu).getByRole('menuitem', { name: 'Back' }), { key: 'm' });
       expect(task(api)?.assignee).toBeNull();
     });
+
+    it('puts focus on the row’s menu button when the menu a key opened closes', async () => {
+      renderApp('/tasks');
+      const row = await press('a');
+      await screen.findByRole('menu', { name: 'Assign web-t5w3 to' });
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      await waitFor(() =>
+        expect(document.activeElement).toBe(within(row).getByRole('button', { name: 'Actions for web-t5w3' })),
+      );
+    });
+
+    it('undoes a priority picked from the row’s menu, and says so, after the menu has closed', async () => {
+      const api = createFixtureTasksApi();
+      renderApp('/tasks', api);
+      await press('p');
+      fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Top' }));
+      await waitFor(() => expect(task(api)?.priority).toBe(0));
+      expect(screen.queryByRole('menu')).toBeNull();
+      const saved = (await screen.findByText('Saved the priority')).closest('li') as HTMLElement;
+      fireEvent.click(within(saved).getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(task(api)?.priority).toBe(3));
+      expect(await screen.findByText('Reverted the priority')).toBeTruthy();
+    });
   });
 
   it('parks a task from its menu, until the date given', async () => {

@@ -1,5 +1,5 @@
 import { CircleAlert, Inbox, ListFilter, Plus, Search, X } from 'lucide-react';
-import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { startTransition, useEffect, useMemo, useOptimistic, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
 import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
@@ -50,8 +50,13 @@ const NARROW = '(width < 48rem)';
 /** Rows a group shows per press: enough to fill a laptop screen. */
 const PAGE_ROWS = 25;
 
-/** Rows the first frame after a change of view or order draws: more than a screen holds. */
-const FIRST_FRAME_ROWS = 40;
+/** A row's height in pixels, as `Row` draws it (`h-9`). */
+const ROW_PX = 36;
+
+/** Rows the first frame after a change of view or order draws: as many as the window is tall enough to show. */
+function firstFrameRows(): number {
+  return Math.ceil(window.innerHeight / ROW_PX);
+}
 
 /** The board's views. Waiting for you is the sidebar's; the tabs offer the rest, and Epics while one project is in view. */
 const VIEWS = ['all', 'active', 'done', 'waiting', 'epics'] as const;
@@ -119,10 +124,13 @@ export function TasksBoard() {
     assignee: params.get('assignee') ?? 'all',
     fields: fieldFiltersOf(params),
   };
-  const asked = viewOf(params.get('view'));
   const named = sortOf(params);
   // Every address is read into a new object; one order keeps one object, so the groups sorted by it are kept.
-  const sort = useMemo(() => named, [named?.by, named?.direction]);
+  const addressSort = useMemo(() => named, [named?.by, named?.direction]);
+  // React Router changes the address in a transition, and the browser paints a frame before it runs. A view or an
+  // order picked here is shown at once instead, so its rows are drawn in the frame that paints the press.
+  const [asked, showView] = useOptimistic(viewOf(params.get('view')));
+  const [sort, showSort] = useOptimistic(addressSort);
   const composing = params.get('new') === '1' || composeRequested(location.state);
   // A filter by custom field narrows the server's read to the tasks holding the value, which would shrink every
   // epic's counts; the Epics view reads the whole project and keeps those filters in the address for the task views.
@@ -135,7 +143,7 @@ export function TasksBoard() {
   const tabValue: View = epicsView ? 'epics' : view;
   // One set of views: in the top bar, or below 768 px on a row of its own under it.
   const narrow = useMedia(NARROW);
-  const views = <Tabs label="View" items={tabs} value={tabValue} onChange={(next) => setParam('view', next)} />;
+  const views = <Tabs label="View" items={tabs} value={tabValue} onChange={pickView} />;
   const epics = useMemo(
     () =>
       epicsView && epicsProject !== null && epicsProject.ok
@@ -206,6 +214,13 @@ export function TasksBoard() {
     setParams(kept, { replace: true });
   }
 
+  function pickView(next: View) {
+    startTransition(() => {
+      showView(next);
+      setParam('view', next);
+    });
+  }
+
   /** Puts the sort chosen in the address; each list's own order takes none. */
   function pickSort(next: PageSort | null) {
     const query = new URLSearchParams(params);
@@ -213,7 +228,10 @@ export function TasksBoard() {
       if (value === '') query.delete(name);
       else query.set(name, value);
     }
-    setParams(query, { replace: true });
+    startTransition(() => {
+      showSort(next);
+      setParams(query, { replace: true });
+    });
   }
 
   function openComposer() {
@@ -422,7 +440,7 @@ function Groups({
   useEffect(() => {
     if (drawn !== layout) startTransition(() => setDrawn(layout));
   }, [drawn, layout]);
-  let room = drawn === layout ? Infinity : FIRST_FRAME_ROWS;
+  let room = drawn === layout ? Infinity : firstFrameRows();
   /** How many of a group's rows this draw shows: up to its limit, within the first frame's rows left. */
   const take = (total: number, limit: number) => {
     const count = Math.min(total, limit, room);
@@ -433,21 +451,28 @@ function Groups({
   const delivery = useDeliveryWaits(board, filters, view === 'waiting');
   const deliveryGroups = DELIVERY_GROUPS.filter((group) => delivery[group.wait].length > 0);
   const projects = useMemo(() => new Map(board.projects.map((project) => [project.key, project])), [board.projects]);
-  // Worked out once per read, answer and sort, so a change of view or of folds alone does not group every task again.
-  const groups = useMemo(() => {
+  // Worked out once per read and answer, so a change of view, of folds or of order alone does not group every task again.
+  const grouped = useMemo(() => {
     const fetchedAt = (task: BoardTask) => projects.get(task.project)?.fetchedAt ?? null;
     // An answered decision leaves its group at once, while its Undo window runs and until a later read says what the server holds.
     const inbox = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
-    const grouped = groupRows(
+    const rows = groupRows(
       board.rows.filter((task) => !hides(task.id, fetchedAt(task))),
       board.statuses,
       board.held,
     );
-    grouped.waiting = [...inbox, ...grouped.waiting];
-    if (sort !== null)
-      for (const mark of Object.keys(grouped) as StatusMarkKey[]) grouped[mark] = sorted(grouped[mark], sort);
-    return grouped;
-  }, [board.inbox, board.rows, board.statuses, board.held, projects, hides, sort]);
+    rows.waiting = [...inbox, ...rows.waiting];
+    return rows;
+  }, [board.inbox, board.rows, board.statuses, board.held, projects, hides]);
+  // Only the groups drawn open are sorted, so a folded Done group of a thousand tasks costs a change of order nothing.
+  const isOpen = (mark: StatusMarkKey) => mark === 'waiting' || view === 'done' || !folded.has(mark);
+  const sortedMarks = VIEW_GROUPS[view].filter(isOpen).join(' ');
+  const groups = useMemo(() => {
+    if (sort === null) return grouped;
+    const next = { ...grouped };
+    for (const mark of sortedMarks.split(' ') as StatusMarkKey[]) next[mark] = sorted(grouped[mark], sort);
+    return next;
+  }, [grouped, sort, sortedMarks]);
   const capabilities = useCapabilities();
   const writable = writesAvailable(capabilities);
   // The holders of every task read for the projects in view, not only of the rows the filters keep, and of rows only the search found.
@@ -535,7 +560,7 @@ function Groups({
           );
         }
         // In the Done view the one group stays open.
-        const open = view === 'done' || !folded.has(mark);
+        const open = isOpen(mark);
         const drawnRows = open ? take(rows.length, limit) : 0;
         return (
           <section key={mark} aria-label={STATUS_MARK_LABELS[mark]} data-group={mark}>

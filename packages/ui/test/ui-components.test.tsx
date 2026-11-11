@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { Ellipsis } from 'lucide-react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -125,6 +125,48 @@ describe('a menu', () => {
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'z' });
     expect(onPark).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('opened from the keyboard, puts focus back on its trigger when an item runs or Escape closes it', async () => {
+    const onPark = vi.fn();
+    render(<Actions onClaim={() => undefined} onPark={onPark} />);
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    // Enter or Space on a focused button presses it.
+    const open = () => {
+      trigger.focus();
+      fireEvent.click(trigger);
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(trigger.getAttribute('aria-controls')).toBe(screen.getByRole('dialog').id);
+    };
+
+    open();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: /Park/ }));
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'z' });
+    expect(onPark).toHaveBeenCalledOnce();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    open();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('leaves focus where it went when it closes because focus moved out of it', async () => {
+    render(
+      <>
+        <Actions onClaim={() => undefined} onPark={() => undefined} />
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+    elsewhere.focus();
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    // Focus would come back on the next task if it were coming back at all.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    expect(document.activeElement).toBe(elsewhere);
   });
 
   it('ticks the value a picking menu holds, opens on it, and keeps a field for another value outside the menu', () => {

@@ -32,14 +32,7 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../c
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
 import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
 import type { TasksCapabilities } from '../../api/types';
-import {
-  fieldAvailable,
-  operationAvailable,
-  useClaimTask,
-  useCloseTask,
-  useUpdateTask,
-  verbReason,
-} from '../../hooks/useTasks';
+import { fieldAvailable, operationAvailable, useClaimTask, useUpdateTask, verbReason } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
 import { calendarDay, useTimeZone } from '../../lib/dates';
 import { ageMs, formatAge, formatMinutes } from '../../lib/format';
@@ -223,14 +216,10 @@ function Holder({ task }: { task: BoardTask }) {
 /** A task in one of the board's groups: its marks, id, title and facts, then its actions on hover, holder and age. */
 export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTask; context: RowContext }) {
   const { capabilities } = context;
-  const navigate = useNavigate();
   const paths = usePaths();
   const claim = useClaimTask();
-  const close = useCloseTask();
-  const update = useUpdateTask();
   const [form, setForm] = useState<null | 'park' | 'close'>(null);
   const [menu, setMenu] = useState<MenuList | null>(null);
-  const save = useFieldSave(task.id, task.project);
   const closeAs = useCloseAs({
     id: task.id,
     title: task.title,
@@ -241,9 +230,13 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
   });
   const mark = statusMarkFor(task, context.statuses, context.held);
   const done = task.status === 'closed';
-  const busy = claim.isPending || close.isPending || update.isPending;
   const can = {
-    claim: context.actionable && !done && task.assignee === null && fieldAvailable(capabilities, 'claim') && !busy,
+    claim:
+      context.actionable &&
+      !done &&
+      task.assignee === null &&
+      fieldAvailable(capabilities, 'claim') &&
+      !claim.isPending,
     park: context.actionable && !done && fieldAvailable(capabilities, 'defer'),
     closeDone: context.actionable && !done && !declinedOnClose(task) && operationAvailable(capabilities, 'close'),
     closeAs: context.actionable && !done && operationAvailable(capabilities, closeOperation(task)),
@@ -304,10 +297,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
             onList={setMenu}
             can={can}
             people={context.people}
-            onOpen={() => void navigate(paths.task(task.id))}
             onClaim={() => void claimIt()}
-            onAssign={(next) => void save(assigneeChange(task, next))}
-            onPriority={(next) => void save(priorityChange(task, next))}
             onPark={park}
             onCloseDone={() => {
               closeAs.cancel();
@@ -346,7 +336,6 @@ export const WaitingRow = memo(function WaitingRow({
   writable: boolean;
 }) {
   const { capabilities } = context;
-  const navigate = useNavigate();
   const paths = usePaths();
   const closeAs = useCloseAs({
     id: task.id,
@@ -399,7 +388,6 @@ export const WaitingRow = memo(function WaitingRow({
             onList={setMenu}
             can={{ claim: false, park: false, closeDone: false, closeAs: closable, assign: false, priority: false }}
             people={context.people}
-            onOpen={() => void navigate(paths.task(task.id))}
             onCloseAs={closeAs.pick}
           />
         </RowActions>
@@ -416,39 +404,53 @@ export const WaitingRow = memo(function WaitingRow({
 /** The lists a row's menu shows: its actions, the ways a close ends, who to give the task to, its priorities. */
 type MenuList = 'main' | 'close' | 'assign' | 'priority';
 
+/** A row's menu: its task, the list it shows and what its items run. */
+interface TaskMenuProps {
+  task: BoardTask;
+  /** The list shown, null while the menu is closed. */
+  list: MenuList | null;
+  onList: (list: MenuList | null) => void;
+  can: { claim: boolean; park: boolean; closeDone: boolean; closeAs: boolean; assign: boolean; priority: boolean };
+  people: readonly string[];
+  onClaim?: () => void;
+  onPark?: () => void;
+  onCloseDone?: () => void;
+  onCloseAs: (resolution: NotDone) => void;
+}
+
 /**
  * A row's menu: Open, Claim, Assign to, Priority, Park, then Close as, which
  * lists the ways a close can end, and Copy id. Assign to, Priority and Close
  * as show their list in the menu's place. An item this sign-in cannot run is
- * left out. `list` is the list shown, null while the menu is closed.
+ * left out.
  */
-function TaskMenu({
+function TaskMenu(props: TaskMenuProps) {
+  const { task, list, onList } = props;
+  return (
+    <Menu open={list !== null} onOpenChange={(open) => onList(open ? 'main' : null)}>
+      <MenuTrigger asChild>
+        <IconButton size="sm" label={`Actions for ${task.id}`} icon={<Ellipsis aria-hidden />} />
+      </MenuTrigger>
+      {/* The lists, and the navigation and saves they run, mount only while the menu is open. */}
+      {list === null ? null : <TaskMenuList {...props} list={list} />}
+    </Menu>
+  );
+}
+
+function TaskMenuList({
   task,
   list,
   onList,
   can,
   people,
-  onOpen,
   onClaim,
-  onAssign,
-  onPriority,
   onPark,
   onCloseDone,
   onCloseAs,
-}: {
-  task: BoardTask;
-  list: MenuList | null;
-  onList: (list: MenuList | null) => void;
-  can: { claim: boolean; park: boolean; closeDone: boolean; closeAs: boolean; assign: boolean; priority: boolean };
-  people: readonly string[];
-  onOpen: () => void;
-  onClaim?: () => void;
-  onAssign?: (assignee: string) => void;
-  onPriority?: (priority: string) => void;
-  onPark?: () => void;
-  onCloseDone?: () => void;
-  onCloseAs: (resolution: NotDone) => void;
-}) {
+}: TaskMenuProps & { list: MenuList }) {
+  const navigate = useNavigate();
+  const paths = usePaths();
+  const save = useFieldSave(task.id, task.project);
   const closable = can.closeDone || can.closeAs;
   const back = (
     <MenuItem key="back" icon={<ChevronLeft aria-hidden />} keepOpen onSelect={() => onList('main')}>
@@ -458,10 +460,9 @@ function TaskMenu({
   const close = () => onList(null);
   const editor =
     list === 'assign' ? assigneeEditor(task, people, task.actors) : list === 'priority' ? priorityEditor(task) : null;
-  const pick = list === 'assign' ? onAssign : onPriority;
   const choose = (next: string) => {
     close();
-    pick?.(next);
+    void save(list === 'assign' ? assigneeChange(task, next) : priorityChange(task, next));
   };
   const label =
     list === 'close'
@@ -472,95 +473,95 @@ function TaskMenu({
           ? `Priority of ${task.id}`
           : `Actions for ${task.id}`;
   return (
-    <Menu open={list !== null} onOpenChange={(open) => onList(open ? 'main' : null)}>
-      <MenuTrigger asChild>
-        <IconButton size="sm" label={`Actions for ${task.id}`} icon={<Ellipsis aria-hidden />} />
-      </MenuTrigger>
-      <MenuContent
-        label={label}
-        align="end"
-        panelKey={list ?? 'main'}
-        footer={editor ? factMenuFooter(label, editor, choose) : null}
-      >
-        {list === 'close'
-          ? [
-              back,
-              <MenuSeparator key="separator" />,
-              ...(can.closeDone
+    <MenuContent
+      label={label}
+      align="end"
+      panelKey={list}
+      footer={editor ? factMenuFooter(label, editor, choose) : null}
+    >
+      {list === 'close'
+        ? [
+            back,
+            <MenuSeparator key="separator" />,
+            ...(can.closeDone
+              ? [
+                  <MenuItem key="done" icon={<Check aria-hidden />} onSelect={onCloseDone}>
+                    Done
+                  </MenuItem>,
+                ]
+              : []),
+            ...(can.closeAs
+              ? NOT_DONE.map((resolution) => (
+                  <MenuItem key={resolution} onSelect={() => onCloseAs(resolution)}>
+                    {RESOLUTION_LABELS[resolution]}
+                  </MenuItem>
+                ))
+              : []),
+          ]
+        : editor
+          ? [back, <MenuSeparator key="separator" />, ...factMenuItems(editor, choose)]
+          : [
+              <MenuItem
+                key="open"
+                icon={<ArrowUpRight aria-hidden />}
+                shortcut="↵"
+                onSelect={() => void navigate(paths.task(task.id))}
+              >
+                Open
+              </MenuItem>,
+              ...(can.claim && onClaim
                 ? [
-                    <MenuItem key="done" icon={<Check aria-hidden />} onSelect={onCloseDone}>
-                      Done
+                    <MenuItem key="claim" icon={<Hand aria-hidden />} shortcut="M" onSelect={onClaim}>
+                      Claim
                     </MenuItem>,
                   ]
                 : []),
-              ...(can.closeAs
-                ? NOT_DONE.map((resolution) => (
-                    <MenuItem key={resolution} onSelect={() => onCloseAs(resolution)}>
-                      {RESOLUTION_LABELS[resolution]}
-                    </MenuItem>
-                  ))
+              ...(can.assign
+                ? [
+                    <MenuItem
+                      key="assign"
+                      icon={<UserPlus aria-hidden />}
+                      shortcut="A"
+                      keepOpen
+                      onSelect={() => onList('assign')}
+                    >
+                      Assign to
+                    </MenuItem>,
+                  ]
                 : []),
-            ]
-          : editor
-            ? [back, <MenuSeparator key="separator" />, ...factMenuItems(editor, choose)]
-            : [
-                <MenuItem key="open" icon={<ArrowUpRight aria-hidden />} shortcut="↵" onSelect={onOpen}>
-                  Open
-                </MenuItem>,
-                ...(can.claim && onClaim
-                  ? [
-                      <MenuItem key="claim" icon={<Hand aria-hidden />} shortcut="M" onSelect={onClaim}>
-                        Claim
-                      </MenuItem>,
-                    ]
-                  : []),
-                ...(can.assign && onAssign
-                  ? [
-                      <MenuItem
-                        key="assign"
-                        icon={<UserPlus aria-hidden />}
-                        shortcut="A"
-                        keepOpen
-                        onSelect={() => onList('assign')}
-                      >
-                        Assign to
-                      </MenuItem>,
-                    ]
-                  : []),
-                ...(can.priority && onPriority
-                  ? [
-                      <MenuItem
-                        key="priority"
-                        icon={<PriorityMark priority={task.priority} label={null} />}
-                        shortcut="P"
-                        keepOpen
-                        onSelect={() => onList('priority')}
-                      >
-                        Priority
-                      </MenuItem>,
-                    ]
-                  : []),
-                ...(can.park && onPark
-                  ? [
-                      <MenuItem key="park" icon={<Moon aria-hidden />} shortcut="Z" onSelect={onPark}>
-                        Park
-                      </MenuItem>,
-                    ]
-                  : []),
-                <MenuSeparator key="separator" />,
-                ...(closable
-                  ? [
-                      <MenuItem key="close" icon={<Check aria-hidden />} submenu onSelect={() => onList('close')}>
-                        Close as
-                      </MenuItem>,
-                    ]
-                  : []),
-                <MenuItem key="copy" icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
-                  Copy id
-                </MenuItem>,
-              ]}
-      </MenuContent>
-    </Menu>
+              ...(can.priority
+                ? [
+                    <MenuItem
+                      key="priority"
+                      icon={<PriorityMark priority={task.priority} label={null} />}
+                      shortcut="P"
+                      keepOpen
+                      onSelect={() => onList('priority')}
+                    >
+                      Priority
+                    </MenuItem>,
+                  ]
+                : []),
+              ...(can.park && onPark
+                ? [
+                    <MenuItem key="park" icon={<Moon aria-hidden />} shortcut="Z" onSelect={onPark}>
+                      Park
+                    </MenuItem>,
+                  ]
+                : []),
+              <MenuSeparator key="separator" />,
+              ...(closable
+                ? [
+                    <MenuItem key="close" icon={<Check aria-hidden />} submenu onSelect={() => onList('close')}>
+                      Close as
+                    </MenuItem>,
+                  ]
+                : []),
+              <MenuItem key="copy" icon={<Copy aria-hidden />} onSelect={() => void copyText(task.id, task.id)}>
+                Copy id
+              </MenuItem>,
+            ]}
+    </MenuContent>
   );
 }
 
