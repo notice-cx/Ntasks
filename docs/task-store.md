@@ -264,7 +264,10 @@ refused write is stored.
 Ready work follows Beads' rule. A task that is not closed is blocked when it
 has a `blocks` link onto a task that is not closed, or when its parent is
 blocked, down any depth. A task is ready when it is open, not blocked, not a
-gate, and neither it nor its parent is deferred past now. `READY` in
+gate, and neither it nor its parent is deferred past now. Ntasks adds one
+exception: a task labelled `human` that is not an epic is held only by its own
+`blocks` links, not by a blocked parent, while the tasks under it stay
+blocked. `READY` in
 [`reads.ts`](../workers/api/src/engine/reads.ts) is that rule, and both the
 ready filter and every task's `ready` flag use it.
 
