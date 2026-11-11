@@ -383,6 +383,40 @@ describe('the workspace a call is made in', () => {
     ]);
   });
 
+  it('makes, lists and revokes service credentials in the selected workspace, reading the token only when made', async () => {
+    const credential = {
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'noticeos',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      revokedAt: null,
+      grants: [{ projectId: 'p-web', access: 'write' as const }],
+      backup: true,
+      restore: false,
+    };
+    const sent: unknown[][] = [];
+    const api = createHttpTasksApi(async (url, init) => {
+      const method = init?.method ?? 'GET';
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      sent.push([method, url, new Headers(init?.headers).get(WORKSPACE_HEADER), body]);
+      if (method === 'GET') return Response.json({ services: [credential] });
+      if (url.endsWith('/revoke')) return Response.json({ revoked: true });
+      return Response.json({ service: { ...credential, token: 'ntasks_service.example' } }, { status: 201 });
+    });
+    api.selectWorkspace('ws-a');
+    const input = { name: 'noticeos', grants: credential.grants, backup: true, restore: false };
+    await expect(api.createServiceCredential(input)).resolves.toEqual({
+      ...credential,
+      token: 'ntasks_service.example',
+    });
+    await expect(api.serviceCredentials()).resolves.toEqual([credential]);
+    await api.revokeServiceCredential(credential.id);
+    expect(sent).toEqual([
+      ['POST', '/api/access/services', 'ws-a', input],
+      ['GET', '/api/access/services', 'ws-a', null],
+      ['POST', `/api/access/services/${credential.id}/revoke`, 'ws-a', {}],
+    ]);
+  });
+
   it("finishes a call in the workspace it started in, and reads each workspace's own projects", async () => {
     const { api, sent, hold, release } = workspaces(() => Response.json({ project: 'web', tasks: [] }));
     api.selectWorkspace('ws-a');

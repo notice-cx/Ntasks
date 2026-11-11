@@ -38,7 +38,7 @@ async function editProject(name: string): Promise<HTMLElement> {
 describe('Settings', () => {
   it('shows one tab at a time, each at its own address, opening on Workspace', async () => {
     renderApp('/tasks/settings');
-    expect(await tabNames()).toEqual(['Workspace', 'Projects', 'Members', 'GitHub', 'Apps', 'You']);
+    expect(await tabNames()).toEqual(['Workspace', 'Projects', 'Members', 'GitHub', 'Apps', 'Services', 'You']);
     const tabs = await settingsTabs();
     expect(within(tabs).getByRole('link', { name: 'Workspace' }).getAttribute('aria-current')).toBe('page');
     expect(await shownTab()).toBe('workspace');
@@ -73,7 +73,7 @@ describe('Settings', () => {
     expect(said?.textContent).toMatch(/128/);
   });
 
-  it('offers a member neither Members nor GitHub', async () => {
+  it('offers a member neither Members, GitHub nor Services', async () => {
     const [, labs] = fixtureWorkspaces(Date.now());
     renderApp('/tasks/settings', createFixtureTasksApi({ workspaces: labs ? [labs] : [] }));
     expect(await tabNames()).toEqual(['Workspace', 'Projects', 'Apps', 'You']);
