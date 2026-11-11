@@ -94,6 +94,8 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
 
 Creating or changing a task answers with advice when:
 
+- it is a bug whose description never names `## Steps to Reproduce`, or a
+  bug, task, feature or epic with no acceptance;
 - its title is longer than 70 characters or holds a command, a file path or
   a commit hash;
 - its description writes a command inline, has a fenced block with no
@@ -152,7 +154,9 @@ A task is **ready** when someone can start it now:
 1. its status is `open`;
 2. every task it depends on is closed;
 3. its parent is not waiting either: a parent that waits on an open task holds
-   every task under it, at any depth;
+   every task under it, at any depth. A task labelled `human`, other than an
+   epic, is the exception: only the tasks it depends on itself hold it, so the
+   person is asked while the work above them waits;
 4. neither it nor its parent is deferred to a later date;
 5. no approval is pending on it.
 
@@ -225,6 +229,9 @@ clears them; its history keeps every value they had.
 </picture>
 
 - **Last activity** is when the holder last changed or commented on the task.
+  The task guide asks an agent to comment after each push to the task's
+  branch, with the commit when the agent tested it, so the task shows active
+  for the hour after each push.
 - **Stalled** is a task in progress whose holder has done nothing on it for
   a day, or never recorded anything. Ntasks works it out and shows it on the
   task, never stores it: the task stays in progress and its holder keeps it.

@@ -71,7 +71,7 @@ a task again therefore claims it twice.
 | Ask a person to do steps | `request_human_action` | `title`, `context`, and 1 to 20 `steps`, each with `text` and optionally `command`. Answers the request and `created`; the same title and steps again return the open one ([STATE-14](protocol.md#state-14)) |
 | Record a relayed answer | `reconcile_task`, action `answer`, `declined` or `owner_performed` | `proposal_version`, `quote`, `source`, and `option` on a task with choices ([AUTH-3](protocol.md#auth-3)) |
 | Record a relayed acceptance as done | `reconcile_task`, action `accepted` | `proposal_version`, `quote`, `source`, and `met`: the numbers of the criteria the person found met, `[]` when none is ([AUTH-11](protocol.md#auth-11)) |
-| Retire a request with evidence | `reconcile_task`, action `completed`, `obsolete`, `superseded` or `duplicate` | `explanation` and `evidence`, and `duplicate_of` for a duplicate ([AUTH-7](protocol.md#auth-7)) |
+| Retire a request with evidence | `reconcile_task`, action `completed`, `obsolete`, `superseded` or `duplicate` | `explanation` and `evidence`, and `duplicate_of` for a duplicate ([AUTH-7](protocol.md#auth-7)). `completed` is refused on an approval, a request to do steps and a decision |
 | Take the `human` label off routine work | `reconcile_task`, action `routine` | `explanation` and `evidence` ([AUTH-8](protocol.md#auth-8)) |
 
 A person's direct answers have no MCP tool: they are HTTP routes that only a

@@ -94,13 +94,14 @@ test('refuses a file not named as a version, which would sort where its name put
 
 test('merges two changes that each add a version, in either order, one version up per change', () => {
   // beta's file sorts first though it is written later, as when the change
-  // opened first merges second.
+  // opened first merges second. Both are dated after any real version, so
+  // they stay the last two whatever main gains.
   const repo = repository(
     'two-changes',
     {},
     {
-      alpha: { 'api-versions/2026-11-11T0900Z-alpha.json': addingField('alpha') },
-      beta: { 'api-versions/2026-11-11T0800Z-beta.json': addingField('beta') },
+      alpha: { 'api-versions/2999-01-01T0900Z-alpha.json': addingField('alpha') },
+      beta: { 'api-versions/2999-01-01T0800Z-beta.json': addingField('beta') },
     },
   );
   const before = apiVersionsIn(path.join(repo, 'api-versions')).length;
@@ -121,7 +122,7 @@ test('merges two changes that each add a version, in either order, one version u
     gitOk(repo, 'switch', '--quiet', 'main');
   }
   assert.deepEqual(finals[0], finals[1], 'both orders end with the same versions');
-  assert.deepEqual(finals[0]!.slice(-2), ['2026-11-11T0800Z-beta', '2026-11-11T0900Z-alpha']);
+  assert.deepEqual(finals[0]!.slice(-2), ['2999-01-01T0800Z-beta', '2999-01-01T0900Z-alpha']);
 });
 
 test('finds the conflict two changes made when each added a row to one shared table', () => {

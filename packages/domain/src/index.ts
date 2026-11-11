@@ -125,8 +125,6 @@ export type {
   TaskExternalLinks,
   TaskFieldChanges,
   TaskFilters,
-  TaskPage,
-  TaskQuery,
   TaskRefusal,
   TaskWrite,
   WinItem,

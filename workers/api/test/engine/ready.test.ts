@@ -7,7 +7,7 @@
 // THIRD_PARTY_NOTICES.md), backend/conformance/conformance.go in v1.3.1.
 import type { Task, TaskEngine } from '@ntasks/domain';
 import { describe, expect, it } from 'vitest';
-import { AGENT, clock, engine, expectRefusal, newProject, OWNER } from './helpers.ts';
+import { AGENT, clock, engine, everyTask, expectRefusal, newProject, OWNER } from './helpers.ts';
 
 async function make(
   tasks: TaskEngine,
@@ -19,7 +19,7 @@ async function make(
 }
 
 async function readyIds(tasks: TaskEngine, projectId: string): Promise<string[]> {
-  return (await tasks.listTasks(projectId, { limit: 200, ready: true })).tasks.map((task) => task.id).sort();
+  return (await everyTask(tasks, projectId, { ready: true })).map((task) => task.id).sort();
 }
 
 async function close(tasks: TaskEngine, projectId: string, task: Task) {
@@ -214,7 +214,7 @@ describe('reading one task and listing the project', () => {
 
     const compare = async () => {
       const ready = new Set(await readyIds(tasks, project.id));
-      const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
+      const all = await everyTask(tasks, project.id);
       for (const listed of all) {
         const alone = await tasks.getTask(project.id, listed.id);
         expect(alone?.ready, listed.title).toBe(ready.has(listed.id));
@@ -307,6 +307,58 @@ describe('ready work', () => {
     expect(await readyIds(tasks, project.id)).toEqual([epic.id, child.id, grandchild.id].sort());
   });
 
+  it('holds a task labelled human only by its own links, not by a waiting parent, and holds the tasks under it', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const blocker = await make(tasks, project.id, 'Blocker');
+    const research = await make(tasks, project.id, 'Research');
+    const parent = await make(tasks, project.id, 'Parent', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: blocker.id, type: 'blocks' }],
+    });
+    const decision = await make(tasks, project.id, 'Pick a layout', {
+      title: '',
+      type: 'decision',
+      labels: ['human'],
+      parentId: parent.id,
+      choices: {
+        question: 'Which layout?',
+        options: [
+          { key: 'a', label: 'One column', recommended: true },
+          { key: 'b', label: 'Two columns' },
+        ],
+      },
+    });
+    const underDecision = await make(tasks, project.id, 'Build the layout', { title: '', parentId: decision.id });
+    const afterResearch = await make(tasks, project.id, 'Answer after the research', {
+      title: '',
+      labels: ['human'],
+      parentId: parent.id,
+      links: [{ direction: 'depends-on', taskId: research.id, type: 'blocks' }],
+    });
+    const agentWork = await make(tasks, project.id, 'Agent work', { title: '', parentId: parent.id });
+    const humanEpic = await make(tasks, project.id, 'Epic labelled human', {
+      title: '',
+      type: 'epic',
+      labels: ['human'],
+      parentId: parent.id,
+    });
+
+    const held = [parent, underDecision, afterResearch, agentWork, humanEpic].map((task) => task.id);
+    expect(await readyIds(tasks, project.id)).toEqual([blocker.id, research.id, decision.id].sort());
+    expect((await tasks.getTask(project.id, decision.id))?.ready).toBe(true);
+    for (const id of held) expect((await tasks.getTask(project.id, id))?.ready, id).toBe(false);
+    const labelled = await tasks.listLabelled(project.id, { label: 'human', limit: 10 });
+    expect(Object.fromEntries(labelled.tasks.map((task) => [task.id, task.ready]))).toEqual({
+      [decision.id]: true,
+      [afterResearch.id]: false,
+      [humanEpic.id]: false,
+    });
+
+    await close(tasks, project.id, research);
+    expect((await tasks.getTask(project.id, afterResearch.id))?.ready).toBe(true);
+  });
+
   it('passes blocking down from a parent in any status but closed', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
@@ -378,16 +430,14 @@ describe('ready work', () => {
     });
     await make(tasks, project.id, 'Free');
 
-    const all = (await tasks.listTasks(project.id, { limit: 200 })).tasks;
+    const all = await everyTask(tasks, project.id);
     expect(
       all
         .filter((task) => task.ready)
         .map((task) => task.id)
         .sort(),
     ).toEqual(await readyIds(tasks, project.id));
-    expect((await tasks.listTasks(project.id, { limit: 200, ready: false })).tasks.map((task) => task.title)).toEqual([
-      'Waiting',
-    ]);
+    expect((await everyTask(tasks, project.id, { ready: false })).map((task) => task.title)).toEqual(['Waiting']);
   });
 });
 
