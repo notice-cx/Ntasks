@@ -836,8 +836,8 @@ from Oct 28 to Nov 3.
 ### Settings and the first workspace
 
 Settings is one tab at a time under a `TopBar` whose `TabLinks` name the
-tabs: Workspace, Projects, Members, GitHub, Apps and You, each at its own
-address; a member has no Members or GitHub tab. Below 1024 px the tabs leave
+tabs: Workspace, Projects, Members, GitHub, Apps, Services and You, each at
+its own address; a member has no Members, GitHub or Services tab. Below 1024 px the tabs leave
 the top bar for a row of their own under it, which scrolls sideways with the
 current tab in view. Each tab is a `SettingsSection` (`settings.tsx`), 720 px
 at most: its title in `text-heading`, one line in Text 2 saying what it

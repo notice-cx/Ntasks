@@ -50,7 +50,7 @@ With `basePath="/tasks"`:
 | A task | `/tasks/<id>`, such as `/tasks/web-b2r6` |
 | Focus | `/tasks/focus` |
 | Live | `/tasks/live` |
-| Settings | `/tasks/settings/<tab>`: `workspace`, `projects`, `members`, `github`, `apps` or `you`; `/tasks/settings` opens `workspace`, and `/tasks/projects` and `/tasks/members` open their tabs |
+| Settings | `/tasks/settings/<tab>`: `workspace`, `projects`, `members`, `github`, `apps`, `services` or `you`; `/tasks/settings` opens `workspace`, and `/tasks/projects` and `/tasks/members` open their tabs |
 
 A task id always holds a hyphen, so it is never the name of another page.
 An address under `basePath` that is none of these shows No page.
@@ -175,6 +175,7 @@ resolution, Vite's default.
 | `/tasks/settings/members` | For an owner: the workspace's members and pending invitations. Invite (`I`) takes a GitHub username and a role; each invitation has Revoke and each member Remove. Anyone else has no such tab. |
 | `/tasks/settings/github` | For an owner: Connect GitHub, where it is installed, the deploys it saw, Disconnect, and the webhook set up by hand. |
 | `/tasks/settings/apps` | The workspace's connected apps. An owner registers an app, copies its client ID and removes it; anyone else revokes their own sign-in to an app. |
+| `/tasks/settings/services` | For an owner: the workspace's service credentials, each with the projects it reaches, Backup and Load. New credential takes a Name, required, each project's access (No access, Read, or Read and change), Back up every project and Load tasks into this workspace while it is empty; it needs a project or one of the two. The token shows once, with Copy token, until Done. Each credential has Revoke; a revoked one stays listed under Revoked, since it keeps its name. Anyone else has no such tab. |
 | `/tasks/settings/you` | The person's own name and the time zone every date shows in, in every workspace. |
 
 Every page opens in a workspace (`src/components/WorkspaceGate.tsx`): the

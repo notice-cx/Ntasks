@@ -160,3 +160,30 @@ export function Select({ className, id, required, children, ...props }: Componen
     </select>
   );
 }
+
+/** A 15 px native box filled in Accent once ticked, with its label. */
+export function Checkbox({
+  label,
+  checked,
+  disabled,
+  onChange,
+  ...data
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+} & Record<`data-${string}`, string>) {
+  return (
+    <label className="flex items-center gap-2 text-label text-ink" {...data}>
+      <input
+        type="checkbox"
+        className="size-[15px] accent-accent"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}

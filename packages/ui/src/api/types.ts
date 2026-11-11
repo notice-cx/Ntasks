@@ -659,3 +659,36 @@ export interface NewApp {
   name: string;
   redirectUris: string[];
 }
+
+/** A service credential's reach in one project: to read its tasks, or to read and change them. */
+export interface ServiceGrant {
+  projectId: string;
+  access: 'read' | 'write';
+}
+
+/** A credential a service, such as a NoticeOS installation or a nightly backup, signs in with. Never its token. */
+export interface ServiceCredential {
+  id: string;
+  name: string;
+  createdAt: string;
+  /** When an owner revoked it; its token is refused from then on. */
+  revokedAt: string | null;
+  grants: ServiceGrant[];
+  /** It reads the workspace's whole store for a backup. */
+  backup: boolean;
+  /** It loads rows into the workspace's store while the store is empty. */
+  restore: boolean;
+}
+
+/** A service credential, as `POST /api/access/services` takes it. One with no grants needs backup or restore. */
+export interface NewServiceCredential {
+  name: string;
+  grants: ServiceGrant[];
+  backup: boolean;
+  restore: boolean;
+}
+
+/** A credential just made, with the token the server shows this once. */
+export interface MadeServiceCredential extends ServiceCredential {
+  token: string;
+}
