@@ -445,6 +445,31 @@ describe('a task page', () => {
     expect(within(offered).getByRole('menuitem', { name: 'Product area' })).toBeTruthy();
   });
 
+  it('saves the presses of a multiple choice in the order made, so a slow first save never lands last', async () => {
+    const api = createFixtureTasksApi();
+    const update = api.updateTask.bind(api);
+    let release: (() => void) | null = null;
+    let first = true;
+    api.updateTask = async (...args) => {
+      if (first) {
+        first = false;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return update(...args);
+    };
+    renderApp('/tasks/web-k3m9.2', api);
+    const values = () => task(api, 'web-k3m9.2')?.fields ?? {};
+    fireEvent.click(await enabledButton('Platforms: Web, iOS'));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Android' }));
+    // The first save is held until the second press has been made.
+    await waitFor(() => expect(release).not.toBeNull());
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Web', checked: true }));
+    (release as unknown as () => void)();
+    await waitFor(() => expect(values().platforms).toEqual(['iOS', 'Android']));
+  });
+
   it('edits a number, a text, a date and a URL field through the API, refusing a value of the wrong type', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-k3m9.2', api);

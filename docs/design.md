@@ -645,7 +645,7 @@ Each field in use opens the menu its type takes: its options for a single
 choice, its options to turn on and off for a multiple choice, Yes and No, a
 date with Today, Tomorrow and In a week, or a field for text, a number or a
 URL, which shows as a link. None takes the value off and the field's line
-with it. Add field, a line in Text 3 under the custom fields, lists the
+with it, as turning off the last option of a multiple choice does. Add field, a line in Text 3 under the custom fields, lists the
 fields in use that the task holds no value for; picking one shows that
 field's menu in its place, and the value saved gives the field its line. It
 takes no room when the task holds a value for every field, or when the
