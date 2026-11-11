@@ -72,10 +72,14 @@ export function SettingsGroup({
   );
 }
 
+/** The id of a `SettingsRow`'s refusal, for the control `labelFor` names to point to with `aria-describedby`. */
+export const settingsErrorId = (controlId: string) => `${controlId}-error`;
+
 /**
  * One setting: its label, then its control. `labelFor` names the control's
  * id when it is one field, so the label names it; otherwise the row is a
- * group the label names. A refusal shows under both.
+ * group the label names. A refusal shows under both, with the id
+ * `settingsErrorId(labelFor)`, which the control names in `aria-describedby`.
  */
 export function SettingsRow({
   label,
@@ -91,7 +95,8 @@ export function SettingsRow({
   className?: string;
 }) {
   const labelId = useId();
-  const errorId = useId();
+  const generatedErrorId = useId();
+  const errorId = labelFor === undefined ? generatedErrorId : settingsErrorId(labelFor);
   const labelClass = 'min-w-0 flex-1 text-label font-medium text-ink';
   return (
     <div

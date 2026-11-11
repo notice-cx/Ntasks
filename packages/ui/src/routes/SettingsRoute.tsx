@@ -9,7 +9,7 @@ import { Button, IconButton } from '../components/ui/button';
 import { TabLinks } from '../components/ui/choice';
 import { Field, FieldError, Input, Select, Textarea } from '../components/ui/field';
 import { Row, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
-import { SettingsGroup, SettingsRow, SettingsSection } from '../components/ui/settings';
+import { SettingsGroup, SettingsRow, SettingsSection, settingsErrorId } from '../components/ui/settings';
 import { TopBar } from '../components/ui/shell';
 import { WorkspaceIcon } from '../components/ui/symbols';
 import { useMedia } from '../hooks/useMedia';
@@ -755,6 +755,7 @@ function TimeZoneSetting() {
         value={chosen}
         disabled={account.data === undefined || save.isPending}
         aria-invalid={failed === null ? undefined : true}
+        aria-describedby={failed === null ? undefined : settingsErrorId(id)}
         onChange={(event) => {
           const zone = event.target.value === '' ? null : event.target.value;
           save.mutate(zone, { onSuccess: () => toast.success(`Dates now show in ${zoneName(zone ?? browser)}`) });
@@ -809,6 +810,7 @@ function RenameRow({ workspace }: { workspace: Workspace }) {
           required
           aria-required
           aria-invalid={said === null ? undefined : true}
+          aria-describedby={said === null ? undefined : settingsErrorId(id)}
           autoComplete="off"
           value={name}
           disabled={rename.isPending}

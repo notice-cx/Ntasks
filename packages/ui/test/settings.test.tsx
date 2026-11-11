@@ -62,6 +62,17 @@ describe('Settings', () => {
     expect(await shownTab()).toBe('projects');
   });
 
+  it('ties a refused workspace name to its field, so the refusal is read with it', async () => {
+    renderApp('/tasks/settings/workspace');
+    const form = await screen.findByRole('form', { name: 'Rename' });
+    const name = within(form).getByLabelText('Name');
+    fireEvent.change(name, { target: { value: 'x'.repeat(129) } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(name.getAttribute('aria-invalid')).toBe('true'));
+    const said = document.getElementById(name.getAttribute('aria-describedby') ?? '');
+    expect(said?.textContent).toMatch(/128/);
+  });
+
   it('offers a member neither Members nor GitHub', async () => {
     const [, labs] = fixtureWorkspaces(Date.now());
     renderApp('/tasks/settings', createFixtureTasksApi({ workspaces: labs ? [labs] : [] }));

@@ -159,6 +159,27 @@ describe('reading a website’s icon', () => {
     expect(await readProjectIcon('https://example.com/', fetchImpl)).toBeNull();
   });
 
+  it('skips an icon whose read fails part-way, so a cut-off image is never kept', async () => {
+    const cutOff = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(PNG);
+            controller.error(new TypeError('connection reset'));
+          },
+        }),
+        { headers: { 'content-type': 'image/png' } },
+      );
+    const { fetchImpl } = website({
+      'https://example.com/': page('<link rel="icon" href="/cut.png" sizes="64x64">'),
+      'https://example.com/cut.png': cutOff,
+      'https://example.com/favicon.ico': image(ICO, 'image/x-icon'),
+    });
+    expect(await readProjectIcon('https://example.com/', fetchImpl)).toMatchObject({
+      sourceUrl: 'https://example.com/favicon.ico',
+    });
+  });
+
   it('asks /favicon.ico when the website’s page does not answer', async () => {
     const { fetchImpl } = website({
       'https://example.com/': new Response('Unavailable', { status: 503 }),

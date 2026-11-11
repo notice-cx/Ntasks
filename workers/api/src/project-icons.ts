@@ -223,7 +223,8 @@ function rasterClaim(contentType: string | null): boolean {
   return type === '' || type.startsWith('image/') || type === 'application/octet-stream';
 }
 
-/** Up to `limit` bytes of the body; null when it holds more. A failure part-way keeps what arrived. */
+/** The whole body, at most `limit` bytes; null when it holds more or the read fails part-way, since a cut-off
+ * image still starts with a valid header and would be kept broken. */
 async function readBody(response: Response, limit: number): Promise<Uint8Array | null> {
   const reader = response.body?.getReader();
   if (!reader) return new Uint8Array();
@@ -241,7 +242,7 @@ async function readBody(response: Response, limit: number): Promise<Uint8Array |
       chunks.push(value);
     }
   } catch {
-    // What arrived before the failure is all there is.
+    return null;
   }
   const bytes = new Uint8Array(length);
   let at = 0;
