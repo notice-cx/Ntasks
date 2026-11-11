@@ -50,11 +50,12 @@ prefix, and the address with its old id opens its page under the new id.
 **Live.** A board of work moving to production, in three columns: In
 progress, Waiting to ship, for closed work not yet merged or not yet
 deployed, and Live, as GitHub reports each merge and deploy. When a task
-moves to the next column, its card travels there, and when its holder changes or comments
-on it a blue ring grows from its mark and fades. For a moment the card also
-shows who changed it and how, such as "Claude pushed a commit" or "GitHub
-merged #42". Each card in progress is marked Active, Quiet or
-Stalled, after a day without activity. While the page is open it checks for
+moves to the next column, its card travels there, and for a moment it shows
+who changed it and how, such as "Claude pushed a commit" or "GitHub merged
+#42". A card leads with its project's icon and ends with the icon of who
+holds it, whose name and model show on hover. A card in progress is tinted
+by how recently its holder worked on it: strongly while Active, faintly while
+Quiet, and not at all once Stalled, after a day without activity. While the page is open it checks for
 changes every 5 seconds. **List** shows the tasks in progress grouped as
 Active, Quiet and Stalled, each under its epic with the epic's progress bar.
 A stalled task's page shows where its work stopped and **Free it**, which
@@ -62,7 +63,7 @@ hands it back for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
-  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then three columns. In progress holds three cards, each with its task's activity mark, pull request, next step, holder, model and last activity; Waiting to ship holds one task not merged yet, and Live holds two.">
+  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then three columns. In progress holds three cards, tinted by activity, each with its project's icon, task id, pull request, next step, holder's icon and last activity; Waiting to ship holds one task not merged yet, and Live holds two.">
 </picture>
 
 **Productivity.** What you and your agents got done that matters, day by

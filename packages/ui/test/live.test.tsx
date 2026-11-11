@@ -248,7 +248,16 @@ describe('the Live board', () => {
     renderApp('/tasks/live', createFixtureTasksApi({ seed }));
     expect(await boardCards('Live')).toContain('web-j6y4');
     const card = document.querySelector('[data-board-card="web-j6y4"]') as HTMLElement;
-    expect(within(card).queryByText('Claude')).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Claude' })).toBeNull();
+  });
+
+  it('shows who holds a task as an icon whose tooltip names them and their model, and says its activity to a screen reader', async () => {
+    renderApp('/tasks/live');
+    await boardCards('In progress');
+    const card = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
+    expect(within(card).getByText('Active').className).toContain('sr-only');
+    fireEvent.focus(within(card).getByRole('button', { name: 'Codex' }));
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Codex · codex-example');
   });
 
   it('says a task closed with a commit and no pull request is not pushed yet', async () => {
