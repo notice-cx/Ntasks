@@ -1043,3 +1043,27 @@ describe("a task's links", () => {
     ]);
   });
 });
+
+describe('a task that relies on a dropped task', () => {
+  it('names each dropped task, linked to its page, with how it ended', async () => {
+    renderApp('/tasks/web-k3m9.4');
+    const dropped = await screen.findByRole('region', { name: 'Dropped tasks this relies on' });
+    expect(dropped.textContent).toBe(
+      'Check: Remove the old landing page, which this relies on, closed as no longer needed',
+    );
+    fireEvent.click(within(dropped).getByRole('link', { name: 'Remove the old landing page' }));
+    await screen.findByRole('heading', { level: 1, name: 'Remove the old landing page' });
+  });
+
+  it('shows nothing for a task that relies on none, and nothing once the task changes', async () => {
+    renderApp('/tasks/web-b2r6');
+    await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });
+    expect(screen.queryByRole('region', { name: 'Dropped tasks this relies on' })).toBeNull();
+
+    const api = createFixtureTasksApi();
+    await api.updateTask('web-k3m9.4', 'web', { priority: 2 });
+    renderApp('/tasks/web-k3m9.4', api);
+    await screen.findByRole('heading', { level: 1, name: 'Remove the old sign-in page' });
+    expect(screen.queryByRole('region', { name: 'Dropped tasks this relies on' })).toBeNull();
+  });
+});

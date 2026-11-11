@@ -230,7 +230,12 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
     base('web', 'web-k3m9.4', 'Remove the old sign-in page', {
       parent: 'web-k3m9',
       priority: 3,
-      dependencies: [{ id: 'web-k3m9.3', type: 'blocks', title: null, status: null }],
+      dependencies: [
+        { id: 'web-k3m9.3', type: 'blocks', title: null, status: null },
+        { id: 'web-h1z8', type: 'related', title: null, status: null },
+      ],
+      // The landing page it was to go with was dropped after this task last changed.
+      reliesOnDropped: [{ id: 'web-h1z8', title: 'Remove the old landing page', resolution: 'no-longer-needed' }],
     }),
     base('web', 'web-g7p2', 'Approve sending the new sign-in page to every visitor', {
       issueType: 'gate',

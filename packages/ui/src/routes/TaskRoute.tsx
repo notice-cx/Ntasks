@@ -87,6 +87,7 @@ import { MoveForm } from './tasks/move-form';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
+import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
 import { usePageTitle } from '../lib/page-title';
@@ -510,6 +511,7 @@ function TaskPage({
               disabledReason={reasonFor(operationAvailable(capabilities, 'release'))}
             />
           ) : null}
+          {closed ? null : <ReliesOnDropped dropped={task.reliesOnDropped ?? []} />}
           {closed && !closedByPick ? (
             <ClosedSummary
               by={closer ? actorOf(closer.by, closer.model, actors) : null}

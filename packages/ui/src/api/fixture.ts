@@ -311,6 +311,8 @@ export function createFixtureTasksApi({
   function touch(task: FixtureTask, kind = 'updated', fields: Record<string, unknown> = {}): string {
     const at = new Date(now()).toISOString();
     task.updatedAt = at;
+    // A change to the task, which a comment is not, comes after every drop it relied on, as the Worker counts them.
+    if (kind !== 'commented') task.reliesOnDropped = [];
     if (task.assignee === FIXTURE_ACTOR) task.lastActivityAt = at;
     logChange(task, kind, fields);
     return at;

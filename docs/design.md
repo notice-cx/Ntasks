@@ -511,6 +511,8 @@ parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
 ellipsis), `RowMeta` facts (checks `1/3`, comments, `Waits on web-k3m9.2`,
+on an open task that relies on a dropped one `Relies on dropped web-h1z8`
+after a `circle-alert` icon, each id a link to its task,
 `Until 11 Nov`, on a ready task that is not an epic `Estimate 1h 30m` or
 `No estimate` after a `clock` icon from 1024 px wide, where the title keeps
 room beside it, on a held task `For page-rebuild-2` and
@@ -607,6 +609,9 @@ pull request as an Accent text link; Approve takes it as its description.
 
 The page is two columns. The left is the reading column, 720 px of text: the
 title in `text-task-title`, the form an action opened (in a Surface panel),
+for an open task each dropped task it relies on (a Surface block, one line
+each after a `circle-alert` icon in Text 3: Check:, the dropped task's title
+as a link, which this relies on, closed as won't do or no longer needed),
 how a closed task ended (with where its change is: Built, Merged or Live,
 its pull request as a link and its commit, or the link that shows the work,
 or No proof), the description, a decision's card or its recorded

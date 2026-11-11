@@ -726,3 +726,17 @@ describe('a row waiting for you', () => {
     );
   });
 });
+
+describe('a row that relies on a dropped task', () => {
+  it('names the dropped task, linked to its page, and a row that relies on none names nothing', async () => {
+    renderApp('/tasks');
+    const blocked = await group('Blocked');
+    const row = blocked.querySelector('[data-task-row="web-k3m9.4"]') as HTMLElement;
+    const fact = row.querySelector('[data-row-dropped]') as HTMLElement;
+    expect(fact.textContent).toBe('Relies on dropped web-h1z8');
+    expect((await group('Open')).querySelector('[data-task-row="web-b2r6"] [data-row-dropped]')).toBeNull();
+
+    fireEvent.click(within(fact).getByRole('link', { name: 'web-h1z8' }));
+    await screen.findByRole('heading', { level: 1, name: 'Remove the old landing page' });
+  });
+});
