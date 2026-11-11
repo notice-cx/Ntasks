@@ -497,7 +497,8 @@ function customFieldEditor(
 /**
  * Saves a pick or a typed value from `field`'s editor. A multiple choice is
  * saved whole, and its menu takes a second press before the first save is
- * read back, so each press builds on the value the last one sent.
+ * read back, so each press builds on the value the last one sent, and the
+ * saves run in the order pressed, so an earlier one never lands over a later one.
  */
 function useFieldPick(
   field: TaskField | null,
@@ -505,6 +506,7 @@ function useFieldPick(
   onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>,
 ): (next: string, on?: boolean) => Promise<boolean> {
   const sent = useRef(value);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     sent.current = value;
   }, [value]);
@@ -515,7 +517,9 @@ function useFieldPick(
     const send = async (value: TaskFieldValue | null) => {
       const intended = value ?? undefined;
       sent.current = intended;
-      const saved = await onSave(value, before);
+      const run = queue.current.then(() => onSave(value, before));
+      queue.current = run.catch(() => undefined);
+      const saved = await run;
       // A refused save leaves the task as it was, and no new read will say so.
       if (!saved && sent.current === intended) sent.current = before;
       return saved;
