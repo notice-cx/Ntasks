@@ -1,3 +1,3 @@
 {
-  "added": "`tasks` on `POST /api/delivery`: closed tasks named by id, for a change that went live where no pull request or commit signal reached Ntasks; a signal that names only tasks needs no `repository`"
+  "added": "`tasks` on `POST /api/delivery`: closed tasks named by id, for a change that went live where no pull request or commit signal reached Ntasks; a signal that names only tasks needs no `repository`. `deliver` among the write `operations` in `GET /api/tasks/capabilities` says a server takes it"
 }

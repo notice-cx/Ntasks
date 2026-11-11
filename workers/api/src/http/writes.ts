@@ -103,7 +103,14 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'changeClass',
 ]);
 /** The writes this API offers any sender that may change a project. */
-export const WRITE_OPERATIONS: readonly string[] = Object.freeze(['create', 'update', 'comment', 'close', 'move']);
+export const WRITE_OPERATIONS: readonly string[] = Object.freeze([
+  'create',
+  'update',
+  'comment',
+  'close',
+  'move',
+  'deliver',
+]);
 /** The decisions it offers a person signed in to the web app, in NoticeOS's names. */
 export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
   'respond',

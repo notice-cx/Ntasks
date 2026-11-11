@@ -198,6 +198,20 @@ describe('a closed task’s delivery', () => {
     expect((await deliveryOf(readOnly, kept))?.stage).toBe('built');
   });
 
+  it('finds a task moved to another project by the id it had before the move', async () => {
+    const [from, to] = [await deployingProject(), await deployingProject()];
+    const before = await closedWith(from, { commit: 'c0ffee4' });
+    const { moved } = await write<{ moved: Record<string, string> }>(target, 'move_tasks', {
+      task: before,
+      project: to.key,
+    });
+    const after = moved[before]!;
+    expect((await signal(target, { stage: 'live', tasks: [before] })).body).toEqual({
+      moved: [{ id: after, stage: 'live' }],
+    });
+    expect((await deliveryOf(to, after))?.stage).toBe('live');
+  });
+
   it('is cleared by a reopen and kept in history, and a close without a commit or pull request has none', async () => {
     const project = await newProject(engine);
     const id = await closedWith(project, { commit: 'aaaaaaa' });

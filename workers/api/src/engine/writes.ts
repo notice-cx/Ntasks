@@ -1251,6 +1251,11 @@ export class Writes {
       signal.stage !== 'merged'
         ? null
         : (signal.mergeCommit ?? (signal.commits.length === 1 ? signal.commits[0]! : null));
+    // A moved task's old id, such as on a Refs: line written before the move, still names it.
+    const named = [...new Set(signal.taskIds ?? [])];
+    const nowNamed = new Map(named.map((id) => [id, id]));
+    for (const former of await this.#reads.formerIds(named)) nowNamed.set(former.formerId, former.taskId);
+    const taskIds = JSON.stringify([...new Set(named.map((id) => nowNamed.get(id)!))]);
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const { results } = await this.#db
         .prepare(DELIVERY_CANDIDATES)
@@ -1258,7 +1263,7 @@ export class Writes {
           JSON.stringify([...new Set(projectIdsInput)]),
           JSON.stringify(signal.pullRequests),
           JSON.stringify(signal.commits),
-          JSON.stringify(signal.taskIds ?? []),
+          taskIds,
         )
         .all<StoredTaskRow & { readonly deploys: number }>();
       const at = this.#now();

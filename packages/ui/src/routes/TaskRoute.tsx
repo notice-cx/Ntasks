@@ -300,8 +300,11 @@ function TaskPage({
   // A change that went live where no signal reaches Ntasks, such as a deploy by hand. In a project
   // that does not deploy, Merged is the last stage, so only a change still at Built has a step left.
   const stage = closed ? (task.delivery?.stage ?? null) : null;
-  const markableLive = stage === 'built' || (stage === 'merged' && project.deploys === true);
-  const markLiveReason = reasonFor(operationAvailable(capabilities, 'update'));
+  // An older server, which lists no `deliver`, refuses a signal that names only tasks.
+  const markableLive =
+    (stage === 'built' || (stage === 'merged' && project.deploys === true)) &&
+    capabilities.operations?.includes('deliver') === true;
+  const markLiveReason = reasonFor(operationAvailable(capabilities, 'deliver'));
   const claimable = task.status === 'open' && task.assignee === null;
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
   const acceptOffered = !isGate(task) && operationAvailable(capabilities, 'accept');

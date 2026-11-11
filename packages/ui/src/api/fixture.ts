@@ -107,6 +107,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'comment',
   'close',
   'move',
+  'deliver',
   'respond',
   'dismiss',
   'resolve',

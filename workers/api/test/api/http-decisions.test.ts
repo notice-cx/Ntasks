@@ -126,6 +126,7 @@ describe('who may decide', () => {
       'comment',
       'close',
       'move',
+      'deliver',
       'respond',
       'dismiss',
       'resolve',
@@ -143,6 +144,7 @@ describe('who may decide', () => {
       'comment',
       'close',
       'move',
+      'deliver',
     ]);
   });
 });
