@@ -48,6 +48,7 @@ or prefix, since no query reads across stores.
 | `task_events` | Every change to every task, in order, each with the helper agent (`actor_for`) and agent session (`session`) it was made through |
 | `task_aliases` | Each former id of a task that moved to another project, and the task's id now |
 | `write_receipts` | Retry records: a write's idempotency key, its request and its answer |
+| `pushed_commits` | Each commit a push brought onto a repository's default branch in the last day, with the repository, the push's newest commit and its time, so a task closed with that commit after the push moves to merged at its close. Older rows are removed as each push is recorded, and a backup leaves them out |
 | `store_loads`, `store_load_pages` | A load into the empty store that waits to be committed, and its pages of rows. They hold nothing once a load ends, and a backup leaves them out. |
 
 A task's parent is the `parent_id` column, not a link. Sign-in, workspaces

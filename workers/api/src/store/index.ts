@@ -58,9 +58,16 @@ export const GITHUB_RETRY_DELAYS_MS: readonly number[] = Object.freeze([
 /** The storage key of how many checks in a row GitHub missed a read in. */
 const GITHUB_RETRIES = 'githubRetries';
 
-/** Whether a task waits for a merge of a pull request, which GitHub may already have made. */
-function waitsOnPullRequest(task: Task): boolean {
-  return task.delivery?.stage === 'built' && task.delivery.pullRequest !== null;
+/**
+ * Whether a task waits on GitHub for something GitHub may already have done:
+ * the merge of its pull request, or the deploy of a commit pushed before the
+ * task closed, which moved it to merged at its close.
+ */
+function waitsOnGitHub(task: Task): boolean {
+  const delivery = task.delivery;
+  if (delivery === null) return false;
+  if (delivery.stage === 'built') return delivery.pullRequest !== null;
+  return delivery.stage === 'merged' && delivery.pullRequest === null && delivery.repository !== null;
 }
 
 /** The task store of one workspace. Workspaces never share a store. */
@@ -92,15 +99,25 @@ export class TaskStore extends DurableObject<Env> {
   #newEngine(): TaskEngine {
     const now = () => new Date().toISOString();
     const engine = cachedReads(createEngine(objectDatabase(this.ctx.storage, this.meter), { now }), now);
-    // A close as done with a pull request: GitHub may have merged it before the close.
+    // A close as done with a pull request, or with a commit pushed before it: GitHub may have merged or deployed it already.
     const checked = async <R extends { readonly task: Task }>(result: R): Promise<R> => {
-      if (waitsOnPullRequest(result.task)) await this.#checkGitHubIn(CHECK_DELAY_MS);
+      if (waitsOnGitHub(result.task)) await this.#checkGitHubIn(CHECK_DELAY_MS);
       return result;
     };
     return Object.freeze({
       ...engine,
       createTask: async (...args: Parameters<TaskEngine['createTask']>) => checked(await engine.createTask(...args)),
-      writeTask: async (...args: Parameters<TaskEngine['writeTask']>) => checked(await engine.writeTask(...args)),
+      writeTask: async (...args: Parameters<TaskEngine['writeTask']>) => {
+        const result = await checked(await engine.writeTask(...args));
+        // A write can close other tasks of its project beside its own, which may wait on GitHub as well.
+        const [projectId, , write] = args;
+        const closed = (write.others ?? []).flatMap((other) => (other.close === undefined ? [] : [other.taskId]));
+        if (closed.length > 0 && !result.replayed && !waitsOnGitHub(result.task)) {
+          const others = await engine.getTasks(projectId, closed);
+          if (others.some(waitsOnGitHub)) await this.#checkGitHubIn(CHECK_DELAY_MS);
+        }
+        return result;
+      },
     } satisfies TaskEngine);
   }
 
