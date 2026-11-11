@@ -29,6 +29,12 @@ reopened.
 task in an epic also shows From the epic: the comments pinned on the epic
 for its tasks, and the epic's most recently closed tasks with their close
 reasons. A pinned comment is marked Pinned among its own task's comments.
+An open task that relies on a dropped task, one closed as won't do or no
+longer needed since the task last changed ([Dependencies](concepts.md#dependencies)),
+shows a line for each under its title, such as "Check: Remove the old landing
+page, which this relies on, closed as no longer needed", with the dropped
+task linked; its board row shows "Relies on dropped" and the dropped task's
+id. Any change to the task clears both.
 
 **Move to…**, in a task page's More menu, picks a project and one of its open
 epics, or No epic, and moves the task there with every task under it. A task

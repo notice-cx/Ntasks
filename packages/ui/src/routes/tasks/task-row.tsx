@@ -67,6 +67,7 @@ import {
 } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { useAskActions } from './ask-actions';
+import { DroppedFact } from './relies-on-dropped';
 import { closeOperation, declinedOnClose, useCloseAs } from './close-actions';
 import { assigneeChange, assigneeEditor, priorityChange, priorityEditor, useFieldSave } from './task-facts';
 
@@ -119,7 +120,8 @@ function RowPanel({ children }: { children: ReactNode }) {
   );
 }
 
-/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, when it
+/** The facts after a row's title: type, labels, epic progress, checks, comments, what it waits on, the dropped
+ * tasks it relies on, when it
  * unparks, for a ready task its estimate, for a task someone holds the helper they work through and when
  * they last wrote to it, and for a closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
@@ -128,6 +130,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
+  const dropped = task.status === 'closed' ? [] : (task.reliesOnDropped ?? []);
   const zone = useTimeZone();
   // A park ends on the day the person picked, written as that day's start.
   const until =
@@ -169,6 +172,11 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
         <RowMeta>
           <LinkIcon aria-hidden />
           Waits on <span className="text-ink-2">{waits.join(', ')}</span>
+        </RowMeta>
+      ) : null}
+      {dropped.length > 0 ? (
+        <RowMeta data-row-dropped="">
+          <DroppedFact dropped={dropped} />
         </RowMeta>
       ) : null}
       {until ? (
