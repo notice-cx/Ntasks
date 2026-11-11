@@ -14,6 +14,7 @@ import { useBoard } from '../hooks/useBoard';
 import { useNow } from '../hooks/useNow';
 import { NO_FILTERS } from '../lib/board-read';
 import { byEpic, readEpics, type EpicSummary } from '../lib/epics';
+import { pullRequestLabel } from '../lib/wins';
 import { httpUrl } from '../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../lib/format';
 import { ACTIVITIES, ACTIVITY_LABELS, liveBoard, liveGroups, STAGES, type Activity } from '../lib/live';
@@ -35,12 +36,6 @@ const GROUP_RULES: Readonly<Record<Activity, string>> = Object.freeze({
   quiet: 'Last change 1 hour to 1 day ago',
   stalled: 'Nothing for 1 day or more',
 });
-
-/** A pull request's number from its URL, as `#42`, or its kind when the URL names none. */
-function pullRequestLabel(url: string): string {
-  const number = /\/pull\/(\d+)/.exec(url)?.[1];
-  return number === undefined ? 'Pull request' : `#${number}`;
-}
 
 /** The page's two views: the board, which it opens on, and the list, at `?view=list`. */
 type LiveView = 'board' | 'list';

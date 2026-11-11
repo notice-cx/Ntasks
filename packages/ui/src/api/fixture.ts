@@ -249,17 +249,27 @@ export function createFixtureTasksApi({
   /** Every change, in order, as the change feed lists it. */
   const changes: TaskChange[] = [];
 
-  function logChange(task: FixtureTask): void {
+  function logChange(task: FixtureTask, kind = 'updated', fields: Record<string, unknown> = {}): void {
     const projectId = state.projects.find((row) => row.logicalKey === task.project)?.projectId ?? task.project;
-    changes.push({ seq: changes.length + 1, projectId, taskId: task.id });
+    const at = new Date(now()).toISOString();
+    changes.push({
+      seq: changes.length + 1,
+      projectId,
+      taskId: task.id,
+      kind,
+      actor: FIXTURE_ACTOR,
+      model: null,
+      at,
+      changes: fields,
+    });
   }
 
   /** Records a change by the fixture's sign-in, which is the holder's activity when it holds the task. */
-  function touch(task: FixtureTask): string {
+  function touch(task: FixtureTask, kind = 'updated', fields: Record<string, unknown> = {}): string {
     const at = new Date(now()).toISOString();
     task.updatedAt = at;
     if (task.assignee === FIXTURE_ACTOR) task.lastActivityAt = at;
-    logChange(task);
+    logChange(task, kind, fields);
     return at;
   }
 
@@ -312,7 +322,7 @@ export function createFixtureTasksApi({
       id: `c${list.length + 1}-${task.id}`,
       author: FIXTURE_ACTOR,
       text,
-      createdAt: touch(task),
+      createdAt: touch(task, 'commented', { text }),
       pinned: false,
     };
     state.comments.set(task.id, [...list, comment]);
@@ -323,7 +333,7 @@ export function createFixtureTasksApi({
     if (resolution === 'duplicate' && (duplicateOf === undefined || !isTaskId(duplicateOf))) {
       throw new ApiError('A duplicate names the other task.', 409, 'task_refused');
     }
-    const at = touch(task);
+    const at = touch(task, 'closed', { status: 'closed' });
     endWork(task, true);
     task.status = 'closed';
     task.closedAt = at;
@@ -854,6 +864,7 @@ export function createFixtureTasksApi({
         const others = Object.keys(edit).filter((name) => name !== 'addLinks' && name !== 'removeLinks');
         if ((edit.addLinks !== undefined || edit.removeLinks !== undefined) && others.length > 0)
           invalid(`unknown ${others.join(', ')}`);
+        const held = task.assignee;
         if (edit.claim) {
           if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
           if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
@@ -889,7 +900,7 @@ export function createFixtureTasksApi({
         if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
         applyFields(task, edit);
         applyLinks(task, edit);
-        touch(task);
+        touch(task, 'updated', held === task.assignee ? {} : { assignee: task.assignee });
       });
     },
     async closeTask(id, key, reason, { resolution, duplicateOf, idempotencyKey } = {}) {
@@ -997,7 +1008,7 @@ export function createFixtureTasksApi({
       endWork(task);
       task.assignee = null;
       if (task.status === 'in_progress') task.status = 'open';
-      touch(task);
+      touch(task, 'updated', { assignee: null });
     },
     async resolveGate(id, key, reason, options) {
       reach();

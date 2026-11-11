@@ -4,11 +4,14 @@
  * travels to its new column instead of jumping there.
  */
 import { GitBranch, GitMerge, GitPullRequest } from 'lucide-react';
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../../components/ui/avatar';
 import { ActivityMark, StatusMark } from '../../components/ui/symbols';
+import { useRecentChanges } from '../../hooks/useBoard';
+import type { RecentChange } from '../../hooks/useChangeFeed';
 import { useMedia } from '../../hooks/useMedia';
+import { pullRequestLabel } from '../../lib/wins';
 import { httpUrl } from '../../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../../lib/format';
 import { activityOf, STAGE_LABELS, STAGES, stageTime, type Activity, type LiveBoard, type Stage } from '../../lib/live';
@@ -57,6 +60,7 @@ const EASE_OUT = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 export function LiveBoardView({ columns, nowMs }: { columns: LiveBoard; nowMs: number }) {
   const phone = useMedia(PHONE);
   const reduced = useMedia(REDUCED_MOTION);
+  const recent = useRecentChanges();
   const root = useRef<HTMLDivElement>(null);
   useCardMotion(root, reduced);
   const shown = SHOWN[phone ? 'phone' : 'wide'];
@@ -68,7 +72,7 @@ export function LiveBoardView({ columns, nowMs }: { columns: LiveBoard; nowMs: n
         data-live-board=""
       >
         {STAGES.map((stage) => (
-          <Column key={stage} stage={stage} tasks={columns[stage]} shown={shown[stage]} nowMs={nowMs} />
+          <Column key={stage} stage={stage} tasks={columns[stage]} shown={shown[stage]} nowMs={nowMs} recent={recent} />
         ))}
       </div>
     </div>
@@ -80,11 +84,13 @@ function Column({
   tasks,
   shown,
   nowMs,
+  recent,
 }: {
   stage: Stage;
   tasks: readonly BoardTask[];
   shown: number;
   nowMs: number;
+  recent: ReadonlyMap<string, RecentChange>;
 }) {
   const label = STAGE_LABELS[stage];
   const rule = COLUMN_RULES[stage];
@@ -103,7 +109,7 @@ function Column({
       </h2>
       {tasks.length === 0 ? <p className="px-1 pb-1 text-meta text-ink-3">None</p> : null}
       {tasks.slice(0, shown).map((task) => (
-        <Card key={task.id} task={task} stage={stage} nowMs={nowMs} />
+        <Card key={task.id} task={task} stage={stage} nowMs={nowMs} change={recent.get(task.id)} />
       ))}
       {more > 0 ? (
         <p className="nums px-1 pb-1 text-meta text-ink-3" data-live-more="">
@@ -114,19 +120,24 @@ function Column({
   );
 }
 
-/** A pull request's number from its URL, as `#42`, or its kind when the URL names none. */
-function pullRequestLabel(url: string): string {
-  const number = /\/pull\/(\d+)/.exec(url)?.[1];
-  return number === undefined ? 'Pull request' : `#${number}`;
-}
-
 /**
  * A task on the board: its id and pull request, its title, and who holds it
  * or closed it with the model they named and how long it has been in its
  * column. A task in progress also shows its activity mark and its holder's
  * next step, or else its branch.
  */
-function Card({ task, stage, nowMs }: { task: BoardTask; stage: Stage; nowMs: number }) {
+function Card({
+  task,
+  stage,
+  nowMs,
+  change,
+}: {
+  task: BoardTask;
+  stage: Stage;
+  nowMs: number;
+  /** The task's latest change the feed brought, which the card names for a moment. */
+  change: RecentChange | undefined;
+}) {
   const paths = usePaths();
   const held = stage === 'progress';
   const activity = held ? activityOf(task, nowMs) : null;
@@ -164,6 +175,7 @@ function Card({ task, stage, nowMs }: { task: BoardTask; stage: Stage; nowMs: nu
         activity === null ? null : ACTIVITY_TINTS[activity],
       )}
     >
+      <ChangeLabel change={change} />
       <div className="flex min-w-0 items-center gap-1.5 text-meta text-ink-3">
         {activity ? (
           <span className="relative grid shrink-0 place-items-center">
@@ -224,6 +236,40 @@ function Card({ task, stage, nowMs }: { task: BoardTask; stage: Stage; nowMs: nu
         </div>
       ) : null}
     </article>
+  );
+}
+
+/** How long a change's label stays on its card. */
+const LABEL_MS = 2_400;
+
+/**
+ * Who changed the task and what they did, such as "Claude commented", on the
+ * card's top edge for a moment after the change arrives. A change that
+ * arrived longer ago than that, such as while another page was open, shows
+ * nothing.
+ */
+function ChangeLabel({ change }: { change: RecentChange | undefined }) {
+  const [shown, setShown] = useState<{ label: string; on: boolean }>({ label: '', on: false });
+  useEffect(() => {
+    if (change === undefined) return;
+    const left = LABEL_MS - (Date.now() - change.receivedAt);
+    if (left <= 0) return;
+    setShown({ label: change.label, on: true });
+    const timer = setTimeout(() => setShown({ label: change.label, on: false }), left);
+    return () => clearTimeout(timer);
+  }, [change]);
+  return (
+    <span
+      aria-hidden={!shown.on}
+      data-live-label={shown.on ? '' : undefined}
+      className={cn(
+        'pointer-events-none absolute -top-2.5 right-2 max-w-[calc(100%-1rem)] truncate rounded-full bg-accent px-2 text-chip font-semibold text-on-accent shadow-raise',
+        'transition-opacity duration-300 motion-reduce:transition-none',
+        shown.on ? 'opacity-100' : 'opacity-0',
+      )}
+    >
+      {shown.label}
+    </span>
   );
 }
 
