@@ -118,14 +118,20 @@ An app connected before Ntasks read pushes receives none until you
   events name the pull request and its merge commit, so a task closed with a
   commit from its branch matches neither. Close tasks with their pull
   request, or name them on a `Refs:` line of the merge's commit message.
+- **Closed more than a day after its commit was pushed.** Ntasks keeps a
+  push's commits for a day, so a task closed with one of them within that day
+  moves to Merged at its close, and a task closed later stays at Built. Send
+  a `merged` signal for its commit (below) to move it.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
   commit's other deploys did, until that check passes on a rerun (press
   **Re-run** on it in GitHub) or a later merge's deploy ships it.
 - **One deploy shipped several merges.** A deploy names the one commit it
   ran on, so it moves the task merged as that commit. Tasks merged before it
   stay at Merged unless their own merge was deployed too.
-- **The deploy passed before the task closed.** The check after the close
-  asks GitHub only about the merge, so the task stops at Merged. Redeliver
+- **The deploy passed before the task closed.** For a task closed with a
+  pull request, the check after the close asks GitHub only about the merge,
+  so the task stops at Merged; a task closed with a commit a push brought in
+  within the day moves on to Live through that check. Redeliver
   the deploy's event from **Recent Deliveries** ([below](#check-that-it-works))
   to move it to Live; GitHub keeps them for 3 days, and after that a signal
   (below) does it. The event turns on **Changes go live by a deploy** for

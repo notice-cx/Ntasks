@@ -8,6 +8,8 @@
 /** The tables that hold tasks, in an order their foreign keys accept. */
 export const STORE_TABLES = [
   'projects',
+  // Before tasks: a task loaded at merged or live adds its repository, which must not take the loaded row's place.
+  'repositories',
   'custom_fields',
   'tasks',
   'task_labels',
@@ -16,7 +18,6 @@ export const STORE_TABLES = [
   'task_comments',
   'task_events',
   'task_aliases',
-  'repositories',
 ] as const;
 export type StoreTable = (typeof STORE_TABLES)[number];
 

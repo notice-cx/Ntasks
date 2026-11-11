@@ -12,7 +12,6 @@ import {
   ICON_SCHEMES,
   PROJECT_ICON_MAX_BYTES,
   PROJECT_ICON_TYPES,
-  REPOSITORY_NAME,
   TASK_LIMITS,
   TaskRefused,
   WORK_DETAILS,
@@ -93,6 +92,24 @@ const STALE = (dayAgo: string) => `((json_extract(result, '$.newTask') = 1 AND c
 /** How many times a write tries again, with a new task id or a fresh read,
  * after another write took its id or changed a task it also changes. */
 const ATTEMPTS = 5;
+
+/** How long the store keeps a push's commits, for a task closed with one of them after the push. */
+export const PUSH_KEPT_MS = 86_400_000;
+
+/** The push that brought a commit onto a repository's default branch: the repository, the push's newest commit and its time. */
+interface PushedCommit {
+  readonly repository: string;
+  readonly head: string;
+  readonly pushedAt: string;
+  /** A merge in the repository is the change going live, so the push shipped it. */
+  readonly mergesLive: boolean;
+}
+
+/** Where a task closed with a commit starts: at built, or where the push that brought its commit in left it. */
+function pushedStage(pushed: PushedCommit | null): DeliveryStage {
+  if (pushed === null) return 'built';
+  return pushed.mergesLive ? 'live' : 'merged';
+}
 
 /** The most open tasks one drop links to for naming it, which bounds the close's write. */
 export const NAMED_LINKS = 20;
@@ -298,10 +315,11 @@ function workIn(details: TaskWork): TaskWork {
 /**
  * How a new task starts: open; claimed by the actor, in progress; or closed as
  * done by the actor, held by nobody, with its delivery at built when the close
- * names a commit or a pull request. The columns, and the values its created
- * event records.
+ * names a commit or a pull request, or at merged when `pushed` names the push
+ * that brought its commit onto a default branch. The columns, and the values
+ * its created event records.
  */
-function filedState(fields: check.CreateFields, actor: Actor, at: string) {
+function filedState(fields: check.CreateFields, actor: Actor, at: string, pushed: PushedCommit | null) {
   const close = fields.close;
   const held = fields.claim;
   const columns: Row = held ? { assignee: actor.name, assignee_model: actor.model ?? null } : {};
@@ -317,21 +335,30 @@ function filedState(fields: check.CreateFields, actor: Actor, at: string) {
       close_link: close.link,
     });
     if (close.commit !== null || close.pullRequest !== null) {
+      const liveAt = pushed?.mergesLive === true ? pushed.pushedAt : null;
       Object.assign(columns, {
-        delivery_stage: 'built',
+        delivery_stage: pushedStage(pushed),
         delivery_commit: close.commit,
         delivery_pull_request: close.pullRequest,
         built_at: at,
+        ...(pushed === null
+          ? {}
+          : {
+              delivery_merge_commit: pushed.head,
+              delivery_repository: pushed.repository,
+              merged_at: pushed.pushedAt,
+              live_at: liveAt,
+            }),
       });
       delivery = deliveryJson({
-        stage: 'built',
+        stage: pushedStage(pushed),
         commit: close.commit,
         pullRequest: close.pullRequest,
-        mergeCommit: null,
-        repository: null,
+        mergeCommit: pushed?.head ?? null,
+        repository: pushed?.repository ?? null,
         builtAt: at,
-        mergedAt: null,
-        liveAt: null,
+        mergedAt: pushed?.pushedAt ?? null,
+        liveAt,
       });
     }
   }
@@ -1212,6 +1239,7 @@ export class Writes {
       const moves: DeliveryMove[] = [];
       const turnedOn = new Set<string>();
       const repositories = results.length === 0 ? new Map<string, boolean>() : await this.#repositories();
+      // The tasks it moves add their repositories to the list (store migration 0014).
       for (const row of results) {
         const current = deliveryOf(row);
         if (current === null) continue;
@@ -1248,13 +1276,8 @@ export class Writes {
         };
         statements.push(...this.#delivered(row, next, actor, at));
         moves.push({ taskId: row.id, projectId: row.project_id, stage });
-        if (repository !== null && !repositories.has(repository) && REPOSITORY_NAME.test(repository)) {
-          repositories.set(repository, false);
-          statements.push(
-            this.#db.prepare('INSERT INTO repositories (name) VALUES (?1) ON CONFLICT DO NOTHING').bind(repository),
-          );
-        }
       }
+      statements.push(...this.#pushed(signal, reached, at));
       if (statements.length === 0) return [];
       try {
         await this.#db.batch(statements);
@@ -1332,6 +1355,50 @@ export class Writes {
     refuse('version_conflict', `The tasks of ${name} kept changing; turn it on again.`);
   }
 
+  /**
+   * A push's commits, kept for PUSH_KEPT_MS with its newest commit and its
+   * time, and the commits older than that removed; nothing for any other
+   * signal. Only a push names its merge commit apart from its commits
+   * (src/github.ts), and every signal names its repository.
+   */
+  #pushed(signal: DeliverySignal, pushedAt: string, at: string): Statement[] {
+    if (signal.stage !== 'merged' || signal.mergeCommit === undefined || signal.repository === undefined) return [];
+    const since = new Date(Date.parse(at) - PUSH_KEPT_MS).toISOString();
+    return [
+      this.#db.prepare('DELETE FROM pushed_commits WHERE pushed_at < ?1').bind(since),
+      this.#db
+        .prepare(
+          `INSERT INTO pushed_commits (commit_sha, repository, head, pushed_at)
+           SELECT value, ?2, ?3, ?4 FROM json_each(?1) WHERE true
+           ON CONFLICT (commit_sha, repository) DO NOTHING`,
+        )
+        .bind(JSON.stringify(signal.commits), signal.repository, signal.mergeCommit, pushedAt),
+    ];
+  }
+
+  /**
+   * The push that brought this commit onto a default branch within
+   * PUSH_KEPT_MS, the first one when several did; null when none did. Two
+   * commits match when one starts with the other, as a signal matches them.
+   */
+  async #pushOf(commit: string, at: string): Promise<PushedCommit | null> {
+    const since = new Date(Date.parse(at) - PUSH_KEPT_MS).toISOString();
+    const row = await this.#db
+      .prepare(
+        `SELECT c.repository, c.head, c.pushed_at, coalesce(r.merges_live, 0) AS merges_live
+         FROM pushed_commits c LEFT JOIN repositories r ON r.name = c.repository
+         WHERE c.commit_sha >= substr(?1, 1, 7) AND c.commit_sha < substr(?1, 1, 7) || 'g'
+           AND (substr(?1, 1, length(c.commit_sha)) = c.commit_sha OR substr(c.commit_sha, 1, length(?1)) = ?1)
+           AND c.pushed_at >= ?2
+         ORDER BY c.pushed_at LIMIT 1`,
+      )
+      .bind(commit, since)
+      .first<{ repository: string; head: string; pushed_at: string; merges_live: number }>();
+    return row === null
+      ? null
+      : { repository: row.repository, head: row.head, pushedAt: row.pushed_at, mergesLive: row.merges_live === 1 };
+  }
+
   async createTask(
     projectId: string,
     input: CreateTaskInput,
@@ -1374,7 +1441,12 @@ export class Writes {
         const checked = check.fieldValues(await this.#reads.listFields(projectId), fields.fields, false);
         for (const [key, value] of Object.entries(checked)) if (value !== null) values.set(key, value);
       }
-      const filed = filedState(fields, actor, at);
+      const close = fields.close;
+      const pushed =
+        close !== null && close.commit !== null && close.pullRequest === null
+          ? await this.#pushOf(close.commit, at)
+          : null;
+      const filed = filedState(fields, actor, at, pushed);
       const placed: Moved = {
         id,
         before: null,
@@ -1995,19 +2067,28 @@ export class Writes {
       };
       const { commit, pullRequest } = write.close;
       if (commit !== null || pullRequest !== null) {
-        columns.delivery_stage = 'built';
+        // A commit pushed to a default branch before the close is merged already, as its push would have moved it.
+        const pushed = commit !== null && pullRequest === null ? await this.#pushOf(commit, at) : null;
+        const liveAt = pushed?.mergesLive === true ? pushed.pushedAt : null;
+        columns.delivery_stage = pushedStage(pushed);
         columns.delivery_commit = commit;
         columns.delivery_pull_request = pullRequest;
         columns.built_at = at;
+        if (pushed !== null) {
+          columns.delivery_merge_commit = pushed.head;
+          columns.delivery_repository = pushed.repository;
+          columns.merged_at = pushed.pushedAt;
+          columns.live_at = liveAt;
+        }
         changes.delivery = deliveryJson({
-          stage: 'built',
+          stage: pushedStage(pushed),
           commit,
           pullRequest,
-          mergeCommit: null,
-          repository: null,
+          mergeCommit: pushed?.head ?? null,
+          repository: pushed?.repository ?? null,
           builtAt: at,
-          mergedAt: null,
-          liveAt: null,
+          mergedAt: pushed?.pushedAt ?? null,
+          liveAt,
         });
       }
     } else if (write.reopen) {
