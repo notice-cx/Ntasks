@@ -694,6 +694,7 @@ describe('dropped links', () => {
     const shelved = await make(tasks, project.id, 'Shelve the old site');
     const edited = await make(tasks, project.id, 'Edit the notes', { title: '', notes: `After ${shelved.id}.` });
     const untouched = await make(tasks, project.id, 'Tell the team', { title: '', notes: `After ${shelved.id}.` });
+    const commented = await make(tasks, project.id, 'Brief support', { title: '', notes: `After ${shelved.id}.` });
     time.advance(1);
     await tasks.writeTask(
       project.id,
@@ -701,12 +702,17 @@ describe('dropped links', () => {
       {
         expectedVersion: shelved.version,
         close: { reason: 'Dropped', resolution: 'wont-do' },
-        others: [{ taskId: edited.id, expectedVersion: edited.version, set: { priority: 1 } }],
+        others: [
+          { taskId: edited.id, expectedVersion: edited.version, set: { priority: 1 } },
+          { taskId: commented.id, expectedVersion: commented.version, comment: 'Dropping its premise.' },
+        ],
       },
       AGENT,
     );
+    // A comment leaves the task as it was, so the task it rides on is linked and lists the drop.
     const links = (await tasks.getTask(project.id, shelved.id))?.dependencies.map((link) => link.taskId);
-    expect(links).toEqual([untouched.id]);
+    expect(links?.sort()).toEqual([commented.id, untouched.id].sort());
+    expect((await tasks.getTask(project.id, commented.id))?.reliesOnDropped).toHaveLength(1);
 
     // A move that takes a naming task out of its epic, leaving the epic with only dropped tasks, changes that task.
     const plan = await make(tasks, project.id, 'Plan the move', { title: '', type: 'epic' });
@@ -726,6 +732,38 @@ describe('dropped links', () => {
     expect(epic?.close).toMatchObject({ resolution: 'no-longer-needed' });
     expect(epic?.dependencies).toEqual([]);
     expect((await tasks.getTask(other.id, moved!.id))?.reliesOnDropped).toEqual([]);
+  });
+
+  it('leaves removed a link the dropping close removes from a task that names it', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const notes = await make(tasks, project.id, 'Write the notes', { title: '' });
+    const shelved = await make(tasks, project.id, 'Shelve the old site', {
+      title: '',
+      links: [{ direction: 'depends-on', taskId: notes.id, type: 'blocks' }],
+    });
+    const naming = (
+      await tasks.writeTask(
+        project.id,
+        notes.id,
+        { expectedVersion: notes.version, set: { description: `Notes for ${shelved.id}.` } },
+        AGENT,
+      )
+    ).task;
+    time.advance(1);
+    const current = (await tasks.getTask(project.id, shelved.id))!;
+    await tasks.writeTask(
+      project.id,
+      shelved.id,
+      {
+        expectedVersion: current.version,
+        close: { reason: 'Dropped', resolution: 'wont-do' },
+        removeLinks: [naming.id],
+      },
+      AGENT,
+    );
+    expect((await tasks.getTask(project.id, shelved.id))?.dependencies).toEqual([]);
   });
 
   it('leaves out a child epic that closes with the parent epic it names', async () => {
