@@ -188,6 +188,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `request_human_approval` | The approval the task now waits on, as `{ id, status, title, reason }`, `created`: whether this call opened it, and `lint` with advice when its title or description breaks the [rules for writing a task](concepts.md#writing-a-task) | `workspace`, `task`, either `title` (one line of at most 70 characters) and `description` (Markdown, at most 2,048 characters) or `reason` (at most 400 characters, its first line the title), and optionally `project` and `model` |
 | `request_human_action` | The request the task now waits on, as `request` with its `id`, `status`, `title` and number of `steps`, `created`: whether this call opened it, and `lint` with advice when its title breaks the [rules for writing a task](concepts.md#writing-a-task) or a step's text holds a command. Asking again with the same title and steps returns the open one | `workspace`, `task`, `title` (one line of at most 70 characters), `context` (Markdown: what doing the steps changes and how the agent will confirm the result), `steps` (1 to 20, each with `text` and optionally `command`), and optionally `project` and `model` |
 | `close_task` | The task's `id`, `status` (now `closed`), `resolution`, `delivery` when the close records one, and `version`, `replayed`, `closedEpics` when the close also closed epics whose last open task it was (each `{ id, resolution }`), `unblocked`, and `warnings` when the reason cites something a reader cannot check or work done has no proof. With `tasks` or `with_children`, `results`: the same for each task closed, or `{ id, error }`, then `closedEpics`, `unblocked` and `warnings` | `workspace`, `task` or `tasks` (1 to 50 task ids), `reason`, and optionally `project`, `resolution` (`done` when left out), `duplicate_of`, `commit`, `pr`, `link`, `with_children`, `model`, `idempotency_key` and `detail` |
+| `move_tasks` | `tasks`: each task named, after the move, as `{ id, parent, version }`, or as `get_task` shows it with `detail: "full"`; `moved`: each task whose id changed, old id to new; `fieldsKept` when a task kept field values its new project does not define, by its new id; `epics` when the move closed or reopened epics, each `{ id, status, resolution }`; and `replayed` | `workspace`, `task` or `tasks` (1 to 50 task ids), and `project`, `parent` or both, and optionally `with_children`, `model`, `idempotency_key` and `detail` ([below](#moving-tasks)) |
 | `report_delivery` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([below](#delivery)) | `workspace`, `repository`, `stage`, at least one of `pull_requests` and `commits`, and optionally `model` |
 | `list_fields` | The project's key and its custom fields, retired ones included, in the order they were defined: each one's `key`, `name`, `type`, `options`, `createdAt` and `retiredAt` | `workspace`, `project` |
 | `define_field` | The field, and `replayed` | `workspace`, `project`, `key`, `name`, `type`, `options` for a choice field, and optionally `model` and `idempotency_key` |
@@ -544,6 +545,53 @@ pair's link, whichever way it points. Asking for a link the pair has, or to
 remove one it does not have, changes nothing. A link the other task holds in
 another project is changed from that task's side. `link_tasks` takes no
 idempotency key, since asking again changes nothing.
+
+## Moving tasks
+
+`move_tasks`, and `POST /api/tasks/move` over HTTP, move tasks to another
+epic, or to another project of the same workspace, in one write: every task
+named moves, or none does and the refusal names the task at fault. A call
+moves at most 50 tasks, counting the tasks that move with them.
+
+- `project` names the project they go to, and `parent` the task they go
+  under there. With `parent` alone, they go to its project; with `project`
+  alone, or `parent: ""`, they go under no task.
+- A task that stays in its project keeps its id, and its children stay under
+  it.
+- A task that goes to another project takes a new id with that project's
+  prefix: the next child id of its new parent, such as `docs-k2m1.3`, or a
+  new key, such as `docs-x7q2`. So a task id's prefix still names its
+  project. A task with tasks under it goes to another project only with
+  `with_children: true`, which moves every task under it too, each keeping
+  its parent and taking a child id of its parent's new id.
+- Everything recorded on a task comes along: its comments, its history, its
+  labels, its links to other tasks both ways, its external links, its
+  delivery, its holder and work details, and its custom field values. A
+  value its new project does not define, or defines with another type or
+  options, stays on the task, and the answer names it in `fieldsKept`.
+- A task closed as a duplicate of a moved task names the new id, with a
+  change in its own history.
+- The task's history records the move as one change whose `id` and
+  `projectId` fields show the old and new id and project.
+- The epic a task leaves and the epic it joins close or reopen as when a task
+  under them closes or reopens ([epics](concepts.md#epics)).
+
+A task's old id stays its former id. Every MCP tool reads an argument that
+names it as the task: `get_task`, `update_task`, `link_tasks`, `close_task`
+and the rest, and the answer then holds `formerIds`, each old id the call
+named with the task's id now. An HTTP route under `/api/tasks/:id` or
+`/api/gates/:id` whose path names a former id answers for the task, reading a
+`project` in its query or a `projectId` in its body that names the old
+project as the new one; the web app's address with an old id opens the task
+under its new one. A former id never becomes another task's id. A sender who
+cannot reach the task's new project finds the old id names no task.
+
+Moving to a project of another workspace is refused: each workspace keeps its
+own tasks, so the work is filed again there. A disabled project, which takes
+no new tasks, is refused too, as is a `parent` in another project than
+`project`, and a task the sender may only read. With `idempotency_key`, or
+the `Idempotency-Key` header, a retry answers the first move without moving
+again ([retrying a write](#retrying-a-write)).
 
 ## Recording an owner answer
 
@@ -1213,7 +1261,7 @@ misspelt filter fails instead of being ignored.
 |---|---|---|
 | `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, and `icon`: the address of the icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none |
 | `GET /api/tasks/projects/:projectId/icon` | optionally `v`, as `icon` gives it | The icon's bytes, with the image type the bytes show (`image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon. |
-| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
+| `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, `move`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
 | `GET /api/tasks` with `stage` | `project` and `stage`, a comma-separated list of `built`, `merged` and `live`; optionally `status=closed` and `closedDays` | The board's answer, holding the project's closed tasks at those stages, whenever they closed unless `closedDays` is given ([delivery](#delivery)) |
@@ -1242,6 +1290,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
+| `POST /api/tasks/move` | `tasks`, 1 to 50 task ids, and `projectId`, `parent` or both, and optionally `withChildren` ([moving tasks](#moving-tasks)) | `{ tasks, moved }`: each task named, after the move, and each task whose id changed, old id to new; `fieldsKept` as `move_tasks` answers it, and `epics`, each `{ id, status }`, when the move closed or reopened epics |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
 | `POST /api/github/:workspaceId` | A delivery from the workspace's GitHub App or webhook, signed with its secret instead of signed in, as GitHub sends it | `{ moved }`, `closed` and `kept` when a merge closed or kept work in progress, and `ignored` when it moves nothing ([from GitHub](#from-github)) |
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
@@ -1531,6 +1580,9 @@ store does read, each read reaches its rows through an index and returns a
 task's labels, its links to other tasks and its external links in the same
 query:
 
+- an MCP call that names a task reads whether the id is a moved task's
+  former id first, one statement that reads no row unless it is one; an
+  HTTP route reads it only when the task its path names is not found;
 - a read of one task, its comments or its history reads a few dozen rows;
   what its parent holds for it is one statement more, which reads the
   parent's pinned comments, the 5 closed children it shows and one index

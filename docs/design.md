@@ -230,7 +230,8 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
-`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`, `users`,
+`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`,
+`folder-input`, `users`,
 `building-2`, `arrow-up-down`, `arrow-up-narrow-wide`,
 `arrow-down-wide-narrow`, `chart-no-axes-column` and
 `git-commit-horizontal`.
@@ -590,8 +591,8 @@ you"), and the action that fills it, when there is one.
 
 The top bar holds the task's path: its project's badge and name, its epic's
 id, then its id. Its end holds Copy link, the More menu (add or edit the
-description, Done when, design and notes, add a link, copy the id or the
-link) and the task's verbs, the primary one last: Claim, or Close once
+description, Done when, design and notes, add a link, move the task to
+another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
 someone holds it; Approve or Answer on a task waiting for you, beside Close
 as.
 
