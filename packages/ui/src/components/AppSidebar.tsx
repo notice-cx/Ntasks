@@ -60,7 +60,7 @@ function WorkspaceSwitcher({ admin }: { admin: boolean }) {
   const { workspace, workspaces, switchTo } = useWorkspace();
   const navigate = useNavigate();
   const paths = usePaths();
-  const { pathname, search } = useLocation();
+  const { pathname, search, hash } = useLocation();
   // Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board.
   const sameInEvery = pathname === paths.live || paths.isSettings(pathname);
   return (
@@ -90,7 +90,7 @@ function WorkspaceSwitcher({ admin }: { admin: boolean }) {
         {admin ? (
           <MenuItem
             icon={<Plus aria-hidden />}
-            onSelect={() => void navigate(`${pathname}${search}`, { state: { [NEW_WORKSPACE_STATE]: true } })}
+            onSelect={() => void navigate({ pathname, search, hash }, { state: { [NEW_WORKSPACE_STATE]: true } })}
           >
             New workspace
           </MenuItem>

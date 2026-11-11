@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Building2 } from 'lucide-react';
-import { useCallback, useId, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { needsSignIn, refusedField } from '../api/client';
 import { useAnswerQueue, useTasksApi } from '../api/context';
@@ -62,17 +62,18 @@ export function WorkspaceGate() {
   const navigate = useNavigate();
   const location = useLocation();
   const paths = usePaths();
-  // A new workspace opens at once on Settings's Projects tab, where its first project is made. Back
-  // from there never shows the New workspace form again.
+  // A new workspace joins the list, and while its form is still on screen opens at once on Settings's
+  // Projects tab, where its first project is made. Back from there never shows the form again.
   const created = useCallback(
-    (added: Workspace) => {
+    (added: Workspace, opens: boolean) => {
       client.setQueryData<readonly Workspace[]>(WORKSPACES_KEY, (known = []) => [
         ...known.filter((row) => row.workspaceId !== added.workspaceId),
         added,
       ]);
+      void client.invalidateQueries({ queryKey: WORKSPACES_KEY });
+      if (!opens) return;
       setChosen(added.workspaceId);
       void navigate(paths.projects, { replace: true, state: { [NEW_PROJECT_STATE]: true } });
-      void client.invalidateQueries({ queryKey: WORKSPACES_KEY });
     },
     [client, navigate, paths],
   );
@@ -104,7 +105,10 @@ export function WorkspaceGate() {
     return (
       <CreateWorkspace
         onCreated={created}
-        onCancel={() => void navigate({ pathname, search, hash }, { replace: true })}
+        // The menu opened the form as a new history entry, so Cancel goes back to the one before it.
+        onCancel={() =>
+          void (location.key === 'default' ? navigate({ pathname, search, hash }, { replace: true }) : navigate(-1))
+        }
       />
     );
   }
@@ -145,7 +149,7 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 /** A deployment admin creates the first workspace; anyone else has none to open. */
-function FirstStep({ onCreated }: { onCreated: (workspace: Workspace) => void }) {
+function FirstStep({ onCreated }: { onCreated: (workspace: Workspace, opens: boolean) => void }) {
   const account = useAccount(true);
   usePageTitle('New workspace');
   if (account.isPending) return <Loading />;
@@ -174,7 +178,8 @@ function CreateWorkspace({
   onCreated,
   onCancel,
 }: {
-  onCreated: (workspace: Workspace) => void;
+  /** `opens` is whether the form was still on screen when the workspace was made. */
+  onCreated: (workspace: Workspace, opens: boolean) => void;
   /** Leaves the form for the page it opened over; the first step, with no workspace to go back to, has none. */
   onCancel?: () => void;
 }) {
@@ -187,6 +192,14 @@ function CreateWorkspace({
   const trimmed = name.trim();
   const nameError = refusedField(create.error, ['name']) ? (create.error?.message ?? null) : null;
   const formError = create.error && nameError === null ? create.error.message : null;
+  // Back while a creation is on its way leaves the form; the workspace it makes then must not take the page over.
+  const shown = useRef(true);
+  useEffect(() => {
+    shown.current = true;
+    return () => {
+      shown.current = false;
+    };
+  }, []);
 
   async function submit() {
     if (trimmed === '' || create.isPending) return;
@@ -195,7 +208,7 @@ function CreateWorkspace({
       .catch(() => null);
     if (created === null) return;
     retryKey.done();
-    onCreated(created);
+    onCreated(created, shown.current);
   }
 
   return (
