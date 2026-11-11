@@ -1,14 +1,14 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { Ellipsis } from 'lucide-react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TaskChoiceKey } from '@/api/types';
 import { Progress, progressShare } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/button';
 import { choiceForKey, OptionList, Segmented, type ChoiceOption } from '@/components/ui/choice';
 import { Field, Input, Textarea } from '@/components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
-import { AppShell, NavItem, Sidebar, TopBar } from '@/components/ui/shell';
+import { AppShell, NavItem, Sidebar, SidebarHeader, TopBar } from '@/components/ui/shell';
 import { useShortcut } from '@/hooks/useShortcut';
 import { isShortcut } from '@/lib/symbols';
 import { DecisionAnswer } from '@/routes/tasks/decision-card';
@@ -369,5 +369,183 @@ describe('the frame on a phone', () => {
   it('has no opener outside the frame', () => {
     render(<TopBar title="Tasks" />);
     expect(screen.queryByRole('button', { name: 'Sidebar' })).toBeNull();
+  });
+});
+
+describe('the frame beside the page', () => {
+  function Frame() {
+    return (
+      <div data-ntasks="">
+        <AppShell
+          sidebar={
+            <Sidebar aria-label="Pages">
+              <SidebarHeader icon={null} name="Example" />
+              <NavItem href="#tasks" icon={null}>
+                Tasks
+              </NavItem>
+            </Sidebar>
+          }
+        >
+          <TopBar title="Tasks">
+            <button type="button">New task</button>
+          </TopBar>
+        </AppShell>
+      </div>
+    );
+  }
+
+  /** Makes the window as wide as a laptop's, or as narrow as a phone's; the answer resizes it. */
+  function screenWide(wide: boolean) {
+    let now = wide;
+    const changes = new Set<() => void>();
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          get matches() {
+            return now && query === '(width >= 40rem)';
+          },
+          media: query,
+          addEventListener: (_: string, onChange: () => void) => changes.add(onChange),
+          removeEventListener: (_: string, onChange: () => void) => changes.delete(onChange),
+        }) as unknown as MediaQueryList,
+    );
+    return (next: boolean) =>
+      act(() => {
+        now = next;
+        for (const onChange of changes) onChange();
+      });
+  }
+
+  function parts() {
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    return {
+      nav,
+      hide: within(nav).getByRole('button', { name: 'Sidebar' }),
+      show: within(screen.getByRole('main')).getByRole('button', { name: 'Sidebar' }),
+    };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hides from its header and shows again from the top bar, with focus on the button that stays', () => {
+    screenWide(true);
+    render(<Frame />);
+    const { nav, hide, show } = parts();
+    expect(hide.getAttribute('aria-expanded')).toBe('true');
+    expect(hide.getAttribute('aria-controls')).toBe(nav.id);
+    expect(show.getAttribute('aria-expanded')).toBe('true');
+
+    hide.focus();
+    fireEvent.click(hide);
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+    expect(show.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(show);
+
+    fireEvent.click(show);
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    // Beside the page the button shows the sidebar there, not as a sheet over the page.
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(show.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(hide);
+  });
+
+  it('keeps the choice in the browser, and shows the sidebar where the browser refuses storage', () => {
+    screenWide(true);
+    const first = render(<Frame />);
+    fireEvent.click(parts().hide);
+    first.unmount();
+
+    const second = render(<Frame />);
+    expect(parts().nav.hasAttribute('data-collapsed')).toBe(true);
+    fireEvent.click(parts().show);
+    second.unmount();
+    const third = render(<Frame />);
+    expect(parts().nav.hasAttribute('data-collapsed')).toBe(false);
+    third.unmount();
+
+    window.localStorage.setItem('ntasks.sidebar', 'hidden');
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Blocked', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Blocked', 'SecurityError');
+    });
+    render(<Frame />);
+    const { nav, hide } = parts();
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    fireEvent.click(hide);
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+  });
+
+  it('hides and shows on [, moving focus only out of the sidebar', () => {
+    screenWide(true);
+    render(<Frame />);
+    const { nav, hide, show } = parts();
+    const link = screen.getByRole('link', { name: 'Tasks' });
+    link.focus();
+    fireEvent.keyDown(link, { key: '[' });
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+    expect(document.activeElement).toBe(show);
+
+    const page = screen.getByRole('button', { name: 'New task' });
+    page.focus();
+    fireEvent.keyDown(page, { key: '[' });
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    expect(document.activeElement).toBe(page);
+    fireEvent.keyDown(page, { key: '[' });
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+    expect(document.activeElement).toBe(page);
+    expect(hide.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('on a phone, opens as a sheet from the top bar and on [, even when hidden from beside the page', () => {
+    window.localStorage.setItem('ntasks.sidebar', 'hidden');
+    screenWide(false);
+    render(<Frame />);
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    // The sheet's own header has no Sidebar button, so its focus lands on its first link.
+    expect(within(nav).queryByRole('button', { name: 'Sidebar' })).toBeNull();
+    const show = screen.getByRole('button', { name: 'Sidebar' });
+    expect(show.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(show);
+    expect(nav.hasAttribute('data-open')).toBe(true);
+    expect(show.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(nav.hasAttribute('data-open')).toBe(false);
+
+    fireEvent.keyDown(show, { key: '[' });
+    expect(nav.hasAttribute('data-open')).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Tasks' }));
+  });
+
+  it('closes the sheet as the screen widens, and moves focus out of a sidebar kept hidden', () => {
+    window.localStorage.setItem('ntasks.sidebar', 'hidden');
+    const resize = screenWide(false);
+    render(<Frame />);
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    const show = screen.getByRole('button', { name: 'Sidebar' });
+    fireEvent.click(show);
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Tasks' }));
+
+    resize(true);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+    expect(document.activeElement).toBe(show);
+  });
+
+  it('closes the sheet as the screen widens, leaving focus in a sidebar that shows', () => {
+    const resize = screenWide(false);
+    render(<Frame />);
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    fireEvent.click(screen.getByRole('button', { name: 'Sidebar' }));
+    const link = screen.getByRole('link', { name: 'Tasks' });
+    expect(document.activeElement).toBe(link);
+
+    resize(true);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    expect(document.activeElement).toBe(link);
   });
 });

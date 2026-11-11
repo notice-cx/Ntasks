@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -14,6 +15,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { useMedia } from '../../hooks/useMedia';
+import { useShortcut } from '../../hooks/useShortcut';
 import { cn } from '../../lib/utils';
 import { IconButton } from './button';
 
@@ -28,10 +31,44 @@ interface SidebarState {
   place: SidebarPlace;
   open: boolean;
   setOpen: (open: boolean) => void;
+  /** Whether the person hid the sidebar from beside the page; a phone and a `sheet` ignore it. */
+  collapsed: boolean;
+  /** Whether the screen is wide enough for the sidebar beside the page. */
+  wide: boolean;
+  /** What the Sidebar button and `[` do: hide or show the sidebar beside the page, else open or close the sheet. */
+  toggle: () => void;
   /** Closes the sheet and puts focus back on the button that opened it. */
   dismiss: () => void;
   sidebarId: string;
   opener: RefObject<HTMLButtonElement | null>;
+  closer: RefObject<HTMLButtonElement | null>;
+}
+
+/** Tailwind's `sm`: from this width the sidebar sits beside the page, and the `max-sm:` classes stop. */
+const WIDE = '(width >= 40rem)';
+
+const COLLAPSED_KEY = 'ntasks.sidebar';
+
+/**
+ * Whether this browser keeps the sidebar hidden from beside the page. Storage
+ * can be missing or refuse (a private window, a blocked site), and then the
+ * sidebar shows.
+ */
+function storedCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === 'hidden';
+  } catch {
+    return false;
+  }
+}
+
+function storeCollapsed(collapsed: boolean): void {
+  try {
+    if (collapsed) window.localStorage.setItem(COLLAPSED_KEY, 'hidden');
+    else window.localStorage.removeItem(COLLAPSED_KEY);
+  } catch {
+    // Kept for this page only; the next load shows the sidebar.
+  }
 }
 
 const SidebarContext = createContext<SidebarState | null>(null);
@@ -41,8 +78,11 @@ const SidebarContext = createContext<SidebarState | null>(null);
  * divided by Border. On a phone, and at every width when `place` is `sheet`,
  * the sidebar is hidden and the page takes the width; the Sidebar button at
  * the start of the page's `TopBar` opens it as a sheet over the page. The
- * sheet closes on Escape, on a press outside it, on a link inside it, and
- * when the browser goes back or forward.
+ * sheet closes on Escape, on a press outside it, on a link inside it, when
+ * the browser goes back or forward, and as the screen widens. Beside the page, the Sidebar button
+ * in `SidebarHeader` hides the sidebar and the page takes the width, until the
+ * top bar's Sidebar button shows it again; the browser keeps the choice. `[`
+ * does what the Sidebar button does.
  */
 export function AppShell({
   sidebar,
@@ -56,16 +96,49 @@ export function AppShell({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(storedCollapsed);
+  const wide = useMedia(WIDE);
   const sidebarId = useId();
   const opener = useRef<HTMLButtonElement>(null);
+  const closer = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
   const dismiss = useCallback(() => {
     setOpen(false);
     opener.current?.focus();
   }, []);
+  const toggle = useCallback(() => {
+    if (place === 'sheet' || !wide) {
+      if (open) dismiss();
+      else setOpen(true);
+      return;
+    }
+    const focused = document.activeElement;
+    // Focus on a control that is about to hide moves to the Sidebar button that shows.
+    refocus.current =
+      focused !== null && (focused === opener.current || !!document.getElementById(sidebarId)?.contains(focused));
+    setCollapsed(!collapsed);
+    storeCollapsed(!collapsed);
+  }, [place, wide, open, dismiss, collapsed, sidebarId]);
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    (collapsed ? opener : closer).current?.focus();
+  }, [collapsed]);
+  // A sheet still open as the screen widens closes: the sidebar now sits beside the page, or stays
+  // hidden there, and then focus inside it moves to the top bar's Sidebar button. Only a change of
+  // width runs this; a toggle moves focus itself.
+  useLayoutEffect(() => {
+    if (!wide || place === 'sheet') return;
+    setOpen(false);
+    const focused = document.activeElement;
+    if (collapsed && focused !== null && document.getElementById(sidebarId)?.contains(focused)) opener.current?.focus();
+  }, [wide]);
+  useShortcut('[', toggle);
   const state = useMemo(
-    () => ({ place, open, setOpen, dismiss, sidebarId, opener }),
-    [place, open, dismiss, sidebarId],
+    () => ({ place, open, setOpen, collapsed, wide, toggle, dismiss, sidebarId, opener, closer }),
+    [place, open, collapsed, wide, toggle, dismiss, sidebarId],
   );
+  const hidden = place === 'beside' && collapsed;
 
   useEffect(() => {
     if (!open) return;
@@ -89,7 +162,10 @@ export function AppShell({
         className={cn(
           place === 'sheet'
             ? 'min-h-full bg-background'
-            : 'grid min-h-screen grid-cols-[236px_minmax(0,1fr)] bg-canvas max-sm:grid-cols-1',
+            : [
+                'grid min-h-screen bg-canvas',
+                hidden ? 'grid-cols-1' : 'grid-cols-[236px_minmax(0,1fr)] max-sm:grid-cols-1',
+              ],
           className,
         )}
       >
@@ -106,18 +182,27 @@ export function AppShell({
           // A host page that draws its own navigation holds the one main landmark.
           <div className="min-w-0 bg-background">{children}</div>
         ) : (
-          <main className="min-w-0 border-l border-border bg-background max-sm:border-l-0">{children}</main>
+          <main
+            className={cn('min-w-0 border-l border-border bg-background max-sm:border-l-0', hidden && 'border-l-0')}
+          >
+            {children}
+          </main>
         )}
       </div>
     </SidebarContext.Provider>
   );
 }
 
-/** The app's navigation. Inside an `AppShell` on a phone, it shows as a sheet while the top bar's Sidebar button has it open. */
+/**
+ * The app's navigation. Inside an `AppShell` on a phone, it shows as a sheet
+ * while the top bar's Sidebar button has it open; on a wider screen it is
+ * hidden while the person keeps it hidden.
+ */
 export function Sidebar({ className, children, onClick, ...props }: ComponentProps<'nav'>) {
   const shell = useContext(SidebarContext);
   const open = shell?.open ?? false;
   const sheet = shell?.place === 'sheet';
+  const collapsed = !sheet && (shell?.collapsed ?? false);
   const nav = useRef<HTMLElement>(null);
   useEffect(() => {
     if (open) nav.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
@@ -127,6 +212,7 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
       ref={nav}
       id={shell?.sidebarId}
       data-open={open ? '' : undefined}
+      data-collapsed={collapsed ? '' : undefined}
       className={cn(
         'flex flex-col gap-0.5 px-2.5 pt-2.5 pb-4',
         sheet
@@ -135,6 +221,7 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
             : 'hidden'
           : [
               'sticky top-0 h-screen',
+              collapsed && 'sm:hidden',
               open
                 ? 'max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-50 max-sm:h-auto max-sm:w-[min(280px,85vw)] max-sm:overflow-y-auto max-sm:bg-canvas max-sm:shadow-pop'
                 : 'max-sm:hidden',
@@ -153,31 +240,62 @@ export function Sidebar({ className, children, onClick, ...props }: ComponentPro
   );
 }
 
-/** The button that opens the sidebar as a sheet; `TopBar` puts it first. Hidden on wider screens while the sidebar shows beside the page. */
+/**
+ * The top bar's Sidebar button, which `TopBar` puts first. It opens the
+ * sidebar as a sheet; beside the page it shows only while the sidebar is
+ * hidden, and shows it again.
+ */
 function SidebarOpener() {
   const shell = useContext(SidebarContext);
   if (!shell) return null;
+  const beside = shell.place === 'beside';
   return (
     <IconButton
       ref={shell.opener}
       label="Sidebar"
+      shortcut="["
       icon={<PanelLeft aria-hidden />}
-      aria-expanded={shell.open}
+      aria-expanded={beside && shell.wide ? !shell.collapsed : shell.open}
       aria-controls={shell.sidebarId}
-      className={cn('-ms-1.5', shell.place === 'beside' && 'sm:hidden')}
-      onClick={() => shell.setOpen(!shell.open)}
+      className={cn('-ms-1.5', beside && !shell.collapsed && 'sm:hidden')}
+      onClick={shell.toggle}
     />
   );
 }
 
 /**
- * The sidebar's first line: the workspace's icon and name, and the search
- * button. For a person in several workspaces the name is a `WorkspaceButton`
- * that opens the menu of the others.
+ * The sidebar header's Sidebar button, which hides the sidebar from beside the
+ * page. A phone's sheet and a `sheet` sidebar leave it out, so opening the
+ * sheet puts focus on its first item rather than on a button it hides.
+ */
+function SidebarCloser() {
+  const shell = useContext(SidebarContext);
+  if (shell?.place !== 'beside' || !shell.wide) return null;
+  return (
+    <IconButton
+      ref={shell.closer}
+      size="sm"
+      label="Sidebar"
+      shortcut="["
+      icon={<PanelLeft aria-hidden />}
+      aria-expanded={!shell.collapsed}
+      aria-controls={shell.sidebarId}
+      className="-ms-1.5"
+      onClick={shell.toggle}
+    />
+  );
+}
+
+/**
+ * The sidebar's first line: inside an `AppShell`, the Sidebar button that
+ * hides it, then the workspace's icon and name, and the search button. For a
+ * person in several workspaces the name is a `WorkspaceButton` that opens the
+ * menu of the others.
  */
 export function SidebarHeader({ icon, name, children }: { icon: ReactNode; name: ReactNode; children?: ReactNode }) {
   return (
     <div className="mb-2 flex h-9 items-center gap-2 ps-2 pe-1.5">
+      <SidebarCloser />
       {icon}
       {typeof name === 'string' ? (
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{name}</span>
@@ -320,8 +438,8 @@ export function SidebarSpacer() {
 
 /**
  * A page's top bar, 56 px: its title (or a path of links), then its views,
- * then its search and actions at the end. Inside an `AppShell` on a phone it
- * starts with the button that opens the sidebar.
+ * then its search and actions at the end. Inside an `AppShell` on a phone,
+ * and while the sidebar is hidden, it starts with the Sidebar button.
  */
 export function TopBar({ title, children, className }: { title: ReactNode; children?: ReactNode; className?: string }) {
   return (

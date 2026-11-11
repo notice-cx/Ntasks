@@ -230,7 +230,7 @@ the control has a label (`IconButton`). The icons the app uses: `search`,
 `tag`, `calendar`, `clock`, `moon`, `link`, `git-pull-request`, `git-merge`,
 `git-branch`, `message-square`, `corner-down-left`, `pencil`, `copy`, `undo-2`,
 `paperclip`, `keyboard`, `command`, `arrow-up-right`, `send-horizontal`,
-`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `folder`,
+`star`, `inbox`, `circle-alert`, `bot`, `chevrons-up-down`, `panel-left`, `folder`,
 `folder-input`, `users`,
 `building-2`, `arrow-up-down`, `arrow-up-narrow-wide`,
 `arrow-down-wide-narrow`, `chart-no-axes-column` and
@@ -587,7 +587,20 @@ On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
 with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a
 sheet over the page, with focus on its first link. The sheet closes on
 Escape, which puts focus back on the button, on a press outside it, on a link
-inside it, and when the browser goes back or forward.
+inside it, when the browser goes back or forward, and when the screen widens
+to 640 px.
+
+From 640 px wide, `SidebarHeader` starts with a Sidebar button of its own,
+`sm`, with `aria-expanded`, that hides the sidebar: the page then takes the
+full width and the top bar starts with its Sidebar button, which shows the
+sidebar again. Focus moves from the button that hides to the one that
+shows, and from inside the sidebar to the top bar's button. A sheet that
+closes as the screen widens leaves focus where it was, unless the sidebar
+stays hidden, and then focus moves to the top bar's button. The browser
+keeps the choice (`ntasks.sidebar` in localStorage) and shows the sidebar
+when its storage is unavailable. A phone's sheet, and a sidebar a host keeps
+behind the Sidebar button (`sidebar="sheet"`), have no hiding: their header
+has no Sidebar button.
 
 ### EmptyState (`empty-state.tsx`)
 
@@ -1020,6 +1033,7 @@ Each action's key:
 | `/` | Search |
 | `F` | Focus, the decisions one at a time |
 | `L` | Live, the tasks in progress by their holders' last activity |
+| `[` | Hide or show the sidebar; on a phone, open or close it |
 | `↵` | Open the task; answer a decision with the option selected; approve on the Focus page |
 | `⌘↵` | Send a comment; file a task from the composer |
 | `M` | Claim the task |
