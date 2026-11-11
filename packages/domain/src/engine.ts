@@ -486,6 +486,19 @@ export interface DeliverySignal {
    * later than the signal's arrival, it is the arrival.
    */
   readonly at?: string;
+  /**
+   * With merged: the commit that brought the named commits onto the default
+   * branch, such as the newest commit of a push. Each task the signal moves
+   * records it as its merge commit, which a later live signal for that commit
+   * matches. Left out, a merged signal that names one commit records that one.
+   */
+  readonly mergeCommit?: string;
+  /**
+   * Tasks named by id, such as on a commit message's `Refs:` line: each moves
+   * as if its own commit were named, so a commit rewritten by a rebase still
+   * finds its task.
+   */
+  readonly taskIds?: readonly string[];
 }
 
 /**

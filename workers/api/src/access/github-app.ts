@@ -35,10 +35,11 @@ const DEPLOY_CHECK_PREFIXES = ['Workers Builds:', 'Cloudflare Pages'];
 
 /**
  * The manifest of a workspace's app: it reads checks and deployments, and
- * receives their events and pull requests' at the workspace's receiver; it
- * writes pull requests and contents, which turning on a pull request's
- * auto-merge, merging it and commenting on it take, for an answer to an
- * approval that gates one (approval-github.ts). It is
+ * receives their events, pull requests' and pushes' at the workspace's
+ * receiver; it writes pull requests and contents, which turning on a pull
+ * request's auto-merge, merging it and commenting on it take, for an answer
+ * to an approval that gates one (approval-github.ts), and which cover
+ * reading a push's commits. It is
  * public, because only a public app can be installed on an account other
  * than its owner's, such as an organization; the receiver refuses every
  * installation that an owner of the workspace did not make. Its name ends
@@ -62,7 +63,7 @@ export function githubAppManifest(origin: string, workspaceId: string): string {
       checks: 'read',
       deployments: 'read',
     },
-    default_events: ['pull_request', 'check_run', 'deployment_status'],
+    default_events: ['pull_request', 'push', 'check_run', 'deployment_status'],
   });
 }
 

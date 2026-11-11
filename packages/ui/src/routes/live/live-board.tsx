@@ -162,7 +162,7 @@ function Card({
     );
   } else if (held && age === null) context = <span>Nothing recorded</span>;
   else if (stage === 'shipping') {
-    context = <span>{task.delivery?.stage === 'built' ? 'Not merged yet' : 'Not deployed yet'}</span>;
+    context = <span>{shippingStep(task)}</span>;
   }
   return (
     <article
@@ -239,6 +239,16 @@ function Card({
       ) : null}
     </article>
   );
+}
+
+/**
+ * The step a card waiting to ship has left: a merge, or for a task closed
+ * with a commit and no pull request, as in a project that commits straight to
+ * its default branch, a push; then a deploy.
+ */
+function shippingStep(task: BoardTask): string {
+  if (task.delivery?.stage !== 'built') return 'Not deployed yet';
+  return task.delivery.pullRequest === null ? 'Not pushed yet' : 'Not merged yet';
 }
 
 /** How long a change's label stays on its card. */

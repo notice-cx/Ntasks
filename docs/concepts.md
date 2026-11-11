@@ -316,7 +316,8 @@ stage its change has reached. A decision or an approval ships no code, so it
 has none, and neither does a task closed with only a link.
 
 - **Built** when the task closes.
-- **Merged** once the change is merged.
+- **Merged** once the change is on the default branch: its pull request
+  merged, or its commit pushed there.
 - **Live** once a deploy ships it.
 
 The workspace's [GitHub App](github.md), a GitHub webhook, the repository's

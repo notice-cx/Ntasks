@@ -1,8 +1,9 @@
 # Connect GitHub
 
-Connect GitHub once, and each task your agents close with a pull request
-moves on by itself: to **Merged** when the pull request merges, and to
-**Live** when its deploy passes. No agent reports either step, so a task
+Connect GitHub once, and each task your agents close with a pull request or
+a commit moves on by itself: to **Merged** when the pull request merges or
+the commit is pushed to the default branch, and to **Live** when its deploy
+passes. No agent reports either step, so a task
 moves on even after the agent that did the work has stopped. An approval
 that names a pull request turns on its auto-merge when you approve it
 ([below](#approve-a-pull-request-in-ntasks)).
@@ -47,7 +48,8 @@ move it from there:
 | On GitHub | The task moves to |
 |---|---|
 | Its pull request merges into the repository's default branch | Merged |
-| A deploy of the merge passes | Live |
+| Its commit is pushed straight to the default branch | Merged |
+| A deploy of the merge or the push passes | Live |
 
 - **A deploy** is a passing check whose name starts with `Workers Builds:` or
   `Cloudflare Pages`, the checks Cloudflare's builds report, or a successful
@@ -81,11 +83,41 @@ move it from there:
   merged, as the merge event would have closed it. Ntasks asks when the app
   is installed and on each of its other checks.
 
+## Projects without pull requests
+
+Where you and your agents commit straight to the default branch and push it
+yourself, a task moves through the same stages:
+
+1. **Built** when an agent closes it with its commit. The Live page says
+   Not pushed yet.
+2. **Merged** when you push: GitHub sends the push, and every task closed
+   with one of its commits moves on. The Live page says Not deployed yet.
+3. **Live** when the deploy of the push passes, such as Cloudflare's
+   `Workers Builds:` check on its newest commit. That check ships every
+   commit of the push, so it moves all of their tasks.
+
+A rebase before the push gives a commit a new name, so its task's commit no
+longer matches. Name the task on a `Refs:` line at the end of the commit
+message, `Refs: web-a1b2`, and the push moves it all the same. Only a
+`Refs:` line counts; a task id anywhere else in the message moves nothing.
+GitHub lists up to 2,048 commits of one push, and Ntasks reads every one.
+
+An app connected before Ntasks read pushes receives none until you
+[update it](#update-an-app-connected-earlier).
+
 ## When a task stays at a stage
 
-- **Closed with only a commit.** GitHub's events name the pull request and
-  its merge commit, so a task closed with a commit from its branch matches
-  neither. Close tasks with their pull request.
+- **Closed with only a commit from a pull request's branch.** GitHub's
+  events name the pull request and its merge commit, so a task closed with a
+  commit from its branch matches neither. Close tasks with their pull
+  request, or name them on a `Refs:` line of the merge's commit message.
+- **A pushed task whose deploy check waited on another.** When a commit
+  carries two deploy checks and the second ends as skipped or neutral, the
+  first one's success counts only when Ntasks checks GitHub again, and that
+  check reads only tasks closed with a pull request. A task closed with a
+  pushed commit then stays at Merged. Redeliver the passing deploy check's
+  event from **Recent Deliveries** ([below](#check-that-it-works)) to move
+  it to Live.
 - **A deploy on its commit failed.** The task stays at Merged, whatever the
   commit's other deploys did, until that check passes on a rerun (press
   **Re-run** on it in GitHub) or a later merge's deploy ships it.
@@ -129,15 +161,23 @@ gives the full rules.
 
 The app needs **Read and write** access to **Contents** and **Pull
 requests** for this. An app connected before Ntasks asked for them reads
-only; until you grant them, the comment on each approval names the missing
-permission and both links below:
+only; until you [update it](#update-an-app-connected-earlier), the comment
+on each approval names the missing permission and the two links that grant
+it.
+
+## Update an app connected earlier
+
+An app made with Connect GitHub asks for everything above. One connected
+earlier lacks some of it; give it all in one visit:
 
 1. On GitHub, open your apps at <https://github.com/settings/apps>, press
    **Edit** beside the workspace's app, and open **Permissions & events**.
 2. Under **Repository permissions**, set **Contents** and **Pull requests**
-   to **Read and write**, and press **Save changes**.
-3. On each account or organization the app is installed on, open the
-   installation from **Settings**, **GitHub apps** (for an organization,
+   to **Read and write**.
+3. Under **Subscribe to events**, tick **Push**, and press **Save changes**.
+4. On each account or organization the app is installed on, open the
+   installation (**Settings**, **Applications**, **Installed GitHub Apps**;
+   for an organization,
    `https://github.com/organizations/<name>/settings/installations`), press
    **Review request**, then **Accept new permissions**.
 

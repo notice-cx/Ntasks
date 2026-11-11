@@ -269,7 +269,7 @@ describe('Connect GitHub', () => {
         checks: 'read',
         deployments: 'read',
       },
-      default_events: ['pull_request', 'check_run', 'deployment_status'],
+      default_events: ['pull_request', 'push', 'check_run', 'deployment_status'],
     });
     expect((manifest.name as string).length).toBeLessThanOrEqual(34);
 
