@@ -1,8 +1,8 @@
 import { focusManager } from '@tanstack/react-query';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
-import { CHANGE_POLL_MS } from '@/hooks/useChangeFeed';
+import { CHANGE_POLL_MS, LIVE_POLL_MS } from '@/hooks/useChangeFeed';
 import { renderApp } from './render';
 
 /** The fixture API, counting each project's board reads and each feed poll's starting point. */
@@ -116,5 +116,68 @@ describe('the change feed', () => {
     await api.updateTask('web-t5w3', 'web', { title: 'Rename the Settings tab to Profile' });
     await waitOnePoll();
     expect(await screen.findByRole('heading', { level: 1, name: 'Rename the Settings tab to Profile' })).toBeTruthy();
+  });
+
+  it('asks every few seconds while the Live page is open, and every half minute elsewhere', async () => {
+    const { wrapped, pollsAfter } = counted();
+    renderApp('/tasks/live', wrapped);
+    await screen.findByRole('region', { name: 'In progress' });
+    await waitFor(() => expect(pollsAfter.length).toBe(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    expect(pollsAfter.length).toBe(2);
+    fireEvent.click(screen.getByRole('link', { name: /^Tasks/ }));
+    await screen.findByRole('region', { name: 'Waiting for you' });
+    const left = pollsAfter.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    expect(pollsAfter.length).toBe(left);
+  });
+
+  it('lets a slow board read finish, and reads again for a change that arrived meanwhile', async () => {
+    const { api, pollsAfter } = counted();
+    const reads: AbortSignal[] = [];
+    let release: (() => void) | null = null;
+    let slow = false;
+    const wrapped = {
+      ...api,
+      changes: (after: number, signal?: AbortSignal) => {
+        pollsAfter.push(after);
+        return api.changes(after, signal);
+      },
+      board: async (project: string, signal?: AbortSignal) => {
+        if (project === 'web' && signal) reads.push(signal);
+        if (project === 'web' && slow) {
+          slow = false;
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return api.board(project, signal);
+      },
+    };
+    renderApp('/tasks/live', wrapped);
+    await screen.findByRole('region', { name: 'In progress' });
+    await waitFor(() => expect(pollsAfter.length).toBe(1));
+    const before = reads.length;
+    slow = true;
+    await api.comment('web-k3m9.2', 'web', 'First');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    await waitFor(() => expect(release).not.toBeNull());
+    // A second change lands while that read is still under way; the next poll leaves the read running.
+    await api.comment('web-k3m9.2', 'web', 'Second');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 10);
+    });
+    expect(reads.length).toBe(before + 1);
+    expect(reads.at(-1)?.aborted).toBe(false);
+    await act(async () => {
+      release?.();
+    });
+    await waitFor(() => expect(reads.length).toBe(before + 2));
   });
 });

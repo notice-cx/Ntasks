@@ -254,8 +254,9 @@ form shows the server's words under the field it is about: the refusal's
 `field`, else the field its sentence starts with.
 
 A refused read is shown at once, never retried. While a page is visible it
-asks the API's change feed every 30 seconds what changed since the boards it
-shows (`src/hooks/useChangeFeed.ts`), and reads a project's board again only
+asks the API's change feed every 30 seconds, and every 5 seconds on the Live
+page, what changed since the boards it shows (`src/hooks/useChangeFeed.ts`),
+and reads a project's board again only
 when a change landed in that project; a poll that finds nothing costs almost
 no database reads. `test/worker-contract.test.ts` feeds the Worker's own task
 answers through the board, so the two cannot drift apart unnoticed.

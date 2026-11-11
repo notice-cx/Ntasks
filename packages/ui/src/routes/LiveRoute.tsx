@@ -1,10 +1,11 @@
 import { Activity as ActivityIcon, Bot, GitBranch, GitPullRequest, Layers } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { PageSkeleton, ReadFailed } from '../components/surface';
+import { Link, useSearchParams } from 'react-router-dom';
+import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
 import { Avatar } from '../components/ui/avatar';
 import { ProgressBar } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Tabs } from '../components/ui/choice';
 import { EmptyState } from '../components/ui/empty-state';
 import { GroupHeader, Row, RowAge, RowId, RowMeta, RowSpacer, RowTitle } from '../components/ui/row';
 import { BarSpacer, TopBar } from '../components/ui/shell';
@@ -15,11 +16,13 @@ import { NO_FILTERS } from '../lib/board-read';
 import { byEpic, readEpics, type EpicSummary } from '../lib/epics';
 import { httpUrl } from '../lib/custom-fields';
 import { ageMs, formatAge, formatInt } from '../lib/format';
-import { ACTIVITIES, ACTIVITY_LABELS, liveGroups, type Activity } from '../lib/live';
+import { ACTIVITIES, ACTIVITY_LABELS, liveBoard, liveGroups, STAGES, type Activity } from '../lib/live';
 import { isAgentActor } from '../lib/symbols';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
 import { cn } from '../lib/utils';
+import { LiveBoardView } from './live/live-board';
+import { useDeliveryWaits } from './tasks/delivery-groups';
 import { progressParts } from './tasks/epics-view';
 import { usePageTitle } from '../lib/page-title';
 
@@ -39,17 +42,32 @@ function pullRequestLabel(url: string): string {
   return number === undefined ? 'Pull request' : `#${number}`;
 }
 
+/** The page's two views: the board, which it opens on, and the list, at `?view=list`. */
+type LiveView = 'board' | 'list';
+const VIEWS: readonly { value: LiveView; label: string }[] = [
+  { value: 'board', label: 'Board' },
+  { value: 'list', label: 'List' },
+];
+
 /**
- * Live, `<base>/live`: every task in progress, grouped by how recently its
- * holder changed or commented on it: Active within the hour, Quiet until a
- * day, and Stalled after it or with nothing recorded, as the server marks it.
- * The page shows Stalled and changes nothing: the task stays In progress.
+ * Live, `<base>/live`. The board shows every task in progress, then the
+ * closed work whose change is built, merged or live, and moves a card to its
+ * new column as it ships. The list shows the tasks in progress grouped by how
+ * recently their holder changed or commented on them: Active within the hour,
+ * Quiet until a day, and Stalled after it or with nothing recorded, as the
+ * server marks it. The page shows Stalled and changes nothing: the task stays
+ * In progress.
  */
 export function LiveRoute() {
   const now = useNow();
   const board = useBoard(NO_FILTERS);
+  const [params, setParams] = useSearchParams();
+  const view: LiveView = params.get('view') === 'list' ? 'list' : 'board';
   const [allStalled, setAllStalled] = useState(false);
   const groups = useMemo(() => liveGroups(board.allTasks, now), [board.allTasks, now]);
+  const waits = useDeliveryWaits(board, NO_FILTERS, view === 'board');
+  const columns = useMemo(() => liveBoard(board.allTasks, waits, now), [board.allTasks, waits, now]);
+  const onBoard = STAGES.reduce((sum, stage) => sum + columns[stage].length, 0);
   // Each project's open epics, so a task in progress sits under its own.
   const epics = useMemo(
     () =>
@@ -65,6 +83,14 @@ export function LiveRoute() {
   const total = ACTIVITIES.reduce((sum, activity) => sum + groups[activity].length, 0);
   usePageTitle(board.loading ? 'Live' : `Live (${formatInt(total)})`);
   const shown = board.readFailure === null && !board.loading && total > 0;
+  const views = (
+    <Tabs
+      label="View"
+      items={VIEWS}
+      value={view}
+      onChange={(next) => setParams(next === 'board' ? {} : { view: next })}
+    />
+  );
 
   let body;
   if (board.readFailure !== null) {
@@ -76,13 +102,23 @@ export function LiveRoute() {
         onRetry={() => void board.refetch()}
       />
     );
-  } else if (board.loading) {
+  } else if (board.loading || (view === 'board' && onBoard === 0 && waits.loading)) {
     body = <PageSkeleton shape="list" />;
+  } else if (view === 'board' && onBoard > 0) {
+    body = <LiveBoardView columns={columns} nowMs={now} />;
   } else if (total === 0) {
     body = (
       <EmptyState
         icon={<ActivityIcon />}
-        title={board.complete ? 'No tasks in progress' : 'No tasks in progress in the projects that could be read'}
+        title={
+          view === 'board'
+            ? board.complete && waits.unread.length === 0
+              ? 'No tasks in progress or shipped this week'
+              : 'No tasks in progress or shipped this week in the projects that could be read'
+            : board.complete
+              ? 'No tasks in progress'
+              : 'No tasks in progress in the projects that could be read'
+        }
       />
     );
   } else {
@@ -146,7 +182,17 @@ export function LiveRoute() {
           </span>
         ) : null}
         <BarSpacer />
+        {views}
       </TopBar>
+      {view === 'board' && board.readFailure === null && waits.unread.length > 0 ? (
+        <ReadBanner
+          title="Couldn't read the work waiting for a merge or a deploy in:"
+          onRetry={waits.retry}
+          data-live-unread=""
+        >
+          {waits.unread.join(', ')}
+        </ReadBanner>
+      ) : null}
       <div data-live-page="">{body}</div>
     </>
   );

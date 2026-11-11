@@ -190,6 +190,7 @@
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --animate-pop-in: pop-in 120ms var(--ease-out);
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
 }
 
 /* Ids, ages and counts: figures of one width, and Inter's plain hyphen and
@@ -265,8 +266,21 @@
 
 /* Motion shows a change and nothing else: a hover recolours in 120 ms, a
    menu appears in 120 ms, a page arrives by fading in and rising 6 px, and
-   a loading block shimmers. Movement stops under prefers-reduced-motion;
+   a loading block shimmers. The one motion that repeats while nothing
+   changes is the Live board's Active card, whose mark breathes while its
+   holder is working now. Movement stops under prefers-reduced-motion;
    components gate theirs with `motion-safe:`. */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.35);
+  }
+}
 @keyframes arrive {
   from {
     opacity: 0;
