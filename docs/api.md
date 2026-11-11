@@ -174,7 +174,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `list_workspaces` | Every workspace the sender reaches, ordered by name, each with its `workspaceId`, `name`, `status`, the sender's `role` in NoticeOS's words (`owner` for its owner, otherwise `operator` with `tasks:write` or `viewer`) and `access`, the scopes the sender holds there; and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
 | `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, `closeAcceptance` when it recorded one, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `met`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
-| `list_projects` | Each project's `projectId`, key, name and prefix, and `deploys`: whether its changes go live by a deploy | `workspace` |
+| `list_projects` | Each project's `projectId`, key, name and prefix; `deploys`, whether its changes go live by a deploy; `disabled`, whether it refuses new tasks; and `websiteUrl`, its website or null | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |
 | `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
@@ -1211,7 +1211,8 @@ misspelt filter fails instead of being ignored.
 
 | Route | Parameters | Answer |
 |---|---|---|
-| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix` and `deploys` |
+| `GET /api/tasks/projects` | none | `{ projects }`: each `projectId`, `logicalKey`, `displayName`, `prefix`, `deploys`, `disabled`, `websiteUrl`, and `icon`: the address of the icon read from its website, such as `/api/tasks/projects/<projectId>/icon?v=20261110120000000`, or null when it has none |
+| `GET /api/tasks/projects/:projectId/icon` | optionally `v`, as `icon` gives it | The icon's bytes, with the image type the bytes show (`image/png`, `image/x-icon`, `image/jpeg`, `image/gif` or `image/webp`). An answer to the address `icon` gives may be kept for a year, since a new icon has a new address; any other `v` answers with `no-cache`. `404` when the project has no icon. |
 | `GET /api/tasks/capabilities` | none | What the web app may offer: for a sender who holds `tasks:write` and may change some project, `writable: true`, the write `operations` (`create`, `update`, `comment`, `close`, and for a person who holds `tasks:decide`, in the web app or through a connected app, also `respond`, `dismiss`, `resolve`, `choose`, `dispute`, `step`, `accept` and `release`) and the `editableFields` an update may change; for any other sender, `writable: false` and none |
 | `GET /api/tasks` | `project`, optionally `status` (comma-separated), `closedDays` and `field.<key>` | A board: the project's tasks in those statuses and those closed in the last 7 days, the open epics with how many of their children are closed, `closedSince`, and `lastSeq`, the latest change the board reflects. `closedDays` (1 to 56) reaches further back and is taken only with `status=closed`. Each `field.<key>` parameter, such as `field.severity=high`, keeps only the tasks holding that value of the custom field, as `fields` in `list_tasks` does; a number field reads the parameter as a number, and a yes-no field reads `true` or `false`. Each task carries `proposalVersion` while it waits on a person, and null otherwise. |
 | `GET /api/tasks` with `label` | `project` and `label` (one label), optionally `limit` (1 to 200, default 100) and `after` | Every task of the project carrying the label, in every status and closed at any time, ordered by id, with `label` and `next`. `next` is the last task's id when more remain, and null on the last page; ask again with `after` set to it. `status`, `closedDays` and `field.<key>` are refused with `label`, and `limit` and `after` without it. |
@@ -1246,7 +1247,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | `POST /api/fields` | `projectId`, `key`, `name`, `type`, and `options` for a choice field | `{ field }`, the field defined |
 | `POST /api/fields/:key/retire` | `projectId` | `{ field }`, the field as retired |
 | `POST /api/tasks/projects` | `name`, one line of 1 to 128 characters; `prefix`, 1 to 32 lowercase letters or digits, which starts every task id of the project; and optionally `key`, the name people know the project by, one line of 1 to 128 characters, which is the prefix when left out | `201` with `{ project }`: its `projectId`, `logicalKey`, `displayName` and `prefix`, as `GET /api/tasks/projects` lists them. It needs `workspace:manage`, which only the workspace's owner holds; anyone else gets `403` with `insufficient_scope`. |
-| `PATCH /api/tasks/projects` | `projectId` and `deploys`, `true` or `false` | `{ project }`, as `GET /api/tasks/projects` lists it. Like creating a project, it needs `workspace:manage`. |
+| `PATCH /api/tasks/projects` | `projectId` and at least one of: `displayName`, one line of 1 to 128 characters; `deploys`, `true` or `false`; `disabled`, `true` or `false`; `websiteUrl`, an http or https address, where `example.com` means `https://example.com/`, or null or `""` to clear it | `{ project }`, as `GET /api/tasks/projects` lists it. Like creating a project, it needs `workspace:manage`. A new `websiteUrl` is read for its icon before anything is written ([below](#a-projects-website-and-icon)), and an empty name or an address that is not a public web page is refused with `400` and `field` naming it. A disabled project refuses `POST /api/tasks` and `create_task` with `409` and a sentence saying an owner can enable it in Settings; its tasks stay readable and changeable. Renaming changes only `displayName`: the key and prefix stay. |
 
 A refused project names the body field at fault in `field`: `400` with
 `invalid_request` for a `name`, `prefix` or `key` that breaks its rule, and
@@ -1289,6 +1290,25 @@ otherwise.
 
 A task answers its holder's work in hand as `for`, `work`,
 `lastActivityAt`, `stalled` and `activity`, as `get_task` does.
+
+### A project's website and icon
+
+When an owner saves a project's website, the Worker reads the website's icon
+before it answers, and keeps it in the task store, so no page reads the website
+again. It reads the page's head for `<link rel="apple-touch-icon">` and
+`<link rel="icon">` tags and asks them in this order: an apple-touch-icon or an
+icon of 32 px or more, largest first; an icon with no declared size; a smaller
+one; then `/favicon.ico`. It keeps the first one whose own bytes are a PNG,
+ICO, JPEG, GIF or WebP image of at most 100 KB, and serves it with the type
+the bytes show. An SVG is never kept, whatever type the website claims for it,
+because an SVG can run script.
+
+Every read is http or https, sends no cookie, follows at most 5 redirects, none
+to a local or private address, and the whole search stops after 8 seconds. A
+website with no icon the Worker keeps leaves the project with none, and the web
+app shows its letter instead. Saving a new website replaces the icon; saving the
+same website again reads it again. A backup leaves the icons out: after a
+restore, saving each website again reads its icon.
 
 ### Work in hand
 

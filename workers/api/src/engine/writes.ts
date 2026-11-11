@@ -9,6 +9,8 @@ import {
   guardRefusalOf,
   KEEP_OPEN,
   NTASKS_ACTOR,
+  PROJECT_ICON_MAX_BYTES,
+  PROJECT_ICON_TYPES,
   TASK_LIMITS,
   TaskRefused,
   WORK_DETAILS,
@@ -31,6 +33,8 @@ import {
   type Json,
   type JsonObject,
   type Project,
+  type ProjectChange,
+  type ProjectIcon,
   type Retry,
   type Task,
   type TaskDelivery,
@@ -44,7 +48,7 @@ import {
   type TaskWrite,
   type WriteResult,
 } from '@ntasks/domain';
-import type { Database, Statement } from './database.ts';
+import type { Bindable, Database, Statement } from './database.ts';
 import type { Reads } from './reads.ts';
 import { deliveryOf, toField, toTask, type FieldRow, type StoredTaskRow } from './rows.ts';
 import * as check from './validate.ts';
@@ -969,14 +973,57 @@ export class Writes {
     return this.#projectOf(id);
   }
 
-  async setProjectDeploys(projectId: string, deploys: boolean): Promise<Project> {
-    if (typeof deploys !== 'boolean') check.invalid('deploys must be true or false');
+  async updateProject(projectId: string, change: ProjectChange): Promise<Project> {
     await this.#projectOf(projectId);
-    await this.#db
-      .prepare('UPDATE projects SET deploys = ?2 WHERE id = ?1')
-      .bind(projectId, deploys ? 1 : 0)
-      .run();
+    const set = (column: string, value: Bindable) =>
+      this.#db.prepare(`UPDATE projects SET ${column} = ?2 WHERE id = ?1`).bind(projectId, value);
+    const statements: Statement[] = [];
+    if (change.name !== undefined) {
+      const name = check.text(change.name, 'name', 128, true).trim();
+      if (/[\r\n]/u.test(name)) check.invalid('name must be one line');
+      statements.push(set('name', name));
+    }
+    if (change.deploys !== undefined) {
+      if (typeof change.deploys !== 'boolean') check.invalid('deploys must be true or false');
+      statements.push(set('deploys', change.deploys ? 1 : 0));
+    }
+    if (change.disabled !== undefined) {
+      if (typeof change.disabled !== 'boolean') check.invalid('disabled must be true or false');
+      // Disabling a disabled project keeps the time it was first disabled.
+      statements.push(
+        this.#db
+          .prepare('UPDATE projects SET disabled_at = CASE WHEN ?2 THEN coalesce(disabled_at, ?3) END WHERE id = ?1')
+          .bind(projectId, change.disabled, this.#now()),
+      );
+    }
+    if (change.website !== undefined) {
+      const url = change.website === null ? null : check.httpUrl(change.website.url);
+      if (change.website !== null && url === null) check.invalid('website must be an http or https URL');
+      statements.push(set('website_url', url));
+      // The icon belongs to the website it was read from: a new website, or none, replaces it.
+      statements.push(this.#db.prepare('DELETE FROM project_icons WHERE project_id = ?1').bind(projectId));
+      const icon = change.website?.icon ?? null;
+      if (icon !== null) statements.push(this.#iconInsert(projectId, icon));
+    }
+    if (statements.length > 0) await this.#db.batch(statements);
     return this.#projectOf(projectId);
+  }
+
+  #iconInsert(projectId: string, icon: ProjectIcon): Statement {
+    const sourceUrl = check.httpUrl(icon.sourceUrl) ?? check.invalid('icon.sourceUrl must be an http or https URL');
+    if (!(PROJECT_ICON_TYPES as readonly string[]).includes(icon.contentType))
+      check.invalid(`icon.contentType must be one of ${PROJECT_ICON_TYPES.join(', ')}`);
+    if (
+      !(icon.bytes instanceof ArrayBuffer) ||
+      icon.bytes.byteLength === 0 ||
+      icon.bytes.byteLength > PROJECT_ICON_MAX_BYTES
+    )
+      check.invalid(`icon.bytes must hold 1 to ${PROJECT_ICON_MAX_BYTES} bytes`);
+    return this.#db
+      .prepare(
+        'INSERT INTO project_icons (project_id, source_url, content_type, bytes, read_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+      )
+      .bind(projectId, sourceUrl, icon.contentType, icon.bytes, this.#now());
   }
 
   async reportDelivery(

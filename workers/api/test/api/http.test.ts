@@ -82,6 +82,9 @@ describe('GET /api/tasks/projects and /api/tasks/capabilities', () => {
       displayName: project.name,
       prefix: project.prefix,
       deploys: false,
+      disabled: false,
+      websiteUrl: null,
+      icon: null,
     });
   });
 

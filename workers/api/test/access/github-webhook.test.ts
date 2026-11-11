@@ -54,7 +54,9 @@ async function ownerWithWebhook(): Promise<Browser> {
 /** A project of the test workspace whose changes go live by a deploy. */
 async function deployingProject(): Promise<string> {
   const projectId = await createProject('Hooks');
-  await runInDurableObject(store(), (instance: TaskStore) => instance.tasks.setProjectDeploys(projectId, true));
+  await runInDurableObject(store(), (instance: TaskStore) =>
+    instance.tasks.updateProject(projectId, { deploys: true }),
+  );
   return projectId;
 }
 

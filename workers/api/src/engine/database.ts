@@ -5,8 +5,8 @@
  * storage (src/store/sqlite.ts).
  */
 
-/** A value a statement binds. A boolean is stored as 1 or 0, as D1 stores it. */
-export type Bindable = string | number | boolean | null;
+/** A value a statement binds. A boolean is stored as 1 or 0, as D1 stores it, and an ArrayBuffer as a BLOB. */
+export type Bindable = string | number | boolean | null | ArrayBuffer;
 
 export interface Statement {
   bind(...values: readonly Bindable[]): Statement;
