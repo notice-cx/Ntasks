@@ -180,6 +180,8 @@ async function drive(): Promise<readonly Sample[]> {
   const unproved = await create({ title: 'Tidy the folder' });
   const decision = await create({ title: 'Ship on Monday?', type: 'decision', labels: ['human'] });
   const declined = await create({ title: 'Translate the post', labels: ['human'] });
+  // It waits on the translation, so it relies on a dropped task once the translation is dismissed below.
+  await tool(owner, 'create_task', { project: projectId, title: 'Publish the translation', depends_on: [declined] });
 
   const task = (id: string, part = '') => `/api/tasks/${id}${part}`;
   await as('PATCH /api/tasks/:id', task(post), inProject({ priority: 0 }));

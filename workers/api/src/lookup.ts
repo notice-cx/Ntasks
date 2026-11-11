@@ -4,7 +4,7 @@
  * sender learns nothing of another's projects. The MCP tools and the HTTP
  * writes share these, and their refusals.
  */
-import type { Json, Project, Task, TaskEngine, TaskEvent, TaskLink } from '@ntasks/domain';
+import type { Json, Project, Task, TaskEngine, TaskEvent } from '@ntasks/domain';
 import { mayReach, reachable, type Principal, type ProjectAccess } from './auth.ts';
 import { Refused } from './refused.ts';
 
@@ -120,9 +120,14 @@ export async function linksSeenBy({ engine, principal }: Reader): Promise<LinkVi
   if (principal.projects === 'all') return EVERY_LINK;
   const prefixes = new Set(reachable(principal, await engine.listProjects()).map((project) => project.prefix));
   const seen = (taskId: unknown) => typeof taskId === 'string' && prefixes.has(taskId.slice(0, taskId.indexOf('-')));
-  const links = (list: readonly TaskLink[]) => list.filter((link) => seen(link.taskId));
+  const links = <T extends { readonly taskId: string }>(list: readonly T[]) => list.filter((link) => seen(link.taskId));
   return {
-    task: (task) => ({ ...task, dependencies: links(task.dependencies), dependents: links(task.dependents) }),
+    task: (task) => ({
+      ...task,
+      dependencies: links(task.dependencies),
+      dependents: links(task.dependents),
+      reliesOnDropped: links(task.reliesOnDropped),
+    }),
     event(event) {
       const recorded = event.changes.dependencies;
       if (!Array.isArray(recorded)) return event;

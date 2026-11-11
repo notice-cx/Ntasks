@@ -4,6 +4,7 @@ import type {
   CustomField,
   DeliveryStage,
   DependencyType,
+  DroppedLink,
   EpicProgress,
   ExternalLink,
   FieldType,
@@ -116,6 +117,8 @@ interface LinkJson {
   readonly type: DependencyType;
   readonly title: string;
   readonly status: TaskStatus;
+  readonly resolution: TaskResolution | null;
+  readonly closedAt: string | null;
 }
 
 export interface ProjectRow {
@@ -185,11 +188,39 @@ function object(text: string | null): JsonObject | null {
   return text === null ? null : (JSON.parse(text) as JsonObject);
 }
 
+const byId = <T extends { readonly taskId: string }>(a: T, b: T) =>
+  a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0;
+
 /** A row's links, ordered by the other task's id, so every read lists them alike. */
-function links(text: string): TaskLink[] {
-  return (JSON.parse(text) as LinkJson[])
+function links(entries: readonly LinkJson[]): TaskLink[] {
+  return entries
     .map((entry) => ({ taskId: entry.id, type: entry.type, title: entry.title, status: entry.status }))
-    .sort((a, b) => (a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0));
+    .sort(byId);
+}
+
+const DROPPED: readonly TaskResolution[] = ['wont-do', 'no-longer-needed'];
+
+/** The links another task holds onto this one that this one relies on: that
+ * task waits on it, or is about the same subject. */
+const RELIED_ON_BY: readonly DependencyType[] = ['blocks', 'related'];
+
+/**
+ * The tasks a task that is not closed relies on, dropped after it last
+ * changed: those it links to, apart from one it replaces, whose close is
+ * expected, and those that wait on it or relate to it.
+ */
+function droppedSince(row: TaskRow, dependencies: readonly LinkJson[], dependents: readonly LinkJson[]): DroppedLink[] {
+  if (row.status === 'closed') return [];
+  const dropped = new Map<string, DroppedLink>();
+  for (const entry of [
+    ...dependencies.filter((link) => link.type !== 'supersedes'),
+    ...dependents.filter((link) => RELIED_ON_BY.includes(link.type)),
+  ]) {
+    const { resolution, closedAt } = entry;
+    if (resolution !== null && DROPPED.includes(resolution) && closedAt !== null && closedAt > row.updated_at)
+      dropped.set(entry.id, { taskId: entry.id, title: entry.title, resolution });
+  }
+  return [...dropped.values()].sort(byId);
 }
 
 /** External links from their JSON array, ordered by URL, so every read lists them alike. */
@@ -212,6 +243,8 @@ export function deliveryOf(row: StoredTaskRow): TaskDelivery | null {
 }
 
 export function toTask(row: TaskRow): Task {
+  const dependencies = JSON.parse(row.dependencies_json) as LinkJson[];
+  const dependents = JSON.parse(row.dependents_json) as LinkJson[];
   return {
     id: row.id,
     projectId: row.project_id,
@@ -233,8 +266,9 @@ export function toTask(row: TaskRow): Task {
     work: JSON.parse(row.work) as TaskWork,
     lastActivityAt: row.last_activity_at,
     labels: (JSON.parse(row.labels_json) as string[]).sort(),
-    dependencies: links(row.dependencies_json),
-    dependents: links(row.dependents_json),
+    dependencies: links(dependencies),
+    dependents: links(dependents),
+    reliesOnDropped: droppedSince(row, dependencies, dependents),
     externalLinks: externalLinks(row.external_links_json),
     fields: JSON.parse(row.field_values) as Record<string, FieldValue>,
     ready: row.ready === 1,

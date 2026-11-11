@@ -1291,6 +1291,19 @@ otherwise.
 A task answers its holder's work in hand as `for`, `work`,
 `lastActivityAt`, `stalled` and `activity`, as `get_task` does.
 
+### Dropped tasks a task relies on
+
+A task is **dropped** when it closes as `wont-do` or `no-longer-needed`. A
+task that is not closed relies on the tasks it links to, apart from one it
+replaces (`supersedes`), and on the tasks that wait on it or relate to it.
+Every task read answers `reliesOnDropped`: each task it relies on that was
+dropped after the task last changed, with its `id`, `title` and
+`resolution`, ordered by id. `list_tasks` names it only on a task that has
+one. Ntasks works it out at the time of the read, from the links the read
+already returns, and leaves out a task the reader cannot reach. Any change
+to the task, such as an edit, a claim or a removed link, empties the list,
+and so does reopening the dropped task.
+
 ### A project's website and icon
 
 When an owner saves a project's website, the Worker reads the website's icon

@@ -41,6 +41,7 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools gained lately, oldest first, at most three. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
+  '2026-11-11: get_task and list_tasks show reliesOnDropped on a task that relies on one closed as wont-do or no-longer-needed since the task last changed: one it links to, or one that waits on it or relates to it. Check that the task still makes sense, then edit it, remove the link or close it; any change to the task clears the list.',
   '2026-11-10: an epic closes itself once every task directly under it is closed, recorded as service:Ntasks, and reopens when one of them reopens; close_task names it in closedEpics. Closing it yourself replaces that close with yours; label it keep-open to keep it open (workflow step 5).',
   '2026-11-10: claim_task and comment_on_task take touches, the files or other things your work changes, and answer overlaps: the other tasks in progress that change the same. link_tasks type merges-after records which pull request lands first; both tasks show it (workflow steps 3 and 6).',
   '2026-11-10: list_tasks takes activity, one or more of active, quiet and stalled, to list tasks in progress by how recently their holder changed or commented on them: active within the hour, quiet after that, stalled after a day or with nothing recorded. Each names its activity, and the answer counts each group in activities. Workflow step 2 says how to keep watch.',
