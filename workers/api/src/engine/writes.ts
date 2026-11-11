@@ -61,6 +61,13 @@ interface Through {
 }
 const THROUGH_NONE: Through = Object.freeze({ actorFor: null, session: null });
 
+/** What a change by `actor` to `task` was made through: the task's helper and session when `actor` holds it. */
+function heldThrough(actor: Actor, task: Pick<Task, 'assignee' | 'assigneeFor' | 'work'>): Through {
+  return task.assignee === actor.name
+    ? { actorFor: task.assigneeFor, session: task.work.session ?? null }
+    : THROUGH_NONE;
+}
+
 /** How long a retry record answers a repeated key. */
 const RECEIPT_DAYS = 7;
 /** How long a derived key's record of a new task answers: a task asked for later is a new one. */
@@ -1239,7 +1246,15 @@ export class Writes {
             .prepare('UPDATE tasks SET version = version + 1, updated_at = ?1 WHERE id = ?2 AND version = ?3')
             .bind(at, other.id, other.version),
           this.#db.prepare("INSERT INTO write_guard (ok, refusal) VALUES (changes() = 1, 'version_conflict')"),
-          this.#event(other, other.version + 1, 'updated', actor, at, { dependencies: linkList(otherLinks) }),
+          this.#event(
+            other,
+            other.version + 1,
+            'updated',
+            actor,
+            at,
+            { dependencies: linkList(otherLinks) },
+            heldThrough(actor, other),
+          ),
         );
       }
       statements.push(
@@ -1479,10 +1494,13 @@ export class Writes {
     if (JSON.stringify(work) !== JSON.stringify(workIn(current.work)))
       change('work', 'work', JSON.stringify(work), work);
     // A change by the holder was made through its helper and session: as the
-    // write leaves them, or as they stood when the write ends them.
+    // write leaves them while it keeps the hold, or as they stood when the
+    // write ends it, whatever it names for the next holder.
     const through: Through =
       current.assignee === actor.name
-        ? { actorFor: helper ?? current.assigneeFor, session: work.session ?? current.work.session ?? null }
+        ? ended
+          ? heldThrough(actor, current)
+          : { actorFor: helper ?? current.assigneeFor, session: work.session ?? current.work.session ?? null }
         : holder === actor.name
           ? { actorFor: helper, session: work.session ?? null }
           : THROUGH_NONE;

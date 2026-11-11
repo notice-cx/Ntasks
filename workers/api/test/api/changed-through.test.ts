@@ -92,6 +92,40 @@ describe('list_tasks by who changed a task', () => {
   });
 });
 
+describe('a change the holder makes to a task it then leaves, or through a new task', () => {
+  const history = async (task: string) =>
+    (await read<{ changes: Change[] }>(coordinator, 'get_task_history', { task })).changes;
+
+  it("names the holder's own helper and session on a hand-on, not the next holder's", async () => {
+    const id = await file('Hand on the menu');
+    await write(coordinator, 'claim_task', { task: id, for: 'rebuild-1', session: 'session-a' });
+    const task = (await engine.getTask(project.id, id))!;
+    await engine.writeTask(
+      project.id,
+      id,
+      {
+        expectedVersion: task.version,
+        set: { assignee: OTHER.name, assigneeFor: 'other-helper', work: { session: 'session-o' } },
+      },
+      { name: WRITER.name },
+    );
+
+    const [handOn] = await history(id);
+    expect(handOn).toMatchObject({ actor: WRITER.name, for: 'rebuild-1', session: 'session-a' });
+  });
+
+  it('names the helper and session on a held task that a new task comes to block', async () => {
+    const held = await file('Rebuild the header');
+    await write(coordinator, 'claim_task', { task: held, for: 'rebuild-1', session: 'session-a' });
+    await write(coordinator, 'create_task', { project: project.id, title: 'Choose the header font', blocks: [held] });
+
+    const [linked] = await history(held);
+    expect(linked).toMatchObject({ actor: WRITER.name, for: 'rebuild-1', session: 'session-a' });
+    const [unheld] = await history(await file('Rebuild the sidebar'));
+    expect(unheld).not.toHaveProperty('for');
+  });
+});
+
 describe('a test run on a comment or a close', () => {
   it('keeps the run a comment reports, beside its words', async () => {
     const id = await file('Check the links');
