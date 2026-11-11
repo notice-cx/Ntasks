@@ -177,9 +177,8 @@ Two exceptions need no further approval:
   maintainer's tasks. Any other request to that deployment, such as an API
   call by hand, a backup, a load or a credential change, still needs it.
 - **Publishing the website.** The `ntasks-site` Worker's own Workers Builds
-  connection publishes ntasks.notice.cx on every merge to `main` that
-  changes `apps/site/`, `docs/`, `spec/`, `apps/web/public/brand/` or the
-  lockfile, so a merge needs no publish step and no task stays open for one.
+  connection publishes ntasks.notice.cx on every merge to `main`, so a merge
+  needs no publish step and no task stays open for one.
   When its check `Workers Builds: ntasks-site` fails on a commit, an agent
   may publish by hand without asking: from the repository root of a clean
   checkout of `main`'s latest commit, `pnpm site:build`, then

@@ -58,10 +58,8 @@ file that does not exist. CI runs it on every pull request.
 ## Publishing
 
 A Workers Builds connection on the `ntasks-site` Worker publishes the site on
-every push to `main` that changes `apps/site/`, `docs/`, `spec/`, the Notice
-logo and icons in `apps/web/public/brand/` that `vite.config.ts` copies, or
-`pnpm-lock.yaml`. It is separate from the app's connection, which reads the
-`wrangler.jsonc` at the repository root. Its settings, in the Cloudflare
+every push to `main`. It is separate from the app's connection, which reads
+the `wrangler.jsonc` at the repository root. Its settings, in the Cloudflare
 dashboard under the Worker's **Settings → Build**:
 
 | Setting | Value |
@@ -70,10 +68,19 @@ dashboard under the Worker's **Settings → Build**:
 | Root directory | `apps/site` |
 | Build command | `pnpm install --frozen-lockfile && pnpm build:site` |
 | Deploy command | `npx wrangler deploy` |
-| Build watch paths, include | `apps/site/*`, `docs/*`, `spec/*`, `apps/web/public/brand/*`, `pnpm-lock.yaml` |
+| Build watch paths, include | `*` |
+| Build watch paths, exclude | none |
+
+The site reads files outside its root directory (`docs/`, `spec/`, the logo
+and icons in `apps/web/public/brand/` that `vite.config.ts` copies, and
+`pnpm-lock.yaml`), and watch paths naming them, such as `apps/site/*`,
+started no build, so the connection builds every push.
 
 Each build shows on its commit as the check `Workers Builds: ntasks-site`. A
-failing check means the site still serves the previous build.
+failing check means the site still serves the previous build. Ntasks moves a
+merge's tasks to Live only once every deploy check on its commit has passed,
+so a failing site build also holds that merge's app tasks at Merged until a
+later merge's deploys pass.
 
 When that check fails, publish by hand: run these two commands from the
 repository root of a clean checkout of `main`'s latest commit. After the
