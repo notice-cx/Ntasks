@@ -11,6 +11,7 @@ import {
   closedByNtasks,
   KEEP_OPEN,
   TASK_LIMITS,
+  TASK_STATUSES,
   TaskRefused,
   WORK_DETAILS,
   type ActionRequest,
@@ -25,11 +26,13 @@ import {
   type ExternalLink,
   type FieldValue,
   type JsonObject,
+  type MoveResult,
   type NewTaskLink,
   type Project,
   type Retry,
   type Task,
   type TaskComment,
+  type TaskPlacement,
   type TaskResolution,
   type TaskStatus,
   type TaskType,
@@ -41,7 +44,7 @@ import { listed, type WorkArgs } from './args.ts';
 import { closeProof, pullRequestUrl } from './delivery.ts';
 import { mayReach, type Principal } from './auth.ts';
 import { fieldFilters, fieldValues } from './engine/validate.ts';
-import { ownerOf, projectNamed, projectOf, taskOf, tasksIn, type Reader } from './lookup.ts';
+import { ownerOf, projectNamed, projectOf, projectOfTask, taskOf, tasksIn, type Reader } from './lookup.ts';
 import {
   asksAlike,
   choiceName,
@@ -688,6 +691,187 @@ export async function updateTask(
     loop,
   );
   return { project, result };
+}
+
+// ─── Moving tasks ─────────────────────────────────────────────────────────────
+
+/** Where a move puts tasks: in a project, under a task of it or under none. */
+export interface TaskMove {
+  /** The tasks to move, each once, in the order the answer lists them. */
+  readonly tasks: readonly string[];
+  /** The project they go to, by projectId, key or prefix; left out, the parent's. */
+  readonly project?: string;
+  /** The task they go under; null or left out, none. */
+  readonly parent?: string | null;
+  /** Moves every task under each one named with it, keeping its parent. */
+  readonly withChildren?: boolean;
+}
+
+export interface MovedTasks {
+  readonly project: Project;
+  readonly result: MoveResult;
+  /** For each task that came from another project, the keys of the values it
+   * kept that this project defines with another type or options, or not at all. */
+  readonly fieldsKept: Readonly<Record<string, readonly string[]>>;
+}
+
+/** The project a move goes to, which must take new tasks; a name no project here has is refused as another workspace's. */
+async function destinationOf(context: WriteContext, move: TaskMove): Promise<Project> {
+  const parent = move.parent ?? null;
+  const parentProject = parent === null ? null : await projectOfTask(context, parent);
+  if (move.project === undefined && parentProject === null)
+    throw new Refused(
+      'invalid',
+      'invalid arguments: project (required unless parent names the task they go under)',
+      'Name the project the tasks go to, or the task they go under.',
+    );
+  let project: Project;
+  try {
+    project = await projectOf(context, move.project ?? parentProject!.id, 'write');
+  } catch (error) {
+    if (!(error instanceof Refused) || error.kind !== 'not_found') throw error;
+    throw new Refused(
+      'not_found',
+      `${error.message} A task moves only between projects of its own workspace; to put work in another workspace, file it there.`,
+      `${error.detail}. A task moves only between projects of its own workspace.`,
+    );
+  }
+  if (parentProject !== null && parentProject.id !== project.id)
+    throw new Refused(
+      'invalid',
+      `invalid arguments: parent (${parent} is in ${projectNamed(parentProject)}, not in ${projectNamed(project)}, where the tasks go)`,
+      `${parent} is in ${parentProject.name}, not in ${project.name}.`,
+    );
+  if (project.disabledAt !== null)
+    throw refused(
+      `refused: ${projectNamed(project)} is disabled, so it takes no new tasks; its tasks stay readable. ` +
+        "A workspace owner enables it again on the web app's Settings page, under Projects.",
+      `${project.name} is disabled, so it takes no new tasks. An owner can enable it in Settings.`,
+    );
+  if (parent !== null) await tasksIn(context, project, [parent]);
+  return project;
+}
+
+/**
+ * The placements of a move as the tasks stand now: each task named under the
+ * parent, and with `withChildren` every task under one that leaves its
+ * project, under its own parent. A task leaving its project with tasks under
+ * it, without `withChildren`, is refused.
+ */
+async function placementsOf(context: WriteContext, project: Project, move: TaskMove): Promise<TaskPlacement[]> {
+  const owners = new Map<string, { readonly project: Project; readonly ids: string[] }>();
+  for (const id of move.tasks) {
+    const owner = await projectOf(context, (await projectOfTask(context, id)).id, 'write');
+    const group = owners.get(owner.id) ?? { project: owner, ids: [] };
+    group.ids.push(id);
+    owners.set(owner.id, group);
+  }
+  const found = new Map<string, Task>();
+  for (const { project: owner, ids } of owners.values()) {
+    for (const task of await context.engine.getTasks(owner.id, ids)) found.set(task.id, task);
+    for (const id of ids) if (!found.has(id)) await taskOf(context, owner, id);
+  }
+  const parent = move.parent ?? null;
+  const placements: TaskPlacement[] = move.tasks.map((id) => ({
+    taskId: id,
+    expectedVersion: found.get(id)!.version,
+    parentId: parent,
+  }));
+  const placed = new Set(move.tasks);
+  for (const id of move.tasks) {
+    const task = found.get(id)!;
+    if (task.projectId === project.id) continue;
+    const under = await context.engine.listUnder(task.projectId, [task.id], TASK_LIMITS.move + 1);
+    if (under.length > 0 && move.withChildren !== true) {
+      const named = listed(under.slice(0, 3).map((child) => child.id));
+      throw new Refused(
+        'invalid',
+        `invalid arguments: with_children (${task.id} has tasks under it, such as ${named}, which move to another project only with it; pass with_children: true)`,
+        `${task.id} has tasks under it, such as ${named}; they move to another project only with it.`,
+      );
+    }
+    for (const child of under) {
+      if (placed.has(child.id)) continue;
+      placed.add(child.id);
+      placements.push({ taskId: child.id, expectedVersion: child.version, parentId: child.parentId });
+    }
+  }
+  if (placements.length > TASK_LIMITS.move)
+    throw new Refused(
+      'invalid',
+      `invalid arguments: tasks (one move places at most ${TASK_LIMITS.move} tasks, counting the tasks under them, and this one places more; split it into smaller calls)`,
+      `One move takes at most ${TASK_LIMITS.move} tasks, counting the tasks under them.`,
+    );
+  return placements;
+}
+
+/** The field values the tasks that came from another project kept that `fields` does not take as they are. */
+function fieldsKeptOf(result: MoveResult, fields: readonly CustomField[]): Record<string, readonly string[]> {
+  const arrived = new Set(result.moved.map((moved) => moved.to));
+  const kept: Record<string, string[]> = {};
+  for (const task of result.tasks) {
+    if (!arrived.has(task.id)) continue;
+    const keys = Object.entries(task.fields).flatMap(([key, value]) => {
+      try {
+        fieldValues(fields, { [key]: value }, false);
+        return [];
+      } catch {
+        return [key];
+      }
+    });
+    if (keys.length > 0) kept[task.id] = keys;
+  }
+  return kept;
+}
+
+/**
+ * Moves tasks to a project, under a task of it or under none, in one engine
+ * call: every task moves or none does. A task from another project takes a
+ * new id there, and keeps its field values whether or not the project defines
+ * them. A move that leaves every task where it is changes nothing.
+ */
+export async function moveTasks(
+  context: WriteContext,
+  move: TaskMove,
+  model: string | undefined,
+  retryRequest?: RetryRequest,
+): Promise<MovedTasks> {
+  const project = await destinationOf(context, move);
+  const retry = await retryOf(context.principal, retryRequest);
+  const finished = async (result: MoveResult): Promise<MovedTasks> => ({
+    project,
+    result,
+    fieldsKept: fieldsKeptOf(result, await context.engine.listFields(project.id)),
+  });
+  if (retry !== undefined) {
+    try {
+      const replay = await context.engine.recordedMove(project.id, retry);
+      if (replay !== null) return finished(replay);
+    } catch (error) {
+      throw fromEngine(error);
+    }
+  }
+  const actor = actorOf(context.principal, model);
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    const placements = await placementsOf(context, project, move);
+    try {
+      return finished(await context.engine.moveTasks(project.id, placements, actor, retry));
+    } catch (error) {
+      if (error instanceof TaskRefused && error.refusal === 'version_conflict') continue;
+      const parent = move.parent ?? null;
+      throw fromEngine(error, {
+        keyed: retry !== undefined,
+        loop:
+          parent === null
+            ? undefined
+            : refused(
+                `refused: ${parent} is one of the tasks moved or under one of them, so they cannot go under it.`,
+                `${parent} is one of the tasks moved or under one of them.`,
+              ),
+      });
+    }
+  }
+  throw unavailable(retry !== undefined);
 }
 
 // ─── Closing a task ───────────────────────────────────────────────────────────

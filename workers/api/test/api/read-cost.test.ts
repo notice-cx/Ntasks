@@ -190,8 +190,9 @@ const BUDGETS: Record<string, { readonly statements: number; readonly rowsRead: 
   'HTTP board by a field, largest project': { statements: 6, rowsRead: 5_000 },
   'list_tasks at a stage, largest project': { statements: 4, rowsRead: 1_000 },
   'HTTP board at a stage, largest project': { statements: 5, rowsRead: 1_000 },
-  get_task: { statements: 4, rowsRead: 60 },
-  get_task_history: { statements: 3, rowsRead: 60 },
+  // A call that names a task reads whether the id is a moved task's former id: one statement, no rows when it is not.
+  get_task: { statements: 5, rowsRead: 60 },
+  get_task_history: { statements: 4, rowsRead: 60 },
   'get_agent_stats, every project': { statements: 2, rowsRead: 800 },
   'HTTP agent stats, largest project': { statements: 2, rowsRead: 150 },
   'HTTP wins, every project': { statements: 4, rowsRead: 2_000 },

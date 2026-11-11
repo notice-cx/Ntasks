@@ -4,7 +4,17 @@
  * sender learns nothing of another's projects. The MCP tools and the HTTP
  * writes share these, and their refusals.
  */
-import type { Json, Project, Task, TaskEngine, TaskEvent, TaskLink } from '@ntasks/domain';
+import {
+  isTaskId,
+  TASK_LIMITS,
+  type FormerId,
+  type Json,
+  type Project,
+  type Task,
+  type TaskEngine,
+  type TaskEvent,
+  type TaskLink,
+} from '@ntasks/domain';
 import { mayReach, reachable, type Principal, type ProjectAccess } from './auth.ts';
 import { Refused } from './refused.ts';
 
@@ -98,6 +108,23 @@ export async function projectOfTask(reader: Reader, taskId: string): Promise<Pro
     `refused: no project you can reach has prefix ${prefix}, so ${taskId} names no task; list_projects lists each one's prefix.`,
     `no task ${taskId}`,
   );
+}
+
+/**
+ * The moved tasks among these ids: each former id the sender may follow, with
+ * the task's id and project now. A task in a project the sender cannot reach
+ * is left out, so its former id answers as an id that names no task.
+ */
+export async function formerIdsOf(
+  { engine, principal }: Reader,
+  taskIds: readonly unknown[],
+): Promise<ReadonlyMap<string, FormerId>> {
+  const named = [...new Set(taskIds.filter(isTaskId))].slice(0, TASK_LIMITS.page);
+  if (named.length === 0) return new Map();
+  const found = await engine.formerIds(named);
+  if (found.length === 0) return new Map();
+  const reached = new Set(reachable(principal, await engine.listProjects()).map((project) => project.id));
+  return new Map(found.filter((former) => reached.has(former.projectId)).map((former) => [former.formerId, former]));
 }
 
 /** What a sender may see of the links between tasks. */

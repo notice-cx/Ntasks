@@ -113,6 +113,7 @@ describe('tools/list', () => {
       'request_human_approval',
       'request_human_action',
       'close_task',
+      'move_tasks',
       'report_delivery',
       'list_fields',
       'define_field',

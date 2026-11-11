@@ -49,6 +49,7 @@ import {
   commentOnTask,
   createTask,
   defineField,
+  moveTasks,
   retireField,
   updateTask,
   type NewTask,
@@ -56,7 +57,7 @@ import {
   type TaskChange,
   type WriteContext,
 } from '../task-writes.ts';
-import { linksSeenBy } from '../lookup.ts';
+import { formerIdsOf, linksSeenBy } from '../lookup.ts';
 import { shippedArgs } from '../delivery.ts';
 import { commentView, fieldView, webTasks } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
@@ -92,7 +93,7 @@ export const EDITABLE_FIELDS: readonly string[] = Object.freeze([
   'changeClass',
 ]);
 /** The writes this API offers any sender that may change a project. */
-export const WRITE_OPERATIONS: readonly string[] = Object.freeze(['create', 'update', 'comment', 'close']);
+export const WRITE_OPERATIONS: readonly string[] = Object.freeze(['create', 'update', 'comment', 'close', 'move']);
 /** The decisions it offers a person signed in to the web app, in NoticeOS's names. */
 export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
   'respond',
@@ -189,6 +190,52 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
 }
 
 /** PATCH /api/tasks/:id: changes a task's fields, or with `claim`, takes it. */
+/**
+ * POST /api/tasks/move: moves tasks to a project, under a task of it or none,
+ * as move_tasks does. The body names `tasks`, and `projectId`, `parent` or
+ * both; a former id among them names the task it moved to.
+ */
+export async function moveRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'move_tasks', {});
+  only(body, ['tasks', 'projectId', 'parent', 'withChildren']);
+  const sent = body.tasks;
+  if (!Array.isArray(sent) || sent.length < 1 || sent.length > TASK_LIMITS.move)
+    refuse(`invalid arguments: tasks (1–${TASK_LIMITS.move} task ids)`);
+  const named = sent.map((id: unknown, index) => taskArg({ [`tasks[${index}]`]: id }, `tasks[${index}]`));
+  const parentSent = body.parent === undefined || body.parent === '' ? null : taskArg(body, 'parent');
+  const now = await formerIdsOf(context, [...named, parentSent]);
+  const idNow = (id: string) => now.get(id)?.taskId ?? id;
+  const tasks = [...new Set(named.map(idNow))];
+  const parent = parentSent === null ? null : idNow(parentSent);
+  if (parent !== null && tasks.includes(parent))
+    refuse('invalid arguments: parent (another task than the ones moving)');
+  if (body.withChildren !== undefined && typeof body.withChildren !== 'boolean')
+    refuse('invalid arguments: withChildren (true or false)');
+  const { result, fieldsKept } = await moveTasks(
+    context,
+    {
+      tasks,
+      ...(body.projectId === undefined ? {} : { project: projectArg(body, 'projectId', 'http') }),
+      parent,
+      withChildren: body.withChildren === true,
+    },
+    undefined,
+    retry(body),
+  );
+  const links = await linksSeenBy(context);
+  return json({
+    tasks: await webTasks(
+      result.tasks.slice(0, tasks.length).map((task) => links.task(task)),
+      context.now(),
+    ),
+    moved: Object.fromEntries(result.moved.map(({ from, to }) => [from, to])),
+    ...(Object.keys(fieldsKept).length === 0 ? {} : { fieldsKept }),
+    ...(result.epics === undefined
+      ? {}
+      : { epics: result.epics.map((epic) => ({ id: epic.id, status: epic.status })) }),
+  });
+}
+
 export async function updateRoute(
   context: WriteContext,
   url: URL,

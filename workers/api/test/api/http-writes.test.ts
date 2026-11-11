@@ -34,7 +34,7 @@ describe('GET /api/tasks/capabilities', () => {
       live: true,
       writable: true,
       projectSelection: true,
-      operations: ['create', 'update', 'comment', 'close'],
+      operations: ['create', 'update', 'comment', 'close', 'move'],
       editableFields: [
         'status',
         'priority',

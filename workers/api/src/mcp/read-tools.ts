@@ -64,6 +64,9 @@ export interface ToolContext {
   readonly workspace: Workspace;
   readonly principal: Principal;
   readonly now: () => string;
+  /** The arguments as sent, when a former id in them was read as the task's id
+   * now: a move's retry is the request its sender sent, whatever moved since. */
+  readonly sent?: Args;
 }
 
 export interface TaskTool {
