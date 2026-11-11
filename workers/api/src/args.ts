@@ -4,6 +4,7 @@
  * argument, by the name its caller sent, and what it must be.
  */
 import {
+  DEPENDENCY_TYPES,
   EXTERNAL_LINK_KINDS,
   IDEMPOTENCY_KEY,
   isExternalLinkKind,
@@ -16,6 +17,7 @@ import {
   WORK_DETAILS,
   WORK_LIMITS,
   type CommentPins,
+  type DependencyType,
   type ExternalLink,
   type FieldValue,
   type JsonObject,
@@ -449,6 +451,44 @@ export function urlsArg(args: Args, name: string): string[] | undefined {
     (url: unknown, index) => httpUrl(url) ?? refuse(`invalid arguments: ${name}[${index}] (${URL_RULE})`),
   );
   return [...new Set(urls)];
+}
+
+/** Links to other tasks a change sets: each a task id and a type, each task once. */
+export function taskLinksArg(
+  args: Args,
+  name: string,
+): { readonly taskId: string; readonly type: DependencyType }[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.links)
+    refuse(`invalid arguments: ${name} (1 to ${TASK_LIMITS.links} links, each a taskId and a type)`);
+  const links = value.map((entry: unknown, index) => {
+    const at = `${name}[${index}]`;
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry))
+      refuse(`invalid arguments: ${at} (a link: taskId and type)`);
+    const link = entry as Args;
+    const unknown = Object.keys(link).filter((key) => !['taskId', 'type'].includes(key));
+    if (unknown.length > 0) refuse(`invalid arguments: ${at} (taskId and type only; not ${unknown.join(', ')})`);
+    const type = `${at}.type`;
+    return {
+      taskId: taskArg({ [`${at}.taskId`]: link.taskId }, `${at}.taskId`),
+      type:
+        choiceArg({ [type]: link.type }, type, DEPENDENCY_TYPES) ??
+        refuse(`invalid arguments: ${type} (one of ${DEPENDENCY_TYPES.join(', ')})`),
+    };
+  });
+  if (new Set(links.map((link) => link.taskId)).size < links.length)
+    refuse(`invalid arguments: ${name} (each task once: two tasks hold one link)`);
+  return links;
+}
+
+/** Task ids whose links to a task a change takes off, each once. */
+export function taskIdsArg(args: Args, name: string): string[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 1 || value.length > TASK_LIMITS.links)
+    refuse(`invalid arguments: ${name} (1 to ${TASK_LIMITS.links} task ids)`);
+  return [...new Set(value.map((id: unknown, index) => taskArg({ [`${name}[${index}]`]: id }, `${name}[${index}]`)))];
 }
 
 /** A change adds or takes off a link to a URL, not both. */

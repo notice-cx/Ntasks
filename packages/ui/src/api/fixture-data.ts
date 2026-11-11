@@ -8,6 +8,7 @@ import type {
   DetectedDeploy,
   GitHubInstallation,
   LiveTask,
+  ServiceCredential,
   TaskActor,
   TaskComment,
   TaskField,
@@ -37,6 +38,8 @@ export interface FixtureWorkspace extends Workspace {
   invitations: WorkspaceInvitation[];
   /** Its connected apps; none when left out. */
   apps?: ConnectedApp[];
+  /** Its service credentials, revoked ones included; none when left out. */
+  services?: ServiceCredential[];
   /** Its GitHub webhook, with the secret the Worker would keep encrypted; none when left out. */
   github?: { secret: string; deployChecks: string[]; updatedAt: string };
   /** Its GitHub App, where it is installed and the deploy checks deliveries showed; none when left out. */
@@ -68,7 +71,7 @@ export const FIXTURE_ACTORS: readonly TaskActor[] = [
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-/** An open task, filed six days before `nowMs`, with `fields` set over it. */
+/** An open task, filed by Claude six days before `nowMs`, with `fields` set over it. */
 function taskAt(nowMs: number) {
   const at = (ago: number) => new Date(nowMs - ago).toISOString();
   return (project: string, id: string, title: string, fields: Partial<LiveTask> = {}): FixtureTask => ({
@@ -95,6 +98,8 @@ function taskAt(nowMs: number) {
     dependencies: [],
     comments: 0,
     metadata: {},
+    filedBy: CLAUDE,
+    filedModel: MODELS[CLAUDE],
     startedAt: null,
     closeReason: null,
     awaitType: null,

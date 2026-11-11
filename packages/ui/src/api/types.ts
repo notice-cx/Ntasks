@@ -186,6 +186,9 @@ export interface LiveTask {
   /** On a request that a person do steps: the steps, with who ticked each, their notes and where they got
    * stuck. Null on every other task, and absent when the server sends none. */
   steps?: readonly TaskStep[] | null;
+  /** Who filed the task and the model they named, when the server sends them; null on a task imported without them. */
+  filedBy?: string | null;
+  filedModel?: string | null;
   /** Who closed the task and the model they named, when the server sends them. */
   closedBy?: string | null;
   closedModel?: string | null;
@@ -512,8 +515,19 @@ export interface TaskEdit {
   addExternalLinks?: NewExternalLink[];
   /** The URLs of links to take off. */
   removeExternalLinks?: string[];
+  /** Links to other tasks, sent with no other field. Two tasks hold one link, so a new type replaces the pair's. */
+  addLinks?: NewTaskLink[];
+  /** The task ids whose link with this task to take off, whichever way it points. */
+  removeLinks?: string[];
   /** Custom field values by key; null takes a value off. */
   fields?: Record<string, TaskFieldValue | null>;
+}
+
+/** A link to another task, as a write sends it: `blocks` (this task waits on that one), `related`,
+ * `discovered-from`, `duplicates`, `supersedes` or `merges-after`. */
+export interface NewTaskLink {
+  taskId: string;
+  type: string;
 }
 
 /** A page a task links to, as a write sends it. */
@@ -655,4 +669,37 @@ export interface GitHubWebhookSettings {
 export interface NewApp {
   name: string;
   redirectUris: string[];
+}
+
+/** A service credential's reach in one project: to read its tasks, or to read and change them. */
+export interface ServiceGrant {
+  projectId: string;
+  access: 'read' | 'write';
+}
+
+/** A credential a service, such as a NoticeOS installation or a nightly backup, signs in with. Never its token. */
+export interface ServiceCredential {
+  id: string;
+  name: string;
+  createdAt: string;
+  /** When an owner revoked it; its token is refused from then on. */
+  revokedAt: string | null;
+  grants: ServiceGrant[];
+  /** It reads the workspace's whole store for a backup. */
+  backup: boolean;
+  /** It loads rows into the workspace's store while the store is empty. */
+  restore: boolean;
+}
+
+/** A service credential, as `POST /api/access/services` takes it. One with no grants needs backup or restore. */
+export interface NewServiceCredential {
+  name: string;
+  grants: ServiceGrant[];
+  backup: boolean;
+  restore: boolean;
+}
+
+/** A credential just made, with the token the server shows this once. */
+export interface MadeServiceCredential extends ServiceCredential {
+  token: string;
 }

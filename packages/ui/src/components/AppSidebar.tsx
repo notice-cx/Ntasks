@@ -1,4 +1,4 @@
-import { Activity, ChartNoAxesColumn, List, Search, Settings, Target } from 'lucide-react';
+import { Activity, ChartNoAxesColumn, List, Plus, Search, Settings, Target } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo } from 'react';
 import { Avatar } from './ui/avatar';
@@ -11,10 +11,10 @@ import { GitHubMark, StatusMark, WorkspaceIcon } from './ui/symbols';
 import { useBoard } from '../hooks/useBoard';
 import { useNow } from '../hooks/useNow';
 import { useAnswerHides } from '../hooks/useTasks';
-import { useWorkspace } from '../hooks/useWorkspace';
+import { useAccount, useWorkspace } from '../hooks/useWorkspace';
 import { NO_FILTERS } from '../lib/board-read';
 import { activeNow } from '../lib/live';
-import { SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
+import { NEW_WORKSPACE_STATE, SEARCH_STATE, SOURCE_URL } from '../lib/page-state';
 import { isAgentActor } from '../lib/symbols';
 import { actorKey } from '@ntasks/domain';
 import { actorLabel, claimedModel, type BoardTask } from '../lib/task-model';
@@ -57,12 +57,15 @@ function sameSender(assignee: string | null, actor: string): boolean {
   return assignee !== null && actorKey(assignee) === actorKey(actor);
 }
 
-/** The open workspace's name, which opens the menu of the others and its settings. */
-function WorkspaceSwitcher() {
+/**
+ * The open workspace's name, which opens the menu of the others and its
+ * settings, and for a deployment admin New workspace.
+ */
+function WorkspaceSwitcher({ admin }: { admin: boolean }) {
   const { workspace, workspaces, switchTo } = useWorkspace();
   const navigate = useNavigate();
   const paths = usePaths();
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
   // Pages that mean the same in every workspace, so a switch stays on them; any other page goes to the board.
   const sameInEvery = pathname === paths.live || paths.isSettings(pathname);
   return (
@@ -89,6 +92,14 @@ function WorkspaceSwitcher() {
         <MenuItem icon={<Settings aria-hidden />} onSelect={() => void navigate(paths.settings)}>
           Settings
         </MenuItem>
+        {admin ? (
+          <MenuItem
+            icon={<Plus aria-hidden />}
+            onSelect={() => void navigate({ pathname, search, hash }, { state: { [NEW_WORKSPACE_STATE]: true } })}
+          >
+            New workspace
+          </MenuItem>
+        ) : null}
       </MenuContent>
     </Menu>
   );
@@ -102,6 +113,7 @@ function WorkspaceSwitcher() {
  */
 export function AppSidebar() {
   const { workspace, workspaces } = useWorkspace();
+  const admin = useAccount(true).data?.deploymentAdmin === true;
   const board = useBoard(NO_FILTERS);
   const hides = useAnswerHides();
   const navigate = useNavigate();
@@ -129,7 +141,7 @@ export function AppSidebar() {
     <Sidebar aria-label="Ntasks">
       <SidebarHeader
         icon={<WorkspaceIcon workspaceId={workspace.workspaceId} name={workspace.name} />}
-        name={workspaces.length > 1 ? <WorkspaceSwitcher /> : workspace.name}
+        name={workspaces.length > 1 || admin ? <WorkspaceSwitcher admin={admin} /> : workspace.name}
       >
         <IconButton
           size="sm"

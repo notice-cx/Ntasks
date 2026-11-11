@@ -53,6 +53,8 @@ describe('GET /api/tasks/capabilities', () => {
         'removeLabels',
         'addExternalLinks',
         'removeExternalLinks',
+        'addLinks',
+        'removeLinks',
         'fields',
         'card',
         'changeClass',
@@ -366,6 +368,105 @@ describe('PATCH /api/tasks/:id', () => {
       },
     });
     expect((await current(id)).externalLinks).toEqual([doc]);
+  });
+
+  it('links a task as a duplicate and as replacing another, across projects too, and removes both', async () => {
+    const [later, first] = [await task({ title: 'Move the blog again' }), await task({ title: 'Move the blog' })];
+    const elsewhere = (await engine.createTask((await newProject(engine)).id, { title: 'Old blog' }, OWNER)).task;
+    const patch = (body: Record<string, unknown>) =>
+      send(target, 'PATCH', `/api/tasks/${later.id}`, { projectId: project.id, ...body });
+    // The task's links, ordered by their task ids, which are random here.
+    const links = (answer: { body: Record<string, unknown> }) =>
+      (answer.body.task as { dependencies: { id: string; type: string }[] }).dependencies
+        .map(({ id, type }) => [id, type])
+        .sort(([a], [b]) => a!.localeCompare(b!));
+    const sorted = (pairs: string[][]) => pairs.sort(([a], [b]) => a!.localeCompare(b!));
+
+    const added = await patch({
+      addLinks: [
+        { taskId: first.id, type: 'duplicates' },
+        { taskId: elsewhere.id, type: 'supersedes' },
+      ],
+    });
+    expect(added.status).toBe(200);
+    expect(links(added)).toEqual(
+      sorted([
+        [first.id, 'duplicates'],
+        [elsewhere.id, 'supersedes'],
+      ]),
+    );
+    // Two tasks hold one link: a new type replaces the one they had.
+    expect(links(await patch({ addLinks: [{ taskId: first.id, type: 'related' }] }))).toEqual(
+      sorted([
+        [first.id, 'related'],
+        [elsewhere.id, 'supersedes'],
+      ]),
+    );
+    expect(links(await patch({ removeLinks: [first.id, elsewhere.id] }))).toEqual([]);
+    expect((await current(later.id)).dependencies).toEqual([]);
+    // Removing a link the pair no longer has changes nothing.
+    expect((await patch({ removeLinks: [first.id] })).status).toBe(200);
+  });
+
+  it('refuses a link that breaks a rule of link_tasks, and a malformed one, writing nothing', async () => {
+    const [waiting, other, third] = [
+      await task({ title: 'Ship the post' }),
+      await task({ title: 'Write the post' }),
+      await task({ title: 'Pick the photos' }),
+    ];
+    const decision = await task({ title: 'Choose the headline', labels: ['human'] });
+    const elsewhere = (await engine.createTask((await newProject(engine)).id, { title: 'Elsewhere' }, OWNER)).task;
+    const patch = (id: string, body: Record<string, unknown>) =>
+      send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, ...body });
+    expect((await patch(waiting.id, { addLinks: [{ taskId: other.id, type: 'blocks' }] })).status).toBe(200);
+    expect((await patch(other.id, { addLinks: [{ taskId: third.id, type: 'blocks' }] })).status).toBe(200);
+    expect((await patch(waiting.id, { addLinks: [{ taskId: decision.id, type: 'related' }] })).status).toBe(200);
+    const before = await current(waiting.id);
+
+    // Tasks that wait on each other in a loop would wait forever.
+    expect(await patch(third.id, { addLinks: [{ taskId: waiting.id, type: 'blocks' }] })).toEqual({
+      status: 409,
+      body: {
+        error: 'task_refused',
+        detail: `${waiting.id} already waits on ${third.id}, so ${third.id} cannot wait on it.`,
+      },
+    });
+    // Waiting on a task stays inside the project; related, duplicates and supersedes may reach across.
+    expect(await patch(waiting.id, { addLinks: [{ taskId: elsewhere.id, type: 'blocks' }] })).toMatchObject({
+      status: 404,
+      body: { error: 'not_found' },
+    });
+    // A link to a person's decision stays until they decide.
+    for (const body of [{ removeLinks: [decision.id] }, { addLinks: [{ taskId: decision.id, type: 'duplicates' }] }])
+      expect(await patch(waiting.id, body)).toEqual({
+        status: 409,
+        body: { error: 'task_refused', detail: `${decision.id} is a person's decision.` },
+      });
+    expect(await patch(waiting.id, { addLinks: [{ taskId: waiting.id, type: 'related' }] })).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: 'addLinks and removeLinks (another task than this one)' },
+    });
+    expect(
+      await patch(waiting.id, { addLinks: [{ taskId: other.id, type: 'related' }], removeLinks: [other.id] }),
+    ).toEqual({
+      status: 400,
+      body: {
+        error: 'invalid_request',
+        detail: 'addLinks and removeLinks (a task both linked and unlinked; send one)',
+      },
+    });
+    expect(await patch(waiting.id, { addLinks: [{ taskId: other.id, type: 'waits-on' }] })).toEqual({
+      status: 400,
+      body: {
+        error: 'invalid_request',
+        detail: 'addLinks[0].type (one of blocks, related, discovered-from, duplicates, supersedes, merges-after)',
+      },
+    });
+    expect(await patch(waiting.id, { addLinks: [{ taskId: other.id, type: 'related' }], priority: 0 })).toEqual({
+      status: 400,
+      body: { error: 'invalid_request', detail: 'unknown priority' },
+    });
+    expect(await current(waiting.id)).toEqual(before);
   });
 
   it('takes a task with claim, and refuses one someone else holds', async () => {

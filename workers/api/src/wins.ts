@@ -126,10 +126,22 @@ export function winsWindow(nowMs: number, before: string | undefined, timeZone =
   };
 }
 
+/** Where a task's change is, as the wins feed and agent statistics read it. */
+export type Delivered = Pick<
+  WinItem,
+  'id' | 'projectId' | 'stage' | 'mergedAt' | 'liveAt' | 'pullRequest' | 'mergeCommit' | 'commit'
+>;
+
 /** When a task's change shipped: when it merged, or went live where no merge was recorded. */
-function shippedAt(item: WinItem): string | null {
+export function shippedAt(item: Delivered): string | null {
   if (item.stage !== 'merged' && item.stage !== 'live') return null;
   return item.mergedAt ?? item.liveAt;
+}
+
+/** The change a task shipped with: its pull request, which is one change
+ * however many tasks closed with it, else its commit, else the task alone. */
+export function changeOf(item: Delivered): string {
+  return `${item.projectId} ${item.pullRequest ?? item.mergeCommit ?? item.commit ?? item.id}`;
 }
 
 /** A person's answer recorded on a task: the option, when and who. */
@@ -157,8 +169,7 @@ export function readWins(
     seen.add(item.id);
     const shipped = shippedAt(item);
     if (within(shipped)) {
-      // A pull request is one change, however many tasks closed with it.
-      const key = `${item.projectId} ${item.pullRequest ?? item.mergeCommit ?? item.commit ?? item.id}`;
+      const key = changeOf(item);
       const change = changes.get(key);
       if (change === undefined) changes.set(key, { at: shipped, items: [item] });
       else {

@@ -24,8 +24,14 @@ pnpm --filter @ntasks/api exec wrangler d1 migrations create DB describe_the_cha
 Commands name the database by its binding, `DB`, because a deployment made
 with the Deploy to Cloudflare button may give the database another name.
 
-Wrangler writes the next numbered file here. Put the schema change in it and
-add the tests that rely on it.
+Wrangler writes the next numbered file here. Put the schema change in it,
+add its file name to `D1_MIGRATIONS` in
+[`src/d1-migrations.ts`](../src/d1-migrations.ts), and add the tests that rely
+on it. The Worker compares that list with the database's `d1_migrations`
+table to name the migrations a deployed database lacks
+([Deploy](../../../docs/deploy.md#the-database-lacks-a-migration)), and
+[`test/d1-migrations.test.ts`](../test/d1-migrations.test.ts) fails when the
+list and this folder differ.
 
 ## Rules
 

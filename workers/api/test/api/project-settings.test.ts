@@ -137,6 +137,27 @@ describe('a project’s website', () => {
     expect(asked.every((url) => new URL(url).hostname.endsWith('.example.com'))).toBe(true);
   });
 
+  it('keeps an SVG icon made safe and serves it sandboxed, so opening its address runs nothing', async () => {
+    const project = await newProject(engine);
+    sites['https://mark.example.com/'] = () =>
+      new Response('<head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head>', {
+        headers: { 'content-type': 'text/html' },
+      });
+    sites['https://mark.example.com/favicon.svg'] = () =>
+      new Response('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(1)</script><rect/></svg>', {
+        headers: { 'content-type': 'image/svg+xml' },
+      });
+
+    const saved = await patch(owner, { projectId: project.id, websiteUrl: 'https://mark.example.com' });
+    const icon = (saved.body.project as { icon: string | null }).icon;
+    expect(icon).not.toBeNull();
+    const served = await writer.fetch(new Request(`${ORIGIN}${icon}`));
+    expect(served.headers.get('content-type')).toBe('image/svg+xml');
+    expect(served.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(served.headers.get('content-security-policy')).toMatch(/default-src 'none'.*; sandbox$/u);
+    expect(await served.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
+  });
+
   it('refuses an address that is not a public web page under its field, reading nothing', async () => {
     const project = await newProject(engine);
     for (const websiteUrl of ['ftp://example.com', 'http://localhost:8787', 42]) {

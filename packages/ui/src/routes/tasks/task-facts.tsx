@@ -3,13 +3,21 @@
  * words, the ones this sign-in may change opening a menu of values, then
  * when the task was created and last changed.
  */
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { Layers, Moon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Layers, Moon, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { actorKey, TASK_LIMITS } from '@ntasks/domain';
 import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '../../api/types';
-import { Fact, LinkedFact, type FactChoice, type FactEditor } from '../../components/Fact';
+import {
+  Fact,
+  factMenuFooter,
+  factMenuItems,
+  LinkedFact,
+  type FactChoice,
+  type FactEditor,
+} from '../../components/Fact';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/ui/menu';
 import { Avatar } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
@@ -181,231 +189,243 @@ export function TaskFacts({
   const parentName = parent?.title ?? parentTitle ?? task.parent;
   const definitions = useProjectFields(project.logicalKey).data?.fields ?? [];
   const values = task.fields ?? {};
-  // The project's fields in the order it defined them, each with its value; a
-  // value whose field this page has not read is named from its key.
-  const customFields: { key: string; field: TaskField | null; value: TaskFieldValue | undefined }[] = [
-    ...definitions
-      .filter((field) => values[field.key] !== undefined || (fieldEditable(field) && can('fields')))
-      .map((field) => ({ key: field.key, field, value: values[field.key] })),
+  // The fields the task holds a value for, in the order the project defined
+  // them; a value whose field this page has not read is named from its key.
+  const customFields: { key: string; field: TaskField | null; value: TaskFieldValue }[] = [
+    ...definitions.flatMap((field) => {
+      const value = values[field.key];
+      return value === undefined ? [] : [{ key: field.key, field, value }];
+    }),
     ...Object.entries(values)
       .filter(([key]) => !definitions.some((field) => field.key === key))
       .map(([key, value]) => ({ key, field: null, value })),
   ];
+  const addable = can('fields') ? definitions.filter(fieldEditable) : [];
+  const saveField = (field: TaskField | null, key: string) => (next: TaskFieldValue | null, before?: TaskFieldValue) =>
+    save({
+      label: field?.name ?? fieldKeyName(key),
+      edit: { fields: { [key]: next } },
+      undo: { fields: { [key]: before ?? null } },
+    });
 
   return (
     <aside aria-label="Facts" className="flex flex-col gap-3" data-task-facts="">
-      <dl className="m-0 flex flex-col gap-px">
-        <Fact
-          label="Status"
-          valueText={statusWord}
-          editor={can('status') ? { kind: 'choice', value: task.status, choices: STATUS_CHOICES } : null}
-          onSave={(next) => save({ label: 'the status', edit: { status: next }, undo: { status: task.status } })}
-        >
-          <StatusMark status={mark} muted={resolution !== null && resolution !== 'done'} label={null} />
-          <span data-task-status={mark}>{statusWord}</span>
-        </Fact>
-        <Fact
-          label="Priority"
-          valueText={priorityLabel(task.priority)}
-          editor={can('priority') ? { kind: 'choice', value: String(task.priority), choices: PRIORITY_CHOICES } : null}
-          onSave={(next) =>
-            save({ label: 'the priority', edit: { priority: Number(next) }, undo: { priority: task.priority } })
-          }
-        >
-          <PriorityMark priority={task.priority} label={null} />
-          {priorityLabel(task.priority)}
-        </Fact>
-        <Fact
-          label="Assignee"
-          valueText={holder === null ? 'Nobody' : helper ? `${holder} for ${helper}` : holder}
-          muted={holder === null}
-          editor={
-            can('assignee')
-              ? {
-                  kind: 'choice',
-                  value: task.assignee ?? '',
-                  choices: [...people.map((actor) => actorChoice(actor, actors)), { value: '', label: 'Nobody' }],
-                  other: 'Someone else',
-                }
-              : null
-          }
-          // A new holder owns an in-progress claim, so taking it back is theirs to agree to, not an Undo.
-          onSave={(next) =>
-            save({
-              label: 'the assignee',
-              edit: { assignee: next },
-              ...(task.status === 'in_progress' && next !== '' && next !== task.assignee
-                ? {}
-                : { undo: { assignee: task.assignee ?? '' } }),
-            })
-          }
-        >
-          {task.assignee && holder ? (
-            <>
-              <Avatar name={holder} agent={isAgentActor(task.assignee)} model={model} decorative />
-              {/* The name keeps its room; the helper and the model give way first. */}
-              <span>{holder}</span>
-              {helper ? <span className="shrink-[100] font-normal text-ink-2">for {helper}</span> : null}
-              {model ? <span className="shrink-[100] font-normal text-ink-3">{model}</span> : null}
-            </>
-          ) : (
-            'Nobody'
-          )}
-        </Fact>
-        {task.assignee && !closed ? <WorkFacts task={task} nowMs={nowMs} /> : null}
-        <Fact label="Type" valueText={typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}>
-          <TypeMark
-            type={typeMarkFor(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
-            size={14}
-            label={null}
-          />
-          {typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
-        </Fact>
-        <Fact label="Project" valueText={project.displayName}>
-          <FactLink to={`${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`}>
-            {project.displayName}
-          </FactLink>
-        </Fact>
-        <LinkedFact
-          label="Epic"
-          valueText={parentName ?? 'None'}
-          muted={!task.parent}
-          editor={
-            can('parent')
-              ? {
-                  kind: 'choice',
-                  value: task.parent ?? '',
-                  choices: [
-                    ...epics
-                      .filter((row) => row.id !== task.id && row.status !== 'closed')
-                      .map((row) => ({ value: row.id, label: row.title, mark: <Layers aria-hidden /> })),
-                    { value: '', label: 'None' },
-                  ],
-                  other: 'Another task id',
-                }
-              : null
-          }
-          onSave={(next) => save({ label: 'the epic', edit: { parent: next }, undo: { parent: task.parent ?? '' } })}
-        >
-          {task.parent ? <FactLink to={paths.task(task.parent)}>{parentName}</FactLink> : 'None'}
-        </LinkedFact>
-        <Fact
-          label="Labels"
-          valueText={task.labels.length > 0 ? task.labels.join(', ') : 'None'}
-          muted={task.labels.length === 0}
-          wrap
-          editor={
-            can('addLabels')
-              ? {
-                  kind: 'toggle',
-                  values: task.labels,
-                  choices: labels.map((label) => ({ value: label, label })),
-                  other: 'New label',
-                }
-              : null
-          }
-          onSave={(label, on = true) =>
-            on
-              ? save({ label: `label ${label}`, edit: { addLabels: [label] }, undo: { removeLabels: [label] } })
-              : save({ label: `label ${label}`, edit: { removeLabels: [label] }, undo: { addLabels: [label] } })
-          }
-        >
-          {task.labels.length > 0
-            ? task.labels.map((label) => (
-                <Badge key={label} dot>
-                  <span data-task-label={label}>{label}</span>
-                </Badge>
-              ))
-            : 'None'}
-        </Fact>
-        {parked !== '' || can('defer') ? (
+      <div className="flex flex-col gap-px">
+        <dl className="m-0 flex flex-col gap-px">
           <Fact
-            label="Parked until"
-            valueText={parked === '' ? 'None' : calendarDay(parked, nowMs, zone)}
-            muted={parked === ''}
-            editor={
-              can('defer') ? { kind: 'date', value: parked, presets: dayPresets(nowMs, zone), clear: 'Unpark' } : null
-            }
-            onSave={(next) => save({ label: 'the parked date', edit: { defer: next }, undo: { defer: parked } })}
+            label="Status"
+            valueText={statusWord}
+            editor={can('status') ? { kind: 'choice', value: task.status, choices: STATUS_CHOICES } : null}
+            onSave={(next) => save({ label: 'the status', edit: { status: next }, undo: { status: task.status } })}
           >
-            {parked === '' ? (
-              'None'
-            ) : (
-              <>
-                <Moon aria-hidden size={14} className="text-ink-3" />
-                <span className="nums">{calendarDay(parked, nowMs, zone)}</span>
-              </>
-            )}
+            <StatusMark status={mark} muted={resolution !== null && resolution !== 'done'} label={null} />
+            <span data-task-status={mark}>{statusWord}</span>
           </Fact>
-        ) : null}
-        {due !== '' || can('dueAt') ? (
           <Fact
-            label="Due"
-            valueText={due === '' ? NONE : calendarDay(due, nowMs, zone)}
-            muted={due === ''}
+            label="Priority"
+            valueText={priorityLabel(task.priority)}
             editor={
-              can('dueAt')
-                ? { kind: 'date', value: due, presets: dayPresets(nowMs, zone), clear: NONE, field: 'Due date' }
-                : null
+              can('priority') ? { kind: 'choice', value: String(task.priority), choices: PRIORITY_CHOICES } : null
             }
             onSave={(next) =>
-              save({
-                label: 'the due date',
-                edit: { dueAt: next === '' ? null : next },
-                undo: { dueAt: due === '' ? null : due },
-              })
+              save({ label: 'the priority', edit: { priority: Number(next) }, undo: { priority: task.priority } })
             }
           >
-            {due === '' ? NONE : <span className="nums">{calendarDay(due, nowMs, zone)}</span>}
+            <PriorityMark priority={task.priority} label={null} />
+            {priorityLabel(task.priority)}
           </Fact>
-        ) : null}
-        {estimate !== null || can('estimateMinutes') ? (
           <Fact
-            label="Estimate"
-            valueText={estimate ?? NONE}
-            muted={estimate === null}
+            label="Assignee"
+            valueText={holder === null ? 'Nobody' : helper ? `${holder} for ${helper}` : holder}
+            muted={holder === null}
             editor={
-              can('estimateMinutes')
+              can('assignee')
                 ? {
-                    kind: 'text',
-                    value: estimate ?? '',
-                    field: 'Estimate',
-                    presets: ESTIMATE_PRESETS,
-                    clear: NONE,
-                    check: (text) =>
-                      parseMinutes(text, TASK_LIMITS.estimateMinutes) === null ? 'Not a duration' : null,
+                    kind: 'choice',
+                    value: task.assignee ?? '',
+                    choices: [...people.map((actor) => actorChoice(actor, actors)), { value: '', label: 'Nobody' }],
+                    other: 'Someone else',
                   }
                 : null
             }
+            // A new holder owns an in-progress claim, so taking it back is theirs to agree to, not an Undo.
             onSave={(next) =>
               save({
-                label: 'the estimate',
-                edit: { estimateMinutes: next === '' ? null : parseMinutes(next, TASK_LIMITS.estimateMinutes) },
-                undo: { estimateMinutes: task.estimateMinutes ?? null },
+                label: 'the assignee',
+                edit: { assignee: next },
+                ...(task.status === 'in_progress' && next !== '' && next !== task.assignee
+                  ? {}
+                  : { undo: { assignee: task.assignee ?? '' } }),
               })
             }
           >
-            {estimate === null ? NONE : <span className="nums">{estimate}</span>}
+            {task.assignee && holder ? (
+              <>
+                <Avatar name={holder} agent={isAgentActor(task.assignee)} model={model} decorative />
+                {/* The name keeps its room; the helper and the model give way first. */}
+                <span>{holder}</span>
+                {helper ? <span className="shrink-[100] font-normal text-ink-2">for {helper}</span> : null}
+                {model ? <span className="shrink-[100] font-normal text-ink-3">{model}</span> : null}
+              </>
+            ) : (
+              'Nobody'
+            )}
           </Fact>
-        ) : null}
-        {customFields.map(({ key, field, value }) => (
-          <CustomFieldFact
-            key={key}
-            fieldKey={key}
-            field={field}
-            value={value}
-            editable={field !== null && fieldEditable(field) && can('fields')}
-            nowMs={nowMs}
-            onSave={(next, before) =>
-              save({
-                label: field?.name ?? fieldKeyName(key),
-                edit: { fields: { [key]: next } },
-                undo: { fields: { [key]: before ?? null } },
-              })
+          {task.assignee && !closed ? <WorkFacts task={task} nowMs={nowMs} /> : null}
+          <Fact label="Type" valueText={typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}>
+            <TypeMark
+              type={typeMarkFor(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
+              size={14}
+              label={null}
+            />
+            {typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
+          </Fact>
+          <Fact label="Project" valueText={project.displayName}>
+            <FactLink to={`${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`}>
+              {project.displayName}
+            </FactLink>
+          </Fact>
+          <LinkedFact
+            label="Epic"
+            valueText={parentName ?? 'None'}
+            muted={!task.parent}
+            editor={
+              can('parent')
+                ? {
+                    kind: 'choice',
+                    value: task.parent ?? '',
+                    choices: [
+                      ...epics
+                        .filter((row) => row.id !== task.id && row.status !== 'closed')
+                        .map((row) => ({ value: row.id, label: row.title, mark: <Layers aria-hidden /> })),
+                      { value: '', label: 'None' },
+                    ],
+                    other: 'Another task id',
+                  }
+                : null
             }
-          />
-        ))}
-      </dl>
+            onSave={(next) => save({ label: 'the epic', edit: { parent: next }, undo: { parent: task.parent ?? '' } })}
+          >
+            {task.parent ? <FactLink to={paths.task(task.parent)}>{parentName}</FactLink> : 'None'}
+          </LinkedFact>
+          <Fact
+            label="Labels"
+            valueText={task.labels.length > 0 ? task.labels.join(', ') : 'None'}
+            muted={task.labels.length === 0}
+            wrap
+            editor={
+              can('addLabels')
+                ? {
+                    kind: 'toggle',
+                    values: task.labels,
+                    choices: labels.map((label) => ({ value: label, label })),
+                    other: 'New label',
+                  }
+                : null
+            }
+            onSave={(label, on = true) =>
+              on
+                ? save({ label: `label ${label}`, edit: { addLabels: [label] }, undo: { removeLabels: [label] } })
+                : save({ label: `label ${label}`, edit: { removeLabels: [label] }, undo: { addLabels: [label] } })
+            }
+          >
+            {task.labels.length > 0
+              ? task.labels.map((label) => (
+                  <Badge key={label} dot>
+                    <span data-task-label={label}>{label}</span>
+                  </Badge>
+                ))
+              : 'None'}
+          </Fact>
+          {parked !== '' || can('defer') ? (
+            <Fact
+              label="Parked until"
+              valueText={parked === '' ? 'None' : calendarDay(parked, nowMs, zone)}
+              muted={parked === ''}
+              editor={
+                can('defer') ? { kind: 'date', value: parked, presets: dayPresets(nowMs, zone), clear: 'Unpark' } : null
+              }
+              onSave={(next) => save({ label: 'the parked date', edit: { defer: next }, undo: { defer: parked } })}
+            >
+              {parked === '' ? (
+                'None'
+              ) : (
+                <>
+                  <Moon aria-hidden size={14} className="text-ink-3" />
+                  <span className="nums">{calendarDay(parked, nowMs, zone)}</span>
+                </>
+              )}
+            </Fact>
+          ) : null}
+          {due !== '' || can('dueAt') ? (
+            <Fact
+              label="Due"
+              valueText={due === '' ? NONE : calendarDay(due, nowMs, zone)}
+              muted={due === ''}
+              editor={
+                can('dueAt')
+                  ? { kind: 'date', value: due, presets: dayPresets(nowMs, zone), clear: NONE, field: 'Due date' }
+                  : null
+              }
+              onSave={(next) =>
+                save({
+                  label: 'the due date',
+                  edit: { dueAt: next === '' ? null : next },
+                  undo: { dueAt: due === '' ? null : due },
+                })
+              }
+            >
+              {due === '' ? NONE : <span className="nums">{calendarDay(due, nowMs, zone)}</span>}
+            </Fact>
+          ) : null}
+          {estimate !== null || can('estimateMinutes') ? (
+            <Fact
+              label="Estimate"
+              valueText={estimate ?? NONE}
+              muted={estimate === null}
+              editor={
+                can('estimateMinutes')
+                  ? {
+                      kind: 'text',
+                      value: estimate ?? '',
+                      field: 'Estimate',
+                      presets: ESTIMATE_PRESETS,
+                      clear: NONE,
+                      check: (text) =>
+                        parseMinutes(text, TASK_LIMITS.estimateMinutes) === null ? 'Not a duration' : null,
+                    }
+                  : null
+              }
+              onSave={(next) =>
+                save({
+                  label: 'the estimate',
+                  edit: { estimateMinutes: next === '' ? null : parseMinutes(next, TASK_LIMITS.estimateMinutes) },
+                  undo: { estimateMinutes: task.estimateMinutes ?? null },
+                })
+              }
+            >
+              {estimate === null ? NONE : <span className="nums">{estimate}</span>}
+            </Fact>
+          ) : null}
+          {customFields.map(({ key, field, value }) => (
+            <CustomFieldFact
+              key={key}
+              fieldKey={key}
+              field={field}
+              value={value}
+              editable={field !== null && fieldEditable(field) && can('fields')}
+              nowMs={nowMs}
+              onSave={saveField(field, key)}
+            />
+          ))}
+        </dl>
+        <AddField
+          fields={addable}
+          values={values}
+          nowMs={nowMs}
+          onSave={(field, next, before) => saveField(field, field.key)(next, before)}
+        />
+      </div>
       <div className="mx-2 border-t border-border pt-3 text-meta leading-5.5 text-ink-3" data-task-stamps="">
         {task.createdAt ? <div>Created {formatAge(ageMs(nowMs, task.createdAt))} ago</div> : null}
         {task.updatedAt ? <div>Updated {formatAge(ageMs(nowMs, task.updatedAt))} ago</div> : null}
@@ -475,51 +495,31 @@ function customFieldEditor(
 }
 
 /**
- * One custom field: its name (the field's own, or from its key until the
- * project's fields are read) and its value in words. A field in use opens
- * the editor its type takes; a retired field, or one of a type this build
- * does not know, is only its words.
+ * Saves a pick or a typed value from `field`'s editor. A multiple choice is
+ * saved whole, and its menu takes a second press before the first save is
+ * read back, so each press builds on the value the last one sent, and the
+ * saves run in the order pressed, so an earlier one never lands over a later one.
  */
-function CustomFieldFact({
-  fieldKey,
-  field,
-  value,
-  editable,
-  nowMs,
-  onSave,
-}: {
-  fieldKey: string;
-  field: TaskField | null;
-  value: TaskFieldValue | undefined;
-  editable: boolean;
-  nowMs: number;
-  /** Saves `next`; `before` is the value it replaces, which Undo puts back. */
-  onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>;
-}) {
-  const zone = useTimeZone();
-  const label = field?.name ?? fieldKeyName(fieldKey);
-  const type = field?.type ?? null;
-  const text =
-    value === undefined
-      ? NONE
-      : type === 'date' && typeof value === 'string'
-        ? calendarDay(value, nowMs, zone)
-        : fieldValueText(value);
-  const editor = editable && field ? customFieldEditor(field, value, nowMs, zone) : null;
-  // A multiple choice is saved whole, and its menu takes a second press before
-  // the first save is read back, so each press builds on the value the last one sent.
+function useFieldPick(
+  field: TaskField | null,
+  value: TaskFieldValue | undefined,
+  onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>,
+): (next: string, on?: boolean) => Promise<boolean> {
   const sent = useRef(value);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     sent.current = value;
   }, [value]);
 
-  function save(next: string, on?: boolean): Promise<boolean> {
+  return (next, on) => {
     if (!field) return Promise.resolve(false);
     const before = sent.current;
     const send = async (value: TaskFieldValue | null) => {
       const intended = value ?? undefined;
       sent.current = intended;
-      const saved = await onSave(value, before);
+      const run = queue.current.then(() => onSave(value, before));
+      queue.current = run.catch(() => undefined);
+      const saved = await run;
       // A refused save leaves the task as it was, and no new read will say so.
       if (!saved && sent.current === intended) sent.current = before;
       return saved;
@@ -539,20 +539,111 @@ function CustomFieldFact({
       default:
         return send(next);
     }
-  }
+  };
+}
+
+/**
+ * The fields of the project the task holds no value for, in one menu under
+ * the custom fields. Picking one shows its editor in the same menu, and the
+ * value saved gives the field its own line above. It takes no room when every
+ * field holds a value.
+ */
+function AddField({
+  fields,
+  values,
+  nowMs,
+  onSave,
+}: {
+  /** The fields this sign-in may set, in the order the project defined them. */
+  fields: readonly TaskField[];
+  values: Readonly<Record<string, TaskFieldValue>>;
+  nowMs: number;
+  onSave: (field: TaskField, next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>;
+}) {
+  const zone = useTimeZone();
+  const [open, setOpen] = useState(false);
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const unset = fields.filter((field) => values[field.key] === undefined);
+  const picked = fields.find((field) => field.key === pickedKey) ?? null;
+  const value = picked ? values[picked.key] : undefined;
+  const pick = useFieldPick(picked, value, (next, before) =>
+    picked ? onSave(picked, next, before) : Promise.resolve(false),
+  );
+  // A multiple choice keeps its menu open after its first option is set, when the field has left `unset`.
+  if (unset.length === 0 && !open) return null;
+  const editor = picked ? customFieldEditor(picked, value, nowMs, zone) : null;
+  const toggle = (next: boolean) => {
+    setOpen(next);
+    if (!next) setPickedKey(null);
+  };
+  const choose = (next: string, on?: boolean) => {
+    if (editor?.kind !== 'toggle') toggle(false);
+    void pick(next, on);
+  };
+  return (
+    <Menu open={open} onOpenChange={toggle}>
+      <MenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-meta font-medium text-ink-3 outline-none',
+            'transition-colors duration-120 hover:bg-hover hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-accent aria-expanded:bg-hover',
+          )}
+          data-add-field=""
+        >
+          <Plus aria-hidden size={14} />
+          Add field
+        </button>
+      </MenuTrigger>
+      <MenuContent
+        label={picked?.name ?? 'Add field'}
+        panelKey={picked?.key ?? ''}
+        footer={picked && editor ? factMenuFooter(picked.name, editor, choose) : null}
+      >
+        {picked && editor
+          ? factMenuItems(editor, choose)
+          : unset.map((field) => (
+              <MenuItem key={field.key} submenu onSelect={() => setPickedKey(field.key)}>
+                {field.name}
+              </MenuItem>
+            ))}
+      </MenuContent>
+    </Menu>
+  );
+}
+
+/**
+ * One custom field: its name (the field's own, or from its key until the
+ * project's fields are read) and its value in words. A field in use opens
+ * the editor its type takes; a retired field, or one of a type this build
+ * does not know, is only its words.
+ */
+function CustomFieldFact({
+  fieldKey,
+  field,
+  value,
+  editable,
+  nowMs,
+  onSave,
+}: {
+  fieldKey: string;
+  field: TaskField | null;
+  value: TaskFieldValue;
+  editable: boolean;
+  nowMs: number;
+  /** Saves `next`; `before` is the value it replaces, which Undo puts back. */
+  onSave: (next: TaskFieldValue | null, before: TaskFieldValue | undefined) => Promise<boolean>;
+}) {
+  const zone = useTimeZone();
+  const label = field?.name ?? fieldKeyName(fieldKey);
+  const type = field?.type ?? null;
+  const text = type === 'date' && typeof value === 'string' ? calendarDay(value, nowMs, zone) : fieldValueText(value);
+  const editor = editable && field ? customFieldEditor(field, value, nowMs, zone) : null;
+  const save = useFieldPick(field, value, onSave);
 
   return (
-    <Fact
-      label={label}
-      valueText={text}
-      muted={value === undefined}
-      wrap={type === 'multiple-choice'}
-      editor={editor}
-      onSave={save}
-    >
-      {value === undefined ? (
-        NONE
-      ) : type === 'url' && typeof value === 'string' ? (
+    <Fact label={label} valueText={text} wrap={type === 'multiple-choice'} editor={editor} onSave={save}>
+      {type === 'url' && typeof value === 'string' ? (
         <a
           href={value}
           target="_blank"

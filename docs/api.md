@@ -179,7 +179,7 @@ answered by then leaves its tasks out, and the rest are listed.
 | `list_tasks` | Tasks most urgent first, or in the order `sort` names: every open one and those closed in the last 7 days, as summaries, a page at a time | `workspace`, and optionally `project`, `query`, `status`, `ready`, `assignee` (`"me"` for your own), `parent`, `labels`, `type`, `created_after`, `created_before`, `updated_after`, `updated_before`, `closed_days` (1 to 56), `stage`, `stalled` (`true` for only [stalled](#work-in-hand) tasks), `activity` (one or more of `active`, `quiet` and `stalled`: tasks in progress by [how recently their holder worked on them](#work-in-hand)), `limit` (1 to 200, default 50), `offset`, `sort` (`priority`, `created`, `updated`, `closed` or `title`), `direction` (`asc` or `desc`; left out, priority reads most urgent first, title A to Z and the dates newest first) and `fields` (with `project`) |
 | `get_task` | One task in full, with its recorded `answer`; its comments; its `proposal`, the text a person answers, and `proposalVersion`, which an answer names ([below](#recording-an-owner-answer)); for an epic, also `openChildren`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)). With `tasks`, `tasks`: the same for each, without `parent`, or `{ id, error }` for one it cannot read | `workspace`, `task` or `tasks` (1 to 50 task ids), and optionally `project` |
 | `get_task_history` | The task's changes newest first, each field with its old and new value, or whole versions with `snapshots` | `workspace`, `task`, and optionally `project`, `limit` (1 to 200, default 50) and `snapshots` |
-| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval`, `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
+| `create_task` | The new task's `id`, `status` and `version`, `assignee`, `resolution` and `delivery` when it was filed claimed or done, `replayed`, the approval it opened if any, `lint` when it finds something, `possibleDuplicates` when it finds some ([below](#filing-claiming-and-closing-in-one-call)), and `warnings` when a link was left out, a text cites something a reader cannot check, or work done has no proof | `workspace`, `title`, and optionally `project`, `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimate_minutes`, `depends_on`, `blocks`, `related`, `discovered_from`, `duplicates`, `supersedes`, `external_links`, `fields`, `approval` (an object with `title` and `description`, as `request_human_approval` takes them, or one text of at most 400 characters, its first line the title), `choices`, `card`, `change_class`, `metadata`, `claim`, `done`, `model`, `idempotency_key` and `detail` |
 | `create_tasks` | `results`: one for each task, in the call's order, with its `index` and either what `create_task` answers or the `error` that refused it; `warnings` as `create_task` gives them; and `retry` when a task was refused | `workspace`, `tasks` (1 to 25, each with `create_task`'s task fields), and optionally `project`, `model` and `idempotency_key` |
 | `claim_task` | The task's `id`, `status` (now `in_progress`), `assignee` (now the sender), `for` and `work` when the call names them, and `version`, and `replayed`; for a task with a parent, also `parent` ([below](#what-a-parent-holds-for-its-tasks)); with `touches`, `overlaps` when other work in progress changes the same ([below](#work-that-changes-the-same-files)) | `workspace`, `task` or `pr`, and optionally `project`, `model`, `for`, `session`, `worktree`, `branch`, `commit`, `next`, `touches`, `idempotency_key` and `detail` |
 | `update_task` | The task's `id` and `version`, each field the call changed as `get_task` names it, except `description`, `acceptance`, `notes` and `design`, `replayed`, `lint` when it finds something, and `warnings` when a link was left out or a text cites something a reader cannot check | `workspace`, `task`, at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimate_minutes`, `add_labels`, `remove_labels`, `related`, `duplicates`, `supersedes`, `add_external_links`, `remove_external_links`, `fields`, `choices`, `card` and `change_class`, and optionally `project`, `model`, `idempotency_key` and `detail` |
@@ -415,8 +415,17 @@ too.
 - **An approval** asked again with the same title and description, or the
   same reason, returns the open one, with `created: false`. The same
   description under another title opens another approval. A `description`
-  with a line that starts `Reason:` is refused: an approval imported from
-  Beads asks only what follows that line, and every answer reads it so.
+  with a line that starts `Reason:` and has text after it is refused: an
+  approval imported from Beads asks only what follows that label, and every
+  answer reads it so. A `Reason:` line with nothing after it leaves the
+  approval asking its whole description.
+  `create_task`, and each entry of `create_tasks`, opens an approval with
+  the task from `approval`: `{ title, description }`, checked as
+  `request_human_approval` checks them, or one text whose first line is the
+  title. Its answer has the approval and `replayed`, not `created`, and its
+  `lint` advises on that approval as `request_human_approval` does, each
+  line starting `approval`: `approval.title` or `approval.description` for
+  advice on either, and `approval` alone for the object form.
 - **Who did it**: the task records the sender's name as its filer, holder,
   closer or the author of a comment, and the `model` argument beside it. The
   server records who wrote a card and when, and a card's kill date is also the
@@ -651,18 +660,31 @@ as `answer`, or null:
 `get_agent_stats` and `GET /api/tasks/agent-stats` count the work of agents
 by the model each named, in the shape NoticeOS's Agents page reads
 ([`agent-stats.ts`](../workers/api/src/agent-stats.ts)): the tasks in
-progress and blocked now, and those closed since the start of the day 56 days
-ago. A close counts for the model its closer named, and otherwise for the
-model of the agent that claimed it; a model nobody named, or a name Ntasks
-does not recognize, counts as `Other`. Approvals and epics are left out.
+progress and blocked now, those closed since the start of the day 56 days
+ago, and the changes among them that merged or went live. A task counts for
+the model its closer named, and otherwise for the model of the agent that
+claimed it; a model nobody named, or a name Ntasks does not recognize, counts
+as `Other`. Approvals and epics are left out.
+
+Nothing ranks one model against another or gives one an award. Closes, how
+fast work closes and runs of days are counts an agent can raise by splitting
+or rushing work, so the rows are in name order, with `Other` last. A change
+that shipped counts as the [wins feed](#wins) counts it: once for each pull
+request, at the time it merged, or went live where no merge was recorded.
 
 | Field of `stats` | Holds |
 |---|---|
-| `workers` | One row for each model with work this week or in hand: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), and the median hours from claim to close (`medianHours`) |
+| `workers` | One row for each model with work this week, in hand, or shipped this week, in name order: `inHand`, `blocked`, closes on each of the last 7 days (`days`), this week's (`week`) and the week before's (`lastWeek`), the median hours from claim to close (`medianHours`), and the changes shipped in the last 7 days with one of its tasks (`shipped`) |
 | `velocity` | Closes in each of the last eight weeks, from Monday, by the three models that closed the most |
-| `race` | This week's closes by model, with points by priority |
-| `trophies` | The most closes, the fastest close, the longest run of days and the most urgent closes |
-| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same, for every model together |
+| `shipped`, `shippedLastWeek` | The changes shipped in the last 7 days and the 7 before. A change with tasks of two models counts once here and once in each model's row |
+| `race` | The last 7 days, as `from` and `to`; its `players` is always empty |
+| `trophies` | Always empty |
+| `week`, `lastWeek`, `inHand`, `blocked`, `medianHours` | The same as each row's, for every model together |
+
+`shipped`, `shippedLastWeek` and each row's `shipped` are null when no task
+read has merged or gone live, because Ntasks then holds no record of merges
+to count. `race` and `trophies` stay in the answer for clients made before
+they were [emptied](#an-array-that-answers-empty).
 
 The answer holds counts, model names and times: no task's text, id or metadata.
 
@@ -1084,7 +1106,8 @@ answers `unavailable: …`, or `503` over HTTP, and has changed nothing.
 
 The HTTP API has a version: a whole number that goes up by one each time a
 route, a query parameter, a body field, a field of an answer or a value a
-field can hold is added.
+field can hold is added, or an array of an answer is emptied
+([below](#an-array-that-answers-empty)).
 
 Each version is one file in
 [`workers/api/api-versions/`](../workers/api/api-versions/), and the version
@@ -1146,6 +1169,16 @@ addition: the new field beside the old one, which keeps its answer. A
 removal raises the version, and raises `oldest` to that version, so a client
 made for an earlier one finds out that it is too old.
 
+### An array that answers empty
+
+A product change can stop filling an array, such as the awards agent
+statistics no longer give. The array stays in the answer, empty, with the
+fields its entries had, so a client made for an earlier version still reads
+it. The version file of that change lists it under `emptied`, by route and
+path, and the [recorded contract](#the-recorded-contract) test then fails
+when an answer gives it an entry. An array that answers empty is no
+removal: `oldest` stays where it is.
+
 ### The recorded contract
 
 Each file in `api-versions/` records the fields its version added to each
@@ -1156,7 +1189,8 @@ signs in as a person, sends every route the record names through the Worker,
 and compares the answers with the record, so it fails when an answer:
 
 - leaves out a recorded field, or gives it a type the record does not allow;
-- holds a field the record lacks. The failure names the line that records it.
+- holds a field the record lacks. The failure names the line that records it;
+- gives an entry to an array a version emptied.
 
 A recorded field is never edited or removed, and the test refuses a field
 recorded twice. One field was corrected after it was recorded: version 1
@@ -1249,7 +1283,7 @@ that does the same thing, so it keeps [the same rules](#the-rules-a-write-keeps)
 | Route | Body | Answer |
 |---|---|---|
 | `POST /api/tasks` | `projectId`, `title`, and optionally `description`, `type`, `priority`, `labels`, `parent`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `externalLinks`, `fields`, `metadata`, `card` and `changeClass` | `{ id, project }`: the new task's id and its project's key |
-| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes | `{ task }`, the task as changed |
+| `PATCH /api/tasks/:id` | `projectId` and at least one of `status`, `priority`, `title`, `description`, `assignee`, `parent`, `defer`, `acceptance`, `notes`, `design`, `estimateMinutes`, `dueAt`, `addLabels`, `removeLabels`, `addExternalLinks`, `removeExternalLinks`, `fields`, `card` and `changeClass`; or `projectId` and `claim: true` to take the task, optionally with `for` and `work`, an object of the work details `claim_task` takes; or `projectId` and one or both of `addLinks` and `removeLinks`, with no other field, to link the task to other tasks ([below](#links-between-tasks)) | `{ task }`, the task as changed |
 | `POST /api/tasks/:id/comments` | `projectId`, `text`, optionally `pin: true` and `unpin`, the ids of pinned comments of the task to unpin | `{ comment }` |
 | `POST /api/tasks/:id/close` | `projectId`, `reason`, and optionally `resolution`, `duplicateOf`, `commit`, `pullRequest` and `link` | `{ task }`, the task as closed |
 | `POST /api/delivery` | `repository`, `stage`, and at least one of `pullRequests` and `commits` | `{ moved }`: each task the signal moved, as `{ id, stage }` ([delivery](#delivery)) |
@@ -1288,6 +1322,23 @@ object has a `url`, a `title` and optionally a `kind`, with the limits that
 [`external_links`](#the-mcp-endpoint) has over MCP. `removeExternalLinks` is
 an array of URLs.
 
+#### Links between tasks
+
+`addLinks` is an array of objects, each a `taskId` and a `type`: `blocks`
+(the task waits on that task), `related`, `discovered-from`, `duplicates`,
+`supersedes` or `merges-after`, as `link_tasks` takes them.
+`removeLinks` is an array of task ids. Each array holds 1 to 32 entries,
+each task once, and none is the task itself. Each entry runs the write
+`link_tasks` runs, so the same rules hold: two tasks hold one link, so a
+new type replaces the one the pair had; a `blocks` link that would make two
+tasks wait on each other is refused; only `related`, `duplicates`,
+`supersedes` and `merges-after` may name a task in another project; and a
+link to or from a person's decision changes only when the person decides.
+Removals run first, then additions, in the order sent. A link a rule
+refuses answers `409`, a malformed body `400`, and a `blocks` link to a task
+outside the project `404`; in each case the links before it stay in place.
+Each is safe to send again, so the route keeps no retry record for them.
+
 `fields` is an object of custom field values by key, as `fields` is over MCP,
 and in a change `null` takes a value off. The task answers its values as
 `fields`.
@@ -1300,6 +1351,9 @@ otherwise.
 
 A task answers its holder's work in hand as `for`, `work`,
 `lastActivityAt`, `stalled` and `activity`, as `get_task` does.
+
+A task answers who filed it as `filedBy` and the model they named as
+`filedModel`; each is null on a task imported without them.
 
 ### Dropped tasks a task relies on
 
@@ -1319,12 +1373,23 @@ and so does reopening the dropped task.
 When an owner saves a project's website, the Worker reads the website's icon
 before it answers, and keeps it in the task store, so no page reads the website
 again. It reads the page's head for `<link rel="apple-touch-icon">` and
-`<link rel="icon">` tags and asks them in this order: an apple-touch-icon or an
-icon of 32 px or more, largest first; an icon with no declared size; a smaller
-one; then `/favicon.ico`. It keeps the first one whose own bytes are a PNG,
-ICO, JPEG, GIF or WebP image of at most 100 KB, and serves it with the type
-the bytes show. An SVG is never kept, whatever type the website claims for it,
-because an SVG can run script.
+`<link rel="icon">` tags and asks them in this order: an SVG, sharp at any
+size; an apple-touch-icon or an icon of 32 px or more, largest first; an icon
+with no declared size; a smaller one; then `/favicon.ico`. It keeps the first
+one whose own bytes are an SVG, PNG, ICO, JPEG, GIF or WebP image of at most
+100 KB, and serves it with the type the bytes show, whatever type the website
+claimed.
+
+An SVG can run script, so the Worker keeps one only once it has removed from
+it everything that runs or reaches outside it: scripts, `foreignObject`,
+embedded documents and media, animations, event-handler attributes, the
+document type and its entities, and every link that is not to a part of the
+same SVG or to a PNG, JPEG, GIF or WebP `data:` image. An SVG it cannot read
+as well-formed XML is not kept. `GET /api/tasks/projects/:projectId/icon`
+sends every icon with `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline';
+img-src data:; sandbox`, so opening the icon's address runs nothing, and the
+web app draws icons only in `<img>`.
 
 Every read is http or https, sends no cookie, follows at most 5 redirects, none
 to a local or private address, and the whole search stops after 8 seconds. A
@@ -1432,6 +1497,7 @@ A refusal from a route carries a `detail` sentence a person can read.
 | The task's state refuses the write, such as a close of a task someone else holds | `409` with `task_refused` |
 | The `Idempotency-Key` was first used for a different write | `409` with `idempotency_conflict` |
 | The task kept changing while the write was made | `503` with `unavailable` |
+| The deployment's D1 database lacks a migration the Worker needs, because its deploy skipped them | `503` with `{ "error": "database_behind", "missing": […], "detail": … }`: `missing` names each migration file it lacks ([Deploy](deploy.md#the-database-lacks-a-migration)) |
 | The store changed during a backup | `409` with `store_changed` ([below](#backing-up-the-whole-store)) |
 | A load into a store that is not empty, or that does not fit the store | `409` with the reason ([below](#loading-an-empty-store)) |
 | A method the path does not take | `405` with an `allow` header naming the ones it takes |

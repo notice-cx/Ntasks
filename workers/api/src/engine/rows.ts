@@ -393,6 +393,12 @@ export type WorkRow = Pick<
   | 'closed_at'
   | 'closed_by'
   | 'closed_model'
+  | 'delivery_pull_request'
+  | 'delivery_commit'
+  | 'delivery_merge_commit'
+  | 'delivery_stage'
+  | 'merged_at'
+  | 'live_at'
 >;
 
 export function toWork(row: WorkRow): WorkItem {
@@ -410,6 +416,12 @@ export function toWork(row: WorkRow): WorkItem {
     closedAt: row.closed_at,
     closedBy: row.closed_by,
     closedModel: row.closed_model,
+    pullRequest: row.delivery_pull_request,
+    commit: row.delivery_commit,
+    mergeCommit: row.delivery_merge_commit,
+    stage: row.delivery_stage,
+    mergedAt: row.merged_at,
+    liveAt: row.live_at,
   };
 }
 

@@ -218,6 +218,12 @@ export function closeAttribution(
   return { by, model: modelLabel(metadataText(task.metadata, CLOSED_MODEL)) };
 }
 
+export function filedAttribution(
+  task: Pick<LiveTask, 'filedBy' | 'filedModel'>,
+): { by: string; model: string | null } | null {
+  return task.filedBy ? { by: task.filedBy, model: modelLabel(task.filedModel) } : null;
+}
+
 export function claimedModel(task: Pick<LiveTask, 'metadata' | 'assigneeModel'>): string | null {
   return modelLabel(task.assigneeModel ?? metadataText(task.metadata, CLAIMED_MODEL));
 }

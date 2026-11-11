@@ -325,7 +325,20 @@ describe('where a board starts reading changes', () => {
   });
 });
 
-describe('who closed or claimed a task', () => {
+describe('who filed, closed or claimed a task', () => {
+  it('names the filer with the model they named, and a person with none', async () => {
+    const own = await newProject(engine);
+    const { task: byAgent } = await engine.createTask(own.id, { title: 'Filed by an agent' }, AGENT);
+    const { task: byPerson } = await engine.createTask(own.id, { title: 'Filed by a person' }, OWNER);
+    const { body } = await get(target, `/api/tasks?project=${own.id}`);
+    const tasks = body.tasks as Record<string, unknown>[];
+    expect(tasks.find((entry) => entry.id === byAgent.id)).toMatchObject({
+      filedBy: AGENT.name,
+      filedModel: AGENT.model,
+    });
+    expect(tasks.find((entry) => entry.id === byPerson.id)).toMatchObject({ filedBy: OWNER.name, filedModel: null });
+  });
+
   it('names the closer and the claimer with the models they named', async () => {
     const own = await newProject(engine);
     const { task: open } = await engine.createTask(own.id, { title: 'Still open' }, AGENT);
