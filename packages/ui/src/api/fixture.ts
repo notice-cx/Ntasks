@@ -47,6 +47,7 @@ import type {
   LiveEpic,
   LiveTask,
   ParentContext,
+  ServiceCredential,
   TaskChange,
   TaskComment,
   TaskEdit,
@@ -426,6 +427,63 @@ export function createFixtureTasksApi({
     }
   }
 
+  /** Sets and removes links between `task` and others as the API does: one link a pair, no waiting loop,
+   * waiting only inside a project, and a link to or from a person's decision kept until they decide. */
+  function applyLinks(task: FixtureTask, edit: TaskEdit): void {
+    const refused = (detail: string): never => {
+      throw new ApiError(detail, 409, 'task_refused');
+    };
+    const decides = (row: FixtureTask) => row.issueType === 'gate' || row.labels.includes('human');
+    const pair = (other: FixtureTask) =>
+      task.dependencies.some((edge) => edge.id === other.id) || other.dependencies.some((edge) => edge.id === task.id);
+    // Takes the pair's link off, and answers what puts it back. Another project's link onto this task is changed there.
+    const unlink = (other: FixtureTask) => {
+      if (other.project !== task.project && other.dependencies.some((edge) => edge.id === task.id))
+        refused(`${other.id} links to ${task.id} from another project; change it there.`);
+      const before = [task.dependencies, other.dependencies] as const;
+      task.dependencies = task.dependencies.filter((edge) => edge.id !== other.id);
+      other.dependencies = other.dependencies.filter((edge) => edge.id !== task.id);
+      return () => {
+        [task.dependencies, other.dependencies] = before;
+      };
+    };
+    // Whether `from` waits on `to`, directly or through the tasks it waits on.
+    const waits = (from: string, to: string, seen = new Set<string>()): boolean => {
+      if (from === to) return true;
+      if (seen.has(from)) return false;
+      seen.add(from);
+      const row = state.tasks.find((candidate) => candidate.id === from);
+      return (row?.dependencies ?? []).some((edge) => edge.type === 'blocks' && waits(edge.id, to, seen));
+    };
+    const other = (id: string, type: string) => {
+      if (id === task.id) invalid('addLinks and removeLinks (another task than this one)');
+      const row = state.tasks.find((candidate) => candidate.id === id);
+      const reach = ['related', 'duplicates', 'supersedes', 'merges-after'].includes(type);
+      if (!row || (!reach && row.project !== task.project))
+        throw new ApiError(`${id} is not a task in this project.`, 404, 'not_found');
+      return row;
+    };
+    for (const id of edit.removeLinks ?? []) {
+      const row = other(id, 'related');
+      if (pair(row) && (decides(task) || decides(row)))
+        refused(`${decides(task) ? task.id : id} is a person's decision.`);
+      unlink(row);
+    }
+    for (const link of edit.addLinks ?? []) {
+      const row = other(link.taskId, link.type);
+      if (task.dependencies.some((edge) => edge.id === row.id && edge.type === link.type)) continue;
+      if (pair(row) && (decides(task) || decides(row)))
+        refused(`${decides(task) ? task.id : row.id} is a person's decision.`);
+      const restore = unlink(row);
+      if (link.type === 'blocks' && waits(row.id, task.id)) {
+        restore();
+        refused(`${row.id} already waits on ${task.id}, so ${task.id} cannot wait on it.`);
+      }
+      task.dependencies = [...task.dependencies, { id: row.id, type: link.type, title: null, status: null }];
+      touch(row);
+    }
+  }
+
   /** Whether a task holds every value a board's filter names. */
   function holds(task: FixtureTask, filters: FieldFilters): boolean {
     return Object.entries(filters).every(([name, wanted]) =>
@@ -778,6 +836,10 @@ export function createFixtureTasksApi({
       reach();
       once(options?.idempotencyKey, ['update', id, key, edit], () => {
         const task = find(id, key);
+        // As the API does, links go in a change of their own, refused whole before anything is written.
+        const others = Object.keys(edit).filter((name) => name !== 'addLinks' && name !== 'removeLinks');
+        if ((edit.addLinks !== undefined || edit.removeLinks !== undefined) && others.length > 0)
+          invalid(`unknown ${others.join(', ')}`);
         if (edit.claim) {
           if (task.status === 'closed') throw new ApiError(`Task ${id} is closed.`, 409, 'task_refused');
           if (task.assignee !== null && task.assignee !== FIXTURE_ACTOR) {
@@ -812,6 +874,7 @@ export function createFixtureTasksApi({
         if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
         if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
         applyFields(task, edit);
+        applyLinks(task, edit);
         touch(task);
       });
     },
@@ -1091,6 +1154,64 @@ export function createFixtureTasksApi({
       if (!apps.some((row) => row.clientId === clientId))
         throw new ApiError('This workspace has no such app.', 404, 'not_found');
       workspace.apps = apps.filter((row) => row.clientId !== clientId);
+    },
+    async serviceCredentials() {
+      return copy(owned().services ?? []);
+    },
+    /**
+     * Makes a credential as the Worker does: its name and grant rules, a name
+     * a revoked credential keeps, and no replay of a retried request, which
+     * the Worker refuses as a taken name since it never shows a token twice.
+     */
+    async createServiceCredential({ name, grants, backup, restore }) {
+      const workspace = owned();
+      const trimmed = name.trim();
+      if (!APP_NAME.test(trimmed))
+        throw new ApiError(
+          'name is 1 to 64 letters, digits, spaces, dots, dashes or underscores',
+          400,
+          'invalid_request',
+          'name',
+        );
+      if (trimmed.toLowerCase() === 'ntasks')
+        throw new ApiError(
+          `name ${trimmed} is the one Ntasks records its own changes under`,
+          400,
+          'invalid_request',
+          'name',
+        );
+      if ((grants.length === 0 && !backup && !restore) || grants.length > 200)
+        throw new ApiError('grants must list 1 to 200 projects', 400, 'invalid_request', 'grants');
+      if (new Set(grants.map((grant) => grant.projectId)).size !== grants.length)
+        throw new ApiError(
+          'each grant names a project once, with access read or write',
+          400,
+          'invalid_request',
+          'grants',
+        );
+      const known = new Set(workspace.seed.projects.map((row) => row.projectId));
+      if (!grants.every((grant) => known.has(grant.projectId)))
+        throw new ApiError('a grant names a project that does not exist', 400, 'unknown_project', 'grants');
+      const services = workspace.services ?? [];
+      if (services.some((row) => row.name === trimmed))
+        throw new ApiError('a service credential in this workspace already has this name', 409, 'name_taken', 'name');
+      const service: ServiceCredential = {
+        id: crypto.randomUUID(),
+        name: trimmed,
+        createdAt: new Date(now()).toISOString(),
+        revokedAt: null,
+        grants: grants.map((grant) => ({ ...grant })),
+        backup,
+        restore,
+      };
+      workspace.services = [service, ...services];
+      return { ...copy(service), token: `ntasks_service.${service.id}.${crypto.randomUUID().replaceAll('-', '')}` };
+    },
+    async revokeServiceCredential(id) {
+      const service = (owned().services ?? []).find((row) => row.id === id);
+      if (!service || service.revokedAt !== null)
+        throw new ApiError('no such unrevoked service credential', 404, 'not_found');
+      service.revokedAt = new Date(now()).toISOString();
     },
     async githubWebhook() {
       return webhookOf(owned());

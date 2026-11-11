@@ -13,7 +13,9 @@ import type {
   NewApp,
   NewInvitation,
   NewProject,
+  NewServiceCredential,
   ProjectEdit,
+  ServiceCredential,
   Workspace,
   WorkspaceMembers,
 } from '../api/types';
@@ -23,6 +25,7 @@ export const WORKSPACES_KEY = ['workspaces'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
 const MEMBERS_KEY = ['members'] as const;
 const APPS_KEY = ['apps'] as const;
+const SERVICES_KEY = ['services'] as const;
 const GITHUB_KEY = ['github'] as const;
 
 /** Whether a cached read belongs to the workspace open now, so a switch drops it. */
@@ -201,6 +204,38 @@ export function useRevokeApp() {
 export function useRemoveApp() {
   const api = useTasksApi();
   return useAppsWrite((clientId: string) => api.removeApp(clientId));
+}
+
+/** The open workspace's service credentials, which only its owners read. */
+export function useServiceCredentials() {
+  const api = useTasksApi();
+  return useQuery<ServiceCredential[]>({
+    queryKey: SERVICES_KEY,
+    queryFn: ({ signal }) => api.serviceCredentials(signal),
+    staleTime: 15_000,
+  });
+}
+
+/** One write to the credential list, which is read again once it settles: a write whose answer was lost may still
+ * have made a credential, which then shows with Revoke. */
+function useServicesWrite<Input, Output>(send: (input: Input) => Promise<Output>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: send,
+    onSettled: () => client.invalidateQueries({ queryKey: SERVICES_KEY }),
+  });
+}
+
+export function useCreateServiceCredential() {
+  const api = useTasksApi();
+  return useServicesWrite(({ input, idempotencyKey }: { input: NewServiceCredential; idempotencyKey: string }) =>
+    api.createServiceCredential(input, { idempotencyKey }),
+  );
+}
+
+export function useRevokeServiceCredential() {
+  const api = useTasksApi();
+  return useServicesWrite((id: string) => api.revokeServiceCredential(id));
 }
 
 /** The open workspace's GitHub webhook, which only its owners read. */
