@@ -78,8 +78,8 @@ const SidebarContext = createContext<SidebarState | null>(null);
  * divided by Border. On a phone, and at every width when `place` is `sheet`,
  * the sidebar is hidden and the page takes the width; the Sidebar button at
  * the start of the page's `TopBar` opens it as a sheet over the page. The
- * sheet closes on Escape, on a press outside it, on a link inside it, and
- * when the browser goes back or forward. Beside the page, the Sidebar button
+ * sheet closes on Escape, on a press outside it, on a link inside it, when
+ * the browser goes back or forward, and as the screen widens. Beside the page, the Sidebar button
  * in `SidebarHeader` hides the sidebar and the page takes the width, until the
  * top bar's Sidebar button shows it again; the browser keeps the choice. `[`
  * does what the Sidebar button does.
@@ -124,6 +124,15 @@ export function AppShell({
     refocus.current = false;
     (collapsed ? opener : closer).current?.focus();
   }, [collapsed]);
+  // A sheet still open as the screen widens closes: the sidebar now sits beside the page, or stays
+  // hidden there, and then focus inside it moves to the top bar's Sidebar button. Only a change of
+  // width runs this; a toggle moves focus itself.
+  useLayoutEffect(() => {
+    if (!wide || place === 'sheet') return;
+    setOpen(false);
+    const focused = document.activeElement;
+    if (collapsed && focused !== null && document.getElementById(sidebarId)?.contains(focused)) opener.current?.focus();
+  }, [wide]);
   useShortcut('[', toggle);
   const state = useMemo(
     () => ({ place, open, setOpen, collapsed, wide, toggle, dismiss, sidebarId, opener, closer }),

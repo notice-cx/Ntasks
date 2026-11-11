@@ -394,17 +394,26 @@ describe('the frame beside the page', () => {
     );
   }
 
-  /** Makes the window as wide as a laptop's, or as narrow as a phone's. */
+  /** Makes the window as wide as a laptop's, or as narrow as a phone's; the answer resizes it. */
   function screenWide(wide: boolean) {
+    let now = wide;
+    const changes = new Set<() => void>();
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (query: string) =>
         ({
-          matches: wide && query === '(width >= 40rem)',
+          get matches() {
+            return now && query === '(width >= 40rem)';
+          },
           media: query,
-          addEventListener: () => {},
-          removeEventListener: () => {},
+          addEventListener: (_: string, onChange: () => void) => changes.add(onChange),
+          removeEventListener: (_: string, onChange: () => void) => changes.delete(onChange),
         }) as unknown as MediaQueryList,
     );
+    return (next: boolean) =>
+      act(() => {
+        now = next;
+        for (const onChange of changes) onChange();
+      });
   }
 
   function parts() {
@@ -509,5 +518,34 @@ describe('the frame beside the page', () => {
     fireEvent.keyDown(show, { key: '[' });
     expect(nav.hasAttribute('data-open')).toBe(true);
     expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Tasks' }));
+  });
+
+  it('closes the sheet as the screen widens, and moves focus out of a sidebar kept hidden', () => {
+    window.localStorage.setItem('ntasks.sidebar', 'hidden');
+    const resize = screenWide(false);
+    render(<Frame />);
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    const show = screen.getByRole('button', { name: 'Sidebar' });
+    fireEvent.click(show);
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Tasks' }));
+
+    resize(true);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(nav.hasAttribute('data-collapsed')).toBe(true);
+    expect(document.activeElement).toBe(show);
+  });
+
+  it('closes the sheet as the screen widens, leaving focus in a sidebar that shows', () => {
+    const resize = screenWide(false);
+    render(<Frame />);
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    fireEvent.click(screen.getByRole('button', { name: 'Sidebar' }));
+    const link = screen.getByRole('link', { name: 'Tasks' });
+    expect(document.activeElement).toBe(link);
+
+    resize(true);
+    expect(nav.hasAttribute('data-open')).toBe(false);
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    expect(document.activeElement).toBe(link);
   });
 });
