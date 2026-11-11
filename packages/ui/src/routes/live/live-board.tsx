@@ -10,6 +10,8 @@ import { ProjectIcon } from '../../components/ProjectIcon';
 import { Avatar } from '../../components/ui/avatar';
 import { StatusMark } from '../../components/ui/symbols';
 import { Tooltip } from '../../components/ui/tooltip';
+import { Button } from '../../components/ui/button';
+import { Tabs } from '../../components/ui/choice';
 import { useRecentChanges } from '../../hooks/useBoard';
 import type { RecentChange } from '../../hooks/useChangeFeed';
 import { useMedia } from '../../hooks/useMedia';
@@ -25,6 +27,7 @@ import {
   stageTime,
   type Activity,
   type LiveBoard,
+  type ShippedWindow,
   type Stage,
 } from '../../lib/live';
 import { usePaths } from '../../lib/paths';
@@ -41,8 +44,11 @@ const SHOWN: Readonly<Record<'wide' | 'phone', Readonly<Record<Stage, number>>>>
   phone: { progress: 3, shipping: 3, live: 2 },
 };
 
-/** What a column holds, where its heading has room to say it. Only Live's needs saying: it reaches back a week. */
-const COLUMN_RULES: Readonly<Partial<Record<Stage, string>>> = { live: 'Last 7 days' };
+/** The Live column's reach, as its switch words it. */
+const WINDOW_LABELS: readonly { value: ShippedWindow; label: string }[] = [
+  { value: 'day', label: '24 hours' },
+  { value: 'week', label: '7 days' },
+];
 
 const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
   progress: <StatusMark status="in-progress" label={null} />,
@@ -73,11 +79,16 @@ export function LiveBoardView({
   columns,
   projects,
   nowMs,
+  shipped,
+  onShipped,
 }: {
   columns: LiveBoard;
   /** The projects in view, by key, whose icons lead their tasks' cards. */
   projects: ReadonlyMap<string, BoardProject>;
   nowMs: number;
+  /** How far back the Live column reaches, which its heading switches. */
+  shipped: ShippedWindow;
+  onShipped: (next: ShippedWindow) => void;
 }) {
   const phone = useMedia(PHONE);
   const reduced = useMedia(REDUCED_MOTION);
@@ -101,6 +112,17 @@ export function LiveBoardView({
             nowMs={nowMs}
             recent={recent}
             projects={projects}
+            end={
+              stage === 'live' ? (
+                <Tabs
+                  label="Shipped within"
+                  items={WINDOW_LABELS}
+                  value={shipped}
+                  onChange={onShipped}
+                  className="ms-auto"
+                />
+              ) : null
+            }
           />
         ))}
       </div>
@@ -115,6 +137,7 @@ function Column({
   nowMs,
   recent,
   projects,
+  end,
 }: {
   stage: Stage;
   tasks: readonly BoardTask[];
@@ -122,24 +145,29 @@ function Column({
   nowMs: number;
   recent: ReadonlyMap<string, RecentChange>;
   projects: ReadonlyMap<string, BoardProject>;
+  /** What ends the heading, such as the Live column's switch. */
+  end: ReactNode;
 }) {
   const label = STAGE_LABELS[stage];
-  const rule = COLUMN_RULES[stage];
-  const more = tasks.length - Math.min(tasks.length, shown);
+  const [all, setAll] = useState(false);
+  const visible = all ? tasks : tasks.slice(0, shown);
+  const more = tasks.length - visible.length;
   return (
     <section
       aria-label={label}
       data-live-column={stage}
       className="flex min-w-0 flex-col gap-2 rounded-xl bg-canvas p-2"
     >
-      <h2 className="flex h-6 min-w-0 items-center gap-2 px-1 text-label font-semibold text-ink">
-        {COLUMN_MARKS[stage]}
-        <span className="whitespace-nowrap">{label}</span>
-        <span className="nums font-medium text-ink-3">{formatInt(tasks.length)}</span>
-        {rule ? <span className="ms-auto truncate text-meta font-normal text-ink-3">{rule}</span> : null}
-      </h2>
+      <div className="flex min-h-6 min-w-0 items-center gap-2 px-1">
+        <h2 className="flex min-w-0 items-center gap-2 text-label font-semibold text-ink">
+          {COLUMN_MARKS[stage]}
+          <span className="whitespace-nowrap">{label}</span>
+          <span className="nums font-medium text-ink-3">{formatInt(tasks.length)}</span>
+        </h2>
+        {end}
+      </div>
       {tasks.length === 0 ? <p className="px-1 pb-1 text-meta text-ink-3">None</p> : null}
-      {tasks.slice(0, shown).map((task) => (
+      {visible.map((task) => (
         <Card
           key={task.id}
           task={task}
@@ -150,9 +178,16 @@ function Column({
         />
       ))}
       {more > 0 ? (
-        <p className="nums px-1 pb-1 text-meta text-ink-3" data-live-more="">
-          {formatInt(more)} more
-        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          className="self-start"
+          onClick={() => setAll(true)}
+          data-live-more=""
+        >
+          Show {formatInt(more)} more
+        </Button>
       ) : null}
     </section>
   );

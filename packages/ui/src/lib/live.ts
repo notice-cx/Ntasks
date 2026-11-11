@@ -63,6 +63,11 @@ export const STAGE_LABELS: Readonly<Record<Stage, string>> = Object.freeze({
 
 export type LiveBoard = Readonly<Record<Stage, readonly BoardTask[]>>;
 
+/** How far back the Live column reaches: the last 24 hours or the last 7 days. */
+export const SHIPPED_WINDOWS = ['day', 'week'] as const;
+export type ShippedWindow = (typeof SHIPPED_WINDOWS)[number];
+const SHIPPED_WINDOW_MS: Readonly<Record<ShippedWindow, number>> = { day: 24 * 3_600_000, week: 7 * 24 * 3_600_000 };
+
 /**
  * When a task reached where it is: its holder's last activity while it is in
  * progress, else the time its change reached the stage it is at.
@@ -80,9 +85,9 @@ export function stageTime(task: BoardTask, stage: Stage): string | null {
  * are the first a short column leaves out. Waiting to ship holds closed work
  * whose change has a stage still ahead of it: built work, which waits for a
  * merge, and merged work of a project that deploys, which waits for a deploy,
- * whenever it closed (`waits`). Live holds work at its last stage, closed in
- * the board's 7 days: deployed work, and merged work of a project that does
- * not deploy. Each column comes the latest first. A task the board read holds
+ * whenever it closed (`waits`). Live holds work at its last stage, deployed
+ * work and merged work of a project that does not deploy, that reached it
+ * within `shipped`: the last 24 hours or 7 days, the board's own reach. Each column comes the latest first. A task the board read holds
  * is placed by that read, never by a wait, which comes from a read of its own
  * that can lag behind or fail: a task reopened, or moved on, sits where the
  * board read puts it. A decision or an approval ships nothing.
@@ -92,7 +97,9 @@ export function liveBoard(
   waits: { readonly merge: readonly BoardTask[]; readonly deploy: readonly BoardTask[] },
   deploys: (project: string) => boolean,
   nowMs: number,
+  shipped: ShippedWindow = 'week',
 ): LiveBoard {
+  const since = nowMs - SHIPPED_WINDOW_MS[shipped];
   const groups = liveGroups(tasks, nowMs);
   const columns: Record<Exclude<Stage, 'progress'>, BoardTask[]> = { shipping: [], live: [] };
   const placed = new Set<string>();
@@ -105,6 +112,7 @@ export function liveBoard(
     const last = stage === 'live' || (stage === 'merged' && !deploys(task.project));
     if (!last && stage !== 'built' && stage !== 'merged') continue;
     placed.add(task.id);
+    if (last && (Date.parse(stageTime(task, 'live') ?? '') || 0) < since) continue;
     columns[last ? 'live' : 'shipping'].push(task);
   }
   for (const [stage, column] of Object.entries(columns) as [Exclude<Stage, 'progress'>, BoardTask[]][]) {
