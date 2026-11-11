@@ -9,6 +9,7 @@
  */
 import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth } from 'better-auth';
+import { isHomeNetworkHttp, libraryAddress } from './apps.ts';
 import type { SignInConfig } from './config.ts';
 import { sameBytes, sha256 } from './crypto.ts';
 import { acceptInvitations, githubAccountOf, isMember, mayJoin, type GitHubAccount } from './members.ts';
@@ -164,6 +165,13 @@ export function createAuth(db: D1Database, config: SignInConfig, options: AuthOp
               ? { referenceId: appReference(app.workspaceId) }
               : false,
         }),
+        // The library takes http only on this machine, so a connected app's
+        // home-network address reaches it in its https form on this origin
+        // (apps.ts libraryAddress), which it accepts for a client whose
+        // registered addresses include that address.
+        validateRedirectUri: (uri, registered, matched) =>
+          matched ||
+          registered.some((address) => isHomeNetworkHttp(address) && libraryAddress(config.origin, address) === uri),
         clientRegistrationDefaultResources: [resource],
         clientRegistrationAllowedResources: [resource],
         clientRegistrationRequirePKCE: true,

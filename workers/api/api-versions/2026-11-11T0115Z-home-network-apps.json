@@ -1,0 +1,9 @@
+{
+  "added": "connected apps at an `http` address on a home network, held until an owner allows the address on the approval page, and `held_redirect_uris` in a service's `POST /api/auth/oauth2/register` answer",
+  "routes": {
+    "POST /api/auth/oauth2/register": {
+      "held_redirect_uris": "array",
+      "held_redirect_uris[]": "string"
+    }
+  }
+}

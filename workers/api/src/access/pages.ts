@@ -272,7 +272,9 @@ ${choosing ? '<button type="submit" name="decision" value="allow" class="button 
  * The page where a person allows or denies a connected app: which app, the
  * workspace it acts in as them, what it may do there, and where the answer
  * goes. Allow is left out when the person is not a member of the app's
- * workspace or the app asked for no access to tasks.
+ * workspace, the app asked for no access to tasks, or the answer goes to a
+ * home-network address no owner has allowed and the person is not an owner.
+ * An owner's Allow there also allows the address for everyone in the workspace.
  */
 export function appAccessPage(input: {
   readonly personName: string;
@@ -282,17 +284,29 @@ export function appAccessPage(input: {
   readonly access: string | null;
   /** Whether the person is a member of the app's workspace. */
   readonly member: boolean;
+  /** Set when the answer goes to an http address on a home network that no owner has allowed yet. */
+  readonly held?: { readonly owner: boolean } | null;
   readonly returnsTo: string;
   readonly oauthQuery: string;
   readonly error: string | null;
 }): Response {
   const from = input.app.uri ? ` <span class="quiet">${escape(input.app.uri)}</span>` : '';
-  const error = input.member ? input.error : `You are not a member of ${input.workspaceName}.`;
-  const allowing = input.member && input.access !== null;
+  const held = input.held ?? null;
+  const error = !input.member
+    ? `You are not a member of ${input.workspaceName}.`
+    : held?.owner === false
+      ? `A workspace owner has to allow ${input.returnsTo} before anyone signs in from it.`
+      : input.error;
+  const allowing = input.member && input.access !== null && held?.owner !== false;
+  const homeNetwork =
+    held?.owner === true && input.member
+      ? `<p class="sub">Allow also lets everyone in ${escape(input.workspaceName)} sign in from ${escape(input.returnsTo)}. The sign-in token crosses your home network unencrypted.</p>`
+      : '';
   return page(
     'Allow an app',
     `<h1>Allow ${escape(input.app.name)} to act as you?</h1>
 <p class="sub">It works in ${escape(input.workspaceName)} under your name: its changes and decisions are recorded as yours.</p>
+${homeNetwork}
 ${alert(error)}
 <dl>
 <dt>App</dt><dd>${escape(input.app.name)}${from}</dd>
@@ -309,6 +323,16 @@ ${allowing ? '<button type="submit" name="decision" value="allow" class="button 
 </div>
 </form>`,
   );
+}
+
+/** The page a sign-in to a home-network address stops on while no owner has allowed the address. */
+export function addressHeldPage(input: { readonly address: string }): Response {
+  const response = page(
+    'Waiting for an owner',
+    `<h1>A workspace owner has to allow this address</h1>
+<p class="sub">No one signs in from ${escape(input.address)} until a workspace owner allows it on the approval page.</p>`,
+  );
+  return new Response(response.body, { status: 403, headers: response.headers });
 }
 
 /** A page for a link that no longer works, such as an approval that expired. */
