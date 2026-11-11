@@ -838,9 +838,11 @@ function leftByHolder(task: Task, pullRequest: string): string {
 /**
  * Closes as done each task in progress whose work names a pull request a
  * merged signal names (STATE-18), with that pull request and the merge
- * commit as its proof, recording the sender as its closer. Only the GitHub
- * receiver calls it, once the Worker checked that GitHub sent the delivery
- * (github.ts): a signal a sender reports closes nothing, and so does one
+ * commit as its proof, recording the sender as its closer. Only GitHub's
+ * own word calls it: the receiver, once the Worker checked that GitHub sent
+ * the delivery (github.ts), and the task store's check, which asks GitHub as
+ * the workspace's app (github-check.ts). A signal a sender reports closes
+ * nothing, and so does one
  * that names no merge commit, since the merge commit is half the proof. An
  * epic, a person's request, a task labelled keep-open and one that waits on
  * an open request or has open tasks under it stay as they are. Each task closes in its own

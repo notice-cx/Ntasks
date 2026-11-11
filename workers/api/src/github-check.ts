@@ -1,10 +1,12 @@
 /**
  * Work that waits on GitHub after its signal moved nothing: a task closed
  * after its pull request merged, whose merge event came before the close;
- * tasks that waited since before the workspace connected GitHub; a merged
- * task whose deploy GitHub reported before its merge; and a merged task whose
- * own build a later merge's deploy replaced. The workspace's task store asks
- * GitHub about them itself, as the workspace's GitHub App, a few seconds
+ * tasks that waited since before the workspace connected GitHub; a task in
+ * progress whose merge event never came, which closes as that event would
+ * have closed it (closeMerged in task-writes.ts); a merged task whose deploy
+ * GitHub reported before its merge; and a merged task whose own build a
+ * later merge's deploy replaced. The workspace's task store asks GitHub
+ * about them itself, as the workspace's GitHub App, a few seconds
  * after a close as done with a pull request or a delivery that moved a task,
  * and once an owner installs the app (store/index.ts). It records each pull
  * request merged into its repository's default branch as merged, then each
@@ -35,8 +37,8 @@ import {
 } from './access/github-app.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { SCOPES, type Principal } from './auth.ts';
-import { reportDelivery } from './delivery.ts';
-import type { WriteContext } from './task-writes.ts';
+import { pullRequestUrl, reportDelivery } from './delivery.ts';
+import { closeMerged, type WriteContext } from './task-writes.ts';
 
 /**
  * The most requests one check makes to GitHub: installation tokens, the
@@ -88,9 +90,14 @@ interface Pull {
   readonly installation: number;
 }
 
-/** The pull request a task closed with, when it is on GitHub and an installation reaches its owner. */
+/**
+ * The pull request a task waits on, when it is on GitHub and an installation
+ * reaches its owner: the one a task closed with, or for a task in progress,
+ * the one its work names.
+ */
 function pullOf(task: Task, installations: ReadonlyMap<string, number>): Pull | null {
-  const url = task.delivery?.pullRequest ?? '';
+  const named = task.status === 'in_progress' && task.work.pr !== undefined ? pullRequestUrl(task.work.pr) : null;
+  const url = named ?? task.delivery?.pullRequest ?? '';
   const [, owner = '', name = '', number = ''] = PULL.exec(url) ?? [];
   const installation = installations.get(owner.toLowerCase());
   return installation === undefined
@@ -157,8 +164,10 @@ interface Reach {
  * Asks GitHub about the workspace's work that waits on it, in repositories an
  * installation of its app reaches: each task waiting for a merge of its pull
  * request moves to merged once GitHub merged it into the default branch, with
- * its merge commit; then each merged task of a project that deploys moves to
- * live once GitHub shows it deployed. Answers how many tasks it moved, and
+ * its merge commit, and a task in progress whose work names such a pull
+ * request first closes as a merge event closes it; then each merged task of
+ * a project that deploys moves to live once GitHub shows it deployed.
+ * Answers how many tasks it moved, and
  * whether a read of a merged task's deploy may be answered on another try;
  * nothing without an app or an installation.
  */
@@ -169,10 +178,18 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
   if (app === null) return NOTHING;
   const installations = await installationsByAccount(env.DB, workspaceId);
   if (installations.size === 0) return NOTHING;
-  const waiting = await engine.listBoard(null, { statuses: [], stages: ['built'], withoutExternalLinks: true });
+  // Closed work waiting for its merge, and work in progress whose merge GitHub's event, missed in an outage or
+  // sent before the app was installed, never closed.
+  const waiting = [
+    ...(await engine.listBoard(null, { statuses: [], stages: ['built'], withoutExternalLinks: true })),
+    ...(await engine.listBoard(null, { statuses: ['in_progress'], withoutExternalLinks: true })),
+  ];
   // Newest first: a pull request still open keeps waiting, and must not keep a task closed after it from being asked about.
-  const newest = [...waiting].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
-  const pulls = newest.flatMap((task) => pullOf(task, installations) ?? []);
+  const newest = waiting.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  // Each pull request once, however many tasks name it: one signal answers them all.
+  const pulls = [
+    ...new Map(newest.flatMap((task) => pullOf(task, installations) ?? []).map((pull) => [pull.url, pull])).values(),
+  ];
   let changes = await changesOf(engine, installations, Date.now());
   if (pulls.length === 0 && changes.waiting.length === 0) return NOTHING;
   const jwt = await appToken(app.appId, app.privateKey);
@@ -221,6 +238,8 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
     const commits = merge !== undefined && COMMIT_SHA.test(merge) ? [merge] : [];
     // GitHub's merge time, which tells a deploy that followed the merge from a preview before it.
     const signal = { stage: 'merged' as const, pullRequests: [pull.url], commits };
+    // As a merge event would: first the work in progress the merge finishes closes, then the closed tasks move.
+    merged += (await closeMerged(context, signal)).closed.length;
     merged += (await reportDelivery(context, state.mergedAt === null ? signal : { ...signal, at: state.mergedAt }))
       .length;
   }

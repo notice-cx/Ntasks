@@ -633,7 +633,8 @@ when the repository's host reports that the pull request its work in hand
 names (`pr`, [3.3](#33-claim-and-work-in-hand)) merged into the
 repository's default branch. Only a report the server verified came from
 the host, through a credential an owner of the workspace set up, such as a
-signed webhook delivery from an app an owner installed, MAY close one. A
+signed webhook delivery from an app an owner installed, or the host's answer
+when the server asks it through that app, MAY close one. A
 signal a sender reports ([STATE-12](#state-12)) MUST NOT close a task. The
 close:
 
