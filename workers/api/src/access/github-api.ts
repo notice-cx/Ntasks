@@ -431,9 +431,14 @@ const MERGEABLE_NOW = new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE']);
  * auto-merge turned on, or it joined its merge queue; `merged`, GitHub could
  * merge it at once and did; `already`, its auto-merge was on or it was in the
  * queue; `merged-before` or `closed`, there was nothing left to merge; or why
- * GitHub refused, or RETRY when it gave no answer.
+ * GitHub refused; RETRY when it gave no answer before anything was asked to
+ * change, and UNCONFIRMED when the change was sent and its answer never came.
  */
-export type AutoMerge = 'on' | 'merged' | 'already' | 'merged-before' | 'closed' | GitHubRefusal | typeof RETRY;
+export type AutoMerge =
+  'on' | 'merged' | 'already' | 'merged-before' | 'closed' | GitHubRefusal | typeof RETRY | typeof UNCONFIRMED;
+
+/** What a write to GitHub answers when it was sent and no answer came: GitHub may have made it. */
+export const UNCONFIRMED = 'unconfirmed';
 
 /**
  * Turns on the auto-merge of the pull request `number` of `repository`, as
@@ -469,17 +474,18 @@ export async function turnOnAutoMerge(token: string, repository: string, number:
   const changed = now
     ? await graphql(token, MERGE_NOW, { id, method })
     : await graphql(token, ENABLE_AUTO_MERGE, { id, method: queue ? null : method });
-  if (changed === RETRY || !('data' in changed)) return changed;
+  if (changed === RETRY) return UNCONFIRMED;
+  if (!('data' in changed)) return changed;
   return now ? 'merged' : 'on';
 }
 
-/** Posts `body` as a comment on the pull request `number` of `repository`, with an installation's token: true once GitHub made it. */
+/** Posts `body` as a comment on the pull request `number` of `repository`, with an installation's token: true once GitHub made it, UNCONFIRMED when no answer came. */
 export async function commentOnPullRequest(
   token: string,
   repository: string,
   number: number,
   body: string,
-): Promise<true | GitHubRefusal | typeof RETRY> {
+): Promise<true | GitHubRefusal | typeof UNCONFIRMED> {
   const response = await fetch(`${API}/repos/${repository}/issues/${number}/comments`, {
     method: 'POST',
     headers: { ...HEADERS, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -487,7 +493,7 @@ export async function commentOnPullRequest(
   }).catch(() => null);
   if (response === null || response.status === 429 || response.status >= 500) {
     await response?.body?.cancel();
-    return RETRY;
+    return UNCONFIRMED;
   }
   if (response.status === 201) {
     await response.body?.cancel();

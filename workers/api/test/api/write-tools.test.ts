@@ -2452,6 +2452,12 @@ describe('request_human_approval', () => {
     expect(await read(target, 'get_task', { project: project.id, task: gate.id })).toMatchObject({
       task: { pullRequest: pr },
     });
+    // The same pull request, written another way, is the same request.
+    const again = await write<{ approval: { id: string }; created: boolean }>(target, 'request_human_approval', {
+      ...args,
+      pr,
+    });
+    expect(again).toMatchObject({ approval: { id: gate.id }, created: false });
     // The pull request is part of what a person approves, and another one is another request.
     expect(await proposalVersionOf({ ...gate, externalLinks: [] })).not.toBe(await proposalVersionOf(gate));
     const other = await write<{ created: boolean }>(target, 'request_human_approval', {

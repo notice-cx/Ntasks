@@ -1243,11 +1243,12 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       (duplicate.type !== 'gate' ||
         duplicate.awaitType !== 'human' ||
         duplicate.description !== task.description ||
-        stepsAsked(duplicate) !== stepsAsked(task))
+        stepsAsked(duplicate) !== stepsAsked(task) ||
+        gatedPullRequest(duplicate) !== gatedPullRequest(task))
     ) {
       return refuse(
         task.steps === null
-          ? 'Duplicate approvals must retain exactly the same requested scope.'
+          ? 'Duplicate approvals must retain exactly the same requested scope, pull request included.'
           : 'A duplicate request must ask for exactly the same steps, with the same context.',
       );
     }

@@ -227,7 +227,7 @@ export function AutoMergeNote({
         id={id}
         className={cn(
           // On a phone it takes a line of its own, so Did it myself and Approve stay side by side under it.
-          'me-1 inline-flex shrink-0 items-center gap-1.25 whitespace-nowrap text-meta text-ink-3 max-sm:basis-full [&_svg]:size-3.5',
+          'me-1 inline-flex min-w-0 items-center gap-1.25 text-meta text-ink-3 [overflow-wrap:anywhere] max-sm:basis-full [&_svg]:size-3.5 [&_svg]:shrink-0',
           className,
         )}
       >

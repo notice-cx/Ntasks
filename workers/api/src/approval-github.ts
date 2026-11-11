@@ -18,6 +18,7 @@ import {
   installationToken,
   RETRY,
   turnOnAutoMerge,
+  UNCONFIRMED,
   type AutoMerge,
   type GitHubRefusal,
 } from './access/github-api.ts';
@@ -64,6 +65,7 @@ function mergeSentence(merge: AutoMerge | null): string {
   if (merge === null)
     return 'Ntasks turns on auto-merge only for an approval a person gives in Ntasks, not for one an agent relays.';
   if (merge === RETRY) return 'Auto-merge is off: GitHub did not answer Ntasks.';
+  if (merge === UNCONFIRMED) return 'GitHub did not confirm turning on auto-merge: check this pull request.';
   if (isRefusal(merge)) return `Auto-merge is off: GitHub refused it (${merge.refused}).`;
   switch (merge) {
     case 'on':
@@ -82,6 +84,8 @@ function mergeSentence(merge: AutoMerge | null): string {
 /** What became of auto-merge, as the approval's history records it. */
 function mergeRecord(named: string, merge: AutoMerge): string {
   if (merge === RETRY) return `GitHub did not answer, so auto-merge is not on for ${named}.`;
+  if (merge === UNCONFIRMED)
+    return `GitHub did not confirm turning on auto-merge for ${named}: check the pull request on GitHub.`;
   if (isRefusal(merge))
     return merge.forbidden
       ? `GitHub refused to turn on auto-merge for ${named}, because the app lacks permission: ${merge.refused}.`
@@ -101,9 +105,10 @@ function mergeRecord(named: string, merge: AutoMerge): string {
 }
 
 /** Whether the comment was posted, as the approval's history records it. */
-function commentRecord(named: string, posted: true | GitHubRefusal | typeof RETRY): string {
+function commentRecord(named: string, posted: true | GitHubRefusal | typeof UNCONFIRMED): string {
   if (posted === true) return `Posted this answer on ${named}.`;
-  if (posted === RETRY) return `GitHub did not answer, so this answer is not posted on ${named}.`;
+  if (posted === UNCONFIRMED)
+    return `GitHub did not confirm the comment with this answer on ${named}: check the pull request on GitHub.`;
   return posted.forbidden
     ? `GitHub refused to post this answer on ${named}, because the app lacks permission: ${posted.refused}.`
     : `GitHub refused to post this answer on ${named}: ${posted.refused}.`;
