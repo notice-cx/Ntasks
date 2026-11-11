@@ -728,6 +728,35 @@ describe('get_task', () => {
     expect(answer.task.awaitingHuman).toBe(true);
   });
 
+  it('marks a decision under a parent that waits on an open task as waiting on a person', async () => {
+    const own = await newProject(engine);
+    const create = async (input: Parameters<TaskEngine['createTask']>[1]) =>
+      (await engine.createTask(own.id, input, AGENT)).task.id;
+    const blocker = await create({ title: 'Ship the API' });
+    const parent = await create({
+      title: 'Build the page',
+      links: [{ direction: 'depends-on', taskId: blocker, type: 'blocks' }],
+    });
+    const decision = await create({
+      title: 'Pick the page layout',
+      type: 'decision',
+      labels: ['human'],
+      parentId: parent,
+      choices: {
+        question: 'Which layout?',
+        options: [
+          { key: 'a', label: 'One column', recommended: true },
+          { key: 'b', label: 'Two columns' },
+        ],
+      },
+    });
+
+    const answer = await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: decision });
+    expect(answer.task).toMatchObject({ ready: true, awaitingHuman: true });
+    const listed = await read<{ tasks: { id: string }[] }>(target, 'list_tasks', { project: own.id, ready: true });
+    expect(listed.tasks.map((task) => task.id).sort()).toEqual([blocker, decision].sort());
+  });
+
   it('names the project that holds a task from another one', async () => {
     expect(
       await refusal(target, 'get_task', { workspace: WORKSPACE.id, project: project.id, task: ids.elsewhere }),

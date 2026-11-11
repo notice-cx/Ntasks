@@ -152,7 +152,9 @@ A task is **ready** when someone can start it now:
 1. its status is `open`;
 2. every task it depends on is closed;
 3. its parent is not waiting either: a parent that waits on an open task holds
-   every task under it, at any depth;
+   every task under it, at any depth. A task labelled `human`, other than an
+   epic, is the exception: only the tasks it depends on itself hold it, so the
+   person is asked while the work above them waits;
 4. neither it nor its parent is deferred to a later date;
 5. no approval is pending on it.
 
