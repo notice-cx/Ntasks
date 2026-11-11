@@ -130,6 +130,8 @@ export interface GitHubCalls {
   readonly histories: Map<string, string[]>;
   /** Each request the Worker made to GitHub's API, as `<method> <path>`. */
   readonly apiRequests: string[];
+  /** The display name each GitHub user's profile gives, which a test sets; without one, `Person <id>`. */
+  readonly names: Map<number, string>;
 }
 
 /** A fetch body as text, in whichever form the library passed it. */
@@ -161,6 +163,7 @@ export function standInForGitHub(): GitHubCalls {
     checkOutages: new Set<string>(),
     histories: new Map<string, string[]>(),
     apiRequests: [] as string[],
+    names: new Map<number, string>(),
   };
   const appTokens = new Set<string>();
   beforeEach(() => {
@@ -175,6 +178,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.checkOutages.clear();
     calls.histories.clear();
     calls.apiRequests.length = 0;
+    calls.names.clear();
     appTokens.clear();
     const original = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -317,7 +321,7 @@ export function standInForGitHub(): GitHubCalls {
         return Response.json({
           id: Number(id),
           login: user?.[2] ?? `person-${id}`,
-          name: `Person ${id}`,
+          name: calls.names.get(Number(id)) ?? `Person ${id}`,
           email: null,
           avatar_url: null,
         });

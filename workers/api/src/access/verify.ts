@@ -32,14 +32,15 @@ import { isTimeZone } from '@ntasks/domain';
 import { COOKIE_PREFIX } from './auth.ts';
 import { isSecure, originOf, signInSecrets, storedOrigin, type Secrets, type SignInSecrets } from './config.ts';
 import { base64url, fromHex, sameBytes, sha256, verifyCookieSignature } from './crypto.ts';
-import type {
-  AgentPrincipal,
-  Membership,
-  PersonPrincipal,
-  Principal,
-  ProjectAccess,
-  ServicePrincipal,
-  WorkspaceGrants,
+import {
+  displayName,
+  type AgentPrincipal,
+  type Membership,
+  type PersonPrincipal,
+  type Principal,
+  type ProjectAccess,
+  type ServicePrincipal,
+  type WorkspaceGrants,
 } from './principal.ts';
 import {
   APP_SCOPES,
@@ -456,10 +457,4 @@ async function verifyServiceToken(db: D1Database, token: string): Promise<Servic
     backup: row.backup === 1,
     restore: row.restore === 1,
   });
-}
-
-/** An actor name for the task store: 1 to 255 characters. */
-function displayName(name: string | null, fallback: string): string {
-  const trimmed = name?.trim() ?? '';
-  return trimmed.length === 0 ? fallback : trimmed.slice(0, 255);
 }

@@ -386,7 +386,9 @@ acceptance of a task as done can be disputed the same way.
 
 ## History and comments
 
-Every change to a task is recorded with who made it and when. **Comments** add
+Every change to a task is recorded with who made it and when: a person under
+their name, made distinct from other people's when they first sign in, and an agent or a service under
+its own ([Sign-in](sign-in.md#checking-every-request)). **Comments** add
 notes and evidence while the work moves. A comment is never edited or deleted;
 the one change it takes is being unpinned ([Epics](#epics)), which its task's
 history records.
