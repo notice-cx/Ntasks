@@ -243,6 +243,28 @@ describe('reading a website’s icon', () => {
     expect(asked.filter((url) => url.endsWith('/favicon.ico'))).toEqual([]);
   });
 
+  it('asks for the dark icon without waiting for a slow light one', async () => {
+    let darkAsked: () => void = () => undefined;
+    const asked = new Promise<void>((resolve) => (darkAsked = resolve));
+    const { fetchImpl } = website({
+      'https://example.com/': page(
+        '<link rel="icon" href="/light.png"><link rel="icon" href="/dark.png" media="(prefers-color-scheme: dark)">',
+      ),
+      'https://example.com/light.png': image(PNG, 'image/png'),
+      'https://example.com/dark.png': image(PNG, 'image/png'),
+    });
+    // The light icon answers only once the dark one has been asked for: read one after the other, this never ends.
+    const slowLight = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new Request(input).url;
+      if (url.endsWith('/dark.png')) darkAsked();
+      if (url.endsWith('/light.png')) await asked;
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    const icons = await readProjectIcons('https://example.com/', slowLight);
+    expect(icons.light).toMatchObject({ sourceUrl: 'https://example.com/light.png' });
+    expect(icons.dark).toMatchObject({ sourceUrl: 'https://example.com/dark.png' });
+  });
+
   it('keeps a dark SVG icon made safe, as the light ones are', async () => {
     const darkSvg = new TextEncoder().encode(
       '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><circle r="4" fill="#fff"/></svg>',

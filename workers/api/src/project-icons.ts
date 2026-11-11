@@ -390,8 +390,10 @@ export async function readProjectIcons(websiteUrl: string, fetchImpl: typeof fet
   const favicon = webAddress('/favicon.ico', pageUrl);
   const light = declared.light.slice(0, MAX_CANDIDATES - 1);
   if (favicon !== null && !light.includes(favicon)) light.push(favicon);
-  return {
-    light: await firstIcon(fetchImpl, light, signal),
-    dark: await firstIcon(fetchImpl, declared.dark.slice(0, MAX_CANDIDATES - 1), signal),
-  };
+  // Both searches run at once, so a slow light candidate never spends the dark icon's share of the deadline.
+  const [lightIcon, darkIcon] = await Promise.all([
+    firstIcon(fetchImpl, light, signal),
+    firstIcon(fetchImpl, declared.dark.slice(0, MAX_CANDIDATES - 1), signal),
+  ]);
+  return { light: lightIcon, dark: darkIcon };
 }
