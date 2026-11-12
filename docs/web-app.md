@@ -13,7 +13,7 @@ close or title, either way, and the address keeps the order.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.webp">
-  <img src="images/board-light.webp" width="800" alt="The Tasks board: the sidebar, then Waiting for you with Did it myself, Approve, option and Answer buttons on its rows, then the In progress, Open, Blocked, Parked and Done groups.">
+  <img src="images/board-light.webp" width="800" alt="The Tasks board with a Sidebar button, a site icon beside Example web app, and Settings and Source code at the bottom of the sidebar. Waiting for you appears above the grouped tasks.">
 </picture>
 
 **Epics.** With one project in view, the Epics tab lists the project's open
@@ -72,7 +72,7 @@ hands it back for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
-  <img src="images/live-light.webp" width="800" alt="The Live page's board: 1 active, 1 quiet and 1 stalled at the top, then three columns. In progress holds three cards, tinted by activity, each with its project's icon, task id, pull request, next step, holder's icon and last activity; Waiting to ship holds one task not merged yet, and Live holds two.">
+  <img src="images/live-light.webp" width="800" alt="The Live board shows one active, one quiet and one stalled task in the In progress column, one task in Waiting to ship, and two in Live. The Live column has 24 hours and 7 days buttons.">
 </picture>
 
 **Productivity.** What you and your agents got done that matters, day by
@@ -87,7 +87,7 @@ shrinking; its closes are context for the open work, not a score.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/phone-dark.webp">
-  <img src="images/phone-light.webp" width="320" alt="The Tasks board at phone width, with each waiting row's answer on a line under its title.">
+  <img src="images/phone-light.webp" width="320" alt="The Tasks board at phone width with a Sidebar button in the header and answer controls below each waiting task's title.">
 </picture>
 
 **Sign-in and agent approval.** Pages the Worker serves itself.
