@@ -28,7 +28,6 @@ interface D1 {
 
 /** The checks Ntasks fails today, each with the task that fixes it. */
 export const KNOWN_GAPS: Readonly<Record<string, string>> = {
-  'state-5-holder-releases': 'ro-k0pv: a release with assignee "" leaves the task in_progress',
   'inv-3-retry-answers-once@http': 'ro-mhh0: an HTTP write sent again is not marked as replayed',
 };
 

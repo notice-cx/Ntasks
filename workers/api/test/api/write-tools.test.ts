@@ -1593,6 +1593,19 @@ describe('update_task', () => {
     expect((await assign('')).assignee).toBeNull();
   });
 
+  it('refuses in-progress status without a holder and makes a released claim ready again', async () => {
+    const project = await newProject(engine);
+    const { id } = await task(project);
+    const args = { project: project.id, task: id };
+    expect(await refusal(target, 'update_task', { ...args, status: 'in_progress' })).toMatch(
+      /needs a holder to be in progress/u,
+    );
+    expect(await current(project, id)).toMatchObject({ status: 'open', assignee: null, version: 1 });
+    await write(target, 'claim_task', args);
+    await write(target, 'update_task', { ...args, assignee: '' });
+    expect(await current(project, id)).toMatchObject({ status: 'open', assignee: null, ready: true });
+  });
+
   it('records the key of a change that changed nothing, so a retry replays it and the key stays its own', async () => {
     const project = await newProject(engine);
     const { id } = await task(project, { title: 'Same', priority: 2 });
