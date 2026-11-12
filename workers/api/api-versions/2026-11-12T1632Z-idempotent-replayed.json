@@ -1,0 +1,3 @@
+{
+  "added": "The `Idempotent-Replayed: true` response header on replayed HTTP writes"
+}

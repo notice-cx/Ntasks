@@ -27,9 +27,7 @@ interface D1 {
 }
 
 /** The checks Ntasks fails today, each with the task that fixes it. */
-export const KNOWN_GAPS: Readonly<Record<string, string>> = {
-  'inv-3-retry-answers-once@http': 'ro-mhh0: an HTTP write sent again is not marked as replayed',
-};
+export const KNOWN_GAPS: Readonly<Record<string, string>> = {};
 
 export interface LocalNtasks {
   readonly target: Target;

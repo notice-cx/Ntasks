@@ -76,7 +76,10 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
       ...(trace === undefined ? {} : { trace }),
     });
     const body = (answer.body ?? {}) as Record<string, unknown>;
-    if (answer.status >= 200 && answer.status < 300) return { ok: true, value: body };
+    if (answer.status >= 200 && answer.status < 300) {
+      const replayed = answer.headers.get('idempotent-replayed') === 'true';
+      return { ok: true, value: replayed ? { ...body, replayed } : body };
+    }
     const code = typeof body.error === 'string' ? body.error : undefined;
     return {
       ok: false,
@@ -141,7 +144,12 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
           },
           ...options,
         }),
-        (value) => ({ id: String(value.id), version: null, replayed: null, raw: value }),
+        (value) => ({
+          id: String(value.id),
+          version: null,
+          replayed: typeof value.replayed === 'boolean' ? value.replayed : null,
+          raw: value,
+        }),
       );
     },
     read: (task) =>

@@ -1259,7 +1259,8 @@ to 128 letters, digits, dots, underscores, colons or hyphens: the optional
 `define_field` and `retire_field`, and the optional `Idempotency-Key` header
 of an HTTP write, a person's decisions included. A retry with the same key and the
 same arguments answers what the first call answered, with the tasks as they
-stand now and `replayed: true`, and changes nothing. The same key with other
+stand now, and changes nothing. MCP marks the answer with `replayed: true`.
+HTTP marks it with the `Idempotent-Replayed: true` response header. The same key with other
 arguments, for another task or in another project is refused. A key is kept
 for seven days, for each sender and each tool. A call that finds nothing to
 change, such as a title set to the title the task has, still keeps its key,

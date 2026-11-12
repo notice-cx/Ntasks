@@ -65,7 +65,7 @@ import { formerIdsOf, linksSeenBy } from '../lookup.ts';
 import { shippedArgs } from '../delivery.ts';
 import { commentView, fieldView, webTasks } from '../views.ts';
 import { readBoundedJsonText } from './json-body.ts';
-import { HttpRefused, invalidRequest, json, queryOf } from './respond.ts';
+import { HttpRefused, invalidRequest, json, queryOf, writtenJson } from './respond.ts';
 
 /** The header a write's retry key arrives in. */
 export const IDEMPOTENCY_HEADER = 'idempotency-key';
@@ -219,7 +219,7 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     Object.entries(fields).filter(([, value]) => value !== undefined),
   ) as unknown as NewTask;
   const { project, result } = await createTask(context, projectId, task, undefined, retry(body));
-  return json({ id: result.task.id, project: project.key });
+  return writtenJson({ id: result.task.id, project: project.key }, result.replayed);
 }
 
 /** PATCH /api/tasks/:id: changes a task's fields, or with `claim`, takes it. */
@@ -256,17 +256,20 @@ export async function moveRoute(context: WriteContext, url: URL, request: Reques
     retry(body),
   );
   const links = await linksSeenBy(context);
-  return json({
-    tasks: await webTasks(
-      namedAfter(tasks, result).map((task) => links.task(task)),
-      context.now(),
-    ),
-    moved: Object.fromEntries(result.moved.map(({ from, to }) => [from, to])),
-    ...(Object.keys(fieldsKept).length === 0 ? {} : { fieldsKept }),
-    ...(result.epics === undefined
-      ? {}
-      : { epics: result.epics.map((epic) => ({ id: epic.id, status: epic.status })) }),
-  });
+  return writtenJson(
+    {
+      tasks: await webTasks(
+        namedAfter(tasks, result).map((task) => links.task(task)),
+        context.now(),
+      ),
+      moved: Object.fromEntries(result.moved.map(({ from, to }) => [from, to])),
+      ...(Object.keys(fieldsKept).length === 0 ? {} : { fieldsKept }),
+      ...(result.epics === undefined
+        ? {}
+        : { epics: result.epics.map((epic) => ({ id: epic.id, status: epic.status })) }),
+    },
+    result.replayed,
+  );
 }
 
 export async function updateRoute(
@@ -323,7 +326,7 @@ export async function updateRoute(
   addsOrRemoves(change.addExternalLinks, change.removeExternalLinks, 'addExternalLinks and removeExternalLinks');
   const { result } = await updateTask(context, projectId, taskId, change, undefined, retry(body));
   const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
-  return json({ task });
+  return writtenJson({ task }, result.replayed);
 }
 
 /**
@@ -371,8 +374,17 @@ export async function commentRoute(
   const projectId = projectArg(body, 'projectId', 'http');
   const text = textArg(body, 'text', TASK_LIMITS.comment, true)!;
   const pins = pinsArg(body);
-  const { comment } = await commentOnTask(context, projectId, taskId, text, retry(body), undefined, undefined, pins);
-  return json({ comment: commentView(comment) });
+  const { comment, replayed } = await commentOnTask(
+    context,
+    projectId,
+    taskId,
+    text,
+    retry(body),
+    undefined,
+    undefined,
+    pins,
+  );
+  return writtenJson({ comment: commentView(comment) }, replayed);
 }
 
 /** POST /api/fields: defines a custom field in a project. */
@@ -387,8 +399,8 @@ export async function defineFieldRoute(context: WriteContext, url: URL, request:
     type: body.type,
     ...(body.options === undefined ? {} : { options: body.options }),
   } as DefineFieldInput;
-  const { field } = await defineField(context, projectId, input, retry(body));
-  return json({ field: fieldView(field) });
+  const { field, replayed } = await defineField(context, projectId, input, retry(body));
+  return writtenJson({ field: fieldView(field) }, replayed);
 }
 
 /** POST /api/fields/:key/retire: retires a custom field, which then takes no new values. */
@@ -401,8 +413,8 @@ export async function retireFieldRoute(
   const { body, retry } = await writeOf(request, url, 'retire_field', { field: key });
   only(body, ['projectId']);
   const projectId = projectArg(body, 'projectId', 'http');
-  const { field } = await retireField(context, projectId, key, retry(body));
-  return json({ field: fieldView(field) });
+  const { field, replayed } = await retireField(context, projectId, key, retry(body));
+  return writtenJson({ field: fieldView(field) }, replayed);
 }
 
 /** Whether text is a project's name or key: one line of 1 to 128 characters, as the engine keeps them. */
@@ -432,11 +444,12 @@ export async function createProjectRoute(context: WriteContext, url: URL, reques
   const taken = (which: 'prefix' | 'key') =>
     new HttpRefused(409, 'project_exists', `another project in this workspace uses this ${which}`, which);
   const answer = (made: Project, replayed: boolean) =>
-    json(
+    writtenJson(
       {
         project: { projectId: made.id, logicalKey: made.key, displayName: made.name, prefix: made.prefix },
         ...(replayed ? { replayed: true } : {}),
       },
+      replayed,
       201,
     );
   const clash = (projects: readonly Project[]): Project | 'prefix' | 'key' | null => {
@@ -476,5 +489,5 @@ export async function closeRoute(context: WriteContext, url: URL, request: Reque
   };
   const { result } = await closeTask(context, projectId, taskId, closing, undefined, retry(body));
   const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
-  return json({ task });
+  return writtenJson({ task }, result.replayed);
 }
