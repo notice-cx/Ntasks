@@ -124,7 +124,7 @@ describes.
   development.
 - [Connect an agent](docs/agents.md): the setup command, each agent by hand
   and the Ntasks skill.
-- For contributors: [architecture](docs/architecture.md),
+- For contributors: [architecture and the workspace stores](docs/architecture.md),
   [the API](docs/api.md), [sign-in](docs/sign-in.md),
   [the task store](docs/task-store.md) and
   [the design system](docs/design.md).
