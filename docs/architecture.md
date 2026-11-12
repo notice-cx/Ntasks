@@ -36,7 +36,7 @@ which credentials keep working after `AUTH_SECRET` changes.
 ## At a glance
 
 <img src="images/how-ntasks-works.svg"
-  alt="Diagram of who connects to Ntasks. AI agents such as Claude Code or Codex call /api/mcp and sign in with OAuth 2.1. People use the web app, where the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in, checks which projects the caller may reach and hands it to the task store: one Durable Object with its own SQLite database, holding the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards read new changes from /api/changes.">
+  alt="AI agents, people in the web app and services send task requests to the Ntasks Worker on Cloudflare. The Worker signs in each caller, checks their access and routes each request to its workspace. Workspace A and workspace B each have their own task store, a Durable Object with a SQLite database for tasks, links, history and a change feed. D1 holds sign-in data and project grants. The web app reads changes from the selected workspace through /api/changes.">
 
 Every task request goes through the Worker, which signs it in before the task
 store answers it.
