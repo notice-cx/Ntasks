@@ -9,6 +9,7 @@
  */
 import { IDEMPOTENCY_HEADER } from '../http/writes.ts';
 import { API_VERSION_HEADER } from '../version.ts';
+import { REPLAYED_HEADER } from '../http/respond.ts';
 import { WORKSPACE_HEADER } from '../workspaces.ts';
 import { isAppOrigin } from './apps.ts';
 
@@ -17,7 +18,7 @@ const METHODS = 'GET, POST, PATCH';
 /** The headers an app sends: its token, a JSON body, the workspace and a retry key. */
 const HEADERS = `authorization, content-type, ${WORKSPACE_HEADER}, ${IDEMPOTENCY_HEADER}`;
 /** The headers an app may read: a bearer challenge, when to retry, and the API's version. */
-const EXPOSED = `www-authenticate, retry-after, ${API_VERSION_HEADER}`;
+const EXPOSED = `www-authenticate, retry-after, ${API_VERSION_HEADER}, ${REPLAYED_HEADER}`;
 const PREFLIGHT_SECONDS = '600';
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 

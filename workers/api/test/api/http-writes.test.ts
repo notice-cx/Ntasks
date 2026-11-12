@@ -592,32 +592,35 @@ describe('PATCH /api/tasks/:id', () => {
 });
 
 describe('POST /api/tasks/:id/comments', () => {
-  it('adds a comment once per retry key', async () => {
+  it('adds a comment once per retry key and marks the replayed response', async () => {
     const { id } = await task();
-    const headers = { 'idempotency-key': key() };
-    const first = await send(
-      target,
-      'POST',
-      `/api/tasks/${id}/comments`,
-      { projectId: project.id, text: 'Noted.' },
-      headers,
-    );
-    expect(first).toEqual({
-      status: 200,
-      body: {
-        comment: {
-          id: expect.any(String),
-          author: WRITER.name,
-          text: 'Noted.',
-          createdAt: time.now(),
-          pinned: false,
-          test: null,
-        },
+    const headers = { 'idempotency-key': key(), 'content-type': 'application/json' };
+    const post = () =>
+      target.fetch(
+        new Request(`${ORIGIN}/api/tasks/${id}/comments`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ projectId: project.id, text: 'Noted.' }),
+        }),
+      );
+    const first = await post();
+    expect(first.status).toBe(200);
+    expect(first.headers.get('idempotent-replayed')).toBeNull();
+    const body = await first.json();
+    expect(body).toEqual({
+      comment: {
+        id: expect.any(String),
+        author: WRITER.name,
+        text: 'Noted.',
+        createdAt: time.now(),
+        pinned: false,
+        test: null,
       },
     });
-    expect(
-      await send(target, 'POST', `/api/tasks/${id}/comments`, { projectId: project.id, text: 'Noted.' }, headers),
-    ).toEqual(first);
+    const replay = await post();
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get('idempotent-replayed')).toBe('true');
+    expect(await replay.json()).toEqual(body);
     expect(await engine.listComments(project.id, id)).toHaveLength(1);
   });
 });

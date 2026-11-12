@@ -3,6 +3,13 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   return Response.json(body, { status, headers: { ...headers, 'cache-control': 'no-store' } });
 }
 
+export const REPLAYED_HEADER = 'idempotent-replayed';
+
+/** Marks an answer served from a retry record without changing its body. */
+export function writtenJson(body: unknown, replayed: boolean, status = 200): Response {
+  return json(body, status, replayed ? { [REPLAYED_HEADER]: 'true' } : {});
+}
+
 /** A request the route cannot serve, with a sentence that says why, and the
  * body field at fault when one is, so a form can show the sentence beside it. */
 export class HttpRefused extends Error {

@@ -43,13 +43,13 @@ import {
 } from '../owner-answers.ts';
 import type { WriteContext, Written } from '../task-writes.ts';
 import { PROPOSAL_VERSION, webTasks } from '../views.ts';
-import { HttpRefused, json, queryOf } from './respond.ts';
+import { HttpRefused, json, queryOf, writtenJson } from './respond.ts';
 import { writeOf } from './writes.ts';
 
 /** The answer to a decision: the task as it stands after it. */
 async function decided(context: WriteContext, written: Written): Promise<Response> {
   const [task] = await webTasks([await seen(context, written.result.task)], context.now());
-  return json({ task });
+  return writtenJson({ task }, written.result.replayed);
 }
 
 /** The proposal version the person's page showed: the answer is refused once

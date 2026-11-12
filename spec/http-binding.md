@@ -17,7 +17,7 @@ every parameter, body and answer in full. The route paths and the
 | Sign-in | A person's browser session, an agent's OAuth access token, or a service credential, as `Authorization: Bearer …` for the last two. A request with none gets `401` with a bearer challenge |
 | Workspace | `x-ntasks-workspace: <workspace id>`; a sender that reaches one workspace may leave it out |
 | A service acting for an agent | `x-ntasks-on-behalf-of: <agent name>`; the change is recorded as `service:<name>/<agent>` ([3.1](protocol.md#31-actor-and-provenance)) |
-| Retries | `Idempotency-Key: <key>` on any write, a person's decisions included ([INV-3](protocol.md#inv-3)) |
+| Retries | `Idempotency-Key: <key>` on a write. A replayed answer carries `Idempotent-Replayed: true` ([INV-3](protocol.md#inv-3)) |
 | Bodies | One JSON object, sent as `application/json`, of at most 32 KB, with no key twice and no query. A browser may send a write only from the server's own origin |
 | Answers | JSON, with `cache-control: no-store` |
 | Query parameters | A read refuses one it does not take, or one given twice ([EXT-3](protocol.md#ext-3)) |
