@@ -1,7 +1,7 @@
 {
   "name": "ntasks",
   "private": true,
-  "description": "A task hub for people and AI agents, on Cloudflare Workers and D1.",
+  "description": "One task list for you and your AI agents, on Cloudflare Workers and D1.",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/notice-cx/Ntasks#readme",
   "repository": {
