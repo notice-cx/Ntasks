@@ -155,6 +155,7 @@ export interface TasksApi {
   release(id: string, project: string, holder: string): Promise<void>;
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
+  declineGate?(id: string, project: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Report that the person did the action an approval names themselves: it closes, and no agent does the action. */
   reportPerformed(id: string, project: string, note?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Tick, untick, note or mark as stuck one step of a request to do steps. */
@@ -209,7 +210,7 @@ export interface TasksApi {
 type WorkspaceCalls = Omit<
   TasksApi,
   'selectWorkspace' | 'workspaces' | 'account' | 'createWorkspace' | 'renameWorkspace' | 'setTimeZone'
->;
+> & { declineGate: NonNullable<TasksApi['declineGate']> };
 
 /** Where the owner signs in: the Worker's own page, outside this app. */
 export const SIGN_IN_PATH = '/sign-in';
@@ -655,6 +656,7 @@ export function createHttpTasksApi(fetch: Fetch): TasksApi {
     markLive: (id) => scope().markLive(id),
     release: (id, project, holder) => scope().release(id, project, holder),
     resolveGate: (id, project, reason, options) => scope().resolveGate(id, project, reason, options),
+    declineGate: (id, project, options) => scope().declineGate(id, project, options),
     reportPerformed: (id, project, note, options) => scope().reportPerformed(id, project, note, options),
     markStep: (id, project, marking, options) => scope().markStep(id, project, marking, options),
     createProject: (input, options) => scope().createProject(input, options),
@@ -921,6 +923,15 @@ function workspaceCalls(fetch: Fetch): WorkspaceCalls {
         'POST',
         path,
         { ...(note === undefined ? {} : { note }), ...shownIn(sending), projectId: await projectId(project) },
+        `Approval ${id}`,
+        sending,
+      );
+    },
+    async declineGate(id, project, sending = {}) {
+      await write(
+        'POST',
+        `/api/gates/${encodeURIComponent(id)}/decline`,
+        { ...shownIn(sending), projectId: await projectId(project) },
         `Approval ${id}`,
         sending,
       );

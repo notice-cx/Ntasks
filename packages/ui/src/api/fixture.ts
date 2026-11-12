@@ -111,6 +111,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'respond',
   'dismiss',
   'resolve',
+  'decline',
   'performed',
   'choose',
   'dispute',
@@ -404,7 +405,7 @@ export function createFixtureTasksApi({
   }
 
   /** A person's own answer to an approval, recorded on it as the Worker records one. */
-  function answerHere(task: FixtureTask, option: 'approve' | 'done', quote: string | null): void {
+  function answerHere(task: FixtureTask, option: 'approve' | 'decline' | 'done', quote: string | null): void {
     task.answer = {
       option,
       quote,
@@ -1207,6 +1208,43 @@ export function createFixtureTasksApi({
           throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
         close(task, note ? `Did it myself: ${note}` : 'Did it myself');
         answerHere(task, 'done', note ?? null);
+      });
+    },
+    async declineGate(id, key, options) {
+      reach();
+      const shown = options?.proposalVersion ?? null;
+      once(options?.idempotencyKey, ['decline', id, key, shown], () => {
+        const task = find(id, key);
+        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
+          throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        if (shown !== null && shown !== task.proposalVersion)
+          throw new ApiError(
+            `${id} changed after this page showed it. Read it again, then answer; your answer was not recorded.`,
+            409,
+            'task_refused',
+            'proposalVersion',
+          );
+        close(task, 'Declined', 'wont-do');
+        answerHere(task, 'decline', null);
+        for (const waiting of state.tasks) {
+          if (
+            waiting.status === 'closed' ||
+            !waiting.dependencies.some((edge) => edge.type === 'blocks' && edge.id === task.id)
+          )
+            continue;
+          addComment(waiting, `Approval request ${task.id} declined. The action requires a new approval.`);
+          if (
+            waiting.labels.includes('human') &&
+            waiting.issueType !== 'decision' &&
+            waiting.issueType !== 'gate' &&
+            (waiting.choices ?? null) === null
+          ) {
+            if (waiting.assignee !== null) endWork(waiting);
+            waiting.assignee = null;
+            waiting.status = 'open';
+            handBack(waiting);
+          }
+        }
       });
     },
     async markStep(id, key, marking, options) {

@@ -130,6 +130,7 @@ describe('who may decide', () => {
       'respond',
       'dismiss',
       'resolve',
+      'decline',
       'performed',
       'choose',
       'dispute',
@@ -412,6 +413,46 @@ describe('POST /api/gates/:id/resolve', () => {
       error: 'task_refused',
       detail: `${created[0]!.id} is already closed.`,
     });
+  });
+});
+
+describe('POST /api/gates/:id/decline', () => {
+  it('records a direct decline with no permission and tells the waiting work', async () => {
+    const { task: waiting, created } = await task({ requestApproval: { reason: 'Publish the update' } });
+    const gate = created[0]!;
+    const path = `/api/gates/${gate.id}/decline`;
+    for (const principal of [WRITER, { ...WRITER, name: 'service:example' }]) {
+      expect((await send(api({ principal, engine }), 'POST', path, { projectId: project.id })).status).toBe(403);
+    }
+    expect(await current(gate.id)).toMatchObject({ status: 'open' });
+    const declined = await post(path, {});
+    expect(declined.status).toBe(200);
+    expect(declined.body.task).toMatchObject({
+      status: 'closed',
+      resolution: 'wont-do',
+      answer: { option: 'decline', relayed: false, recordedBy: 'Person' },
+    });
+    expect((await current(gate.id)).metadata[MAINTENANCE]).toMatchObject({ approved: false, permission: 'none' });
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', labels: ['ui'], ready: true });
+    expect(await texts(waiting.id)).toEqual([
+      expect.stringContaining('The action must not happen without a new action-specific owner approval.'),
+    ]);
+  });
+
+  it('declines an approval whose description is too long to quote in a comment', async () => {
+    const { task: waiting, created } = await task({ requestApproval: { reason: 'Publish the update' } });
+    const gate = created[0]!;
+    await engine.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: gate.version, set: { description: 'x'.repeat(TASK_LIMITS.comment) } },
+      OWNER,
+    );
+    expect(await post(`/api/gates/${gate.id}/decline`, {})).toMatchObject({
+      status: 200,
+      body: { task: { resolution: 'wont-do' } },
+    });
+    expect(await texts(waiting.id)).toEqual([expect.stringContaining(`Excluded action: see ${gate.id}.`)]);
   });
 });
 

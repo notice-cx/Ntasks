@@ -713,6 +713,46 @@ describe('a row waiting for you', () => {
     expect(await screen.findByText('Only a person signed in to the web app can approve web-g7p2.')).toBeTruthy();
   });
 
+  it('lets a person decline an approval after the Undo window', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    const row = (await group('Waiting for you')).querySelector('[data-task-row="web-g7p2"]') as HTMLElement;
+    fireEvent.click(await enabledButton('Decline', row));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() =>
+      expect(api.state.tasks.find((entry) => entry.id === 'web-g7p2')).toMatchObject({
+        status: 'closed',
+        resolution: 'wont-do',
+        answer: { option: 'decline', relayed: false },
+      }),
+    );
+    expect(api.state.comments.get('web-k3m9.3')).toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining('The action requires a new approval.') }),
+    );
+  });
+
+  it('refuses stale approval declines and records a retried decline only once', async () => {
+    const api = createFixtureTasksApi();
+    const gate = api.state.tasks.find((entry) => entry.id === 'web-g7p2')!;
+    gate.proposalVersion = 'current-proposal';
+    const waiting = api.state.tasks.find((entry) => entry.id === 'web-k3m9.3')!;
+    waiting.labels = ['human', 'release'];
+    waiting.status = 'blocked';
+    waiting.assignee = 'agent:Example';
+    waiting.work = { next: 'Check the release' };
+    const decline = (proposalVersion: string) =>
+      api.declineGate!('web-g7p2', 'web', { idempotencyKey: 'decline-once', proposalVersion });
+    await expect(decline('old-proposal')).rejects.toMatchObject({ status: 409, field: 'proposalVersion' });
+    expect(gate.status).toBe('open');
+    await decline('current-proposal');
+    expect(waiting).toMatchObject({ status: 'open', assignee: null, labels: ['release'], work: {} });
+    await decline('current-proposal');
+    await expect(decline('other-proposal')).rejects.toMatchObject({ status: 409, code: 'idempotency_conflict' });
+    expect(api.state.comments.get('web-k3m9.3')).toHaveLength(1);
+  });
+
   it('closes an approval whose action the person did themselves, with their note, after the Undo window', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);

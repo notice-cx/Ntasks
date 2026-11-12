@@ -1,0 +1,8 @@
+{
+  "added": "`POST /api/gates/:id/decline`, a person's direct decline of an approval, and `decline` among their `operations` in `GET /api/tasks/capabilities`",
+  "routes": {
+    "POST /api/gates/:id/decline": {
+      "task": "@task"
+    }
+  }
+}

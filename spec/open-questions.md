@@ -190,12 +190,9 @@ extensions would keep the task's top level to the protocol.
 
 **Should a person be able to decline an approval directly?**
 <a id="oq-21"></a> ([AUTH-1](protocol.md#auth-1),
-[STATE-10](protocol.md#state-10)) Ntasks's web app approves an approval,
-records the person's report that they did its action themselves, and
-disputes a relayed one, but has no route to decline one: a decline
-arrives only as a relayed answer. A direct dismissal of a task labelled
-`human` closes it without recording an `answer`, unlike a pick or a
-response.
+[STATE-10](protocol.md#state-10)) Closed: a person can decline an approval
+directly in Ntasks. The decision records the decline and tells every
+waiting task that the declined action requires a new approval.
 
 ### OQ-22
 

@@ -35,6 +35,7 @@ export function useAskActions({
   disabledReason = null,
   chooseDisabledReason = disabledReason,
   performedDisabledReason = disabledReason,
+  canDecline = false,
 }: {
   ask: InboxAsk | null;
   id: string;
@@ -52,6 +53,7 @@ export function useAskActions({
   disabledReason?: string | null;
   chooseDisabledReason?: string | null;
   performedDisabledReason?: string | null;
+  canDecline?: boolean;
 }): { buttons: ReactNode; box: ReactNode } {
   const [answering, setAnswering] = useState(false);
   const [performing, setPerforming] = useState(false);
@@ -100,6 +102,15 @@ export function useAskActions({
   ) : ask === 'approve' ? (
     <>
       {pullRequest ? <AutoMergeNote pullRequest={pullRequest} id={mergeId} compact /> : null}
+      {canDecline ? (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => answer({ kind: 'decline', id, title, project, proposalVersion })}
+        >
+          Decline
+        </Button>
+      ) : null}
       <PerformedButton
         size="sm"
         open={performing}

@@ -158,6 +158,9 @@ on that pull request's auto-merge, and your answer is posted on the pull
 request, where the agent that asked sees it
 ([Connect GitHub](github.md#approve-a-pull-request-in-ntasks)).
 
+**Decline** closes an approval and tells the waiting tasks that the action
+requires a new approval.
+
 **Did it myself**, beside Approve, is for an action you already did. It
 takes a note, and closes the approval as done by you, not approved: no agent
 does the action. Each task that waited on it gets a comment to check the

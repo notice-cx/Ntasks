@@ -499,13 +499,18 @@ export interface Deciding {
 function recordDirect(
   draft: Draft,
   deciding: Deciding,
-  answer: { readonly option?: TaskChoiceKey; readonly words?: string; readonly performed?: true },
+  answer: {
+    readonly option?: TaskChoiceKey;
+    readonly words?: string;
+    readonly outcome?: 'owner-performed' | 'declined';
+  },
 ): void {
   const previous = maintenanceOf(draft.task);
   const gate = draft.task.type === 'gate';
-  const performed = answer.performed === true;
+  const performed = answer.outcome === 'owner-performed';
+  const declined = answer.outcome === 'declined';
   draft.metadata[MAINTENANCE] = {
-    action: performed ? 'owner_performed' : 'answer',
+    action: performed ? 'owner_performed' : declined ? 'declined' : 'answer',
     taskId: draft.task.id,
     proposalVersion: deciding.proposalVersion,
     ...(answer.option === undefined ? {} : { option: answer.option }),
@@ -515,9 +520,9 @@ function recordDirect(
     at: deciding.at,
     verification: 'person',
     // `approved` keeps NoticeOS's meaning, that the request was met; agents act on `permission`.
-    ...(gate ? { outcome: performed ? 'owner-performed' : 'approved', approved: true } : {}),
+    ...(gate ? { outcome: answer.outcome ?? 'approved', approved: !declined } : {}),
     ...(performed ? { performedBy: deciding.actor } : {}),
-    permission: gate && !performed ? 'approved-scope-only' : 'none',
+    permission: gate && !performed && !declined ? 'approved-scope-only' : 'none',
     events: withPrevious(previous),
   };
 }
@@ -693,20 +698,52 @@ export function acceptanceWrite(
  * an approval an agent relays. The person's approval becomes the gate's
  * record, so an approval an agent relayed before it can no longer be disputed.
  */
+function openApproval(task: Task): void {
+  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+  if (task.steps !== null) throw stepsRefusal(task);
+  if (task.type !== 'gate' || task.awaitType !== 'human')
+    throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
+}
+
 export function approvalWrite(
   task: Task,
   reason: string | undefined,
   around: Surroundings,
   deciding: Deciding,
 ): TaskWrite | null {
-  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
-  if (task.steps !== null) throw stepsRefusal(task);
-  if (task.type !== 'gate' || task.awaitType !== 'human')
-    throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
+  openApproval(task);
   const draft = new Draft(task);
   draft.close = { reason: reason ?? 'Approved', resolution: 'done' };
   recordDirect(draft, deciding, reason === undefined ? {} : { words: reason });
   handBackOnApproval(draft, around);
+  return draft.write();
+}
+
+function excludedApproval(task: Task, disposition: string): string {
+  const warning =
+    'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.';
+  const heading = `Approval request ${task.id} ${disposition}. ${warning}`;
+  const full = `${heading}\nExcluded action: ${task.description}`;
+  if (full.length <= TASK_LIMITS.comment) return full;
+  const reference = `${heading}\nExcluded action: see ${task.id}.`;
+  return reference.length <= TASK_LIMITS.comment
+    ? reference
+    : `See approval request ${task.id} for its disposition and the excluded action. ${warning}`;
+}
+
+/** Records a person's decline and tells the work waiting on the approval. */
+export function declineWrite(task: Task, around: Surroundings, deciding: Deciding): TaskWrite | null {
+  openApproval(task);
+  decisionClose(task, around);
+  const draft = new Draft(task);
+  draft.close = { reason: 'Declined', resolution: 'wont-do' };
+  recordDirect(draft, deciding, { outcome: 'declined' });
+  const notice = excludedApproval(task, 'declined');
+  for (const dependent of waiting(around)) {
+    const other = draft.other(dependent);
+    other.comment = notice;
+    if (handedBackWith(dependent)) other.handBack(true);
+  }
   return draft.write();
 }
 
@@ -727,13 +764,10 @@ export function performedWrite(
   around: Surroundings,
   deciding: Deciding,
 ): TaskWrite | null {
-  if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
-  if (task.steps !== null) throw stepsRefusal(task);
-  if (task.type !== 'gate' || task.awaitType !== 'human')
-    throw new Refused('state', `refused: ${task.id} is not an approval.`, `${task.id} is not an approval.`);
+  openApproval(task);
   const draft = new Draft(task);
   draft.close = { reason: note === undefined ? PERFORMED : `${PERFORMED}: ${note}`, resolution: 'done' };
-  recordDirect(draft, deciding, { performed: true, ...(note === undefined ? {} : { words: note }) });
+  recordDirect(draft, deciding, { outcome: 'owner-performed', ...(note === undefined ? {} : { words: note }) });
   handBackOnApproval(draft, around, `${deciding.actor} did the action of ${task.id} themselves, so no agent does it.`);
   return draft.write();
 }
@@ -1264,9 +1298,7 @@ export function maintenanceWrite(input: MaintenanceInput): TaskWrite | null {
       const why = op.explanation === undefined ? '' : `: ${op.explanation}`;
       other.comment =
         task.steps === null
-          ? `Approval request ${task.id} ${declined ? 'declined' : 'retired'}${why}. ` +
-            'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.' +
-            `\nExcluded action: ${task.description}`
+          ? excludedApproval(task, `${declined ? 'declined' : 'retired'}${why}`)
           : `Request ${task.id} for steps ${declined ? 'declined' : 'retired'}${why}. Its steps are not recorded as done. Continue only the remaining authorized work.`;
       if (op.action !== 'duplicate' && handedBackWith(dependent)) other.handBack(true);
     }
@@ -1479,6 +1511,16 @@ export async function dismiss(
     await tasksIn(context, await projectOf(context, projectId, 'write'), [dismissal.duplicateOf]);
   }
   return decide(context, projectId, taskId, (task) => dismissalWrite(task, dismissal), retry, shown);
+}
+
+export function decline(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  retry?: RetryRequest,
+  shown?: string,
+): Promise<Written> {
+  return decide(context, projectId, taskId, declineWrite, retry, shown);
 }
 
 export function approve(

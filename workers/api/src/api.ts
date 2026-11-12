@@ -21,6 +21,7 @@ import {
   acceptRoute,
   agentStatsRoute,
   chooseRoute,
+  declineRoute,
   dismissRoute,
   disputeRoute,
   performedRoute,
@@ -141,7 +142,9 @@ function routesOf(pathname: string): Routes | null {
   const gate = gatePath(pathname);
   if (gate !== null) {
     const { gateId } = gate;
-    const route = { resolve: resolveRoute, performed: performedRoute, steps: stepRoute }[gate.part];
+    const route = { resolve: resolveRoute, decline: declineRoute, performed: performedRoute, steps: stepRoute }[
+      gate.part
+    ];
     return { POST: (context, url, request) => route(context, url, request, gateId), scope: SCOPES.decide };
   }
   const task = taskPath(pathname);
