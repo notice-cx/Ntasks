@@ -600,6 +600,12 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
     );
   }
   assignment(task, change, actor);
+  const assignee = change.assignee === undefined ? task.assignee : change.assignee;
+  if (change.status === 'in_progress' && assignee === null)
+    throw refused(
+      `refused: ${task.id} needs a holder to be in progress. Use claim_task to take it, or set an assignee with the status.`,
+      `${task.id} needs a holder to be in progress. Claim it or set an assignee with the status.`,
+    );
 
   const set: Record<string, unknown> = {};
   const put = (field: string, value: unknown, current: unknown) => {
@@ -620,9 +626,10 @@ function planChange(context: WriteContext, task: Task, change: TaskChange, actor
     task.deferUntil,
   );
   put('choices', change.choices, task.choices);
-  const reopen = change.status !== undefined && task.status === 'closed';
-  if (reopen) set.status = change.status;
-  else put('status', change.status, task.status);
+  const status = change.status ?? (change.assignee === null && task.status === 'in_progress' ? 'open' : undefined);
+  const reopen = status !== undefined && task.status === 'closed';
+  if (reopen) set.status = status;
+  else put('status', status, task.status);
   if (change.claim) {
     put('assignee', actor.name, task.assignee);
     put('status', 'in_progress', task.status);

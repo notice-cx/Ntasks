@@ -22,6 +22,8 @@ protocol appears in neither table.
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "opens a gate the task waits on, which no agent sees as work, until a person closes it" |
 | STATE-4 | `workers/api/test/api/write-tools.test.ts` › "refuses a task someone else holds, a closed one and one that is not open" |
 | STATE-5 | `workers/api/test/engine/writes.test.ts` › "lets a person give a held task to someone else, or release it" |
+| STATE-4, STATE-5 | `workers/api/test/api/write-tools.test.ts` › "refuses in-progress status without a holder and makes a released claim ready again" |
+| STATE-4, STATE-5 | `workers/api/test/api/http-writes.test.ts` › "requires a holder for in-progress status and opens the task when its holder releases it" |
 | STATE-6 | `workers/api/test/api/write-tools.test.ts` › "refuses what the task state forbids: a new choice set, a shipped card, a human label, a held hand-over" |
 | STATE-7 | `workers/api/test/api/write-tools.test.ts` › "refuses a task held by someone else, one waiting on an approval or on open children, and a person’s decision" |
 | STATE-7 | `workers/api/test/api/write-tools.test.ts` › "closes a duplicate, linking it to the task it duplicates" |

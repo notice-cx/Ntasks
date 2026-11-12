@@ -510,6 +510,30 @@ describe('PATCH /api/tasks/:id', () => {
     expect(await current(id)).toMatchObject({ version, work });
   });
 
+  it('requires a holder for in-progress status and opens the task when its holder releases it', async () => {
+    const { id } = await task();
+    const patch = (body: Record<string, unknown>) =>
+      send(target, 'PATCH', `/api/tasks/${id}`, { projectId: project.id, ...body });
+    const refusal = {
+      status: 409,
+      body: {
+        error: 'task_refused',
+        detail: `${id} needs a holder to be in progress. Claim it or set an assignee with the status.`,
+      },
+    };
+    expect(await patch({ status: 'in_progress' })).toEqual(refusal);
+    expect(await current(id)).toMatchObject({ status: 'open', assignee: null, version: 1 });
+
+    const assigned = await patch({ status: 'in_progress', assignee: WRITER.name });
+    expect(assigned.status).toBe(200);
+    expect(assigned.body.task).toMatchObject({ status: 'in_progress', assignee: WRITER.name });
+    expect(await patch({ status: 'in_progress', assignee: '' })).toEqual(refusal);
+
+    const released = await patch({ assignee: '' });
+    expect(released.status).toBe(200);
+    expect(released.body.task).toMatchObject({ status: 'open', assignee: null, ready: true });
+  });
+
   it('refuses a claim whose work is not an object, writing nothing', async () => {
     const { id } = await task();
     const before = await current(id);

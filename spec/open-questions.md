@@ -32,10 +32,11 @@ never releases a claim because time passed.
 ### OQ-3
 
 **Is `in_progress` with nobody holding it a state?** <a id="oq-3"></a>
-([STATE-4](protocol.md#state-4)) `update_task` can set the status
-`in_progress` without an assignee, and a claim then refuses the task. This
-looks accidental: the protocol could make `in_progress` imply a holder. No
-test covers the refusal.
+([STATE-4](protocol.md#state-4), [STATE-5](protocol.md#state-5)) Closed:
+Ntasks requires a holder when a write sets `in_progress`. Releasing an
+in-progress task without specifying a status sets it to `open`. An old
+task left in progress without a holder can be set to `open` before it is
+claimed.
 
 ### OQ-4
 
