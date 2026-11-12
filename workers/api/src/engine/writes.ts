@@ -2223,6 +2223,7 @@ export class Writes {
     // and stays as the approval was asked for, so no answer comes to cover another.
     if (
       current.type === 'gate' &&
+      current.steps === null &&
       [...removeExternal.map((url) => current.externalLinks.find((link) => link.url === url)), ...addExternal].some(
         (link) =>
           link?.kind === 'pull-request' ||

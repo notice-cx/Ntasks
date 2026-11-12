@@ -667,6 +667,26 @@ describe('a request that a person do steps', () => {
     return { tasks, project, task, gate: created[0]! };
   }
 
+  it('adds and removes a pull-request link', async () => {
+    const { tasks, project, gate } = await asked();
+    const link = { url: 'https://github.com/example/site/pull/12', title: 'The update', kind: 'pull-request' as const };
+    const { task: linked } = await tasks.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: gate.version, addExternalLinks: [link] },
+      AGENT,
+    );
+    expect(linked.externalLinks).toEqual([link]);
+
+    const { task: unlinked } = await tasks.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: linked.version, removeExternalLinks: [link.url] },
+      AGENT,
+    );
+    expect(unlinked.externalLinks).toEqual([]);
+  });
+
   it('changes only the marks on its steps, never their text or commands, and only on a request', async () => {
     const { tasks, project, task, gate } = await asked();
     const marks = gate.steps!.map((step, index) =>
