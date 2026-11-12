@@ -23,6 +23,8 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
   '- Every command, query, request or snippet a person might run or paste goes in its own fenced block with a language tag (bash, sql, json…): one command per block, with no $ prompt and no output; a multi-line command stays one block. Inline backticks are only for names that are not run: file paths, identifiers, settings.',
   '- In a description: steps as a numbered list, one action each; links with readable labels, pull requests as owner/repo#123; numbers with units; paragraphs of at most 3 sentences; bullets for 3 or more items; no internal shorthand.',
   '- acceptance: a short checklist of observable facts, provable the day the work lands. Never "watch for N days": close on today\'s proof and name where a recurrence would show. Implementation work is proven by tests and local or fixture measurements, never by a check in production: close it on that proof, name in the close reason any production condition it leaves unchecked, ask no approval only to verify it in production, and file a bug if production later shows a problem.',
+  "- A progress comment and a close reason say what changed as before and after, why, and how it was checked: the commands run and what they showed, and what was not run. A pull request description says the same, in the sections of its repository's template when it has one.",
+  "- A task's pull request changes what the task asks and nothing else: other work found on the way is its own task (workflow step 6). Its title names the change in one short sentence, and when the outcome of the work changes, the task's title changes to name it.",
   '- A person is asked in one of three ways. Decide: a task labelled human with choices, when they pick an option. Approve: request_human_approval, when you will do the action once they allow it. Do: request_human_action, when only they can act, such as on their own machine or in an admin console.',
   "- An approval: request_human_approval with title, the action to approve, and a description in the approval sections above, with the exact commands under ## What the agent will do. A task filed with its approval passes the same title and description as create_task's approval.",
   "- An approval to merge a pull request names it as pr, and the pull request's auto-merge stays off: when the person presses Approve, Ntasks's GitHub App turns it on, and every answer is posted on the pull request as one comment, which tells an agent watching it.",
@@ -40,12 +42,12 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
   '- Production access (reads included), spending, external messages, destructive actions and material business or policy commitments require explicit action-specific owner approval. Credentials, prerequisites and old approvals never grant a new action. Retiring a gate grants no permission.',
 ]);
 
-/** What the task tools gained lately, oldest first, at most three. */
+/** What the task tools and rules gained lately, oldest first, at most four. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-11: report_delivery takes tasks, closed tasks by id, for a change that went live where no pull request or commit signal reaches Ntasks, such as a deploy by hand; tasks alone need no repository (workflow step 5).',
   "2026-11-11: move_tasks moves tasks to another epic or project of the workspace. In another project a task takes an id with that project's prefix; its old id still names it in every tool, whose answer then maps it to the new one in formerIds (workflow step 6).",
   '2026-11-11: list_tasks takes changed_by, changed_for and changed_in: only the tasks a name, a helper agent or an agent session changed or commented on, so a coordinator lists what its helpers did. comment_on_task and close_task take test, the test run they report: its command, passed or failed, its counts and the commit it ran on (workflow steps 4 and 5).',
   "2026-11-11: request_human_approval, and create_task's approval, take pr: the GitHub pull request the approval gates. When the person presses Approve, Ntasks's GitHub App turns on its auto-merge; every answer, approved, declined or done by the person, is posted on it as one comment (Writing a task: An approval).",
+  "2026-11-12: a progress comment, a close reason and a pull request description say what changed as before and after, why, and how it was checked, including what was not run; a task's pull request holds only what the task asks (Writing a task).",
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
