@@ -65,6 +65,7 @@ since, the answer is refused with `409`, `task_refused` and
 | Pick an option | `POST /api/tasks/:id/choose` | `projectId`, `option` (`a` to `f`), optionally `note` |
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
+| Decline an approval | `POST /api/gates/:id/decline` | `projectId`, optionally `proposalVersion` |
 | Report that the person did the action themselves | `POST /api/gates/:id/performed` | `projectId`, optionally `note` ([STATE-10](protocol.md#state-10)) |
 | Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
 | Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |

@@ -364,6 +364,12 @@ function TaskPage({
   if (ask === 'approve') {
     actions = (
       <>
+        {capabilities.operations?.includes('decline') && operationAvailable(capabilities, 'decline') ? (
+          <Button type="button" className="max-sm:px-2" onClick={() => answer({ kind: 'decline', ...scope })}>
+            <X aria-hidden className="sm:hidden" />
+            <span className="max-sm:sr-only">Decline</span>
+          </Button>
+        ) : null}
         <PerformedButton
           open={panel?.kind === 'performed'}
           onToggle={() => setPanel(panel?.kind === 'performed' ? null : { kind: 'performed' })}

@@ -362,6 +362,7 @@ export const WaitingRow = memo(function WaitingRow({
     choices: task.choices ?? null,
     steps: task.steps ?? null,
     pullRequest: task.pullRequest ?? null,
+    canDecline: writable && capabilities.operations?.includes('decline') === true,
     disabledReason: verbReason(
       capabilities,
       writable &&

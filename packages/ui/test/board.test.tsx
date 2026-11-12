@@ -713,6 +713,23 @@ describe('a row waiting for you', () => {
     expect(await screen.findByText('Only a person signed in to the web app can approve web-g7p2.')).toBeTruthy();
   });
 
+  it('lets a person decline an approval after the Undo window', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks', api);
+    const row = (await group('Waiting for you')).querySelector('[data-task-row="web-g7p2"]') as HTMLElement;
+    fireEvent.click(await enabledButton('Decline', row));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() =>
+      expect(api.state.tasks.find((entry) => entry.id === 'web-g7p2')).toMatchObject({
+        status: 'closed',
+        resolution: 'wont-do',
+        answer: { option: 'decline', relayed: false },
+      }),
+    );
+  });
+
   it('closes an approval whose action the person did themselves, with their note, after the Undo window', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks', api);

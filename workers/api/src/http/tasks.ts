@@ -440,10 +440,10 @@ export function taskPath(pathname: string): { readonly taskId: string; readonly 
 }
 
 /** What a path under /api/gates/:id names: an approval, a report that the action was done, or a step's marks. */
-export type GatePart = 'resolve' | 'performed' | 'steps';
+export type GatePart = 'resolve' | 'decline' | 'performed' | 'steps';
 
-/** The gate id and route in /api/gates/:id/resolve, /performed or /steps, or null for another path. */
+/** The gate id and operation in a gate route, or null for another path. */
 export function gatePath(pathname: string): { readonly gateId: string; readonly part: GatePart } | null {
-  const match = /^\/api\/gates\/([^/]+)\/(resolve|performed|steps)$/u.exec(pathname);
+  const match = /^\/api\/gates\/([^/]+)\/(resolve|decline|performed|steps)$/u.exec(pathname);
   return match && isTaskId(match[1]) ? { gateId: match[1]!, part: match[2] as GatePart } : null;
 }

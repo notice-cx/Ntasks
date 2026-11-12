@@ -291,6 +291,11 @@ async function drive(): Promise<readonly Sample[]> {
     'approval',
   );
   await as('POST /api/gates/:id/resolve', `/api/gates/${approval}/resolve`, inProject());
+  const declinedApproval = idOf(
+    await tool(owner, 'request_human_approval', { task: deploy, reason: 'Publish another post.' }),
+    'approval',
+  );
+  await as('POST /api/gates/:id/decline', `/api/gates/${declinedApproval}/decline`, inProject());
 
   const update = (await tool(owner, 'create_task', { project: projectId, title: 'Update the server' })).id as string;
   const performed = idOf(

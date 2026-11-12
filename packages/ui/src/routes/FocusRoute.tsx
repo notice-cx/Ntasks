@@ -330,6 +330,17 @@ function FocusDecision({
               {gated ? <AutoMergeNote pullRequest={gated} id={mergeId} /> : null}
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {notNow}
+                {writable && capabilities.operations?.includes('decline') === true ? (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      answer({ kind: 'decline', ...scope });
+                      onSent();
+                    }}
+                  >
+                    Decline
+                  </Button>
+                ) : null}
                 <PerformedButton
                   open={performing}
                   onToggle={() => setPerforming((open) => !open)}

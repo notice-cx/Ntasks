@@ -111,6 +111,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'respond',
   'dismiss',
   'resolve',
+  'decline',
   'performed',
   'choose',
   'dispute',
@@ -404,7 +405,7 @@ export function createFixtureTasksApi({
   }
 
   /** A person's own answer to an approval, recorded on it as the Worker records one. */
-  function answerHere(task: FixtureTask, option: 'approve' | 'done', quote: string | null): void {
+  function answerHere(task: FixtureTask, option: 'approve' | 'decline' | 'done', quote: string | null): void {
     task.answer = {
       option,
       quote,
@@ -1207,6 +1208,16 @@ export function createFixtureTasksApi({
           throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
         close(task, note ? `Did it myself: ${note}` : 'Did it myself');
         answerHere(task, 'done', note ?? null);
+      });
+    },
+    async declineGate(id, key, options) {
+      reach();
+      once(options?.idempotencyKey, ['decline', id, key], () => {
+        const task = find(id, key);
+        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
+          throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        close(task, 'Declined', 'wont-do');
+        answerHere(task, 'decline', null);
       });
     },
     async markStep(id, key, marking, options) {

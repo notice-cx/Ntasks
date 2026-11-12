@@ -417,6 +417,7 @@ export type InboxAnswer = {
   readonly proposalVersion?: string | null;
 } & (
   | { kind: 'approve' }
+  | { kind: 'decline' }
   /** The person did the approval's action themselves, so no agent does it. */
   | { kind: 'performed'; note?: string }
   | { kind: 'answer'; text: string }
@@ -433,6 +434,11 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
   switch (answer.kind) {
     case 'approve':
       return api.resolveGate(answer.id, answer.project, undefined, shown);
+    case 'decline':
+      return (
+        api.declineGate?.(answer.id, answer.project, shown) ??
+        Promise.reject(new Error('Declining approvals is unavailable.'))
+      );
     case 'performed':
       return api.reportPerformed(answer.id, answer.project, answer.note, shown);
     case 'answer':
@@ -456,6 +462,7 @@ export function sendInboxAnswer(api: TasksApi, answer: InboxAnswer, keepalive = 
 
 const ANSWERED: Record<InboxAnswer['kind'], string> = {
   approve: 'Approved',
+  decline: 'Declined',
   performed: 'Done by you',
   answer: 'Answered',
   choose: 'Chosen',

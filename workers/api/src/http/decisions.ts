@@ -30,6 +30,7 @@ import {
   ANSWERED,
   approve,
   choose,
+  decline,
   DISMISSED,
   dismiss,
   dispute,
@@ -192,6 +193,19 @@ export async function resolveRoute(
   const projectId = projectArg(body, 'projectId', 'http');
   const reason = textArg(body, 'reason', TASK_LIMITS.reason, false);
   return decided(context, await approve(context, projectId, gateId, reason, retry(body), shownOf(body)));
+}
+
+/** POST /api/gates/:id/decline: a person's refusal of an approval. */
+export async function declineRoute(
+  context: WriteContext,
+  url: URL,
+  request: Request,
+  gateId: string,
+): Promise<Response> {
+  const { body, retry } = await writeOf(request, url, 'decline', { task: gateId });
+  only(body, ['projectId', 'proposalVersion']);
+  const projectId = projectArg(body, 'projectId', 'http');
+  return decided(context, await decline(context, projectId, gateId, retry(body), shownOf(body)));
 }
 
 /** POST /api/gates/:id/performed: a person's report that they did an approval's action themselves. */
