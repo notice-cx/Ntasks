@@ -278,6 +278,40 @@ describe('POST /api/tasks/move', () => {
     expect((await stored(to, [newId]))[0]).toMatchObject({ priority: 0 });
   });
 
+  it('accepts a moved task’s former id in create, update, link and close bodies', async () => {
+    const [from, to] = [await newProject(engine), await newProject(engine)];
+    const moving = await task(from, { title: 'Launch', type: 'epic' });
+    const moved = await send(target, 'POST', '/api/tasks/move', { tasks: [moving.id], projectId: to.id });
+    expect(moved.status).toBe(200);
+    const newId = (moved.body.moved as Record<string, string>)[moving.id]!;
+    const child = await task(to);
+    const edit = (body: Record<string, unknown>) =>
+      send(target, 'PATCH', `/api/tasks/${child.id}`, { projectId: to.id, ...body });
+    expect(await edit({ parent: moving.id })).toMatchObject({ status: 200, body: { task: { parent: newId } } });
+    const created = await send(target, 'POST', '/api/tasks', {
+      projectId: to.id,
+      title: 'Another part',
+      parent: moving.id,
+    });
+    expect(created.status).toBe(200);
+    expect((await stored(to, [String(created.body.id)]))[0]?.parentId).toBe(newId);
+    expect(await edit({ addLinks: [{ taskId: moving.id, type: 'related' }] })).toMatchObject({
+      status: 200,
+      body: { task: { dependencies: [{ id: newId, type: 'related' }] } },
+    });
+    expect(await edit({ removeLinks: [moving.id] })).toMatchObject({
+      status: 200,
+      body: { task: { dependencies: [] } },
+    });
+    const closed = await send(target, 'POST', `/api/tasks/${child.id}/close`, {
+      projectId: to.id,
+      reason: 'Same work',
+      resolution: 'duplicate',
+      duplicateOf: moving.id,
+    });
+    expect(closed).toMatchObject({ status: 200, body: { task: { duplicateOf: newId } } });
+  });
+
   it('answers for a moved task named by its old id and project to a sender who no longer reaches that project', async () => {
     const [from, to] = [await newProject(engine), await newProject(engine)];
     const moving = await task(from, { title: 'Write the runbook' });

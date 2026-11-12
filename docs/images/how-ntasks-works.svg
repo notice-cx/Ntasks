@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 508" width="800" height="508" role="img" aria-labelledby="title desc">
   <title id="title">How Ntasks works</title>
-  <desc id="desc">AI agents connect to /api/mcp and sign in with OAuth 2.1. People use the web app; the owner signs in with GitHub. Services such as NoticeOS call /api/tasks with a revocable credential, acting for a named agent. Every task request goes to the Ntasks Worker on Cloudflare, which signs it in and checks which projects the caller may reach, then hands it to the task store: one Durable Object with its own SQLite database that holds the tasks, their links, their full history and a change feed. Sign-in data and project grants are in D1. The web app's boards refresh from the change feed at /api/changes.</desc>
+  <desc id="desc">AI agents, people and services send task requests to the Ntasks Worker. It signs in each caller, checks their access and routes each request to its workspace. Workspace A and workspace B each have their own Durable Object and SQLite database for tasks, links, history and a change feed. D1 holds sign-in data and project grants. The web app refreshes from the selected workspace's change feed.</desc>
   <style>
     svg {
       --bg: #ffffff; --card: #f6f8fa; --line: #d0d7de; --edge: #818b98;
@@ -31,7 +31,6 @@
     .feed { stroke: var(--green); stroke-width: 2; }
     .feed-head { fill: var(--green); }
     .chip { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
-    .chip-feed { fill: var(--green-soft); stroke: var(--green); stroke-width: 1.5; }
     .chip-text { font-size: 15px; }
     .board { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; }
     .bar { fill: var(--edge); }
@@ -128,26 +127,28 @@
   <text class="h c" x="400" y="254">Ntasks Worker</text>
   <text class="s c" x="400" y="282">signs in every task request and checks which projects the caller may reach</text>
 
-  <line class="edge" x1="200" y1="302" x2="200" y2="348"/>
-  <polygon class="edge-head" points="194,348 206,348 200,358"/>
-  <line class="feed" x1="364" y1="358" x2="364" y2="312"/>
-  <polygon class="feed-head" points="358,312 370,312 364,302"/>
+  <line class="edge" x1="123" y1="302" x2="123" y2="348"/>
+  <polygon class="edge-head" points="117,348 129,348 123,358"/>
+  <line class="feed" x1="221" y1="358" x2="221" y2="312"/>
+  <polygon class="feed-head" points="215,312 227,312 221,302"/>
+  <line class="edge" x1="432" y1="302" x2="432" y2="348"/>
+  <polygon class="edge-head" points="426,348 438,348 432,358"/>
   <line class="edge" x1="676" y1="302" x2="676" y2="348"/>
   <polygon class="edge-head" points="670,348 682,348 676,358"/>
 
-  <rect class="box" x="32" y="358" width="528" height="118" rx="12"/>
-  <rect id="store-pulse" class="pulse run" x="32" y="358" width="528" height="118" rx="12"/>
-  <text class="h" x="48" y="388">Task store</text>
-  <text class="s" x="48" y="412">one Durable Object with its own SQLite database</text>
-  <rect class="chip" x="48" y="428" width="64" height="30" rx="15"/>
-  <text class="chip-text c" x="80" y="448">tasks</text>
-  <rect class="chip" x="122" y="428" width="60" height="30" rx="15"/>
-  <text class="chip-text c" x="152" y="448">links</text>
-  <rect class="chip" x="192" y="428" width="106" height="30" rx="15"/>
-  <text class="chip-text c" x="245" y="448">full history</text>
-  <rect class="chip-feed" x="308" y="428" width="112" height="30" rx="15"/>
-  <rect id="feed-pulse" class="pulse-chg run" x="308" y="428" width="112" height="30" rx="15"/>
-  <text class="chip-text c green" x="364" y="448">change feed</text>
+  <rect class="box" x="32" y="358" width="254" height="118" rx="12"/>
+  <rect id="store-pulse" class="pulse run" x="32" y="358" width="254" height="118" rx="12"/>
+  <text class="h" x="48" y="388">Workspace A task store</text>
+  <text class="s" x="48" y="412">Durable Object with SQLite</text>
+  <rect class="chip" x="48" y="428" width="224" height="30" rx="15"/>
+  <rect id="feed-pulse" class="pulse-chg run" x="48" y="428" width="224" height="30" rx="15"/>
+  <text class="chip-text c" x="160" y="448">tasks, links, history, <tspan class="green">changes</tspan></text>
+
+  <rect class="box" x="306" y="358" width="254" height="118" rx="12"/>
+  <text class="h" x="322" y="388">Workspace B task store</text>
+  <text class="s" x="322" y="412">Durable Object with SQLite</text>
+  <rect class="chip" x="322" y="428" width="224" height="30" rx="15"/>
+  <text class="chip-text c" x="434" y="448">tasks, links, history, changes</text>
 
   <rect class="box" x="584" y="358" width="184" height="118" rx="12"/>
   <text class="h" x="600" y="388">D1</text>
@@ -158,9 +159,9 @@
   <circle id="dot-agent" class="dot dot-req run" cx="137" cy="146" r="7"/>
   <circle id="dot-person" class="dot dot-req run" cx="388" cy="146" r="7"/>
   <circle id="dot-service" class="dot dot-req run" cx="663" cy="146" r="7"/>
-  <circle id="hand-1" class="dot dot-req run" cx="200" cy="308" r="7"/>
-  <circle id="hand-2" class="dot dot-req run" cx="200" cy="308" r="7"/>
-  <circle id="hand-3" class="dot dot-req run" cx="200" cy="308" r="7"/>
-  <circle id="change-1" class="dot dot-chg run" cx="364" cy="350" r="7"/>
+  <circle id="hand-1" class="dot dot-req run" cx="123" cy="308" r="7"/>
+  <circle id="hand-2" class="dot dot-req run" cx="123" cy="308" r="7"/>
+  <circle id="hand-3" class="dot dot-req run" cx="123" cy="308" r="7"/>
+  <circle id="change-1" class="dot dot-chg run" cx="221" cy="350" r="7"/>
   <circle id="change-2" class="dot dot-chg run" cx="412" cy="214" r="7"/>
 </svg>

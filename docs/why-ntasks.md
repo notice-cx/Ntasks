@@ -65,6 +65,8 @@ needs a person to check it.
   answers that are "almost right, but not quite" as a frustration.
 - In four of our five agent sessions, a closed task did not show whether its
   change was merged or deployed.
+- Linear added release tracking in April 2026, which updates an issue's
+  status when its change reaches production.
 
 **What Ntasks does.** A closed task records its proof: a commit, a pull
 request or a link. A task closed with a commit or a pull request shows whether
@@ -78,8 +80,9 @@ with no proof says "No proof".
 </picture>
 
 <details>
-<summary>Public reports</summary>
+<summary>Public reports and vendor responses</summary>
 
+Public reports:
 [claude-code#14947](https://github.com/anthropics/claude-code/issues/14947),
 [claude-code#32281](https://github.com/anthropics/claude-code/issues/32281),
 [claude-code#4462](https://github.com/anthropics/claude-code/issues/4462),
@@ -91,6 +94,9 @@ with no proof says "No proof".
 [PR merged is not done](https://marlinbian-site.pages.dev/writing/pr-merged-is-not-done/),
 [closed-loop done for agent CI/CD](https://agent-zone.pages.dev/knowledge/cicd/closed-loop-done-for-agent-cicd/).
 
+Vendor responses:
+[Linear changelog](https://linear.app/changelog/2026-04-30-releases).
+
 </details>
 
 ## It's hard to see what each agent is doing
@@ -101,11 +107,16 @@ which one waits for them, and what each helper agent returned.
 - In one of our sessions, helper agents could not reach the task hub, so
   their coordinator claimed their tasks for them 11 minutes after they had
   started.
+- A Paperclip user counted 139 failed runs on one task in under three days,
+  with nothing on the board showing them.
+- Another Paperclip user asked for a list of the tasks only a person can
+  unblock, kept apart from the notification inbox.
 - GitHub and Linear now show agent sessions on issues.
 
 **What Ntasks does.** Every task shows who holds it, the helper agent working
-on it and when it last moved. Everything that needs a person is in one list,
-Waiting for you.
+on it and when it last moved. A task in progress whose holder has done nothing
+on it for a day, or never recorded anything, is marked Stalled. Everything
+that needs a person is in one list, Waiting for you.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-live-work-dark.webp">
@@ -123,7 +134,10 @@ Public reports:
 [Cursor forum](https://forum.cursor.com/t/parent-agent-goes-idle-for-hours-after-background-subagents-finish-completion-does-not-resume-the-chat/172421),
 [Hacker News: parallel coding agents](https://news.ycombinator.com/item?id=45489884),
 [Maggie Appleton on Gas Town](https://maggieappleton.com/gastown),
-[task-master#740](https://github.com/eyaltoledano/claude-task-master/issues/740).
+[task-master#740](https://github.com/eyaltoledano/claude-task-master/issues/740),
+[paperclip#13662](https://github.com/paperclipai/paperclip/issues/13662),
+[paperclip#14600](https://github.com/paperclipai/paperclip/issues/14600),
+[paperclip#923](https://github.com/paperclipai/paperclip/issues/923).
 
 Vendor responses:
 [GitHub changelog](https://github.blog/changelog/2026-03-26-agent-activity-in-github-issues-and-projects/),
@@ -185,19 +199,33 @@ the person can dispute it.
 
 Dedicated agent trackers take hours to install, upgrade and repair, general
 trackers feel slow and built for people only, and task bookkeeping uses up the
-agent's context and plan limits.
+agent's context and plan limits. A tool that starts the agents itself can also
+fall behind an agent's own releases and run it without the person's settings.
 
 - A Beads user spent 9.5 hours maintaining the tool rather than using it, and
   Thoughtworks' Technology Radar notes that Beads has grown heavier than the
   light tracker it began as.
+- A developer had Claude Code review 165 of its own sessions and counted over
+  500 errors and 370 retries while it worked with Linear through Linear's MCP
+  server, API and a community command-line tool, an estimated 700,000 tokens
+  a month.
 - Anthropic's guidance for agent tools asks for fewer tools that combine
   steps, readable names, short replies and errors that say how to fix them.
 - In our agent sessions, a small fix took four to six task calls, one agent
   pasted the same two long ids into all 56 of its calls, and claim and close
   replies returned up to 13,000 characters each.
+- Paperclip starts each agent itself. Its users report that its bundled copy
+  of Claude Code could not run newer models that their installed Claude Code
+  ran, that a Claude subscription connection stopped working about eight hours
+  after sign-in, and that agents ran without the person's own Claude Code MCP
+  servers, `CLAUDE.md` and logins.
+- A Paperclip user left 22 agents with no tasks overnight and found they had
+  used hundreds of thousands of tokens.
 
 **What Ntasks does.** Nothing is installed in your repositories: agents
 connect to one address over MCP, and a new deployment asks for one secret.
+Ntasks does not run your agents: each one runs where you already run it, with
+its own sign-in and settings.
 
 - Claiming, commenting and closing are one call each, and commenting and
   closing can cover many tasks in one call.
@@ -222,9 +250,15 @@ close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test p
 [Hacker News: Gas Town](https://news.ycombinator.com/item?id=46734302),
 [Hacker News: syncing Beads](https://news.ycombinator.com/item?id=49425766),
 [Rufus Pollock](https://rufuspollock.com/2026-02-23-issue-tracking-dilemma),
+[DEV: Linear from a terminal agent](https://dev.to/frr149/linear-agent-isnt-what-you-need-your-agent-was-already-in-the-terminal-45pk),
 [Thoughtworks Radar: Beads](https://www.thoughtworks.com/en-au/radar/tools/beads),
 [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents),
 [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp),
-[Task Master's MCP tools](https://docs.task-master.dev/capabilities/mcp).
+[Task Master's MCP tools](https://docs.task-master.dev/capabilities/mcp),
+[paperclip#13889](https://github.com/paperclipai/paperclip/issues/13889),
+[paperclip#13725](https://github.com/paperclipai/paperclip/issues/13725),
+[paperclip#14770](https://github.com/paperclipai/paperclip/issues/14770),
+[paperclip#373](https://github.com/paperclipai/paperclip/issues/373),
+[paperclip#3401](https://github.com/paperclipai/paperclip/issues/3401).
 
 </details>

@@ -115,30 +115,6 @@ function pushedStage(pushed: PushedCommit | null): DeliveryStage {
 export const NAMED_LINKS = 20;
 
 /**
- * Whether a write beside another task's only comments on it, which leaves
- * that task's version, and so its dropped list, as they were (#prepare).
- */
-function commentsOnly(write: check.CheckedWrite): boolean {
-  return (
-    write.comment !== null &&
-    Object.keys(write.set).length === 0 &&
-    write.close === null &&
-    !write.reopen &&
-    write.metadata === null &&
-    // Field values that change nothing leave the version too; an empty set of them is the one case read here.
-    (write.setFields === null || Object.keys(write.setFields).length === 0) &&
-    write.requestApproval === null &&
-    write.requestAction === null &&
-    write.addLabels.length === 0 &&
-    write.removeLabels.length === 0 &&
-    write.addLinks.length === 0 &&
-    write.removeLinks.length === 0 &&
-    write.addExternalLinks.length === 0 &&
-    write.removeExternalLinks.length === 0
-  );
-}
-
-/**
  * Whether a text names this task id as a whole id: not inside a longer
  * word, and not as the start of a child's id, as `web-a1.2` starts with
  * `web-a1`. A sentence's full stop after it still names it.
@@ -972,7 +948,6 @@ export class Writes {
     moved: readonly Moved[],
     at: string,
     unkept: readonly string[] = [],
-    commented: ReadonlySet<string> = new Set(),
   ): Promise<{ readonly statements: Statement[]; readonly epics: string[] }> {
     const formerIds = moved.flatMap((task) => (task.formerId === undefined ? [] : [task.formerId]));
     // A task this write moves to another project is read by its old id, and the batch gives it its new one.
@@ -1089,10 +1064,7 @@ export class Writes {
     const epics: string[] = [];
     // An epic this batch closes, such as a child epic closing with its parent, is no open task to link to.
     // A task the write only comments on stays as it was, so it can still take a link.
-    const unlinked = new Set([
-      ...[...written].filter((id) => !commented.has(id)),
-      ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : [])),
-    ]);
+    const unlinked = new Set([...written, ...[...decided].flatMap(([id, placed]) => (placed.closed ? [id] : []))]);
     for (const [epicId, placed] of decided) {
       const epic = read.get(epicId)!;
       // An epic closed and opened again in one write is left as it was.
@@ -1643,27 +1615,26 @@ export class Writes {
     if (row.version !== write.expectedVersion) refuse('version_conflict');
     const at = this.#now();
     const commentId = write.comment === null ? null : crypto.randomUUID();
-    // A task this write changes takes no named link: the change clears its dropped list anyway. A comment changes nothing.
-    const written = new Set([
-      taskId,
-      ...write.others.flatMap((other) => (commentsOnly(other.write) ? [] : [other.taskId])),
-    ]);
-    const change = await this.#prepare(projectId, toTask(row), write, actor, at, false, commentId, written);
-    const moved = [movedBy(toTask(row), write)];
-    const unkept = unkeptBy(toTask(row), write) ? [taskId] : [];
+    const current = toTask(row);
+    const change = await this.#prepare(projectId, current, write, actor, at, false, commentId);
     const others = await Promise.all(
       write.others.map(async (other) => {
         const found = rows.find((candidate) => candidate.id === other.taskId);
         if (found === undefined) refuse('not_found', `There is no task ${other.taskId}.`);
         if (found.version !== other.write.expectedVersion) refuse('version_conflict');
         const otherComment = other.write.comment === null ? null : crypto.randomUUID();
-        moved.push(movedBy(toTask(found), other.write));
-        if (unkeptBy(toTask(found), other.write)) unkept.push(other.taskId);
-        return this.#prepare(projectId, toTask(found), other.write, actor, at, true, otherComment, written);
+        const task = toTask(found);
+        const plan = await this.#prepare(projectId, task, other.write, actor, at, true, otherComment);
+        return { task, write: other.write, plan };
       }),
     );
-    const commented = new Set(write.others.flatMap((other) => (commentsOnly(other.write) ? [other.taskId] : [])));
-    const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept, commented);
+    // Only versioned changes decide their own epic and clear that task's dropped links.
+    const edited = [{ task: current, write, plan: change }, ...others].filter(({ plan }) => !plan.commentOnly);
+    const written = new Set(edited.map(({ task }) => task.id));
+    const moved = edited.map(({ task, write }) => movedBy(task, write));
+    const unkept = edited.flatMap(({ task, write }) => (unkeptBy(task, write) ? [task.id] : []));
+    const { statements: settled, epics } = await this.#epicsAfter(moved, at, unkept);
+    const beside = await Promise.all(others.map(({ plan }) => plan.statements(null, written)));
 
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
       const opens = write.requestApproval !== null || write.requestAction !== null;
@@ -1676,8 +1647,8 @@ export class Writes {
       };
       const statements: Statement[] = [
         ...this.#staleReceipt(retry),
-        ...change(gateId),
-        ...others.flatMap((other) => other(null)),
+        ...(await change.statements(gateId, written)),
+        ...beside.flat(),
         ...settled,
         ...this.#receipt(retry, projectId, recorded, at, [
           taskId,
@@ -1988,8 +1959,10 @@ export class Writes {
     at: string,
     beside: boolean,
     commentId: string | null,
-    written: ReadonlySet<string>,
-  ): Promise<(gateId: string | null) => Statement[]> {
+  ): Promise<{
+    commentOnly: boolean;
+    statements: (gateId: string | null, written: ReadonlySet<string>) => Promise<Statement[]>;
+  }> {
     const taskId = current.id;
     const set = write.set;
     const columns: Row = {};
@@ -2177,21 +2150,6 @@ export class Writes {
     );
     const addLinks = write.addLinks.filter((link) => links.get(link.taskId) !== link.type);
     for (const link of addLinks) links.set(link.taskId, link.type);
-    // A task dropped here relates to each open task whose text names it, so that task relies on it (droppedSince).
-    if (write.close !== null && DROPPED.includes(write.close.resolution)) {
-      // A link the close itself removes stays removed.
-      const linked = new Set([
-        ...links.keys(),
-        ...current.dependents.map((link) => link.taskId),
-        ...written,
-        ...write.removeLinks,
-      ]);
-      for (const naming of await this.#namedBy(taskId, linked)) {
-        addLinks.push({ taskId: naming, type: 'related' });
-        links.set(naming, 'related');
-      }
-    }
-
     const values = new Map(Object.entries(current.fields));
     const setValues: [string, FieldValue][] = [];
     const clearValues: string[] = [];
@@ -2256,7 +2214,7 @@ export class Writes {
       removeLinks.length === 0 &&
       addExternal.length === 0 &&
       removeExternal.length === 0;
-    return (gateId) => {
+    const statements = async (gateId: string | null, written: ReadonlySet<string>): Promise<Statement[]> => {
       const comment = (version: number): Statement[] => {
         if (write.comment === null || commentId === null) return [];
         return this.#comment(current, version, commentId, write.comment, write.pins, write.test, actor, at, through);
@@ -2275,8 +2233,22 @@ export class Writes {
         ];
       }
       const taskLinks = new Map(links);
+      const added = [...addLinks];
+      // A drop relates to the open tasks that name it, leaving removed links removed.
+      if (write.close !== null && DROPPED.includes(write.close.resolution)) {
+        const linked = new Set([
+          ...links.keys(),
+          ...current.dependents.map((link) => link.taskId),
+          ...written,
+          ...write.removeLinks,
+        ]);
+        for (const naming of await this.#namedBy(taskId, linked)) {
+          added.push({ taskId: naming, type: 'related' });
+          taskLinks.set(naming, 'related');
+        }
+      }
       if (gateId !== null) taskLinks.set(gateId, 'blocks');
-      if (gateId !== null || addLinks.length > 0 || removeLinks.length > 0) changes.dependencies = linkList(taskLinks);
+      if (gateId !== null || added.length > 0 || removeLinks.length > 0) changes.dependencies = linkList(taskLinks);
       const version = current.version + 1;
       const assignments = Object.keys(columns).map((column, index) => `${column} = ?${index + 1}`);
       const values = Object.values(columns);
@@ -2305,7 +2277,7 @@ export class Writes {
           this.#db.prepare('DELETE FROM task_edges WHERE task_id = ?1 AND depends_on_id = ?2').bind(taskId, id),
         );
       }
-      for (const link of addLinks) {
+      for (const link of added) {
         statements.push(
           this.#db
             .prepare(
@@ -2332,6 +2304,7 @@ export class Writes {
       statements.push(...comment(version), this.#event(current, version, kind, actor, at, changes, through));
       return statements;
     };
+    return { commentOnly, statements };
   }
 
   /**

@@ -166,6 +166,13 @@ function oneDueDate(dueAt: string | null | undefined, card: JsonObject | null | 
     refuse("invalid arguments: dueAt (a card's kill date is the due date; send one of them)");
 }
 
+/** A task id in a body, resolved to its current id when the sender may see it. */
+export async function currentTaskArg(context: WriteContext, body: Args, name: string): Promise<string | undefined> {
+  if (body[name] === undefined) return undefined;
+  const id = taskArg(body, name);
+  return (await formerIdsOf(context, [id])).get(id)?.taskId ?? id;
+}
+
 /** POST /api/tasks: files a task. Answers its id and its project's key. */
 export async function createRoute(context: WriteContext, url: URL, request: Request): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'create_task', {});
@@ -195,7 +202,7 @@ export async function createRoute(context: WriteContext, url: URL, request: Requ
     type: typeArg(body, 'type', 'http'),
     priority: priorityArg(body),
     labels: labelsArg(body, 'labels'),
-    parent: body.parent === undefined ? undefined : taskArg(body, 'parent'),
+    parent: await currentTaskArg(context, body, 'parent'),
     acceptance: textArg(body, 'acceptance', TASK_LIMITS.acceptance, false, true),
     notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
     design: textArg(body, 'design', TASK_LIMITS.design, false, true),
@@ -297,7 +304,7 @@ export async function updateRoute(
     title: textArg(body, 'title', TASK_LIMITS.title, false),
     description: textArg(body, 'description', TASK_LIMITS.description, false, true),
     assignee: assigneeArg(body),
-    parent: body.parent === '' ? null : body.parent === undefined ? undefined : taskArg(body, 'parent'),
+    parent: body.parent === '' ? null : await currentTaskArg(context, body, 'parent'),
     defer: emptyIsNone(deferArg(body)),
     acceptance: textArg(body, 'acceptance', TASK_LIMITS.acceptance, false, true),
     notes: textArg(body, 'notes', TASK_LIMITS.notes, false, true),
@@ -331,8 +338,17 @@ export async function updateRoute(
  */
 async function linksRoute(context: WriteContext, body: Args, projectId: string, taskId: string): Promise<Response> {
   only(body, ['projectId', 'addLinks', 'removeLinks']);
-  const addLinks = taskLinksArg(body, 'addLinks') ?? [];
-  const removeLinks = taskIdsArg(body, 'removeLinks') ?? [];
+  const added = taskLinksArg(body, 'addLinks') ?? [];
+  const removed = taskIdsArg(body, 'removeLinks') ?? [];
+  const former = await formerIdsOf(context, [...added.map((link) => link.taskId), ...removed]);
+  const current = (id: string) => former.get(id)?.taskId ?? id;
+  const addLinks = added.map((link) => ({ ...link, taskId: current(link.taskId) }));
+  const removeLinks = removed.map(current);
+  if (
+    new Set(addLinks.map((link) => link.taskId)).size !== addLinks.length ||
+    new Set(removeLinks).size !== removeLinks.length
+  )
+    refuse('invalid arguments: addLinks and removeLinks (name each task once)');
   if (addLinks.some((link) => removeLinks.includes(link.taskId)))
     refuse('invalid arguments: addLinks and removeLinks (a task both linked and unlinked; send one)');
   if ([...addLinks.map((link) => link.taskId), ...removeLinks].includes(taskId))
@@ -465,7 +481,8 @@ export async function closeRoute(context: WriteContext, url: URL, request: Reque
   const { body, retry } = await writeOf(request, url, 'close_task', { task: taskId });
   only(body, ['projectId', 'reason', 'resolution', 'duplicateOf', 'commit', 'pullRequest', 'link']);
   const projectId = projectArg(body, 'projectId', 'http');
-  const given = closingArgs(body, taskId, 'duplicateOf');
+  const duplicateOf = await currentTaskArg(context, body, 'duplicateOf');
+  const given = closingArgs({ ...body, duplicateOf }, taskId, 'duplicateOf');
   const closing = {
     ...given,
     ...shippedArgs(body, { commit: 'commit', pr: 'pullRequest', link: 'link' }, given.resolution),

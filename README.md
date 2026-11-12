@@ -31,7 +31,7 @@ whatever needs you.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.webp">
-    <img src="docs/images/hero-light.webp" width="840" alt="The Ntasks board: Waiting for you lists an approval with Did it myself and Approve buttons, two decisions with their options and a task with an Answer button; below it are two tasks in progress, one of them worked on by a helper agent, and four open tasks.">
+    <img src="docs/images/hero-light.webp" width="840" alt="The Ntasks board, with a Sidebar button, a site icon for Example web app, and Settings and Source code at the bottom of the sidebar. Waiting for you lists an approval, two decisions and a question above In progress and Open.">
   </picture>
 </p>
 
@@ -124,7 +124,7 @@ describes.
   development.
 - [Connect an agent](docs/agents.md): the setup command, each agent by hand
   and the Ntasks skill.
-- For contributors: [architecture](docs/architecture.md),
+- For contributors: [architecture and the workspace stores](docs/architecture.md),
   [the API](docs/api.md), [sign-in](docs/sign-in.md),
   [the task store](docs/task-store.md) and
   [the design system](docs/design.md).
