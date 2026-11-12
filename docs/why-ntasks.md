@@ -65,6 +65,8 @@ needs a person to check it.
   answers that are "almost right, but not quite" as a frustration.
 - In four of our five agent sessions, a closed task did not show whether its
   change was merged or deployed.
+- Linear added release tracking in April 2026, which updates an issue's
+  status when its change reaches production.
 
 **What Ntasks does.** A closed task records its proof: a commit, a pull
 request or a link. A task closed with a commit or a pull request shows whether
@@ -78,8 +80,9 @@ with no proof says "No proof".
 </picture>
 
 <details>
-<summary>Public reports</summary>
+<summary>Public reports and vendor responses</summary>
 
+Public reports:
 [claude-code#14947](https://github.com/anthropics/claude-code/issues/14947),
 [claude-code#32281](https://github.com/anthropics/claude-code/issues/32281),
 [claude-code#4462](https://github.com/anthropics/claude-code/issues/4462),
@@ -90,6 +93,9 @@ with no proof says "No proof".
 [Stack Overflow 2025 survey](https://survey.stackoverflow.co/2025/ai),
 [PR merged is not done](https://marlinbian-site.pages.dev/writing/pr-merged-is-not-done/),
 [closed-loop done for agent CI/CD](https://agent-zone.pages.dev/knowledge/cicd/closed-loop-done-for-agent-cicd/).
+
+Vendor responses:
+[Linear changelog](https://linear.app/changelog/2026-04-30-releases).
 
 </details>
 
@@ -199,6 +205,10 @@ fall behind an agent's own releases and run it without the person's settings.
 - A Beads user spent 9.5 hours maintaining the tool rather than using it, and
   Thoughtworks' Technology Radar notes that Beads has grown heavier than the
   light tracker it began as.
+- A developer had Claude Code review 165 of its own sessions and counted over
+  500 errors and 370 retries while it worked with Linear through Linear's MCP
+  server, API and a community command-line tool, an estimated 700,000 tokens
+  a month.
 - Anthropic's guidance for agent tools asks for fewer tools that combine
   steps, readable names, short replies and errors that say how to fix them.
 - In our agent sessions, a small fix took four to six task calls, one agent
@@ -240,6 +250,7 @@ close_task       { "task": "web-a1b2", "reason": "Fixed the redirect; the test p
 [Hacker News: Gas Town](https://news.ycombinator.com/item?id=46734302),
 [Hacker News: syncing Beads](https://news.ycombinator.com/item?id=49425766),
 [Rufus Pollock](https://rufuspollock.com/2026-02-23-issue-tracking-dilemma),
+[DEV: Linear from a terminal agent](https://dev.to/frr149/linear-agent-isnt-what-you-need-your-agent-was-already-in-the-terminal-45pk),
 [Thoughtworks Radar: Beads](https://www.thoughtworks.com/en-au/radar/tools/beads),
 [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents),
 [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp),
