@@ -7,7 +7,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createFixtureTasksApi } from '../src/fixture';
-import { NtasksApp, type TokenSource } from '../src/index';
+import { NtasksApp, sessionCookie, type TokenSource } from '../src/index';
 import { originOf } from '../src/api/connection';
 import { appPaths } from '../src/lib/paths';
 
@@ -54,7 +54,7 @@ function ntasks(status = 200) {
     const headers = new Headers(init.headers);
     sent.push({ url: input, authorization: headers.get('authorization') });
     if (status !== 200) return Response.json({ error: 'sign_in_required', detail: 'Sign in.' }, { status });
-    const body = await answer(new URL(input), headers);
+    const body = await answer(new URL(input, window.location.origin), headers);
     return body === null ? Response.json({ error: 'not_found' }, { status: 404 }) : Response.json(body);
   });
   return sent;
@@ -135,6 +135,30 @@ describe('a host page', () => {
     expect(await screen.findByText('Sign in to see your tasks')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(signIn).toHaveBeenCalledOnce();
+  });
+
+  it.each([() => null, async () => null])(
+    'shows sign-in without a request when the host has no token (%#)',
+    async (token) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      const signIn = vi.fn();
+      window.history.replaceState(null, '', '/tasks');
+      render(<NtasksApp apiOrigin={NTASKS} tokenSource={{ token, signIn }} />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+      expect(signIn).toHaveBeenCalledOnce();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, sessionCookie()])('loads the board with a session cookie (%#)', async (tokenSource) => {
+    const sent = ntasks();
+    window.history.replaceState(null, '', '/tasks');
+    render(<NtasksApp tokenSource={tokenSource} />);
+
+    expect(await screen.findByRole('link', { name: TASK })).toBeTruthy();
+    expect(sent).toContainEqual({ url: '/api/workspaces', authorization: null });
   });
 });
 

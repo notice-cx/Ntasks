@@ -73,13 +73,13 @@ interface TokenSource {
 ```
 
 `token()` is asked before every request, and its answer goes in the
-`authorization: Bearer <token>` header; null sends no header. It answers
-from memory and refreshes the token itself. A write sent while the page
+`authorization: Bearer <token>` header. It answers from memory and
+refreshes the token itself. A write sent while the page
 closes, such as an answer still in its Undo window, waits for it.
 
-When a request answers 401, the pages show "Sign in to see your tasks" with
-a Sign in button. A `signIn` string is opened as an address; a function is
-called.
+When a host's `token()` returns null, Ntasks shows "Sign in to see your
+tasks" before sending an API request. The same screen appears when the API
+answers 401. A `signIn` string is opened as an address, and a function is called.
 
 The default, `sessionCookie(apiOrigin)`, sends no token: the browser sends
 the Ntasks session cookie to the Ntasks origin, and Sign in opens

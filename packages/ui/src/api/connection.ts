@@ -1,4 +1,4 @@
-import { createHttpTasksApi, SIGN_IN_PATH, type TasksApi } from './client';
+import { ApiError, createHttpTasksApi, SIGN_IN_PATH, type TasksApi } from './client';
 
 /**
  * The version of the Ntasks HTTP API these pages are made for. An Ntasks
@@ -11,12 +11,12 @@ export const API_VERSION = 21;
 /** How the pages' requests say who is asking. */
 export interface TokenSource {
   /**
-   * The bearer token for the next request, or null to send none. It is asked
+   * The bearer token for the next request, or null when signed out. It is asked
    * before every request, so it answers from memory and refreshes its token
    * itself; a write sent while the page closes waits for it.
    */
   token(): string | null | Promise<string | null>;
-  /** What Sign in does after a request answers that nobody is signed in: an address to open, or a function to call. */
+  /** What Sign in does when nobody is signed in: an address to open, or a function to call. */
   signIn: string | (() => void);
 }
 
@@ -38,13 +38,20 @@ export function originOf(apiOrigin: string): string {
   return url.origin;
 }
 
+const USE_SESSION_COOKIE = Symbol('use session cookie');
+
 /**
  * The Ntasks session cookie: the default, for pages served by the Ntasks
  * Worker itself. It sends no token, since the browser sends the cookie to its
  * own origin, and Sign in opens the Worker's sign-in page.
  */
 export function sessionCookie(apiOrigin?: string): TokenSource {
-  return { token: () => null, signIn: apiOrigin === undefined ? SIGN_IN_PATH : new URL(SIGN_IN_PATH, apiOrigin).href };
+  const source = {
+    [USE_SESSION_COOKIE]: true,
+    token: () => null,
+    signIn: apiOrigin === undefined ? SIGN_IN_PATH : new URL(SIGN_IN_PATH, apiOrigin).href,
+  };
+  return source;
 }
 
 /**
@@ -53,7 +60,10 @@ export function sessionCookie(apiOrigin?: string): TokenSource {
  */
 export function connect(apiOrigin: string | undefined, source: () => TokenSource): TasksApi {
   return createHttpTasksApi(async (input, init = {}) => {
-    const token = await source().token();
+    const current = source();
+    const token = await current.token();
+    if (token === null && !(USE_SESSION_COOKIE in current))
+      throw new ApiError('Sign in to see your tasks.', 401, 'sign_in_required');
     const headers = new Headers(init.headers);
     if (token !== null) headers.set('authorization', `Bearer ${token}`);
     const address = apiOrigin === undefined ? input : new URL(input, apiOrigin).href;
