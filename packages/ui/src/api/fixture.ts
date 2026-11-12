@@ -1233,6 +1233,17 @@ export function createFixtureTasksApi({
           )
             continue;
           addComment(waiting, `Approval request ${task.id} declined. The action requires a new approval.`);
+          if (
+            waiting.labels.includes('human') &&
+            waiting.issueType !== 'decision' &&
+            waiting.issueType !== 'gate' &&
+            (waiting.choices ?? null) === null
+          ) {
+            if (waiting.assignee !== null) endWork(waiting);
+            waiting.assignee = null;
+            waiting.status = 'open';
+            handBack(waiting);
+          }
         }
       });
     },
