@@ -36,6 +36,7 @@ export interface BrokenServer {
 }
 
 type Json = Record<string, unknown>;
+type ProxyAnswer = { status: number; type: string; text: string; replayed?: string };
 
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -51,14 +52,20 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     path: string,
     headers: Record<string, string>,
     body: string | undefined,
-  ): Promise<{ status: number; type: string; text: string }> => {
+  ): Promise<ProxyAnswer> => {
     const response = await fetch(new URL(path, backend.url), {
       method,
       headers,
       ...(body === undefined || method === 'GET' ? {} : { body }),
       redirect: 'manual',
     });
-    return { status: response.status, type: response.headers.get('content-type') ?? '', text: await response.text() };
+    const replayed = response.headers.get('idempotent-replayed');
+    return {
+      status: response.status,
+      type: response.headers.get('content-type') ?? '',
+      text: await response.text(),
+      ...(replayed === null ? {} : { replayed }),
+    };
   };
 
   /** A tool call made to the backend as the same sender, for the proposal version a defect substitutes. */
@@ -110,10 +117,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
       Object.assign(task, { status: 'open', resolution: null, closeReason: null });
   };
 
-  const mcp = async (
-    headers: Record<string, string>,
-    body: string,
-  ): Promise<{ status: number; type: string; text: string }> => {
+  const mcp = async (headers: Record<string, string>, body: string): Promise<ProxyAnswer> => {
     const message = JSON.parse(body) as Json;
     const params = isObject(message.params) ? message.params : {};
     const tool = message.method === 'tools/call' ? String(params.name) : null;
@@ -160,7 +164,7 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
     path: string,
     headers: Record<string, string>,
     body: string | undefined,
-  ): Promise<{ status: number; type: string; text: string }> => {
+  ): Promise<ProxyAnswer> => {
     const route = path.slice(httpPath.length).split('?')[0] ?? '';
     const json = body === undefined || body === '' ? null : (JSON.parse(body) as Json);
     recordReasons(json);
@@ -233,8 +237,11 @@ export async function startBrokenServer(backend: Target, defect: Defect): Promis
           ? mcp(headers, body)
           : http(method, path, headers, body);
       answer.then(
-        ({ status, type, text }) => {
-          response.writeHead(status, type === '' ? {} : { 'content-type': type });
+        ({ status, type, text, replayed }) => {
+          response.writeHead(status, {
+            ...(type === '' ? {} : { 'content-type': type }),
+            ...(replayed === undefined ? {} : { 'idempotent-replayed': replayed }),
+          });
           response.end(text);
         },
         (error: unknown) => {
