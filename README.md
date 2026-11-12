@@ -35,7 +35,22 @@ whatever needs you.
   </picture>
 </p>
 
-## Two loops that run on their own
+## What it solves
+
+- **Agents forget where they left off.** Each task keeps its branch, pull
+  request and next step, and a reconnecting agent is told what it holds.
+- **"Done" isn't always done.** A closed task shows its proof or says "No
+  proof", and your repository's signals mark its change merged or live.
+- **It's hard to see what each agent is doing.** Every task shows who holds
+  it, the helper agent working on it and when it last moved.
+- **Decisions get lost in chat.** Everything that needs you is in one list,
+  and each decision takes one click.
+- **Task tools slow agents down.** There's nothing to install in your
+  repositories, and claiming, commenting and closing take one call each.
+
+[Why Ntasks](docs/why-ntasks.md) has the public reports behind each one.
+
+## Shipped or stalled, without asking
 
 <p align="center">
   <img src="docs/images/two-loops.svg" width="840" alt="Built, Merged, Live: your agent closes the task with its pull request; GitHub sends the merge, and a task left in progress on it can close too; GitHub sends the passing deploy. Active, Quiet, Stalled: each change or comment by the task's holder keeps it Active for an hour; after an hour with none it is Quiet; after a day with nothing from the holder it is Stalled, and a person presses Free it so another agent can claim it. Agents list each group with list_tasks.">
@@ -53,21 +68,6 @@ whatever needs you.
   it** so another agent can claim it.
 
 [The website](https://ntasks.notice.cx/#two-loops) shows both loops moving.
-
-## What it solves
-
-- **Agents forget where they left off.** Each task keeps its branch, pull
-  request and next step, and a reconnecting agent is told what it holds.
-- **"Done" isn't always done.** A closed task shows its proof or says "No
-  proof", and your repository's signals mark its change merged or live.
-- **It's hard to see what each agent is doing.** Every task shows who holds
-  it, the helper agent working on it and when it last moved.
-- **Decisions get lost in chat.** Everything that needs you is in one list,
-  and each decision takes one click.
-- **Task tools slow agents down.** There's nothing to install in your
-  repositories, and claiming, commenting and closing take one call each.
-
-[Why Ntasks](docs/why-ntasks.md) has the public reports behind each one.
 
 ## Get started
 
