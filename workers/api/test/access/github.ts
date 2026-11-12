@@ -128,6 +128,15 @@ async function signedByApp(jwt: string): Promise<boolean> {
 }
 
 /** What the Worker asked the stand-in, for the test that is running. */
+interface StandInDeployment {
+  environment: string;
+  createdAt: string;
+  finishedAt: string;
+  state: string;
+  id?: number;
+  production?: boolean;
+}
+
 export interface GitHubCalls {
   /** Each token exchange's client id and secret, as `<id>:<secret>`. */
   readonly tokenClients: string[];
@@ -143,6 +152,7 @@ export interface GitHubCalls {
   readonly pullReads: string[];
   /** The check runs of each commit, which a test sets; a commit not set has none. */
   readonly checkRuns: Map<string, StandInCheckRun[]>;
+  readonly deployments: Map<string, StandInDeployment[]>;
   /** Each commit whose check runs the Worker read. */
   readonly checkReads: string[];
   /** The commits whose check runs GitHub fails to answer, with a server error, which a test sets. */
@@ -249,6 +259,7 @@ export function standInForGitHub(): GitHubCalls {
     repositories: new Map<number, string[]>(),
     pullReads: [] as string[],
     checkRuns: new Map<string, StandInCheckRun[]>(),
+    deployments: new Map<string, StandInDeployment[]>(),
     checkReads: [] as string[],
     checkOutages: new Set<string>(),
     checkErrors: new Set<string>(),
@@ -272,6 +283,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.repositories.clear();
     calls.pullReads.length = 0;
     calls.checkRuns.clear();
+    calls.deployments.clear();
     calls.checkReads.length = 0;
     calls.checkOutages.clear();
     calls.checkErrors.clear();
@@ -384,13 +396,23 @@ export function standInForGitHub(): GitHubCalls {
         calls.comments.push({ pull: `${comment[1]}#${comment[2]}`, body });
         return Response.json({ id: calls.comments.length, body }, { status: 201 });
       }
+      const deployments = /^\/repos\/[^/]+\/[^/]+\/deployments$/u.test(url.pathname);
+      if (url.origin === 'https://api.github.com' && deployments && request.method === 'GET') {
+        if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        return Response.json(
+          (calls.deployments.get(url.searchParams.get('sha') ?? '') ?? []).map(({ id, production }) => ({
+            id,
+            production_environment: production === true,
+          })),
+        );
+      }
       // GitHub's GraphQL API: a pull request to merge, auto-merge turned on or a merge, and a commit's check runs.
       if (url.href === 'https://api.github.com/graphql' && request.method === 'POST') {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
         const sent = (await request.json()) as { query: string; variables: Record<string, unknown> };
         const merging = mergeAnswer(calls, sent.query, sent.variables);
         if (merging !== null) return merging;
-        const variables = sent.variables as { commit: string };
+        const variables = sent.variables as { commit: string; deployments?: boolean };
         calls.checkReads.push(variables.commit);
         if (calls.checkOutages.has(variables.commit)) return new Response('Bad gateway', { status: 502 });
         // A secondary rate limit, which GitHub may answer with no retry-after or rate-limit header.
@@ -412,6 +434,22 @@ export function standInForGitHub(): GitHubCalls {
             repository: {
               defaultBranchRef: { name: 'main' },
               object: {
+                ...(variables.deployments === true
+                  ? {
+                      deployments: {
+                        nodes: (calls.deployments.get(variables.commit) ?? []).map((deployment) => ({
+                          databaseId: deployment.id ?? null,
+                          createdAt: deployment.createdAt,
+                          latestEnvironment: deployment.environment,
+                          latestStatus: {
+                            environment: deployment.environment,
+                            state: deployment.state,
+                            createdAt: deployment.finishedAt,
+                          },
+                        })),
+                      },
+                    }
+                  : {}),
                 checkSuites: {
                   nodes: [...suites].map(([branch, runs]) => ({
                     branch: { name: branch },

@@ -237,6 +237,14 @@ export interface CheckRun {
 export interface CommitChecks {
   readonly defaultBranch: string;
   readonly runs: readonly CheckRun[];
+  readonly deployments: readonly CommitDeployment[];
+}
+
+interface CommitDeployment {
+  readonly id: number | null;
+  readonly environment: string;
+  readonly startedAt: string;
+  readonly completedAt: string;
 }
 
 /** The most check suites of a commit read, and the most runs of each, in one request. */
@@ -245,11 +253,14 @@ const CHECK_RUNS = 50;
 
 // The REST API names a check run's suite by its id alone; the GraphQL API
 // gives the suite's branch with its runs, so one request answers all of it.
-const COMMIT_CHECKS = `query ($owner: String!, $name: String!, $commit: String!) {
+const COMMIT_CHECKS = `query ($owner: String!, $name: String!, $commit: String!, $deployments: Boolean!) {
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     object(expression: $commit) {
       ... on Commit {
+        deployments(last: 50) @include(if: $deployments) {
+          nodes { databaseId createdAt latestEnvironment latestStatus { state createdAt environment } }
+        }
         checkSuites(last: ${CHECK_SUITES}) {
           nodes {
             branch { name }
@@ -274,6 +285,7 @@ export async function checksOf(
   token: string,
   repository: string,
   commit: string,
+  deployments = false,
 ): Promise<CommitChecks | typeof RETRY | null> {
   const [owner = '', name = ''] = repository.split('/');
   const response = await fetch(`${API}/graphql`, {
@@ -283,7 +295,7 @@ export async function checksOf(
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ query: COMMIT_CHECKS, variables: { owner, name, commit } }),
+    body: JSON.stringify({ query: COMMIT_CHECKS, variables: { owner, name, commit, deployments } }),
   }).catch(() => null);
   if (response?.status !== 200) {
     await response?.body?.cancel();
@@ -298,8 +310,17 @@ export async function checksOf(
   // answer with any other error lacks runs, and one still running would read
   // as none.
   const errors = at(body, 'errors');
-  if (Array.isArray(errors) && errors.length > 0)
-    return errors.some((error) => at(error, 'type') === 'RATE_LIMITED') ? RETRY : null;
+  if (Array.isArray(errors)) {
+    if (errors.some((error) => at(error, 'type') === 'RATE_LIMITED')) return RETRY;
+    // An older installation without deployment permission can still read check runs.
+    if (
+      errors.some((error) => {
+        const path = at(error, 'path');
+        return !Array.isArray(path) || !path.includes('deployments') || at(error, 'type') !== 'FORBIDDEN';
+      })
+    )
+      return null;
+  }
   const defaultBranch = at(body, 'data', 'repository', 'defaultBranchRef', 'name');
   if (typeof defaultBranch !== 'string') return null;
   const suites = at(body, 'data', 'repository', 'object', 'checkSuites', 'nodes');
@@ -325,7 +346,48 @@ export async function checksOf(
       ];
     });
   });
-  return { defaultBranch, runs };
+  const nodes = at(body, 'data', 'repository', 'object', 'deployments', 'nodes');
+  const finished = (Array.isArray(nodes) ? nodes : []).flatMap((node): CommitDeployment[] => {
+    const latest = at(node, 'latestStatus');
+    if (at(latest, 'state') !== 'SUCCESS') return [];
+    const environment = at(latest, 'environment') ?? at(node, 'latestEnvironment');
+    const id = at(node, 'databaseId');
+    const startedAt = timeOf(at(node, 'createdAt'));
+    const completedAt = timeOf(at(latest, 'createdAt'));
+    return startedAt !== null && completedAt !== null
+      ? [
+          {
+            id: typeof id === 'number' ? id : null,
+            environment: typeof environment === 'string' ? environment : '',
+            startedAt,
+            completedAt,
+          },
+        ]
+      : [];
+  });
+  return { defaultBranch, runs, deployments: finished };
+}
+
+/** GitHub exposes the production flag on REST deployments, including for custom environment names. */
+export async function productionDeploymentIds(
+  token: string,
+  repository: string,
+  commit: string,
+): Promise<ReadonlySet<number> | typeof RETRY> {
+  const response = await fetch(`${API}/repos/${repository}/deployments?sha=${commit}&per_page=50`, {
+    headers: { ...HEADERS, authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (response?.status !== 200) {
+    await response?.body?.cancel();
+    return retryable(response) ? RETRY : new Set();
+  }
+  const body: unknown = await response.json().catch(() => null);
+  return new Set(
+    (Array.isArray(body) ? body : []).flatMap((deployment) => {
+      const id = at(deployment, 'id');
+      return typeof id === 'number' && at(deployment, 'production_environment') === true ? [id] : [];
+    }),
+  );
 }
 
 /**

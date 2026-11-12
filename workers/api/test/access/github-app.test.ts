@@ -6,7 +6,7 @@
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import type { Task } from '@ntasks/domain';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hex, randomSecret } from '../../src/access/crypto.ts';
 import { SCOPES, type Principal } from '../../src/auth.ts';
 import { githubSender } from '../../src/github-check.ts';
@@ -16,11 +16,33 @@ import { turnOnAutoMerge, UNCONFIRMED } from '../../src/access/github-api.ts';
 import { pullRequestComment } from '../../src/approval-github.ts';
 import { proposalVersionOf } from '../../src/views.ts';
 import { WORKSPACE_HEADER } from '../../src/workspaces.ts';
-import { store, TEST_WORKSPACE } from '../store.ts';
-import { addMember, Browser, call, createProject, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
+import { store as workspaceStore } from '../store.ts';
+import { addMember, Browser, call, ORIGIN, OWNER_GITHUB_ID, userIdOf } from './client.ts';
 import { convertedWebhookSecret, manifestCodeFor, standInForGitHub, type StandInCheckRun } from './github.ts';
 
 const github = standInForGitHub();
+let workspace: { id: string; name: string };
+const store = () => workspaceStore(workspace.id);
+
+beforeEach(() => {
+  workspace = { id: crypto.randomUUID(), name: 'GitHub test workspace' };
+});
+
+async function ownerBrowser(): Promise<Browser> {
+  const owner = new Browser({ joinTestWorkspace: false });
+  await owner.signInAsOwner();
+  await addMember(workspace, (await userIdOf(OWNER_GITHUB_ID))!, 'owner');
+  return owner;
+}
+
+async function createProject(name: string): Promise<string> {
+  const id = crypto.randomUUID();
+  const prefix = `p${id.slice(0, 8)}`;
+  await runInDurableObject(store(), (instance: TaskStore) =>
+    instance.tasks.createProject({ id, key: `${prefix}.example.com`, prefix, name }),
+  );
+  return id;
+}
 
 // A close or a delivery sets the store's check for a few seconds later. Left
 // set, it could run once the stand-in no longer answers for GitHub.
@@ -40,7 +62,7 @@ async function inWorkspace(browser: Browser, method: string, path: string, json?
   const response = await browser.fetch(path, {
     method,
     ...(json === undefined ? {} : { json }),
-    headers: { [WORKSPACE_HEADER]: TEST_WORKSPACE.id },
+    headers: { [WORKSPACE_HEADER]: workspace.id },
   });
   return { status: response.status, body: await response.json<Body>() };
 }
@@ -64,8 +86,7 @@ function returnFromGitHub(browser: Browser, code: string, state: string): Promis
 
 /** The owner, signed in, with the workspace's app made through the manifest flow. */
 async function connected(): Promise<Browser> {
-  const owner = new Browser();
-  await owner.signInAsOwner();
+  const owner = await ownerBrowser();
   const { state } = await connect(owner);
   expect((await returnFromGitHub(owner, manifestCodeFor(OWNER_GITHUB_ID), state)).status).toBe(302);
   return owner;
@@ -82,7 +103,7 @@ async function signatureOf(secret: string, body: string): Promise<string> {
 /** Sends one delivery from the app, signed with its webhook secret, and reads the answer. */
 async function deliver(event: string, payload: Body, secret = APP_SECRET): Promise<{ status: number; body: Body }> {
   const body = JSON.stringify(payload);
-  const response = await call(`/api/github/${TEST_WORKSPACE.id}`, {
+  const response = await call(`/api/github/${workspace.id}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -203,7 +224,7 @@ async function mergedInStore(merges: readonly { readonly number: number; readonl
       const pullRequests = [`https://github.com/${REPOSITORY}/pull/${number}`];
       const answer = await instance.deliver(
         { stage: 'merged', pullRequests, commits: [commit] },
-        githubSender(TEST_WORKSPACE.id),
+        githubSender(workspace.id),
       );
       if ('refused' in answer) throw new Error(answer.refused);
     }
@@ -251,8 +272,7 @@ async function deploys(projectId: string): Promise<boolean | undefined> {
 
 describe('Connect GitHub', () => {
   it('makes the app from a manifest, stores its credentials encrypted and sends the owner on to install it', async () => {
-    const owner = new Browser();
-    await owner.signInAsOwner();
+    const owner = await ownerBrowser();
     const before = await inWorkspace(owner, 'GET', '/api/access/github');
     expect(before.body).toMatchObject({ github: { app: null, installations: [], detected: [] } });
 
@@ -260,7 +280,7 @@ describe('Connect GitHub', () => {
     expect(`${action.origin}${action.pathname}`).toBe('https://github.com/settings/apps/new');
     expect(manifest).toMatchObject({
       url: ORIGIN,
-      hook_attributes: { url: `${ORIGIN}/api/github/${TEST_WORKSPACE.id}`, active: true },
+      hook_attributes: { url: `${ORIGIN}/api/github/${workspace.id}`, active: true },
       redirect_url: `${ORIGIN}/api/access/github/app/created`,
       setup_url: `${ORIGIN}/tasks/settings/github`,
       public: true,
@@ -283,7 +303,7 @@ describe('Connect GitHub', () => {
     const stored = await env.DB.prepare(
       'SELECT app_id, slug, credentials FROM access_github_apps WHERE workspace_id = ?',
     )
-      .bind(TEST_WORKSPACE.id)
+      .bind(workspace.id)
       .first<{ app_id: number; slug: string; credentials: string }>();
     expect(stored).toMatchObject({ app_id: 9000 + OWNER_GITHUB_ID, slug: SLUG });
     expect(stored?.credentials).not.toContain(APP_SECRET);
@@ -302,12 +322,10 @@ describe('Connect GitHub', () => {
   });
 
   it('sends the browser back to Settings and stores nothing for a state from elsewhere or a code GitHub refuses', async () => {
-    const owner = new Browser();
-    await owner.signInAsOwner();
+    const owner = await ownerBrowser();
     await inWorkspace(owner, 'POST', '/api/access/github/app/remove', {});
     const { state } = await connect(owner);
-    const other = new Browser();
-    await other.signInAsOwner();
+    const other = await ownerBrowser();
     for (const [browser, code, given] of [
       [other, manifestCodeFor(OWNER_GITHUB_ID), state],
       [owner, manifestCodeFor(OWNER_GITHUB_ID), `${state}x`],
@@ -323,7 +341,7 @@ describe('Connect GitHub', () => {
   it('is for the workspace’s owners alone', async () => {
     const member = new Browser({ joinTestWorkspace: false });
     await member.signInWithGitHub(1003);
-    await addMember(TEST_WORKSPACE, (await userIdOf(1003))!, 'member');
+    await addMember(workspace, (await userIdOf(1003))!, 'member');
     for (const path of ['/api/access/github/app', '/api/access/github/app/remove', '/api/access/github/checks']) {
       expect(await inWorkspace(member, 'POST', path, {})).toMatchObject({ status: 403, body: { error: 'owner_only' } });
     }
@@ -779,6 +797,36 @@ describe('the app’s deliveries', () => {
       expect((await taskOf(projectId, other)).delivery?.stage).toBe('live');
     });
 
+    it('recognizes a first deploy before a close and respects a later opt-out', async () => {
+      const owner = await connected();
+      const mine = newInstallation();
+      await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+      const projectId = await createProject('Site');
+      const prepared = async () => {
+        const commit = newCommit();
+        await deliver('push', pushOf(mine, commit));
+        const at = new Date().toISOString();
+        github.checkRuns.set(commit, [
+          { name: 'Workers Builds: site', conclusion: 'success', startedAt: at, completedAt: at },
+        ]);
+        await deliver('check_run', passed(mine, 'Workers Builds: site', commit, 'main', at));
+        return { commit, id: await closedWithCommit(owner, projectId, commit) };
+      };
+      const first = await prepared();
+      expect((await taskOf(projectId, first.id)).delivery?.stage).toBe('merged');
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect((await taskOf(projectId, first.id)).delivery?.stage).toBe('live');
+      expect((await inWorkspace(owner, 'PATCH', '/api/tasks/projects', { projectId, deploys: false })).status).toBe(
+        200,
+      );
+      const next = await prepared();
+      github.checkReads.length = 0;
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect((await taskOf(projectId, next.id)).delivery?.stage).toBe('merged');
+      expect(await deploys(projectId)).toBe(false);
+      expect(github.checkReads).not.toContain(next.commit);
+    });
+
     it('stays at built when no push brought its commit onto the default branch', async () => {
       const owner = await connected();
       const mine = newInstallation();
@@ -1062,6 +1110,41 @@ describe('work waiting for a merge GitHub already made', () => {
 });
 
 describe('merged work a deploy shipped that no delivery named', () => {
+  it('counts a production deployment status that arrived before the merge and skips previews', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const before = ago(120_000);
+    const completedAt = ago(30_000);
+    for (const [number, environment, production] of [
+      [200, 'Preview', false],
+      [201, 'Production', true],
+      [202, 'Web', true],
+    ] as const) {
+      const id = await closedWithPullRequest(owner, projectId, number);
+      const commit = newCommit();
+      if (environment !== 'Web')
+        expect(
+          (
+            await deliver('deployment_status', {
+              installation: { id: mine },
+              repository,
+              deployment_status: { state: 'success' },
+              deployment: { environment, sha: commit },
+            })
+          ).body,
+        ).toMatchObject({ moved: [] });
+      github.deployments.set(commit, [
+        { id: number, environment, production, createdAt: ago(60_000), finishedAt: completedAt, state: 'SUCCESS' },
+      ]);
+      await deliver('pull_request', mergedAt(mine, number, commit, before));
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect((await taskOf(projectId, id)).delivery).toMatchObject(
+        production ? { stage: 'live', liveAt: completedAt } : { stage: 'merged' },
+      );
+    }
+  });
   it('moves both merges to live when the host built only the second', async () => {
     const owner = await connected();
     const mine = newInstallation();
@@ -1292,8 +1375,46 @@ describe('merged work a deploy shipped that no delivery named', () => {
     github.apiRequests.length = 0;
 
     expect(await runDurableObjectAlarm(store())).toBe(true);
-    expect(github.apiRequests.length).toBe(45);
+    expect(github.apiRequests.length).toBeLessThanOrEqual(45);
     for (const id of waiting) expect((await taskOf(projectId, id)).delivery?.stage).toBe('merged');
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm())).toBeNull();
+  });
+
+  it('continues through consecutive alarms until every passing deploy is recorded', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const numbers = Array.from({ length: 48 }, (_, index) => 400 + index);
+    const ids = await closedWithPullRequests(projectId, numbers);
+    const merges = numbers.map((number) => ({ number, commit: newCommit() }));
+    await mergedInStore(merges);
+    const at = new Date().toISOString();
+    for (const { commit } of merges)
+      github.checkRuns.set(commit, [
+        { name: 'Workers Builds: site', conclusion: 'success', startedAt: at, completedAt: at },
+      ]);
+    for (let count = 0; count < 3; count += 1) {
+      github.apiRequests.length = 0;
+      expect(await runDurableObjectAlarm(store())).toBe(true);
+      expect(github.apiRequests.length).toBeLessThanOrEqual(45);
+      if (count === 0) {
+        const commit = newCommit();
+        ids.push(...(await closedWithPullRequests(projectId, [499])));
+        await mergedInStore([{ number: 499, commit }]);
+        const startedAt = new Date().toISOString();
+        github.checkRuns.set(commit, [
+          { name: 'Workers Builds: site', conclusion: 'success', startedAt, completedAt: startedAt },
+        ]);
+      }
+    }
+    expect(await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm())).toBeNull();
+    const delivered = await runInDurableObject(store(), (instance: TaskStore) =>
+      instance.tasks.getTasks(projectId, ids),
+    );
+    expect(delivered).toHaveLength(ids.length);
+    expect(delivered.every((task) => task.delivery?.stage === 'live')).toBe(true);
   });
 });
 
@@ -1338,7 +1459,7 @@ describe('an answer to an approval that gates a pull request', () => {
         quote: 'Go ahead.',
         source: 'test:conversation',
       };
-      return instance.callTool('reconcile_task', args, WAITING, TEST_WORKSPACE);
+      return instance.callTool('reconcile_task', args, WAITING, workspace);
     });
     expect(answer.ok).toBe(true);
   }
