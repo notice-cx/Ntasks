@@ -96,6 +96,36 @@ describe('an epic closes when its last open task does', () => {
     expect((await read(tasks, project.id, dropped.epic.id)).close?.resolution).toBe('no-longer-needed');
   });
 
+  it('settles an epic commented on beside the close, while leaving an edited epic to the write', async () => {
+    const tasks = engine();
+    const project = await newProject(tasks);
+    const commented = await epicWith(tasks, project.id, 1);
+    const edited = await epicWith(tasks, project.id, 1);
+    for (const { epic, children } of [commented, edited]) {
+      const child = children[0]!;
+      await tasks.writeTask(
+        project.id,
+        child.id,
+        {
+          expectedVersion: child.version,
+          close: { reason: 'Finished', resolution: 'done' },
+          others: [
+            {
+              taskId: epic.id,
+              expectedVersion: epic.version,
+              comment: 'The last task finished.',
+              ...(epic.id === edited.epic.id ? { set: { title: 'Changed plan' } } : {}),
+            },
+          ],
+        },
+        AGENT,
+      );
+      expect(await tasks.listComments(project.id, epic.id)).toMatchObject([{ text: 'The last task finished.' }]);
+    }
+    expect(await read(tasks, project.id, commented.epic.id)).toMatchObject({ status: 'closed' });
+    expect(await read(tasks, project.id, edited.epic.id)).toMatchObject({ status: 'open', title: 'Changed plan' });
+  });
+
   it('closes a nested epic, then the epic above it when that was its last open task', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
