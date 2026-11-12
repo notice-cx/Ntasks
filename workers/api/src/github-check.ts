@@ -21,6 +21,7 @@ import {
   installationRepositories,
   installationSelection,
   installationToken,
+  productionDeploymentIds,
   pullRequestState,
   REPOSITORY_PAGES,
   RETRY,
@@ -34,7 +35,7 @@ import {
   installationsByAccount,
   isDeployCheck,
   recordDetected,
-  type DeployNames,
+  type Detected,
 } from './access/github-app.ts';
 import { githubWebhookOf } from './access/github-webhook.ts';
 import { SCOPES, type Principal } from './auth.ts';
@@ -44,7 +45,7 @@ import { closeMerged, neverClosedByMerge, type WriteContext } from './task-write
 /**
  * The most requests one check makes to GitHub: installation tokens, the
  * pages of their repositories, then one for each waiting task's pull
- * request, then one or two for each merged task's deploy. It stays within
+ * request, then up to three for each merged commit's deploy. It stays within
  * the 50 requests to other servers that one invocation may make on the free
  * plan.
  */
@@ -54,9 +55,17 @@ const REQUESTS = 45;
 export interface GitHubCheck {
   readonly moved: number;
   readonly retry: boolean;
+  /** The first deploy left to check when this invocation ran out of requests. */
+  readonly next: string | null;
+  readonly rescan: boolean;
 }
 
-const NOTHING: GitHubCheck = { moved: 0, retry: false };
+const NOTHING: GitHubCheck = { moved: 0, retry: false, next: null, rescan: false };
+
+export interface DeployScan {
+  readonly next: string;
+  readonly since: string;
+}
 
 const DAY_MS = 86_400_000;
 /**
@@ -123,12 +132,15 @@ function reachedOf(task: Task, installations: ReadonlyMap<string, number>): Reac
   return repository === undefined || installation === undefined ? null : { repository, installation };
 }
 
-/** A merged change of a project that deploys: its repository, its merge commit, and when it merged and went live. */
+/** A merged change and the times it merged and went live. */
 interface Change extends Reached {
   readonly mergeCommit: string;
   readonly mergedAt: string;
   readonly liveAt: string | null;
+  readonly updatedAt: string;
 }
+
+const deployPosition = (change: Change): string => `${change.mergedAt} ${change.repository} ${change.mergeCommit}`;
 
 /**
  * The changes of the projects that deploy, newest merge first: the merged
@@ -139,10 +151,13 @@ async function changesOf(
   engine: TaskEngine,
   installations: ReadonlyMap<string, number>,
   now: number,
-): Promise<{ readonly waiting: readonly Change[]; readonly live: readonly Change[] }> {
+  detected: Detected,
+  scan: DeployScan | undefined,
+): Promise<{ readonly waiting: readonly Change[]; readonly live: readonly Change[]; readonly rescan: boolean }> {
   const closedSince = new Date(now - CLOSED_LOOKBACK_MS).toISOString();
   const mergedSince = new Date(now - DEPLOY_WINDOW_MS).toISOString();
-  const deploying = (await engine.listProjects()).filter((project) => project.deploys);
+  const optedOut = new Set(detected.projects);
+  const deploying = (await engine.listProjects()).filter((project) => project.deploys || !optedOut.has(project.id));
   const tasks: Task[] = [];
   for (const project of deploying) {
     tasks.push(
@@ -160,19 +175,32 @@ async function changesOf(
     if (reached === null || mergeCommit === null || !COMMIT_SHA.test(mergeCommit) || mergedAt === null) return [];
     const { repository, installation } = reached;
     return [
-      { repository, installation, mergeCommit, mergedAt, liveAt: task.delivery?.stage === 'live' ? liveAt : null },
+      {
+        repository,
+        installation,
+        mergeCommit,
+        mergedAt,
+        liveAt: task.delivery?.stage === 'live' ? liveAt : null,
+        updatedAt: task.updatedAt,
+      },
     ];
   });
-  changes.sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : a.mergedAt > b.mergedAt ? -1 : 0));
+  changes.sort((a, b) => (deployPosition(a) < deployPosition(b) ? 1 : deployPosition(a) > deployPosition(b) ? -1 : 0));
   // Tasks closed with one pull request share its merge commit, and one signal moves them all.
   const seen = new Set<string>();
+  let rescan = false;
   const waiting = changes.filter((change) => {
     const key = `${change.repository} ${change.mergeCommit}`;
     if (change.liveAt !== null || change.mergedAt < mergedSince || seen.has(key)) return false;
     seen.add(key);
+    if (scan !== undefined && deployPosition(change) > scan.next) {
+      // Work recorded while older commits were being checked needs a fresh pass.
+      if (change.updatedAt > scan.since) rescan = true;
+      return false;
+    }
     return true;
   });
-  return { waiting, live: changes.filter((change) => change.liveAt !== null) };
+  return { waiting, live: changes.filter((change) => change.liveAt !== null), rescan };
 }
 
 /** An installation's token, and the repositories it reaches. */
@@ -192,7 +220,12 @@ interface Reach {
  * whether a read of a merged task's deploy may be answered on another try;
  * nothing without an app or an installation.
  */
-export async function checkGitHubWork(env: Env, workspaceId: string, engine: TaskEngine): Promise<GitHubCheck> {
+export async function checkGitHubWork(
+  env: Env,
+  workspaceId: string,
+  engine: TaskEngine,
+  scan?: DeployScan,
+): Promise<GitHubCheck> {
   const secrets = signInSecrets(env);
   if (!secrets) return NOTHING;
   const app = await githubAppOf(env.DB, secrets.secret, workspaceId);
@@ -215,21 +248,22 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
   const pulls = [
     ...new Map(newest.flatMap((task) => pullOf(task, installations) ?? []).map((pull) => [pull.url, pull])).values(),
   ];
-  let changes = await changesOf(engine, installations, Date.now());
-  if (pulls.length === 0 && changes.waiting.length === 0) return NOTHING;
+  const detected = await detectedOf(env.DB, workspaceId);
+  let changes = await changesOf(engine, installations, Date.now(), detected, scan);
+  if (pulls.length === 0 && changes.waiting.length === 0) return { ...NOTHING, rescan: changes.rescan };
   const jwt = await appToken(app.appId, app.privateKey);
   if (jwt === null) return NOTHING;
   // Each installation's token, and the repositories it reaches, so a task in
   // a repository an installation of selected repositories leaves out takes
-  // no place among the ones asked about. Installations come in the order of
-  // their newest waiting task, merges before deploys, and stop where the
-  // budget would run out. One on all of its account's repositories reaches
-  // every waiting task of that account; one GitHub does not list is left for
-  // the next check.
+  // no place among the ones asked about. On continuation, installations
+  // with deploys left to check take the first places in the budget.
   let requests = 0;
   const reach = new Map<number, Reach>();
-  for (const installation of new Set([...pulls, ...changes.waiting].map((pull) => pull.installation))) {
-    if (requests + 2 + REPOSITORY_PAGES >= REQUESTS) break;
+  const first = scan === undefined ? [...pulls, ...changes.waiting] : [...changes.waiting, ...pulls];
+  const deferredInstallations = new Set(first.map(({ installation }) => installation));
+  for (const installation of deferredInstallations) {
+    if (requests + 2 + REPOSITORY_PAGES > REQUESTS - 6) break;
+    deferredInstallations.delete(installation);
     const selection = await installationSelection(jwt, installation);
     const token = selection === null ? null : await installationToken(jwt, installation);
     requests += selection === null ? 1 : 2;
@@ -248,9 +282,9 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
     return found.repositories === 'all' || found.repositories.has(reached.repository) ? found.token : null;
   };
   const context = { engine, principal: githubSender(workspaceId), now: () => new Date().toISOString() };
-  // Merged tasks waiting for a deploy keep two requests each, up to half of
+  // Merged tasks waiting for a deploy keep three requests each, up to half of
   // what is left, so pull requests still open cannot take all of it.
-  const reserved = Math.min(2 * changes.waiting.length, Math.floor((REQUESTS - requests) / 2));
+  const reserved = Math.min(3 * changes.waiting.length, Math.floor((REQUESTS - requests) / 2));
   let merged = 0;
   for (const pull of pulls) {
     const token = tokenOf(pull);
@@ -269,9 +303,19 @@ export async function checkGitHubWork(env: Env, workspaceId: string, engine: Tas
       .length;
   }
   // A task that just merged may have deployed before Ntasks heard of its merge.
-  if (merged > 0) changes = await changesOf(engine, installations, Date.now());
-  const deployed = await moveDeployed(env, secrets.secret, workspaceId, context, changes, tokenOf, REQUESTS - requests);
-  return { moved: merged + deployed.moved, retry: deployed.retry };
+  if (merged > 0) changes = await changesOf(engine, installations, Date.now(), detected, scan);
+  const deployed = await moveDeployed(
+    env,
+    secrets.secret,
+    workspaceId,
+    context,
+    changes,
+    tokenOf,
+    REQUESTS - requests,
+    detected,
+    deferredInstallations,
+  );
+  return { ...deployed, moved: merged + deployed.moved, rescan: changes.rescan };
 }
 
 /**
@@ -293,15 +337,37 @@ async function moveDeployed(
   changes: { readonly waiting: readonly Change[]; readonly live: readonly Change[] },
   tokenOf: (reached: Reached) => string | null,
   budget: number,
-): Promise<GitHubCheck> {
+  detected: Detected,
+  deferredInstallations: ReadonlySet<number>,
+): Promise<Omit<GitHubCheck, 'rescan'>> {
+  if (changes.waiting.length === 0) return NOTHING;
   let requests = 0;
-  let names: DeployNames | null = null;
   let moved = 0;
   let retry = false;
+  const webhook = await githubWebhookOf(env.DB, secret, workspaceId);
+  const names = { typed: webhook?.deployChecks ?? [], detected: detected.checks };
+  const deploying = new Set(
+    (await context.engine.listProjects()).filter((project) => project.deploys).map((project) => project.id),
+  );
   const live = async (signal: Omit<DeliverySignal, 'stage' | 'pullRequests'>) => {
-    moved += (await reportDelivery(context, { stage: 'live', pullRequests: [], ...signal })).length;
+    const delivered = await reportDelivery(context, { stage: 'live', pullRequests: [], ...signal }, undefined, {
+      turnOnDeploys: { except: detected.projects },
+    });
+    const turnedOn = [
+      ...new Set(
+        delivered
+          .filter((move) => move.stage === 'live' && !deploying.has(move.projectId))
+          .map((move) => move.projectId),
+      ),
+    ];
+    if (turnedOn.length > 0) {
+      await recordDetected(env.DB, workspaceId, { projects: turnedOn });
+      for (const project of turnedOn) deploying.add(project);
+    }
+    moved += delivered.length;
   };
   for (const change of changes.waiting) {
+    if (deferredInstallations.has(change.installation)) return { moved, retry, next: deployPosition(change) };
     const token = tokenOf(change);
     if (token === null) continue;
     // The live changes come newest merge first: the first one merged since this one has the longest history.
@@ -311,54 +377,66 @@ async function moveDeployed(
         shipped.mergeCommit !== change.mergeCommit &&
         shipped.mergedAt >= change.mergedAt,
     );
+    // A comparison can leave this commit needing its checks and a production flag lookup.
+    if (requests + (later === undefined ? 2 : 3) > budget) return { moved, retry, next: deployPosition(change) };
     if (later !== undefined) {
-      if (requests >= budget) break;
       requests += 1;
       const shipped = await inHistoryOf(token, change.repository, later.mergeCommit, change.mergeCommit);
       if (shipped === RETRY) retry = true;
       if (shipped === true) {
         // Live when the later merge went live, the deploy that shipped both.
-        await live({ commits: [change.mergeCommit], ...(later.liveAt === null ? {} : { at: later.liveAt }) });
+        await live({
+          repository: change.repository,
+          commits: [change.mergeCommit],
+          ...(later.liveAt === null ? {} : { at: later.liveAt }),
+        });
         continue;
       }
     }
-    if (requests >= budget) break;
     requests += 1;
-    const checks = await checksOf(token, change.repository, change.mergeCommit);
+    const checks = await checksOf(token, change.repository, change.mergeCommit, true);
     if (checks === RETRY) retry = true;
-    if (checks === RETRY || checks === null || checks.runs.length === 0) continue;
-    if (names === null) names = await deployNamesOf(env, secret, workspaceId);
-    const known = names;
+    if (checks === RETRY || checks === null) continue;
     const deploys = checks.runs.flatMap((run) => {
       // On the default branch or the merge queue's, as a delivery of it counts it; a preview elsewhere moves nothing.
       if (run.conclusion !== 'success' || run.startedAt === null) return [];
       if (deployBranchOf(run.branch, checks.defaultBranch) === null) return [];
-      const verdict = deployOf(run.name, known, isDeployCheck(run.name));
+      const verdict = deployOf(run.name, names, isDeployCheck(run.name));
       return verdict === 'yes' || verdict === 'new' ? [{ ...run, startedAt: run.startedAt, verdict }] : [];
     });
-    if (deploys.length === 0) continue;
+    const unknown = checks.deployments.some(
+      ({ id, environment }) => id !== null && deployOf(environment, names, /^production$/iu.test(environment)) === 'no',
+    );
+    const production = unknown
+      ? await productionDeploymentIds(token, change.repository, change.mergeCommit)
+      : new Set<number>();
+    if (unknown) requests += 1;
+    if (production === RETRY) retry = true;
+    const deployments = checks.deployments.flatMap((deployment) => {
+      const name = deployment.environment;
+      const flagged = production !== RETRY && deployment.id !== null && production.has(deployment.id);
+      const verdict = deployOf(name, names, flagged || /^production$/iu.test(name));
+      return verdict === 'yes' || verdict === 'new' ? [{ ...deployment, name, verdict }] : [];
+    });
+    if (deploys.length === 0 && deployments.length === 0) continue;
     // Listed in Settings as a delivery of it would list it, with its switch.
-    const fresh = [...new Set(deploys.filter((run) => run.verdict === 'new').map((run) => run.name))];
+    const fresh = [
+      ...new Set([...deploys, ...deployments].filter((run) => run.verdict === 'new').map((run) => run.name)),
+    ];
     if (fresh.length > 0) await recordDetected(env.DB, workspaceId, { checks: fresh });
     // Another deploy of the commit is still running or failed, as the receiver would find for a delivery.
-    if (heldBy(checks.runs, known, checks.defaultBranch).length > 0) continue;
+    const signals =
+      heldBy(checks.runs, names, checks.defaultBranch).length > 0 ? deployments : [...deploys, ...deployments];
+    if (signals.length === 0) continue;
     // The deploy that started last: one that started before the merge was a
     // preview of it, which the move leaves at merged, as a delivery would.
-    const last = deploys.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
+    const last = signals.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
     await live({
+      repository: change.repository,
       commits: [change.mergeCommit],
       mergedBy: last.startedAt,
       ...(last.completedAt === null ? {} : { at: last.completedAt }),
     });
   }
-  return { moved, retry };
-}
-
-/** The names that count as deploys, as the receiver reads them for a delivery (github.ts). */
-async function deployNamesOf(env: Env, secret: string, workspaceId: string): Promise<DeployNames> {
-  const [webhook, detected] = await Promise.all([
-    githubWebhookOf(env.DB, secret, workspaceId),
-    detectedOf(env.DB, workspaceId),
-  ]);
-  return { typed: webhook?.deployChecks ?? [], detected: detected.checks };
+  return { moved, retry, next: null };
 }

@@ -22,7 +22,7 @@ import { tellGitHub } from '../approval-github.ts';
 import type { Principal } from '../auth.ts';
 import { reportDelivery } from '../delivery.ts';
 import { createEngine } from '../engine/index.ts';
-import { checkGitHubWork } from '../github-check.ts';
+import { checkGitHubWork, type DeployScan } from '../github-check.ts';
 import { heldBy, runTaskTool, type ToolAnswer } from '../mcp/server.ts';
 import { Refused } from '../refused.ts';
 import { closeMerged, type ApprovalAnswer, type MergeCloses } from '../task-writes.ts';
@@ -57,6 +57,12 @@ export const GITHUB_RETRY_DELAYS_MS: readonly number[] = Object.freeze([
 ]);
 /** The storage key of how many checks in a row GitHub missed a read in. */
 const GITHUB_RETRIES = 'githubRetries';
+const GITHUB_DEPLOY_CONTINUATION = 'githubDeployContinuation';
+
+interface GitHubDeployContinuation extends DeployScan {
+  readonly retry: boolean;
+  readonly notBefore?: number;
+}
 
 /**
  * Whether a task waits on GitHub for something GitHub may already have done:
@@ -157,9 +163,28 @@ export class TaskStore extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const workspaceId = this.#workspaceId();
     if (workspaceId === null) return;
-    const checked = await checkGitHubWork(this.env, workspaceId, this.tasks);
+    const continuation = await this.ctx.storage.get<GitHubDeployContinuation>(GITHUB_DEPLOY_CONTINUATION);
+    if (continuation?.notBefore !== undefined && Date.now() < continuation.notBefore) {
+      await this.ctx.storage.setAlarm(continuation.notBefore);
+      return;
+    }
+    const since = continuation?.since ?? new Date().toISOString();
+    const checked = await checkGitHubWork(this.env, workspaceId, this.tasks, continuation);
+    const retry = checked.retry || continuation?.retry === true;
+    const { next } = checked;
+    if (next !== null) {
+      const at = Date.now() + (retry ? GITHUB_RETRY_DELAYS_MS[0]! : CHECK_DELAY_MS);
+      await this.ctx.storage.transaction(async (txn) => {
+        await txn.put(GITHUB_DEPLOY_CONTINUATION, { next, since, retry, ...(retry ? { notBefore: at } : {}) });
+        const alarm = await txn.getAlarm();
+        if (alarm === null || alarm > at || (retry && alarm < at)) await txn.setAlarm(at);
+      });
+      return;
+    }
+    if (continuation !== undefined) await this.ctx.storage.delete(GITHUB_DEPLOY_CONTINUATION);
+    if (checked.rescan) await this.#checkGitHubIn(CHECK_DELAY_MS);
     const retries = await this.ctx.storage.get<number>(GITHUB_RETRIES);
-    if (!checked.retry) {
+    if (!retry) {
       if (retries !== undefined) await this.ctx.storage.delete(GITHUB_RETRIES);
       return;
     }
