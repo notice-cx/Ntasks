@@ -12,17 +12,7 @@
  * Also the agent statistics read, GET /api/tasks/agent-stats.
  */
 import { TASK_LIMITS, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import {
-  booleanArg,
-  choiceArg,
-  criteriaMetArg,
-  only,
-  projectArg,
-  refuse,
-  taskArg,
-  textArg,
-  type Args,
-} from '../args.ts';
+import { booleanArg, choiceArg, criteriaMetArg, only, projectArg, refuse, textArg, type Args } from '../args.ts';
 import { agentStats } from '../agent-stats.ts';
 import { TASK_CHOICE_KEYS, TASK_CHOICE_LIMITS } from '../noticeos-fields.ts';
 import {
@@ -44,7 +34,7 @@ import {
 import type { WriteContext, Written } from '../task-writes.ts';
 import { PROPOSAL_VERSION, webTasks } from '../views.ts';
 import { HttpRefused, json, queryOf } from './respond.ts';
-import { writeOf } from './writes.ts';
+import { currentTaskArg, writeOf } from './writes.ts';
 
 /** The answer to a decision: the task as it stands after it. */
 async function decided(context: WriteContext, written: Written): Promise<Response> {
@@ -114,7 +104,7 @@ export async function dismissRoute(
   // Short enough to fit the close reason as "Dismissed: <reason>".
   const reason = textArg(body, 'reason', TASK_LIMITS.reason - DISMISSED.length, false);
   const resolution = choiceArg(body, 'resolution', DISMISSALS);
-  const duplicateOf = body.duplicateOf === undefined ? undefined : taskArg(body, 'duplicateOf');
+  const duplicateOf = await currentTaskArg(context, body, 'duplicateOf');
   if ((resolution === 'duplicate') !== (duplicateOf !== undefined))
     refuse('invalid arguments: duplicateOf (with resolution duplicate, and only with it)');
   if (duplicateOf === taskId) refuse('invalid arguments: duplicateOf (another task than the one dismissed)');
