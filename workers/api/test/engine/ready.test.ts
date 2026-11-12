@@ -792,6 +792,40 @@ describe('dropped links', () => {
     ]);
   });
 
+  it('links a dropped epic to the primary task when its comment keeps its work details', async () => {
+    const time = clock();
+    const tasks = engine({ now: time.now });
+    const project = await newProject(tasks);
+    const plan = await make(tasks, project.id, 'Plan the move', { title: '', type: 'epic' });
+    const step = await make(tasks, project.id, 'Move the images', { title: '', parentId: plan.id });
+    const naming = await make(tasks, project.id, 'Tell the team', { title: '', notes: `Once ${plan.id} lands.` });
+    const work = { next: 'Tell the team' };
+    const { task: held } = await tasks.writeTask(
+      project.id,
+      naming.id,
+      { expectedVersion: naming.version, set: { assignee: AGENT.name, status: 'in_progress', work } },
+      AGENT,
+    );
+    time.advance(1);
+    await tasks.writeTask(
+      project.id,
+      held.id,
+      {
+        expectedVersion: held.version,
+        set: { work },
+        comment: 'The move is off.',
+        others: [
+          { taskId: step.id, expectedVersion: step.version, close: { reason: 'Dropped', resolution: 'wont-do' } },
+        ],
+      },
+      AGENT,
+    );
+    expect(await tasks.getTask(project.id, held.id)).toMatchObject({
+      version: held.version,
+      reliesOnDropped: [{ taskId: plan.id, title: 'Plan the move', resolution: 'no-longer-needed' }],
+    });
+  });
+
   it('leaves out a child epic that closes with the parent epic it names', async () => {
     const time = clock();
     const tasks = engine({ now: time.now });
