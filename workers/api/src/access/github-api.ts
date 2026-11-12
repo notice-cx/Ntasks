@@ -207,7 +207,11 @@ export const RETRY = 'retry';
 
 /** Whether a read GitHub did not answer with 200 may be answered on another try. */
 function retryable(response: Response | null): boolean {
-  return response === null || response.status === 429 || response.status >= 500;
+  if (response === null || response.status === 429 || response.status >= 500) return true;
+  return (
+    response.status === 403 &&
+    (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after'))
+  );
 }
 
 /** The value at `path` in an answer, or undefined when any step of it is missing. */

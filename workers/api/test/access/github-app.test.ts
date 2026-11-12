@@ -1416,6 +1416,34 @@ describe('merged work a deploy shipped that no delivery named', () => {
     expect(delivered).toHaveLength(ids.length);
     expect(delivered.every((task) => task.delivery?.stage === 'live')).toBe(true);
   });
+
+  it('backs off a budget-limited continuation after a production lookup is rate limited', async () => {
+    const owner = await connected();
+    const mine = newInstallation();
+    await deliver('installation', installation(mine, 'created', OWNER_GITHUB_ID));
+    const projectId = await deployingProject(owner);
+    const numbers = Array.from({ length: 48 }, (_, index) => 500 + index);
+    await closedWithPullRequests(projectId, numbers);
+    await mergedInStore(numbers.map((number) => ({ number, commit: newCommit() })));
+    const newest = newCommit();
+    const id = await closedWithPullRequest(owner, projectId, 599);
+    await deliver('pull_request', merged(mine, 599, newest));
+    const startedAt = new Date().toISOString();
+    github.deployments.set(newest, [
+      { id: 599, environment: 'Web', production: true, createdAt: startedAt, finishedAt: startedAt, state: 'SUCCESS' },
+    ]);
+    github.deploymentRefusals.set(newest, { 'x-ratelimit-remaining': '0' });
+    const before = Date.now();
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(await taskOf(projectId, id)).toMatchObject({ delivery: { stage: 'merged' } });
+    const next = await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm());
+    expect(next).toBeGreaterThanOrEqual(before + 60_000);
+
+    github.apiRequests.length = 0;
+    expect(await runDurableObjectAlarm(store())).toBe(true);
+    expect(github.apiRequests).toEqual([]);
+    expect(await runInDurableObject(store(), (_: TaskStore, state) => state.storage.getAlarm())).toBe(next);
+  });
 });
 
 describe('an answer to an approval that gates a pull request', () => {

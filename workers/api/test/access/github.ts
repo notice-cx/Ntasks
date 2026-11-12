@@ -153,6 +153,7 @@ export interface GitHubCalls {
   /** The check runs of each commit, which a test sets; a commit not set has none. */
   readonly checkRuns: Map<string, StandInCheckRun[]>;
   readonly deployments: Map<string, StandInDeployment[]>;
+  readonly deploymentRefusals: Map<string, Record<string, string>>;
   /** Each commit whose check runs the Worker read. */
   readonly checkReads: string[];
   /** The commits whose check runs GitHub fails to answer, with a server error, which a test sets. */
@@ -260,6 +261,7 @@ export function standInForGitHub(): GitHubCalls {
     pullReads: [] as string[],
     checkRuns: new Map<string, StandInCheckRun[]>(),
     deployments: new Map<string, StandInDeployment[]>(),
+    deploymentRefusals: new Map<string, Record<string, string>>(),
     checkReads: [] as string[],
     checkOutages: new Set<string>(),
     checkErrors: new Set<string>(),
@@ -284,6 +286,7 @@ export function standInForGitHub(): GitHubCalls {
     calls.pullReads.length = 0;
     calls.checkRuns.clear();
     calls.deployments.clear();
+    calls.deploymentRefusals.clear();
     calls.checkReads.length = 0;
     calls.checkOutages.clear();
     calls.checkErrors.clear();
@@ -399,8 +402,11 @@ export function standInForGitHub(): GitHubCalls {
       const deployments = /^\/repos\/[^/]+\/[^/]+\/deployments$/u.test(url.pathname);
       if (url.origin === 'https://api.github.com' && deployments && request.method === 'GET') {
         if (reading === undefined) return Response.json({ message: 'Bad credentials' }, { status: 401 });
+        const commit = url.searchParams.get('sha') ?? '';
+        const refusal = calls.deploymentRefusals.get(commit);
+        if (refusal !== undefined) return new Response(null, { status: 403, headers: refusal });
         return Response.json(
-          (calls.deployments.get(url.searchParams.get('sha') ?? '') ?? []).map(({ id, production }) => ({
+          (calls.deployments.get(commit) ?? []).map(({ id, production }) => ({
             id,
             production_environment: production === true,
           })),

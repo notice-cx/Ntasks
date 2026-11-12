@@ -61,6 +61,7 @@ const GITHUB_DEPLOY_CONTINUATION = 'githubDeployContinuation';
 
 interface GitHubDeployContinuation extends DeployScan {
   readonly retry: boolean;
+  readonly notBefore?: number;
 }
 
 /**
@@ -163,16 +164,20 @@ export class TaskStore extends DurableObject<Env> {
     const workspaceId = this.#workspaceId();
     if (workspaceId === null) return;
     const continuation = await this.ctx.storage.get<GitHubDeployContinuation>(GITHUB_DEPLOY_CONTINUATION);
+    if (continuation?.notBefore !== undefined && Date.now() < continuation.notBefore) {
+      await this.ctx.storage.setAlarm(continuation.notBefore);
+      return;
+    }
     const since = continuation?.since ?? new Date().toISOString();
     const checked = await checkGitHubWork(this.env, workspaceId, this.tasks, continuation);
     const retry = checked.retry || continuation?.retry === true;
     const { next } = checked;
     if (next !== null) {
+      const at = Date.now() + (retry ? GITHUB_RETRY_DELAYS_MS[0]! : CHECK_DELAY_MS);
       await this.ctx.storage.transaction(async (txn) => {
-        await txn.put(GITHUB_DEPLOY_CONTINUATION, { next, since, retry });
-        const at = Date.now() + CHECK_DELAY_MS;
+        await txn.put(GITHUB_DEPLOY_CONTINUATION, { next, since, retry, ...(retry ? { notBefore: at } : {}) });
         const alarm = await txn.getAlarm();
-        if (alarm === null || alarm > at) await txn.setAlarm(at);
+        if (alarm === null || alarm > at || (retry && alarm < at)) await txn.setAlarm(at);
       });
       return;
     }
