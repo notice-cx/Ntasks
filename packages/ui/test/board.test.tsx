@@ -728,6 +728,23 @@ describe('a row waiting for you', () => {
         answer: { option: 'decline', relayed: false },
       }),
     );
+    expect(api.state.comments.get('web-k3m9.3')).toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining('The action requires a new approval.') }),
+    );
+  });
+
+  it('refuses stale approval declines and records a retried decline only once', async () => {
+    const api = createFixtureTasksApi();
+    const gate = api.state.tasks.find((entry) => entry.id === 'web-g7p2')!;
+    gate.proposalVersion = 'current-proposal';
+    const decline = (proposalVersion: string) =>
+      api.declineGate!('web-g7p2', 'web', { idempotencyKey: 'decline-once', proposalVersion });
+    await expect(decline('old-proposal')).rejects.toMatchObject({ status: 409, field: 'proposalVersion' });
+    expect(gate.status).toBe('open');
+    await decline('current-proposal');
+    await decline('current-proposal');
+    await expect(decline('other-proposal')).rejects.toMatchObject({ status: 409, code: 'idempotency_conflict' });
+    expect(api.state.comments.get('web-k3m9.3')).toHaveLength(1);
   });
 
   it('closes an approval whose action the person did themselves, with their note, after the Undo window', async () => {

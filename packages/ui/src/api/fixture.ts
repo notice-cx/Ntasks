@@ -1212,12 +1212,28 @@ export function createFixtureTasksApi({
     },
     async declineGate(id, key, options) {
       reach();
-      once(options?.idempotencyKey, ['decline', id, key], () => {
+      const shown = options?.proposalVersion ?? null;
+      once(options?.idempotencyKey, ['decline', id, key, shown], () => {
         const task = find(id, key);
         if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
           throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        if (shown !== null && shown !== task.proposalVersion)
+          throw new ApiError(
+            `${id} changed after this page showed it. Read it again, then answer; your answer was not recorded.`,
+            409,
+            'task_refused',
+            'proposalVersion',
+          );
         close(task, 'Declined', 'wont-do');
         answerHere(task, 'decline', null);
+        for (const waiting of state.tasks) {
+          if (
+            waiting.status === 'closed' ||
+            !waiting.dependencies.some((edge) => edge.type === 'blocks' && edge.id === task.id)
+          )
+            continue;
+          addComment(waiting, `Approval request ${task.id} declined. The action requires a new approval.`);
+        }
       });
     },
     async markStep(id, key, marking, options) {

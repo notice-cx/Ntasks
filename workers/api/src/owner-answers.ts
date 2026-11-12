@@ -720,11 +720,15 @@ export function approvalWrite(
 }
 
 function excludedApproval(task: Task, disposition: string): string {
-  return (
-    `Approval request ${task.id} ${disposition}. ` +
-    'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.' +
-    `\nExcluded action: ${task.description}`
-  );
+  const warning =
+    'The action must not happen without a new action-specific owner approval. Continue only the remaining authorized work. No permission granted.';
+  const heading = `Approval request ${task.id} ${disposition}. ${warning}`;
+  const full = `${heading}\nExcluded action: ${task.description}`;
+  if (full.length <= TASK_LIMITS.comment) return full;
+  const reference = `${heading}\nExcluded action: see ${task.id}.`;
+  return reference.length <= TASK_LIMITS.comment
+    ? reference
+    : `See approval request ${task.id} for its disposition and the excluded action. ${warning}`;
 }
 
 /** Records a person's decline and tells the work waiting on the approval. */
@@ -734,9 +738,10 @@ export function declineWrite(task: Task, around: Surroundings, deciding: Decidin
   const draft = new Draft(task);
   draft.close = { reason: 'Declined', resolution: 'wont-do' };
   recordDirect(draft, deciding, { outcome: 'declined' });
+  const notice = excludedApproval(task, 'declined');
   for (const dependent of waiting(around)) {
     const other = draft.other(dependent);
-    other.comment = excludedApproval(task, 'declined');
+    other.comment = notice;
     if (handedBackWith(dependent)) other.handBack(true);
   }
   return draft.write();

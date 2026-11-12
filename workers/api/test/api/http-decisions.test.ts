@@ -438,6 +438,22 @@ describe('POST /api/gates/:id/decline', () => {
       expect.stringContaining('The action must not happen without a new action-specific owner approval.'),
     ]);
   });
+
+  it('declines an approval whose description is too long to quote in a comment', async () => {
+    const { task: waiting, created } = await task({ requestApproval: { reason: 'Publish the update' } });
+    const gate = created[0]!;
+    await engine.writeTask(
+      project.id,
+      gate.id,
+      { expectedVersion: gate.version, set: { description: 'x'.repeat(TASK_LIMITS.comment) } },
+      OWNER,
+    );
+    expect(await post(`/api/gates/${gate.id}/decline`, {})).toMatchObject({
+      status: 200,
+      body: { task: { resolution: 'wont-do' } },
+    });
+    expect(await texts(waiting.id)).toEqual([expect.stringContaining(`Excluded action: see ${gate.id}.`)]);
+  });
 });
 
 describe('POST /api/gates/:id/performed', () => {
