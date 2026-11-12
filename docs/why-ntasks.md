@@ -109,8 +109,8 @@ which one waits for them, and what each helper agent returned.
 
 **What Ntasks does.** Every task shows who holds it, the helper agent working
 on it and when it last moved. A task in progress whose holder has done nothing
-on it for a day is marked Stalled. Everything that needs a person is in one
-list, Waiting for you.
+on it for a day, or never recorded anything, is marked Stalled. Everything
+that needs a person is in one list, Waiting for you.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/walkthrough-live-work-dark.webp">
