@@ -68,16 +68,22 @@ describe('a task page', () => {
     );
   });
 
-  it("shows the facts its epic pinned for its tasks, and what the epic's closed tasks left", async () => {
+  it('shows pinned epic comments on a task page and hides closed siblings', async () => {
     renderApp('/tasks/web-k3m9.2');
     await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
     const fromEpic = await screen.findByRole('region', { name: 'From the epic' });
     const pinned = fromEpic.querySelector('[data-parent-pinned]') as HTMLElement;
     expect(within(pinned).getByText(/change them there/u)).toBeTruthy();
-    const closed = fromEpic.querySelector('[data-parent-closed]') as HTMLElement;
-    expect(closed.querySelector('[data-closed-sibling="web-k3m9.1"]')?.textContent).toContain(
-      'the form renders its fields and errors',
-    );
+    expect(screen.queryByRole('heading', { name: 'Closed in this epic' })).toBeNull();
+    expect(within(fromEpic).queryByText('web-k3m9.1')).toBeNull();
+  });
+
+  it('hides the epic context when a task has closed siblings and the epic has no pinned comments', async () => {
+    const api = createFixtureTasksApi();
+    api.state.comments.delete('web-k3m9');
+    renderApp('/tasks/web-k3m9.2', api);
+    await screen.findByRole('heading', { level: 1, name: 'Check the sign-in form with a screen reader' });
+    expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
   });
 
   it('lists the closed tasks that closed at the same time lowest id first, as the Worker does', async () => {

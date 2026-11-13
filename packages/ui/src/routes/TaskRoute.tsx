@@ -1446,11 +1446,6 @@ function ExternalLinkRow({ row }: { row: Extract<LinkRow, { kind: 'external' }> 
   );
 }
 
-/**
- * What the task's epic holds for it: the facts its tasks pinned for each
- * other, newest first, and the tasks of the epic that closed, each with why
- * and what proves it. Nothing shows while the epic holds neither.
- */
 function FromTheEpic({
   parent,
   actors,
@@ -1461,13 +1456,8 @@ function FromTheEpic({
   nowMs: number;
 }) {
   const paths = usePaths();
-  if (parent.pinnedTotal === 0 && parent.closedSiblingsTotal === 0) return null;
-  const more = (shown: number, total: number) =>
-    total > shown ? (
-      <Link to={paths.task(parent.id)} className="text-sm text-accent-text no-underline hover:underline">
-        {total - shown} more on {parent.id}
-      </Link>
-    ) : null;
+  if (parent.pinned.length === 0) return null;
+  const more = parent.pinnedTotal - parent.pinned.length;
   return (
     <section aria-label="From the epic" className="flex flex-col gap-4" data-parent-context="">
       <SectionHeading title="From the epic">
@@ -1475,43 +1465,25 @@ function FromTheEpic({
           {parent.title}
         </Link>
       </SectionHeading>
-      {parent.pinned.length > 0 ? (
-        <div className="flex flex-col gap-2" data-parent-pinned="">
-          <h3 className="m-0 text-xs font-semibold text-ink-2">Pinned for its tasks</h3>
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">
-            {parent.pinned.map((comment) => (
-              <li key={comment.id} className="flex flex-col gap-1" data-pinned-comment={comment.id}>
-                <MarkdownText source={comment.text} />
-                <span className="text-xs text-ink-3">
-                  {actorOf(comment.author, null, actors).name}
-                  {comment.createdAt ? ` · ${formatAge(ageMs(nowMs, comment.createdAt))}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {more(parent.pinned.length, parent.pinnedTotal)}
-        </div>
-      ) : null}
-      {parent.closedSiblings.length > 0 ? (
-        <div className="flex flex-col gap-2" data-parent-closed="">
-          <h3 className="m-0 text-xs font-semibold text-ink-2">Closed in this epic</h3>
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {parent.closedSiblings.map((sibling) => (
-              <li key={sibling.id} className="flex flex-col" data-closed-sibling={sibling.id}>
-                <div className="flex min-h-8 items-center">
-                  <TaskLinkRow row={{ kind: 'task', id: sibling.id, title: sibling.title, status: 'closed' }} />
-                </div>
-                {sibling.closeReason ? (
-                  <div className="ps-6 text-sm text-ink-2">
-                    <MarkdownText source={sibling.closeReason} />
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {more(parent.closedSiblings.length, parent.closedSiblingsTotal)}
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-2" data-parent-pinned="">
+        <h3 className="m-0 text-xs font-semibold text-ink-2">Pinned for its tasks</h3>
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+          {parent.pinned.map((comment) => (
+            <li key={comment.id} className="flex flex-col gap-1" data-pinned-comment={comment.id}>
+              <MarkdownText source={comment.text} />
+              <span className="text-xs text-ink-3">
+                {actorOf(comment.author, null, actors).name}
+                {comment.createdAt ? ` · ${formatAge(ageMs(nowMs, comment.createdAt))}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {more > 0 ? (
+          <Link to={paths.task(parent.id)} className="text-sm text-accent-text no-underline hover:underline">
+            {more} more on {parent.id}
+          </Link>
+        ) : null}
+      </div>
     </section>
   );
 }
