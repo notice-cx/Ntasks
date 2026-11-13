@@ -103,6 +103,9 @@ export const WORK_LIMITS: Readonly<Record<WorkDetail, number>> = Object.freeze({
 /** The highest and lowest priority; 0 is the most urgent. */
 export const TASK_PRIORITY = Object.freeze({ highest: 0, lowest: 4, default: 2 });
 
+/** The writing guide and comment previews use the same length. */
+export const COMMENT_SUMMARY_MAX = 160;
+
 /**
  * The largest values the API accepts in a new write. The database accepts at
  * least these, and as much as Beads' own columns hold, so that a task imported

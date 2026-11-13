@@ -112,6 +112,68 @@ describe('a task page', () => {
     expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
   });
 
+  it('starts with the comment summary and lets readers expand and collapse its Markdown', async () => {
+    const api = createFixtureTasksApi();
+    const summary = 'The reset link works again and is ready for review.';
+    api.state.comments.set('web-b2r6', [
+      {
+        id: 'summary',
+        author: 'agent:codex',
+        text: `TL;DR: ${summary}\r\n\r\nThe **old link** pointed to [the wrong host](https://example.com/old).`,
+        createdAt: '2026-11-05T12:00:00.000Z',
+      },
+    ]);
+    renderApp('/tasks/web-b2r6', api);
+
+    const activity = within(await screen.findByRole('list', { name: 'Activity' }));
+    expect(await activity.findByText(summary)).toBeTruthy();
+    expect(activity.queryByText('old link')).toBeNull();
+    const toggle = activity.getByRole('button', { name: 'Show full comment' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(activity.getByRole('link', { name: 'the wrong host' }).getAttribute('href')).toBe('https://example.com/old');
+    expect(activity.getByText('old link').tagName).toBe('STRONG');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(activity.getByRole('button', { name: 'Hide full comment' }));
+    expect(activity.getByText(summary)).toBeTruthy();
+    expect(activity.queryByText('old link')).toBeNull();
+  });
+
+  it('caps long summaries and older comments at a short preview and shows short comments in full', async () => {
+    const api = createFixtureTasksApi();
+    const longSummary = 'Several additional findings belong in the supporting details. '.repeat(4);
+    api.state.comments.set(
+      'web-b2r6',
+      [
+        `**TL;DR:** ${longSummary}\n\nSupporting evidence.`,
+        'The [first check](https://example.com/check) passed. ' + 'We also checked each redirect. '.repeat(7),
+        'A **short** note.',
+      ].map((text, index) => ({
+        id: `comment-${index}`,
+        author: 'agent:codex',
+        text,
+        createdAt: '2026-11-05T12:00:00.000Z',
+      })),
+    );
+    renderApp('/tasks/web-b2r6', api);
+
+    const activity = within(await screen.findByRole('list', { name: 'Activity' }));
+    expect((await activity.findByText('short')).tagName).toBe('STRONG');
+    const previews = [
+      activity.getByText(/^Several additional findings/u).textContent!,
+      activity.getByText(/^The first check passed\./u).textContent!,
+    ];
+    for (const preview of previews) {
+      expect(preview.length).toBeLessThanOrEqual(160);
+      expect(preview.endsWith('…')).toBe(true);
+    }
+    const toggles = activity.getAllByRole('button', { name: 'Show full comment' });
+    expect(toggles).toHaveLength(2);
+    fireEvent.click(toggles[1]!);
+    expect(activity.getByRole('link', { name: 'first check' }).getAttribute('href')).toBe('https://example.com/check');
+    expect(activity.queryByText('Supporting evidence.')).toBeNull();
+  });
+
   describe("the action keys act on the page's task", () => {
     async function open(api: ReturnType<typeof createFixtureTasksApi>) {
       renderApp('/tasks/web-b2r6', api);

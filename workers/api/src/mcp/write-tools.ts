@@ -115,6 +115,7 @@ import { overlapsOf } from '../overlaps.ts';
 import { gatedPullRequest, githubPullOf, pullRequestUrl, shippedArgs, type ProofNames } from '../delivery.ts';
 import { possibleDuplicates } from '../similar.ts';
 import { citationWarnings, TASK_TEXT } from './citations.ts';
+import { COMMENT_WRITING } from './guide.ts';
 import { projectFor, projectForNew } from './project.ts';
 import { descriptionAdvice, placeAdvice, repeatAdvice, TITLE_MOST, titleAdvice, titleHolds } from './writing.ts';
 import { MANY, PROJECT, schema, TASK, TASKS, type TaskTool, type ToolContext } from './read-tools.ts';
@@ -1589,7 +1590,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
         project: PROJECT,
         task: TASK,
         tasks: TASKS('comment on'),
-        text: { type: 'string', maxLength: TASK_LIMITS.comment },
+        text: { type: 'string', maxLength: TASK_LIMITS.comment, description: COMMENT_WRITING },
         pin: {
           type: 'boolean',
           description:

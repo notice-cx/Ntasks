@@ -135,6 +135,11 @@ describe('tools/list', () => {
       expect(tool.inputSchema.properties, tool.name).toHaveProperty('workspace');
       expect(tool.inputSchema.required, tool.name).not.toContain('workspace');
     }
+    const comment = result.tools.find(({ name }) => name === 'comment_on_task');
+    expect(comment?.inputSchema.properties).toHaveProperty(
+      'text.description',
+      expect.stringMatching(/TL;DR:.*one sentence of at most 160 characters/u),
+    );
     const reads = [
       'list_workspaces',
       'get_task_guide',
@@ -163,6 +168,7 @@ describe('list_workspaces and get_task_guide', () => {
     expect(guide.version).toMatch(/^[0-9a-f]{12}$/u);
     expect(guide.guide.startsWith('# Working with Ntasks tasks')).toBe(true);
     expect(guide.guide).toContain('call get_task_template');
+    expect(guide.guide).toMatch(/## Writing a comment\n\n.*TL;DR:.*one sentence of at most 160 characters/u);
     expect((await callTool(target, 'list_workspaces')).value).toEqual({
       guideVersion: guide.version,
       workspaces: [
