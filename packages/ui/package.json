@@ -1,6 +1,6 @@
 {
   "name": "@notice-cx/ntasks-ui",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "The Ntasks web app as a React component a host page renders: the board, a task, Focus, Live, Projects, Members and Settings, acting as the signed-in person.",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/notice-cx/Ntasks/tree/main/packages/ui#readme",
