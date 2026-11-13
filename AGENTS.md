@@ -202,6 +202,30 @@ maintainer work carries its task id in a `Refs:` footer. Release pull
 requests, which release-please opens on `release-please--` branches, are the
 owner's to merge ([above](#never-without-the-owners-explicit-approval)).
 
+### Follow the pull request through merge
+
+1. Link the pull request to its Ntasks task and enable GitHub auto-merge as
+   soon as you open an eligible pull request. Merging to `main` deploys Ntasks.
+   Agents may merge routine Ntasks pull requests. A pull request that adds a
+   task-store or D1 migration needs explicit owner approval before merging.
+   Request it with `request_human_approval`, pass the PR URL as `pr`, and leave
+   auto-merge off while approval is pending. Release pull requests are the
+   owner's to merge. Keep auto-merge off for them.
+2. Monitor GitHub CI, CodeRabbit and merge conflicts. In Claude Desktop, turn
+   on Auto-fix as soon as the PR opens. In a cloud session or any environment
+   without Auto-fix, watch the checks and review threads in GitHub. Fix CI
+   failures and conflicts, fix or answer every CodeRabbit finding, and resolve
+   review threads after addressing them. Re-enable auto-merge if a push takes
+   the PR out of the queue.
+3. Confirm GitHub adds the PR to the merge queue after CI and CodeRabbit pass
+   and the review threads are resolved. If the PR is eligible and still outside
+   the queue, enqueue it through GitHub. The queue runs checks against `main`
+   and squash-merges the PR. Keep watching until GitHub shows it as merged.
+   Confirm Ntasks recorded the merge on the linked task. If the GitHub event
+   is missing, record the merge with `report_delivery`. If a human decision
+   or missing permission blocks progress, record the blocker and next action
+   on the task.
+
 CodeRabbit reviews about 10 pull request changes an hour per author, and the
 maintainers' agents all open pull requests as one author, so each new pull
 request and each push spends a review they share. Collect every fix known for
