@@ -832,7 +832,22 @@ change, end the row. On a phone the row takes two lines: the mark, the
 title, the avatar and the age, then the holder's name and the next step in
 Text 3.
 
-### Epics
+### Project overview and epic detail
+
+Project links in the sidebar open `/tasks/projects/<project>`. The project
+name and icon sit above the Overview and Tasks links. Overview gives open
+epics a card each, with their status breakdown, done count and changes this
+week. Needs attention links to specific tasks waiting for you or blocked.
+On narrow screens it sits above the epic cards. Work outside epics previews
+open and in-progress tasks in no open epic. Tasks opens the project's
+board with the same status groups and filters as the workspace board.
+
+In the task list, a neutral badge with the Layers icon and the word Epic
+appears before the title, including on phones. The epic page repeats the
+badge above the title. Its Tasks section shows a progress bar with counts
+by status and links to the epic's direct children, including child epics.
+
+### Epics on a filtered board
 
 While one project is in view, the board's views end with Epics
 (`?view=epics`): the project's open epics, one line each. An epic counts the

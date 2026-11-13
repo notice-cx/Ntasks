@@ -42,16 +42,16 @@ describe('a task page', () => {
     expect(within(fact('Type')).getByText('Bug')).toBeTruthy();
     expect(within(fact('Assignee')).getByText('Nobody')).toBeTruthy();
     expect(within(fact('Project')).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
-      '/tasks?project=web',
+      '/tasks/projects/web',
     );
     const doneWhen = document.querySelector('[data-task-field="Done when"]') as HTMLElement;
     expect(within(doneWhen).getByText('0/2')).toBeTruthy();
     // A Markdown heading is drawn at a heading's size, not under the body's.
     expect(screen.getByRole('heading', { level: 4, name: 'Steps to Reproduce' }).className).toContain('text-[16px]');
-    // The top bar's path leads back to the project's tasks, and keeps the project's name when a phone hides its words.
+    // The top bar's path leads to the project and keeps its name when a phone hides its words.
     const path = screen.getByRole('navigation', { name: 'Path' });
     const projectLink = within(path).getByRole('link', { name: 'Example web app' });
-    expect(projectLink.getAttribute('href')).toBe('/tasks?project=web');
+    expect(projectLink.getAttribute('href')).toBe('/tasks/projects/web');
     expect(within(path).getByText('web-b2r6')).toBeTruthy();
   });
 

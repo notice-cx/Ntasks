@@ -107,8 +107,8 @@ function WorkspaceSwitcher({ admin }: { admin: boolean }) {
 
 /**
  * The app's navigation: the workspace, Waiting for you, Tasks, Live, Focus and Productivity, then
- * each project and each person or agent with open work, each a view of the
- * board, and at its foot Settings, where the projects and members are
+ * each project's overview and each person or agent's view of the board,
+ * and at its foot Settings, where the projects and members are
  * managed, and the link to the source code.
  */
 export function AppSidebar() {
@@ -184,9 +184,13 @@ export function AppSidebar() {
               asChild
               icon={<ProjectIcon project={project} />}
               count={project.ok ? projects.get(project.key) : undefined}
-              active={onBoard && params.get('project') === project.key}
+              active={
+                pathname === paths.project(project.key) ||
+                pathname === paths.projectTasks(project.key) ||
+                (onBoard && params.get('project') === project.key)
+              }
             >
-              <Link to={`${paths.board}?project=${encodeURIComponent(project.key)}`}>{project.name}</Link>
+              <Link to={paths.project(project.key)}>{project.name}</Link>
             </NavItem>
           ))}
         </NavSection>

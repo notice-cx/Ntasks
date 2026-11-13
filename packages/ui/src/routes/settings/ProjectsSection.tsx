@@ -130,7 +130,7 @@ function ProjectRow({
           project.displayName
         ) : (
           <Link
-            to={`${paths.board}?project=${encodeURIComponent(project.logicalKey)}`}
+            to={paths.project(project.logicalKey)}
             className="text-ink no-underline outline-none focus-visible:underline"
           >
             {project.displayName}

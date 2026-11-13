@@ -30,10 +30,11 @@ import type {
   TaskProject,
 } from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
+import { EpicBadge } from '../components/EpicBadge';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { TestRun } from '../components/TestRun';
 import { PageSkeleton, ReadFailed } from '../components/surface';
-import { Badge, Progress } from '../components/ui/badge';
+import { Badge } from '../components/ui/badge';
 import { LinkedText } from '../components/ui/linked-text';
 import { Button, IconButton } from '../components/ui/button';
 import { OptionList } from '../components/ui/choice';
@@ -94,6 +95,7 @@ import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
 import { usePageTitle } from '../lib/page-title';
+import { EpicTasks } from './tasks/epic-tasks';
 
 const UNAVAILABLE = 'This sign-in cannot do this.';
 
@@ -130,7 +132,7 @@ export function TaskRoute() {
               prefix: project.prefix,
               icon: project.icon ?? null,
               darkIcon: project.darkIcon ?? null,
-              to: `${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`,
+              to: project.disabled === true ? paths.projects : paths.project(project.logicalKey),
             }
           : null
       }
@@ -516,6 +518,7 @@ function TaskPage({
         data-task-page=""
       >
         <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 lg:col-start-1 max-md:pt-5')}>
+          {task.issueType === 'epic' ? <EpicBadge className="self-start" /> : null}
           <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
             <LinkedText text={task.title} />
           </h1>
@@ -644,6 +647,9 @@ function TaskPage({
               ) : null
             }
           />
+          {task.issueType === 'epic' || siblings.some((row) => row.parent === task.id) ? (
+            <EpicTasks id={task.id} epic={epic} siblings={siblings} />
+          ) : null}
           <TaskLinks
             task={task}
             project={key}
@@ -653,9 +659,6 @@ function TaskPage({
             canAdd={{ pages: writable('addExternalLinks'), tasks: writable('addLinks') }}
             canRemove={{ pages: writable('removeExternalLinks'), tasks: writable('removeLinks') }}
           />
-          {epic || siblings.some((row) => row.parent === task.id) ? (
-            <EpicTasks epic={epic} tasks={siblings.filter((row) => row.parent === task.id)} />
-          ) : null}
           {parentContext ? <FromTheEpic parent={parentContext} actors={actors} nowMs={nowMs} /> : null}
           <Activity task={task} project={key} comments={comments} actors={actors} nowMs={nowMs} />
         </div>
@@ -1440,25 +1443,6 @@ function ExternalLinkRow({ row }: { row: Extract<LinkRow, { kind: 'external' }> 
       <span className="truncate">{row.title}</span>
       {host ? <span className="shrink-0 text-meta text-ink-3">{host}</span> : null}
     </a>
-  );
-}
-
-function EpicTasks({ epic, tasks }: { epic: LiveEpic | null; tasks: readonly LiveTask[] }) {
-  return (
-    <section className="flex flex-col gap-1" data-epic-tasks="">
-      <SectionHeading title="Tasks">{epic ? <Progress done={epic.closed} total={epic.total} /> : null}</SectionHeading>
-      {tasks.length === 0 ? (
-        <p className="m-0 text-sm text-ink-3">None</p>
-      ) : (
-        <ul className="m-0 flex list-none flex-col p-0">
-          {tasks.map((row) => (
-            <li key={row.id} className="flex min-h-8 items-center" data-linked-task={row.id}>
-              <TaskLinkRow row={{ kind: 'task', id: row.id, title: row.title, status: row.status }} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
 

@@ -22,6 +22,9 @@ export interface AppPaths {
   readonly settings: string;
   /** One of Settings's tabs. */
   settingsTab(tab: string): string;
+  /** The project's landing page and its task queue. */
+  project(key: string): string;
+  projectTasks(key: string): string;
   /** Whether a path is Settings or one of its tabs. */
   isSettings(pathname: string): boolean;
   task(id: string): string;
@@ -52,6 +55,8 @@ export function appPaths(basePath: string): AppPaths {
     members: under('settings/members'),
     settings: under('settings'),
     settingsTab: (tab) => under(`settings/${encodeURIComponent(tab)}`),
+    project: (key) => under(`projects/${encodeURIComponent(key)}`),
+    projectTasks: (key) => under(`projects/${encodeURIComponent(key)}/tasks`),
     isSettings: (pathname) => pathname === under('settings') || pathname.startsWith(`${under('settings')}/`),
     task: (id) => under(encodeURIComponent(id)),
     isAppPage: (pathname) => pathname === board || pathname.startsWith(`${board}/`),

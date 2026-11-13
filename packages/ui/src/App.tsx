@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Component, lazy, Suspense, useState, type ReactNode } from 'react';
 import { LucideProvider } from 'lucide-react';
-import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import { retryRead, type TasksApi } from './api/client';
 import type { TokenSource } from './api/connection';
 import { TasksApiProvider } from './api/context';
@@ -29,6 +29,7 @@ const FocusRoute = lazy(() => import('./routes/FocusRoute'));
 const LiveRoute = lazy(() => import('./routes/LiveRoute'));
 const ProductivityRoute = lazy(() => import('./routes/ProductivityRoute'));
 const SettingsRoute = lazy(() => import('./routes/SettingsRoute'));
+const ProjectRoute = lazy(() => import('./routes/ProjectRoute'));
 
 export function newQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true, retry: retryRead } } });
@@ -77,6 +78,9 @@ export function App({
                       <Route path="live" element={<LiveRoute />} />
                       <Route path="productivity" element={<ProductivityRoute />} />
                       <Route path="projects" element={<MovedTo page="projects" />} />
+                      <Route path="projects/:project" element={<ProjectRoute />}>
+                        <Route path="tasks" element={<TasksBoard scoped />} />
+                      </Route>
                       <Route path="members" element={<MovedTo page="members" />} />
                       <Route path="settings/:tab?" element={<SettingsRoute />} />
                       <Route path="*" element={<NoPage />} />
@@ -121,8 +125,9 @@ function Shell({ sidebar }: { sidebar: SidebarPlace }) {
   const navigate = useNavigate();
   const paths = usePaths();
   const writable = writesAvailable(useCapabilities());
-  // The board keeps its filters when a key opens something on it.
-  const board = `${paths.board}${pathname === paths.board ? search : ''}`;
+  const project = useMatch(`${paths.board}/projects/:project/*`)?.params.project;
+  const queue = project === undefined ? paths.board : paths.projectTasks(project);
+  const board = `${queue}${pathname === queue ? search : ''}`;
   useShortcut('c', () => void navigate(board, { state: { [COMPOSE_STATE]: true } }), writable);
   useShortcut('/', () => void navigate(board, { state: { [SEARCH_STATE]: Date.now() } }));
   // On Focus itself, F would start it again and drop the decision and project its address names.

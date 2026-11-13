@@ -5,7 +5,7 @@
  * missing, never as empty.
  */
 import { actorKey } from '@ntasks/domain';
-import type { FieldFilters, FoundTask, LiveTasksPayload, TaskProject } from '../api/types';
+import type { FieldFilters, FoundTask, LiveTask, LiveTasksPayload, TaskProject } from '../api/types';
 import { STATUS_MARKS, statusMarkFor, type StatusMark } from './symbols';
 import {
   boardOrder,
@@ -150,14 +150,8 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     payload.tasks.filter((task) => task.awaitType === null || task.awaitType === 'human'),
     payload.actors,
   );
-  // An approval is the one question for the task it holds, so that task is not asked again beside it.
-  const approvals = new Set(tasks.filter((task) => isGate(task) && inboxAsk(task) !== null).map((task) => task.id));
   const asks = tasks.filter((task) => inboxAsk(task) !== null);
-  const held = new Set(
-    asks
-      .filter((task) => task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)))
-      .map((task) => task.id),
-  );
+  const held = heldByApprovals(asks);
   const waiting = asks.filter((task) => !held.has(task.id)).sort(inboxOrder);
   return {
     ...base,
@@ -175,6 +169,16 @@ function readProject(project: TaskProject, read: ProjectRead | undefined): Board
     epicProgress: new Map((payload.epics ?? []).map((epic) => [epic.id, { closed: epic.closed, total: epic.total }])),
     closedSince: payload.closedSince ?? null,
   };
+}
+
+/** An approval is the one question for the task it holds. */
+export function heldByApprovals(asks: readonly LiveTask[]): Set<string> {
+  const approvals = new Set(asks.filter(isGate).map((task) => task.id));
+  return new Set(
+    asks
+      .filter((task) => task.dependencies.some((edge) => edge.type === 'blocks' && approvals.has(edge.id)))
+      .map((task) => task.id),
+  );
 }
 
 function matchesSearch(task: BoardTask, q: string): boolean {

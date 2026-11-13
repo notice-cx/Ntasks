@@ -297,7 +297,7 @@ export function TaskFacts({
             {typeLabel(task.issueType, task.awaitType, (task.steps ?? null) !== null)}
           </Fact>
           <Fact label="Project" valueText={project.displayName}>
-            <FactLink to={`${paths.board}?${new URLSearchParams({ project: project.logicalKey })}`}>
+            <FactLink to={project.disabled === true ? paths.projects : paths.project(project.logicalKey)}>
               {project.displayName}
             </FactLink>
           </Fact>
