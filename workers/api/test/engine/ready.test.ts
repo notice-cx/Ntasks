@@ -51,7 +51,7 @@ describe('links', () => {
     ]);
   });
 
-  it('adds a link that makes an existing task wait on a new one, raising that task version', async () => {
+  it('keeps an existing task open when a new link makes it wait', async () => {
     const tasks = engine();
     const project = await newProject(tasks);
     const waiting = await make(tasks, project.id, 'Ship it');
@@ -63,8 +63,7 @@ describe('links', () => {
 
     const after = (await tasks.getTask(project.id, waiting.id))!;
     expect(after.dependencies.map((link) => link.taskId)).toEqual([blocker.id]);
-    expect(after.version).toBe(2);
-    expect(after.ready).toBe(false);
+    expect(after).toMatchObject({ version: 2, status: 'open', ready: false });
   });
 
   it('removes a link and changes a link type in a write', async () => {

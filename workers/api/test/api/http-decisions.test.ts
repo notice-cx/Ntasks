@@ -474,6 +474,7 @@ describe('POST /api/gates/:id/performed', () => {
       resolution: 'done',
       closeReason: 'Did it myself: Updated it from my laptop.',
       closedBy: 'Person',
+      proof: null,
       answer: { option: 'done', quote: 'Updated it from my laptop.', recordedBy: 'Person', relayed: false },
     });
     expect((await current(gate.id)).metadata[MAINTENANCE]).toMatchObject({

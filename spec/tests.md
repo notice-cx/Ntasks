@@ -15,18 +15,21 @@ protocol appears in neither table.
 |---|---|
 | STATE-1 | `workers/api/test/schema.test.ts` › "refuses a status the model does not have" |
 | STATE-1 | `workers/api/test/schema.test.ts` › "refuses a closed task that does not record its close" |
+| STATE-2 | `workers/api/test/engine/ready.test.ts` › "keeps an existing task open when a new link makes it wait" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task until every task blocking it is closed" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds every descendant of a blocked parent, at any depth, and only while the parent is open" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task labelled human only by its own links, not by a waiting parent, and holds the tasks under it" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "holds a task deferred to a later time, and the children of a parent deferred to one" |
 | STATE-3 | `workers/api/test/engine/ready.test.ts` › "opens a gate the task waits on, which no agent sees as work, until a person closes it" |
 | STATE-4 | `workers/api/test/api/write-tools.test.ts` › "refuses a task someone else holds, a closed one and one that is not open" |
+| STATE-4 | `workers/api/test/api/write-tools.test.ts` › "refuses deferred and legacy unassigned in-progress claims without writing" |
 | STATE-5 | `workers/api/test/engine/writes.test.ts` › "lets a person give a held task to someone else, or release it" |
 | STATE-4, STATE-5 | `workers/api/test/api/write-tools.test.ts` › "refuses in-progress status without a holder and makes a released claim ready again" |
 | STATE-4, STATE-5 | `workers/api/test/api/http-writes.test.ts` › "requires a holder for in-progress status and opens the task when its holder releases it" |
 | STATE-6 | `workers/api/test/api/write-tools.test.ts` › "refuses what the task state forbids: a new choice set, a shipped card, a human label, a held hand-over" |
 | STATE-7 | `workers/api/test/api/write-tools.test.ts` › "refuses a task held by someone else, one waiting on an approval or on open children, and a person’s decision" |
 | STATE-7 | `workers/api/test/api/write-tools.test.ts` › "closes a duplicate, linking it to the task it duplicates" |
+| STATE-7 | `workers/api/test/api/http-writes.test.ts` › "refuses each kind of delivery proof when the close is not done" |
 | STATE-8 | `workers/api/test/engine/writes.test.ts` › "reopens a closed task with no close left on it, and keeps the earlier close in history (rule 6)" |
 | STATE-8 | `workers/api/test/api/delivery.test.ts` › "is cleared by a reopen and kept in history, and a close without a commit or pull request has none" |
 | STATE-9 | `workers/api/test/engine/ready.test.ts` › "lists open epics with their children, eligible to close once every child is" |
@@ -164,6 +167,7 @@ protocol appears in neither table.
 | INV-4 | `workers/api/test/engine/moves.test.ts` › "plans again when a task it leaves in place changes before its batch, moving nothing until then" |
 | INV-4 | `workers/api/test/engine/writes.test.ts` › "refuses a write based on an older version (rule 2)" |
 | INV-4 | `workers/api/test/api/write-tools.test.ts` › "reads the task again when another write changed it first (rule 2), and gives up after a few tries" |
+| INV-4 | `workers/api/test/api/http-writes.test.ts` › "returns HTTP 503 when every attempt loses to a concurrent write" |
 | INV-4 | `workers/api/test/schema.test.ts` › "refuses an update that does not raise the version by one" |
 | INV-5 | `workers/api/test/schema.test.ts` › "writes nothing, history included, when the version has moved on" |
 | INV-5 | `workers/api/test/engine/writes.test.ts` › "answers again once a refused write is retried with its key, as a new attempt" |
@@ -175,9 +179,10 @@ protocol appears in neither table.
 | INV-6 | `workers/api/test/schema.test.ts` › "keeps a task in its project" |
 | INV-6 | `workers/api/test/schema.test.ts` › "refuses a new id without the new project’s prefix, a new id in the same project, and a new creation time" |
 | INV-6 | `workers/api/test/schema.test.ts` › "never removes a former id, nor points it at a task it did not move to, and moves history and comments only with their task" |
-| INV-7 | `workers/api/test/api/write-tools.test.ts` › "shows proof none on a task done with no commit, pull request or link, and warns its closer" |
+| INV-7 | `workers/api/test/api/write-tools.test.ts` › "shows proof none on a %s done without evidence and warns its closer" |
 | INV-7 | `workers/api/test/api/write-tools.test.ts` › "counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics" |
 | INV-7 | `workers/api/test/api/http-decisions.test.ts` › "closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason" |
+| INV-7 | `workers/api/test/api/http-decisions.test.ts` › "closes the approval as done by the person, read as done and not approved, and tells the waiting task no agent does it" |
 | INV-8 | `workers/api/test/engine/ready.test.ts` › "holds a task until every task blocking it is closed" |
 | INV-9 | `workers/api/test/engine/writes.test.ts` › "reopens a closed task with no close left on it, and keeps the earlier close in history (rule 6)" |
 | INV-10 | `workers/api/test/api/read-tools.test.ts` › "list held tasks before the writing checklist, most recently active first, with the branch and next step" |
@@ -188,6 +193,7 @@ protocol appears in neither table.
 | INV-11 | `workers/api/test/api/write-tools.test.ts` › "records which pull request merges first, on both tasks, holding neither out of ready work" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "reads its changes, newest first" |
 | INV-12 | `workers/api/test/api/http.test.ts` › "names the closer and the claimer with the models they named" |
+| INV-12 | `workers/api/test/api/read-tools.test.ts` › "keeps the actor, model and timestamp for each historical change" |
 | INV-13 | `packages/domain/test/actors.test.ts` › "gives every actor in spec/naming.json its kind and display name: $actor" |
 | INV-13 | `packages/domain/test/actors.test.ts` › "keys an agent and a person of the same name apart, and every spelling of one agent together" |
 | INV-13 | `packages/domain/test/actors.test.ts` › "gives every model in spec/naming.json its id and display name: $model" |
@@ -215,11 +221,4 @@ conformance -- --list` lists its checks by rule.
 
 | Rule | What no test covers |
 |---|---|
-| STATE-2 | That a server never sets `blocked` because of a link |
-| STATE-4 | A claim refused for a `deferred` task, and for one `in_progress` with nobody holding it ([OQ-3](open-questions.md#oq-3)) |
-| STATE-7 | A commit or a pull request refused on a close that is not `done`; only a link is tried |
-| INV-2 | That no time longer than a day releases a claim: the test reads a claim a day after its last activity |
-| INV-4 | The `503` with `unavailable` over HTTP after the rereads run out |
-| INV-7 | That an approval closes without proof, and that each of bug, feature and chore needs it ([OQ-8](open-questions.md#oq-8)) |
-| INV-12 | The model recorded in a history event ([OQ-16](open-questions.md#oq-16)) |
 | VER-1, VER-2 | Rules of this document, which the schema test checks for the `$id`s |
