@@ -93,6 +93,7 @@ import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
 import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
+import { CommentText } from './tasks/comment-text';
 import { MarkdownText, TaskPrefixesProvider, taskListItems, toggleTaskListLine } from './tasks/task-markdown';
 import { usePageTitle } from '../lib/page-title';
 import { EpicTasks } from './tasks/epic-tasks';
@@ -1470,7 +1471,7 @@ function FromTheEpic({
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {parent.pinned.map((comment) => (
             <li key={comment.id} className="flex flex-col gap-1" data-pinned-comment={comment.id}>
-              <MarkdownText source={comment.text} />
+              <CommentText source={comment.text} />
               <span className="text-xs text-ink-3">
                 {actorOf(comment.author, null, actors).name}
                 {comment.createdAt ? ` · ${formatAge(ageMs(nowMs, comment.createdAt))}` : ''}
@@ -1555,7 +1556,7 @@ function Activity({
         ),
         body: (
           <>
-            <MarkdownText source={comment.text} />
+            <CommentText source={comment.text} />
             {comment.test ? <TestRun run={comment.test} /> : null}
           </>
         ),

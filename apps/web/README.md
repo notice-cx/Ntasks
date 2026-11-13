@@ -10,7 +10,8 @@ returns `index.html`, and the page shows the app.
 
 | Address | Shows |
 |---|---|
-| `/tasks` and everything under it | The app ([its pages](../../packages/ui/README.md#pages)) |
+| `/tasks` and everything under it | The workspace's task views, individual task pages, and Settings |
+| `/projects/<project>` and `/projects/<project>/tasks` | The project's Overview and Tasks views |
 | `/design` | The design system's gallery: every token, symbol and component, in light or dark. It reads no tasks and needs no sign-in. |
 | `/live`, `/projects`, `/members`, `/settings` | The same page under `/tasks`, with the query and the fragment kept |
 | Any other address | The board, at `/tasks` |

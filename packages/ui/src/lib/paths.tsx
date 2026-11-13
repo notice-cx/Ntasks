@@ -1,9 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
 /**
- * The addresses of the app's pages. Every page sits under the base path the
- * host mounts the app at: the board is the base path itself, a task is
- * `<base>/<id>`, and the other pages are `<base>/focus`, `<base>/live`,
+ * The addresses of the app's pages. The board is the base path itself, a task is
+ * `<base>/<id>`, and workspace views include `<base>/focus`, `<base>/live`,
  * `<base>/productivity` and `<base>/settings`, whose tabs are
  * `<base>/settings/<tab>`, Projects and Members among them.
  * `<base>/projects` and `<base>/members` open those tabs. A task id always
@@ -22,6 +21,8 @@ export interface AppPaths {
   readonly settings: string;
   /** One of Settings's tabs. */
   settingsTab(tab: string): string;
+  /** The prefix shared by project pages. */
+  readonly projectBase: string;
   /** The project's landing page and its task queue. */
   project(key: string): string;
   projectTasks(key: string): string;
@@ -43,9 +44,11 @@ export function normalBasePath(basePath: string): string {
   return `/${trimmed}`;
 }
 
-export function appPaths(basePath: string): AppPaths {
+export function appPaths(basePath: string, projectBasePath?: string): AppPaths {
   const board = normalBasePath(basePath);
   const under = (rest: string) => `${board}/${rest}`;
+  const projectBase = projectBasePath === undefined ? under('projects') : normalBasePath(projectBasePath);
+  const project = (key: string) => `${projectBase}/${encodeURIComponent(key)}`;
   return {
     board,
     focus: under('focus'),
@@ -55,11 +58,13 @@ export function appPaths(basePath: string): AppPaths {
     members: under('settings/members'),
     settings: under('settings'),
     settingsTab: (tab) => under(`settings/${encodeURIComponent(tab)}`),
-    project: (key) => under(`projects/${encodeURIComponent(key)}`),
-    projectTasks: (key) => under(`projects/${encodeURIComponent(key)}/tasks`),
+    projectBase,
+    project,
+    projectTasks: (key) => `${project(key)}/tasks`,
     isSettings: (pathname) => pathname === under('settings') || pathname.startsWith(`${under('settings')}/`),
     task: (id) => under(encodeURIComponent(id)),
-    isAppPage: (pathname) => pathname === board || pathname.startsWith(`${board}/`),
+    isAppPage: (pathname) =>
+      pathname === board || pathname.startsWith(`${board}/`) || pathname.startsWith(`${projectBase}/`),
   };
 }
 

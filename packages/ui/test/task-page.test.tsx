@@ -42,7 +42,7 @@ describe('a task page', () => {
     expect(within(fact('Type')).getByText('Bug')).toBeTruthy();
     expect(within(fact('Assignee')).getByText('Nobody')).toBeTruthy();
     expect(within(fact('Project')).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
-      '/tasks/projects/web',
+      '/projects/web',
     );
     const doneWhen = document.querySelector('[data-task-field="Done when"]') as HTMLElement;
     expect(within(doneWhen).getByText('0/2')).toBeTruthy();
@@ -51,7 +51,7 @@ describe('a task page', () => {
     // The top bar's path leads to the project and keeps its name when a phone hides its words.
     const path = screen.getByRole('navigation', { name: 'Path' });
     const projectLink = within(path).getByRole('link', { name: 'Example web app' });
-    expect(projectLink.getAttribute('href')).toBe('/tasks/projects/web');
+    expect(projectLink.getAttribute('href')).toBe('/projects/web');
     expect(within(path).getByText('web-b2r6')).toBeTruthy();
   });
 
@@ -110,6 +110,71 @@ describe('a task page', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ship the new sign-in page' });
     await waitFor(() => expect(document.querySelector('[data-comment-pinned]')?.textContent).toBe('Pinned'));
     expect(screen.queryByRole('region', { name: 'From the epic' })).toBeNull();
+  });
+
+  it('starts with the comment summary and lets readers expand and collapse its Markdown', async () => {
+    const api = createFixtureTasksApi();
+    const summary = 'The reset link works again and is ready for review.';
+    api.state.comments.set('web-b2r6', [
+      {
+        id: 'summary',
+        author: 'agent:codex',
+        text: `TL;DR: ${summary} <script>hiddenScript()</script><style>.hidden-style {}</style>\r\n\r\nThe **old link** pointed to [the wrong host](https://example.com/old).`,
+        createdAt: '2026-11-05T12:00:00.000Z',
+      },
+    ]);
+    renderApp('/tasks/web-b2r6', api);
+
+    const activity = within(await screen.findByRole('list', { name: 'Activity' }));
+    expect(await activity.findByText(summary)).toBeTruthy();
+    expect(activity.queryByText('old link')).toBeNull();
+    const toggle = activity.getByRole('button', { name: 'Show full comment' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(activity.queryByText(/hiddenScript|hidden-style/u)).toBeNull();
+    expect(activity.getByRole('link', { name: 'the wrong host' }).getAttribute('href')).toBe('https://example.com/old');
+    expect(activity.getByText('old link').tagName).toBe('STRONG');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(activity.getByRole('button', { name: 'Hide full comment' }));
+    expect(activity.getByText(summary)).toBeTruthy();
+    expect(activity.queryByText('old link')).toBeNull();
+  });
+
+  it('caps long summaries and older comments at a short preview and shows short comments in full', async () => {
+    const api = createFixtureTasksApi();
+    const longSummary = 'Several additional findings belong in the supporting details. '.repeat(4);
+    api.state.comments.set(
+      'web-b2r6',
+      [
+        `**TL;DR:** ${longSummary}\n\nSupporting evidence.`,
+        '<script>hiddenScript()</script>suffix\n\nThe [first check](https://example.com/check) passed. ' +
+          'We also checked each redirect. '.repeat(7),
+        'A **short** note.',
+      ].map((text, index) => ({
+        id: `comment-${index}`,
+        author: 'agent:codex',
+        text,
+        createdAt: '2026-11-05T12:00:00.000Z',
+      })),
+    );
+    renderApp('/tasks/web-b2r6', api);
+
+    const activity = within(await screen.findByRole('list', { name: 'Activity' }));
+    expect((await activity.findByText('short')).tagName).toBe('STRONG');
+    const previews = [
+      activity.getByText(/^Several additional findings/u).textContent!,
+      activity.getByText(/^The first check passed\./u).textContent!,
+    ];
+    for (const preview of previews) {
+      expect(preview.length).toBeLessThanOrEqual(160);
+      expect(preview.endsWith('…')).toBe(true);
+    }
+    const toggles = activity.getAllByRole('button', { name: 'Show full comment' });
+    expect(toggles).toHaveLength(2);
+    fireEvent.click(toggles[1]!);
+    expect(activity.getByRole('link', { name: 'first check' }).getAttribute('href')).toBe('https://example.com/check');
+    expect(activity.queryByText(/hiddenScript|suffix/u)).toBeNull();
+    expect(activity.queryByText('Supporting evidence.')).toBeNull();
   });
 
   describe("the action keys act on the page's task", () => {

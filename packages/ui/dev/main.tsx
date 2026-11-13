@@ -5,7 +5,7 @@
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { createFixtureTasksApi } from '../src/fixture';
 import { DesignGallery, NtasksApp } from '../src/index';
 // The built stylesheet imports these itself (vite.config.ts).
@@ -21,9 +21,8 @@ createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route index element={<Navigate to="/tasks" replace />} />
         <Route path="design" element={<DesignGallery />} />
-        <Route path="tasks/*" element={<NtasksApp api={api} basePath="/tasks" />} />
+        <Route path="*" element={<NtasksApp api={api} projectBasePath="/projects" />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

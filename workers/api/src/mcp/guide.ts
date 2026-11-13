@@ -9,9 +9,13 @@
  * work. Rules only one installation uses, such as how NoticeOS ranks cards or
  * keeps change classes, belong in that installation's own instructions.
  */
-import { NEXT_LABEL, type HeldTask } from '@ntasks/domain';
+import { COMMENT_SUMMARY_MAX, NEXT_LABEL, type HeldTask } from '@ntasks/domain';
 import { shortHash } from '../short-hash.ts';
 import { TITLE_MOST } from './writing.ts';
+
+export const COMMENT_WRITING =
+  `Start a detailed comment with a plain-text \`TL;DR: \` line. Write one sentence of at most ${COMMENT_SUMMARY_MAX} characters after the label. ` +
+  'Lead with the outcome and any action the reader needs to take. Leave a blank line before the supporting details. A short comment can stand on its own.';
 
 /** The writing rules an agent needs on connection, also used by the full guide. */
 const TASK_WRITING: readonly string[] = Object.freeze([
@@ -44,10 +48,10 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 
 /** What the task tools and rules gained lately, oldest first, at most four. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-11: list_tasks filters by changed_by, changed_for and changed_in. Progress and close calls can record a test run.',
   "2026-11-11: request_human_approval and create_task's approval take pr for merge approvals.",
   '2026-11-12: Connection instructions show the writing checklist and how to read the Markdown templates with get_task_template.',
   '2026-11-13: people can put work in Next with a note. The default ready-work list shows unassigned Next tasks first (workflow step 2).',
+  '2026-11-13: Detailed comments lead with a short TL;DR that the web app shows before the full comment.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
@@ -72,7 +76,7 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '1. A session starts with the open tasks you hold, listed in these instructions with each one’s next step: carry them on first. list_projects names each project and the prefix that starts its task ids.',
   `2. Choose: list_tasks with ready: true and no project lists work nothing blocks. Pick unassigned work from Next first when choosing new work. It carries the \`${NEXT_LABEL}\` label and comes first in that list. Read the task and its comments with get_task before claiming it, including any note left when it was queued. Keep watch on work in progress with list_tasks activity: ["quiet","stalled"]: a quiet task may be done and not closed, such as one whose pull request merged, and a stalled one has a holder that stopped, to pick up or free (step 8).`,
   "3. Start: claim_task, or claim_task with pr alone for the task that pull request names. Pass for, branch and pr when a helper agent works under you, and touches, the files or other things your work changes; the answer's overlaps names other work in progress that changes the same, so agree with its holder which pull request merges first. create_task with claim: true files new work and claims it. On a task in an epic, get_task and claim_task show parent: the facts the epic's tasks pinned for each other, and what its closed tasks left, with each one's close reason and proof; read them before you build.",
-  `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. After each push to the task's branch, comment_on_task with what the pushed commit does, commit when you tested it, test when it reports a test run, and pr once the pull request is open: the task then shows active for the next hour. ${ON_THE_TASK} ${PIN_ON_THE_EPIC}`,
+  `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. After each push to the task's branch, comment_on_task with what the pushed commit does, commit when you tested it, test when it reports a test run, and pr once the pull request is open: the task then shows active for the next hour. See Writing a comment for the summary format. ${ON_THE_TASK} ${PIN_ON_THE_EPIC}`,
   '5. Finish: use close_task with evidence, commit, pr or link, and test when you ran one. If nothing shipped, explain why and use the appropriate resolution instead of delivery proof. GitHub closes a task on a merge to the default branch when its work names that pr, except for epics, human requests, open approvals or Do requests, open children, and keep-open. Use keep-open when the PR covers only part of the work. An epic closes when all its direct children close and reopens when one reopens if Ntasks closed it. Use create_task with done for work already finished, and report_delivery for a merge or deploy when no signal reports it.',
   '6. File found work in Ntasks. Search with list_tasks first and comment on an existing task. Use create_task for new work or create_tasks for several, where #n names another entry. Check possibleDuplicates and close the later duplicate with duplicate_of. Use an epic for three or more related tasks or work that spans several sessions. Use depends_on for real blockers, related for other connections, and defer date-bound work with a reason. Use link_tasks to change a link, update_task for other fields, and move_tasks to move work to another epic or project.',
   '7. Label work only a person can do human. Record the owner’s answer in conversation with reconcile_task: action answer, proposal_version from get_task, exact quote and source, and the choice or outcome they gave. Cite the linked conversation or task comment with the proposal and scope. Use action accepted and met when the owner accepts partially met criteria. Claim the work again when it is ready. Act within the approval scope and never perform a declined action. A stale proposal_version means show the owner the task again.',
@@ -129,6 +133,17 @@ function guideBody(offered: readonly string[]): string {
     '## Writing a task',
     '',
     ...TASK_QUALITY,
+    '',
+    '## Writing a comment',
+    '',
+    COMMENT_WRITING,
+    'The web app shows that sentence first. Keep evidence, links and hand-over details below it.',
+    '',
+    '```text',
+    'TL;DR: The reset link works again and is ready for review.',
+    '',
+    'The link now uses the current sign-in address. Both reset-link tests passed locally.',
+    '```',
     '',
     '## Workflow',
     '',
