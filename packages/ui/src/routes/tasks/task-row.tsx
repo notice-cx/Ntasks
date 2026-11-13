@@ -43,6 +43,7 @@ import {
   isAgentActor,
   isShortcut,
   statusMarkFor,
+  statusTint,
   TYPE_MARK_LABELS,
   typeMarkFor,
   type StatusMark as StatusMarkKey,
@@ -240,6 +241,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
     onOpen: () => setForm(null),
   });
   const mark = statusMarkFor(task, context.statuses, context.held);
+  const tint = statusTint(mark, task.resolution);
   const done = task.status === 'closed';
   const can = {
     claim:
@@ -287,12 +289,13 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
     <>
       <Row
         data-task-row={task.id}
+        tint={tint}
         onKeyDown={onKeyDown}
         className={task.issueType === 'epic' ? 'bg-surface' : undefined}
       >
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
-        <StatusMark status={mark} muted={done && (task.resolution ?? 'done') !== 'done'} />
+        <StatusMark status={mark} muted={tint === 'closed'} />
         {task.issueType === 'epic' ? <EpicBadge /> : null}
         <RowTitle className={task.issueType === 'epic' ? 'font-semibold' : undefined}>
           <Link to={paths.task(task.id)} className="text-ink no-underline outline-none focus-visible:underline">
@@ -394,7 +397,7 @@ export const WaitingRow = memo(function WaitingRow({
   const [menu, setMenu] = useState<MenuList | null>(null);
   return (
     <>
-      <Row answer={choosing || gated ? 'wide' : true} data-inbox-row={task.id} data-task-row={task.id}>
+      <Row answer={choosing || gated ? 'wide' : true} tint="waiting" data-inbox-row={task.id} data-task-row={task.id}>
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
         <StatusMark status="waiting" />

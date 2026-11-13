@@ -9,7 +9,7 @@ import { StatusMark } from '../../components/ui/symbols';
 import { heldByApprovals } from '../../lib/board-read';
 import { formatInt } from '../../lib/format';
 import { usePaths } from '../../lib/paths';
-import { STATUS_MARK_LABELS, statusMarkFor, type StatusMark as Mark } from '../../lib/symbols';
+import { STATUS_MARK_LABELS, statusMarkFor, statusTint, type StatusMark as Mark } from '../../lib/symbols';
 import { inboxAsk } from '../../lib/task-model';
 
 const STATES = [
@@ -37,7 +37,10 @@ export function EpicTasks({
     const held = heldByApprovals(siblings.filter((task) => inboxAsk(task) !== null));
     const tasks = siblings
       .filter((task) => task.parent === id)
-      .map((task) => ({ task, mark: statusMarkFor(task, statuses, held) }))
+      .map((task) => {
+        const mark = statusMarkFor(task, statuses, held);
+        return { task, mark, tint: statusTint(mark, task.resolution) };
+      })
       .sort((a, b) => a.task.id.localeCompare(b.task.id, undefined, { numeric: true }));
     const parts: ProgressParts = { done: epic?.closed ?? 0, inProgress: 0, waiting: 0, blocked: 0, open: 0, parked: 0 };
     for (const [mark, part] of STATES) {
@@ -74,13 +77,14 @@ export function EpicTasks({
       ) : null}
       {tasks.length > 0 ? (
         <ul className="m-0 list-none divide-y divide-border overflow-hidden rounded-xl border border-border p-0">
-          {tasks.slice(0, show).map(({ task, mark }) => (
+          {tasks.slice(0, show).map(({ task, mark, tint }) => (
             <li key={task.id} data-linked-task={task.id}>
               <Link
                 to={paths.task(task.id)}
-                className="group grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3 py-2 text-sm text-ink no-underline hover:bg-surface focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:grid-cols-[auto_94px_minmax(0,1fr)_auto]"
+                className="group grid min-h-11 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 bg-status-tint px-3 py-2 text-sm text-ink no-underline hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:grid-cols-[auto_94px_minmax(0,1fr)_auto]"
+                data-status-tint={tint}
               >
-                <StatusMark status={mark} />
+                <StatusMark status={mark} muted={tint === 'closed'} label={tint === 'closed' ? 'Closed' : undefined} />
                 <span className="nums truncate text-meta text-ink-3 max-sm:hidden">{task.id}</span>
                 <span className="flex min-w-0 flex-wrap items-center gap-x-1.75 gap-y-1">
                   {task.issueType === 'epic' ? <EpicBadge /> : null}

@@ -18,7 +18,7 @@ import { ageMs, formatAge, formatInt } from '../lib/format';
 import { COMPOSE_STATE } from '../lib/page-state';
 import { usePageTitle } from '../lib/page-title';
 import { usePaths } from '../lib/paths';
-import { statusMarkFor } from '../lib/symbols';
+import { statusMarkFor, statusTint } from '../lib/symbols';
 import { type BoardTask } from '../lib/task-model';
 import { progressParts } from './tasks/epics-view';
 
@@ -186,18 +186,26 @@ function Overview({
           <section aria-labelledby="project-unfiled" className="mt-6">
             <OverviewHeading id="project-unfiled" title="Work outside epics" count={loose.length} />
             <ul className={`${PANEL} m-0 list-none divide-y divide-border p-0`}>
-              {loose.slice(0, TASK_PREVIEW_LIMIT).map((task) => (
-                <li key={task.id}>
-                  <Link
-                    to={paths.task(task.id)}
-                    className={`${LINK} group flex min-h-11 items-center gap-2.5 px-3.5 py-2.5 hover:bg-surface`}
-                  >
-                    <StatusMark status={statusMarkFor(task, statuses, held)} />
-                    <span className="min-w-0 flex-1 text-label font-medium [overflow-wrap:anywhere]">{task.title}</span>
-                    <span className="nums shrink-0 text-meta text-ink-3">{formatAge(ageMs(now, task.updatedAt))}</span>
-                  </Link>
-                </li>
-              ))}
+              {loose.slice(0, TASK_PREVIEW_LIMIT).map((task) => {
+                const mark = statusMarkFor(task, statuses, held);
+                return (
+                  <li key={task.id}>
+                    <Link
+                      to={paths.task(task.id)}
+                      data-status-tint={mark}
+                      className={`${LINK} group flex min-h-11 items-center gap-2.5 bg-status-tint px-3.5 py-2.5 hover:bg-hover`}
+                    >
+                      <StatusMark status={mark} />
+                      <span className="min-w-0 flex-1 text-label font-medium [overflow-wrap:anywhere]">
+                        {task.title}
+                      </span>
+                      <span className="nums shrink-0 text-meta text-ink-3">
+                        {formatAge(ageMs(now, task.updatedAt))}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
             {loose.length > TASK_PREVIEW_LIMIT ? (
               <Link
@@ -335,7 +343,8 @@ function AttentionGroup({
             <li key={task.id}>
               <Link
                 to={paths.task(task.id)}
-                className={`${LINK} group flex items-start gap-2.5 px-4 py-3 hover:bg-surface`}
+                data-status-tint={mark}
+                className={`${LINK} group flex items-start gap-2.5 bg-status-tint px-4 py-3 hover:bg-hover`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-label font-medium [overflow-wrap:anywhere]">{task.title}</span>
@@ -369,15 +378,22 @@ function RecentlyClosed({ read }: { read: EpicsRead }) {
         Closed this week <span className="nums ms-1 text-ink-3">{formatInt(read.closed.length)}</span>
       </summary>
       <ul className="m-0 list-none divide-y divide-border border-t border-border p-0">
-        {read.closed.map((epic) => (
-          <li key={epic.id}>
-            <Link to={paths.task(epic.id)} className={`${LINK} flex items-center gap-2 px-4 py-2.5 hover:bg-surface`}>
-              <StatusMark status="done" label={null} />
-              <span className="min-w-0 flex-1 text-label [overflow-wrap:anywhere]">{epic.title}</span>
-              <span className="nums shrink-0 text-meta text-ink-3 max-sm:hidden">{epic.id}</span>
-            </Link>
-          </li>
-        ))}
+        {read.closed.map((epic) => {
+          const tint = statusTint('done', epic.resolution);
+          return (
+            <li key={epic.id}>
+              <Link
+                to={paths.task(epic.id)}
+                data-status-tint={tint}
+                className={`${LINK} flex items-center gap-2 bg-status-tint px-4 py-2.5 hover:bg-hover`}
+              >
+                <StatusMark status="done" muted={tint === 'closed'} label={null} />
+                <span className="min-w-0 flex-1 text-label [overflow-wrap:anywhere]">{epic.title}</span>
+                <span className="nums shrink-0 text-meta text-ink-3 max-sm:hidden">{epic.id}</span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </details>
   );

@@ -13,6 +13,12 @@ import { IN_PROGRESS, isGate, PARKED, PRIORITY_BANDS, priorityBand, waitsOnPerso
 /** The six status marks, in the order a list groups them. */
 export const STATUS_MARKS = ['waiting', 'in-progress', 'open', 'blocked', 'parked', 'done'] as const;
 export type StatusMark = (typeof STATUS_MARKS)[number];
+export type StatusTint = StatusMark | 'closed';
+
+/** Give other close resolutions a neutral fill, just as they get a muted check. */
+export function statusTint(mark: StatusMark, resolution?: LiveTask['resolution']): StatusTint {
+  return mark === 'done' && (resolution ?? 'done') !== 'done' ? 'closed' : mark;
+}
 
 export const STATUS_MARK_LABELS: Readonly<Record<StatusMark, string>> = Object.freeze({
   open: 'Open',

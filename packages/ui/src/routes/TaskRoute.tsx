@@ -68,8 +68,9 @@ import {
   isAgentActor,
   statusMarkFor,
   statusMarkOfStored,
+  statusTint,
   STATUS_MARK_LABELS,
-  type StatusMark as StatusMarkKey,
+  type StatusTint,
 } from '../lib/symbols';
 import {
   actorLabel,
@@ -109,7 +110,7 @@ const UNAVAILABLE = 'This sign-in cannot do this.';
 /** The reading column: 720 px of text, with room either side. */
 const COLUMN = 'mx-auto w-full max-w-[832px] px-14 max-lg:max-w-[760px] max-md:px-4';
 
-const STATUS_TINT: Readonly<Record<StatusMarkKey | 'closed', string>> = {
+const STATUS_TINT: Readonly<Record<StatusTint, string>> = {
   open: 'bg-background',
   'in-progress': 'bg-accent/14',
   waiting: 'bg-wait/16',
@@ -489,10 +490,11 @@ function TaskPage({
     : false;
   const resolution: TaskResolution = task.resolution ?? 'done';
   const mark = statusMarkFor(task, new Map(siblings.map((row) => [row.id, row.status])));
+  const tint = statusTint(mark, task.resolution);
   const status = {
     mark,
     label: closed ? RESOLUTION_LABELS[resolution] : STATUS_MARK_LABELS[mark],
-    muted: closed && resolution !== 'done',
+    muted: tint === 'closed',
   };
   const closer = delivery === null ? closeAttribution(task) : null;
   // A person's acceptance with no reason of their own closes with the API's words for it, which its line already says.
@@ -515,7 +517,7 @@ function TaskPage({
         title={path}
         className={cn(
           'shrink-0',
-          STATUS_TINT[status.muted ? 'closed' : mark],
+          STATUS_TINT[tint],
           delivery &&
             'h-auto min-h-14 flex-wrap content-center gap-y-0 py-2.5 max-sm:h-auto max-sm:min-h-13 @[48rem]:flex-nowrap',
         )}
@@ -1171,6 +1173,7 @@ function TaskLinks({
 }) {
   const save = useFieldSave(task.id, project);
   const groups = linkGroups(task, siblings);
+  const linked = new Map(siblings.map((sibling) => [sibling.id, sibling]));
   const addable = canAdd.pages || canAdd.tasks;
   // An empty section takes no room; the top bar's menu adds a link.
   if (groups.length === 0 && !(adding && addable)) return null;
@@ -1218,24 +1221,39 @@ function TaskLinks({
             <div key={group.label} className="flex gap-2.5 max-sm:flex-col max-sm:gap-0">
               <dt className="w-28 shrink-0 pt-1.5 text-meta font-medium text-ink-3">{group.label}</dt>
               <div className="flex min-w-0 flex-1 flex-col">
-                {group.rows.map((row) => (
-                  <dd
-                    key={row.kind === 'task' ? row.id : row.url}
-                    className="group/link m-0 flex min-h-8 min-w-0 items-center gap-1"
-                    {...(row.kind === 'task' ? { 'data-linked-task': row.id } : { 'data-external-link': row.url })}
-                  >
-                    {row.kind === 'task' ? <TaskLinkRow row={row} /> : <ExternalLinkRow row={row} />}
-                    {removable(row) ? (
-                      <IconButton
-                        size="sm"
-                        label={row.kind === 'task' ? `Remove the link to ${row.id}` : `Remove ${row.title}`}
-                        icon={<X aria-hidden />}
-                        onClick={() => remove(row)}
-                        className={cn(ON_HOVER, 'ms-auto shrink-0 group-hover/link:opacity-100')}
-                      />
-                    ) : null}
-                  </dd>
-                ))}
+                {group.rows.map((row) => {
+                  const related = row.kind === 'task' ? linked.get(row.id) : undefined;
+                  // A link may supply only a stored status. A closed link needs its resolution to get the Done tint.
+                  const mark = row.kind === 'task' && row.status !== null ? statusMarkOfStored(row.status) : null;
+                  const tint =
+                    mark === 'done' && related === undefined ? 'closed' : mark && statusTint(mark, related?.resolution);
+                  return (
+                    <dd
+                      key={row.kind === 'task' ? row.id : row.url}
+                      className={cn(
+                        'group/link m-0 flex min-h-8 min-w-0 items-center gap-1',
+                        tint && 'bg-status-tint hover:bg-hover focus-within:bg-hover',
+                      )}
+                      data-status-tint={tint ?? undefined}
+                      {...(row.kind === 'task' ? { 'data-linked-task': row.id } : { 'data-external-link': row.url })}
+                    >
+                      {row.kind === 'task' ? (
+                        <TaskLinkRow row={row} mark={mark} muted={tint === 'closed'} />
+                      ) : (
+                        <ExternalLinkRow row={row} />
+                      )}
+                      {removable(row) ? (
+                        <IconButton
+                          size="sm"
+                          label={row.kind === 'task' ? `Remove the link to ${row.id}` : `Remove ${row.title}`}
+                          icon={<X aria-hidden />}
+                          onClick={() => remove(row)}
+                          className={cn(ON_HOVER, 'ms-auto shrink-0 group-hover/link:opacity-100')}
+                        />
+                      ) : null}
+                    </dd>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -1449,14 +1467,22 @@ function LinkForm({
 const ROW_LINK =
   'flex min-w-0 items-center gap-2 rounded-sm text-sm text-ink-2 no-underline hover:text-ink focus-visible:outline-2 focus-visible:outline-accent';
 
-function TaskLinkRow({ row }: { row: Extract<LinkRow, { kind: 'task' }> }) {
+function TaskLinkRow({
+  row,
+  mark,
+  muted,
+}: {
+  row: Extract<LinkRow, { kind: 'task' }>;
+  mark: ReturnType<typeof statusMarkOfStored> | null;
+  muted: boolean;
+}) {
   const paths = usePaths();
   return (
     <Link to={paths.task(row.id)} className={ROW_LINK}>
-      {row.status === null ? (
+      {mark === null ? (
         <span aria-hidden className="size-3.5 shrink-0 rounded-full border border-dashed border-ink-3" />
       ) : (
-        <StatusMark status={statusMarkOfStored(row.status)} />
+        <StatusMark status={mark} muted={muted} label={muted ? 'Closed' : undefined} />
       )}
       <span className="nums shrink-0 text-meta text-ink-3">{row.id}</span>
       <span className="truncate">{row.title ?? ''}</span>

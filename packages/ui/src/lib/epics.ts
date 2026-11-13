@@ -6,7 +6,7 @@
  * Stalled is not.
  */
 import type { BoardProject } from './board-read';
-import { statusMarkFor } from './symbols';
+import { statusMarkFor, type StatusMark } from './symbols';
 import type { BoardTask } from './task-model';
 
 export type EpicState = 'waiting' | 'moving' | 'still' | 'finished' | 'empty';
@@ -49,6 +49,8 @@ export interface EpicSummary {
   /** Its open sub-epics, in the order the tab lists them. */
   subEpics: EpicSummary[];
   state: EpicState;
+  /** The epic's own status, independent of the progress of its children. */
+  mark: StatusMark;
 }
 
 /** The project's open epics, the epics closed this week, and the work in no open epic. */
@@ -192,6 +194,7 @@ export function readEpics(
       lastChangedAt,
       subEpics: subs,
       state: epicState(partial),
+      mark: statusMarkFor(epic, statuses, held),
     };
     summaries.set(epic.id, summary);
     visiting.delete(epic.id);
