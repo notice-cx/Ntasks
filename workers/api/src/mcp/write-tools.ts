@@ -1018,6 +1018,8 @@ const UPDATE_TASK: TaskTool = Object.freeze({
   name: 'update_task',
   description:
     "Change a task's fields. Follow the writing guide in get_task_guide when editing task content. " +
+    "Editing an owner's request can change its version. Ntasks refuses an answer to an older version. " +
+    'A recorded choice stays tied to the version the owner saw and locks the choices. ' +
     "Use close_task to close one and claim_task to take one. The result's lint names sections it still lacks.",
   inputSchema: schema(
     {
