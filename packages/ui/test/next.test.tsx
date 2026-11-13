@@ -20,11 +20,23 @@ describe('Next', () => {
 
   it('reopens completed work and leaves the note in its activity', async () => {
     const api = createFixtureTasksApi();
-    renderApp('/tasks/web-k3m9.1', api);
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    renderApp('/tasks/web-k3m9.1', {
+      ...api,
+      async updateTask(...args) {
+        await pending;
+        await api.updateTask(...args);
+      },
+    });
     fireEvent.click(await enabledButton('Reopen and add to Next'));
     const field = screen.getByRole('textbox', { name: 'Note for the agent' });
     fireEvent.change(field, { target: { value: 'Reverify the keyboard flow.' } });
     fireEvent.submit(field.closest('form')!);
+    await waitFor(() => expect((field as HTMLTextAreaElement).disabled).toBe(true));
+    release();
     await screen.findByText('Reverify the keyboard flow.');
     expect(await api.task('web-k3m9.1', 'web')).toMatchObject({
       task: { status: 'open', assignee: null, labels: [NEXT_LABEL] },

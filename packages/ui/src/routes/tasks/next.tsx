@@ -116,6 +116,7 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
             <Textarea
               autoFocus
               rows={3}
+              disabled={pending}
               maxLength={TASK_LIMITS.comment}
               value={note}
               onChange={(event) => setNote(event.target.value)}
