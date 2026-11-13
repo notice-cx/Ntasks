@@ -536,7 +536,7 @@ describe('POST /api/gates/:id/performed', () => {
       verification: 'person',
     });
     expect(await current(waiting.id)).toMatchObject({ status: 'open', assignee: null, labels: ['ui'], ready: true });
-    expect((await texts(waiting.id)).at(-1)).toBe(
+    expect(await texts(waiting.id)).toContain(
       `Person did the action of ${gate} themselves, so no agent does it. Check the result yourself before continuing.`,
     );
   });

@@ -424,6 +424,29 @@ export function createFixtureTasksApi({
     touch(task);
   }
 
+  /** Notify the open work waiting on a request, and return eligible human work to agents. */
+  function handBackWaiting(request: FixtureTask, notice: string): void {
+    for (const waiting of state.tasks) {
+      if (
+        waiting.status === 'closed' ||
+        !waiting.dependencies.some((edge) => edge.type === 'blocks' && edge.id === request.id)
+      )
+        continue;
+      addComment(waiting, notice);
+      if (
+        waiting.labels.includes('human') &&
+        waiting.issueType !== 'decision' &&
+        waiting.issueType !== 'gate' &&
+        (waiting.choices ?? null) === null
+      ) {
+        if (waiting.assignee !== null) endWork(waiting);
+        waiting.assignee = null;
+        waiting.status = 'open';
+        handBack(waiting);
+      }
+    }
+  }
+
   function waitsOnPerson(task: FixtureTask): void {
     const asked = task.issueType === 'gate' || task.labels.includes('human');
     if (!asked || task.status === 'closed')
@@ -1215,6 +1238,10 @@ export function createFixtureTasksApi({
           );
         close(task, note ? `Did it myself: ${note}` : 'Did it myself');
         answerHere(task, 'done', note ?? null);
+        handBackWaiting(
+          task,
+          `${FIXTURE_ACTOR} did the action of ${task.id} themselves, so no agent does it. Check the result yourself before continuing.`,
+        );
       });
     },
     async declineGate(id, key, options) {
@@ -1233,25 +1260,7 @@ export function createFixtureTasksApi({
           );
         close(task, 'Declined', 'wont-do');
         answerHere(task, 'decline', null);
-        for (const waiting of state.tasks) {
-          if (
-            waiting.status === 'closed' ||
-            !waiting.dependencies.some((edge) => edge.type === 'blocks' && edge.id === task.id)
-          )
-            continue;
-          addComment(waiting, `Approval request ${task.id} declined. The action requires a new approval.`);
-          if (
-            waiting.labels.includes('human') &&
-            waiting.issueType !== 'decision' &&
-            waiting.issueType !== 'gate' &&
-            (waiting.choices ?? null) === null
-          ) {
-            if (waiting.assignee !== null) endWork(waiting);
-            waiting.assignee = null;
-            waiting.status = 'open';
-            handBack(waiting);
-          }
-        }
+        handBackWaiting(task, `Approval request ${task.id} declined. The action requires a new approval.`);
       });
     },
     async markStep(id, key, marking, options) {

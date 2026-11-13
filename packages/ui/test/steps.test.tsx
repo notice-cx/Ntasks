@@ -183,6 +183,62 @@ describe('finishing a request another way', () => {
   });
 });
 
+describe('the fixture completion hand-back', () => {
+  it('returns blocked human work to agents and sends one result-check notice even when retried', async () => {
+    const api = asked();
+    const waiting = api.state.tasks.find((entry) => entry.id === 'web-k3m9.3')!;
+    Object.assign(waiting, {
+      status: 'blocked',
+      assignee: 'agent:codex',
+      labels: ['human', 'ui'],
+      dependencies: waiting.dependencies.filter((edge) => edge.id === 'web-g7p2'),
+    });
+    const before = structuredClone(gate(api).steps);
+    const retry = { idempotencyKey: 'performed-another-way' };
+    await api.reportPerformed('web-g7p2', 'web', 'Used the installer.', retry);
+    await api.reportPerformed('web-g7p2', 'web', 'Used the installer.', retry);
+    const read = await api.task(waiting.id, 'web');
+    expect(read.task).toMatchObject({ status: 'open', assignee: null, labels: ['ui'], ready: true });
+    expect(
+      read.comments.filter(
+        (comment) =>
+          comment.text ===
+          `${FIXTURE_ACTOR} did the action of web-g7p2 themselves, so no agent does it. Check the result yourself before continuing.`,
+      ),
+    ).toHaveLength(1);
+    expect(gate(api).steps).toEqual(before);
+  });
+
+  it('preserves other blockers, human decisions and closed work', async () => {
+    const api = asked();
+    const waiting = api.state.tasks.find((entry) => entry.id === 'web-k3m9.3')!;
+    Object.assign(waiting, { status: 'blocked', labels: ['human'] });
+    const decision = api.state.tasks.find((entry) => entry.id === 'web-d4x1')!;
+    decision.labels = ['human', 'ui'];
+    decision.dependencies = [{ id: 'web-g7p2', type: 'blocks', title: null, status: null }];
+    const decisionBefore = structuredClone(decision);
+    const closed = structuredClone(waiting);
+    Object.assign(closed, { id: 'web-x9d1', status: 'closed' });
+    const closedBefore = structuredClone(closed);
+    api.state.tasks.push(closed);
+
+    await api.reportPerformed('web-g7p2', 'web');
+    expect((await api.task(waiting.id, 'web')).task).toMatchObject({ status: 'open', ready: false, labels: [] });
+    expect(decision).toMatchObject({
+      status: decisionBefore.status,
+      labels: decisionBefore.labels,
+      choices: decisionBefore.choices,
+    });
+    expect(
+      (await api.task(decision.id, 'web')).comments.some((comment) =>
+        comment.text.includes('Check the result yourself before continuing.'),
+      ),
+    ).toBe(true);
+    expect(closed).toEqual(closedBefore);
+    expect(api.state.comments.get(closed.id) ?? []).toEqual([]);
+  });
+});
+
 describe('a request to do steps, in Waiting for you', () => {
   it('opens its steps under the row, where a tick is sent, and offers no Approve', async () => {
     const fixture = asked();
