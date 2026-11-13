@@ -58,8 +58,8 @@ async function rootConfig(): Promise<Json> {
 
 /**
  * The root configuration, pointed at the package's files. The Worker is
- * deployed as it was bundled here; its task-store schema files are text
- * modules beside index.js that the bundle imports.
+ * deployed as it was bundled here, with its schema and template text
+ * modules beside index.js.
  */
 function packagedConfig(source: Json): Json {
   const { $schema: _schema, ...settings } = source;
@@ -71,7 +71,7 @@ function packagedConfig(source: Json): Json {
     base_dir: 'worker',
     no_bundle: true,
     find_additional_modules: true,
-    rules: [{ type: 'Text', globs: ['**/*.sql'], fallthrough: false }],
+    rules: [{ type: 'Text', globs: ['**/*.sql', '**/*.md'], fallthrough: false }],
     assets: { ...(source['assets'] as Json), directory: 'assets' },
     d1_databases: [{ ...(databases[0] as Json), migrations_dir: 'migrations' }],
   };

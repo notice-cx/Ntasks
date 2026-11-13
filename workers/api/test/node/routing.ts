@@ -21,6 +21,7 @@ const server = createTestHarness({
         name: config.name,
         main: config.main,
         compatibility_date: config.compatibility_date,
+        rules: config.rules,
         assets: { ...config.assets, directory: fileURLToPath(new URL('./fixtures/web', import.meta.url)) },
         // migrations_dir is relative to wrangler.jsonc, and the harness would
         // resolve it from the working directory.
