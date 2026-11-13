@@ -156,7 +156,7 @@ export interface TasksApi {
   /** Approve the action an approval names. */
   resolveGate(id: string, project: string, reason?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   declineGate?(id: string, project: string, options?: WriteOptions & AnswerOptions): Promise<void>;
-  /** Report that the person did the action an approval names themselves: it closes, and no agent does the action. */
+  /** Report that the person achieved a requested outcome themselves: it closes, preserving step marks, and no agent does the action. */
   reportPerformed(id: string, project: string, note?: string, options?: WriteOptions & AnswerOptions): Promise<void>;
   /** Tick, untick, note or mark as stuck one step of a request to do steps. */
   markStep(id: string, project: string, marking: StepMarking, options?: WriteOptions & AnswerOptions): Promise<void>;

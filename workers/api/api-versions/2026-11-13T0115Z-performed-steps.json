@@ -1,0 +1,3 @@
+{
+  "added": "`POST /api/gates/:id/performed` also completes a request to do steps, preserving its step marks"
+}

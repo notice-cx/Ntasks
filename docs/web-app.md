@@ -175,6 +175,11 @@ agent asked for a value, or press **Stuck here** and say why. Ticking the last
 step hands the waiting task back to the agent, which checks the result before
 it continues.
 
+If you got the same result another way, press **Did it myself** on the task
+page or in Waiting for you. Add an optional note about what you did. The
+request closes as done by you, keeps the steps as you left them, and tells
+the waiting agent to check the result before continuing.
+
 ### Set it up in one step
 
 <picture>

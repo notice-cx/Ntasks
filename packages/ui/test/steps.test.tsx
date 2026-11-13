@@ -1,12 +1,14 @@
 // A request that a person do steps: its checklist on the task page and in
 // Waiting for you, what each control sends, and what a sign-in that may not
 // mark steps is offered.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TasksApi } from '@/api/client';
 import { createFixtureTasksApi } from '@/api/fixture';
 import type { StepMarking } from '@/api/types';
-import { renderApp } from './render';
+import { FIXTURE_ACTOR } from '@/api/fixture-data';
+import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
+import { enabledButton, renderApp } from './render';
 
 type FixtureApi = ReturnType<typeof createFixtureTasksApi>;
 
@@ -127,7 +129,113 @@ describe('a request to do steps, on its page', () => {
     renderApp('/tasks/web-g7p2', api);
     const first = await screen.findByRole('checkbox', { name: 'Step 1' });
     await waitFor(() => expect((first as HTMLButtonElement).disabled).toBe(true));
+    expect(((await screen.findByRole('button', { name: 'Did it myself' })) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Stuck here' })).toBeNull();
+  });
+});
+
+describe('finishing a request another way', () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  it.each(['/tasks/web-g7p2', '/tasks'])('records the outcome from %s and preserves the steps', async (path) => {
+    const fixture = asked();
+    await fixture.markStep('web-g7p2', 'web', { step: 1, done: true });
+    const before = structuredClone(gate(fixture).steps);
+    renderApp(path, fixture);
+    const scope = path === '/tasks' ? await screen.findByRole('region', { name: 'Waiting for you' }) : null;
+    fireEvent.click(await enabledButton('Did it myself', scope));
+    const form = await screen.findByRole('form', { name: 'Did it myself: web-g7p2' });
+    expect(within(form).getByText(/Got the same result another way/)).toBeTruthy();
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Used the installer instead.' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
+    expect(gate(fixture).status).toBe('open');
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() => expect(gate(fixture).status).toBe('closed'));
+    expect(gate(fixture).steps).toEqual(before);
+    expect(gate(fixture).answer).toMatchObject({
+      option: 'done',
+      recordedBy: FIXTURE_ACTOR,
+      quote: 'Used the installer instead.',
+      relayed: false,
+    });
+    expect(gate(fixture).closeReason).toBe('Did it myself: Used the installer instead.');
+  });
+
+  it('allows completion without a note, and Undo leaves the request open', async () => {
+    const fixture = asked();
+    renderApp('/tasks/web-g7p2', fixture);
+    fireEvent.click(await enabledButton('Did it myself'));
+    const form = await screen.findByRole('form', { name: 'Did it myself: web-g7p2' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    expect(gate(fixture).status).toBe('open');
+    expect(gate(fixture).answer ?? null).toBeNull();
+    expect(gate(fixture).steps).toEqual(STEPS);
+  });
+});
+
+describe('the fixture completion hand-back', () => {
+  it('returns blocked human work to agents and sends one result-check notice even when retried', async () => {
+    const api = asked();
+    const waiting = api.state.tasks.find((entry) => entry.id === 'web-k3m9.3')!;
+    Object.assign(waiting, {
+      status: 'blocked',
+      assignee: 'agent:codex',
+      labels: ['human', 'ui'],
+      dependencies: waiting.dependencies.filter((edge) => edge.id === 'web-g7p2'),
+    });
+    const before = structuredClone(gate(api).steps);
+    const retry = { idempotencyKey: 'performed-another-way' };
+    await api.reportPerformed('web-g7p2', 'web', 'Used the installer.', retry);
+    await api.reportPerformed('web-g7p2', 'web', 'Used the installer.', retry);
+    const read = await api.task(waiting.id, 'web');
+    expect(read.task).toMatchObject({ status: 'open', assignee: null, labels: ['ui'], ready: true });
+    expect(
+      read.comments.filter(
+        (comment) =>
+          comment.text ===
+          `${FIXTURE_ACTOR} did the action of web-g7p2 themselves, so no agent does it. Check the result yourself before continuing.`,
+      ),
+    ).toHaveLength(1);
+    expect(gate(api).steps).toEqual(before);
+  });
+
+  it('preserves other blockers, human decisions and closed work', async () => {
+    const api = asked();
+    const waiting = api.state.tasks.find((entry) => entry.id === 'web-k3m9.3')!;
+    Object.assign(waiting, { status: 'blocked', labels: ['human'] });
+    const decision = api.state.tasks.find((entry) => entry.id === 'web-d4x1')!;
+    decision.labels = ['human', 'ui'];
+    decision.dependencies = [{ id: 'web-g7p2', type: 'blocks', title: null, status: null }];
+    const decisionBefore = structuredClone(decision);
+    const closed = structuredClone(waiting);
+    Object.assign(closed, { id: 'web-x9d1', status: 'closed' });
+    const closedBefore = structuredClone(closed);
+    api.state.tasks.push(closed);
+
+    await api.reportPerformed('web-g7p2', 'web');
+    expect((await api.task(waiting.id, 'web')).task).toMatchObject({ status: 'open', ready: false, labels: [] });
+    expect(decision).toMatchObject({
+      status: decisionBefore.status,
+      labels: decisionBefore.labels,
+      choices: decisionBefore.choices,
+    });
+    expect(
+      (await api.task(decision.id, 'web')).comments.some((comment) =>
+        comment.text.includes('Check the result yourself before continuing.'),
+      ),
+    ).toBe(true);
+    expect(closed).toEqual(closedBefore);
+    expect(api.state.comments.get(closed.id) ?? []).toEqual([]);
   });
 });
 
@@ -142,6 +250,12 @@ describe('a request to do steps, in Waiting for you', () => {
     expect(within(row).queryByRole('button', { name: 'Approve' })).toBeNull();
 
     fireEvent.click(within(row).getByRole('button', { name: /Your steps/ }));
+    await screen.findByRole('checkbox', { name: 'Step 1' });
+    fireEvent.click(await enabledButton('Did it myself', row));
+    expect(await screen.findByRole('form', { name: 'Did it myself: web-g7p2' })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'Step 1' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: /Your steps/ }));
+    expect(screen.queryByRole('form', { name: 'Did it myself: web-g7p2' })).toBeNull();
     fireEvent.click(await box(1));
 
     await waitFor(() => expect(marks).toEqual([{ step: 1, done: true }]));

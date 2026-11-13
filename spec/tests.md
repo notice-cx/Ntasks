@@ -80,7 +80,7 @@ protocol appears in neither table.
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "hands back a waiting task labelled human, as an approval an agent relays does, and leaves a decision as it is" |
 | STATE-10 | `workers/api/test/api/owner-answers.test.ts` › "refuses any relayed answer on a closed approval but the owner’s report, so a person’s approval stays as given" |
 | STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "closes the approval as done by the person, read as done and not approved, and tells the waiting task no agent does it" |
-| STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "closes without a note, and refuses a request to do steps, a task that is not an approval and a closed approval, writing nothing" |
+| STATE-10 | `workers/api/test/api/http-decisions.test.ts` › "closes without a note, and refuses a task that is not an approval and a closed approval, writing nothing" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "closes a decision on the pick, past an open blocker and another holder" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "hands a task that is not a decision back to ready work with the answer as a comment" |
 | STATE-11 | `workers/api/test/api/http-decisions.test.ts` › "refuses a second pick, and finishes an interrupted one for the same person and option" |
@@ -96,6 +96,7 @@ protocol appears in neither table.
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "clears the helper and work details when the task closes or is released, and its history keeps them" |
 | STATE-13 | `workers/api/test/api/write-tools.test.ts` › "updates the work from its holder’s comments, which move its last activity, and from nobody else’s" |
 | STATE-13 | `workers/api/test/schema.test.ts` › "keeps a helper and work details only on a task someone holds that is not closed" |
+| STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "completes an equivalent outcome without changing ticks, notes or stuck marks, and tells waiting work to check it" |
 | STATE-14 | `workers/api/test/api/write-tools.test.ts` › "opens a request the task waits on, with each step and its command stored apart, once" |
 | STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "records each tick with the person and the time, in any order, and frees the waiting task on the last" |
 | STATE-14 | `workers/api/test/api/http-decisions.test.ts` › "marks where the person is stuck and why, tells the waiting task, and clears the mark on a tick" |

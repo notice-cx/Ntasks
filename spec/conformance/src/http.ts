@@ -287,19 +287,21 @@ export function httpApi(target: Target, role: Role, projectOf: ProjectOf, trace?
               ? [`/tasks/${id}/dismiss`, { reason: decision.reason, resolution: decision.resolution }]
               : decision.kind === 'approve'
                 ? [`/gates/${id}/resolve`, { reason: decision.reason, proposalVersion: decision.proposalVersion }]
-                : decision.kind === 'accept'
-                  ? [
-                      `/tasks/${id}/accept`,
-                      { met: decision.met, proposalVersion: decision.proposalVersion, reason: decision.reason },
-                    ]
-                  : decision.kind === 'step'
+                : decision.kind === 'performed'
+                  ? [`/gates/${id}/performed`, { note: decision.note, proposalVersion: decision.proposalVersion }]
+                  : decision.kind === 'accept'
                     ? [
-                        `/gates/${id}/steps`,
-                        { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
+                        `/tasks/${id}/accept`,
+                        { met: decision.met, proposalVersion: decision.proposalVersion, reason: decision.reason },
                       ]
-                    : decision.kind === 'release'
-                      ? [`/tasks/${id}/release`, { holder: decision.holder }]
-                      : [`/tasks/${id}/dispute`, {}];
+                    : decision.kind === 'step'
+                      ? [
+                          `/gates/${id}/steps`,
+                          { step: decision.step, done: decision.done, note: decision.note, stuck: decision.stuck },
+                        ]
+                      : decision.kind === 'release'
+                        ? [`/tasks/${id}/release`, { holder: decision.holder }]
+                        : [`/tasks/${id}/dispute`, {}];
       return map(send('POST', path, { body: { projectId: project, ...body }, ...options }), (value) =>
         taskOf(value.task as Record<string, unknown>),
       );
