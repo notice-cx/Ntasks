@@ -98,6 +98,7 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
       ) : (
         <Button
           type="button"
+          variant="ghost"
           size="sm"
           aria-expanded={showNote}
           disabled={pending}
@@ -108,10 +109,7 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
         </Button>
       )}
       {showNote && !queued ? (
-        <form
-          className="flex w-full flex-col gap-3 rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border"
-          onSubmit={(event) => void submit(event)}
-        >
+        <form className="flex w-full flex-col gap-2" onSubmit={(event) => void submit(event)}>
           <Field label="Note for the agent">
             <Textarea
               autoFocus
@@ -123,10 +121,10 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
             />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" type="submit" disabled={pending}>
+            <Button variant="primary" size="sm" type="submit" disabled={pending}>
               {addLabel}
             </Button>
-            <Button variant="ghost" type="button" disabled={pending} onClick={cancel}>
+            <Button variant="ghost" size="sm" type="button" disabled={pending} onClick={cancel}>
               Cancel
             </Button>
           </div>

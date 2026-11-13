@@ -5,7 +5,15 @@
  * so both apps rank and word the same tasks the same way.
  */
 import { actorIdentity, modelIdentity, TASK_RESOLUTIONS, type TaskResolution } from '@ntasks/domain';
-import type { LiveTask, TaskActor, TaskChoiceKey, TaskChoiceOption, TaskChoices, TaskStep } from '../api/types';
+import type {
+  LiveTask,
+  TaskActor,
+  TaskChoiceKey,
+  TaskChoiceOption,
+  TaskChoices,
+  TaskDelivery,
+  TaskStep,
+} from '../api/types';
 
 export const IN_PROGRESS = 'in_progress';
 /** The stored status the pages call Parked. */
@@ -165,15 +173,22 @@ export function closeAsReason({
 const DISMISSED = 'Dismissed';
 
 /** What a closed task's reason adds under "Closed as …": the closer's note,
- * or null when the reason only repeats the resolution's words. A done close's
- * reason is its evidence and is always shown. */
+ * or null when the reason only repeats the resolution or delivery details. */
 export function closeNote(
   reason: string | null | undefined,
   resolution: TaskResolution,
   duplicateOf: string | null,
+  delivery?: TaskDelivery | null,
 ): string | null {
   const text = reason?.trim() ?? '';
   if (text === '') return null;
+  if (resolution === 'done' && delivery?.pullRequest && delivery.mergeCommit) {
+    // Automatic merge closures store a reason that repeats the pull request and commit already displayed.
+    const mergeReason =
+      `Closed by the merge of ${delivery.pullRequest} as ${delivery.mergeCommit.slice(0, 7)}, which GitHub reported; ` +
+      "the task's work named that pull request.";
+    if (text === mergeReason) return null;
+  }
   if (resolution === 'done') return text;
   if (text === DISMISSED) return null;
   if (text.startsWith(`${DISMISSED}: `)) return text.slice(DISMISSED.length + 2).trim() || null;

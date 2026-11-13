@@ -12,6 +12,25 @@ const BUILT = 'web-k3m9.1';
 const MERGED = 'docs-y5u2';
 
 describe('a closed task with a delivery', () => {
+  it('shows merge proof once and keeps notes that add context', async () => {
+    const api = createFixtureTasksApi();
+    const task = api.state.tasks.find((row) => row.id === 'web-j6y4')!;
+    const delivery = task.delivery!;
+    const reason =
+      `Closed by the merge of ${delivery.pullRequest} as ${delivery.mergeCommit!.slice(0, 7)}, which GitHub reported; ` +
+      "the task's work named that pull request.";
+    task.closeReason = reason;
+    const { unmount } = renderApp(`/tasks/${task.id}`, api);
+    const closed = await screen.findByRole('region', { name: 'Closed as Done' });
+    expect(within(closed).getByRole('link', { name: 'example/web#39' })).toBeTruthy();
+    expect(within(closed).queryByText(/which GitHub reported/)).toBeNull();
+    unmount();
+
+    task.closeReason = 'Checked the password rules with a screen reader.';
+    renderApp(`/tasks/${task.id}`, api);
+    expect(await screen.findByText(task.closeReason)).toBeTruthy();
+  });
+
   it('shows its stage and pull request on its page, and its stage on its row', async () => {
     const { unmount } = renderApp(`/tasks/${BUILT}`);
     const closed = await screen.findByRole('region', { name: 'Closed as Done' });
