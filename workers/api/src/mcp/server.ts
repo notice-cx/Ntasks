@@ -146,13 +146,14 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
 const GET_TASK_TEMPLATE: McpTool = Object.freeze({
   name: TASK_TEMPLATE_TOOL,
   description:
-    'Read the Markdown starter template for a task, bug or decision, including which task fields to fill. Call it before drafting.',
+    'Read a Markdown starter template and see which fields to fill. Call it before drafting a task, bug, decision or request for a person to do steps.',
   inputSchema: schema(
     {
       type: {
         type: 'string',
         enum: TEMPLATE_TYPES,
-        description: 'Use task for general work, bug for a failure, or decision for a choice.',
+        description:
+          'Use task for general work, bug for a failure, decision for a choice or human_action for steps that unblock separate work.',
       },
     },
     ['type'],
@@ -260,7 +261,7 @@ export function taskServer(
         const unknown = unknownOf(GET_TASK_TEMPLATE.inputSchema, args);
         if (unknown.length > 0) throw refused(unknownArguments(unknown));
         const template = taskTemplate(args.type);
-        if (template === null) throw refused('invalid arguments: type (task, bug or decision)');
+        if (template === null) throw refused(`invalid arguments: type (${TEMPLATE_TYPES.join(', ')})`);
         return template;
       }
       if (name === 'list_workspaces') {

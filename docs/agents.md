@@ -20,8 +20,9 @@ does both:
 
 The MCP server sends a writing checklist when an agent connects. Any
 connected agent can call `get_task_guide` for the full workflow and writing
-guide, and `get_task_template` for the Markdown to start a task, bug or
-decision. The skill tells the agent to file work it finds in any session.
+guide, and `get_task_template` for the Markdown to start a task, bug,
+decision or request for a person to do steps. The skill tells the agent to
+file work it finds in any session.
 
 ## Set up with one command
 
@@ -176,9 +177,17 @@ the same Markdown files here:
   and expected behavior.
 - [Decision](../skills/ntasks/templates/decision.md): a person's choice,
   one recommendation and what happens next.
+- [Human action](../skills/ntasks/templates/human-action.md) (`human_action`):
+  steps a person ticks off to unblock a separate deliverable. Pass them to
+  `request_human_action` on the task with that deliverable. The last tick
+  closes the request. When the person's steps are the whole job, keep one
+  task with the `human` label. Checking or recording the result is part of
+  that job. Confirming a sitemap submission belongs on the sitemap task.
+  Asking for an error export so an agent can fix the affected pages can use
+  a linked request because fixing the pages is a separate deliverable.
 
 Replace the bracketed prompts and keep the sections that apply. Each file
-explains which task fields to fill. Copy the whole skill folder to keep local
+explains which tool fields to fill. Copy the whole skill folder to keep local
 copies of the templates alongside `SKILL.md`.
 
 ## Working on a task

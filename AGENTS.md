@@ -271,6 +271,6 @@ this repository, its work is filed in the Notice project, whose task ids start
 with `ro`. An agent working for a maintainer, connected to that deployment,
 follows these rules:
 
-- Call `get_task_guide` on the `ntasks` MCP server before task work. It returns the workflow and writing guide. Before drafting, call `get_task_template` for the matching [task, bug or decision template](docs/agents.md#task-templates).
+- Call `get_task_guide` on the `ntasks` MCP server before task work. It returns the workflow and writing guide. Before drafting, call `get_task_template` for the matching [task template](docs/agents.md#task-templates), including `human_action` for steps that unblock separate work.
 - Never run `bd`, `bv` or `br`, and never use task tools on the `noticeos` MCP server: the `ntasks` tools are the task interface.
 - Work only a person can do carries the `human` label; a step that must wait for approval uses `request_human_approval`.

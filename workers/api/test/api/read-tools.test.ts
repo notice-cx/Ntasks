@@ -29,6 +29,7 @@ import type { Principal } from '../../src/auth.ts';
 import taskMarkdown from '../../../../skills/ntasks/templates/task.md';
 import bugMarkdown from '../../../../skills/ntasks/templates/bug.md';
 import decisionMarkdown from '../../../../skills/ntasks/templates/decision.md';
+import humanActionMarkdown from '../../../../skills/ntasks/templates/human-action.md';
 import {
   api,
   callTool,
@@ -159,6 +160,8 @@ describe('tools/list', () => {
       expect(description).toContain('get_task_guide');
       expect(description).toContain('get_task_template');
     }
+    const templates = result.tools.find((tool) => tool.name === 'get_task_template');
+    expect(templates?.inputSchema.properties).toHaveProperty('type.enum', ['task', 'bug', 'decision', 'human_action']);
   });
 });
 
@@ -168,6 +171,7 @@ describe('list_workspaces and get_task_guide', () => {
     expect(guide.version).toMatch(/^[0-9a-f]{12}$/u);
     expect(guide.guide.startsWith('# Working with Ntasks tasks')).toBe(true);
     expect(guide.guide).toContain('call get_task_template');
+    expect(guide.guide).toContain('Checking the result, recording it and closing the task are part of the same job.');
     expect(guide.guide).toMatch(/## Writing a comment\n\n.*TL;DR:.*one sentence of at most 160 characters/u);
     expect((await callTool(target, 'list_workspaces')).value).toEqual({
       guideVersion: guide.version,
@@ -237,13 +241,16 @@ describe('get_task_template', () => {
     ['task', taskMarkdown],
     ['bug', bugMarkdown],
     ['decision', decisionMarkdown],
+    ['human_action', humanActionMarkdown],
   ])('serves the exact %s Markdown without asking for a workspace', async (type, markdown) => {
     expect((await callTool(target, 'get_task_template', { type })).value).toEqual({ type, markdown });
   });
 
   it('refuses missing or unknown types and arguments', async () => {
     for (const args of [{}, { type: 'feature' }, { type: '../task' }, { type: ['bug'] }])
-      expect(await refusal(target, 'get_task_template', args)).toBe('invalid arguments: type (task, bug or decision)');
+      expect(await refusal(target, 'get_task_template', args)).toBe(
+        'invalid arguments: type (task, bug, decision, human_action)',
+      );
     expect(await refusal(target, 'get_task_template', { type: 'bug', workspace: WORKSPACE.id })).toContain('workspace');
   });
 });
