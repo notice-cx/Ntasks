@@ -441,15 +441,27 @@ export function SidebarSpacer() {
  * then its search and actions at the end. Inside an `AppShell` on a phone,
  * and while the sidebar is hidden, it starts with the Sidebar button.
  */
-export function TopBar({ title, children, className }: { title: ReactNode; children?: ReactNode; className?: string }) {
+export function TopBar({
+  title,
+  children,
+  className,
+  compact = false,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  /** A toolbar below a page heading that already has a Sidebar button. */
+  compact?: boolean;
+}) {
   return (
     <header
       className={cn(
         'flex h-14 items-center gap-2.5 border-b border-border ps-6 pe-5 max-sm:h-13 max-sm:gap-2 max-sm:ps-4 max-sm:pe-3',
+        compact && 'h-12 max-sm:h-11',
         className,
       )}
     >
-      <SidebarOpener />
+      {compact ? null : <SidebarOpener />}
       {typeof title === 'string' ? (
         <h1 className="m-0 me-2 text-page-title text-ink max-sm:text-heading">{title}</h1>
       ) : (

@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
 import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
 import { Badge, Count } from '../components/ui/badge';
@@ -119,7 +119,9 @@ function holderLabel(assignee: string, tasks: readonly BoardTask[]): string {
  * is a link; `?new=1` opens the composer.
  */
 
-export function TasksBoard() {
+export function TasksBoard({ scoped = false }: { scoped?: boolean }) {
+  const context = useOutletContext<{ key: string; name: string } | undefined>();
+  const project = scoped ? (context ?? null) : null;
   const now = useNow();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -128,7 +130,7 @@ export function TasksBoard() {
   const writable = writesAvailable(capabilities);
   const filters: BoardFilters = {
     q: params.get('q') ?? '',
-    project: params.get('project') ?? 'all',
+    project: project?.key ?? params.get('project') ?? 'all',
     status: params.get('status') ?? 'all',
     priority: params.get('priority') ?? 'all',
     label: params.get('label') ?? '',
@@ -140,7 +142,8 @@ export function TasksBoard() {
   const addressSort = useMemo(() => named, [named?.by, named?.direction]);
   // React Router changes the address in a transition, and the browser paints a frame before it runs. A view or an
   // order picked here is shown at once instead, so its rows are drawn in the frame that paints the press.
-  const [asked, showView] = useOptimistic(viewOf(params.get('view')));
+  const requested = viewOf(params.get('view'));
+  const [asked, showView] = useOptimistic(project && requested === 'epics' ? 'all' : requested);
   const [sort, showSort] = useOptimistic(addressSort);
   const composing = params.get('new') === '1' || composeRequested(location.state);
   // A filter by custom field narrows the server's read to the tasks holding the value, which would shrink every
@@ -150,7 +153,7 @@ export function TasksBoard() {
   const epicsProject = board.projects.length === 1 && board.fieldProject !== null ? (board.projects[0] ?? null) : null;
   const epicsView = asked === 'epics' && epicsProject !== null;
   const view: TaskView = asked === 'epics' ? 'all' : asked;
-  const tabs = epicsProject === null ? TABS : [...TABS, EPICS_TAB];
+  const tabs = epicsProject === null || project ? TABS : [...TABS, EPICS_TAB];
   const tabValue: View = epicsView ? 'epics' : view;
   // One set of views: in the top bar, or below 768 px on a row of its own under it.
   const narrow = useMedia(NARROW);
@@ -176,7 +179,7 @@ export function TasksBoard() {
   const searched = filters.q.trim();
   usePageTitle(
     searched !== '' ? `Search “${searched}”` : board.loading ? viewName : `${viewName} (${formatInt(viewCount)})`,
-    epicsProject?.name,
+    project?.name ?? epicsProject?.name,
   );
   const fieldDefinitions = useProjectFields(board.fieldProject).data?.fields ?? [];
   // A filter by custom field holds only while its project is the one in view.
@@ -276,7 +279,7 @@ export function TasksBoard() {
   );
 
   const bar = (
-    <TopBar title="Tasks">
+    <TopBar title={project ? null : 'Tasks'} compact={project !== null}>
       {narrow ? null : views}
       {epics !== null ? <EpicsSummary read={epics} /> : null}
       <BarSpacer />
@@ -294,6 +297,7 @@ export function TasksBoard() {
       <SortMenu sort={sort} onPick={pickSort} />
       {epicsView ? null : (
         <FilterMenu
+          scoped={project !== null}
           board={board}
           filters={filters}
           fieldFilters={fieldFilters}
@@ -329,7 +333,7 @@ export function TasksBoard() {
         />
       </div>
     );
-  } else if (board.loading) {
+  } else if (board.loading || (project && board.pending.length > 0)) {
     body = (
       <div className="p-6 max-sm:p-4">
         <PageSkeleton shape="list" />
@@ -348,6 +352,7 @@ export function TasksBoard() {
     body = (
       <Groups
         board={board}
+        scoped={project !== null}
         view={view}
         filters={filters}
         narrowedByFields={Object.keys(fieldFilters).length > 0}
@@ -373,6 +378,7 @@ export function TasksBoard() {
         </div>
       ) : null}
       <ActiveFilters
+        scoped={project !== null}
         // The filters other than the project and the search narrow tasks, so the Epics view sets them aside.
         filters={epicsView ? { ...NO_FILTERS, project: filters.project, q: filters.q } : filters}
         fieldFilters={epicsView ? {} : fieldFilters}
@@ -419,6 +425,7 @@ export function TasksBoard() {
 /** The board's groups in the view's order, each folding, each showing 25 rows a press. */
 function Groups({
   board,
+  scoped,
   view,
   filters,
   narrowedByFields,
@@ -428,6 +435,7 @@ function Groups({
   sort,
 }: {
   board: Board;
+  scoped: boolean;
   view: TaskView;
   filters: BoardFilters;
   /** A filter by custom field holds, which the server applied. */
@@ -519,7 +527,9 @@ function Groups({
   const narrowed =
     narrowedByFields ||
     filters.q.trim() !== '' ||
-    FILTER_NAMES.some((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all'));
+    FILTER_NAMES.some(
+      (name) => (!scoped || name !== 'project') && (name === 'label' ? filters.label !== '' : filters[name] !== 'all'),
+    );
 
   if (marks.length === 0 && deliveryGroups.length === 0 && grouped.next.length === 0) {
     if (board.searching) return <EmptyState icon={<Search />} title="Searching…" />;
@@ -657,12 +667,14 @@ function Groups({
 /** The Filter button: a panel of the filters, each with its count, then the custom fields of the one project in view. */
 function FilterMenu({
   board,
+  scoped,
   filters,
   fieldFilters,
   fields,
   onPick,
 }: {
   board: Board;
+  scoped: boolean;
   filters: BoardFilters;
   fieldFilters: FieldFilters;
   /** The custom fields of the project in view; none with several projects in view. */
@@ -670,8 +682,9 @@ function FilterMenu({
   onPick: (name: string, value: string) => void;
 }) {
   const set =
-    FILTER_NAMES.filter((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all')).length +
-    Object.keys(fieldFilters).length;
+    FILTER_NAMES.filter(
+      (name) => (!scoped || name !== 'project') && (name === 'label' ? filters.label !== '' : filters[name] !== 'all'),
+    ).length + Object.keys(fieldFilters).length;
   // Keyed as assigneeCounts is: one option per sender, whatever names their tasks were recorded under.
   const names = useMemo(
     () =>
@@ -696,7 +709,7 @@ function FilterMenu({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="grid max-h-[min(80vh,640px)] w-64 gap-3 overflow-y-auto p-3">
-        {board.available.length > 1 ? (
+        {!scoped && board.available.length > 1 ? (
           <Field label="Project">
             <Select value={filters.project} onChange={(event) => onPick('project', event.target.value)}>
               <option value="all">Every project</option>
@@ -859,6 +872,7 @@ function TypedFilter({
 /** The filters in force, under the top bar: each one a badge that clears it, then Clear filters. */
 function ActiveFilters({
   filters,
+  scoped,
   fieldFilters,
   fields,
   board,
@@ -866,6 +880,7 @@ function ActiveFilters({
   onClear,
 }: {
   filters: BoardFilters;
+  scoped: boolean;
   fieldFilters: FieldFilters;
   fields: readonly TaskField[];
   board: Board;
@@ -880,7 +895,7 @@ function ActiveFilters({
       : (TASK_STATUSES.find((status) => status.key === filters.status)?.label ?? filters.status);
   const priority = PRIORITY_LABELS[PRIORITY_BANDS.findIndex((band) => band === filters.priority)] ?? filters.priority;
   const set = [
-    filters.project !== 'all' ? { name: 'project', text: `Project: ${projectName}` } : null,
+    !scoped && filters.project !== 'all' ? { name: 'project', text: `Project: ${projectName}` } : null,
     filters.status !== 'all' ? { name: 'status', text: `Status: ${statusLabel}` } : null,
     filters.priority !== 'all' ? { name: 'priority', text: `Priority: ${priority}` } : null,
     assignee !== null ? { name: 'assignee', text: `Assignee: ${assignee}` } : null,

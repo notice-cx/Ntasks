@@ -31,6 +31,7 @@ import { Field, Input } from '../../components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
 import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import { EpicBadge } from '../../components/EpicBadge';
 import { NEXT_LABEL } from '@ntasks/domain';
 import type { TasksCapabilities } from '../../api/types';
 import { fieldAvailable, operationAvailable, useClaimTask, useUpdateTask, verbReason } from '../../hooks/useTasks';
@@ -140,7 +141,7 @@ function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKe
   const stalled = held && activityOf(task, context.nowMs) === 'stalled';
   return (
     <>
-      {type !== 'task' && type !== 'other' ? (
+      {task.issueType !== 'epic' && type !== 'task' && type !== 'other' ? (
         <Badge icon={<TypeMark type={type} size={12} label={null} />} className="max-sm:hidden">
           {TYPE_MARK_LABELS[type]}
         </Badge>
@@ -284,11 +285,16 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
 
   return (
     <>
-      <Row data-task-row={task.id} onKeyDown={onKeyDown}>
+      <Row
+        data-task-row={task.id}
+        onKeyDown={onKeyDown}
+        className={task.issueType === 'epic' ? 'bg-surface' : undefined}
+      >
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
         <StatusMark status={mark} muted={done && (task.resolution ?? 'done') !== 'done'} />
-        <RowTitle>
+        {task.issueType === 'epic' ? <EpicBadge /> : null}
+        <RowTitle className={task.issueType === 'epic' ? 'font-semibold' : undefined}>
           <Link to={paths.task(task.id)} className="text-ink no-underline outline-none focus-visible:underline">
             {task.title}
           </Link>

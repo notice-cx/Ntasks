@@ -31,6 +31,8 @@ const PAGES = [
   '/tasks/live',
   '/tasks/focus',
   '/tasks/productivity',
+  '/tasks/projects/web',
+  '/tasks/projects/web/tasks',
   ...SETTINGS_TABS.map((tab) => `/tasks/settings/${tab}`),
 ];
 

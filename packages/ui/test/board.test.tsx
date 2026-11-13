@@ -511,7 +511,7 @@ describe('the sidebar', () => {
       within(sidebar)
         .getByRole('link', { name: /Example web app/ })
         .getAttribute('href'),
-    ).toBe('/tasks?project=web');
+    ).toBe('/tasks/projects/web');
     // The agents by the names the read gives them, and the person by theirs.
     expect(within(sidebar).getByRole('link', { name: 'Codex' }).getAttribute('href')).toBe(
       '/tasks?assignee=agent%3ACodex',

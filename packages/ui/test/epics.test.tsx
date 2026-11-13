@@ -280,3 +280,35 @@ describe('the Epics tab', () => {
     expect(document.querySelector('[data-epics-view]')).toBeNull();
   });
 });
+
+describe('the project overview', () => {
+  it('opens from the sidebar and links to epic detail with progress and child task statuses', async () => {
+    renderApp('/tasks', createFixtureTasksApi({ seed: epicSeed() }));
+    const sidebar = await screen.findByRole('navigation', { name: 'Ntasks' });
+    fireEvent.click(await within(sidebar).findByRole('link', { name: /Example web app/ }));
+    const epics = await screen.findByRole('region', { name: 'Open epics' });
+    expect(epics.querySelector('[data-project-epic="web-k3m9"] [data-project-epic-progress]')?.textContent).toBe(
+      '1 of 4 done',
+    );
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(within(attention).getByRole('link', { name: /Approve sending the new sign-in page/ })).toBeTruthy();
+    expect(within(attention).getByRole('link', { name: /Remove the old sign-in page/ })).toBeTruthy();
+    fireEvent.click(within(epics).getByRole('link', { name: /Ship the new sign-in page/ }));
+    await screen.findByRole('heading', { name: 'Ship the new sign-in page' });
+    const children = screen.getByRole('region', { name: 'Tasks' });
+    expect(within(children).getByRole('img', { name: '1 of 4 done, 1 in progress, 2 blocked' })).toBeTruthy();
+    expect(within(children).getByRole('link', { name: /Remove the old sign-in page/ })).toBeTruthy();
+  });
+
+  it('keeps the task queue in its project when clearing filters and labels its epic rows', async () => {
+    renderApp('/tasks/projects/web/tasks?project=docs&q=unfindable');
+    const views = await screen.findByRole('navigation', { name: 'Project views' });
+    expect(within(views).getByRole('link', { name: 'Tasks' }).getAttribute('aria-current')).toBe('page');
+    const clear = await screen.findAllByRole('button', { name: 'Clear filters' });
+    fireEvent.click(clear[0]!);
+    const epic = await screen.findByRole('link', { name: 'Ship the new sign-in page' });
+    const row = epic.closest('[data-task-row]') as HTMLElement;
+    expect(within(row).getByText('Epic')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Write the guide to claiming a task' })).toBeNull();
+  });
+});

@@ -22,14 +22,19 @@ task's activity. Use **Reopen and add to Next** to ask for another pass on
 closed work. A queued task keeps its status and leaves Next when work starts
 or the task closes. Agents see ready Next tasks first when they choose work.
 
-**Epics.** With one project in view, the Epics tab lists the project's open
-epics, one line each, grouped by what they need: Waiting for you, Moving, Not
-moving, Every task done and No tasks. Each line shows how many of its tasks
-wait for you or are blocked, a bar of its tasks by status, its tasks done of
-all, and how many closed this week, counting its sub-epics' tasks too. An
-epic closes itself when its last task closes ([Epics](concepts.md#epics)), so
-Every task done lists only epics labelled `keep-open` and epics someone
-reopened.
+**Projects.** Select a project in the sidebar to open its Overview. It shows
+each open epic's progress, including work under its open sub-epics, and links
+to the project's tasks waiting for you or blocked. Work outside epics shows
+open and in-progress tasks that have no open epic. Expand **Closed this week**
+to see recently closed epics. The project's **Tasks** tab opens its
+status-grouped queue. The workspace's **Tasks** shortcut still opens all projects.
+
+**Epics.** An Epic label appears before an epic's title in the task list and
+above its title on its own page. The epic's **Tasks** section shows its direct
+children with their statuses and counts older closes in the progress bar.
+Open a child epic to see its own tasks. An epic closes itself when its last
+task closes ([Epics](concepts.md#epics)). Links to the Epics tab on a
+project-filtered Tasks board still open that grouped list.
 
 **Task page.** Markdown text, Done when, activity and the task's facts. A
 task in an epic also shows From the epic: the comments pinned on the epic
