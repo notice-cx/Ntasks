@@ -16,7 +16,7 @@ import { TITLE_MOST } from './writing.ts';
 /** The writing rules an agent needs on connection, also used by the full guide. */
 const TASK_WRITING: readonly string[] = Object.freeze([
   'Write for a product manager with engineering knowledge who has not seen the conversation. Use familiar words and lead with the outcome or the action you need from them.',
-  '- Before drafting, call get_task_template with type: task for general work, bug for a failure, or decision for a choice. Use the sections that apply. The template explains how to fill the task fields.',
+  '- Before drafting, call get_task_template with type: task for general work, bug for a failure, decision for a choice or human_action for steps a person ticks off. The template explains which fields to fill.',
   `- title: start with a verb, name the outcome or ask, and keep it within ${TITLE_MOST} characters. Leave commands, paths and commit hashes for the body.`,
   '- description: say what and why in the first sentence. Use short paragraphs, one action per numbered step and technical pointers last. Put runnable commands in fenced code blocks.',
   '- acceptance: put a checklist of observable results in the separate acceptance field. Use checks you can verify when the work lands.',
@@ -37,7 +37,7 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
   '- A recorded choice stays tied to the version the owner saw. Once they choose, `update_task` refuses changes to the choices. File a new request if you need the owner to decide on a different action or scope.',
   '- For a decision, use the human label and pass the question and two to six options as choices. Key them a through f in order and mark exactly one recommended. Give each option a short label and its consequence.',
   "- For approval, use request_human_approval or create_task's approval field with the action as title. Use ## Why this needs you, ## What the agent will do (with exact commands), ## What it changes, ## How we'll confirm and ## If you decline. For a merge, pass pr and leave auto-merge off. Approval turns it on and Ntasks posts the answer on the pull request.",
-  "- For steps only the person can do, use request_human_action with the outcome as the title. Use ## What it changes and ## How we'll confirm in context, and put each action in steps with its runnable command in command. Check the result once the person finishes.",
+  "- For steps only the person can do, use the human_action template and call request_human_action on the task that needs the result. This also works when an existing task describes the steps in prose. Use ## What it changes and ## How we'll confirm in context. Each action goes in steps, with any runnable command in command. The final tick closes the request and removes it as a blocker. Check the result before continuing or closing the linked task.",
   '- Production access, including reads, spending, external messages, destructive actions and material business or policy commitments require explicit owner approval for that action. Routine work within the authorized scope belongs to agents.',
 ]);
 

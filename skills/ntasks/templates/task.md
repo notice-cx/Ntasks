@@ -2,7 +2,7 @@
 type: task
 ---
 
-<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. -->
+<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. For steps a person ticks off in Ntasks, read get_task_template with type human_action. -->
 
 # [Verb + the outcome people will notice]
 
