@@ -136,7 +136,7 @@ describe('an owner', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Create project' }));
     const list = screen.getByRole('list', { name: 'Projects' });
     const row = await within(list).findByRole('link', { name: 'Example shop' });
-    expect(row.getAttribute('href')).toBe('/tasks/projects/shop');
+    expect(row.getAttribute('href')).toBe('/projects/shop');
     expect(await sidebarLink(/^Example shop/)).toBeTruthy();
     expect((await api.projects()).find((project) => project.prefix === 'shop')).toMatchObject({
       displayName: 'Example shop',

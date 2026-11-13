@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed, type FixtureTask } from '@/api/fixture-data';
@@ -301,14 +301,26 @@ describe('the project overview', () => {
   });
 
   it('keeps the task queue in its project when clearing filters and labels its epic rows', async () => {
-    renderApp('/tasks/projects/web/tasks?project=docs&q=unfindable');
+    renderApp('/projects/web/tasks?project=docs&q=unfindable');
     const views = await screen.findByRole('navigation', { name: 'Project views' });
-    expect(within(views).getByRole('link', { name: 'Tasks' }).getAttribute('aria-current')).toBe('page');
+    expect(within(views).getByRole('link', { name: 'Overview' }).getAttribute('href')).toBe('/projects/web');
+    const tasks = within(views).getByRole('link', { name: 'Tasks' });
+    expect(tasks.getAttribute('href')).toBe('/projects/web/tasks');
+    expect(tasks.getAttribute('aria-current')).toBe('page');
     const clear = await screen.findAllByRole('button', { name: 'Clear filters' });
     fireEvent.click(clear[0]!);
     const epic = await screen.findByRole('link', { name: 'Ship the new sign-in page' });
     const row = epic.closest('[data-task-row]') as HTMLElement;
     expect(within(row).getByText('Epic')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Write the guide to claiming a task' })).toBeNull();
+  });
+
+  it('uses the project task queue for the keyboard search shortcut from Overview', async () => {
+    renderApp('/projects/web');
+    const views = await screen.findByRole('navigation', { name: 'Project views' });
+    fireEvent.keyDown(document.body, { key: '/' });
+    const tasks = await within(views).findByRole('link', { name: 'Tasks', current: 'page' });
+    expect(tasks.getAttribute('href')).toBe('/projects/web/tasks');
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Search tasks'));
   });
 });

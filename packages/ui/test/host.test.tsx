@@ -97,6 +97,24 @@ describe('a host page', () => {
     expect(await screen.findByRole('heading', { name: TASK })).toBeTruthy();
   });
 
+  it("opens a project's pages under the host's mount path by default", async () => {
+    render(
+      <MemoryRouter initialEntries={['/work/tasks']}>
+        <Routes>
+          <Route path="/work/tasks/*" element={<NtasksApp api={createFixtureTasksApi()} basePath="/work/tasks" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const sidebar = await screen.findByRole('navigation', { name: 'Ntasks' });
+    const project = await within(sidebar).findByRole('link', { name: /Example web app/ });
+    expect(project.getAttribute('href')).toBe('/work/tasks/projects/web');
+    fireEvent.click(project);
+    const views = await screen.findByRole('navigation', { name: 'Project views' });
+    expect(within(views).getByRole('link', { name: 'Tasks' }).getAttribute('href')).toBe(
+      '/work/tasks/projects/web/tasks',
+    );
+  });
+
   it('keeps its sidebar, with the source-code link, behind the Sidebar button when the host has its own navigation', async () => {
     ntasks();
     render(

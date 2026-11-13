@@ -834,13 +834,14 @@ Text 3.
 
 ### Project overview and epic detail
 
-Project links in the sidebar open `/tasks/projects/<project>`. The project
+Project links in the sidebar open `/projects/<project>`. The project
 name and icon sit above the Overview and Tasks links. Overview gives open
 epics a card each, with their status breakdown, done count and changes this
 week. Needs attention links to specific tasks waiting for you or blocked.
 On narrow screens it sits above the epic cards. Work outside epics previews
 open and in-progress tasks in no open epic. Tasks opens the project's
-board with the same status groups and filters as the workspace board.
+board at `/projects/<project>/tasks` with the same status groups and
+filters as the workspace board.
 
 In the task list, a neutral badge with the Layers icon and the word Epic
 appears before the title, including on phones. The epic page repeats the

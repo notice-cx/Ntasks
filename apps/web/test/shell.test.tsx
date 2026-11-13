@@ -51,4 +51,12 @@ describe('the web app', () => {
     open('/tasks');
     expect((await screen.findByRole('link', { name: 'Sign in' })).getAttribute('href')).toBe('/sign-in');
   });
+
+  it.each(['/projects/example.test', '/projects/example.test/tasks?view=waiting'])(
+    'serves the app directly at %s',
+    async (address) => {
+      expect(open(address)).toBe(address);
+      expect(await screen.findByRole('link', { name: 'Sign in' })).toBeTruthy();
+    },
+  );
 });
