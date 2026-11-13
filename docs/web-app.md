@@ -39,6 +39,8 @@ project-filtered Tasks board still open that grouped list.
 **Task page.** Markdown text, Done when, activity and the task's facts.
 **From the epic** shows any comments pinned on the epic for its tasks.
 A pinned comment is marked Pinned among its own task's comments.
+Detailed comments show their TL;DR or a short preview. Select **Show full
+comment** to read the full text.
 An open task that relies on a dropped task, one closed as won't do or no
 longer needed since the task last changed ([Dependencies](concepts.md#dependencies)),
 shows a line for each under its title, such as "Check: Remove the old landing

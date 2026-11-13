@@ -60,11 +60,41 @@ const LANGUAGES = { bash, css, diff, javascript, json, markdown, python, sql, ty
 const TASK_ID = /\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b/g;
 const LABELLED = /^(\s*)(WHAT|WHY|WHERE|FIX|HOW):\s*/;
 
+function scriptOrStyleAfter(raw: string, inside: string | null): string | null {
+  const tag = inside ?? raw.match(/^<(script|style)\b/i)?.[1]?.toLowerCase();
+  if (!tag) return null;
+  // A Markdown HTML block can include more text on the closing tag's line.
+  const closes = tag === 'script' ? /<\/script\s*>/i : /<\/style\s*>/i;
+  return closes.test(raw) ? null : tag;
+}
+
+const markdownParser = unified().use(remarkParse).use(remarkGfm);
+
+/** Readable text for a collapsed comment, including link labels and code. */
+export function markdownPlainText(source: string): string {
+  function words(node: MdastNodes): string {
+    if ('children' in node) {
+      const inline = node.type === 'paragraph' || node.type === 'heading' || node.type === 'tableCell';
+      let inside: string | null = null;
+      const pieces: string[] = [];
+      for (const child of node.children) {
+        if (child.type === 'html') inside = scriptOrStyleAfter(child.value, inside);
+        else if (inside === null) pieces.push(words(child));
+      }
+      return pieces.join(inline ? '' : ' ');
+    }
+    if (node.type === 'image' || node.type === 'imageReference') return node.alt ?? '';
+    if (node.type === 'break') return ' ';
+    return 'value' in node && node.type !== 'html' ? node.value : '';
+  }
+  return words(markdownParser.parse(source) as MdastRoot)
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 // ---------------------------------------------------------------------------
 // Checklists: counted and ticked from the same reading of the Markdown that
 // draws them, so a box on the page is always the box a tick flips.
-
-const checklistParser = unified().use(remarkParse).use(remarkGfm);
 
 interface Checkbox {
   /** 0-based line the box's list item starts on. */
@@ -82,7 +112,7 @@ function checkboxes(source: string): Checkbox[] {
     }
     if ('children' in node) for (const child of node.children) visit(child);
   };
-  visit(checklistParser.parse(source) as MdastRoot);
+  visit(markdownParser.parse(source) as MdastRoot);
   return found;
 }
 
@@ -177,10 +207,7 @@ const rehypeDropScriptText: Plugin<[], HastRoot> = () => {
     const kept: ElementContent[] = [];
     for (const child of parent.children as ElementContent[]) {
       if (child.type === 'raw') {
-        const open = /^<(script|style)\b/i.exec(child.value);
-        if (open && !new RegExp(`</${open[1]}\\s*>\\s*$`, 'i').test(child.value))
-          inside = open[1]?.toLowerCase() ?? null;
-        else if (inside !== null && new RegExp(`^</${inside}\\s*>`, 'i').test(child.value)) inside = null;
+        inside = scriptOrStyleAfter(child.value, inside);
         continue;
       }
       if (inside !== null) continue;
