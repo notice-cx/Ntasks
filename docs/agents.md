@@ -178,9 +178,13 @@ the same Markdown files here:
 - [Decision](../skills/ntasks/templates/decision.md): a person's choice,
   one recommendation and what happens next.
 - [Human action](../skills/ntasks/templates/human-action.md) (`human_action`):
-  steps a person ticks off. Pass them to `request_human_action` on the task
-  waiting for the result. The last tick closes the request. The agent checks
-  the result before continuing or closing the linked task.
+  steps a person ticks off to unblock a separate deliverable. Pass them to
+  `request_human_action` on the task with that deliverable. The last tick
+  closes the request. When the person's steps are the whole job, keep one
+  task with the `human` label. Checking or recording the result is part of
+  that job. Confirming a sitemap submission belongs on the sitemap task.
+  Asking for an error export so an agent can fix the affected pages can use
+  a linked request because fixing the pages is a separate deliverable.
 
 Replace the bracketed prompts and keep the sections that apply. Each file
 explains which tool fields to fill. Copy the whole skill folder to keep local

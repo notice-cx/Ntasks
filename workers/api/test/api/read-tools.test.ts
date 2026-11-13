@@ -166,6 +166,7 @@ describe('list_workspaces and get_task_guide', () => {
     expect(guide.version).toMatch(/^[0-9a-f]{12}$/u);
     expect(guide.guide.startsWith('# Working with Ntasks tasks')).toBe(true);
     expect(guide.guide).toContain('call get_task_template');
+    expect(guide.guide).toContain('Checking the result, recording it and closing the task are part of the same job.');
     expect((await callTool(target, 'list_workspaces')).value).toEqual({
       guideVersion: guide.version,
       workspaces: [

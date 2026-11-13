@@ -2,7 +2,7 @@
 type: task
 ---
 
-<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. For steps a person ticks off in Ntasks, read get_task_template with type human_action. -->
+<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. If a person's steps are the whole job, keep them and any result check on one task labelled human. When their steps unblock a separate deliverable, use get_task_template with type human_action for that request. -->
 
 # [Verb + the outcome people will notice]
 

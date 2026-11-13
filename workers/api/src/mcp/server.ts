@@ -153,7 +153,7 @@ const GET_TASK_TEMPLATE: McpTool = Object.freeze({
         type: 'string',
         enum: TEMPLATE_TYPES,
         description:
-          'Use task for general work, bug for a failure, decision for a choice or human_action for steps a person ticks off.',
+          'Use task for general work, bug for a failure, decision for a choice or human_action for steps that unblock separate work.',
       },
     },
     ['type'],
