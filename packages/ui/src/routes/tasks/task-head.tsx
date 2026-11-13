@@ -1,14 +1,17 @@
-import { useRef, type ReactNode } from 'react';
+import { Children, useRef, type ReactNode } from 'react';
 import { ChevronRight, GitPullRequest, Minus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { TaskResolution } from '@ntasks/domain';
 import type { TaskAcceptance, TaskAnswer, TaskChoice, TaskChoiceKey, TaskChoices, TaskDelivery } from '../../api/types';
+import { EpicBadge } from '../../components/EpicBadge';
 import { Avatar } from '../../components/ui/avatar';
 import { CopyButton } from '../../components/ui/copy-button';
 import { OptionList } from '../../components/ui/choice';
+import { LinkedText } from '../../components/ui/linked-text';
 import { ProjectIcon } from '../../components/ProjectIcon';
 import { StatusMark } from '../../components/ui/symbols';
 import { ageMs, formatAge, pullRequestName } from '../../lib/format';
+import type { StatusMark as StatusMarkKey } from '../../lib/symbols';
 import { cn } from '../../lib/utils';
 import { choiceName, RESOLUTION_LABELS, stageLabel, waivedCount } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
@@ -19,6 +22,43 @@ export interface Actor {
   name: string;
   agent: boolean;
   model: string | null;
+}
+
+export interface TaskPageStatus {
+  mark: StatusMarkKey;
+  label: string;
+  muted: boolean;
+}
+
+const STATUS_TINT: Readonly<Record<StatusMarkKey | 'closed', string>> = {
+  open: 'border-s-border-strong bg-surface',
+  'in-progress': 'border-s-accent bg-accent/10',
+  waiting: 'border-s-wait bg-wait/12',
+  blocked: 'border-s-block bg-block/10',
+  parked: 'border-s-ink-3/50 bg-hover',
+  done: 'border-s-done bg-done/14',
+  closed: 'border-s-ink-3/50 bg-surface',
+};
+
+export function TaskHeading({ title, status, epic }: { title: string; status: TaskPageStatus; epic: boolean }) {
+  const tone = status.muted ? 'closed' : status.mark;
+  return (
+    <div
+      className={cn('flex min-w-0 flex-col gap-2 rounded-xl border-s-4 px-5 py-4 max-sm:px-3.5', STATUS_TINT[tone])}
+      data-task-heading-status={tone}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="flex items-center gap-2 text-base font-semibold text-ink">
+          <StatusMark status={status.mark} size={20} muted={status.muted} label={null} />
+          {status.label}
+        </span>
+        {epic ? <EpicBadge /> : null}
+      </div>
+      <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
+        <LinkedText text={title} />
+      </h1>
+    </div>
+  );
 }
 
 /**
@@ -192,10 +232,7 @@ function AcceptanceLines({ shown }: { shown: AcceptanceShown }) {
 }
 
 /**
- * How a closed task ended, under its title: Done, or the way a close where
- * nothing shipped ended, who closed it and when, where its change is or what
- * else shows it, then the evidence or note. Closing records what shipped, not
- * a measured outcome, so it is drawn in greys like any other fact.
+ * Who closed a task and when, where its change is, and any evidence or note.
  */
 export function ClosedSummary({
   by,
@@ -223,6 +260,17 @@ export function ClosedSummary({
   children?: ReactNode;
 }) {
   const label = RESOLUTION_LABELS[resolution];
+  if (
+    !by &&
+    !at &&
+    !duplicate &&
+    !delivery &&
+    link === null &&
+    proof !== 'none' &&
+    !acceptance &&
+    Children.toArray(children).length === 0
+  )
+    return null;
   return (
     <section
       aria-label={`Closed as ${label}`}
@@ -230,14 +278,13 @@ export function ClosedSummary({
       data-task-resolution={resolution}
       className="flex flex-col gap-2 rounded-xl bg-surface px-4 py-3 inset-ring inset-ring-border"
     >
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2">
-        <StatusMark status="done" muted={resolution !== 'done'} label={null} />
-        <h2 className="m-0 text-sm font-semibold text-ink">
-          {label}
-          {duplicate ? <> of {duplicate}</> : null}
-        </h2>
-        <Byline by={by} at={at} nowMs={nowMs} />
-      </div>
+      {by || at ? (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2">
+          <span>{by ? 'Closed by' : 'Closed'}</span>
+          <Byline by={by} at={at} nowMs={nowMs} />
+        </div>
+      ) : null}
+      {duplicate ? <p className="m-0 text-label text-ink-2">Duplicate of {duplicate}</p> : null}
       {delivery ? <DeliveryLine delivery={delivery} /> : null}
       {link !== null || proof === 'none' ? <ProofLine link={link} /> : null}
       {acceptance ? <AcceptanceLines shown={acceptance} /> : null}
