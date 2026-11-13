@@ -179,8 +179,8 @@ protocol appears in neither table.
 | INV-7 | `workers/api/test/api/http-decisions.test.ts` › "closes the task as done by the person, whoever holds it, each criterion met or waived, with their reason" |
 | INV-8 | `workers/api/test/engine/ready.test.ts` › "holds a task until every task blocking it is closed" |
 | INV-9 | `workers/api/test/engine/writes.test.ts` › "reopens a closed task with no close left on it, and keeps the earlier close in history (rule 6)" |
-| INV-10 | `workers/api/test/api/read-tools.test.ts` › "list each task the sender holds, most recently active first, with its helper, branch and next step, before the rules" |
-| INV-10 | `workers/api/test/api/read-tools.test.ts` › "list ten of twelve, then how many more and the call that lists them, within the budget" |
+| INV-10 | `workers/api/test/api/read-tools.test.ts` › "list held tasks before the writing checklist, most recently active first, with the branch and next step" |
+| INV-10 | `workers/api/test/api/read-tools.test.ts` › "show the writing checklist, template tool and as many held tasks as fit within the budget" |
 | INV-11 | `workers/api/test/api/write-tools.test.ts` › "sets the one link between two tasks, changing blocks to related in one call, and removes it" |
 | INV-11 | `workers/api/test/engine/ready.test.ts` › "refuses a blocks link that would close a loop, directly or through other tasks" |
 | INV-11 | `workers/api/test/engine/ready.test.ts` › "refuses a parent that would make a task its own ancestor" |
@@ -200,7 +200,7 @@ protocol appears in neither table.
 | EXT-4 | `workers/api/test/schema.test.ts` › "refuses a resolution the model does not have" |
 | EXT-4 | `workers/api/test/schema.test.ts` › "refuses a history event kind the model does not have" |
 | VER-3 | `workers/api/test/api/write-tools.test.ts` › "offers NoticeOS's task tools with every argument they took, requiring none they did not" |
-| MCP-1 | `workers/api/test/api/read-tools.test.ts` › "list ten of twelve, then how many more and the call that lists them, within the budget" |
+| MCP-1 | `workers/api/test/api/read-tools.test.ts` › "show the writing checklist, template tool and as many held tasks as fit within the budget" |
 | MCP-2 | `workers/api/test/api/write-tools.test.ts` › "answers the same new task sent again without a key with its first result, while it is unchanged and for a day" |
 | MCP-2 | `workers/api/test/api/write-tools.test.ts` › "runs the same write sent again without a key once the task has changed since its answer" |
 | MCP-3 | `workers/api/test/api/read-tools.test.ts` › "refuses a call that names no workspace from a sender who reaches several, listing them" |

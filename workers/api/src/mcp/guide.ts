@@ -211,8 +211,8 @@ function heldSection(held: readonly HeldEntry[], several: boolean, room: number)
 
 /**
  * Every session's instructions: which of the guide's tools this endpoint
- * lacks, the guide's start, the writing checklist, the tasks the sender holds
- * when it connects, and where everything about a task is kept.
+ * lacks, the guide's start, the tasks the sender holds when it connects,
+ * the writing checklist, and where everything about a task is kept.
  */
 export function taskInstructions(offered: readonly string[], held: readonly HeldEntry[] = [], several = false): string {
   const unoffered = unofferedTools(offered);
@@ -221,12 +221,9 @@ export function taskInstructions(offered: readonly string[], held: readonly Held
     ...(unoffered === null ? [] : [unoffered]),
     TASK_START,
     `Read ${TASK_GUIDE_TOOL} before task work for the full workflow and writing guide. Read it again when list_workspaces returns a new guideVersion.`,
-    '',
-    'Writing a task',
-    ...TASK_WRITING,
-    '',
   ];
-  // The brief rule follows the held tasks and a blank line, and ends within the budget too.
-  const room = INSTRUCTIONS_BUDGET - start.join('\n').length - 1 - (ON_THE_TASK_BRIEF.length + 2);
-  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK_BRIEF].join('\n');
+  // Keep held tasks ahead of the writing checklist while reserving room for both.
+  const end = ['', ON_THE_TASK_BRIEF, '', 'Writing a task', ...TASK_WRITING];
+  const room = INSTRUCTIONS_BUDGET - start.join('\n').length - end.join('\n').length - 2;
+  return [...start, ...heldSection(held, several, room), ...end].join('\n');
 }

@@ -1066,7 +1066,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(result.instructions).toContain('Use familiar words and lead with the outcome');
   });
 
-  it('list held tasks after the writing checklist, most recently active first, with the branch and next step', async () => {
+  it('list held tasks before the writing checklist, most recently active first, with the branch and next step', async () => {
     const own = await newProject(engine);
     const first = await held(own, 'holds-two', 'Rebuild the home page', {
       branch: 'agent/home',
@@ -1085,7 +1085,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(lines.map((line) => line.split(' ')[1])).toEqual([second, first]);
     expect(lines[1]).toContain('agent/home');
     expect(lines[1]).toContain('Run the tests');
-    expect(instructions.indexOf(first)).toBeGreaterThan(instructions.indexOf(TASK_QUALITY[0]!));
+    expect(instructions.indexOf(first)).toBeLessThan(instructions.indexOf(TASK_QUALITY[0]!));
   });
 
   it('answer by the deadline with the tasks of the stores that answered, leaving out one that fails or hangs', async () => {
@@ -1137,7 +1137,7 @@ describe('the instructions an agent reads when it connects', () => {
     const rule = instructions.indexOf(ON_THE_TASK_BRIEF);
     expect(rule).toBeGreaterThan(instructions.indexOf(more));
     expect(instructions.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
-    const checklist = instructions.slice(0, instructions.indexOf(tasks[0]!));
+    const checklist = instructions.slice(instructions.indexOf('Writing a task'));
     expect(checklist).toContain('call get_task_template with type: task');
     expect(checklist).toContain('Use familiar words and lead with the outcome');
     expect(checklist).toContain('put a checklist of observable results');

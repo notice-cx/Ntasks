@@ -155,10 +155,10 @@ of tools and the server-wide reads (`list_workspaces`, `get_task_guide` and
 `get_task_template`) from the sender's sign-in. It runs every other tool in
 the task store of the workspace the call names.
 
-The server's instructions start with a writing checklist and show how to read
+The server's instructions include a writing checklist and show how to read
 the [task templates](agents.md#task-templates) through MCP.
 `get_task_guide` returns the full writing guide and workflow. The
-`initialize` response lists the sender's open tasks after the checklist,
+`initialize` response lists the sender's open tasks before the checklist,
 up to ten, most recently active first, one line each
 with the task's id, title, helper, branch, next step and last activity. Past
 ten, or past the room the list has, one more line gives how many more there
