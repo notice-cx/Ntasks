@@ -226,8 +226,10 @@ describe('the Live board', () => {
     // The docs project does not deploy, so its merged work is live.
     expect(await boardCards('Live')).toEqual(['web-j6y4', 'docs-y5u2']);
     const waiting = document.querySelector('[data-board-card="web-k3m9.1"]') as HTMLElement;
+    expect(waiting.getAttribute('data-status-tint')).toBe('done');
     expect(waiting.querySelector('[data-live-context]')?.textContent).toBe('Not merged yet');
     const held = document.querySelector('[data-board-card="web-k3m9.2"]') as HTMLElement;
+    expect(held.getAttribute('data-status-tint')).toBe('in-progress');
     expect(held.querySelector('[data-live-context]')?.textContent).toBe('Not merged yet');
     expect(within(held).getByRole('button', { name: 'Codex' })).toBeTruthy();
     expect(within(held).getByRole('link', { name: '#42' }).getAttribute('href')).toBe(

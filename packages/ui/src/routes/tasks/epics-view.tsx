@@ -26,6 +26,7 @@ import {
 import { calendarDay, dayIn, useTimeZone } from '../../lib/dates';
 import { ageMs, formatAge, formatInt } from '../../lib/format';
 import { usePaths } from '../../lib/paths';
+import { statusTint } from '../../lib/symbols';
 import { sorted, type PageSort } from '../../lib/task-sort';
 import { cn } from '../../lib/utils';
 
@@ -187,6 +188,7 @@ function EpicRow({
     <>
       <Row
         data-epic-row={summary.id}
+        tint={summary.mark}
         data-epic-state={summary.state}
         className={cn(
           'max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-1 max-sm:py-2.5',
@@ -359,24 +361,31 @@ export function EpicsView({
             onToggle={() => setClosedOpen(!closedOpen)}
           />
           {closedOpen
-            ? sorted(read.closed, sort).map((epic) => (
-                <Row key={epic.id} data-epic-row={epic.id} data-epic-state="closed">
-                  <span aria-hidden className="w-3.5 shrink-0" />
-                  <PriorityMark priority={epic.priority} className="max-sm:hidden" />
-                  <RowId>{epic.id}</RowId>
-                  <StatusMark status="done" />
-                  <RowTitle>
-                    <Link
-                      to={paths.task(epic.id)}
-                      className="text-ink no-underline outline-none focus-visible:underline"
-                    >
-                      {epic.title}
-                    </Link>
-                  </RowTitle>
-                  <RowSpacer />
-                  <RowAge>{formatAge(ageMs(nowMs, epic.closedAt))}</RowAge>
-                </Row>
-              ))
+            ? sorted(read.closed, sort).map((epic) => {
+                const tint = statusTint('done', epic.resolution);
+                return (
+                  <Row key={epic.id} tint={tint} data-epic-row={epic.id} data-epic-state="closed">
+                    <span aria-hidden className="w-3.5 shrink-0" />
+                    <PriorityMark priority={epic.priority} className="max-sm:hidden" />
+                    <RowId>{epic.id}</RowId>
+                    <StatusMark
+                      status="done"
+                      muted={tint === 'closed'}
+                      label={tint === 'closed' ? 'Closed' : undefined}
+                    />
+                    <RowTitle>
+                      <Link
+                        to={paths.task(epic.id)}
+                        className="text-ink no-underline outline-none focus-visible:underline"
+                      >
+                        {epic.title}
+                      </Link>
+                    </RowTitle>
+                    <RowSpacer />
+                    <RowAge>{formatAge(ageMs(nowMs, epic.closedAt))}</RowAge>
+                  </Row>
+                );
+              })
             : null}
         </section>
       ) : null}

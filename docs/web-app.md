@@ -8,7 +8,8 @@ from the web app's invented example data. Regenerate the pictures with
 ## Pages
 
 **Tasks board.** Waiting for you, answered on each row, then Next and the
-rest of the tasks by status. The Sort menu orders each group by priority, creation, last change,
+rest of the tasks by status. A subtle background tint matches the status of each row.
+The Sort menu orders each group by priority, creation, last change,
 close or title, either way, and the address keeps the order.
 
 <picture>
@@ -76,9 +77,9 @@ also shows closed work waiting for a merge or a deploy. When a task
 moves to the next column, its card travels there, and for a moment it shows
 who changed it and how, such as "Claude pushed a commit" or "GitHub merged
 #42". A card leads with its project's icon and ends with the icon of who
-holds it, whose name and model show on hover. A card in the In progress column is tinted
-by how recently its holder worked on it: strongly while Active, faintly while
-Quiet, and not at all once Stalled, after a day without activity. A column
+holds it, whose name and model show on hover. Cards use a subtle status tint.
+In progress cards have a stronger blue tint while Active, a softer one while
+Quiet, and a faint one with a dashed outline once Stalled. A column
 shows its latest cards and **Show N more** for the rest; the Live column
 covers the last **24 hours** or **7 days**, and the counts at the top open
 the List. While the page is open it checks for

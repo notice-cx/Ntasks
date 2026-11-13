@@ -24,7 +24,10 @@ export const THEME_TEXT_SIZES = [
 export const THEME_SHADOWS = ['raise', 'pop'] as const;
 
 const twMerge = extendTailwindMerge({
-  extend: { theme: { text: [...THEME_TEXT_SIZES], shadow: [...THEME_SHADOWS] } },
+  extend: {
+    theme: { text: [...THEME_TEXT_SIZES], shadow: [...THEME_SHADOWS] },
+    classGroups: { 'bg-image': ['bg-status-tint'] },
+  },
 });
 
 export function cn(...inputs: ClassValue[]): string {

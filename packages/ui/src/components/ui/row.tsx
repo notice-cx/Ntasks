@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
+import type { StatusTint } from '../../lib/symbols';
 import { cn } from '../../lib/utils';
 
 /**
@@ -12,6 +13,7 @@ import { cn } from '../../lib/utils';
 export function Row({
   className,
   answer = false,
+  tint,
   ...props
 }: ComponentProps<'div'> & {
   /**
@@ -21,14 +23,17 @@ export function Row({
    * under the title, below 1240 px wide.
    */
   answer?: boolean | 'wide';
+  tint?: StatusTint;
 }) {
   return (
     <div
       data-answer={answer === 'wide' ? 'wide' : undefined}
+      data-status-tint={tint}
       className={cn(
         'group/row relative flex h-9 items-center gap-2.5 border-b border-border ps-5.5 pe-5 text-sm',
         'transition-colors duration-120 hover:bg-hover focus-within:bg-hover',
         'max-sm:gap-2.25 max-sm:px-4 max-sm:hover:bg-transparent',
+        tint && 'bg-status-tint',
         answer &&
           'max-sm:h-auto max-sm:flex-wrap max-sm:items-start max-sm:gap-y-2 max-sm:pt-2.5 max-sm:pb-3 max-sm:[&>svg]:mt-0.75 max-sm:[&>[data-priority-mark]]:mt-0.5',
         answer === 'wide' &&

@@ -507,7 +507,10 @@ shows the same auto-merge line as a task's page just above its buttons.
 
 ### Rows (`row.tsx`)
 
-`Row` is one line, 36 px, divided by Border, Hover under the pointer. Its
+`Row` is one line, 36 px, divided by Border, Hover under the pointer. Task
+rows add a translucent fill in the same color as the status mark. Open is
+clear, and Parked and closures other than Done use a light gray tint. The
+fill lets the hover and keyboard focus backgrounds show through. Its
 parts, left to right:
 
 `PriorityMark`, `RowId` (84 px column), `StatusMark`, `RowTitle` (cut with an
@@ -780,12 +783,12 @@ That line ends with the `Avatar` of who holds the task, or closed it, at
 long ago its holder last worked on it for tasks in progress, or when its
 change reached its latest delivery stage for closed tasks.
 
-A card in the In progress column is tinted by its activity, and says it to a screen reader
-in a hidden word: an Active card is filled Accent soft with an Accent edge at
-40 % opacity, 2 px wide so it reads apart from a Quiet one where colours are
-forced, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
-and a Stalled one has a dashed Border strong edge, no fill and no shadow, and
-its title in Text 2. Cards in Waiting to ship and Live keep the plain Background.
+A card uses a translucent status fill over Background. Waiting to ship can
+hold both in-progress work in blue and completed work in green. In the In
+progress column, Active uses a stronger Accent fill with a 2 px Accent edge
+at 40% opacity. Quiet uses a softer Accent fill and an Accent edge at 15%.
+Stalled uses the faintest Accent fill, a dashed Border strong edge, and its
+title in Text 2. The activity is also available to screen readers.
 
 Between two reads, each card is compared with where it was, and:
 

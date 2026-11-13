@@ -366,7 +366,7 @@ function ShippedRow({ win, nowMs }: { win: ShippedWin; nowMs: number }) {
   const change =
     win.pullRequest !== null ? pullRequestLabel(win.pullRequest) : win.commit !== null ? win.commit.slice(0, 7) : null;
   return (
-    <Row data-wins-row="shipped" className="max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
+    <Row tint="done" data-wins-row="shipped" className="max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
       <GitMerge aria-label="Shipped" size={15} className="shrink-0 text-ink-3" />
       <RowId>{task?.id ?? ''}</RowId>
       <RowTitle className="max-sm:flex-1">{task ? <TaskLink id={task.id} title={task.title} /> : null}</RowTitle>
@@ -404,7 +404,7 @@ function ShippedRow({ win, nowMs }: { win: ShippedWin; nowMs: number }) {
 /** A person's answer: the task, the option they chose and who chose it. */
 function DecidedRow({ win, nowMs }: { win: DecidedWin; nowMs: number }) {
   return (
-    <Row data-wins-row="decided" className="max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
+    <Row tint="done" data-wins-row="decided" className="max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
       <Split aria-label="Decided" size={15} className="shrink-0 text-ink-3" />
       <RowId>{win.id}</RowId>
       <RowTitle className="max-sm:flex-1">
@@ -424,7 +424,11 @@ function DecidedRow({ win, nowMs }: { win: DecidedWin; nowMs: number }) {
 /** An epic finished: drawn taller, after a Done mark at heading size, with its tasks done. */
 function FinishedRow({ win, nowMs }: { win: FinishedWin; nowMs: number }) {
   return (
-    <Row data-wins-row="finished" className="h-12 max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5">
+    <Row
+      tint="done"
+      data-wins-row="finished"
+      className="h-12 max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5"
+    >
       <StatusMark status="done" size={20} label="Epic finished" className="-mx-0.5" />
       <RowId>{win.id}</RowId>
       <RowTitle className="max-sm:flex-1">

@@ -258,7 +258,7 @@ export function LiveRoute() {
 function EpicLine({ epic }: { epic: EpicSummary }) {
   const paths = usePaths();
   return (
-    <Row data-live-epic={epic.id}>
+    <Row tint={epic.mark} data-live-epic={epic.id}>
       <Layers aria-hidden size={14} className="shrink-0 text-ink-3" />
       <RowId>{epic.id}</RowId>
       <RowTitle className="max-sm:flex-1">
@@ -311,6 +311,7 @@ function LiveRow({
   return (
     <Row
       data-live-row={task.id}
+      tint="in-progress"
       data-activity={activity}
       className={cn('max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-0.5 max-sm:py-2.5', indent && 'ps-11 max-sm:ps-8')}
     >

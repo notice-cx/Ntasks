@@ -199,6 +199,32 @@
   font-feature-settings: "calt" 0, "cv05" 1, "cv08" 1;
 }
 
+/* A translucent fill lets list hover backgrounds and card surfaces show through. */
+@utility bg-status-tint {
+  --status-fill: color-mix(in oklab, var(--status-tint-color, transparent) var(--status-tint-strength, 7%), transparent);
+  background-image: linear-gradient(var(--status-fill), var(--status-fill));
+}
+
+[data-status-tint="in-progress"] {
+  --status-tint-color: var(--accent);
+}
+[data-status-tint="waiting"] {
+  --status-tint-color: var(--wait);
+}
+[data-status-tint="blocked"] {
+  --status-tint-color: var(--block);
+}
+[data-status-tint="done"] {
+  --status-tint-color: var(--done);
+}
+[data-status-tint="parked"], [data-status-tint="closed"] {
+  --status-tint-color: var(--ink-3);
+  --status-tint-strength: 4%;
+}
+[data-status-tint="open"] {
+  --status-tint-color: transparent;
+}
+
 @keyframes pop-in {
   from {
     opacity: 0;

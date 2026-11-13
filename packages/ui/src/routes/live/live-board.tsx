@@ -30,7 +30,7 @@ import {
   type Stage,
 } from '../../lib/live';
 import { usePaths } from '../../lib/paths';
-import { isAgentActor } from '../../lib/symbols';
+import { isAgentActor, statusTint } from '../../lib/symbols';
 import { actorLabel, claimedModel, closeAttribution, type BoardTask } from '../../lib/task-model';
 import { cn } from '../../lib/utils';
 
@@ -56,15 +56,13 @@ const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
 };
 
 /**
- * How strongly a card in progress is tinted Accent, the colour of work in
- * progress, by how recently its holder worked on it: Active fully, Quiet
- * faintly, Stalled not at all.
+ * Activity adjusts the blue fill. The thicker Active border and the dashed
+ * Stalled border also distinguish those states in forced colors.
  */
 const ACTIVITY_TINTS: Readonly<Record<Activity, string>> = {
-  // A 2 px edge, 1 px less padding: Active reads apart from Quiet where colours are forced, as in high contrast.
-  active: 'border-2 border-accent/40 bg-accent-soft p-[9px]',
-  quiet: 'border-accent/15 bg-accent-soft/40',
-  stalled: 'border-dashed border-border-strong bg-transparent shadow-none',
+  active: 'border-2 border-accent/40 p-[9px] [--status-tint-strength:10%]',
+  quiet: 'border-accent/15 [--status-tint-strength:6%]',
+  stalled: 'border-dashed border-border-strong shadow-none [--status-tint-strength:3%]',
 };
 
 /** Moves that one read starts together leave this far apart, so the eye can follow each. */
@@ -244,9 +242,10 @@ function Card({
       data-board-card={task.id}
       data-column={stage}
       data-activity={activity ?? undefined}
+      data-status-tint={statusTint(held ? 'in-progress' : 'done', task.resolution)}
       className={cn(
-        'relative flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-background p-2.5 shadow-raise',
-        'transition-colors duration-700 data-landed:border-accent data-landed:bg-accent-soft data-landed:duration-0',
+        'relative flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-status-tint bg-background p-2.5 shadow-raise',
+        'transition-colors duration-700 data-landed:border-accent data-landed:bg-accent-soft data-landed:bg-none data-landed:duration-0',
         'data-moving:z-10 data-moving:border-accent data-moving:shadow-pop',
         activity === null ? null : ACTIVITY_TINTS[activity],
       )}

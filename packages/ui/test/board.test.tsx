@@ -72,6 +72,8 @@ describe('the board', () => {
     expect(rowIds(done)).toEqual([]);
     fireEvent.click(within(done).getByRole('button', { name: /Done/ }));
     expect(rowIds(done)).toContain('web-h1z8');
+    expect(done.querySelector('[data-task-row="web-h1z8"]')?.getAttribute('data-status-tint')).toBe('closed');
+    expect(done.querySelector('[data-task-row="web-j6y4"]')?.getAttribute('data-status-tint')).toBe('done');
   });
 
   it('shows the view the tabs pick, which is part of the address', async () => {
