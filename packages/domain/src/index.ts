@@ -1,4 +1,5 @@
 export { isTaskId } from './task-id.ts';
+export { canQueueNext, NEXT_LABEL } from './next.ts';
 export { missingSections, requiredSections } from './lint.ts';
 export { markedStep } from './steps.ts';
 export {

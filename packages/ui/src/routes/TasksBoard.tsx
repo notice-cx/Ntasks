@@ -1,5 +1,15 @@
-import { CircleAlert, Inbox, ListFilter, Plus, Search, X } from 'lucide-react';
-import { startTransition, useEffect, useMemo, useOptimistic, useRef, useState, type ReactNode, type Ref } from 'react';
+import { CircleAlert, Inbox, ListFilter, ListOrdered, Plus, Search, X } from 'lucide-react';
+import {
+  Fragment,
+  startTransition,
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { TaskComposer } from '../components/TaskComposer';
 import { PageSkeleton, ReadBanner, ReadFailed } from '../components/surface';
@@ -31,11 +41,12 @@ import { fieldMatches, filterValueText, isKnownFieldType } from '../lib/custom-f
 import { ageMs, fieldKeyName, formatAge, formatInt } from '../lib/format';
 import { composeRequested, COMPOSE_STATE, searchRequested } from '../lib/page-state';
 import { PRIORITY_LABELS, STATUS_MARK_LABELS, type StatusMark as StatusMarkKey } from '../lib/symbols';
-import { actorKey } from '@ntasks/domain';
+import { actorKey, byDefaultOrder } from '@ntasks/domain';
 import { actorLabel, PRIORITY_BANDS, TASK_STATUSES, type BoardTask } from '../lib/task-model';
 import { WaitingGroup } from './tasks/ask-queue';
 import { DELIVERY_GROUPS, DeliveryGroup, useDeliveryWaits } from './tasks/delivery-groups';
 import { EpicsSummary, EpicsView } from './tasks/epics-view';
+import { isInNext } from './tasks/next';
 import { SortMenu } from './tasks/sort-menu';
 import { sorted, sortOf, sortParams, type PageSort } from '../lib/task-sort';
 import { TaskRow, type RowContext } from './tasks/task-row';
@@ -456,21 +467,27 @@ function Groups({
     const fetchedAt = (task: BoardTask) => projects.get(task.project)?.fetchedAt ?? null;
     // An answered decision leaves its group at once, while its Undo window runs and until a later read says what the server holds.
     const inbox = board.inbox.filter((task) => !hides(task.id, fetchedAt(task)));
+    const visible = board.rows.filter((task) => !hides(task.id, fetchedAt(task)));
+    const canStart = (task: BoardTask) => task.ready && task.assignee === null;
+    const next =
+      view === 'all'
+        ? visible.filter(isInNext).sort((a, b) => Number(canStart(b)) - Number(canStart(a)) || byDefaultOrder(a, b))
+        : [];
     const rows = groupRows(
-      board.rows.filter((task) => !hides(task.id, fetchedAt(task))),
+      view === 'all' ? visible.filter((task) => !isInNext(task)) : visible,
       board.statuses,
       board.held,
     );
     rows.waiting = [...inbox, ...rows.waiting];
-    return rows;
-  }, [board.inbox, board.rows, board.statuses, board.held, projects, hides]);
+    return { rows, next };
+  }, [board.inbox, board.rows, board.statuses, board.held, projects, hides, view]);
   // Only the groups drawn open are sorted, so a folded Done group of a thousand tasks costs a change of order nothing.
   const isOpen = (mark: StatusMarkKey) => mark === 'waiting' || view === 'done' || !folded.has(mark);
   const sortedMarks = VIEW_GROUPS[view].filter(isOpen).join(' ');
   const groups = useMemo(() => {
-    if (sort === null) return grouped;
-    const next = { ...grouped };
-    for (const mark of sortedMarks.split(' ') as StatusMarkKey[]) next[mark] = sorted(grouped[mark], sort);
+    if (sort === null) return grouped.rows;
+    const next = { ...grouped.rows };
+    for (const mark of sortedMarks.split(' ') as StatusMarkKey[]) next[mark] = sorted(grouped.rows[mark], sort);
     return next;
   }, [grouped, sort, sortedMarks]);
   const capabilities = useCapabilities();
@@ -504,7 +521,7 @@ function Groups({
     filters.q.trim() !== '' ||
     FILTER_NAMES.some((name) => (name === 'label' ? filters.label !== '' : filters[name] !== 'all'));
 
-  if (marks.length === 0 && deliveryGroups.length === 0) {
+  if (marks.length === 0 && deliveryGroups.length === 0 && grouped.next.length === 0) {
     if (board.searching) return <EmptyState icon={<Search />} title="Searching…" />;
     return narrowed ? (
       <EmptyState
@@ -541,22 +558,48 @@ function Groups({
       </div>
     ) : null;
 
+  const showNext = view === 'all' && (grouped.next.length > 0 || !narrowed);
+  const nextLimit = shown.next ?? PAGE_ROWS;
+  const nextGroup = () => {
+    const rows = sorted(grouped.next, sort);
+    const drawnRows = take(rows.length, nextLimit);
+    return (
+      <section aria-label="Next" data-group="next">
+        <GroupHeader mark={<ListOrdered aria-hidden size={15} />} label="Next" count={rows.length} />
+        {rows.length === 0 ? (
+          <p className="m-0 border-b border-border px-5.5 py-2 text-sm text-ink-3 max-sm:px-4">
+            Add tasks for agents to pick up next.
+          </p>
+        ) : (
+          <>
+            {rows.slice(0, drawnRows).map((task) => (
+              <TaskRow key={task.id} task={task} context={contextOf(task)} />
+            ))}
+            {more('next', rows.length, nextLimit, drawnRows)}
+          </>
+        )}
+      </section>
+    );
+  };
   return (
     <div className="pb-6" data-task-groups="">
+      {showNext && !marks.includes('waiting') ? nextGroup() : null}
       {marks.map((mark) => {
         const rows = groups[mark];
         const limit = shown[mark] ?? PAGE_ROWS;
         if (mark === 'waiting') {
           const drawnRows = take(rows.length, limit);
           return (
-            <WaitingGroup
-              key={mark}
-              asks={rows.slice(0, drawnRows)}
-              count={rows.length}
-              contextOf={waitingContextOf}
-              writable={(task) => projects.get(task.project)?.ok === true}
-              more={more(mark, rows.length, limit, drawnRows)}
-            />
+            <Fragment key={mark}>
+              <WaitingGroup
+                asks={rows.slice(0, drawnRows)}
+                count={rows.length}
+                contextOf={waitingContextOf}
+                writable={(task) => projects.get(task.project)?.ok === true}
+                more={more(mark, rows.length, limit, drawnRows)}
+              />
+              {showNext ? nextGroup() : null}
+            </Fragment>
           );
         }
         // In the Done view the one group stays open.

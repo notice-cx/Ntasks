@@ -18,6 +18,7 @@ import {
 import {
   addsOrRemoves,
   assigneeArg,
+  booleanArg,
   cardArg,
   choiceArg,
   closingArgs,
@@ -55,6 +56,7 @@ import {
   moveTasks,
   namedAfter,
   retireField,
+  setTaskNext,
   updateTask,
   type NewTask,
   type RetryRequest,
@@ -110,6 +112,7 @@ export const WRITE_OPERATIONS: readonly string[] = Object.freeze([
   'close',
   'move',
   'deliver',
+  'next',
 ]);
 /** The decisions it offers a person signed in to the web app, in NoticeOS's names. */
 export const DECISION_OPERATIONS: readonly string[] = Object.freeze([
@@ -281,8 +284,24 @@ export async function updateRoute(
 ): Promise<Response> {
   const { body, retry } = await writeOf(request, url, 'update_task', { task: taskId });
   // A claim also takes the helper the sender works through and its work details.
-  only(body, ['projectId', ...EDITABLE_FIELDS, 'for', 'work']);
+  only(body, ['projectId', ...EDITABLE_FIELDS, 'for', 'work', 'next']);
   const projectId = projectArg(body, 'projectId', 'http');
+  if (body.next !== undefined) {
+    only(body, ['projectId', 'next']);
+    const next = body.next;
+    if (next === null || typeof next !== 'object' || Array.isArray(next)) refuse('invalid arguments: next (an object)');
+    const args = next as Args;
+    only(args, ['queued', 'note', 'reopen']);
+    const queued = booleanArg(args, 'queued');
+    const reopen = booleanArg(args, 'reopen') === true;
+    const note = textArg(args, 'note', TASK_LIMITS.comment, false)?.trim();
+    if (queued === undefined) refuse('invalid arguments: next.queued (true or false)');
+    if (!queued && (note !== undefined || reopen))
+      refuse('invalid arguments: note and reopen require adding the task to Next');
+    const result = await setTaskNext(context, projectId, taskId, { queued, reopen, note }, retry(body));
+    const [task] = await webTasks([(await linksSeenBy(context)).task(result.task)], context.now());
+    return writtenJson({ task }, result.replayed);
+  }
   if (body.addLinks !== undefined || body.removeLinks !== undefined)
     return linksRoute(context, body, projectId, taskId);
   if (body.claim !== undefined) {

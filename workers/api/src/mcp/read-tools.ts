@@ -7,10 +7,12 @@
  */
 import {
   ACTIVITIES,
+  canQueueNext,
   DELIVERY_STAGES,
   isStalled,
   isTaskStatus,
   isTaskType,
+  NEXT_LABEL,
   SORT_DIRECTIONS,
   TASK_LIMITS,
   WORK_LIMITS,
@@ -164,7 +166,10 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
         description:
           "Only closed tasks whose change is at this stage: built (not merged yet), merged or live. Reads every one, whenever it closed, unless closed_days is given. The answer's stages counts the tasks at each stage.",
       },
-      ready: { type: 'boolean', description: 'Only tasks with nothing blocking them.' },
+      ready: {
+        type: 'boolean',
+        description: 'Only tasks with nothing blocking them. By default, unassigned work in Next comes first.',
+      },
       stalled: {
         type: 'boolean',
         description:
@@ -261,11 +266,19 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
       const offset = integerArg(args, 'offset', 0, Number.MAX_SAFE_INTEGER, 0);
       const sort = choiceArg(args, 'sort', TASK_SORTS);
       const direction = choiceArg(args, 'direction', SORT_DIRECTIONS);
+      const ready = booleanArg(args, 'ready');
       // The board is read whole, for its total, and most urgent first; another order sorts that read, and a page is cut from it.
       const compare =
         sort === undefined && direction === undefined ? null : taskComparator(sort ?? 'priority', direction);
-      const ordered = (tasks: readonly Task[]) =>
-        compare === null ? tasks : [...tasks].sort((a, b) => compare(sortFacts(a), sortFacts(b)));
+      const inNext = (task: Task) => task.assignee === null && task.labels.includes(NEXT_LABEL) && canQueueNext(task);
+      const ordered = (tasks: readonly Task[]) => {
+        if (compare !== null) return [...tasks].sort((a, b) => compare(sortFacts(a), sortFacts(b)));
+        if (ready !== true) return tasks;
+        const next: Task[] = [];
+        const other: Task[] = [];
+        for (const task of tasks) (inNext(task) ? next : other).push(task);
+        return next.concat(other);
+      };
       const assignee = textArg(args, 'assignee', TASK_LIMITS.actor, false);
       if (assignee !== undefined && (/[\r\n\t]/u.test(assignee) || assignee.trim() !== assignee))
         refuse('invalid arguments: assignee (a name on one line, or "me")');
@@ -312,7 +325,6 @@ export const READ_TOOLS: readonly TaskTool[] = Object.freeze([
           : {};
       // Tasks in progress are counted by activity when the call asks for them by status or by activity.
       const activityCounted = activity !== undefined || (args.status !== undefined && asked.includes('in_progress'));
-      const ready = booleanArg(args, 'ready');
       const stalledOnly = booleanArg(args, 'stalled') === true;
       const query = textArg(args, 'query', 512, false, true);
       const filters = {

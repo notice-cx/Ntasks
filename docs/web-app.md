@@ -7,14 +7,20 @@ from the web app's invented example data. Regenerate the pictures with
 
 ## Pages
 
-**Tasks board.** Waiting for you, answered on each row, then every task by
-status. The Sort menu orders each group by priority, creation, last change,
+**Tasks board.** Waiting for you, answered on each row, then Next and the
+rest of the tasks by status. The Sort menu orders each group by priority, creation, last change,
 close or title, either way, and the address keeps the order.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.webp">
   <img src="images/board-light.webp" width="800" alt="The Tasks board with a Sidebar button, a site icon beside Example web app, and Settings and Source code at the bottom of the sidebar. Waiting for you appears above the grouped tasks.">
 </picture>
+
+**Next.** Use the list button on a task row to add or remove it. From the
+task page, choose **Add to Next** to leave a note for the agent in the
+task's activity. Use **Reopen and add to Next** to ask for another pass on
+closed work. A queued task keeps its status and leaves Next when work starts
+or the task closes. Agents see ready Next tasks first when they choose work.
 
 **Epics.** With one project in view, the Epics tab lists the project's open
 epics, one line each, grouped by what they need: Waiting for you, Moving, Not

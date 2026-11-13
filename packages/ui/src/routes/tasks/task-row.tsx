@@ -31,6 +31,7 @@ import { Field, Input } from '../../components/ui/field';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu';
 import { Row, RowActions, RowAge, RowAnswer, RowId, RowMeta, RowSpacer, RowTitle } from '../../components/ui/row';
 import { ActivityMark, PriorityMark, StatusMark, TypeMark } from '../../components/ui/symbols';
+import { NEXT_LABEL } from '@ntasks/domain';
 import type { TasksCapabilities } from '../../api/types';
 import { fieldAvailable, operationAvailable, useClaimTask, useUpdateTask, verbReason } from '../../hooks/useTasks';
 import { copyText } from '../../lib/clipboard';
@@ -62,6 +63,7 @@ import { usePaths } from '../../lib/paths';
 import { useAskActions } from './ask-actions';
 import { DroppedFact } from './relies-on-dropped';
 import { closeOperation, declinedOnClose, useCloseAs } from './close-actions';
+import { canAddToNext, canUseNext, isInNext, NextRowAction } from './next';
 import { assigneeChange, assigneeEditor, priorityChange, priorityEditor, useFieldSave } from './task-facts';
 
 const UNAVAILABLE = 'This sign-in cannot answer it.';
@@ -119,7 +121,7 @@ function RowPanel({ children }: { children: ReactNode }) {
  * they last wrote to it, and for a closed task how it ended or where its change is. */
 function RowFacts({ task, mark, context }: { task: BoardTask; mark: StatusMarkKey; context: RowContext }) {
   const type = typeMarkFor(task.issueType, task.awaitType, (task.steps ?? null) !== null);
-  const labels = task.labels.filter((label) => label !== 'human').slice(0, 2);
+  const labels = task.labels.filter((label) => label !== 'human' && label !== NEXT_LABEL).slice(0, 2);
   const progress = task.issueType === 'epic' ? context.epicProgress.get(task.id) : undefined;
   const checks = checklistCount(task.acceptance);
   const waits = mark === 'blocked' ? waitingOn(task, context.statuses) : [];
@@ -242,6 +244,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
     claim:
       context.actionable &&
       !done &&
+      (!isInNext(task) || task.ready) &&
       task.assignee === null &&
       fieldAvailable(capabilities, 'claim') &&
       !claim.isPending,
@@ -314,6 +317,9 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
             onCloseAs={closeAs.pick}
           />
         </RowActions>
+        {context.actionable && !done && canAddToNext(task) && canUseNext(capabilities) ? (
+          <NextRowAction task={task} project={task.project} />
+        ) : null}
         <Holder task={task} />
         <RowAge title={context.ageTitle} data-row-age="">
           {context.age}

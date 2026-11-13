@@ -547,6 +547,7 @@ export interface TasksMoved {
 
 /** The fields an edit may change. */
 export interface TaskEdit {
+  next?: { queued: boolean; note?: string; reopen?: boolean };
   /** Take the task: the sender becomes its assignee and it moves to in progress. */
   claim?: true;
   status?: string;

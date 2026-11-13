@@ -8,6 +8,7 @@ import {
   epicCloseReason,
   guardRefusalOf,
   KEEP_OPEN,
+  NEXT_LABEL,
   NTASKS_ACTOR,
   ICON_SCHEMES,
   PROJECT_ICON_MAX_BYTES,
@@ -2134,8 +2135,12 @@ export class Writes {
     }
 
     const labels = new Set(current.labels);
-    const addLabels = write.addLabels.filter((label) => !labels.has(label));
-    const removeLabels = write.removeLabels.filter((label) => labels.has(label));
+    // Claiming or closing consumes the queue entry in the same write.
+    const leavesNext = write.close !== null || (status === 'in_progress' && current.status !== 'in_progress');
+    const addLabels = write.addLabels.filter((label) => !labels.has(label) && !(leavesNext && label === NEXT_LABEL));
+    const removeLabels = [...labels].filter(
+      (label) => write.removeLabels.includes(label) || (leavesNext && label === NEXT_LABEL),
+    );
     for (const label of addLabels) labels.add(label);
     for (const label of removeLabels) labels.delete(label);
     if (addLabels.length > 0 || removeLabels.length > 0) changes.labels = [...labels].sort();

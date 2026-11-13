@@ -1,11 +1,11 @@
 // The HTTP writes the web app uses: filing, changing, commenting on and
 // closing a task, in the shapes NoticeOS's Tasks API took, with who may make
 // them, how a retry is answered and what each refusal answers.
-import type { Project, Task, TaskEngine } from '@ntasks/domain';
+import { NEXT_LABEL, type Project, type Task, type TaskEngine } from '@ntasks/domain';
 import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
-import { api, get, granted, ORIGIN, READER, send, worker, WRITER, type TestApi } from './helpers.ts';
+import { api, get, granted, ORIGIN, read, READER, send, worker, WRITER, type TestApi } from './helpers.ts';
 
 const time = clock('2026-11-06T12:00:00.000Z');
 let target: TestApi;
@@ -34,7 +34,7 @@ describe('GET /api/tasks/capabilities', () => {
       live: true,
       writable: true,
       projectSelection: true,
-      operations: ['create', 'update', 'comment', 'close', 'move', 'deliver'],
+      operations: ['create', 'update', 'comment', 'close', 'move', 'deliver', 'next'],
       editableFields: [
         'status',
         'priority',
@@ -69,6 +69,74 @@ describe('GET /api/tasks/capabilities', () => {
       (await get(api({ principal: granted({ [project.id]: 'read' }), engine }), '/api/tasks/capabilities')).body,
     ).toEqual(none);
     expect((await get(api({ principal: READER, engine }), '/api/tasks/capabilities')).body).toEqual(none);
+  });
+});
+
+describe('Next', () => {
+  it('reopens closed work with its note in one replayable change', async () => {
+    const work = await task({ title: 'Verify the keyboard flow', claim: true });
+    await engine.writeTask(
+      project.id,
+      work.id,
+      { expectedVersion: work.version, close: { reason: 'Verified.', resolution: 'done' } },
+      OWNER,
+    );
+    const path = `/api/tasks/${work.id}`;
+    const next = { queued: true, reopen: true, note: 'Reverify with a screen reader.' };
+    const edit = { projectId: project.id, next };
+    const headers = { 'idempotency-key': key() };
+    expect((await send(target, 'PATCH', path, { ...edit, next: { ...next, reopen: false } })).status).toBe(409);
+    expect(await current(work.id)).toMatchObject({ status: 'closed', labels: [], commentCount: 0 });
+    expect(await send(target, 'PATCH', path, edit, headers)).toMatchObject({
+      status: 200,
+      body: { task: { status: 'open', assignee: null, labels: [NEXT_LABEL] } },
+    });
+    expect((await send(target, 'PATCH', path, edit, headers)).status).toBe(200);
+    expect(await read(target, 'get_task', { task: work.id })).toMatchObject({
+      comments: [expect.objectContaining({ text: next.note })],
+    });
+    expect(await current(work.id)).toMatchObject({ version: work.version + 2, status: 'open', ready: true });
+    await read(target, 'claim_task', { task: work.id });
+    expect(await current(work.id)).toMatchObject({ status: 'in_progress', labels: [] });
+    expect(await engine.listComments(project.id, work.id)).toHaveLength(1);
+  });
+
+  it('puts unassigned ready Next work first before paging and keeps blocked work out', async () => {
+    const urgent = await task({ title: 'An urgent task', priority: 0 });
+    const queued = await task({ title: 'A task for Next', priority: 4 });
+    const blocked = await task({
+      title: 'A blocked task for Next',
+      priority: 0,
+      links: [{ direction: 'depends-on', taskId: urgent.id, type: 'blocks' }],
+    });
+    const human = await task({ title: 'A question for a person', priority: 0, labels: ['human'] });
+    const next = { projectId: project.id, next: { queued: true } };
+    for (const work of [queued, blocked])
+      expect((await send(target, 'PATCH', `/api/tasks/${work.id}`, next)).status).toBe(200);
+    expect((await send(target, 'PATCH', `/api/tasks/${human.id}`, next)).status).toBe(409);
+
+    for (const scope of [{ project: project.key }, {}])
+      expect(await read(target, 'list_tasks', { ...scope, ready: true, limit: 1 })).toMatchObject({
+        tasks: [{ id: queued.id }],
+      });
+    expect(await read(target, 'list_tasks', { ready: true, labels: [NEXT_LABEL] })).toMatchObject({
+      tasks: [{ id: queued.id }],
+      total: 1,
+    });
+    expect(await read(target, 'list_tasks', { ready: true, sort: 'priority', limit: 1 })).toMatchObject({
+      tasks: [{ priority: 0 }],
+    });
+    expect((await send(target, 'PATCH', `/api/tasks/${queued.id}`, { ...next, next: { queued: false } })).status).toBe(
+      200,
+    );
+    expect((await current(queued.id)).labels).toEqual([]);
+    await engine.writeTask(
+      project.id,
+      blocked.id,
+      { expectedVersion: (await current(blocked.id)).version, close: { reason: 'Dropped.', resolution: 'wont-do' } },
+      OWNER,
+    );
+    expect((await current(blocked.id)).labels).toEqual([]);
   });
 });
 
