@@ -37,6 +37,9 @@ task closes ([Epics](concepts.md#epics)). Links to the Epics tab on a
 project-filtered Tasks board still open that grouped list.
 
 **Task page.** Markdown text, Done when, activity and the task's facts.
+Task and epic detail pages show the status above the title with a matching
+tint. Done is green, and other ways of closing a task use grey and name how
+it ended.
 **From the epic** shows any comments pinned on the epic for its tasks.
 A pinned comment is marked Pinned among its own task's comments.
 Detailed comments show their TL;DR or a short preview. Select **Show full

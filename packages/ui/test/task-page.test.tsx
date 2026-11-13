@@ -255,6 +255,7 @@ describe('a task page', () => {
     fireEvent.click(await enabledButton('Claim'));
     await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe(FIXTURE_ACTOR));
     expect(await within(fact('Assignee')).findByText(FIXTURE_ACTOR)).toBeTruthy();
+    expect(document.querySelector('[data-task-heading-status="in-progress"]')?.textContent).toContain('In progress');
     expect(await screen.findByText('claimed this', { exact: false })).toBeTruthy();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Comment' }), {
@@ -281,6 +282,7 @@ describe('a task page', () => {
     await waitFor(() => expect(task(api, 'web-b2r6')?.status).toBe('closed'));
     expect(task(api, 'web-b2r6')?.closeReason).toBe('Landed in 4d5e6f7: the link uses the new host.');
     expect(await screen.findByRole('region', { name: 'Closed as Done' })).toBeTruthy();
+    expect(document.querySelector('[data-task-heading-status="done"]')?.textContent).toContain('Done');
   });
 
   it('sends a comment with Command or Control and Enter', async () => {
@@ -921,6 +923,7 @@ describe('a task page', () => {
   it('shows a closed task as closed, with how it ended', async () => {
     renderApp('/tasks/web-h1z8');
     expect(await screen.findByRole('region', { name: 'Closed as No longer needed' })).toBeTruthy();
+    expect(document.querySelector('[data-task-heading-status="closed"]')?.textContent).toContain('No longer needed');
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     // Nothing shipped, so its status is the grey tick and the way it ended, never Done.
     const status = fact('Status');

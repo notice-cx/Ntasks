@@ -29,15 +29,14 @@ import {
   isAgentActor,
   priorityLabel,
   PRIORITY_LABELS,
-  statusMarkFor,
   statusMarkOfStored,
-  STATUS_MARK_LABELS,
   typeLabel,
   typeMarkFor,
 } from '../../lib/symbols';
-import { actorLabel, claimedModel, RESOLUTION_LABELS, TASK_STATUSES } from '../../lib/task-model';
+import { actorLabel, claimedModel, TASK_STATUSES } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { cn } from '../../lib/utils';
+import type { TaskPageStatus } from './task-head';
 
 export type FieldSave = (input: {
   label: string;
@@ -180,6 +179,7 @@ function actorChoice(actor: string, actors: readonly TaskActor[] | undefined): F
 
 export function TaskFacts({
   task,
+  status,
   project,
   parent,
   parentTitle,
@@ -189,11 +189,12 @@ export function TaskFacts({
   nowMs,
 }: {
   task: LiveTask;
+  status: TaskPageStatus;
   project: TaskProject;
   parent: LiveEpic | null;
   parentTitle: string | null;
   epics: readonly LiveEpic[];
-  /** The project's other tasks: who holds work there, which labels it uses, what a link's status is. */
+  /** The project's other tasks: who holds work there and which labels it uses. */
   siblings: readonly LiveTask[];
   actors: readonly TaskActor[] | undefined;
   nowMs: number;
@@ -204,11 +205,6 @@ export function TaskFacts({
   const save = useFieldSave(task.id, project.logicalKey);
   const closed = task.status === 'closed';
   const can = (field: string) => !closed && fieldAvailable(capabilities, field);
-
-  const statuses = new Map(siblings.map((row) => [row.id, row.status]));
-  const mark = statusMarkFor(task, statuses);
-  const resolution = closed ? (task.resolution ?? 'done') : null;
-  const statusWord = resolution ? RESOLUTION_LABELS[resolution] : STATUS_MARK_LABELS[mark];
 
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
@@ -250,12 +246,12 @@ export function TaskFacts({
         <dl className="m-0 flex flex-col gap-px">
           <Fact
             label="Status"
-            valueText={statusWord}
+            valueText={status.label}
             editor={can('status') ? { kind: 'choice', value: task.status, choices: STATUS_CHOICES } : null}
             onSave={(next) => save({ label: 'the status', edit: { status: next }, undo: { status: task.status } })}
           >
-            <StatusMark status={mark} muted={resolution !== null && resolution !== 'done'} label={null} />
-            <span data-task-status={mark}>{statusWord}</span>
+            <StatusMark status={status.mark} muted={status.muted} label={null} />
+            <span data-task-status={status.mark}>{status.label}</span>
           </Fact>
           <Fact
             label="Priority"

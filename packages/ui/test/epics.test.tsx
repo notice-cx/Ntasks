@@ -300,6 +300,19 @@ describe('the project overview', () => {
     expect(within(children).getByRole('link', { name: /Remove the old sign-in page/ })).toBeTruthy();
   });
 
+  it('shows Done and the Epic badge together on a closed epic', async () => {
+    const api = createFixtureTasksApi();
+    const epic = api.state.tasks.find((task) => task.id === 'web-k3m9');
+    if (!epic) throw new Error('The fixture has no web-k3m9');
+    Object.assign(epic, { status: 'closed', resolution: 'done' });
+
+    renderApp('/tasks/web-k3m9', api);
+    const title = await screen.findByRole('heading', { level: 1, name: 'Ship the new sign-in page' });
+    const heading = title.closest('[data-task-heading-status="done"]') as HTMLElement;
+    expect(within(heading).getByText('Done')).toBeTruthy();
+    expect(within(heading).getByText('Epic')).toBeTruthy();
+  });
+
   it('keeps the task queue in its project when clearing filters and labels its epic rows', async () => {
     renderApp('/projects/web/tasks?project=docs&q=unfindable');
     const views = await screen.findByRole('navigation', { name: 'Project views' });

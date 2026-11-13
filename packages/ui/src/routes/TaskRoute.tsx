@@ -30,12 +30,10 @@ import type {
   TaskProject,
 } from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
-import { EpicBadge } from '../components/EpicBadge';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { TestRun } from '../components/TestRun';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Badge } from '../components/ui/badge';
-import { LinkedText } from '../components/ui/linked-text';
 import { Button, IconButton } from '../components/ui/button';
 import { OptionList } from '../components/ui/choice';
 import { EmptyState } from '../components/ui/empty-state';
@@ -64,7 +62,7 @@ import {
 } from '../hooks/useTasks';
 import { copyText } from '../lib/clipboard';
 import { httpUrl } from '../lib/custom-fields';
-import { isAgentActor, statusMarkOfStored } from '../lib/symbols';
+import { isAgentActor, statusMarkFor, statusMarkOfStored, STATUS_MARK_LABELS } from '../lib/symbols';
 import {
   actorLabel,
   choiceName,
@@ -90,7 +88,7 @@ import { MoveForm } from './tasks/move-form';
 import { canAddToNext, canUseNext, isInNext, NextTaskAction } from './tasks/next';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
-import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
+import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskHeading, TaskPath, type Actor } from './tasks/task-head';
 import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
 import { CommentText } from './tasks/comment-text';
@@ -470,6 +468,12 @@ function TaskPage({
     ? task.closeReason?.trim() === `Chose ${choiceName(task.choice.option, task.choice.label)}`
     : false;
   const resolution: TaskResolution = task.resolution ?? 'done';
+  const mark = statusMarkFor(task, new Map(siblings.map((row) => [row.id, row.status])));
+  const status = {
+    mark,
+    label: closed ? RESOLUTION_LABELS[resolution] : STATUS_MARK_LABELS[mark],
+    muted: closed && resolution !== 'done',
+  };
   const closer = closeAttribution(task);
   // A person's acceptance with no reason of their own closes with the API's words for it, which its line already says.
   const closeWords =
@@ -519,10 +523,7 @@ function TaskPage({
         data-task-page=""
       >
         <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 lg:col-start-1 max-md:pt-5')}>
-          {task.issueType === 'epic' ? <EpicBadge className="self-start" /> : null}
-          <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
-            <LinkedText text={task.title} />
-          </h1>
+          <TaskHeading title={task.title} status={status} epic={task.issueType === 'epic'} />
           {canAddToNext(task) && canUseNext(capabilities) ? (
             <NextTaskAction task={task} project={key} />
           ) : isInNext(task) ? (
@@ -591,6 +592,7 @@ function TaskPage({
         >
           <TaskFacts
             task={task}
+            status={status}
             project={project}
             parent={parent}
             parentTitle={parentTitle}
