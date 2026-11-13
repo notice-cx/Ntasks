@@ -9,6 +9,7 @@
  * stays In progress until someone frees it.
  */
 import { activityOf as activityAt, ACTIVITIES, type Activity } from '@ntasks/domain';
+import { httpUrl } from './custom-fields';
 import { ageMs } from './format';
 import type { BoardTask } from './task-model';
 
@@ -69,28 +70,23 @@ export type ShippedWindow = (typeof SHIPPED_WINDOWS)[number];
 const SHIPPED_WINDOW_MS: Readonly<Record<ShippedWindow, number>> = { day: 24 * 3_600_000, week: 7 * 24 * 3_600_000 };
 
 /**
- * When a task reached where it is: its holder's last activity while it is in
- * progress, else the time its change reached the stage it is at.
+ * The holder's last activity while the task is in progress, including while
+ * it waits for a pull request to merge, or the latest delivery time after it closes.
  */
-export function stageTime(task: BoardTask, stage: Stage): string | null {
-  if (stage === 'progress') return task.lastActivityAt ?? null;
+export function stageTime(task: BoardTask): string | null {
+  if (task.status === 'in_progress') return task.lastActivityAt ?? null;
   const delivery = task.delivery;
   if (!delivery) return null;
   return delivery.liveAt ?? delivery.mergedAt ?? delivery.builtAt;
 }
 
 /**
- * The Live board's columns. In progress holds every task in progress in the
- * Live list's order: Active, then Quiet, then Stalled, so the stalled ones
- * are the first a short column leaves out. Waiting to ship holds closed work
- * whose change has a stage still ahead of it: built work, which waits for a
- * merge, and merged work of a project that deploys, which waits for a deploy,
- * whenever it closed (`waits`). Live holds work at its last stage, deployed
- * work and merged work of a project that does not deploy, that reached it
- * within `shipped`: the last 24 hours or 7 days, the board's own reach. Each column comes the latest first. A task the board read holds
- * is placed by that read, never by a wait, which comes from a read of its own
- * that can lag behind or fail: a task reopened, or moved on, sits where the
- * board read puts it. A decision or an approval ships nothing.
+ * The Live board's columns. In progress uses the List view's activity order.
+ * Waiting to ship holds tasks in progress whose work names a pull request,
+ * built work waiting for a merge, and merged work waiting for a deploy.
+ * Live holds work that reached its last stage within `shipped`. A decision
+ * or approval ships nothing. The board read takes precedence over the
+ * separate read of closed work still waiting to ship, which can lag behind.
  */
 export function liveBoard(
   tasks: readonly BoardTask[],
@@ -104,20 +100,26 @@ export function liveBoard(
   const columns: Record<Exclude<Stage, 'progress'>, BoardTask[]> = { shipping: [], live: [] };
   const placed = new Set<string>();
   const onBoard = new Set(tasks.map((task) => task.id));
-  const closes = tasks.filter((task) => task.status === 'closed');
   const waiting = [...waits.merge, ...waits.deploy].filter((task) => !onBoard.has(task.id));
-  for (const task of [...closes, ...waiting]) {
+  for (const task of [...tasks, ...waiting]) {
     if (placed.has(task.id) || task.issueType === 'decision' || task.issueType === 'gate') continue;
+    if (task.status === 'in_progress' && httpUrl(task.work?.pr ?? '') !== null) {
+      placed.add(task.id);
+      columns.shipping.push(task);
+      continue;
+    }
+    if (task.status !== 'closed') continue;
     const stage = task.delivery?.stage;
     const last = stage === 'live' || (stage === 'merged' && !deploys(task.project));
     if (!last && stage !== 'built' && stage !== 'merged') continue;
     placed.add(task.id);
-    if (last && (Date.parse(stageTime(task, 'live') ?? '') || 0) < since) continue;
+    if (last && (Date.parse(stageTime(task) ?? '') || 0) < since) continue;
     columns[last ? 'live' : 'shipping'].push(task);
   }
-  for (const [stage, column] of Object.entries(columns) as [Exclude<Stage, 'progress'>, BoardTask[]][]) {
-    const at = (task: BoardTask) => Date.parse(stageTime(task, stage) ?? '') || 0;
+  const at = (task: BoardTask) => Date.parse(stageTime(task) ?? '') || 0;
+  for (const column of Object.values(columns)) {
     column.sort((a, b) => at(b) - at(a) || a.id.localeCompare(b.id));
   }
-  return { progress: [...groups.active, ...groups.quiet, ...groups.stalled], ...columns };
+  const progress = [...groups.active, ...groups.quiet, ...groups.stalled].filter((task) => !placed.has(task.id));
+  return { progress, ...columns };
 }

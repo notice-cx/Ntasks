@@ -1,7 +1,6 @@
 /**
- * The Live page's board: every task in progress, then the closed work whose
- * change is on its way or live, in three columns. Between two reads a card
- * travels to its new column instead of jumping there.
+ * The Live page's board: work in progress, waiting to ship or live, in
+ * three columns. Between two reads a card travels to its new column.
  */
 import { GitBranch, GitMerge, GitPullRequest } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -59,7 +58,7 @@ const COLUMN_MARKS: Readonly<Record<Stage, ReactNode>> = {
 /**
  * How strongly a card in progress is tinted Accent, the colour of work in
  * progress, by how recently its holder worked on it: Active fully, Quiet
- * faintly, Stalled not at all. Closed cards keep the plain Background.
+ * faintly, Stalled not at all.
  */
 const ACTIVITY_TINTS: Readonly<Record<Activity, string>> = {
   // A 2 px edge, 1 px less padding: Active reads apart from Quiet where colours are forced, as in high contrast.
@@ -196,9 +195,9 @@ function Column({
 /**
  * A task on the board: its project's icon, its id and pull request, its
  * title, then what is next for it and, at the end, the icon of who holds it
- * or closed it, whose name and model show in a tooltip, and how long it has
- * been in its column. A task in progress shows its holder's next step, or
- * else its branch, and its tint says how recently they worked on it.
+ * or closed it, whose name and model show in a tooltip, and how long ago
+ * the holder worked on it or its delivery moved. In the In progress column,
+ * the card shows the holder's next step or branch and a tint for their activity.
  */
 function Card({
   task,
@@ -216,8 +215,8 @@ function Card({
   project: BoardProject | undefined;
 }) {
   const paths = usePaths();
-  const held = stage === 'progress';
-  const activity = held ? activityOf(task, nowMs) : null;
+  const held = task.status === 'in_progress';
+  const activity = stage === 'progress' ? activityOf(task, nowMs) : null;
   // A pull request that is not an http or https address shows no link, as on the task page.
   const pr = httpUrl(held ? (task.work?.pr ?? '') : (task.delivery?.pullRequest ?? ''));
   const closer = held ? null : closeAttribution(task);
@@ -225,12 +224,13 @@ function Card({
   const actor = held ? task.assignee : (closer?.by ?? null);
   const name = actor ? actorLabel(actor, task.actors) : null;
   const model = held ? claimedModel(task) : (closer?.model ?? null);
-  const age = ageMs(nowMs, stageTime(task, stage));
+  const age = ageMs(nowMs, stageTime(task));
   const next = held ? (task.work?.next ?? null) : null;
   const branch = held ? (task.work?.branch ?? null) : null;
   // What its holder recorded: the next step, else the branch where no pull request stands in for it.
   let context: ReactNode = null;
-  if (next) context = <span className="truncate">Next: {next}</span>;
+  if (stage === 'shipping') context = <span>{shippingStep(task)}</span>;
+  else if (next) context = <span className="truncate">Next: {next}</span>;
   else if (branch && !pr) {
     context = (
       <>
@@ -239,9 +239,6 @@ function Card({
       </>
     );
   } else if (held && age === null) context = <span>Nothing recorded</span>;
-  else if (stage === 'shipping') {
-    context = <span>{shippingStep(task)}</span>;
-  }
   return (
     <article
       data-board-card={task.id}
@@ -316,6 +313,7 @@ function Card({
  * its default branch, a push; then a deploy.
  */
 function shippingStep(task: BoardTask): string {
+  if (task.status === 'in_progress') return 'Not merged yet';
   if (task.delivery?.stage !== 'built') return 'Not deployed yet';
   return task.delivery.pullRequest === null ? 'Not pushed yet' : 'Not merged yet';
 }
