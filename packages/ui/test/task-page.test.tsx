@@ -42,7 +42,7 @@ describe('a task page', () => {
     expect(within(fact('Type')).getByText('Bug')).toBeTruthy();
     expect(within(fact('Assignee')).getByText('Nobody')).toBeTruthy();
     expect(within(fact('Project')).getByRole('link', { name: 'Example web app' }).getAttribute('href')).toBe(
-      '/tasks/projects/web',
+      '/projects/web',
     );
     const doneWhen = document.querySelector('[data-task-field="Done when"]') as HTMLElement;
     expect(within(doneWhen).getByText('0/2')).toBeTruthy();
@@ -51,7 +51,7 @@ describe('a task page', () => {
     // The top bar's path leads to the project and keeps its name when a phone hides its words.
     const path = screen.getByRole('navigation', { name: 'Path' });
     const projectLink = within(path).getByRole('link', { name: 'Example web app' });
-    expect(projectLink.getAttribute('href')).toBe('/tasks/projects/web');
+    expect(projectLink.getAttribute('href')).toBe('/projects/web');
     expect(within(path).getByText('web-b2r6')).toBeTruthy();
   });
 

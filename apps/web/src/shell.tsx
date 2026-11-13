@@ -5,19 +5,17 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 const MOVED = ['live', 'projects', 'members', 'settings'];
 
 /**
- * The web app's addresses on the Worker's own origin: the app under /tasks,
- * signed in with the Worker's session cookie, and the design system's
- * gallery at /design. Any other address opens the board.
+ * The web app uses the Worker's session cookie, with workspace pages under
+ * /tasks and project pages under /projects. The gallery is at /design.
  */
 export function Shell() {
   return (
     <Routes>
-      <Route path="/tasks/*" element={<NtasksApp basePath="/tasks" />} />
       <Route path="/design" element={<DesignGallery />} />
       {MOVED.map((page) => (
         <Route key={page} path={`/${page}`} element={<Moved to={`/tasks/${page}`} />} />
       ))}
-      <Route path="*" element={<Navigate to="/tasks" replace />} />
+      <Route path="*" element={<NtasksApp projectBasePath="/projects" />} />
     </Routes>
   );
 }

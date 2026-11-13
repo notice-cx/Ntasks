@@ -24,11 +24,15 @@ export interface NtasksAppProps {
    */
   tokenSource?: TokenSource;
   /**
-   * The address of the board, below the site's root; every other page is
-   * under it. `/tasks` (the default) puts the board at `/tasks` and a task at
-   * `/tasks/<id>`.
+   * The address of the board, below the site's root. `/tasks` (the default)
+   * puts the board at `/tasks` and a task at `/tasks/<id>`.
    */
   basePath?: string;
+  /**
+   * A separate base for project pages, such as `/projects`. Render the app
+   * at the router's root when using it. By default projects are under the board.
+   */
+  projectBasePath?: string;
   /** `system` (the default) follows the system's preference while the page is open. */
   theme?: Theme;
   /**
@@ -53,8 +57,8 @@ export interface NtasksAppProps {
 
 /**
  * The Ntasks web app. Inside a host's React Router it uses the host's router:
- * render it as the element of the route `<basePath>/*`. Without a router it
- * makes its own on the page's history.
+ * render it as the element of the route `<basePath>/*`, or at the router's
+ * root when providing `projectBasePath`. Without a router it makes its own.
  */
 export function NtasksApp(props: NtasksAppProps) {
   return useInRouterContext() ? (
@@ -70,12 +74,14 @@ function Placed({
   apiOrigin: given,
   tokenSource,
   basePath = '/tasks',
+  projectBasePath,
   theme = 'system',
   api,
   onTitle,
   sidebar,
 }: NtasksAppProps) {
-  const paths = useMemo(() => appPaths(basePath), [basePath]);
+  const paths = useMemo(() => appPaths(basePath, projectBasePath), [basePath, projectBasePath]);
+  const atSiteRoot = projectBasePath !== undefined;
   const apiOrigin = given === undefined ? undefined : originOf(given);
   const current = tokenSource ?? sessionCookie(apiOrigin);
   // The source is read when each request is sent, so a host may pass a new
@@ -93,10 +99,18 @@ function Placed({
   const app = (
     <Root theme={theme}>
       {/* A new Ntasks starts the app again, with none of the last one's reads. */}
-      <App key={apiOrigin} api={calls} paths={paths} signIn={current.signIn} onTitle={onTitle} sidebar={sidebar} />
+      <App
+        key={apiOrigin}
+        api={calls}
+        paths={paths}
+        atSiteRoot={atSiteRoot}
+        signIn={current.signIn}
+        onTitle={onTitle}
+        sidebar={sidebar}
+      />
     </Root>
   );
-  if (inHostRoute) return app;
+  if (atSiteRoot || inHostRoute) return app;
   return (
     <Routes>
       <Route path={`${paths.board}/*`} element={app} />

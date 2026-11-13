@@ -108,12 +108,14 @@ for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oau
   });
 }
 
-test('a page address gets the web app', async () => {
-  const response = await server.fetch('/tasks/web-a1b2', pageLoad);
+for (const path of ['/tasks/web-a1b2', '/projects/example.test', '/projects/example.test/tasks']) {
+  test(`a page load at ${path} gets the web app`, async () => {
+    const response = await server.fetch(path, pageLoad);
 
-  assert.equal(response.status, 200);
-  assert.match(await response.text(), /<title>Ntasks routing fixture<\/title>/u);
-});
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /<title>Ntasks routing fixture<\/title>/u);
+  });
+}
 
 // The limits the sign-in routes run with. They are read from wrangler.jsonc
 // rather than counted against the running Worker: Cloudflare's rate limiting

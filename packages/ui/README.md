@@ -34,7 +34,8 @@ const person: TokenSource = {
 |---|---|---|
 | `apiOrigin` | the page's own origin | The Ntasks the pages read and write, such as `https://tasks.example.com` |
 | `tokenSource` | `sessionCookie(apiOrigin)` | How each request says who is asking ([Signing in](#signing-in)) |
-| `basePath` | `/tasks` | The board's address, below the site's root; every other page is under it ([Addresses](#addresses)) |
+| `basePath` | `/tasks` | The board's address, below the site's root ([Addresses](#addresses)) |
+| `projectBasePath` | `<basePath>/projects` | A separate base for project pages when the app is mounted at the router's root |
 | `theme` | `system` | `light`, `dark`, or `system`, which follows the system's preference while the page is open |
 | `api` | none | Calls to read and write through in place of `apiOrigin` and `tokenSource`, such as `createFixtureTasksApi()` ([Invented tasks](#invented-tasks)) |
 | `onTitle` | none | Receives each page's title, such as `web-b2r6 · Fix the reset link — Ntasks`, in place of the app setting the document's title, so the host keeps its own tab title |
@@ -50,6 +51,7 @@ With `basePath="/tasks"`:
 | A task | `/tasks/<id>`, such as `/tasks/web-b2r6` |
 | Focus | `/tasks/focus` |
 | Live | `/tasks/live` |
+| Project Overview and Tasks | `/tasks/projects/<project>` and `/tasks/projects/<project>/tasks`; with `projectBasePath="/projects"`, both start at `/projects/<project>` |
 | Settings | `/tasks/settings/<tab>`: `workspace`, `projects`, `members`, `github`, `apps`, `services` or `you`; `/tasks/settings` opens `workspace`, and `/tasks/projects` and `/tasks/members` open their tabs |
 
 A task id always holds a hyphen, so it is never the name of another page.
@@ -62,6 +64,10 @@ route `<basePath>/*`, as above. Its links and its navigation go through the
 host's router and history, and the router's `basename` applies to them as to
 the host's own links. Without a router, `NtasksApp` makes its own on the
 page's history and matches `basePath` itself.
+
+To give projects a separate base, such as `/projects`, set
+`projectBasePath="/projects"` and render `NtasksApp` at the router's root,
+such as in its top-level `*` route.
 
 ### Signing in
 

@@ -43,6 +43,7 @@ export function newQueryClient(): QueryClient {
 export function App({
   api,
   paths,
+  atSiteRoot = false,
   signIn,
   queryClient,
   onTitle,
@@ -51,6 +52,7 @@ export function App({
 }: {
   api: TasksApi;
   paths: AppPaths;
+  atSiteRoot?: boolean;
   signIn?: TokenSource['signIn'];
   queryClient?: QueryClient;
   /** Receives each page's title in place of the document's title (`TitleProvider`). */
@@ -72,20 +74,26 @@ export function App({
                 <Routes>
                   <Route element={<WorkspaceGate />}>
                     <Route element={<Shell sidebar={sidebar} />}>
-                      <Route index element={<TasksBoard />} />
-                      <Route path="focus" element={<FocusRoute />} />
-                      <Route path=":id" element={<TaskRoute />} />
-                      <Route path="live" element={<LiveRoute />} />
-                      <Route path="productivity" element={<ProductivityRoute />} />
-                      <Route path="projects" element={<MovedTo page="projects" />} />
-                      <Route path="projects/:project" element={<ProjectRoute />}>
+                      <Route path={atSiteRoot ? paths.board : undefined}>
+                        <Route index element={<TasksBoard />} />
+                        <Route path="focus" element={<FocusRoute />} />
+                        <Route path=":id" element={<TaskRoute />} />
+                        <Route path="live" element={<LiveRoute />} />
+                        <Route path="productivity" element={<ProductivityRoute />} />
+                        <Route path="projects" element={<MovedTo page="projects" />} />
+                        <Route path="members" element={<MovedTo page="members" />} />
+                        <Route path="settings/:tab?" element={<SettingsRoute />} />
+                        <Route path="*" element={<NoPage />} />
+                      </Route>
+                      <Route
+                        path={atSiteRoot ? `${paths.projectBase}/:project` : 'projects/:project'}
+                        element={<ProjectRoute />}
+                      >
                         <Route path="tasks" element={<TasksBoard scoped />} />
                       </Route>
-                      <Route path="members" element={<MovedTo page="members" />} />
-                      <Route path="settings/:tab?" element={<SettingsRoute />} />
-                      <Route path="*" element={<NoPage />} />
                     </Route>
                   </Route>
+                  {atSiteRoot ? <Route path="*" element={<Navigate to={paths.board} replace />} /> : null}
                 </Routes>
                 <AppToaster />
               </GivenTimeZone>
@@ -125,7 +133,7 @@ function Shell({ sidebar }: { sidebar: SidebarPlace }) {
   const navigate = useNavigate();
   const paths = usePaths();
   const writable = writesAvailable(useCapabilities());
-  const project = useMatch(`${paths.board}/projects/:project/*`)?.params.project;
+  const project = useMatch(`${paths.projectBase}/:project/*`)?.params.project;
   const queue = project === undefined ? paths.board : paths.projectTasks(project);
   const board = `${queue}${pathname === queue ? search : ''}`;
   useShortcut('c', () => void navigate(board, { state: { [COMPOSE_STATE]: true } }), writable);
