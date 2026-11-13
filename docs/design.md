@@ -576,15 +576,15 @@ menu is open. Its menu lists the workspaces, each with its icon and the open
 one ticked, then Settings under a divider, and for a deployment admin New
 workspace, which shows the first step's New workspace form in place of the page.
 
-`TopBar` is a page's 56 px header: its title, its `Tabs`, `BarSpacer`, then
+`TopBar` is a page's 56 px header by default: its title, its `Tabs`, `BarSpacer`, then
 search and actions. Below 768 px the board's views leave the top bar for a
-row of their own under it. On a phone a task page's top bar holds the task's
-id alone as its path, since the project and the epic are facts on the page,
-and Close or Close as shows its icons alone when another button is the main
-action; an id longer than the room left ends in an ellipsis rather than
-widening the page.
-On task and epic detail pages, the breadcrumb bar takes the status tint and
-the Facts panel shows the status in text.
+row of their own under it. On a task or epic detail page, the bar takes the
+status tint and the path ends with the task ID, its copy button and the task
+name. Phones show the project and epic in Facts. The path can truncate long
+names, and Close or Close as shows its icon alone when another button is the
+main action. For a closed task with delivery details, the stage, pull request
+and short commit SHA sit before the header actions, or on a second line in
+the same bar when the content area is narrow. Facts shows the task status in text.
 
 On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
 with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a

@@ -29,24 +29,25 @@ export interface TaskPageStatus {
 
 /**
  * The task's place, as the top bar's title: its project, its epic when it
- * has one, then its id, with a button that copies the id. A phone hides the
- * project's name beside its badge, so the link carries the name.
+ * has one, then its id, copy button and title. On a phone the project and
+ * epic are available in Facts.
  */
 export function TaskPath({
   id,
+  title,
   project,
   parent,
 }: {
   id: string;
+  title?: string | null;
   project: { name: string; prefix: string; icon?: string | null; darkIcon?: string | null; to: string } | null;
   parent: { id: string; title: string | null } | null;
 }) {
   const paths = usePaths();
   const here = useRef<HTMLSpanElement>(null);
-  const crumb = 'flex min-w-0 items-center gap-1.5 text-ink-2 no-underline hover:text-ink';
+  const crumb = 'flex min-w-0 max-w-1/4 items-center gap-1.5 text-ink-2 no-underline hover:text-ink';
   return (
-    <nav aria-label="Path" className="flex min-w-0 items-center gap-1.5 text-label font-medium text-ink-3">
-      {/* On a phone the path is this task alone: its project and its epic are facts on the page. */}
+    <nav aria-label="Path" className="flex min-w-0 flex-1 items-center gap-1.5 text-label font-medium text-ink-3">
       {project ? (
         <>
           <Link to={project.to} aria-label={project.name} className={cn(crumb, 'max-sm:hidden')}>
@@ -64,10 +65,18 @@ export function TaskPath({
           <ChevronRight aria-hidden size={14} className="shrink-0 max-sm:hidden" />
         </>
       ) : null}
-      <span ref={here} className="nums min-w-0 truncate text-ink" aria-current="page">
+      <span ref={here} className="nums min-w-0 max-w-2/5 shrink-0 truncate text-ink" aria-current="page">
         {id}
       </span>
       <CopyButton label="Copy the task id" target={here} text={() => id} className="-my-1 -ms-1" />
+      {title ? (
+        <>
+          <ChevronRight aria-hidden size={14} className="shrink-0" />
+          <span className="min-w-0 truncate text-ink" title={title}>
+            {title}
+          </span>
+        </>
+      ) : null}
     </nav>
   );
 }
@@ -94,25 +103,28 @@ function Byline({ by, at, nowMs }: { by: Actor | null; at: string | null; nowMs:
 }
 
 /** Where a closed task's change is: its stage, then its pull request and commit. */
-function DeliveryLine({ delivery }: { delivery: TaskDelivery }) {
+export function DeliveryLine({ delivery }: { delivery: TaskDelivery }) {
   const { stage, pullRequest, commit, mergeCommit } = delivery;
   return (
-    <p className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label text-ink-2" data-task-delivery={stage}>
-      <span className="font-medium text-ink">{stageLabel(stage)}</span>
+    <p
+      className="order-last m-0 flex min-w-0 basis-full flex-wrap items-center gap-x-2.5 gap-y-1 pt-1.5 text-label text-ink-2 @[48rem]:order-none @[48rem]:max-w-1/2 @[48rem]:basis-auto @[48rem]:border-e @[48rem]:border-ink/15 @[48rem]:pt-0 @[48rem]:pe-3.5"
+      data-task-delivery={stage}
+    >
+      <span className="font-semibold text-ink [overflow-wrap:anywhere]">{stageLabel(stage)}</span>
       {pullRequest ? (
         <a
           href={pullRequest}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-accent-text no-underline hover:underline"
+          className="inline-flex min-w-0 items-center gap-1 text-ink-2 no-underline hover:underline"
         >
-          <GitPullRequest aria-hidden size={14} />
-          {pullRequestName(pullRequest)}
+          <GitPullRequest aria-hidden size={14} className="shrink-0" />
+          <span className="[overflow-wrap:anywhere]">{pullRequestName(pullRequest)}</span>
         </a>
       ) : null}
-      {commit ? <code className="font-mono text-meta text-ink-3">{commit.slice(0, 7)}</code> : null}
+      {commit ? <code className="font-mono text-meta">{commit.slice(0, 7)}</code> : null}
       {mergeCommit && mergeCommit !== commit ? (
-        <span className="text-ink-3">
+        <span className="whitespace-nowrap">
           merged as <code className="font-mono text-meta">{mergeCommit.slice(0, 7)}</code>
         </span>
       ) : null}
@@ -198,7 +210,7 @@ function AcceptanceLines({ shown }: { shown: AcceptanceShown }) {
 }
 
 /**
- * Who closed a task and when, where its change is, and any evidence or note.
+ * Closure details shown below the title, including a written note or evidence.
  */
 export function ClosedSummary({
   by,
@@ -206,7 +218,6 @@ export function ClosedSummary({
   nowMs,
   resolution,
   duplicate,
-  delivery,
   link = null,
   proof = null,
   acceptance = null,
@@ -217,7 +228,6 @@ export function ClosedSummary({
   nowMs: number;
   resolution: TaskResolution;
   duplicate?: ReactNode;
-  delivery?: TaskDelivery | null;
   /** The URL the close named to show the work. */
   link?: string | null;
   proof?: 'none' | null;
@@ -230,7 +240,6 @@ export function ClosedSummary({
     !by &&
     !at &&
     !duplicate &&
-    !delivery &&
     link === null &&
     proof !== 'none' &&
     !acceptance &&
@@ -244,15 +253,10 @@ export function ClosedSummary({
       data-task-resolution={resolution}
       className="flex min-w-0 flex-col gap-2"
     >
-      {delivery || by || at ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          {delivery ? <DeliveryLine delivery={delivery} /> : null}
-          {by || at ? (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label text-ink-2">
-              <span>{by ? 'Closed by' : 'Closed'}</span>
-              <Byline by={by} at={at} nowMs={nowMs} />
-            </div>
-          ) : null}
+      {by || at ? (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label text-ink-2">
+          <span>{by ? 'Closed by' : 'Closed'}</span>
+          <Byline by={by} at={at} nowMs={nowMs} />
         </div>
       ) : null}
       {duplicate ? <p className="m-0 text-label text-ink-2">Duplicate of {duplicate}</p> : null}

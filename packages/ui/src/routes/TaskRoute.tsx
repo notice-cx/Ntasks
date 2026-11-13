@@ -42,7 +42,7 @@ import { EmptyState } from '../components/ui/empty-state';
 import { Field, Input, Select, Textarea } from '../components/ui/field';
 import { Kbd } from '../components/ui/kbd';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../components/ui/menu';
-import { BarSpacer, TopBar } from '../components/ui/shell';
+import { TopBar } from '../components/ui/shell';
 import { StatusMark } from '../components/ui/symbols';
 import { useNow } from '../hooks/useNow';
 import { useShortcut } from '../hooks/useShortcut';
@@ -96,7 +96,7 @@ import { MoveForm } from './tasks/move-form';
 import { isInNext } from './tasks/next';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
-import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
+import { AnswerSummary, ChoiceSummary, ClosedSummary, DeliveryLine, TaskPath, type Actor } from './tasks/task-head';
 import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
 import { CommentText } from './tasks/comment-text';
@@ -139,9 +139,10 @@ export function TaskRoute() {
   usePageTitle(id, notFound ? 'Not found' : task?.title);
   // The id was a moved task's old id, which the server answers with the task as it is now.
   if (task !== null && task.id !== id && !detail.isError) return <Navigate to={paths.task(task.id)} replace />;
-  const path = (parent: { id: string; title: string | null } | null) => (
+  const path = (parent: { id: string; title: string | null } | null, title?: string) => (
     <TaskPath
       id={id}
+      title={title}
       project={
         project
           ? {
@@ -167,7 +168,7 @@ export function TaskRoute() {
           key={task.id}
           task={task}
           project={project}
-          path={path(task.parent ? { id: task.parent, title: parentTitle } : null)}
+          path={path(task.parent ? { id: task.parent, title: parentTitle } : null, task.title)}
           fetchedAt={detail.dataUpdatedAt || null}
           comments={detail.data.comments}
           parentContext={detail.data.parent ?? null}
@@ -319,7 +320,8 @@ function TaskPage({
   const disputeReason = reasonFor(operationAvailable(capabilities, 'dispute'));
   // A change that went live where no signal reaches Ntasks, such as a deploy by hand. In a project
   // that does not deploy, Merged is the last stage, so only a change still at Built has a step left.
-  const stage = closed ? (task.delivery?.stage ?? null) : null;
+  const delivery = closed ? (task.delivery ?? null) : null;
+  const stage = delivery?.stage;
   // An older server, which lists no `deliver`, refuses a signal that names only tasks.
   const markableLive =
     (stage === 'built' || (stage === 'merged' && project.deploys === true)) &&
@@ -492,7 +494,7 @@ function TaskPage({
     label: closed ? RESOLUTION_LABELS[resolution] : STATUS_MARK_LABELS[mark],
     muted: closed && resolution !== 'done',
   };
-  const closer = closeAttribution(task);
+  const closer = delivery === null ? closeAttribution(task) : null;
   // A person's acceptance with no reason of their own closes with the API's words for it, which its line already says.
   const closeWords =
     task.closeAcceptance && task.closeReason === ACCEPTED_REASON
@@ -508,10 +510,18 @@ function TaskPage({
   const writable = (field: string) => !closed && fieldAvailable(capabilities, field);
 
   return (
-    <>
-      <TopBar title={path} className={STATUS_TINT[status.muted ? 'closed' : mark]}>
-        <BarSpacer />
-        <div className="flex items-center gap-1.5" data-task-actions="">
+    <div className="@container flex min-h-screen flex-col">
+      <TopBar
+        title={path}
+        className={cn(
+          'shrink-0',
+          STATUS_TINT[status.muted ? 'closed' : mark],
+          delivery &&
+            'h-auto min-h-14 flex-wrap content-center gap-y-0 py-2.5 max-sm:h-auto max-sm:min-h-13 @[48rem]:flex-nowrap',
+        )}
+      >
+        {delivery ? <DeliveryLine delivery={delivery} /> : null}
+        <div className="flex shrink-0 items-center gap-1.5" data-task-actions="">
           <IconButton
             label="Copy link"
             icon={<LinkIcon aria-hidden />}
@@ -537,7 +547,7 @@ function TaskPage({
         </div>
       </TopBar>
       <div
-        className="grid min-h-[calc(100vh-56px)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_1fr]"
+        className="grid flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_1fr]"
         data-task-page=""
       >
         <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 max-lg:pb-4 lg:col-start-1 max-md:pt-5')}>
@@ -568,10 +578,9 @@ function TaskPage({
           {closed && !closedByPick ? (
             <ClosedSummary
               by={closer ? actorOf(closer.by, closer.model, actors) : null}
-              at={task.closedAt}
+              at={delivery === null ? task.closedAt : null}
               nowMs={nowMs}
               resolution={resolution}
-              delivery={task.delivery ?? null}
               link={task.closeLink ?? null}
               proof={task.proof ?? null}
               acceptance={acceptance}
@@ -684,7 +693,7 @@ function TaskPage({
           <Activity task={task} project={key} comments={comments} actors={actors} nowMs={nowMs} />
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
