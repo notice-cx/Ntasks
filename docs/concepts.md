@@ -181,6 +181,15 @@ Ntasks works out readiness on the server, from the whole graph. Every agent
 that asks for work it can start gets the same answer, and no agent reads the
 graph itself to decide.
 
+### Next
+
+Next is the list of tasks people want agents to pick up first. A task keeps
+its status while it is queued, so an open dependency or a park can keep it
+out of ready work. Unassigned Next tasks come first in the default
+`list_tasks` ready-work order, then follow the usual priority and age order
+within Next. Claiming or closing a task removes it from Next. A note left
+when adding it stays in its comments.
+
 ## Epics
 
 An **epic** is a task whose work is done by its children. A child's id adds a

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Layers, Moon, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { actorKey, TASK_LIMITS } from '@ntasks/domain';
+import { actorKey, NEXT_LABEL, TASK_LIMITS } from '@ntasks/domain';
 import type { LiveEpic, LiveTask, TaskActor, TaskEdit, TaskField, TaskFieldValue, TaskProject } from '../../api/types';
 import {
   Fact,
@@ -215,7 +215,10 @@ export function TaskFacts({
   const helper = task.assignee ? (task.for ?? null) : null;
   const people = siblings.flatMap((row) => (row.assignee ? [row.assignee] : []));
 
-  const labels = [...new Set([...siblings.flatMap((row) => row.labels), ...task.labels])].sort();
+  const taskLabels = task.labels.filter((label) => label !== NEXT_LABEL);
+  const labels = [...new Set([...siblings.flatMap((row) => row.labels), ...taskLabels])]
+    .filter((label) => label !== NEXT_LABEL)
+    .sort();
   const parked = (task.deferUntil ?? '').slice(0, 10);
   const due = (task.dueAt ?? '').slice(0, 10);
   const estimate = task.estimateMinutes == null ? null : formatMinutes(task.estimateMinutes);
@@ -323,14 +326,14 @@ export function TaskFacts({
           </LinkedFact>
           <Fact
             label="Labels"
-            valueText={task.labels.length > 0 ? task.labels.join(', ') : 'None'}
-            muted={task.labels.length === 0}
+            valueText={taskLabels.length > 0 ? taskLabels.join(', ') : 'None'}
+            muted={taskLabels.length === 0}
             wrap
             editor={
               can('addLabels')
                 ? {
                     kind: 'toggle',
-                    values: task.labels,
+                    values: taskLabels,
                     choices: labels.map((label) => ({ value: label, label })),
                     other: 'New label',
                   }
@@ -342,8 +345,8 @@ export function TaskFacts({
                 : save({ label: `label ${label}`, edit: { removeLabels: [label] }, undo: { addLabels: [label] } })
             }
           >
-            {task.labels.length > 0
-              ? task.labels.map((label) => (
+            {taskLabels.length > 0
+              ? taskLabels.map((label) => (
                   <Badge key={label} dot>
                     <span data-task-label={label}>{label}</span>
                   </Badge>

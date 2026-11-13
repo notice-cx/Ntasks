@@ -86,6 +86,7 @@ import { AnswerForm, AutoMergeNote, PerformedButton, PerformedForm } from './tas
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { MoveForm } from './tasks/move-form';
+import { canAddToNext, canUseNext, isInNext, NextTaskAction } from './tasks/next';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
@@ -305,7 +306,7 @@ function TaskPage({
     (stage === 'built' || (stage === 'merged' && project.deploys === true)) &&
     capabilities.operations?.includes('deliver') === true;
   const markLiveReason = reasonFor(operationAvailable(capabilities, 'deliver'));
-  const claimable = task.status === 'open' && task.assignee === null;
+  const claimable = task.status === 'open' && task.assignee === null && (!isInNext(task) || task.ready);
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
   const acceptOffered = !isGate(task) && operationAvailable(capabilities, 'accept');
   // A person's acceptance that an agent recorded for them, which they can withdraw.
@@ -518,6 +519,11 @@ function TaskPage({
           <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-[22px] max-sm:leading-7">
             <LinkedText text={task.title} />
           </h1>
+          {canAddToNext(task) && canUseNext(capabilities) ? (
+            <NextTaskAction task={task} project={key} />
+          ) : isInNext(task) ? (
+            <Badge className="self-start">In Next</Badge>
+          ) : null}
           {gated ? <AutoMergeNote pullRequest={gated} id={mergeId} /> : null}
           {panelBody ? (
             <div className="rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border" data-task-panel="">

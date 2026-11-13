@@ -9,7 +9,7 @@
  * work. Rules only one installation uses, such as how NoticeOS ranks cards or
  * keeps change classes, belong in that installation's own instructions.
  */
-import type { HeldTask } from '@ntasks/domain';
+import { NEXT_LABEL, type HeldTask } from '@ntasks/domain';
 import { shortHash } from '../short-hash.ts';
 import { TITLE_MOST } from './writing.ts';
 
@@ -43,6 +43,7 @@ export const WHATS_CHANGED: readonly string[] = Object.freeze([
   '2026-11-11: list_tasks filters by changed_by, changed_for and changed_in. Progress and close calls can record a test run.',
   "2026-11-11: request_human_approval and create_task's approval take pr for merge approvals.",
   '2026-11-12: Connection instructions show the writing checklist and how to read the Markdown templates with get_task_template.',
+  '2026-11-13: people can put work in Next with a note. The default ready-work list shows unassigned Next tasks first (workflow step 2).',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
@@ -65,7 +66,7 @@ export const TASK_START =
 /** The order of task work, in the tools' own names: one call for each step. */
 export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '1. A session starts with the open tasks you hold, listed in these instructions with each one’s next step: carry them on first. list_projects names each project and the prefix that starts its task ids.',
-  '2. Choose: list_tasks with ready: true and no project lists work nothing blocks; get_task reads one in full, or several with tasks. Keep watch on work in progress with list_tasks activity: ["quiet","stalled"]: a quiet task may be done and not closed, such as one whose pull request merged, and a stalled one has a holder that stopped, to pick up or free (step 8).',
+  `2. Choose: list_tasks with ready: true and no project lists work nothing blocks. Pick unassigned work from Next first when choosing new work. It carries the \`${NEXT_LABEL}\` label and comes first in that list. Read the task and its comments with get_task before claiming it, including any note left when it was queued. Keep watch on work in progress with list_tasks activity: ["quiet","stalled"]: a quiet task may be done and not closed, such as one whose pull request merged, and a stalled one has a holder that stopped, to pick up or free (step 8).`,
   "3. Start: claim_task, or claim_task with pr alone for the task that pull request names. Pass for, branch and pr when a helper agent works under you, and touches, the files or other things your work changes; the answer's overlaps names other work in progress that changes the same, so agree with its holder which pull request merges first. create_task with claim: true files new work and claims it. On a task in an epic, get_task and claim_task show parent: the facts the epic's tasks pinned for each other, and what its closed tasks left, with each one's close reason and proof; read them before you build.",
   `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. After each push to the task's branch, comment_on_task with what the pushed commit does, commit when you tested it, test when it reports a test run, and pr once the pull request is open: the task then shows active for the next hour. ${ON_THE_TASK} ${PIN_ON_THE_EPIC}`,
   '5. Finish: use close_task with evidence, commit, pr or link, and test when you ran one. If nothing shipped, explain why and use the appropriate resolution instead of delivery proof. GitHub closes a task on a merge to the default branch when its work names that pr, except for epics, human requests, open approvals or Do requests, open children, and keep-open. Use keep-open when the PR covers only part of the work. An epic closes when all its direct children close and reopens when one reopens if Ntasks closed it. Use create_task with done for work already finished, and report_delivery for a merge or deploy when no signal reports it.',

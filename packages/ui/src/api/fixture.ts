@@ -13,6 +13,7 @@ import {
   addDays,
   burndownDays,
   burndownWindow,
+  canQueueNext,
   criteriaOf,
   isDay,
   isTimeZone,
@@ -20,6 +21,7 @@ import {
   isExternalLinkKind,
   isTaskId,
   markedStep,
+  NEXT_LABEL,
   PARENT_CONTEXT_LIMITS,
   PROVED_TYPES,
   releaseComment,
@@ -108,6 +110,7 @@ const FIXTURE_OPERATIONS: readonly string[] = Object.freeze([
   'close',
   'move',
   'deliver',
+  'next',
   'respond',
   'dismiss',
   'resolve',
@@ -394,6 +397,7 @@ export function createFixtureTasksApi({
     const at = touch(task, 'closed', { status: 'closed' });
     endWork(task, true);
     task.status = 'closed';
+    task.labels = task.labels.filter((label) => label !== NEXT_LABEL);
     task.closedAt = at;
     task.closeReason = reason;
     task.resolution = resolution;
@@ -1036,6 +1040,36 @@ export function createFixtureTasksApi({
       reach();
       once(options?.idempotencyKey, ['update', id, key, edit], () => {
         const task = find(id, key);
+        if (edit.next !== undefined) {
+          const { queued, reopen = false, note } = edit.next;
+          if (queued) {
+            if (!canQueueNext({ type: task.issueType, labels: task.labels }))
+              invalid('Only tasks for agents can be added to Next.');
+            if (task.status === 'in_progress') invalid('This task is already in progress.');
+            if (reopen !== (task.status === 'closed')) invalid('The task changed. Check its current status.');
+            if (reopen) {
+              endWork(task, true);
+              Object.assign(task, {
+                status: 'open',
+                assignee: null,
+                deferUntil: null,
+                closedAt: null,
+                closeReason: null,
+                resolution: null,
+                duplicateOf: null,
+                closeAcceptance: null,
+                delivery: null,
+                proof: null,
+              });
+            }
+            task.labels = [...new Set([...task.labels, NEXT_LABEL])];
+          } else {
+            task.labels = task.labels.filter((label) => label !== NEXT_LABEL);
+          }
+          touch(task, reopen ? 'reopened' : 'updated', { labels: task.labels });
+          if (note !== undefined) addComment(task, note);
+          return;
+        }
         // As the API does, links go in a change of their own, refused whole before anything is written.
         const others = Object.keys(edit).filter((name) => name !== 'addLinks' && name !== 'removeLinks');
         if ((edit.addLinks !== undefined || edit.removeLinks !== undefined) && others.length > 0)
@@ -1074,6 +1108,8 @@ export function createFixtureTasksApi({
         if (edit.acceptance !== undefined) task.acceptance = edit.acceptance;
         if (edit.addLabels) task.labels = [...new Set([...task.labels, ...edit.addLabels])];
         if (edit.removeLabels) task.labels = task.labels.filter((label) => !edit.removeLabels?.includes(label));
+        if (edit.claim || edit.status === 'in_progress')
+          task.labels = task.labels.filter((label) => label !== NEXT_LABEL);
         applyFields(task, edit);
         applyLinks(task, edit);
         touch(task, 'updated', held === task.assignee ? {} : { assignee: task.assignee });

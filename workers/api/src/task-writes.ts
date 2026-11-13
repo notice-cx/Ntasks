@@ -8,8 +8,10 @@
  * one for a person.
  */
 import {
+  canQueueNext,
   closedByNtasks,
   KEEP_OPEN,
+  NEXT_LABEL,
   TASK_LIMITS,
   TASK_STATUSES,
   TaskRefused,
@@ -733,6 +735,38 @@ export async function updateTask(
     loop,
   );
   return { project, result };
+}
+
+/** Changes queue membership, with the note and any reopen in the same write. */
+export async function setTaskNext(
+  context: WriteContext,
+  projectId: string,
+  taskId: string,
+  next: { queued: boolean; reopen: boolean; note: string | undefined },
+  retryRequest?: RetryRequest,
+): Promise<WriteResult> {
+  const project = await projectOf(context, projectId, 'write');
+  const task = await taskOf(context, project, taskId);
+  const retry = await retryOf(context.principal, retryRequest);
+  const replay = await recorded(context, project, retry);
+  if (replay !== null) return replay;
+  const actor = actorOf(context.principal, undefined);
+  return changing(context, project, task, actor, retry, async (current) => {
+    if (next.queued) {
+      if (!canQueueNext(current)) throw new Refused('state', 'Only tasks for agents can be added to Next.');
+      if (current.status === 'in_progress') throw new Refused('state', 'This task is already in progress.');
+      if (next.reopen !== (current.status === 'closed'))
+        throw new Refused(
+          'state',
+          next.reopen ? 'Refresh the task before adding it to Next.' : 'Reopen this task to add it to Next.',
+        );
+    }
+    const edit: TaskChange = next.queued
+      ? { addLabels: [NEXT_LABEL], ...(next.reopen ? { status: 'open', assignee: null, defer: null } : {}) }
+      : { removeLabels: [NEXT_LABEL] };
+    const write = planChange(context, current, edit, actor);
+    return next.note === undefined ? write : { expectedVersion: current.version, ...write, comment: next.note };
+  });
 }
 
 // ─── Moving tasks ─────────────────────────────────────────────────────────────

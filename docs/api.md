@@ -207,6 +207,10 @@ otherwise into the only project the sender may change; a sender who may
 change several is refused with a list of their keys and prefixes. A task in a
 project the sender cannot reach is refused as one that does not exist.
 
+The default `list_tasks` order for `ready: true` puts unassigned [Next](concepts.md#next)
+tasks first. Add `labels: ["ntasks:next"]` to read only tasks with the queue
+label. An explicit sort or direction controls the order.
+
 `model` names the model the agent runs as. Every write takes it, and the task
 records it beside the sender's name.
 
@@ -1493,6 +1497,13 @@ workspace has. Two workspaces may each have a project with the same prefix.
 The route keeps no retry record: sent again with an `Idempotency-Key`, it
 answers `201` with the project that already has exactly this name, prefix and
 key, and `replayed: true`.
+
+`PATCH /api/tasks/:id` also accepts `projectId` and `next` on their own
+when capabilities lists the `next` operation. Set `next.queued` to true
+to add the task or false to remove it. Adding accepts `next.note`, a
+Markdown comment, and requires `next.reopen: true` for a closed task.
+Reopening clears the former assignee and defer date. The queue change,
+comment and reopen commit together.
 
 A new task's `metadata` holds where it came from, under the keys NoticeOS
 used for that: `noticeos_source`, `noticeos_asset`, `noticeos_kind`,

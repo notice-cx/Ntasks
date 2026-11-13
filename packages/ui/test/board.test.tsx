@@ -18,14 +18,14 @@ function rowIds(group: HTMLElement): string[] {
 const group = (name: string) => screen.findByRole('region', { name });
 
 describe('the board', () => {
-  it('opens on what waits for you, most urgent first, then each status in its own group', async () => {
+  it('opens on what waits for you, then Next and each status in its own group', async () => {
     renderApp('/tasks');
     const waiting = await group('Waiting for you');
     // Approvals first among equal urgency, then the oldest question.
     expect(rowIds(waiting)).toEqual(['web-g7p2', 'web-d4x1', 'docs-r4s9', 'web-q8n5']);
     expect(within(waiting).getByText('4')).toBeTruthy();
     const order = [...document.querySelectorAll('[data-group]')].map((section) => section.getAttribute('data-group'));
-    expect(order).toEqual(['waiting', 'in-progress', 'open', 'blocked', 'parked', 'done']);
+    expect(order).toEqual(['waiting', 'next', 'in-progress', 'open', 'blocked', 'parked', 'done']);
   });
 
   it('lists every other task once, in the group its status mark names', async () => {

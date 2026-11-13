@@ -1,0 +1,3 @@
+{
+  "added": "`PATCH /api/tasks/:id` accepts `next` to add or remove the task from Next, with an optional comment or reopen when adding. Capabilities lists `next` as an operation."
+}
