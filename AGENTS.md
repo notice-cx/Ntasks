@@ -221,10 +221,12 @@ owner's to merge ([above](#never-without-the-owners-explicit-approval)).
    and the review threads are resolved. If the PR is eligible and still outside
    the queue, enqueue it through GitHub. The queue runs checks against `main`
    and squash-merges the PR. Keep watching until GitHub shows it as merged.
-   Confirm Ntasks recorded the merge on the linked task. If the GitHub event
-   is missing, record the merge with `report_delivery`. If a human decision
-   or missing permission blocks progress, record the blocker and next action
-   on the task.
+   Confirm Ntasks recorded the merge on the linked task. If the task is still
+   open and the merge completes it, use `close_task` with the PR and merge
+   commit when the task can be closed. If work remains, record the merge and
+   next action in a task comment. Use `report_delivery` for a closed task whose
+   delivery stage is missing the merge. If a human decision or missing
+   permission blocks progress, record the blocker and next action on the task.
 
 CodeRabbit reviews about 10 pull request changes an hour per author, and the
 maintainers' agents all open pull requests as one author, so each new pull
