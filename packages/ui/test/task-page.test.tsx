@@ -147,7 +147,8 @@ describe('a task page', () => {
       'web-b2r6',
       [
         `**TL;DR:** ${longSummary}\n\nSupporting evidence.`,
-        'The [first check](https://example.com/check) passed. ' + 'We also checked each redirect. '.repeat(7),
+        '<script>hiddenScript()</script>suffix\n\nThe [first check](https://example.com/check) passed. ' +
+          'We also checked each redirect. '.repeat(7),
         'A **short** note.',
       ].map((text, index) => ({
         id: `comment-${index}`,
@@ -172,6 +173,7 @@ describe('a task page', () => {
     expect(toggles).toHaveLength(2);
     fireEvent.click(toggles[1]!);
     expect(activity.getByRole('link', { name: 'first check' }).getAttribute('href')).toBe('https://example.com/check');
+    expect(activity.queryByText(/hiddenScript|suffix/u)).toBeNull();
     expect(activity.queryByText('Supporting evidence.')).toBeNull();
   });
 

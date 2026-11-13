@@ -61,11 +61,11 @@ const TASK_ID = /\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b/g;
 const LABELLED = /^(\s*)(WHAT|WHY|WHERE|FIX|HOW):\s*/;
 
 function scriptOrStyleAfter(raw: string, inside: string | null): string | null {
-  const open = /^<(script|style)\b/i.exec(raw)?.[1]?.toLowerCase();
-  const end = /<\/(script|style)\s*>\s*$/i.exec(raw)?.[1]?.toLowerCase();
-  if (open && open !== end) return open;
-  const close = /^<\/(script|style)\s*>/i.exec(raw)?.[1]?.toLowerCase();
-  return inside === close ? null : inside;
+  const tag = inside ?? raw.match(/^<(script|style)\b/i)?.[1]?.toLowerCase();
+  if (!tag) return null;
+  // A Markdown HTML block can include more text on the closing tag's line.
+  const closes = tag === 'script' ? /<\/script\s*>/i : /<\/style\s*>/i;
+  return closes.test(raw) ? null : tag;
 }
 
 const markdownParser = unified().use(remarkParse).use(remarkGfm);
