@@ -53,8 +53,8 @@ const VIEWS: readonly { value: LiveView; label: string }[] = [
 ];
 
 /**
- * Live, `<base>/live`. The board shows every task in progress, then the
- * closed work waiting to ship and the work that went live, and moves a card
+ * Live, `<base>/live`. The board shows work in progress, work waiting on a
+ * pull request or a deploy, and work that went live. It moves a card
  * to its new column as it ships. The list shows the tasks in progress grouped by how
  * recently their holder changed or commented on them: Active within the hour,
  * Quiet until a day, and Stalled after it or with nothing recorded, as the

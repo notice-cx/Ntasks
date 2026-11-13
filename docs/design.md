@@ -743,8 +743,8 @@ days unless the address says `?shipped=day`.
 
 | Column | Holds | Order | Shows |
 |---|---|---|---|
-| In progress | every task in progress | Active, then Quiet, then Stalled, each the latest activity first | 6, 3 on a phone |
-| Waiting to ship | closed tasks waiting for a merge, and merged tasks of a project that deploys, waiting for a deploy, whenever they closed | latest stage reached first | 5, 3 on a phone |
+| In progress | tasks in progress that have yet to record a pull request, and decisions and approvals in progress | Active, then Quiet, then Stalled, each the latest activity first | 6, 3 on a phone |
+| Waiting to ship | tasks in progress with a pull request recorded on their work, closed tasks waiting for a merge, and merged tasks waiting for a deploy, whenever they closed | latest activity for tasks still in progress or latest delivery time for closed tasks, newest first | 5, 3 on a phone |
 | Live | closed tasks whose change went live, and merged tasks of a project that does not deploy, that reached that stage in the last 24 hours or 7 days | latest stage reached first | 4, 2 on a phone |
 
 A card in Waiting to ship says the step left in Text 3: Not merged yet, Not
@@ -756,8 +756,9 @@ project that does not deploy, moves it to Live.
 A decision or an approval ships no code and has no card in the closed
 columns. A board with no card in any column shows `EmptyState`'s No tasks in
 progress or shipped this week; one the 24-hour window leaves empty stays, so
-its switch can widen it again. When the read of a project's work waiting for
-a merge or a deploy fails, a banner over the board names the project, with
+its switch can widen it again. The List view still includes every task in
+progress, including tasks waiting on a pull request. When the read of a
+project's work waiting for a merge or a deploy fails, a banner over the board names the project, with
 Retry, as the Tasks board does for a project it could not read; a task the
 board read itself holds is placed by that read, never by an older read of
 waiting work. A closed card names who closed it only when the close records
@@ -768,20 +769,20 @@ shadow. Its first line is its project's icon at 16 px (`ProjectIcon`), with
 the project's name for a screen reader, the
 task's id in Text 3 and, at the end, the pull request's number as a link
 after `git-pull-request`. Then the title as a link, two lines at most. Its
-last line, in Text 3, is what is next for it: on a task in progress, Next and
+last line, in Text 3, is what is next for it: in the In progress column, Next and
 the next step, else the branch after `git-branch` when there is no pull
 request, else Nothing recorded; on a card waiting to ship, the step left.
 That line ends with the `Avatar` of who holds the task, or closed it, at
 18 px, a button whose `Tooltip` names them and the model they named, and how
-long the task has been in its column: since its holder's last activity in
-progress, else since its change reached its stage.
+long ago its holder last worked on it for tasks in progress, or when its
+change reached its latest delivery stage for closed tasks.
 
-A card in progress is tinted by its activity, and says it to a screen reader
+A card in the In progress column is tinted by its activity, and says it to a screen reader
 in a hidden word: an Active card is filled Accent soft with an Accent edge at
 40 % opacity, 2 px wide so it reads apart from a Quiet one where colours are
 forced, a Quiet one Accent soft at 40 % with an Accent edge at 15 %,
 and a Stalled one has a dashed Border strong edge, no fill and no shadow, and
-its title in Text 2. Closed cards keep the plain Background.
+its title in Text 2. Cards in Waiting to ship and Live keep the plain Background.
 
 Between two reads, each card is compared with where it was, and:
 

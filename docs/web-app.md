@@ -53,13 +53,13 @@ prefix, and the address with its old id opens its page under the new id.
   <img src="images/focus-light.webp" width="800" alt="Focus on the decision web-d4x1: three options keyed A, B and C, a Note field, Not now and Answer.">
 </picture>
 
-**Live.** A board of work moving to production, in three columns: In
-progress, Waiting to ship, for closed work not yet merged or not yet
-deployed, and Live, as GitHub reports each merge and deploy. When a task
+**Live.** The board shows In progress, Waiting to ship and Live. A task
+moves to Waiting to ship when its holder records a pull request. The column
+also shows closed work waiting for a merge or a deploy. When a task
 moves to the next column, its card travels there, and for a moment it shows
 who changed it and how, such as "Claude pushed a commit" or "GitHub merged
 #42". A card leads with its project's icon and ends with the icon of who
-holds it, whose name and model show on hover. A card in progress is tinted
+holds it, whose name and model show on hover. A card in the In progress column is tinted
 by how recently its holder worked on it: strongly while Active, faintly while
 Quiet, and not at all once Stalled, after a day without activity. A column
 shows its latest cards and **Show N more** for the rest; the Live column
@@ -72,7 +72,7 @@ hands it back for another agent to claim, keeping that record as a comment.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/live-dark.webp">
-  <img src="images/live-light.webp" width="800" alt="The Live board shows one active, one quiet and one stalled task in the In progress column, one task in Waiting to ship, and two in Live. The Live column has 24 hours and 7 days buttons.">
+  <img src="images/live-light.webp" width="800" alt="The Live board shows a quiet and a stalled task in In progress, two tasks waiting for a merge in Waiting to ship, and two in Live. The Live column has 24 hours and 7 days buttons.">
 </picture>
 
 **Productivity.** What you and your agents got done that matters, day by
