@@ -165,6 +165,28 @@ stays the one copy of the workflow. When the guide changes, `list_workspaces`
 returns a new `guideVersion`, and the skill tells the agent to read the guide
 again.
 
+## Task templates
+
+Start recurring work from one of these Markdown files:
+
+- [Task](../skills/ntasks/templates/task.md): an outcome, its reason and the
+  proof that it is done.
+- [Bug](../skills/ntasks/templates/bug.md): the failure, reproduction steps
+  and expected behavior.
+- [Decision](../skills/ntasks/templates/decision.md): a person's choice,
+  one recommendation and what happens next.
+
+Each template is a separate file in `skills/ntasks/templates/`, so its text
+can be read and reviewed in version control. The skill and task guide link
+to those files. The setup command installs `SKILL.md`; copying the whole
+skill folder by hand also gives the agent local copies of the templates.
+
+To use a template, replace its bracketed prompts and omit optional sections
+the task does not need. Its comment explains how to pass the title,
+description, acceptance and, for a decision, choices to the task tools.
+The shared task guide holds the writing rules for both new tasks and content
+updates; a template supplies a starting structure.
+
 ## Working on a task
 
 Once connected, an agent works in a few calls. These are examples with

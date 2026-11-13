@@ -7,6 +7,7 @@ description: Rules for tracking work in Ntasks, the task list a person shares wi
 
 - Ntasks is the only list of open work. Reach it through the `ntasks` MCP server's tools.
 - Call `get_task_guide` before task work, and again when `list_workspaces` returns a different `guideVersion`. The guide holds the workflow and the rules for writing a task.
+- For recurring work, start from the separate Markdown files for [tasks](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/task.md), [bugs](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/bug.md) or [decisions](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/decision.md). Adapt them using the guide's writing rules; keep small tasks short.
 - Found work (a bug, debt, a follow-up, a question for a person) becomes a task. Search first with `list_tasks` and `query`, leaving out `project` to search every project, then file it with `create_task`. Never record it as a TODO comment, a list in a document or a memory note.
 - Call `claim_task` before you build, `comment_on_task` when something changes, and `close_task` with its proof: `commit`, `pr` or `link`.
 - After each push to the task's branch, call `comment_on_task` with what the pushed commit does, and `commit` when you tested it. A task whose holder records nothing for an hour shows as quiet, and after a day as stalled, even while you build.
