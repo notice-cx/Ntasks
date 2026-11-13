@@ -139,7 +139,7 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
   name: TASK_GUIDE_TOOL,
   description:
     'The rules for working with Ntasks tasks, as Markdown with a version: the workflow from list_workspaces to close_task, ' +
-    'how to write and close a task, and when a person decides. Read it before task work.',
+    'the writing guide and Markdown templates for tasks, bugs and decisions, and when a person decides. Read it before task work.',
   inputSchema: schema({}),
   annotations: READ,
 });

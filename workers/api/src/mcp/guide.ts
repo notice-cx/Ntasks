@@ -1,6 +1,6 @@
 /**
  * The task guide: the rules every agent the MCP endpoint reaches works by.
- * The server's instructions carry its start and its rules for writing a task,
+ * The server's instructions carry its start and a short writing checklist,
  * and get_task_guide returns the whole guide with a version, which changes
  * whenever the text does, so an agent knows when to read it again.
  *
@@ -13,47 +13,36 @@ import type { HeldTask } from '@ntasks/domain';
 import { shortHash } from '../short-hash.ts';
 import { TITLE_MOST } from './writing.ts';
 
-/** How to write a task that reads cold. */
+/** The writing rules an agent needs on connection, also used by the full guide. */
+const TASK_WRITING: readonly string[] = Object.freeze([
+  'Write for a product manager with engineering knowledge who has not seen the conversation. Use familiar words and lead with the outcome or the action you need from them.',
+  '- Before drafting, open the Markdown template for [general work](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/task.md), a [bug](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/bug.md), or a [decision](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/decision.md). Use the sections that apply. Each file explains how to fill the task fields.',
+  `- title: start with a verb, name the outcome or ask, and keep it within ${TITLE_MOST} characters. Leave commands, paths and commit hashes for the body.`,
+  '- description: say what and why in the first sentence. Use short paragraphs, one action per numbered step and technical pointers last. Put runnable commands in fenced code blocks.',
+  '- acceptance: put a checklist of observable results in the separate acceptance field. Use checks you can verify when the work lands.',
+  '- Before creating or editing task content, read it as a whole. When the scope changes, update the title, description and acceptance together.',
+]);
+
+/** The checklist plus details for cases that need them. */
 export const TASK_QUALITY: readonly string[] = Object.freeze([
-  'Writing a task: write for a product manager with a software engineering background who has not read this conversation. They must understand the outcome, why it matters and what proves it done. These rules apply when creating tasks and updating their content. The web app shows descriptions, acceptance and comments as Markdown.',
-  `- title: the outcome, or for a person the ask, in plain words starting with a verb; at most ${TITLE_MOST} characters; no commands, file paths, commit hashes or steps.`,
-  "- description, in Markdown: a first line of one sentence saying what and why (for a person, the ask), then only the sections that apply. Work: ## Why, with evidence and numbers when known; ## Fix, with the intended behavior and scope; ## Where, as pointers that resolve in a repo (file paths, commits, doc sections), after the explanation. A bug also has ## Steps to Reproduce. Steps a person does, asked with request_human_action: its context holds ## What it changes; ## How we'll confirm, and the steps go in steps. An approval, where an agent acts once allowed: ## Why this needs you; ## What the agent will do; ## What it changes; ## How we'll confirm; ## If you decline.",
-  '- Use familiar product and engineering language. Titles and the opening sentence name the behavior or outcome; translate internal names and unexplained acronyms into what they mean for the reader. Keep exact identifiers, file paths and other implementation pointers in ## Where or technical notes after the explanation. Explain a necessary internal term on first use, using the definition in its source documentation.',
-  '- Keep reading effort low: put the outcome or next action first, use descriptive headings and one idea per short paragraph or bullet, and make acceptance easy to scan. Keep the detail proportional to the work; omit empty sections, repeated explanations and a long form for a small change.',
-  '  - Before: title "Persist DraftBuffer on CommentMutation failure"; description "Retain the mutation buffer when the submit handler rejects."',
-  '  - After: title "Keep a draft comment when saving fails"; description "Keep the comment text after a failed save so the author can retry without typing it again." Technical pointers follow in ## Where.',
-  '- Before create_task, create_tasks or a content update with update_task, read the resulting task as a whole: can the reader quickly tell what changes, why and what proves it done without decoding internal names? When scope changes, update the title, summary and acceptance together, remove stale instructions, and preserve useful evidence and links. A status-only update does not require a rewrite.',
-  '- For recurring work, use the separate Markdown starter templates for [tasks](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/task.md), [bugs](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/bug.md) and [decisions](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/decision.md). Each template is a visible, version-controlled file; adapt its applicable sections to the task, following these writing rules. The files explain how their sections map to task fields.',
-  '- Headings say who acts, and never describe a pending action in the present tense as if it already happens.',
-  '- What it changes: each line starts with a bold label naming what it measures, such as **Downtime:**, **Your time:**, **Cost:**, **Download:**, **Risk:** or **Undo:**, then the value with its unit and who or what it applies to: "**Downtime:** visitors can\'t reach the site for about 2 minutes". Never a bare number or duration.',
-  '- Every command, query, request or snippet a person might run or paste goes in its own fenced block with a language tag (bash, sql, json…): one command per block, with no $ prompt and no output; a multi-line command stays one block. Inline backticks are only for names that are not run: file paths, identifiers, settings.',
-  '- In a description: steps as a numbered list, one action each; links with readable labels, pull requests as owner/repo#123; numbers with units; paragraphs of at most 3 sentences; bullets for 3 or more items; no internal shorthand.',
-  '- acceptance: a short checklist of observable facts, provable the day the work lands. Never "watch for N days": close on today\'s proof and name where a recurrence would show. Implementation work is proven by tests and local or fixture measurements, never by a check in production: close it on that proof, name in the close reason any production condition it leaves unchecked, ask no approval only to verify it in production, and file a bug if production later shows a problem.',
-  "- A progress comment and a close reason say what changed as before and after, why, and how it was checked: the commands run and what they showed, and what was not run. A pull request description says the same, in the sections of its repository's template when it has one.",
-  "- A task's pull request changes what the task asks and nothing else: other work found on the way is its own task (workflow step 6). Its title names the change in one short sentence, and when the outcome of the work changes, the task's title changes to name it.",
-  '- A person is asked in one of three ways. Decide: a task labelled human with choices, when they pick an option. Approve: request_human_approval, when you will do the action once they allow it. Do: request_human_action, when only they can act, such as on their own machine or in an admin console.',
-  "- An approval: request_human_approval with title, the action to approve, and a description in the approval sections above, with the exact commands under ## What the agent will do. A task filed with its approval passes the same title and description as create_task's approval.",
-  "- An approval to merge a pull request names it as pr, and the pull request's auto-merge stays off: when the person presses Approve, Ntasks's GitHub App turns it on, and every answer is posted on the pull request as one comment, which tells an agent watching it.",
-  '- A request to do steps: request_human_action with title, the outcome the person gets done; context, in the do sections above; and steps in order, each one action, with its command in command, never in its text. The person ticks each step, leaves a note or says where they are stuck; once every step is ticked the task is ready again, and you check the result before continuing.',
-  "- An ask to a person, to decide, approve or do, says in plain words what is waiting, why it is theirs to decide, and the exact place to act: the button on the task's page in Ntasks (/tasks/<id> at this Ntasks's address), a link, or the command to run. No internal terms such as store migration, gate, nullable column or proposal version.",
-  '  - Before, as title and description alike: "Merge notice-cx/Ntasks#88, which adds store migration 0003_gate_steps: one nullable `steps` column on `tasks`, taken only on a gate."',
-  '  - After: title "Approve merging Ntasks PR #88: Do checklists, one new database column"; description "You: press Approve on this task to let the agent merge https://github.com/notice-cx/Ntasks/pull/88.", then ## Why this needs you: "You allowed agents to merge any pull request whose checks pass, with one exception: a change to the live Ntasks database comes to you first. This pull request is that exception."',
-  '- Implementation evidence cites the repo, commits and tests, never a session summary or temporary file. An existing owner answer cites its task comment or explicitly linked conversation, with the exact proposal and scope.',
-  "- Work only a person can do (a decision, a credential, an admin step) carries the human label and is written for that person: the ask as the description's first line, technical notes last. When the person picks between options, pass them as choices: a question and two to six options keyed a, b, c… in order, each a one-line label with an optional detail, exactly one marked recommended. The web app shows one button per option.",
-  '- Too big for one working session: an epic with session-sized children. Three or more related tasks share an epic. depends_on only for a real blocking edge; related for the rest. Work waiting on a date is deferred with the reason.',
-  '- Found work, including debt (two copies of one rule, a hardcoded value with a canonical source, half-done work), is a task, never a TODO comment, a list in a doc or a memory note. Claim before you build; close with the commit, pull request or link that proves it.',
-  '- create_task answers possibleDuplicates: open tasks in its project whose titles share most of its words. Work already filed gets a comment, never a second task; of two tasks filed for one piece of work, close the later as duplicate with duplicate_of.',
-  "- When nothing shipped, close_task takes a resolution: wont-do when the work will not be done, duplicate with duplicate_of when another task holds it, cant-reproduce when a bug does not happen again, already-handled when other work did it, no-longer-needed for a retired request; the reason still cites the evidence: what decided it, the other task's id, what was tried, or what handled it. commit, pr and link show what shipped, so they go with done alone.",
-  '- Human requests show the decision, one recommendation, the practical consequence and what proceeds after the answer. Reversible wording under established copy rules, internal refactoring, test repairs and backlog organization belong to agents within authorized work.',
-  '- Production access (reads included), spending, external messages, destructive actions and material business or policy commitments require explicit action-specific owner approval. Credentials, prerequisites and old approvals never grant a new action. Retiring a gate grants no permission.',
+  ...TASK_WRITING,
+  '- For work, use ## Why for the impact and evidence, ## Fix for the intended behavior, and ## Where for relevant paths, commits or docs. A bug also has ## Steps to Reproduce with actual and expected results.',
+  '- Use Markdown, define necessary internal terms on first use, and give numbers their units. Use readable link labels and name pull requests as owner/repo#123. Preserve evidence and links when rewriting task content.',
+  '- Give each runnable command or snippet its own fenced block with a language tag. Omit prompts and output. Inline backticks are for identifiers, paths and settings.',
+  '- Prove implementation with tests or local measurements and close on that evidence. Record any unchecked production condition in the close reason and file a bug if it fails in production.',
+  '- Progress comments, close reasons and pull requests state the behavior before and after, why it changed, what checks ran and what they showed, and what was skipped. Cite the repo, commits and tests. A pull request covers the scope of its task and uses its repository template when present.',
+  '- For a human request, put the ask first. Say why it needs the person, where to act, what changes, and what happens after their answer. Name who acts in headings and describe pending actions as pending. Under ## What it changes, give each impact a bold label, a value with units where applicable, and who it affects.',
+  '- For a decision, use the human label and pass the question and two to six options as choices. Key them a through f in order and mark exactly one recommended. Give each option a short label and its consequence.',
+  "- For approval, use request_human_approval or create_task's approval field with the action as title. Use ## Why this needs you, ## What the agent will do (with exact commands), ## What it changes, ## How we'll confirm and ## If you decline. For a merge, pass pr and leave auto-merge off. Approval turns it on and Ntasks posts the answer on the pull request.",
+  "- For steps only the person can do, use request_human_action with the outcome as the title. Use ## What it changes and ## How we'll confirm in context, and put each action in steps with its runnable command in command. Check the result once the person finishes.",
+  '- Production access, including reads, spending, external messages, destructive actions and material business or policy commitments require explicit owner approval for that action. Routine work within the authorized scope belongs to agents.',
 ]);
 
 /** What the task tools and rules gained lately, oldest first, at most four. */
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
-  '2026-11-11: list_tasks takes changed_by, changed_for and changed_in: only the tasks a name, a helper agent or an agent session changed or commented on, so a coordinator lists what its helpers did. comment_on_task and close_task take test, the test run they report: its command, passed or failed, its counts and the commit it ran on (workflow steps 4 and 5).',
-  "2026-11-11: request_human_approval, and create_task's approval, take pr: the GitHub pull request the approval gates. When the person presses Approve, Ntasks's GitHub App turns on its auto-merge; every answer, approved, declined or done by the person, is posted on it as one comment (Writing a task: An approval).",
-  "2026-11-12: a progress comment, a close reason and a pull request description say what changed as before and after, why, and how it was checked, including what was not run; a task's pull request holds only what the task asks (Writing a task).",
-  '2026-11-12: new tasks and content updates use the same writing standard for a product manager with engineering knowledge: outcomes first, familiar terms, short sections and technical pointers last, with separate Markdown starter templates. Review the whole task when its scope changes (Writing a task).',
+  '2026-11-11: list_tasks filters by changed_by, changed_for and changed_in. Progress and close calls can record a test run.',
+  "2026-11-11: request_human_approval and create_task's approval take pr for merge approvals.",
+  '2026-11-12: Connection instructions show the writing checklist and all three Markdown templates before the held tasks.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
@@ -79,9 +68,9 @@ export const TASK_WORKFLOW: readonly string[] = Object.freeze([
   '2. Choose: list_tasks with ready: true and no project lists work nothing blocks; get_task reads one in full, or several with tasks. Keep watch on work in progress with list_tasks activity: ["quiet","stalled"]: a quiet task may be done and not closed, such as one whose pull request merged, and a stalled one has a holder that stopped, to pick up or free (step 8).',
   "3. Start: claim_task, or claim_task with pr alone for the task that pull request names. Pass for, branch and pr when a helper agent works under you, and touches, the files or other things your work changes; the answer's overlaps names other work in progress that changes the same, so agree with its holder which pull request merges first. create_task with claim: true files new work and claims it. On a task in an epic, get_task and claim_task show parent: the facts the epic's tasks pinned for each other, and what its closed tasks left, with each one's close reason and proof; read them before you build.",
   `4. Progress: comment_on_task with what changed, and next, commit or pr when they change; with tasks, one check is recorded on each. After each push to the task's branch, comment_on_task with what the pushed commit does, commit when you tested it, test when it reports a test run, and pr once the pull request is open: the task then shows active for the next hour. ${ON_THE_TASK} ${PIN_ON_THE_EPIC}`,
-  "5. Finish: close_task with the evidence and its proof: commit, pr or link, and test for the run that proves it. A task in progress whose work names a pr closes itself as done when GitHub reports that pull request merged into the default branch. It stays in progress when it is an epic or a person's request, waits on an open approval or Do request, has open tasks under it, or is labelled keep-open, which a task gets when its pull request covers only part of it; one that stayed open is yours to close once all of its work is done. An epic closes itself, recorded as service:Ntasks, once every task directly under it is closed (an epic under it counts as one), as no-longer-needed when every one closed as wont-do or no-longer-needed and as done otherwise; one Ntasks closed reopens when one of those tasks reopens, and one a person or agent closed stays closed. close_task names it in closedEpics. One labelled keep-open is yours to close, or closes itself when the label comes off. tasks closes several, with_children an epic and its open tasks; unblocked lists what is ready next. create_task with done files work already finished. After a merge or a deploy, report_delivery; for a release no signal reports, such as a deploy by hand, report_delivery with tasks.",
-  '6. Found work: create_task, or create_tasks for several, where #n names another task of the call. link_tasks sets or removes the one link between two tasks, such as merges-after, the order two pull requests must land in; update_task changes any other field. Work filed in the wrong place: move_tasks moves up to 50 tasks to another epic or project of the workspace, all or none, with with_children for the tasks under them; in another project each takes a new id, its comments, history and links come along, and its old id still names it.',
-  '7. A step only a person can do: label the task human, with choices when they pick one option; request_human_approval when work must wait for approval; request_human_action when they must do steps themselves. When the owner answers you in conversation, reconcile_task records it, relayed by you: action answer (declined or owner_performed on an approval, and on a request to do steps owner_performed when they did them), proposal_version from get_task, quote (their exact words), source (such as claude-code:session/<session id>) and the option they chose; when they call a task done although some of its acceptance is unmet, action accepted with met, the numbers of the criteria they found met. An approved request’s waiting tasks go back to agents within its scope; a declined action must not happen; an answered task goes back to ready work, to claim and close with the implementation commit. A stale proposal_version means show the owner the task again.',
+  '5. Finish: use close_task with evidence, commit, pr or link, and test when you ran one. If nothing shipped, explain why and use the appropriate resolution instead of delivery proof. GitHub closes a task on a merge to the default branch when its work names that pr, except for epics, human requests, open approvals or Do requests, open children, and keep-open. Use keep-open when the PR covers only part of the work. An epic closes when all its direct children close and reopens when one reopens if Ntasks closed it. Use create_task with done for work already finished, and report_delivery for a merge or deploy when no signal reports it.',
+  '6. File found work in Ntasks. Search with list_tasks first and comment on an existing task. Use create_task for new work or create_tasks for several, where #n names another entry. Check possibleDuplicates and close the later duplicate with duplicate_of. Use an epic for three or more related tasks or work that spans several sessions. Use depends_on for real blockers, related for other connections, and defer date-bound work with a reason. Use link_tasks to change a link, update_task for other fields, and move_tasks to move work to another epic or project.',
+  '7. Label work only a person can do human. Record the owner’s answer in conversation with reconcile_task: action answer, proposal_version from get_task, exact quote and source, and the choice or outcome they gave. Cite the linked conversation or task comment with the proposal and scope. Use action accepted and met when the owner accepts partially met criteria. Claim the work again when it is ready. Act within the approval scope and never perform a declined action. A stale proposal_version means show the owner the task again.',
   '8. Without an owner answer, reconcile_task with proposal_version, an explanation and evidence retires a request as obsolete, superseded or duplicate, or as completed when other work did what it asked and it is not an approval, a request to do steps or a decision; takes the human label off routine work; or releases a task whose holder stopped (release, with holder, inactive: true, activity_check and progress; age alone never proves it). Retiring an approval grants no permission.',
 ]);
 
@@ -127,21 +116,21 @@ function guideBody(offered: readonly string[]): string {
   const unoffered = unofferedTools(offered);
   return [
     ...(unoffered === null ? [] : ['## This endpoint', '', unoffered, '']),
-    '## What changed',
-    '',
-    ...WHATS_CHANGED.map((entry) => `- ${entry}`),
-    '',
     '## Start',
     '',
     TASK_START,
+    '',
+    '## Writing a task',
+    '',
+    ...TASK_QUALITY,
     '',
     '## Workflow',
     '',
     ...TASK_WORKFLOW,
     '',
-    '## Writing a task',
+    '## What changed',
     '',
-    ...TASK_QUALITY,
+    ...WHATS_CHANGED.map((entry) => `- ${entry}`),
   ].join('\n');
 }
 
@@ -158,9 +147,8 @@ export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> 
 
 /**
  * How many characters of a server's instructions an agent is sure to read:
- * Claude Code shows about this many and cuts the rest. The tasks a session
- * holds end within it; the rules for writing a task come after them, and
- * get_task_guide serves those whole.
+ * Claude Code shows about this many and cuts the rest. Keep the writing
+ * checklist, template links and held tasks within it.
  */
 export const INSTRUCTIONS_BUDGET = 4096;
 
@@ -222,10 +210,8 @@ function heldSection(held: readonly HeldEntry[], several: boolean, room: number)
 
 /**
  * Every session's instructions: which of the guide's tools this endpoint
- * lacks, the guide's start, the tasks the sender holds when it connects,
- * where everything about a task is kept, and the rules for writing a task.
- * The held tasks and where a task's record is kept come before the rules and end
- * within INSTRUCTIONS_BUDGET, so an agent reads them however much a client cuts.
+ * lacks, the guide's start, the writing checklist, the tasks the sender holds
+ * when it connects, and where everything about a task is kept.
  */
 export function taskInstructions(offered: readonly string[], held: readonly HeldEntry[] = [], several = false): string {
   const unoffered = unofferedTools(offered);
@@ -233,9 +219,13 @@ export function taskInstructions(offered: readonly string[], held: readonly Held
   const start = [
     ...(unoffered === null ? [] : [unoffered]),
     TASK_START,
-    `${TASK_GUIDE_TOOL} returns these rules with the full workflow and what changed lately, at any time; list_workspaces returns its version as guideVersion, so read it again when that changes.`,
+    `Read ${TASK_GUIDE_TOOL} before task work for the full workflow and writing guide. Read it again when list_workspaces returns a new guideVersion.`,
+    '',
+    'Writing a task',
+    ...TASK_WRITING,
+    '',
   ];
   // The brief rule follows the held tasks and a blank line, and ends within the budget too.
   const room = INSTRUCTIONS_BUDGET - start.join('\n').length - 1 - (ON_THE_TASK_BRIEF.length + 2);
-  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK_BRIEF, ...TASK_QUALITY].join('\n');
+  return [...start, ...heldSection(held, several, room), '', ON_THE_TASK_BRIEF].join('\n');
 }

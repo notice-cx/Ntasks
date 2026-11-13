@@ -49,6 +49,9 @@ let other: Project;
 /** Task ids by role in the fixture. */
 const ids: Record<string, string> = {};
 
+const templateFiles = ['task.md', 'bug.md', 'decision.md'];
+const templateDirectory = 'https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/';
+
 beforeAll(async () => {
   target = api({ now: time.now });
   engine = target.engine;
@@ -97,6 +100,7 @@ describe('tools/list', () => {
       result: {
         tools: {
           name: string;
+          description: string;
           inputSchema: { properties: object; required: string[] };
           annotations: object;
         }[];
@@ -143,6 +147,11 @@ describe('tools/list', () => {
       expect(tool.annotations, tool.name).toMatchObject({
         readOnlyHint: [...reads, 'list_fields'].includes(tool.name),
       });
+    for (const name of ['create_task', 'create_tasks']) {
+      const description = result.tools.find((tool) => tool.name === name)?.description;
+      expect(description).toContain('get_task_guide');
+      expect(description).toMatch(/Markdown template/u);
+    }
   });
 });
 
@@ -151,6 +160,7 @@ describe('list_workspaces and get_task_guide', () => {
     const guide = (await callTool<{ version: string; guide: string }>(target, 'get_task_guide')).value!;
     expect(guide.version).toMatch(/^[0-9a-f]{12}$/u);
     expect(guide.guide.startsWith('# Working with Ntasks tasks')).toBe(true);
+    for (const file of templateFiles) expect(guide.guide).toContain(templateDirectory + file);
     expect((await callTool(target, 'list_workspaces')).value).toEqual({
       guideVersion: guide.version,
       workspaces: [
@@ -1004,7 +1014,41 @@ describe('the instructions an agent reads when it connects', () => {
     expect(instructions).toBe(taskInstructions(MCP_TOOLS.map((tool) => tool.name)));
   });
 
-  it('list each task the sender holds, most recently active first, with its helper, branch and next step, before the rules', async () => {
+  it('include the writing checklist and template links in server discovery', async () => {
+    const version = '2026-07-28';
+    const response = await target.fetch(
+      new Request(`${ORIGIN}/api/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'mcp-protocol-version': version,
+          'mcp-method': 'server/discover',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'server/discover',
+          params: {
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': version,
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          },
+        }),
+      }),
+    );
+    const { result } = (await response.json()) as { result: { instructions: string } };
+    const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!.guide;
+    for (const file of templateFiles) expect(result.instructions).toContain(templateDirectory + file);
+    for (const field of ['title', 'description', 'acceptance']) {
+      const rule = result.instructions.split('\n').find((line) => line.startsWith(`- ${field}: `));
+      expect(rule).toBeDefined();
+      expect(guide).toContain(rule);
+    }
+    expect(result.instructions).toContain('Use familiar words and lead with the outcome');
+  });
+
+  it('list held tasks after the writing checklist, most recently active first, with the branch and next step', async () => {
     const own = await newProject(engine);
     const first = await held(own, 'holds-two', 'Rebuild the home page', {
       branch: 'agent/home',
@@ -1023,7 +1067,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(lines.map((line) => line.split(' ')[1])).toEqual([second, first]);
     expect(lines[1]).toContain('agent/home');
     expect(lines[1]).toContain('Run the tests');
-    expect(instructions.indexOf(first)).toBeLessThan(instructions.indexOf(TASK_QUALITY[0]!));
+    expect(instructions.indexOf(first)).toBeGreaterThan(instructions.indexOf(TASK_QUALITY[0]!));
   });
 
   it('answer by the deadline with the tasks of the stores that answered, leaving out one that fails or hangs', async () => {
@@ -1057,7 +1101,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(await mixed.connecting!()).toContain(`- ${answered.id} ${answered.title}`);
   });
 
-  it('list ten of twelve, then how many more and the call that lists them, within the budget', async () => {
+  it('show the writing checklist, template links and as many held tasks as fit within the budget', async () => {
     const own = await newProject(engine);
     const long = (word: string) => Array.from({ length: 60 }, () => word).join(' ');
     for (let index = 0; index < 12; index += 1)
@@ -1065,14 +1109,19 @@ describe('the instructions an agent reads when it connects', () => {
     const instructions = await connect(api({ principal: holder('holds-twelve'), engine, now: time.now }));
     const lines = instructions.split('\n');
     const tasks = lines.filter((line) => line.startsWith(`- ${own.prefix}-`));
-    expect(tasks).toHaveLength(10);
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.length).toBeLessThanOrEqual(10);
     const more = lines[lines.indexOf(tasks.at(-1)!) + 1]!;
-    expect(more).toMatch(/^2 more: /u);
+    expect(more).toMatch(new RegExp(`^${12 - tasks.length} more: `, 'u'));
     expect(more).toContain('list_tasks');
     expect(instructions.indexOf(more) + more.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
     // Where everything about a task goes follows them, and ends within the budget too.
     const rule = instructions.indexOf(ON_THE_TASK_BRIEF);
     expect(rule).toBeGreaterThan(instructions.indexOf(more));
-    expect(rule + ON_THE_TASK_BRIEF.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
+    expect(instructions.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
+    const checklist = instructions.slice(0, instructions.indexOf(tasks[0]!));
+    for (const file of templateFiles) expect(checklist).toContain(templateDirectory + file);
+    expect(checklist).toContain('Use familiar words and lead with the outcome');
+    expect(checklist).toContain('put a checklist of observable results');
   });
 });

@@ -18,10 +18,10 @@ does both:
   <img src="images/agent-access-light.webp" width="380" alt="The agent approval page: the agent's name and address, the access it asks for, the account, where the answer returns to, a project checklist, Deny and Allow.">
 </picture>
 
-When an agent connects, the server sends its instructions, and
-`get_task_guide` returns the full guide; the agent reads them while it makes
-task calls. The skill makes it file what it finds in Ntasks in every session,
-including sessions where it is doing something else.
+The MCP server sends a writing checklist and links to the
+[task templates](#task-templates) when an agent connects. Any connected agent
+can call `get_task_guide` for the full workflow and writing guide. The skill
+tells the agent to file work it finds in any session.
 
 ## Set up with one command
 
@@ -167,7 +167,7 @@ again.
 
 ## Task templates
 
-Start recurring work from one of these Markdown files:
+Before drafting, open the matching Markdown file:
 
 - [Task](../skills/ntasks/templates/task.md): an outcome, its reason and the
   proof that it is done.
@@ -176,16 +176,9 @@ Start recurring work from one of these Markdown files:
 - [Decision](../skills/ntasks/templates/decision.md): a person's choice,
   one recommendation and what happens next.
 
-Each template is a separate file in `skills/ntasks/templates/`, so its text
-can be read and reviewed in version control. The skill and task guide link
-to those files. The setup command installs `SKILL.md`; copying the whole
-skill folder by hand also gives the agent local copies of the templates.
-
-To use a template, replace its bracketed prompts and omit optional sections
-the task does not need. Its comment explains how to pass the title,
-description, acceptance and, for a decision, choices to the task tools.
-The shared task guide holds the writing rules for both new tasks and content
-updates; a template supplies a starting structure.
+Replace the bracketed prompts and keep the sections that apply. Each file
+explains which task fields to fill. Copy the whole skill folder to keep local
+copies of the templates alongside `SKILL.md`.
 
 ## Working on a task
 

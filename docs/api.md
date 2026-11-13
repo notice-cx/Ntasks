@@ -154,20 +154,18 @@ may call it only from the Worker's own origin. The Worker answers the list
 of tools, `list_workspaces` and `get_task_guide` from the sender's sign-in,
 and runs every other tool in the task store of the workspace the call names.
 
-The server's instructions, which an agent reads when it connects, carry the
-start of the task guide and its rules for writing a task. The instructions an
-`initialize` answers with also list, before those rules, the open tasks the
-sender holds in the workspaces it reaches, so a new session starts from the
-work it has in hand: at most ten, most recently active first, one line each
+The server's instructions start with a writing checklist and links to the
+[task templates](agents.md#task-templates). `get_task_guide` returns the full
+writing guide and workflow. The `initialize` response lists the sender's open
+tasks after the checklist, up to ten, most recently active first, one line each
 with the task's id, title, helper, branch, next step and last activity. Past
 ten, or past the room the list has, one more line gives how many more there
 are and the `list_tasks` call that lists them; a sender who holds none gets no
-list. The list ends within the first 4,096 characters of the instructions,
-which Claude Code shows and cuts after, so the rules after it are what a
-client cuts first; `get_task_guide` returns them whole. It is read with one
-statement per workspace, through the store's index of holders. The handshake
-waits at most 1.5 seconds for those reads: a store that fails or has not
-answered by then leaves its tasks out, and the rest are listed.
+list. The checklist, links and list fit within the first 4,096 characters so
+clients that cut the instructions there still show them. The Worker reads the
+list with one statement per workspace through the store's index of holders.
+The handshake waits at most 1.5 seconds for those reads and lists tasks from
+the stores that answer in time.
 
 | Tool | What it returns | Arguments |
 |---|---|---|
