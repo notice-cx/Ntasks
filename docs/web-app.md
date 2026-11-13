@@ -16,9 +16,9 @@ close or title, either way, and the address keeps the order.
   <img src="images/board-light.webp" width="800" alt="The Tasks board with a Sidebar button, a site icon beside Example web app, and Settings and Source code at the bottom of the sidebar. Waiting for you appears above the grouped tasks.">
 </picture>
 
-**Next.** Use the list button on a task row to add or remove it. From the
-task page, choose **Add to Next** to leave a note for the agent in the
-task's activity. Use **Reopen and add to Next** to ask for another pass on
+**Next.** Use the list button on a task row to add or remove it. In the task
+page's Facts panel, choose **Add to Next** to leave a note for the agent in
+the task's activity. **Reopen and add to Next** is in the same place for
 closed work. A queued task keeps its status and leaves Next when work starts
 or the task closes. Agents see ready Next tasks first when they choose work.
 
@@ -37,9 +37,8 @@ task closes ([Epics](concepts.md#epics)). Links to the Epics tab on a
 project-filtered Tasks board still open that grouped list.
 
 **Task page.** Markdown text, Done when, activity and the task's facts.
-Task and epic detail pages show the status above the title with a matching
-tint. Done is green, and other ways of closing a task use grey and name how
-it ended.
+On task and epic detail pages, the breadcrumb bar takes the status tint
+and Facts names the status. Done is green and other closures use a neutral tint.
 **From the epic** shows any comments pinned on the epic for its tasks.
 A pinned comment is marked Pinned among its own task's comments.
 Detailed comments show their TL;DR or a short preview. Select **Show full

@@ -37,6 +37,7 @@ import { actorLabel, claimedModel, TASK_STATUSES } from '../../lib/task-model';
 import { usePaths } from '../../lib/paths';
 import { cn } from '../../lib/utils';
 import type { TaskPageStatus } from './task-head';
+import { canAddToNext, canUseNext, isInNext, NextTaskAction } from './next';
 
 export type FieldSave = (input: {
   label: string;
@@ -205,6 +206,7 @@ export function TaskFacts({
   const save = useFieldSave(task.id, project.logicalKey);
   const closed = task.status === 'closed';
   const can = (field: string) => !closed && fieldAvailable(capabilities, field);
+  const canManageNext = canAddToNext(task) && canUseNext(capabilities);
 
   const holder = task.assignee ? actorLabel(task.assignee, actors) : null;
   const model = task.assignee ? claimedModel(task) : null;
@@ -439,6 +441,11 @@ export function TaskFacts({
           onSave={(field, next, before) => saveField(field, field.key)(next, before)}
         />
       </div>
+      {canManageNext || isInNext(task) ? (
+        <section aria-label="Next" className="mx-2 border-t border-border pt-3">
+          {canManageNext ? <NextTaskAction task={task} project={project.logicalKey} /> : <Badge>In Next</Badge>}
+        </section>
+      ) : null}
       <div className="mx-2 border-t border-border pt-3 text-meta leading-5.5 text-ink-3" data-task-stamps="">
         {task.createdAt ? <div>Created {formatAge(ageMs(nowMs, task.createdAt))} ago</div> : null}
         {task.updatedAt ? <div>Updated {formatAge(ageMs(nowMs, task.updatedAt))} ago</div> : null}

@@ -159,7 +159,7 @@ const TYPE_SAMPLES: readonly { name: string; spec: string; sample: ReactNode }[]
   { name: 'Page title', spec: '20/28 · 600', sample: <span className="text-page-title">Tasks</span> },
   {
     name: 'Task title',
-    spec: '26/34 · 600',
+    spec: '22/30 · 600',
     sample: <span className="text-task-title">Fix the broken reset link in the welcome email</span>,
   },
   { name: 'Heading', spec: '18/26 · 600', sample: <span className="text-heading">Choose the sign-in methods</span> },

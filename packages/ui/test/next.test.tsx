@@ -31,8 +31,10 @@ describe('Next', () => {
         await api.updateTask(...args);
       },
     });
-    fireEvent.click(await enabledButton('Reopen and add to Next'));
-    const field = screen.getByRole('textbox', { name: 'Note for the agent' });
+    const facts = await screen.findByRole('complementary', { name: 'Facts' });
+    const next = within(facts).getByRole('region', { name: 'Next' });
+    fireEvent.click(await enabledButton('Reopen and add to Next', next));
+    const field = within(next).getByRole('textbox', { name: 'Note for the agent' });
     fireEvent.change(field, { target: { value: 'Reverify the keyboard flow.' } });
     fireEvent.submit(field.closest('form')!);
     await waitFor(() => expect((field as HTMLTextAreaElement).disabled).toBe(true));
@@ -42,6 +44,6 @@ describe('Next', () => {
       task: { status: 'open', assignee: null, labels: [NEXT_LABEL] },
       comments: [expect.objectContaining({ text: 'Reverify the keyboard flow.' })],
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove from Next' })).toBeTruthy());
+    expect(await within(next).findByRole('button', { name: 'Remove from Next' })).toBeTruthy();
   });
 });

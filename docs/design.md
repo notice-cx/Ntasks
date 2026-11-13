@@ -139,7 +139,7 @@ hyphen between figures stays a hyphen. Ids, ages and counts use it.
 
 | Utility | Size / line height | Weight | Use |
 |---|---|---|---|
-| `text-task-title` | 26 / 34, tracking −0.018em | 600 | A task page's title |
+| `text-task-title` | 22 / 30, tracking −0.018em | 600 | A task page's title |
 | `text-page-title` | 20 / 28, tracking −0.012em | 600 | A page's title in its top bar |
 | `text-heading` | 18 / 26, tracking −0.01em | 600 | A card's title, such as a decision's |
 | `text-body` | 15 / 25 | 400 | Task text: description, Done when, comments |
@@ -187,6 +187,7 @@ steps, such as 5, 7, 9 and 22 px, where a component's alignment needs them.
 A border is 1 px of Border. A control or panel draws it as an inset ring
 (`inset-ring inset-ring-border`), which takes no layout space; a divider
 between rows or regions is `border-b border-border`.
+Never use a left border as an accent on a rounded rectangle.
 
 | Elevation | Classes | Use |
 |---|---|---|
@@ -582,6 +583,8 @@ id alone as its path, since the project and the epic are facts on the page,
 and Close or Close as shows its icons alone when another button is the main
 action; an id longer than the room left ends in an ellipsis rather than
 widening the page.
+On task and epic detail pages, the breadcrumb bar takes the status tint and
+the Facts panel shows the status in text.
 
 On a phone the sidebar is hidden, and inside an `AppShell` the top bar starts
 with a Sidebar button (`panel-left`, with `aria-expanded`) that opens it as a

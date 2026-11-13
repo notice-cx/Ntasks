@@ -30,10 +30,12 @@ import type {
   TaskProject,
 } from '../api/types';
 import { AcceptForm, CloseDoneForm, CloseMenu } from '../components/CloseResolution';
+import { EpicBadge } from '../components/EpicBadge';
 import { TaskTimeline, type TimelineEntry } from '../components/TaskTimeline';
 import { TestRun } from '../components/TestRun';
 import { PageSkeleton, ReadFailed } from '../components/surface';
 import { Badge } from '../components/ui/badge';
+import { LinkedText } from '../components/ui/linked-text';
 import { Button, IconButton } from '../components/ui/button';
 import { OptionList } from '../components/ui/choice';
 import { EmptyState } from '../components/ui/empty-state';
@@ -62,7 +64,13 @@ import {
 } from '../hooks/useTasks';
 import { copyText } from '../lib/clipboard';
 import { httpUrl } from '../lib/custom-fields';
-import { isAgentActor, statusMarkFor, statusMarkOfStored, STATUS_MARK_LABELS } from '../lib/symbols';
+import {
+  isAgentActor,
+  statusMarkFor,
+  statusMarkOfStored,
+  STATUS_MARK_LABELS,
+  type StatusMark as StatusMarkKey,
+} from '../lib/symbols';
 import {
   actorLabel,
   choiceName,
@@ -85,10 +93,10 @@ import { AnswerForm, AutoMergeNote, PerformedButton, PerformedForm } from './tas
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { MoveForm } from './tasks/move-form';
-import { canAddToNext, canUseNext, isInNext, NextTaskAction } from './tasks/next';
+import { isInNext } from './tasks/next';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
-import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskHeading, TaskPath, type Actor } from './tasks/task-head';
+import { AnswerSummary, ChoiceSummary, ClosedSummary, TaskPath, type Actor } from './tasks/task-head';
 import { ReliesOnDropped } from './tasks/relies-on-dropped';
 import { WhereItStopped } from './tasks/where-it-stopped';
 import { CommentText } from './tasks/comment-text';
@@ -100,6 +108,16 @@ const UNAVAILABLE = 'This sign-in cannot do this.';
 
 /** The reading column: 720 px of text, with room either side. */
 const COLUMN = 'mx-auto w-full max-w-[832px] px-14 max-lg:max-w-[760px] max-md:px-4';
+
+const STATUS_TINT: Readonly<Record<StatusMarkKey | 'closed', string>> = {
+  open: 'bg-background',
+  'in-progress': 'bg-accent/14',
+  waiting: 'bg-wait/16',
+  blocked: 'bg-block/14',
+  parked: 'bg-hover',
+  done: 'bg-done/18',
+  closed: 'bg-surface',
+};
 
 /** A task's page, `<base>/<id>`: one task, whole. Its project is the one whose prefix starts the id. */
 export function TaskRoute() {
@@ -479,7 +497,7 @@ function TaskPage({
   const closeWords =
     task.closeAcceptance && task.closeReason === ACCEPTED_REASON
       ? null
-      : closeNote(task.closeReason, resolution, task.duplicateOf ?? null);
+      : closeNote(task.closeReason, resolution, task.duplicateOf ?? null, task.delivery);
   const acceptance = task.closeAcceptance
     ? {
         acceptance: task.closeAcceptance,
@@ -491,7 +509,7 @@ function TaskPage({
 
   return (
     <>
-      <TopBar title={path}>
+      <TopBar title={path} className={STATUS_TINT[status.muted ? 'closed' : mark]}>
         <BarSpacer />
         <div className="flex items-center gap-1.5" data-task-actions="">
           <IconButton
@@ -522,13 +540,13 @@ function TaskPage({
         className="grid min-h-[calc(100vh-56px)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_1fr]"
         data-task-page=""
       >
-        <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 lg:col-start-1 max-md:pt-5')}>
-          <TaskHeading title={task.title} status={status} epic={task.issueType === 'epic'} />
-          {canAddToNext(task) && canUseNext(capabilities) ? (
-            <NextTaskAction task={task} project={key} />
-          ) : isInNext(task) ? (
-            <Badge className="self-start">In Next</Badge>
-          ) : null}
+        <header className={cn(COLUMN, 'flex flex-col gap-4 pt-9 max-lg:pb-4 lg:col-start-1 max-md:pt-5')}>
+          <div className="flex flex-col items-start gap-2">
+            {task.issueType === 'epic' ? <EpicBadge /> : null}
+            <h1 className="m-0 text-task-title text-ink [overflow-wrap:anywhere] max-sm:text-page-title">
+              <LinkedText text={task.title} />
+            </h1>
+          </div>
           {gated ? <AutoMergeNote pullRequest={gated} id={mergeId} /> : null}
           {panelBody ? (
             <div className="rounded-xl bg-surface px-4 py-3.5 inset-ring inset-ring-border" data-task-panel="">
@@ -568,7 +586,7 @@ function TaskPage({
                 ) : undefined
               }
             >
-              {closeWords ? <MarkdownText source={closeWords} /> : null}
+              {closeWords ? <MarkdownText source={closeWords} className="text-label text-ink-2" /> : null}
               {acceptanceDisputable ? (
                 <DisputeAction id={task.id} project={key} disabledReason={disputeReason} />
               ) : null}

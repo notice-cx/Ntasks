@@ -300,7 +300,7 @@ describe('the project overview', () => {
     expect(within(children).getByRole('link', { name: /Remove the old sign-in page/ })).toBeTruthy();
   });
 
-  it('shows Done and the Epic badge together on a closed epic', async () => {
+  it('tints a closed epic’s breadcrumb bar green and keeps its Epic badge by the title', async () => {
     const api = createFixtureTasksApi();
     const epic = api.state.tasks.find((task) => task.id === 'web-k3m9');
     if (!epic) throw new Error('The fixture has no web-k3m9');
@@ -308,9 +308,10 @@ describe('the project overview', () => {
 
     renderApp('/tasks/web-k3m9', api);
     const title = await screen.findByRole('heading', { level: 1, name: 'Ship the new sign-in page' });
-    const heading = title.closest('[data-task-heading-status="done"]') as HTMLElement;
-    expect(within(heading).getByText('Done')).toBeTruthy();
-    expect(within(heading).getByText('Epic')).toBeTruthy();
+    const bar = screen.getByRole('navigation', { name: 'Path' }).closest('header');
+    expect(bar?.classList.contains('bg-done/18')).toBe(true);
+    expect(within(title.parentElement!).getByText('Epic')).toBeTruthy();
+    expect(within(screen.getByRole('complementary', { name: 'Facts' })).getByText('Done')).toBeTruthy();
   });
 
   it('keeps the task queue in its project when clearing filters and labels its epic rows', async () => {
