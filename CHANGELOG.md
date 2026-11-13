@@ -1,5 +1,90 @@
 # Changelog
 
+## [0.5.0](https://github.com/notice-cx/Ntasks/compare/ntasks-v0.4.0...ntasks-v0.5.0) (2026-11-13)
+
+
+### Features
+
+* **access:** a service credential registers its own connected app ([#149](https://github.com/notice-cx/Ntasks/issues/149)) ([36fca80](https://github.com/notice-cx/Ntasks/commit/36fca80c055946e64777c9e62b16b60dba8ef7b9))
+* **access:** sign in to a connected app at a home-network http address ([#154](https://github.com/notice-cx/Ntasks/issues/154)) ([2f94007](https://github.com/notice-cx/Ntasks/commit/2f9400738b70285c58eea688220fb7ddc9f39091))
+* add a Next queue for agent work ([#229](https://github.com/notice-cx/Ntasks/issues/229)) ([b0dfb29](https://github.com/notice-cx/Ntasks/commit/b0dfb29582a6ef64237035507b641b49db6872e6))
+* add and remove links between tasks over HTTP and on the task page ([#178](https://github.com/notice-cx/Ntasks/issues/178)) ([52aae66](https://github.com/notice-cx/Ntasks/commit/52aae66de40cb75445dd94e99e790d16d0f7c2c0))
+* **api:** an approval turns on its pull request's auto-merge and posts each answer on it ([#193](https://github.com/notice-cx/Ntasks/issues/193)) ([147f482](https://github.com/notice-cx/Ntasks/commit/147f482c25400f529935ba3e071e5bb1fb8aabf7))
+* **api:** close work in progress whose merge event Ntasks missed ([#179](https://github.com/notice-cx/Ntasks/issues/179)) ([b2dd6aa](https://github.com/notice-cx/Ntasks/commit/b2dd6aa5aec0d6f10d6fb5fe378de3fb7de19066))
+* **api:** count changes shipped by model and stop ranking agents ([#171](https://github.com/notice-cx/Ntasks/issues/171)) ([ef347ff](https://github.com/notice-cx/Ntasks/commit/ef347ff0fdb77766dc1516c2b7531cadb5b42afa))
+* **api:** flag open tasks whose text names a task that was dropped ([#200](https://github.com/notice-cx/Ntasks/issues/200)) ([cba1e20](https://github.com/notice-cx/Ntasks/commit/cba1e2092283fed39fd7954cddddc0af82e6c043))
+* **api:** list tasks by the helper or session that changed them, and carry test runs ([#182](https://github.com/notice-cx/Ntasks/issues/182)) ([de4cae1](https://github.com/notice-cx/Ntasks/commit/de4cae1106f48e9499d93ef704c270ba5c6ff69a))
+* **api:** move pushed work to merged, and its deploy to live ([#192](https://github.com/notice-cx/Ntasks/issues/192)) ([6a7cd0e](https://github.com/notice-cx/Ntasks/commit/6a7cd0e7f961664e0ad85e42ed57cb6c6e1cc072))
+* **api:** name the D1 migrations a deploy skipped instead of failing blindly ([#168](https://github.com/notice-cx/Ntasks/issues/168)) ([8217a2c](https://github.com/notice-cx/Ntasks/commit/8217a2cd2d30f124ec06ab50c310996ac15c2f35))
+* **cli:** warn before an installed ntasks deploys an older release ([#169](https://github.com/notice-cx/Ntasks/issues/169)) ([577fb19](https://github.com/notice-cx/Ntasks/commit/577fb19af5c252062a94a749a1c17deaa989b1a6))
+* close an epic in the same write as its last open task ([#146](https://github.com/notice-cx/Ntasks/issues/146)) ([c1ed204](https://github.com/notice-cx/Ntasks/commit/c1ed20431aa1d2d95cdf6fafbbe3831b77ce158d))
+* let a person mark an approval as done by them, not approved ([#187](https://github.com/notice-cx/Ntasks/issues/187)) ([1ef208e](https://github.com/notice-cx/Ntasks/commit/1ef208e938745cf83ae75d12ea1e941d0bdb6ccd))
+* let a repository's merges count as live when it has no deploy ([#208](https://github.com/notice-cx/Ntasks/issues/208)) ([e45d100](https://github.com/notice-cx/Ntasks/commit/e45d100209efb5b2e1425f43d0d8cd803649ea3f))
+* manage projects and their site icons from a Settings page in tabs ([#153](https://github.com/notice-cx/Ntasks/issues/153)) ([4d4da75](https://github.com/notice-cx/Ntasks/commit/4d4da758b34bd0e5abd8406b84e3181ac64ad817))
+* mark a closed task live by hand, for a release no signal reports ([#210](https://github.com/notice-cx/Ntasks/issues/210)) ([696e084](https://github.com/notice-cx/Ntasks/commit/696e0844ed630669d10ce4b2b24dbc53ea0cfe26))
+* **mcp:** add a template for tickable owner requests ([#237](https://github.com/notice-cx/Ntasks/issues/237)) ([5dd269c](https://github.com/notice-cx/Ntasks/commit/5dd269c6ee697ae447bf2c561b145d60b73e495f))
+* **mcp:** let create_task open an approval with its own title ([#174](https://github.com/notice-cx/Ntasks/issues/174)) ([c8d3d22](https://github.com/notice-cx/Ntasks/commit/c8d3d2271617c3161bfe725e070bc4124c810456))
+* move tasks to another epic or project, keeping their history and links ([#186](https://github.com/notice-cx/Ntasks/issues/186)) ([d90b91f](https://github.com/notice-cx/Ntasks/commit/d90b91f10ee155067a05b477782d84cd31193ff1))
+* name the dropped tasks an open task relies on ([#177](https://github.com/notice-cx/Ntasks/issues/177)) ([089bf82](https://github.com/notice-cx/Ntasks/commit/089bf82659661a724af4ee61e73658600a2f7dc1))
+* serve the writing guide and task templates through MCP ([#227](https://github.com/notice-cx/Ntasks/issues/227)) ([c83101d](https://github.com/notice-cx/Ntasks/commit/c83101d7837de7043474fa96737141d14ed29620))
+* show a short summary for detailed task comments ([#236](https://github.com/notice-cx/Ntasks/issues/236)) ([7388d51](https://github.com/notice-cx/Ntasks/commit/7388d51bd7c736c56f84728d4fb2ba3d77640677))
+* **ui:** give projects their own overview ([#233](https://github.com/notice-cx/Ntasks/issues/233)) ([b755033](https://github.com/notice-cx/Ntasks/commit/b7550330b42139f0a882b02d5d1b27f4989bec0f))
+* **ui:** let a deployment admin create another workspace from the workspace menu ([#160](https://github.com/notice-cx/Ntasks/issues/160)) ([be45260](https://github.com/notice-cx/Ntasks/commit/be45260a9df94f2e47a3a237f1d22a4bccb2f190))
+* **ui:** list only the custom fields a task holds, with Add field for the rest ([#172](https://github.com/notice-cx/Ntasks/issues/172)) ([c04f7e8](https://github.com/notice-cx/Ntasks/commit/c04f7e8e4e284a140e6a9ed920bf005bd22daf47))
+* **ui:** M, A, P and Z claim, assign, prioritise and park the task in view ([#183](https://github.com/notice-cx/Ntasks/issues/183)) ([9e73b14](https://github.com/notice-cx/Ntasks/commit/9e73b14506f4cdcd24b5aa501a9202e0a20de500))
+* **ui:** make and revoke service credentials on a Services tab in Settings ([#170](https://github.com/notice-cx/Ntasks/issues/170)) ([8217778](https://github.com/notice-cx/Ntasks/commit/82177788aa7ac9e1f914a727f7190c06ab6160f0))
+* **ui:** show delivery in the task breadcrumb bar ([#240](https://github.com/notice-cx/Ntasks/issues/240)) ([05d9948](https://github.com/notice-cx/Ntasks/commit/05d99488dbf674f7bdd2165a796a0f6b9a7b1b64))
+* **ui:** show who filed a task, with their avatar, on its page ([#159](https://github.com/notice-cx/Ntasks/issues/159)) ([ca605b2](https://github.com/notice-cx/Ntasks/commit/ca605b254de25c2d274694831a2421a84ae47968))
+* **ui:** tint task and epic headers by status ([#238](https://github.com/notice-cx/Ntasks/issues/238)) ([1aa9901](https://github.com/notice-cx/Ntasks/commit/1aa9901c6fb0055e0b72d19b36088bdfd77f4772))
+* **ui:** tint task rows and Live cards by status ([#241](https://github.com/notice-cx/Ntasks/issues/241)) ([2bd70eb](https://github.com/notice-cx/Ntasks/commit/2bd70eb80f529a2237354da031dd482301d92545))
+* **web:** join Built and Merged into one Waiting to ship column ([#191](https://github.com/notice-cx/Ntasks/issues/191)) ([81345ae](https://github.com/notice-cx/Ntasks/commit/81345aeeb7fe2208cffd684e0fc34751d577219c))
+* **web:** lead a Live card with its project's icon, and show its holder as an icon ([#196](https://github.com/notice-cx/Ntasks/issues/196)) ([e86fb15](https://github.com/notice-cx/Ntasks/commit/e86fb1534c2a6c136cb8950e63909d0a9d8ee7d0))
+* **web:** let a person decline an approval ([#219](https://github.com/notice-cx/Ntasks/issues/219)) ([a73db1b](https://github.com/notice-cx/Ntasks/commit/a73db1b6a7f52faa2ae0d1d724b201af94310c9f))
+* **web:** let a person hide the sidebar to give pages the full width ([#209](https://github.com/notice-cx/Ntasks/issues/209)) ([40d3fa9](https://github.com/notice-cx/Ntasks/commit/40d3fa9e374f1d322b5ba7dd476ed55e6dc3b422))
+* **web:** let people finish requests without ticking every step ([#226](https://github.com/notice-cx/Ntasks/issues/226)) ([b34071e](https://github.com/notice-cx/Ntasks/commit/b34071e3c617b31b632e67a8d24cde29260b3604))
+* **web:** open the Live page on an animated board of delivery stages ([#188](https://github.com/notice-cx/Ntasks/issues/188)) ([cf80025](https://github.com/notice-cx/Ntasks/commit/cf800255bc10adfa36782386bdee15925ef6b31a))
+* **web:** show a Live column's hidden cards, and pick 24 hours or 7 days ([#202](https://github.com/notice-cx/Ntasks/issues/202)) ([70c1a26](https://github.com/notice-cx/Ntasks/commit/70c1a26af20e74bb0bbade8a571e7cbe034d6695))
+* **web:** show open pull requests in Waiting to ship ([#228](https://github.com/notice-cx/Ntasks/issues/228)) ([776e95d](https://github.com/notice-cx/Ntasks/commit/776e95dc7aa10f05d93d73d9669740639ef2ef90))
+* **web:** show the dropped tasks a task relies on, on its row and page ([#201](https://github.com/notice-cx/Ntasks/issues/201)) ([912cb0b](https://github.com/notice-cx/Ntasks/commit/912cb0b7ce52a8c1a47c5938da6994a7d9942d56))
+* **web:** show who changed a card and how on the Live board ([#189](https://github.com/notice-cx/Ntasks/issues/189)) ([08a66a6](https://github.com/notice-cx/Ntasks/commit/08a66a60365160035eebefa49cb6fdf5e358d845))
+
+
+### Bug Fixes
+
+* **api:** allow pull request links on requests to do steps ([#213](https://github.com/notice-cx/Ntasks/issues/213)) ([cf3590e](https://github.com/notice-cx/Ntasks/commit/cf3590e9210d717e531b5b15dcac12d24f995726))
+* **api:** answer service credential refusals with detail and field ([#157](https://github.com/notice-cx/Ntasks/issues/157)) ([e85ed0d](https://github.com/notice-cx/Ntasks/commit/e85ed0dbce9dbb10e83601e2d696ef3e8da75f92))
+* **api:** keep a website's SVG icon for its project, made safe and sandboxed ([#184](https://github.com/notice-cx/Ntasks/issues/184)) ([97c690a](https://github.com/notice-cx/Ntasks/commit/97c690a5372e9172a003c624eaf2bb78117d2f7d))
+* **api:** keep asking GitHub about a deploy after six missed reads ([#198](https://github.com/notice-cx/Ntasks/issues/198)) ([658b80c](https://github.com/notice-cx/Ntasks/commit/658b80cad4180ad8c24e8c819d07a1b0b02b02f2))
+* **api:** keep commented tasks and removed links right in a drop's named links ([#205](https://github.com/notice-cx/Ntasks/issues/205)) ([081fadb](https://github.com/notice-cx/Ntasks/commit/081fadbc79a58a8a16ce6797738dbb54666522c7))
+* **api:** keep unassigned tasks out of in-progress status ([#212](https://github.com/notice-cx/Ntasks/issues/212)) ([2c2a1e3](https://github.com/notice-cx/Ntasks/commit/2c2a1e3ee9a7cb18b27e0ff21e52d7f8bccc00a1))
+* **api:** let the GitHub check move pushed tasks to live ([#199](https://github.com/notice-cx/Ntasks/issues/199)) ([4b02bb3](https://github.com/notice-cx/Ntasks/commit/4b02bb32ee821d6954fe7f1ed27278b334e3bb13))
+* **api:** list a workspace's live service credentials before revoked ones ([#195](https://github.com/notice-cx/Ntasks/issues/195)) ([29b3e51](https://github.com/notice-cx/Ntasks/commit/29b3e51908156a4cbc67aa6c0884e220bce4db7d))
+* **api:** mark replayed HTTP write responses ([#218](https://github.com/notice-cx/Ntasks/issues/218)) ([2abf477](https://github.com/notice-cx/Ntasks/commit/2abf47742ed446386d337905775beea1c8ac0ad0))
+* **api:** move a merge to Live only once every deploy check on its commit passed ([#175](https://github.com/notice-cx/Ntasks/issues/175)) ([9f66920](https://github.com/notice-cx/Ntasks/commit/9f669208ba6626387ae31e3cf49b3cea870484b3))
+* **api:** move a task to merged when it closes with a commit already pushed ([#203](https://github.com/notice-cx/Ntasks/issues/203)) ([84d0711](https://github.com/notice-cx/Ntasks/commit/84d07114a7c51bbd387f077fadee94ffb5851a2e))
+* **api:** read at most 10 task stores per request on the agent approval page ([#176](https://github.com/notice-cx/Ntasks/issues/176)) ([966ee19](https://github.com/notice-cx/Ntasks/commit/966ee1983bafcdc7d13a9f906b20cbabb59c670f))
+* **api:** record a person named like an agent as person:&lt;name&gt; ([#194](https://github.com/notice-cx/Ntasks/issues/194)) ([731c5db](https://github.com/notice-cx/Ntasks/commit/731c5dbf845ebd868f87e24ef8d26293fa47ea77))
+* **api:** record two people with the same GitHub name under different actors ([#181](https://github.com/notice-cx/Ntasks/issues/181)) ([9e33142](https://github.com/notice-cx/Ntasks/commit/9e33142e7d2e65df343825f066f756db25cf511f))
+* **api:** recover deployments missed by the GitHub check ([#220](https://github.com/notice-cx/Ntasks/issues/220)) ([02816e0](https://github.com/notice-cx/Ntasks/commit/02816e01da496bd06c3808bc4fda922c9916b11d))
+* **api:** resolve former task ids in HTTP write bodies ([#215](https://github.com/notice-cx/Ntasks/issues/215)) ([4eeffbc](https://github.com/notice-cx/Ntasks/commit/4eeffbcef8224d1bafac16478e11fefedb37da78))
+* **api:** settle an epic when its companion write is a comment ([#217](https://github.com/notice-cx/Ntasks/issues/217)) ([7c2adc4](https://github.com/notice-cx/Ntasks/commit/7c2adc4bebefe4bd9aef0d5d3c0c8cf7ce413ac3))
+* ask a person while the task above their decision waits ([#164](https://github.com/notice-cx/Ntasks/issues/164)) ([ac45817](https://github.com/notice-cx/Ntasks/commit/ac458178841fcd43fa63b1565028f635d230f415))
+* **mcp:** give the lint, the guide and reconcile_task the same rules ([#165](https://github.com/notice-cx/Ntasks/issues/165)) ([ddc27fe](https://github.com/notice-cx/Ntasks/commit/ddc27fef20aa37e8557d97a06fd01e48e9ae48c7))
+* show a project's dark-mode icon when Ntasks is dark ([#190](https://github.com/notice-cx/Ntasks/issues/190)) ([fa8cc3f](https://github.com/notice-cx/Ntasks/commit/fa8cc3f3340579452417d4d22c400cfd5358c65e))
+* **ui:** fit every page on a phone screen with no sideways scroll ([#155](https://github.com/notice-cx/Ntasks/issues/155)) ([c500c82](https://github.com/notice-cx/Ntasks/commit/c500c820df2db63f06b09aa32eb4364966702a51))
+* **ui:** give project pages top-level URLs ([#235](https://github.com/notice-cx/Ntasks/issues/235)) ([e86a47e](https://github.com/notice-cx/Ntasks/commit/e86a47eb241b6577115a156cf09a5c409b795b4c))
+* **ui:** leave the main landmark to the host page in sheet mode ([#150](https://github.com/notice-cx/Ntasks/issues/150)) ([74664b4](https://github.com/notice-cx/Ntasks/commit/74664b4130008e20de2460629f9c2c18fbf41a5f))
+* **ui:** remove closed sibling tasks from task pages ([#234](https://github.com/notice-cx/Ntasks/issues/234)) ([d37c20a](https://github.com/notice-cx/Ntasks/commit/d37c20a2dcc22028eb36689324147a7368e65e0b))
+* **ui:** tint the breadcrumb bar and simplify task details ([#239](https://github.com/notice-cx/Ntasks/issues/239)) ([3491107](https://github.com/notice-cx/Ntasks/commit/3491107da0c79925aca7559616aa629b26673224))
+* **web:** show sign-in when an embedded host has no token ([#211](https://github.com/notice-cx/Ntasks/issues/211)) ([8b6c95a](https://github.com/notice-cx/Ntasks/commit/8b6c95aae456550a12ed1326e583076300b86e06))
+
+
+### Performance Improvements
+
+* keep the web app's board in memory when its tasks carry many long links ([#167](https://github.com/notice-cx/Ntasks/issues/167)) ([0e71dae](https://github.com/notice-cx/Ntasks/commit/0e71daec45bcf48c47deffb29489a3c23135e67d))
+* **ui:** draw a re-sorted board's first screen within 50 ms at 4x ([#204](https://github.com/notice-cx/Ntasks/issues/204)) ([075dce4](https://github.com/notice-cx/Ntasks/commit/075dce4eea78e96cc6c3dab3fae77c3ebcf97e8a))
+* **ui:** redraw the board faster when its view or sort changes ([#180](https://github.com/notice-cx/Ntasks/issues/180)) ([dd255d0](https://github.com/notice-cx/Ntasks/commit/dd255d0d13b7586b04d6a71b4e5ebd9abeaeaf9c))
+
 ## [0.4.0](https://github.com/notice-cx/Ntasks/compare/ntasks-v0.3.0...ntasks-v0.4.0) (2026-11-10)
 
 
