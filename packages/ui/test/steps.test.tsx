@@ -1,12 +1,14 @@
 // A request that a person do steps: its checklist on the task page and in
 // Waiting for you, what each control sends, and what a sign-in that may not
 // mark steps is offered.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TasksApi } from '@/api/client';
 import { createFixtureTasksApi } from '@/api/fixture';
 import type { StepMarking } from '@/api/types';
-import { renderApp } from './render';
+import { FIXTURE_ACTOR } from '@/api/fixture-data';
+import { UNDO_WINDOW_MS } from '@/lib/answer-queue';
+import { enabledButton, renderApp } from './render';
 
 type FixtureApi = ReturnType<typeof createFixtureTasksApi>;
 
@@ -127,7 +129,57 @@ describe('a request to do steps, on its page', () => {
     renderApp('/tasks/web-g7p2', api);
     const first = await screen.findByRole('checkbox', { name: 'Step 1' });
     await waitFor(() => expect((first as HTMLButtonElement).disabled).toBe(true));
+    expect(((await screen.findByRole('button', { name: 'Did it myself' })) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Stuck here' })).toBeNull();
+  });
+});
+
+describe('finishing a request another way', () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  it.each(['/tasks/web-g7p2', '/tasks'])('records the outcome from %s and preserves the steps', async (path) => {
+    const fixture = asked();
+    await fixture.markStep('web-g7p2', 'web', { step: 1, done: true });
+    const before = structuredClone(gate(fixture).steps);
+    renderApp(path, fixture);
+    const scope = path === '/tasks' ? await screen.findByRole('region', { name: 'Waiting for you' }) : null;
+    fireEvent.click(await enabledButton('Did it myself', scope));
+    const form = await screen.findByRole('form', { name: 'Did it myself: web-g7p2' });
+    expect(within(form).getByText(/Got the same result another way/)).toBeTruthy();
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Used the installer instead.' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
+    expect(gate(fixture).status).toBe('open');
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    await waitFor(() => expect(gate(fixture).status).toBe('closed'));
+    expect(gate(fixture).steps).toEqual(before);
+    expect(gate(fixture).answer).toMatchObject({
+      option: 'done',
+      recordedBy: FIXTURE_ACTOR,
+      quote: 'Used the installer instead.',
+      relayed: false,
+    });
+    expect(gate(fixture).closeReason).toBe('Did it myself: Used the installer instead.');
+  });
+
+  it('allows completion without a note, and Undo leaves the request open', async () => {
+    const fixture = asked();
+    renderApp('/tasks/web-g7p2', fixture);
+    fireEvent.click(await enabledButton('Did it myself'));
+    const form = await screen.findByRole('form', { name: 'Did it myself: web-g7p2' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS + 10);
+    });
+    expect(gate(fixture).status).toBe('open');
+    expect(gate(fixture).answer ?? null).toBeNull();
+    expect(gate(fixture).steps).toEqual(STEPS);
   });
 });
 
@@ -142,6 +194,12 @@ describe('a request to do steps, in Waiting for you', () => {
     expect(within(row).queryByRole('button', { name: 'Approve' })).toBeNull();
 
     fireEvent.click(within(row).getByRole('button', { name: /Your steps/ }));
+    await screen.findByRole('checkbox', { name: 'Step 1' });
+    fireEvent.click(await enabledButton('Did it myself', row));
+    expect(await screen.findByRole('form', { name: 'Did it myself: web-g7p2' })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'Step 1' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: /Your steps/ }));
+    expect(screen.queryByRole('form', { name: 'Did it myself: web-g7p2' })).toBeNull();
     fireEvent.click(await box(1));
 
     await waitFor(() => expect(marks).toEqual([{ step: 1, done: true }]));

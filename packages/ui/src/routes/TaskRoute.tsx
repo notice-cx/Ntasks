@@ -359,9 +359,16 @@ function TaskPage({
     />
   );
 
-  // A request to do steps is answered by its steps, under the description, so it offers no button here.
   let actions: ReactNode = null;
-  if (ask === 'approve') {
+  if (ask === 'do') {
+    actions = (
+      <PerformedButton
+        open={panel?.kind === 'performed'}
+        onToggle={() => setPanel(panel?.kind === 'performed' ? null : { kind: 'performed' })}
+        disabledReason={performedReason}
+      />
+    );
+  } else if (ask === 'approve') {
     actions = (
       <>
         {capabilities.operations?.includes('decline') && operationAvailable(capabilities, 'decline') ? (
@@ -389,7 +396,7 @@ function TaskPage({
         </Button>
       </>
     );
-  } else if (ask !== null && ask !== 'do') {
+  } else if (ask !== null) {
     actions = (
       <>
         {closeMenu('Close as', false, 'secondary')}
@@ -434,9 +441,10 @@ function TaskPage({
       />
     ) : panel?.kind === 'move' ? (
       <MoveForm task={task} project={project} parentTitle={parentTitle} onDone={() => setPanel(null)} />
-    ) : panel?.kind === 'performed' && ask === 'approve' ? (
+    ) : panel?.kind === 'performed' && (ask === 'approve' || ask === 'do') ? (
       <PerformedForm
         id={task.id}
+        steps={ask === 'do'}
         onSend={(note) => {
           answer({ kind: 'performed', ...scope, ...(note === undefined ? {} : { note }) });
           setPanel(null);

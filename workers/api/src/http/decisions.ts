@@ -198,7 +198,7 @@ export async function declineRoute(
   return decided(context, await decline(context, projectId, gateId, retry(body), shownOf(body)));
 }
 
-/** POST /api/gates/:id/performed: a person's report that they did an approval's action themselves. */
+/** POST /api/gates/:id/performed: a person's report that they did a requested action themselves. */
 export async function performedRoute(
   context: WriteContext,
   url: URL,

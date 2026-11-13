@@ -747,12 +747,12 @@ export function declineWrite(task: Task, around: Surroundings, deciding: Decidin
   return draft.write();
 }
 
-/** The close reason of a person's report that they did an approval's action
+/** The close reason of a person's report that they did a requested action
  * themselves; their note, when they give one, follows it after ": ". */
 export const PERFORMED = 'Did it myself';
 
 /**
- * A person's report that they did an approval's action themselves: the gate
+ * A person's report that they did a requested action themselves: the gate
  * closes as done, recorded as their own answer with no permission for any
  * agent, and each task waiting on it is told that the person did it, so no
  * agent does it again; those labelled human go back to agents, who check the
@@ -764,11 +764,15 @@ export function performedWrite(
   around: Surroundings,
   deciding: Deciding,
 ): TaskWrite | null {
-  openApproval(task);
+  if (task.steps === null) openApproval(task);
+  else {
+    if (task.status === 'closed') refuseState(task.id, { kind: 'closed' });
+    decisionClose(task, around);
+  }
   const draft = new Draft(task);
   draft.close = { reason: note === undefined ? PERFORMED : `${PERFORMED}: ${note}`, resolution: 'done' };
   recordDirect(draft, deciding, { outcome: 'owner-performed', ...(note === undefined ? {} : { words: note }) });
-  handBackOnApproval(draft, around, `${deciding.actor} did the action of ${task.id} themselves, so no agent does it.`);
+  handBackOnDone(draft, around, `${deciding.actor} did the action of ${task.id} themselves, so no agent does it.`);
   return draft.write();
 }
 
@@ -1541,7 +1545,7 @@ export function approve(
   );
 }
 
-/** A person's report that they did an approval's action themselves (performedWrite). */
+/** A person's report that they did a requested action themselves (performedWrite). */
 export function perform(
   context: WriteContext,
   projectId: string,

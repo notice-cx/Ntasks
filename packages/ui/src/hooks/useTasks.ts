@@ -418,7 +418,7 @@ export type InboxAnswer = {
 } & (
   | { kind: 'approve' }
   | { kind: 'decline' }
-  /** The person did the approval's action themselves, so no agent does it. */
+  /** The person achieved the requested outcome themselves, so no agent does it. */
   | { kind: 'performed'; note?: string }
   | { kind: 'answer'; text: string }
   | { kind: 'choose'; option: TaskChoiceKey; label?: string; note?: string }

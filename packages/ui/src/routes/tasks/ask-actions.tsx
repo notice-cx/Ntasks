@@ -17,8 +17,8 @@ const StepList = lazy(() => import('./step-list').then((module) => ({ default: m
  * myself, which opens a note under the row, after the pull request whose
  * auto-merge Approve turns on when the approval gates one; the options side by
  * side on a decision (one press answers), Answer on a question, which opens a
- * box under the row, and Your steps on a request to do steps, which opens its
- * steps under the row. Every answer waits in the Undo window.
+ * box under the row, and Your steps beside Did it myself on a request to do
+ * steps. Your steps opens its steps under the row. Every answer waits in the Undo window.
  * `buttons` sit beside the title and `box` under it; both are null when
  * nothing is asked. Closing as something else is in the row's menu.
  */
@@ -86,19 +86,34 @@ export function useAskActions({
   const described = reason ? reasonId : undefined;
   const doing = ask === 'do' && steps !== null;
   const control = doing ? (
-    <Button
-      type="button"
-      size="sm"
-      aria-expanded={answering}
-      onClick={() => setAnswering((open) => !open)}
-      data-task-action="steps"
-    >
-      <ListChecks aria-hidden />
-      Your steps
-      <span className="nums text-ink-3">
-        {stepsDone(steps)}/{steps.length}
-      </span>
-    </Button>
+    <>
+      <PerformedButton
+        size="sm"
+        open={performing}
+        onToggle={() => {
+          setAnswering(false);
+          setPerforming((open) => !open);
+        }}
+        disabledReason={performedDisabledReason}
+        describedBy={performedDisabledReason ? reasonId : undefined}
+      />
+      <Button
+        type="button"
+        size="sm"
+        aria-expanded={answering && !performing}
+        onClick={() => {
+          setPerforming(false);
+          setAnswering((open) => !open);
+        }}
+        data-task-action="steps"
+      >
+        <ListChecks aria-hidden />
+        Your steps
+        <span className="nums text-ink-3">
+          {stepsDone(steps)}/{steps.length}
+        </span>
+      </Button>
+    </>
   ) : ask === 'approve' ? (
     <>
       {pullRequest ? <AutoMergeNote pullRequest={pullRequest} id={mergeId} compact /> : null}
@@ -163,6 +178,7 @@ export function useAskActions({
     <PerformedForm
       id={id}
       size="sm"
+      steps={doing}
       onSend={(note) => {
         answer({ kind: 'performed', id, title, project, proposalVersion, ...(note === undefined ? {} : { note }) });
         setPerforming(false);
@@ -184,7 +200,7 @@ export function useAskActions({
   ) : (
     <AnswerForm id={id} text={text} onText={setText} onSend={send} onCancel={() => setAnswering(false)} size="sm" />
   );
-  const shownReason = reason ?? (ask === 'approve' ? performedDisabledReason : null);
+  const shownReason = reason ?? (ask === 'approve' || doing ? performedDisabledReason : null);
   const buttons = (
     <>
       {control}
@@ -254,7 +270,7 @@ export function AutoMergeNote({
   );
 }
 
-/** Did it myself: the button that opens the note a person's report that they did an approval's action takes. */
+/** Did it myself: the button that opens the note a person's report that they did a requested action takes. */
 export function PerformedButton({
   open,
   onToggle,
@@ -290,7 +306,7 @@ export function PerformedButton({
 }
 
 /**
- * The line a person's report that they did an approval's action themselves
+ * The line a person's report that they did a requested action themselves
  * takes: its name and a Note. Enter sends, Escape steps back; the caller's
  * send carries the Undo.
  */
@@ -299,11 +315,14 @@ export function PerformedForm({
   onSend,
   onCancel,
   size = 'md',
+  steps = false,
 }: {
   id: string;
   onSend: (note: string | undefined) => void;
   onCancel: () => void;
   size?: 'sm' | 'md';
+  /** The outcome may have been achieved using different steps. */
+  steps?: boolean;
 }) {
   const [note, setNote] = useState('');
   return (
@@ -322,6 +341,12 @@ export function PerformedForm({
         onCancel();
       }}
     >
+      {steps ? (
+        <p className="m-0 basis-full text-label text-ink-2">
+          Got the same result another way? Mark this done without ticking the steps. You can add a note about what you
+          did.
+        </p>
+      ) : null}
       <span className="inline-flex h-7.5 shrink-0 items-center gap-1.5 text-label font-semibold text-ink [&_svg]:size-[15px] [&_svg]:text-ink-3">
         <CheckCheck aria-hidden />
         {PERFORMED_LABEL}

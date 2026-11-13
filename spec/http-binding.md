@@ -66,7 +66,7 @@ since, the answer is refused with `409`, `task_refused` and
 | Dismiss | `POST /api/tasks/:id/dismiss` | `projectId`, optionally `reason`, `resolution` (any but `done`) and `duplicateOf` |
 | Approve | `POST /api/gates/:id/resolve` | `projectId`, optionally `reason` |
 | Decline an approval | `POST /api/gates/:id/decline` | `projectId`, optionally `proposalVersion` |
-| Report that the person did the action themselves | `POST /api/gates/:id/performed` | `projectId`, optionally `note` ([STATE-10](protocol.md#state-10)) |
+| Report that the person achieved the requested outcome themselves, on an approval or a request to do steps | `POST /api/gates/:id/performed` | `projectId`, optionally `note` and `proposalVersion` ([STATE-10](protocol.md#state-10), [STATE-14](protocol.md#state-14)) |
 | Mark a step of a request to do steps | `POST /api/gates/:id/steps` | `projectId`, `step` (its place, from 1), and at least one of `done`, `note` and `stuck` ([STATE-14](protocol.md#state-14)) |
 | Accept as done | `POST /api/tasks/:id/accept` | `projectId`, `met` (the numbers of the criteria the person found met, `[]` when none is), `proposalVersion`, optionally `reason` ([STATE-15](protocol.md#state-15)) |
 | Free a held task on the person's call | `POST /api/tasks/:id/release` | `projectId`, optionally `holder`, the holder the person's page showed ([AUTH-9](protocol.md#auth-9)) |

@@ -766,8 +766,12 @@ GitHub App:
 - keeps each step's text and command as the request was filed: a server
   MUST refuse a change to them;
 - takes no approval and no option: a server MUST refuse one;
-- closes as `done` on the person's relayed report that they did the steps,
-  leaving the steps unticked, and as `wont-do` on a relayed refusal; a
+- closes as `done` on the person's report, direct or relayed, that they
+  achieved the requested outcome, including through different steps. It
+  preserves the existing step marks, records the answer as theirs with
+  `option` `done` and no permission, and tells each waiting task to check the
+  result, handing back the same tasks as on the last tick. It closes as
+  `wont-do` on a relayed refusal; a
   relayed report MAY be disputed, which opens it again ([AUTH-5](#auth-5)).
 
 ### 4.6 Decisions and other human requests

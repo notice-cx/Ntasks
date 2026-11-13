@@ -446,6 +446,37 @@ export const human: readonly Check[] = [
     },
   },
   {
+    id: 'state-14-direct-outcome-preserves-step-marks',
+    rule: 'STATE-14',
+    level: 'human',
+    title: 'A person can complete the requested outcome another way, preserving marks and handing waiting work back',
+    senders: ['person'],
+    async run(context) {
+      const person = asPerson(context);
+      const { task, request } = await withSteps(context);
+      answered(await person.decide(request, { kind: 'step', step: 1, done: true }), 'ticking the first step');
+      const before = await stepsOf(context, request);
+      answered(
+        await person.decide(request, {
+          kind: 'performed',
+          note: 'Used the installer instead.',
+          proposalVersion: await proposalOf(context, request),
+        }),
+        'reporting the equivalent outcome',
+      );
+      const closed = await taskOf(context.api(), request);
+      same([closed.status, closed.resolution], ['closed', 'done'], `${request}'s close`);
+      same(await stepsOf(context, request), before, `${request}'s preserved step marks`);
+      const ready = await taskOf(context.api(), task);
+      same(
+        [ready.status, ready.assignee, (ready.labels ?? []).includes('human'), ready.ready],
+        ['open', null, false, true],
+        `${task}'s hand-back`,
+      );
+      expect(closed.answer?.option === 'done', `${request} did not record the person's report as done`);
+    },
+  },
+  {
     id: 'state-14-relayed-report-can-be-disputed',
     rule: 'STATE-14',
     level: 'human',

@@ -1202,10 +1202,17 @@ export function createFixtureTasksApi({
     },
     async reportPerformed(id, key, note, options) {
       reach();
-      once(options?.idempotencyKey, ['performed', id, key, note ?? null], () => {
+      const shown = options?.proposalVersion ?? null;
+      once(options?.idempotencyKey, ['performed', id, key, note ?? null, shown], () => {
         const task = find(id, key);
-        if (task.issueType !== 'gate' || (task.steps ?? null) !== null)
-          throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        if (task.issueType !== 'gate') throw new ApiError(`${id} is not an approval.`, 409, 'task_refused');
+        if (shown !== null && shown !== task.proposalVersion)
+          throw new ApiError(
+            `${id} changed after this page showed it. Read it again, then answer; your answer was not recorded.`,
+            409,
+            'task_refused',
+            'proposalVersion',
+          );
         close(task, note ? `Did it myself: ${note}` : 'Did it myself');
         answerHere(task, 'done', note ?? null);
       });

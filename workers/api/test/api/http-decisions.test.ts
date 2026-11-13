@@ -97,6 +97,7 @@ describe('who may decide', () => {
         [`/api/tasks/${gate.id}/dispute`, {}],
         [`/api/gates/${gate.id}/resolve`, {}],
         [`/api/gates/${gate.id}/performed`, {}],
+        [`/api/gates/${steps}/performed`, {}],
         [`/api/gates/${steps}/steps`, { step: 1, done: true }],
         [`/api/gates/${steps}/steps`, { step: 2, stuck: 'Stopped here.' }],
         [`/api/tasks/${work.id}/accept`, { met: [], proposalVersion: shown }],
@@ -485,25 +486,92 @@ describe('POST /api/gates/:id/performed', () => {
     ]);
   });
 
-  it('closes without a note, and refuses a request to do steps, a task that is not an approval and a closed approval, writing nothing', async () => {
+  it('closes without a note, and refuses a task that is not an approval and a closed approval, writing nothing', async () => {
     const { created } = await task({ requestApproval: { reason: 'Rotate the key once' } });
     expect((await post(`/api/gates/${created[0]!.id}/performed`, {})).body.task).toMatchObject({
       closeReason: 'Did it myself',
       answer: { option: 'done', quote: null },
     });
     const { task: plain } = await task();
-    const steps = (await doRequest()).gate;
-    const before = await Promise.all([plain.id, steps, created[0]!.id].map(current));
+    const before = await Promise.all([plain.id, created[0]!.id].map(current));
     expect((await post(`/api/gates/${plain.id}/performed`, {})).body).toEqual({
       error: 'task_refused',
       detail: `${plain.id} is not an approval.`,
     });
-    expect((await post(`/api/gates/${steps}/performed`, {})).status).toBe(409);
     expect((await post(`/api/gates/${created[0]!.id}/performed`, {})).body).toEqual({
       error: 'task_refused',
       detail: `${created[0]!.id} is already closed.`,
     });
-    expect(await Promise.all([plain.id, steps, created[0]!.id].map(current))).toEqual(before);
+    expect(await Promise.all([plain.id, created[0]!.id].map(current))).toEqual(before);
+  });
+
+  it('completes an equivalent outcome without changing ticks, notes or stuck marks, and tells waiting work to check it', async () => {
+    const { waiting, gate } = await doRequest();
+    await post(`/api/gates/${gate}/steps`, { step: 1, done: true });
+    await post(`/api/gates/${gate}/steps`, {
+      step: 2,
+      note: 'Used the installer.',
+      stuck: 'The script was unavailable.',
+    });
+    const steps = (await current(gate)).steps;
+    const { proposalVersion } = (await get(target, `/api/tasks/${gate}?project=${project.id}`)).body;
+    const reported = await post(`/api/gates/${gate}/performed`, {
+      note: 'Updated through the installer instead.',
+      proposalVersion,
+    });
+
+    expect(reported.body.task).toMatchObject({
+      status: 'closed',
+      resolution: 'done',
+      closedBy: 'Person',
+      closeReason: 'Did it myself: Updated through the installer instead.',
+      steps,
+      answer: { option: 'done', quote: 'Updated through the installer instead.', relayed: false, proposalVersion },
+    });
+    expect((await current(gate)).steps).toEqual(steps);
+    expect((await current(gate)).metadata[MAINTENANCE]).toMatchObject({
+      action: 'owner_performed',
+      performedBy: 'Person',
+      permission: 'none',
+      verification: 'person',
+    });
+    expect(await current(waiting.id)).toMatchObject({ status: 'open', assignee: null, labels: ['ui'], ready: true });
+    expect((await texts(waiting.id)).at(-1)).toBe(
+      `Person did the action of ${gate} themselves, so no agent does it. Check the result yourself before continuing.`,
+    );
+  });
+
+  it('completes an unticked request without a note, replays its retry once, and refuses a later completion', async () => {
+    const { waiting, gate } = await doRequest();
+    const headers = { 'Idempotency-Key': crypto.randomUUID() };
+    const first = await post(`/api/gates/${gate}/performed`, {}, headers);
+    expect(first.body.task).toMatchObject({
+      status: 'closed',
+      closeReason: 'Did it myself',
+      answer: { option: 'done', quote: null },
+    });
+    expect((await current(gate)).steps!.every((step) => step.done === null)).toBe(true);
+    const before = await texts(waiting.id);
+    expect((await post(`/api/gates/${gate}/performed`, {}, headers)).body).toEqual(first.body);
+    expect(await texts(waiting.id)).toEqual(before);
+    expect((await post(`/api/gates/${gate}/performed`, {})).status).toBe(409);
+  });
+
+  it('refuses an old proposal without closing the request or unblocking its waiting work', async () => {
+    const { waiting, gate } = await doRequest();
+    const { proposalVersion } = (await get(target, `/api/tasks/${gate}?project=${project.id}`)).body;
+    const before = await current(gate);
+    await engine.writeTask(
+      project.id,
+      gate,
+      { expectedVersion: before.version, set: { title: 'Update to another release' } },
+      OWNER,
+    );
+    const unchanged = await current(gate);
+    const result = await post(`/api/gates/${gate}/performed`, { proposalVersion });
+    expect(result).toMatchObject({ status: 409, body: { error: 'task_refused', field: 'proposalVersion' } });
+    expect(await current(gate)).toEqual(unchanged);
+    expect((await current(waiting.id)).ready).toBe(false);
   });
 });
 

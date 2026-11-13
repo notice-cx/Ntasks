@@ -315,6 +315,7 @@ export type Decision =
   | { readonly kind: 'respond'; readonly response: string; readonly proposalVersion?: string }
   | { readonly kind: 'dismiss'; readonly reason?: string; readonly resolution?: string }
   | { readonly kind: 'approve'; readonly reason?: string; readonly proposalVersion?: string }
+  | { readonly kind: 'performed'; readonly note?: string; readonly proposalVersion?: string }
   | { readonly kind: 'dispute' }
   /** Frees a task someone holds, on the person's own call (AUTH-9); `holder` is the holder the person was shown. */
   | { readonly kind: 'release'; readonly holder?: string }
