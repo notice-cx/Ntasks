@@ -11,6 +11,12 @@ import { renderApp } from './render';
 const BUILT = 'web-k3m9.1';
 const MERGED = 'docs-y5u2';
 
+async function taskBar() {
+  await screen.findByRole('heading', { level: 1 });
+  const path = screen.getByRole('navigation', { name: 'Path' });
+  return path.closest('header')!;
+}
+
 describe('a closed task with a delivery', () => {
   it('shows merge proof once and keeps notes that add context', async () => {
     const api = createFixtureTasksApi();
@@ -21,9 +27,10 @@ describe('a closed task with a delivery', () => {
       "the task's work named that pull request.";
     task.closeReason = reason;
     const { unmount } = renderApp(`/tasks/${task.id}`, api);
-    const closed = await screen.findByRole('region', { name: 'Closed as Done' });
-    expect(within(closed).getByRole('link', { name: 'example/web#39' })).toBeTruthy();
-    expect(within(closed).queryByText(/which GitHub reported/)).toBeNull();
+    const bar = await taskBar();
+    expect(within(bar).getByRole('link', { name: 'example/web#39' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Closed as Done' })).toBeNull();
+    expect(screen.getByText('closed this', { exact: false })).toBeTruthy();
     unmount();
 
     task.closeReason = 'Checked the password rules with a screen reader.';
@@ -31,14 +38,22 @@ describe('a closed task with a delivery', () => {
     expect(await screen.findByText(task.closeReason)).toBeTruthy();
   });
 
-  it('shows its stage and pull request on its page, and its stage on its row', async () => {
-    const { unmount } = renderApp(`/tasks/${BUILT}`);
-    const closed = await screen.findByRole('region', { name: 'Closed as Done' });
-    const delivery = closed.querySelector('[data-task-delivery]') as HTMLElement;
-    expect(delivery.getAttribute('data-task-delivery')).toBe('built');
+  it('puts the task name after the ID copy button and delivery details in the tinted bar', async () => {
+    renderApp(`/tasks/${BUILT}`);
+    const bar = await taskBar();
+    const path = within(bar).getByRole('navigation', { name: 'Path' });
+    const title = within(path).getByText('Draw the sign-in form');
+    const copy = within(path).getByRole('button', { name: 'Copy the task id' });
+    expect(copy.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar.classList.contains('bg-done/18')).toBe(true);
+    const delivery = bar.querySelector('[data-task-delivery="built"]') as HTMLElement;
+    expect(within(delivery).getByText('Built')).toBeTruthy();
+    expect(within(delivery).getByText('1a2b3c4')).toBeTruthy();
     expect(within(delivery).getByRole('link').getAttribute('href')).toBe('https://github.com/example/web/pull/42');
-    unmount();
+    expect(screen.getAllByRole('link', { name: 'example/web#42' })).toHaveLength(1);
+  });
 
+  it('shows the delivery stage on the task row', async () => {
     renderApp('/tasks?view=done');
     const row = await waitFor(() => {
       const found = document.querySelector(`[data-task-row="${MERGED}"]`);
@@ -58,7 +73,8 @@ describe('marking a closed task live by hand', () => {
     const { unmount } = renderApp(`/tasks/${BUILT}`, api);
     const closed = await screen.findByRole('region', { name: 'Closed as Done' });
     fireEvent.click(within(closed).getByRole('button', { name: 'Mark as live' }));
-    await waitFor(() => expect(stageOn(screen.getByRole('region', { name: 'Closed as Done' }))).toBe('live'));
+    const builtBar = await taskBar();
+    await waitFor(() => expect(stageOn(builtBar)).toBe('live'));
     const live = screen.getByRole('region', { name: 'Closed as Done' });
     expect(within(live).queryByRole('button', { name: 'Mark as live' })).toBeNull();
     unmount();
@@ -66,7 +82,7 @@ describe('marking a closed task live by hand', () => {
     // docs does not deploy, so its merged task has no stage left.
     const { unmount: leave } = renderApp(`/tasks/${MERGED}`, api);
     const merged = await screen.findByRole('region', { name: /^Closed as/u });
-    expect(stageOn(merged)).toBe('merged');
+    expect(stageOn(await taskBar())).toBe('merged');
     expect(within(merged).queryByRole('button', { name: 'Mark as live' })).toBeNull();
     leave();
 
@@ -74,7 +90,8 @@ describe('marking a closed task live by hand', () => {
     renderApp(`/tasks/${MERGED}`, api);
     const waiting = await screen.findByRole('region', { name: /^Closed as/u });
     fireEvent.click(within(waiting).getByRole('button', { name: 'Mark as live' }));
-    await waitFor(() => expect(stageOn(screen.getByRole('region', { name: /^Closed as/u }))).toBe('live'));
+    const waitingBar = await taskBar();
+    await waitFor(() => expect(stageOn(waitingBar)).toBe('live'));
   });
 });
 

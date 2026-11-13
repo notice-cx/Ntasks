@@ -39,6 +39,9 @@ project-filtered Tasks board still open that grouped list.
 **Task page.** Markdown text, Done when, activity and the task's facts.
 On task and epic detail pages, the breadcrumb bar takes the status tint
 and Facts names the status. Done is green and other closures use a neutral tint.
+The breadcrumb ends with the task ID, copy button and task name. A closed
+task's delivery stage, pull request and short commit SHA also appear in the
+bar, with their own line on narrow screens.
 **From the epic** shows any comments pinned on the epic for its tasks.
 A pinned comment is marked Pinned among its own task's comments.
 Detailed comments show their TL;DR or a short preview. Select **Show full
