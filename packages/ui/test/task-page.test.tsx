@@ -119,7 +119,7 @@ describe('a task page', () => {
       {
         id: 'summary',
         author: 'agent:codex',
-        text: `TL;DR: ${summary}\r\n\r\nThe **old link** pointed to [the wrong host](https://example.com/old).`,
+        text: `TL;DR: ${summary} <script>hiddenScript()</script><style>.hidden-style {}</style>\r\n\r\nThe **old link** pointed to [the wrong host](https://example.com/old).`,
         createdAt: '2026-11-05T12:00:00.000Z',
       },
     ]);
@@ -131,6 +131,7 @@ describe('a task page', () => {
     const toggle = activity.getByRole('button', { name: 'Show full comment' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
+    expect(activity.queryByText(/hiddenScript|hidden-style/u)).toBeNull();
     expect(activity.getByRole('link', { name: 'the wrong host' }).getAttribute('href')).toBe('https://example.com/old');
     expect(activity.getByText('old link').tagName).toBe('STRONG');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');

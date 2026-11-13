@@ -60,6 +60,14 @@ const LANGUAGES = { bash, css, diff, javascript, json, markdown, python, sql, ty
 const TASK_ID = /\b[a-z0-9]+-[a-z0-9]+(?:\.[0-9]+)*\b/g;
 const LABELLED = /^(\s*)(WHAT|WHY|WHERE|FIX|HOW):\s*/;
 
+function scriptOrStyleAfter(raw: string, inside: string | null): string | null {
+  const open = /^<(script|style)\b/i.exec(raw)?.[1]?.toLowerCase();
+  const end = /<\/(script|style)\s*>\s*$/i.exec(raw)?.[1]?.toLowerCase();
+  if (open && open !== end) return open;
+  const close = /^<\/(script|style)\s*>/i.exec(raw)?.[1]?.toLowerCase();
+  return inside === close ? null : inside;
+}
+
 const markdownParser = unified().use(remarkParse).use(remarkGfm);
 
 /** Readable text for a collapsed comment, including link labels and code. */
@@ -67,7 +75,13 @@ export function markdownPlainText(source: string): string {
   function words(node: MdastNodes): string {
     if ('children' in node) {
       const inline = node.type === 'paragraph' || node.type === 'heading' || node.type === 'tableCell';
-      return node.children.map(words).join(inline ? '' : ' ');
+      let inside: string | null = null;
+      const pieces: string[] = [];
+      for (const child of node.children) {
+        if (child.type === 'html') inside = scriptOrStyleAfter(child.value, inside);
+        else if (inside === null) pieces.push(words(child));
+      }
+      return pieces.join(inline ? '' : ' ');
     }
     if (node.type === 'image' || node.type === 'imageReference') return node.alt ?? '';
     if (node.type === 'break') return ' ';
@@ -193,10 +207,7 @@ const rehypeDropScriptText: Plugin<[], HastRoot> = () => {
     const kept: ElementContent[] = [];
     for (const child of parent.children as ElementContent[]) {
       if (child.type === 'raw') {
-        const open = /^<(script|style)\b/i.exec(child.value);
-        if (open && !new RegExp(`</${open[1]}\\s*>\\s*$`, 'i').test(child.value))
-          inside = open[1]?.toLowerCase() ?? null;
-        else if (inside !== null && new RegExp(`^</${inside}\\s*>`, 'i').test(child.value)) inside = null;
+        inside = scriptOrStyleAfter(child.value, inside);
         continue;
       }
       if (inside !== null) continue;
