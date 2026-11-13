@@ -77,9 +77,10 @@
     "bindings": [{ "name": "TASK_STORE", "class_name": "TaskStore" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStore"] }],
-  // The store's schema files are imported as text
-  // (workers/api/src/store/schema.ts).
-  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  // The store's schema and task templates are imported as text.
+  "rules": [
+    { "type": "Text", "globs": ["**/*.sql", "**/skills/ntasks/templates/*.md"], "fallthrough": true }
+  ],
   // D1 holds the data that is not tasks, from the files in migrations_dir.
   // database_id is left out. The Deploy to Cloudflare button creates the
   // database and writes its id into the copy of the repository it makes;

@@ -18,10 +18,10 @@ does both:
   <img src="images/agent-access-light.webp" width="380" alt="The agent approval page: the agent's name and address, the access it asks for, the account, where the answer returns to, a project checklist, Deny and Allow.">
 </picture>
 
-The MCP server sends a writing checklist and links to the
-[task templates](#task-templates) when an agent connects. Any connected agent
-can call `get_task_guide` for the full workflow and writing guide. The skill
-tells the agent to file work it finds in any session.
+The MCP server sends a writing checklist when an agent connects. Any
+connected agent can call `get_task_guide` for the full workflow and writing
+guide, and `get_task_template` for the Markdown to start a task, bug or
+decision. The skill tells the agent to file work it finds in any session.
 
 ## Set up with one command
 
@@ -167,7 +167,8 @@ again.
 
 ## Task templates
 
-Before drafting, open the matching Markdown file:
+Before drafting, call `get_task_template` with the matching type. Browse
+the same Markdown files here:
 
 - [Task](../skills/ntasks/templates/task.md): an outcome, its reason and the
   proof that it is done.

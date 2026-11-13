@@ -1361,7 +1361,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'create_task',
     description:
-      'Create a task in a project. Before drafting, read get_task_guide for the writing rules and open the matching Markdown template. ' +
+      'Create a task in a project. Before drafting, read get_task_guide and call get_task_template for the matching Markdown template. ' +
       'claim: true files it claimed by you, and done files finished work closed. ' +
       "The answer's possibleDuplicates names open tasks whose titles share most words with it, and lint the sections it still lacks. " +
       'create_tasks files many in one call.',
@@ -1402,7 +1402,7 @@ export const WRITE_TOOLS: readonly TaskTool[] = Object.freeze([
   {
     name: 'create_tasks',
     description:
-      `Create up to ${BATCH} tasks in one call, each with create_task's fields. Use the writing guide and Markdown templates in get_task_guide. ` +
+      `Create up to ${BATCH} tasks in one call, each with create_task's fields. Read get_task_guide and use get_task_template for the matching templates. ` +
       'A parent or link may name another ' +
       'task of the same call by its place, counting from zero: #0 for the first, #1 for the second, earlier or later. ' +
       'The answer has a result per task, in the call’s order: a task refused does not stop the rest, and the same call sent again never files one twice.',

@@ -16,7 +16,7 @@ import { TITLE_MOST } from './writing.ts';
 /** The writing rules an agent needs on connection, also used by the full guide. */
 const TASK_WRITING: readonly string[] = Object.freeze([
   'Write for a product manager with engineering knowledge who has not seen the conversation. Use familiar words and lead with the outcome or the action you need from them.',
-  '- Before drafting, open the Markdown template for [general work](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/task.md), a [bug](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/bug.md), or a [decision](https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/decision.md). Use the sections that apply. Each file explains how to fill the task fields.',
+  '- Before drafting, call get_task_template with type: task for general work, bug for a failure, or decision for a choice. Use the sections that apply. The template explains how to fill the task fields.',
   `- title: start with a verb, name the outcome or ask, and keep it within ${TITLE_MOST} characters. Leave commands, paths and commit hashes for the body.`,
   '- description: say what and why in the first sentence. Use short paragraphs, one action per numbered step and technical pointers last. Put runnable commands in fenced code blocks.',
   '- acceptance: put a checklist of observable results in the separate acceptance field. Use checks you can verify when the work lands.',
@@ -42,7 +42,7 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
 export const WHATS_CHANGED: readonly string[] = Object.freeze([
   '2026-11-11: list_tasks filters by changed_by, changed_for and changed_in. Progress and close calls can record a test run.',
   "2026-11-11: request_human_approval and create_task's approval take pr for merge approvals.",
-  '2026-11-12: Connection instructions show the writing checklist and all three Markdown templates before the held tasks.',
+  '2026-11-12: Connection instructions show the writing checklist and how to read the Markdown templates with get_task_template.',
 ]);
 
 /** Where everything about a task is kept, so the next person or agent finds it from the task. */
@@ -83,6 +83,7 @@ export const GUIDE_TOOLS: readonly string[] = Object.freeze([
   'list_projects',
   'list_tasks',
   'get_task',
+  'get_task_template',
   'create_task',
   'create_tasks',
   'update_task',
@@ -148,7 +149,7 @@ export async function taskGuide(offered: readonly string[]): Promise<TaskGuide> 
 /**
  * How many characters of a server's instructions an agent is sure to read:
  * Claude Code shows about this many and cuts the rest. Keep the writing
- * checklist, template links and held tasks within it.
+ * checklist, template instructions and held tasks within it.
  */
 export const INSTRUCTIONS_BUDGET = 4096;
 

@@ -26,6 +26,9 @@ import {
 import { MCP_TOOLS, taskServer } from '../../src/mcp/server.ts';
 import { AGENT, clock, newProject, OWNER } from '../engine/helpers.ts';
 import type { Principal } from '../../src/auth.ts';
+import taskMarkdown from '../../../../skills/ntasks/templates/task.md';
+import bugMarkdown from '../../../../skills/ntasks/templates/bug.md';
+import decisionMarkdown from '../../../../skills/ntasks/templates/decision.md';
 import {
   api,
   callTool,
@@ -48,9 +51,6 @@ let project: Project;
 let other: Project;
 /** Task ids by role in the fixture. */
 const ids: Record<string, string> = {};
-
-const templateFiles = ['task.md', 'bug.md', 'decision.md'];
-const templateDirectory = 'https://github.com/notice-cx/Ntasks/blob/main/skills/ntasks/templates/';
 
 beforeAll(async () => {
   target = api({ now: time.now });
@@ -88,7 +88,7 @@ beforeAll(async () => {
 });
 
 describe('tools/list', () => {
-  it("lists NoticeOS's task tools in its order, then Ntasks' own, each but list_workspaces and get_task_guide naming its workspace", async () => {
+  it('lists the server reads and the tools that take a workspace', async () => {
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
         method: 'POST',
@@ -109,6 +109,7 @@ describe('tools/list', () => {
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'list_workspaces',
       'get_task_guide',
+      'get_task_template',
       'reconcile_task',
       'list_projects',
       'get_agent_stats',
@@ -130,13 +131,14 @@ describe('tools/list', () => {
       'define_field',
       'retire_field',
     ]);
-    for (const tool of result.tools.slice(2)) {
+    for (const tool of result.tools.slice(3)) {
       expect(tool.inputSchema.properties, tool.name).toHaveProperty('workspace');
       expect(tool.inputSchema.required, tool.name).not.toContain('workspace');
     }
     const reads = [
       'list_workspaces',
       'get_task_guide',
+      'get_task_template',
       'list_projects',
       'get_agent_stats',
       'list_tasks',
@@ -150,7 +152,7 @@ describe('tools/list', () => {
     for (const name of ['create_task', 'create_tasks']) {
       const description = result.tools.find((tool) => tool.name === name)?.description;
       expect(description).toContain('get_task_guide');
-      expect(description).toMatch(/Markdown template/u);
+      expect(description).toContain('get_task_template');
     }
   });
 });
@@ -160,7 +162,7 @@ describe('list_workspaces and get_task_guide', () => {
     const guide = (await callTool<{ version: string; guide: string }>(target, 'get_task_guide')).value!;
     expect(guide.version).toMatch(/^[0-9a-f]{12}$/u);
     expect(guide.guide.startsWith('# Working with Ntasks tasks')).toBe(true);
-    for (const file of templateFiles) expect(guide.guide).toContain(templateDirectory + file);
+    expect(guide.guide).toContain('call get_task_template');
     expect((await callTool(target, 'list_workspaces')).value).toEqual({
       guideVersion: guide.version,
       workspaces: [
@@ -221,6 +223,22 @@ describe('list_workspaces and get_task_guide', () => {
       'invalid arguments: list_workspaces takes none',
     );
     expect(await refusal(target, 'get_task_guide', { x: 1 })).toBe('invalid arguments: get_task_guide takes none');
+  });
+});
+
+describe('get_task_template', () => {
+  it.each([
+    ['task', taskMarkdown],
+    ['bug', bugMarkdown],
+    ['decision', decisionMarkdown],
+  ])('serves the exact %s Markdown without asking for a workspace', async (type, markdown) => {
+    expect((await callTool(target, 'get_task_template', { type })).value).toEqual({ type, markdown });
+  });
+
+  it('refuses missing or unknown types and arguments', async () => {
+    for (const args of [{}, { type: 'feature' }, { type: '../task' }, { type: ['bug'] }])
+      expect(await refusal(target, 'get_task_template', args)).toBe('invalid arguments: type (task, bug or decision)');
+    expect(await refusal(target, 'get_task_template', { type: 'bug', workspace: WORKSPACE.id })).toContain('workspace');
   });
 });
 
@@ -1014,7 +1032,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(instructions).toBe(taskInstructions(MCP_TOOLS.map((tool) => tool.name)));
   });
 
-  it('include the writing checklist and template links in server discovery', async () => {
+  it('include the writing checklist and template tool in server discovery', async () => {
     const version = '2026-07-28';
     const response = await target.fetch(
       new Request(`${ORIGIN}/api/mcp`, {
@@ -1039,7 +1057,7 @@ describe('the instructions an agent reads when it connects', () => {
     );
     const { result } = (await response.json()) as { result: { instructions: string } };
     const guide = (await callTool<{ guide: string }>(target, 'get_task_guide')).value!.guide;
-    for (const file of templateFiles) expect(result.instructions).toContain(templateDirectory + file);
+    expect(result.instructions).toContain('call get_task_template with type: task');
     for (const field of ['title', 'description', 'acceptance']) {
       const rule = result.instructions.split('\n').find((line) => line.startsWith(`- ${field}: `));
       expect(rule).toBeDefined();
@@ -1101,7 +1119,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(await mixed.connecting!()).toContain(`- ${answered.id} ${answered.title}`);
   });
 
-  it('show the writing checklist, template links and as many held tasks as fit within the budget', async () => {
+  it('show the writing checklist, template tool and as many held tasks as fit within the budget', async () => {
     const own = await newProject(engine);
     const long = (word: string) => Array.from({ length: 60 }, () => word).join(' ');
     for (let index = 0; index < 12; index += 1)
@@ -1120,7 +1138,7 @@ describe('the instructions an agent reads when it connects', () => {
     expect(rule).toBeGreaterThan(instructions.indexOf(more));
     expect(instructions.length).toBeLessThanOrEqual(INSTRUCTIONS_BUDGET);
     const checklist = instructions.slice(0, instructions.indexOf(tasks[0]!));
-    for (const file of templateFiles) expect(checklist).toContain(templateDirectory + file);
+    expect(checklist).toContain('call get_task_template with type: task');
     expect(checklist).toContain('Use familiar words and lead with the outcome');
     expect(checklist).toContain('put a checklist of observable results');
   });

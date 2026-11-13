@@ -151,18 +151,20 @@ versions of the protocol in use: the 2026-07-28 revision, where every request
 names its version, and the earlier revisions that agree a version in an
 `initialize` handshake. It keeps no session and streams nothing. A browser
 may call it only from the Worker's own origin. The Worker answers the list
-of tools, `list_workspaces` and `get_task_guide` from the sender's sign-in,
-and runs every other tool in the task store of the workspace the call names.
+of tools and the server-wide reads (`list_workspaces`, `get_task_guide` and
+`get_task_template`) from the sender's sign-in. It runs every other tool in
+the task store of the workspace the call names.
 
-The server's instructions start with a writing checklist and links to the
-[task templates](agents.md#task-templates). `get_task_guide` returns the full
-writing guide and workflow. The `initialize` response lists the sender's open
-tasks after the checklist, up to ten, most recently active first, one line each
+The server's instructions start with a writing checklist and show how to read
+the [task templates](agents.md#task-templates) through MCP.
+`get_task_guide` returns the full writing guide and workflow. The
+`initialize` response lists the sender's open tasks after the checklist,
+up to ten, most recently active first, one line each
 with the task's id, title, helper, branch, next step and last activity. Past
 ten, or past the room the list has, one more line gives how many more there
 are and the `list_tasks` call that lists them; a sender who holds none gets no
-list. The checklist, links and list fit within the first 4,096 characters so
-clients that cut the instructions there still show them. The Worker reads the
+list. The checklist, template instructions and list fit within the first
+4,096 characters so clients that cut the instructions there still show them. The Worker reads the
 list with one statement per workspace through the store's index of holders.
 The handshake waits at most 1.5 seconds for those reads and lists tasks from
 the stores that answer in time.
@@ -171,6 +173,7 @@ the stores that answer in time.
 |---|---|---|
 | `list_workspaces` | Every workspace the sender reaches, ordered by name, each with its `workspaceId`, `name`, `status`, the sender's `role` in NoticeOS's words (`owner` for its owner, otherwise `operator` with `tasks:write` or `viewer`) and `access`, the scopes the sender holds there; and the guide's version | none |
 | `get_task_guide` | The rules for task work as Markdown, with a version that changes whenever the text does | none |
+| `get_task_template` | The starter template bundled with the server, as `{ type, markdown }`. The Markdown includes prompts and instructions for filling the task fields. | `type` (`task`, `bug` or `decision`) |
 | `reconcile_task` | The task's `id`, `status`, `assignee`, `resolution`, `awaitingHuman`, `answer` and `version`, `closeAcceptance` when it recorded one, and `replayed` ([below](#recording-an-owner-answer)) | `workspace`, `task`, `action`, `proposal_version`, as the action needs `option`, `met`, `quote`, `source`, `explanation`, `evidence`, `duplicate_of`, `holder`, `inactive`, `activity_check` and `progress`, and optionally `project`, `model`, `idempotency_key` and `detail` |
 | `list_projects` | Each project's `projectId`, key, name and prefix; `deploys`, whether its changes go live by a deploy; `disabled`, whether it refuses new tasks; and `websiteUrl`, its website or null | `workspace` |
 | `get_agent_stats` | Agent statistics: `readAt`, `projects` (how many were read), `broken` (always empty: one store answers every project of a workspace) and `stats` ([below](#agent-statistics)) | `workspace`, and optionally `project`; without it, every project the sender reaches there |

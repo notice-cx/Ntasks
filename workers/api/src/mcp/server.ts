@@ -1,9 +1,8 @@
 /**
  * The MCP endpoint's server: the task tools, the workspace every tool but
- * list_workspaces and get_task_guide acts in, and the scope each tool needs.
- * The Worker answers the endpoint with the sender's workspaces from its
- * sign-in: tools/list, list_workspaces and get_task_guide itself, and every
- * other tool call in the store of the workspace its `workspace` argument
+ * the server-wide reads acts in, and the scope each tool needs.
+ * The Worker answers tools/list and the server-wide reads itself, and runs
+ * task tools in the store of the workspace their `workspace` argument
  * names, or of the sender's only workspace when it names none
  * (`runTaskTool`), with the sender scoped to that workspace.
  *
@@ -23,6 +22,7 @@ import type { McpServer, McpTool } from './protocol.ts';
 import { McpToolError, serveMcp } from './protocol.ts';
 import { READ, READ_TOOLS, schema, type TaskTool, type ToolContext } from './read-tools.ts';
 import { TASK_GUIDE_TOOL, taskGuide, taskInstructions } from './guide.ts';
+import { TASK_TEMPLATE_TOOL, TEMPLATE_TYPES, taskTemplate } from './templates.ts';
 import { objectsFromText, staleClientLine, WRITE_TOOLS } from './write-tools.ts';
 import { FIELD_TOOLS } from './field-tools.ts';
 import { GET_AGENT_STATS, RECONCILE_TASK } from './owner-tools.ts';
@@ -82,8 +82,7 @@ function unknownOf(
   return found;
 }
 
-/** Every tool but list_workspaces and get_task_guide acts in a workspace,
- * which a sender who reaches only one need not name. */
+/** Workspace tools let a sender who reaches only one workspace omit it. */
 function inWorkspace(tool: TaskTool): McpTool {
   const input = tool.inputSchema as { properties?: Record<string, unknown> };
   return Object.freeze({
@@ -139,8 +138,25 @@ const GET_TASK_GUIDE: McpTool = Object.freeze({
   name: TASK_GUIDE_TOOL,
   description:
     'The rules for working with Ntasks tasks, as Markdown with a version: the workflow from list_workspaces to close_task, ' +
-    'the writing guide and Markdown templates for tasks, bugs and decisions, and when a person decides. Read it before task work.',
+    'the writing guide, how to read Markdown templates with get_task_template, and when a person decides. Read it before task work.',
   inputSchema: schema({}),
+  annotations: READ,
+});
+
+const GET_TASK_TEMPLATE: McpTool = Object.freeze({
+  name: TASK_TEMPLATE_TOOL,
+  description:
+    'Read the Markdown starter template for a task, bug or decision, including which task fields to fill. Call it before drafting.',
+  inputSchema: schema(
+    {
+      type: {
+        type: 'string',
+        enum: TEMPLATE_TYPES,
+        description: 'Use task for general work, bug for a failure, or decision for a choice.',
+      },
+    },
+    ['type'],
+  ),
   annotations: READ,
 });
 
@@ -157,6 +173,7 @@ const TASK_TOOLS: readonly TaskTool[] = [
 export const MCP_TOOLS: readonly McpTool[] = Object.freeze([
   LIST_WORKSPACES,
   GET_TASK_GUIDE,
+  GET_TASK_TEMPLATE,
   ...TASK_TOOLS.map(inWorkspace),
 ]);
 /** The names of the tools this endpoint offers, which the guide is told. */
@@ -238,6 +255,13 @@ export function taskServer(
       if (name === TASK_GUIDE_TOOL) {
         if (Object.keys(args).length > 0) throw refused(`invalid arguments: ${TASK_GUIDE_TOOL} takes none`);
         return taskGuide(OFFERED);
+      }
+      if (name === TASK_TEMPLATE_TOOL) {
+        const unknown = unknownOf(GET_TASK_TEMPLATE.inputSchema, args);
+        if (unknown.length > 0) throw refused(unknownArguments(unknown));
+        const template = taskTemplate(args.type);
+        if (template === null) throw refused('invalid arguments: type (task, bug or decision)');
+        return template;
       }
       if (name === 'list_workspaces') {
         if (Object.keys(args).length > 0) throw refused('invalid arguments: list_workspaces takes none');
