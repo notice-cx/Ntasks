@@ -205,6 +205,46 @@ describe('routes and methods', () => {
   });
 });
 
+it('returns HTTP 503 when every attempt loses to a concurrent write', async () => {
+  const before = await task();
+  const attemptedVersions: number[] = [];
+  const racing = api({
+    principal: WRITER,
+    engine,
+    wrap: (inner) => ({
+      ...inner,
+      async writeTask(...args) {
+        const expectedVersion = args[2].expectedVersion;
+        attemptedVersions.push(expectedVersion);
+        await inner.writeTask(
+          args[0],
+          args[1],
+          { expectedVersion, set: { description: `Other writer at version ${expectedVersion}.` } },
+          OWNER,
+        );
+        return inner.writeTask(...args);
+      },
+    }),
+  });
+  const path = `/api/tasks/${before.id}`;
+  const change = { projectId: project.id, title: 'The requested edit' };
+  const headers = { 'idempotency-key': key() };
+  expect(await send(racing, 'PATCH', path, change, headers)).toEqual({
+    status: 503,
+    body: { error: 'unavailable', detail: 'The task changed while this change was being made. Try again.' },
+  });
+  expect(attemptedVersions).toEqual([before.version, before.version + 1, before.version + 2]);
+  expect(await current(before.id)).toMatchObject({
+    title: before.title,
+    version: before.version + 3,
+    description: `Other writer at version ${before.version + 2}.`,
+  });
+  expect(await send(target, 'PATCH', path, change, headers)).toMatchObject({
+    status: 200,
+    body: { task: { title: change.title } },
+  });
+});
+
 describe('POST /api/tasks', () => {
   it('files a task and answers its id and project, once per retry key', async () => {
     const body = {
@@ -694,6 +734,26 @@ describe('POST /api/tasks/:id/comments', () => {
 });
 
 describe('POST /api/tasks/:id/close', () => {
+  it('refuses each kind of delivery proof when the close is not done', async () => {
+    const before = await task();
+    const path = `/api/tasks/${before.id}/close`;
+    for (const proof of [
+      { commit: 'a1b2c3d' },
+      { pullRequest: 'https://github.com/example/example/pull/1' },
+      { link: 'https://example.com/evidence' },
+    ]) {
+      expect(
+        await send(target, 'POST', path, {
+          projectId: project.id,
+          reason: 'Dropped.',
+          resolution: 'wont-do',
+          ...proof,
+        }),
+      ).toMatchObject({ status: 400, body: { error: 'invalid_request' } });
+    }
+    expect(await current(before.id)).toEqual(before);
+  });
+
   it('closes a task once per retry key, and refuses a second close', async () => {
     const { id } = await task();
     const headers = { 'idempotency-key': key() };

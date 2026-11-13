@@ -44,7 +44,7 @@ claimed.
 <a id="oq-4"></a> ([STATE-2](protocol.md#state-2),
 [STATE-3](protocol.md#state-3)) Ready work checks the defer time, and a
 claim refuses the `deferred` status, but either can be set without the
-other. No test covers a claim of a deferred task.
+other.
 
 ### OQ-5
 
@@ -78,8 +78,7 @@ agents. A person cannot dispute it.
 or link is shown as `proof: "none"` and warned about, never refused. The
 server does not check that a named commit exists or holds the change. A
 higher level could refuse a done close without proof, or check proof
-against the repository. No test covers approvals closing without proof, or
-each of bug, feature and chore needing it.
+against the repository.
 
 ### OQ-9
 
@@ -148,11 +147,10 @@ person, will add a second way to answer directly.
 
 **Should a model be verified?** <a id="oq-16"></a>
 ([AUTH-2](protocol.md#auth-2)) The model is whatever the agent says it runs
-as. No test checks the model recorded in a history event. A server keeps
-the words given and works out the model's id and display name from them
-([3.1.1](protocol.md#311-display-names)), so different spellings of one
-model are shown and counted as one; a model no rule knows is shown as
-given.
+as. A server keeps the words given and works out the model's id and display
+name from them ([3.1.1](protocol.md#311-display-names)), so different
+spellings of one model are shown and counted as one. A model no rule knows
+is shown as given.
 
 ### OQ-17
 

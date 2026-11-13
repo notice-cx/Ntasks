@@ -367,14 +367,18 @@ describe('list_tasks', () => {
     later.advance(2 * 60);
 
     expect([await stalled(quiet.id), await stalled(busy.id), await stalled(handed.id)]).toEqual([true, false, true]);
-    // Stalled is shown only: a day of quiet leaves the claim as it was.
-    expect(await own.engine.getTask(where.id, quiet.id)).toMatchObject({ status: 'in_progress', assignee: AGENT.name });
     expect((await list({ stalled: true })).map((task) => task.id).sort()).toEqual([quiet.id, handed.id].sort());
     const rows = await list({});
     expect(rows.find((row) => row.id === quiet.id)).toMatchObject({ stalled: true });
     expect(rows.find((row) => row.id === busy.id)).not.toHaveProperty('stalled');
     // A task nobody holds is never stalled, however long it waits.
     expect(await stalled((await make('Write the launch post')).id)).toBe(false);
+
+    const before = await own.engine.getTask(where.id, quiet.id);
+    later.advance(365 * 24 * 60);
+    expect(await stalled(quiet.id)).toBe(true);
+    expect((await list({ ready: true })).map((task) => task.id)).not.toContain(quiet.id);
+    expect(await own.engine.getTask(where.id, quiet.id)).toEqual(before);
   });
 
   it('names the linked tasks dropped since a task last changed, on the task and only on its list row', async () => {
@@ -916,6 +920,8 @@ describe('get_task_history', () => {
   interface Change {
     revision: string;
     actor: string;
+    model: string | null;
+    at: string;
     actions?: string[];
     fields?: Record<string, { old: unknown; new: unknown }>;
     task?: Record<string, unknown>;
@@ -932,6 +938,28 @@ describe('get_task_history', () => {
       status: { old: 'open', new: 'in_progress' },
     });
     expect(Number(changes[0]!.revision)).toBeGreaterThan(Number(changes[1]!.revision));
+  });
+
+  it('keeps the actor, model and timestamp for each historical change', async () => {
+    const when = clock();
+    const own = api({ now: when.now });
+    const where = await newProject(own.engine);
+    const createdAt = when.now();
+    const { task } = await own.engine.createTask(where.id, { title: 'Record attribution' }, AGENT);
+    when.advance(1);
+    const updatedAt = when.now();
+    await own.engine.writeTask(
+      where.id,
+      task.id,
+      { expectedVersion: task.version, set: { description: 'Reviewed.' } },
+      OWNER,
+    );
+
+    const { changes } = await read<{ changes: Change[] }>(own, 'get_task_history', { task: task.id });
+    expect(changes).toMatchObject([
+      { actor: OWNER.name, model: null, at: updatedAt, actions: ['updated'] },
+      { actor: AGENT.name, model: AGENT.model, at: createdAt, actions: ['created'] },
+    ]);
   });
 
   it('returns whole versions with snapshots, leaving comments out', async () => {

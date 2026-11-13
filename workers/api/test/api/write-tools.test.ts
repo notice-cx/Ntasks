@@ -1294,6 +1294,39 @@ describe('claim_task', () => {
     );
   });
 
+  it('refuses deferred and legacy unassigned in-progress claims without writing', async () => {
+    const project = await newProject(engine);
+    const queued = await task(project, { title: 'Deferred' });
+    const { task: deferred } = await engine.writeTask(
+      project.id,
+      queued.id,
+      { expectedVersion: queued.version, set: { status: 'deferred' } },
+      OWNER,
+    );
+    const unassigned = await task(project, { title: 'Imported task' });
+    const legacy = api({
+      principal: WRITER,
+      engine,
+      wrap: (inner) => ({
+        ...inner,
+        async getTask(projectId, id) {
+          const found = await inner.getTask(projectId, id);
+          return found?.id === unassigned.id ? { ...found, status: 'in_progress', ready: false } : found;
+        },
+      }),
+    });
+
+    for (const [client, before, status] of [
+      [target, deferred, 'deferred'],
+      [legacy, unassigned, 'in_progress'],
+    ] as const) {
+      expect(await refusal(client, 'claim_task', { workspace: WORKSPACE.id, task: before.id })).toContain(
+        `has status ${status}, and claim_task takes an open task`,
+      );
+      expect(await current(project, before.id)).toEqual(before);
+    }
+  });
+
   it('lets exactly one of two agents claiming at once take the task (rule 1)', async () => {
     const project = await newProject(engine);
     const { id } = await task(project);
@@ -3303,18 +3336,21 @@ describe('close_task on several tasks', () => {
 });
 
 describe('proof of work closed as done', () => {
-  it('shows proof none on a task done with no commit, pull request or link, and warns its closer', async () => {
-    const project = await newProject(engine);
-    const plain = await task(project, { title: 'Write the runbook' });
-    const reply = await write<{ warnings?: string[] }>(target, 'close_task', { task: plain.id, reason: 'Written.' });
-    expect(reply.warnings).toHaveLength(1);
-    expect(reply.warnings?.[0]).toContain(plain.id);
-    expect((await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: plain.id })).task.proof).toBe(
-      'none',
-    );
-    const listed = await read<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
-    expect(listed.tasks.find((row) => row.id === plain.id)?.proof).toBe('none');
-  });
+  it.each(['task', 'bug', 'feature', 'chore'] as const)(
+    'shows proof none on a %s done without evidence and warns its closer',
+    async (type) => {
+      const project = await newProject(engine);
+      const plain = await task(project, { title: 'Write the runbook', type });
+      const reply = await write<{ warnings?: string[] }>(target, 'close_task', { task: plain.id, reason: 'Written.' });
+      expect(reply.warnings).toHaveLength(1);
+      expect(reply.warnings?.[0]).toContain(plain.id);
+      expect((await read<{ task: Record<string, unknown> }>(target, 'get_task', { task: plain.id })).task.proof).toBe(
+        'none',
+      );
+      const listed = await read<{ tasks: Record<string, unknown>[] }>(target, 'list_tasks', { project: project.id });
+      expect(listed.tasks.find((row) => row.id === plain.id)?.proof).toBe('none');
+    },
+  );
 
   it('counts a link, a commit or pull request, or the ones its holder recorded, as proof, and exempts decisions and epics', async () => {
     const project = await newProject(engine);
