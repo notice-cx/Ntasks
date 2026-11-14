@@ -253,6 +253,7 @@ export function AcceptForm({
   project,
   acceptance,
   proposalVersion,
+  reviewing = false,
   onDone,
 }: {
   id: string;
@@ -260,6 +261,7 @@ export function AcceptForm({
   acceptance: string;
   /** The proposal version the page shows, which the acceptance names. */
   proposalVersion: string | null;
+  reviewing?: boolean;
   onDone: () => void;
 }) {
   // The criteria and the proposal version as the form opened: the ticks are
@@ -315,11 +317,13 @@ export function AcceptForm({
     >
       <span className="inline-flex items-center gap-1.5 text-label font-semibold text-ink [&_svg]:size-[15px] [&_svg]:text-ink-3">
         <UserCheck aria-hidden />
-        {ACCEPT_LABEL}
+        {reviewing ? 'Review Done when' : ACCEPT_LABEL}
       </span>
       {criteria.length > 0 ? (
         <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-          <legend className="mb-1.5 p-0 text-label text-ink-2">Tick what is met. The rest is waived.</legend>
+          <legend className="mb-1.5 p-0 text-label text-ink-2">
+            {reviewing ? 'Check the items you completed.' : 'Tick what is met. The rest is waived.'}
+          </legend>
           {criteria.map((criterion, index) => (
             <label key={index} className="flex items-start gap-2 text-sm text-ink" data-accept-criterion="">
               <input
@@ -339,7 +343,13 @@ export function AcceptForm({
         </Field>
         <Button variant="primary" type="submit" disabled={accept.isPending} data-task-confirm="accept">
           <Check aria-hidden strokeWidth={2} />
-          {accept.isPending ? 'Closing…' : waived === 0 ? 'Close as done' : `Close, waiving ${waivedCount(waived)}`}
+          {accept.isPending
+            ? 'Closing…'
+            : waived === 0
+              ? 'Close as done'
+              : reviewing
+                ? `Close with ${waived} unchecked ${waived === 1 ? 'item' : 'items'}`
+                : `Close, waiving ${waivedCount(waived)}`}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

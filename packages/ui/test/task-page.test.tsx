@@ -834,6 +834,66 @@ describe('a task page', () => {
     });
   });
 
+  describe('Mark done', () => {
+    it('closes from the task page after both checklist items are saved and removes it from Waiting for you', async () => {
+      const api = createFixtureTasksApi();
+      const entry = task(api, 'web-q8n5')!;
+      Object.assign(entry, {
+        issueType: 'task',
+        title: 'Update the support address',
+        description: 'Update the address shown on the error page.',
+        acceptance: '- [ ] Change the address\n- [ ] Verify the error page',
+        proposalVersion: 'a'.repeat(32),
+      });
+      renderApp('/tasks?view=waiting', api);
+      const waiting = await screen.findByRole('region', { name: 'Waiting for you' });
+      const row = waiting.querySelector('[data-task-row="web-q8n5"]') as HTMLElement;
+      fireEvent.click(within(row).getByRole('link', { name: 'Review task' }));
+      const markDone = await enabledButton('Mark done');
+      expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull();
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Change the address' }));
+      expect(markDone.disabled).toBe(true);
+      await enabledButton('Mark done');
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Verify the error page' }));
+      await enabledButton('Mark done');
+      expect(entry.status).toBe('open');
+
+      fireEvent.click(markDone);
+      expect(screen.queryByRole('textbox', { name: /Your answer/ })).toBeNull();
+      await screen.findByRole('region', { name: 'Closed as Done' });
+      expect(entry.closeAcceptance?.criteria.map((criterion) => criterion.met)).toEqual([true, true]);
+      expect(api.state.comments.get(entry.id)).toBeUndefined();
+      fireEvent.click(screen.getByRole('link', { name: /^Waiting for you/ }));
+      const refreshed = await screen.findByRole('region', { name: 'Waiting for you' });
+      expect(within(refreshed).queryByText(entry.title)).toBeNull();
+    });
+
+    it('asks for explicit confirmation when a criterion is still unchecked', async () => {
+      const api = createFixtureTasksApi();
+      const entry = task(api, 'web-q8n5')!;
+      entry.issueType = 'task';
+      entry.acceptance = '- [x] Change the address\n- [ ] Verify the error page';
+      renderApp(`/tasks/${entry.id}`, api);
+      fireEvent.click(await enabledButton('Mark done'));
+      expect(await screen.findByText('Review Done when')).toBeTruthy();
+      expect(entry.status).toBe('open');
+      fireEvent.click(screen.getByRole('button', { name: 'Close with 1 unchecked item' }));
+      await screen.findByRole('region', { name: 'Closed as Done' });
+      expect(entry.closeAcceptance?.criteria.map((criterion) => criterion.met)).toEqual([true, false]);
+    });
+
+    it('closes a task that has no Done when items without prompting for text', async () => {
+      const api = createFixtureTasksApi();
+      const entry = task(api, 'web-q8n5')!;
+      entry.issueType = 'task';
+      entry.acceptance = '';
+      renderApp(`/tasks/${entry.id}`, api);
+      fireEvent.click(await enabledButton('Mark done'));
+      await screen.findByRole('region', { name: 'Closed as Done' });
+      expect(entry.closeAcceptance?.criteria).toEqual([]);
+    });
+  });
+
   describe('a test run', () => {
     it('shows the run a comment and a close reported, under each, and none under a comment that reported none', async () => {
       const api = createFixtureTasksApi();

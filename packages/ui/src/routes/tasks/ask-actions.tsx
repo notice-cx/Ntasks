@@ -1,11 +1,21 @@
 import { lazy, Suspense, useId, useState, type ReactNode } from 'react';
-import { Check, CheckCheck, CornerDownLeft, GitPullRequest, ListChecks, SendHorizontal } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Check,
+  CheckCheck,
+  CornerDownLeft,
+  GitPullRequest,
+  ListChecks,
+  SendHorizontal,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { TaskChoiceKey, TaskChoices, TaskStep } from '../../api/types';
 import { Button } from '../../components/ui/button';
 import { Segmented } from '../../components/ui/choice';
 import { Field, Input, Textarea } from '../../components/ui/field';
 import { useInboxAnswer } from '../../hooks/useTasks';
 import { pullRequestName } from '../../lib/format';
+import { usePaths } from '../../lib/paths';
 import { PERFORMED_LABEL, stepsDone, type InboxAsk } from '../../lib/task-model';
 import { cn } from '../../lib/utils';
 
@@ -18,7 +28,8 @@ const StepList = lazy(() => import('./step-list').then((module) => ({ default: m
  * auto-merge Approve turns on when the approval gates one; the options side by
  * side on a decision (one press answers), Answer on a question, which opens a
  * box under the row, and Your steps beside Did it myself on a request to do
- * steps. Your steps opens its steps under the row. Every answer waits in the Undo window.
+ * steps. Your steps opens its steps under the row. A task to complete opens its task page.
+ * Every answer waits in the Undo window.
  * `buttons` sit beside the title and `box` under it; both are null when
  * nothing is asked. Closing as something else is in the row's menu.
  */
@@ -59,6 +70,7 @@ export function useAskActions({
   const [performing, setPerforming] = useState(false);
   const [text, setText] = useState('');
   const answer = useInboxAnswer();
+  const paths = usePaths();
   const reasonId = useId();
   const mergeId = useId();
   const disabled = disabledReason !== null;
@@ -147,6 +159,12 @@ export function useAskActions({
         Approve
       </Button>
     </>
+  ) : ask === 'done' ? (
+    <Button asChild size="sm">
+      <Link to={paths.task(id)}>
+        Review task <ArrowUpRight aria-hidden />
+      </Link>
+    </Button>
   ) : choosing ? (
     <Segmented
       question={choices.question}
@@ -373,6 +391,7 @@ export function AnswerForm({
   onSend,
   onCancel,
   size = 'md',
+  handBack = false,
 }: {
   id: string;
   text: string;
@@ -380,21 +399,27 @@ export function AnswerForm({
   onSend: () => void;
   onCancel: () => void;
   size?: 'sm' | 'md';
+  handBack?: boolean;
 }) {
   return (
     <form
-      className="flex items-start gap-2 max-sm:flex-wrap"
+      className="flex flex-wrap items-start gap-2"
       data-task-form="answer"
       onSubmit={(event) => {
         event.preventDefault();
         onSend();
       }}
     >
+      {handBack ? (
+        <p className="m-0 basis-full text-label text-ink-2">
+          Your reply goes on the task and returns it to the agents’ queue.
+        </p>
+      ) : null}
       <span className="min-w-0 flex-1 max-sm:basis-full">
         <Textarea
           autoFocus
           rows={2}
-          aria-label={`Your answer to ${id}`}
+          aria-label={`Your ${handBack ? 'reply' : 'answer'} to ${id}`}
           value={text}
           onChange={(event) => onText(event.target.value)}
           onKeyDown={(event) => {
@@ -411,7 +436,7 @@ export function AnswerForm({
       </span>
       <Button variant="primary" type="submit" size={size} disabled={text.trim() === ''} data-task-confirm="answer">
         <SendHorizontal aria-hidden />
-        Send
+        {handBack ? 'Reply and return task' : 'Save answer'}
       </Button>
       <Button type="button" size={size} variant="ghost" onClick={onCancel}>
         Cancel

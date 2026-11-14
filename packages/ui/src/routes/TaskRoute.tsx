@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ACCEPTED_REASON, isTaskId, type TaskResolution } from '@ntasks/domain';
+import { ACCEPTED_REASON, criteriaOf, isTaskId, type TaskResolution } from '@ntasks/domain';
 import { ApiError } from '../api/client';
 import type {
   LiveEpic,
@@ -49,6 +49,7 @@ import { useShortcut } from '../hooks/useShortcut';
 import {
   fieldAvailable,
   operationAvailable,
+  useAcceptTask,
   useAnswerHides,
   useBoards,
   useCapabilities,
@@ -279,8 +280,10 @@ function TaskPage({
   const capabilities = useCapabilities();
   const hides = useAnswerHides();
   const answer = useInboxAnswer();
+  const accept = useAcceptTask();
   const [panel, setPanel] = useState<Panel>(null);
   const [editing, setEditing] = useState<TextField | null>(null);
+  const [ticking, setTicking] = useState(false);
   const [addingLink, setAddingLink] = useState(false);
   const [answerText, setAnswerText] = useState('');
   const [option, setOption] = useState<TaskChoiceKey | null>(null);
@@ -306,6 +309,7 @@ function TaskPage({
   const askReason = reasonFor(
     operationAvailable(capabilities, ask === 'approve' ? 'resolve' : ask === 'do' ? 'step' : 'respond'),
   );
+  const markDoneReason = reasonFor(operationAvailable(capabilities, 'accept'));
   const steps = task.steps ?? null;
   const chooseReason = reasonFor(operationAvailable(capabilities, 'choose'));
   const performedReason = reasonFor(operationAvailable(capabilities, 'performed'));
@@ -349,6 +353,27 @@ function TaskPage({
     setPanel(null);
   }
 
+  async function markDone() {
+    closeAs.cancel();
+    const criteria = criteriaOf(task.acceptance);
+    if (criteria.some((criterion) => !criterion.ticked)) {
+      setPanel({ kind: 'accept' });
+      return;
+    }
+
+    setPanel(null);
+    try {
+      await accept.mutateAsync({
+        id: task.id,
+        project: key,
+        met: criteria.map((_, index) => index + 1),
+        proposalVersion: shown,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : `Could not close ${task.id}`);
+    }
+  }
+
   function choose(key: TaskChoiceKey) {
     const label = choices?.options.find((entry) => entry.key === key)?.label;
     const said = note.trim();
@@ -371,7 +396,7 @@ function TaskPage({
       iconOnPhone={variant === 'secondary'}
       disabledReason={closeReason}
       onPick={pickClose}
-      {...(acceptOffered
+      {...(acceptOffered && ask !== 'done'
         ? {
             onAccept: () => {
               closeAs.cancel();
@@ -423,7 +448,25 @@ function TaskPage({
     actions = (
       <>
         {closeMenu('Close as', false, 'secondary')}
-        {ask === 'answer' ? (
+        {ask === 'done' ? (
+          <Button
+            type="button"
+            variant="primary"
+            disabled={
+              markDoneReason !== null ||
+              ticking ||
+              editing === 'acceptance' ||
+              panel?.kind === 'accept' ||
+              accept.isPending
+            }
+            title={markDoneReason ?? undefined}
+            onClick={() => void markDone()}
+            data-task-action="mark-done"
+          >
+            <Check aria-hidden strokeWidth={2} />
+            {accept.isPending ? 'Marking done…' : 'Mark done'}
+          </Button>
+        ) : ask === 'answer' ? (
           <Button
             variant="primary"
             aria-expanded={panel?.kind === 'answer'}
@@ -454,12 +497,13 @@ function TaskPage({
     closeAs.box ??
     (panel?.kind === 'close-done' ? (
       <CloseDoneForm id={task.id} project={key} multiline onDone={() => setPanel(null)} />
-    ) : panel?.kind === 'accept' ? (
+    ) : panel?.kind === 'accept' && !closed ? (
       <AcceptForm
         id={task.id}
         project={key}
         acceptance={task.acceptance}
         proposalVersion={shown}
+        reviewing={ask === 'done'}
         onDone={() => setPanel(null)}
       />
     ) : panel?.kind === 'move' ? (
@@ -474,13 +518,14 @@ function TaskPage({
         }}
         onCancel={() => setPanel(null)}
       />
-    ) : panel?.kind === 'answer' && ask === 'answer' ? (
+    ) : panel?.kind === 'answer' && (ask === 'answer' || ask === 'done') ? (
       <AnswerForm
         id={task.id}
         text={answerText}
         onText={setAnswerText}
         onSend={sendAnswer}
         onCancel={() => setPanel(null)}
+        handBack={ask === 'done'}
       />
     ) : null);
 
@@ -534,6 +579,14 @@ function TaskPage({
             task={task}
             onEdit={setEditing}
             onAddLink={() => setAddingLink(true)}
+            onReply={
+              ask === 'done' && askReason === null
+                ? () => {
+                    closeAs.cancel();
+                    setPanel({ kind: 'answer' });
+                  }
+                : null
+            }
             onMove={
               // Moving came after the other writes, so only an Ntasks that lists it offers it.
               !closed && operationAvailable(capabilities, 'move') && capabilities.operations?.includes('move') === true
@@ -637,6 +690,9 @@ function TaskPage({
             project={key}
             editing={editing}
             onEditing={setEditing}
+            ticking={ticking}
+            reviewing={panel?.kind === 'accept' || accept.isPending}
+            onTicking={setTicking}
             decision={
               steps !== null ? (
                 <StepList
@@ -805,12 +861,14 @@ function MoreMenu({
   task,
   onEdit,
   onAddLink,
+  onReply,
   onMove,
   canEdit,
 }: {
   task: Pick<LiveTask, 'id' | 'description' | 'acceptance' | 'design' | 'notes'>;
   onEdit: (field: TextField) => void;
   onAddLink: () => void;
+  onReply: (() => void) | null;
   /** Opens Move to…; null where this sign-in may not move the task. */
   onMove: (() => void) | null;
   canEdit: (field: string) => boolean;
@@ -822,6 +880,11 @@ function MoreMenu({
         <IconButton label="More" icon={<Ellipsis aria-hidden />} />
       </MenuTrigger>
       <MenuContent label={`Actions for ${task.id}`} align="end">
+        {onReply ? (
+          <MenuItem icon={<Reply aria-hidden />} onSelect={onReply}>
+            Reply to agent
+          </MenuItem>
+        ) : null}
         {fields
           .filter((field) => canEdit(field))
           .map((field) => {
@@ -875,34 +938,39 @@ function TaskText({
   project,
   editing,
   onEditing,
+  ticking,
+  reviewing,
+  onTicking,
   decision,
 }: {
   task: LiveTask;
   project: string;
   editing: TextField | null;
   onEditing: (field: TextField | null) => void;
+  ticking: boolean;
+  reviewing: boolean;
+  onTicking: (ticking: boolean) => void;
   decision: ReactNode;
 }) {
   const capabilities = useCapabilities();
   const save = useFieldSave(task.id, project);
   const closed = task.status === 'closed';
   const [shown, setShown] = useState<string | null>(null);
-  const [ticking, setTicking] = useState(false);
   useEffect(() => setShown(null), [task.acceptance]);
   const acceptance = shown ?? task.acceptance;
   const checklist = taskListItems(acceptance);
-  const canTick = fieldAvailable(capabilities, 'acceptance');
+  const canTick = !closed && fieldAvailable(capabilities, 'acceptance');
 
   /** A ticked box writes the whole text with that one box flipped; the flipped text shows until the next read. */
   async function tick(line: number) {
     const next = toggleTaskListLine(acceptance, line);
     if (next === acceptance || ticking) return;
     setShown(next);
-    setTicking(true);
+    onTicking(true);
     try {
       if (!(await save({ label: 'Done when', edit: { acceptance: next }, undo: { acceptance } }))) setShown(null);
     } finally {
-      setTicking(false);
+      onTicking(false);
     }
   }
 
@@ -937,7 +1005,7 @@ function TaskText({
       >
         <MarkdownText
           source={acceptance}
-          toggleDisabled={ticking}
+          toggleDisabled={ticking || reviewing}
           {...(canTick && checklist.total > 0 ? { onToggleTask: (line: number) => void tick(line) } : {})}
         />
       </LongText>

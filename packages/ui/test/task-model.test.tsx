@@ -47,7 +47,8 @@ function task(fields: Partial<LiveTask>): LiveTask {
 describe('what waits on a person', () => {
   it('is an open approval, or a ready task labelled human that nobody answered', () => {
     expect(inboxAsk(task({ issueType: 'gate', awaitType: 'human', ready: false }))).toBe('approve');
-    expect(inboxAsk(task({ labels: ['human'] }))).toBe('answer');
+    expect(inboxAsk(task({ labels: ['human'] }))).toBe('done');
+    expect(inboxAsk(task({ labels: ['human'], issueType: 'decision' }))).toBe('answer');
     expect(
       inboxAsk(
         task({

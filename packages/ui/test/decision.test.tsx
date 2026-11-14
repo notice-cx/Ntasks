@@ -83,10 +83,8 @@ describe('answering a decision', () => {
     fireEvent.change(box, { target: { value: 'support@example.com' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     await waitOutUndo();
-    // A question that is not a decision goes back to ready work, its answer a comment.
-    await waitFor(() => expect(task(api, 'web-q8n5')?.labels).not.toContain('human'));
+    await waitFor(() => expect(task(api, 'web-q8n5')?.status).toBe('closed'));
     expect(api.state.comments.get('web-q8n5')?.[0]?.text).toBe('support@example.com');
-    expect(task(api, 'web-q8n5')?.status).toBe('open');
   });
 
   it('answers a question on its page', async () => {
@@ -95,7 +93,7 @@ describe('answering a decision', () => {
     fireEvent.click(await enabledButton('Answer'));
     const box = screen.getByRole('textbox', { name: 'Your answer to web-q8n5' });
     fireEvent.change(box, { target: { value: 'help@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save answer' }));
     // The answer waits in the Undo window, and the page offers nothing more to do meanwhile.
     expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull();
     await waitOutUndo();
@@ -116,5 +114,22 @@ describe('answering a decision', () => {
     await waitFor(() => expect(task(api, 'web-q8n5')?.status).toBe('closed'));
     expect(task(api, 'web-q8n5')?.resolution).toBe('wont-do');
     expect(task(api, 'web-q8n5')?.closeReason).toBe('Dismissed: The page will not name an address.');
+  });
+
+  it('lets a person reply and return a task to the agents’ queue', async () => {
+    const api = createFixtureTasksApi();
+    task(api, 'web-q8n5')!.issueType = 'task';
+    renderApp('/tasks/web-q8n5', api);
+    await enabledButton('Mark done');
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reply to agent' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your reply to web-q8n5' }), {
+      target: { value: 'Please use help@example.com.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reply and return task' }));
+    await waitOutUndo();
+    await waitFor(() => expect(task(api, 'web-q8n5')?.labels).not.toContain('human'));
+    expect(task(api, 'web-q8n5')?.status).toBe('open');
+    expect(api.state.comments.get('web-q8n5')?.[0]?.text).toBe('Please use help@example.com.');
   });
 });
