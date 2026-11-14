@@ -34,6 +34,9 @@ describe('the Done, my call form', () => {
     expect(screen.queryByRole('checkbox', { name: 'Announced.' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close, waiving 1 criterion' }));
     await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
-    expect(accept).toHaveBeenCalledWith('web-b2r6', 'web', [2], { proposalVersion: 'a'.repeat(32) });
+    expect(accept).toHaveBeenCalledWith('web-b2r6', 'web', [2], {
+      proposalVersion: 'a'.repeat(32),
+      idempotencyKey: expect.any(String),
+    });
   });
 });

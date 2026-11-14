@@ -348,7 +348,7 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
 /**
  * A row in Waiting for you: what it asks answered in place, an approval by
  * Approve or Did it myself, after the pull request whose auto-merge Approve
- * turns on, a decision by its options, a question by Answer.
+ * turns on, a decision by its options, and a question by Answer. Work to complete opens its task page.
  */
 export const WaitingRow = memo(function WaitingRow({
   task,
@@ -361,6 +361,7 @@ export const WaitingRow = memo(function WaitingRow({
 }) {
   const { capabilities } = context;
   const paths = usePaths();
+  const ask = askVerb(task);
   const closeAs = useCloseAs({
     id: task.id,
     title: task.title,
@@ -369,7 +370,7 @@ export const WaitingRow = memo(function WaitingRow({
     via: 'dismiss',
   });
   const { buttons, box } = useAskActions({
-    ask: askVerb(task),
+    ask,
     id: task.id,
     title: task.title,
     project: task.project,
@@ -378,12 +379,14 @@ export const WaitingRow = memo(function WaitingRow({
     steps: task.steps ?? null,
     pullRequest: task.pullRequest ?? null,
     canDecline: writable && capabilities.operations?.includes('decline') === true,
-    disabledReason: verbReason(
-      capabilities,
-      writable &&
-        operationAvailable(capabilities, askVerb(task) === 'do' ? 'step' : isGate(task) ? 'resolve' : 'respond'),
-      UNAVAILABLE,
-    ),
+    disabledReason:
+      ask === 'done'
+        ? null
+        : verbReason(
+            capabilities,
+            writable && operationAvailable(capabilities, ask === 'do' ? 'step' : isGate(task) ? 'resolve' : 'respond'),
+            UNAVAILABLE,
+          ),
     chooseDisabledReason: verbReason(capabilities, writable && operationAvailable(capabilities, 'choose'), UNAVAILABLE),
     performedDisabledReason: verbReason(
       capabilities,
@@ -392,8 +395,8 @@ export const WaitingRow = memo(function WaitingRow({
     ),
   });
   const closable = writable && !isGate(task) && operationAvailable(capabilities, 'dismiss');
-  const choosing = askVerb(task) === 'choose' && (task.choices ?? null) !== null;
-  const gated = askVerb(task) === 'approve' && (task.pullRequest ?? null) !== null;
+  const choosing = ask === 'choose' && (task.choices ?? null) !== null;
+  const gated = ask === 'approve' && (task.pullRequest ?? null) !== null;
   const [menu, setMenu] = useState<MenuList | null>(null);
   return (
     <>

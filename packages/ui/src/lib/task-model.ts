@@ -119,12 +119,13 @@ export function waitsOnPerson(task: AskFacts): boolean {
   return (task.choice ?? null) === null && task.issueType !== 'epic' && task.labels.includes('human') && task.ready;
 }
 
-/** What a task waiting on a person asks of them: an approval, an answer, a pick of an option, or steps to do. */
-export type InboxAsk = 'approve' | 'answer' | 'choose' | 'do';
+/** What a task waiting on a person asks of them. */
+export type InboxAsk = 'approve' | 'answer' | 'choose' | 'do' | 'done';
 
 export function askVerb(task: Pick<AskFacts, 'issueType' | 'awaitType' | 'choices' | 'choice' | 'steps'>): InboxAsk {
   if (isGate(task)) return (task.steps ?? null) === null ? 'approve' : 'do';
-  return (task.choices ?? null) !== null && (task.choice ?? null) === null ? 'choose' : 'answer';
+  if ((task.choices ?? null) !== null && (task.choice ?? null) === null) return 'choose';
+  return task.issueType === 'decision' ? 'answer' : 'done';
 }
 
 /** How many of a request's steps are ticked. */

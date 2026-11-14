@@ -344,6 +344,7 @@ export function useCommentOnTask() {
 export function useAcceptTask() {
   const api = useTasksApi();
   const refresh = useTaskRefresh();
+  const retry = useRetryKey();
   return useMutation({
     mutationFn: ({
       id,
@@ -357,8 +358,16 @@ export function useAcceptTask() {
       met: readonly number[];
       reason?: string;
       proposalVersion: string | null;
-    }) => api.accept(id, project, met, { ...(reason === undefined ? {} : { reason }), proposalVersion }),
-    onSuccess: () => refresh(),
+    }) =>
+      api.accept(id, project, met, {
+        ...(reason === undefined ? {} : { reason }),
+        proposalVersion,
+        idempotencyKey: retry.keyFor(JSON.stringify([id, project, met, reason, proposalVersion])),
+      }),
+    onSuccess: () => {
+      retry.done();
+      return refresh();
+    },
   });
 }
 

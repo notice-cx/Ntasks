@@ -55,7 +55,7 @@ describe('focus', () => {
     renderApp('/tasks/focus?project=docs');
     expect(await screen.findByText('1 of 1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-    expect(await screen.findByText('1 decision skipped')).toBeTruthy();
+    expect(await screen.findByText('1 task skipped')).toBeTruthy();
     expect(screen.queryByText('Nothing is waiting for you')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
     expect(current()).toBe('docs-r4s9');
@@ -82,5 +82,13 @@ describe('focus', () => {
     // A key typed in a field is text, not a command.
     fireEvent.keyDown(answer, { key: 'ArrowRight' });
     expect(current()).toBe('web-q8n5');
+  });
+
+  it('opens a task to complete and shows its Mark done action', async () => {
+    const api = createFixtureTasksApi();
+    task(api, 'web-q8n5')!.issueType = 'task';
+    renderApp('/tasks/focus?task=web-q8n5', api);
+    fireEvent.click(await screen.findByRole('link', { name: 'Review task' }));
+    expect(await enabledButton('Mark done')).toBeTruthy();
   });
 });

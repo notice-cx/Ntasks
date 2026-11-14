@@ -311,6 +311,7 @@ export function fixtureSeed(nowMs: number): FixtureSeed {
       comments: 1,
     }),
     base('web', 'web-q8n5', 'Confirm the support address on the error page', {
+      issueType: 'decision',
       priority: 2,
       labels: ['human', 'copy'],
       ready: true,

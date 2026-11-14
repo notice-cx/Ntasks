@@ -131,6 +131,14 @@ shrinking; its closes are context for the open work, not a score.
 Pick an option and answer. The work your decision held becomes ready for an
 agent to claim.
 
+### Finish a task waiting for you
+
+Open the task and tick the items under **Done when** as you complete them.
+Select **Mark done** to close the task and clear it from **Waiting for you**.
+If any items are unchecked, review them before closing. Use **Reply to
+agent** in the task’s **More** menu to add a reply and return the task to the
+agents’ queue.
+
 ### See who works on what
 
 <picture>

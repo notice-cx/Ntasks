@@ -33,6 +33,7 @@ const ASK_WORDS: Readonly<Record<InboxAsk, string>> = {
   answer: 'Your answer',
   choose: 'Your choice',
   do: 'Your steps',
+  done: 'Your task',
 };
 
 function returnPath(state: unknown, board: string): string {
@@ -41,7 +42,7 @@ function returnPath(state: unknown, board: string): string {
 }
 
 /**
- * Focus, `<base>/focus`: your decisions one at a time, in the decisions
+ * Focus, `<base>/focus`: the tasks waiting for you one at a time, in the inbox's
  * list's order. A pick, an approval or an answer goes through the same answer
  * as the board's, with the same Undo; Not now passes over a decision without
  * answering it. `?project=` narrows to one project and `?task=` starts at one
@@ -96,7 +97,7 @@ export function FocusRoute() {
           icon={<Inbox />}
           title={
             passed > 0
-              ? `${formatInt(passed)} ${passed === 1 ? 'decision' : 'decisions'} skipped`
+              ? `${formatInt(passed)} ${passed === 1 ? 'task' : 'tasks'} skipped`
               : board.complete
                 ? 'Nothing is waiting for you'
                 : 'Nothing waiting in the projects that could be read'
@@ -361,6 +362,13 @@ function FocusDecision({
                 </Button>
               </div>
             </div>
+          ) : ask === 'done' ? (
+            <div className="flex items-center justify-end gap-2">
+              {notNow}
+              <Button variant="primary" asChild>
+                <Link to={paths.task(task.id)}>Review task</Link>
+              </Button>
+            </div>
           ) : (
             <form
               className="flex flex-col gap-3"
@@ -391,7 +399,7 @@ function FocusDecision({
                   title={reason ?? undefined}
                 >
                   <SendHorizontal aria-hidden />
-                  Send <Kbd>↵</Kbd>
+                  Save answer <Kbd>↵</Kbd>
                 </Button>
               </div>
             </form>
