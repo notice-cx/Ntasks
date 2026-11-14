@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/notice-cx/Ntasks/compare/ui-v0.5.0...ui-v0.5.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **ui:** make tasks waiting for you easy to mark done ([#243](https://github.com/notice-cx/Ntasks/issues/243)) ([5ff8aaa](https://github.com/notice-cx/Ntasks/commit/5ff8aaa38298608af149f16706d9bb04ccf4b02a))
+
 ## [0.5.0](https://github.com/notice-cx/Ntasks/compare/ui-v0.4.0...ui-v0.5.0) (2026-11-13)
 
 
