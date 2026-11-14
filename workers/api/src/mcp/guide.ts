@@ -24,6 +24,7 @@ const TASK_WRITING: readonly string[] = Object.freeze([
   `- title: start with a verb, name the outcome or ask, and keep it within ${TITLE_MOST} characters. Leave commands, paths and commit hashes for the body.`,
   '- description: say what and why in the first sentence. Use short paragraphs, one action per numbered step and technical pointers last. Put runnable commands in fenced code blocks.',
   '- acceptance: put a checklist of observable results in the separate acceptance field. Use checks you can verify when the work lands.',
+  '- For a task waiting on a person, put only their action or decision on their checklist. The agent verifies within the approved scope and records evidence such as the deployed commit and check results.',
   '- Before creating or editing task content, read it as a whole. When the scope changes, update the title, description and acceptance together.',
 ]);
 
@@ -41,8 +42,8 @@ export const TASK_QUALITY: readonly string[] = Object.freeze([
   '- A recorded choice stays tied to the version the owner saw. Once they choose, `update_task` refuses changes to the choices. File a new request if you need the owner to decide on a different action or scope.',
   '- For a decision, use the human label and pass the question and two to six options as choices. Key them a through f in order and mark exactly one recommended. Give each option a short label and its consequence.',
   "- For approval, use request_human_approval or create_task's approval field with the action as title. Use ## Why this needs you, ## What the agent will do (with exact commands), ## What it changes, ## How we'll confirm and ## If you decline. For a merge, pass pr and leave auto-merge off. Approval turns it on and Ntasks posts the answer on the pull request.",
-  '- Keep one task labelled human when a person’s steps are the whole job. Checking the result, recording it and closing the task are part of the same job. Keep the steps in that task’s description. The MCP checklist tool creates a separate request for work that needs the person’s result before it can proceed.',
-  "- When a person's steps unblock a separate deliverable, use the human_action template and call request_human_action on the task with that deliverable. Use ## What it changes and ## How we'll confirm in context. Each action goes in steps, with any runnable command in command. The final tick closes the request and removes it as a blocker. Check the result before continuing the linked work.",
+  '- Keep one task labelled human when a person’s steps are the whole job. Put their steps in the description. When they mark their work done, the agent can verify and record the result on that task. Ask the person for a specific result only when the agent needs it and only the person can access it.',
+  "- When a person's steps unblock a separate deliverable, use the human_action template and call request_human_action on the task with that deliverable. Use ## What it changes and ## How we'll confirm in context. Each action goes in steps, with any runnable command in command. The final tick closes the request and removes it as a blocker. Check the result and record the evidence before continuing the linked work.",
   '- Production access, including reads, spending, external messages, destructive actions and material business or policy commitments require explicit owner approval for that action. Routine work within the authorized scope belongs to agents.',
 ]);
 

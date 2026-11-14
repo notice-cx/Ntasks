@@ -181,10 +181,12 @@ the same Markdown files here:
   steps a person ticks off to unblock a separate deliverable. Pass them to
   `request_human_action` on the task with that deliverable. The last tick
   closes the request. When the person's steps are the whole job, keep one
-  task with the `human` label. Checking or recording the result is part of
-  that job. Confirming a sitemap submission belongs on the sitemap task.
-  Asking for an error export so an agent can fix the affected pages can use
-  a linked request because fixing the pages is a separate deliverable.
+  task with the `human` label. The person completes their action and marks
+  it done. The agent verifies within the approved scope and records the
+  outcome on the task, such as the deployed commit and the checks that
+  passed. Ask for a specific result when only the person can access it and
+  the agent needs it. For example, a request to export errors from a private
+  dashboard can unblock a separate task to fix the affected pages.
 
 Replace the bracketed prompts and keep the sections that apply. Each file
 explains which tool fields to fill. Copy the whole skill folder to keep local

@@ -2,7 +2,7 @@
 type: task
 ---
 
-<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. If a person's steps are the whole job, keep them and any result check on one task labelled human. When their steps unblock a separate deliverable, use get_task_template with type human_action for that request. -->
+<!-- Replace bracketed prompts and omit sections the work does not need. Use the frontmatter as task fields, the first heading as title, the body as description and the Acceptance checklist as the separate acceptance field. If a person's steps are the whole job, keep one task labelled human. Put only their actions in their checklist. Describe any agent checks under How we'll confirm. After the person finishes, the agent verifies within the approved scope and records the evidence on the task. Ask for a specific result only when the agent needs it and only the person can access it. When their steps unblock a separate deliverable, use get_task_template with type human_action for that request. -->
 
 # [Verb + the outcome people will notice]
 

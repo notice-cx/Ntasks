@@ -82,7 +82,9 @@ and [`get_task_guide`](api.md#the-mcp-endpoint) gives agents these rules:
   with units. Paragraphs of at most three sentences, and bullets for three
   or more items.
 - **Acceptance.** A short checklist of facts anyone can check on the day the
-  work lands.
+  work lands. On a task waiting for a person, the checklist covers their
+  action. The agent verifies within the approved scope and records the
+  evidence, such as the deployed commit and check results.
 - **Approval.** The title is the action to approve, and the description has
   the approval's sections, with the exact commands under
   `## What the agent will do`.
