@@ -1284,9 +1284,9 @@ const REQUEST_HUMAN_ACTION: TaskTool = Object.freeze({
   name: 'request_human_action',
   description:
     'Ask a person to do steps that only they can do, such as running a command on their own machine or changing a setting in an admin console, before a task proceeds. ' +
-    'This creates a separate request. Use it when the waiting task has its own deliverable. Checking or recording the result belongs on the same task when the steps are the whole job. ' +
+    'This creates a separate request when the waiting task has its own deliverable. Put only the actions the person needs to take in their steps. Ask for a specific result only when you need it and only they can access it. ' +
     'The person ticks each step in the web app as they do it, can leave a note on a step or say where they are stuck, ' +
-    'and the final tick closes the request and removes it as a blocker. Check the result yourself before continuing. ' +
+    'and the final tick closes the request and removes it as a blocker. Verify within the approved scope and record the evidence on the waiting task before continuing. ' +
     'Read get_task_template with type human_action to draft the request. ' +
     'Use request_human_approval instead when you will do the action and need permission. Asking again with the same title and steps returns the open request.',
   inputSchema: schema(
