@@ -11,7 +11,7 @@
     "package": "node scripts/build.ts"
   },
   "dependencies": {
-    "wrangler": "4.158.0"
+    "wrangler": "4.161.0"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
