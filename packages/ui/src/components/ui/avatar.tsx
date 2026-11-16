@@ -23,10 +23,10 @@ export interface AvatarProps {
 }
 
 /**
- * A person or an agent. A person is their initials on grey. Claude and Codex
- * are their marks on a ringed circle; any other agent is a plain agent icon
- * there. Every mark is drawn at the same share of the circle
- * (`avatarMarkSize`), so Codex's is never larger than Claude's.
+ * A person or an agent. A person is their initials on grey. In a ringed
+ * circle, Claude has its mark, Codex and ChatGPT share OpenAI's mark, and
+ * any other agent has a plain agent icon. Every mark is drawn at the same
+ * share of the circle (`avatarMarkSize`), so Codex's is never larger than Claude's.
  */
 export function Avatar({ name, model, agent, size = 20, live = false, decorative = false, className }: AvatarProps) {
   const face = avatarFace({ name, model: model ?? null, agent: agent ?? false });

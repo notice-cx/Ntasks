@@ -138,7 +138,7 @@ export type AvatarFace =
   | { kind: 'agent' };
 
 const CLAUDE = /\bclaude\b|anthropic/i;
-const CODEX = /codex|openai|\bgpt\b/i;
+const CODEX = /codex|openai|(?:\b|_)chatgpt(?:\b|_)|\bgpt\b/i;
 
 /**
  * The prefixes the API gives a non-person actor: `agent:<name>`, and
@@ -159,7 +159,8 @@ export function isAgentActor(actor: string): boolean {
  * Who an avatar shows. Only an agent gets a brand mark: an actor the API
  * records as an agent or a service, one that named a model, or one the
  * caller knows to be an agent. Such an actor whose name or model names
- * Claude or Codex gets that mark, and any other gets the plain agent mark.
+ * Claude gets its mark, Codex and ChatGPT share OpenAI's mark, and any other
+ * gets the plain agent mark.
  * Everyone else is a person, shown by initials, whatever their name says.
  */
 export function avatarFace({
