@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
+import { Link, type To } from 'react-router-dom';
 import type { StatusTint } from '../../lib/symbols';
 import { cn } from '../../lib/utils';
 
@@ -33,6 +34,11 @@ export function Row({
         'group/row relative flex h-9 items-center gap-2.5 border-b border-border ps-5.5 pe-5 text-sm',
         'transition-colors duration-120 hover:bg-hover focus-within:bg-hover',
         'max-sm:gap-2.25 max-sm:px-4 max-sm:hover:bg-transparent',
+        // Inline controls sit above the title link's expanded tap target, including disabled buttons.
+        'max-sm:has-[[data-row-link]]:isolate',
+        'max-sm:has-[[data-row-link]]:[&_:is(button,a:not([data-row-link]))]:relative',
+        'max-sm:has-[[data-row-link]]:[&_:is(button,a:not([data-row-link]))]:z-1',
+        'max-sm:has-[[data-row-link]]:[&_button:disabled]:pointer-events-auto!',
         tint && 'bg-status-tint',
         answer &&
           'max-sm:h-auto max-sm:flex-wrap max-sm:items-start max-sm:gap-y-2 max-sm:pt-2.5 max-sm:pb-3 max-sm:[&>svg]:mt-0.75 max-sm:[&>[data-priority-mark]]:mt-0.5',
@@ -55,8 +61,8 @@ export function RowId({ className, ...props }: ComponentProps<'span'>) {
   );
 }
 
-/** The title: 14 px medium, cut with an ellipsis rather than wrapped, except on a phone in a row that answers. */
-export function RowTitle({ className, ...props }: ComponentProps<'span'>) {
+/** The title, truncated except in mobile rows that answer. Its link covers the row on mobile. */
+export function RowTitle({ className, children, to, ...props }: ComponentProps<'span'> & { to?: To }) {
   return (
     <span
       className={cn(
@@ -65,7 +71,19 @@ export function RowTitle({ className, ...props }: ComponentProps<'span'>) {
         className,
       )}
       {...props}
-    />
+    >
+      {to === undefined ? (
+        children
+      ) : (
+        <Link
+          to={to}
+          data-row-link=""
+          className="text-inherit no-underline outline-none focus-visible:underline max-sm:after:absolute max-sm:after:inset-0"
+        >
+          {children}
+        </Link>
+      )}
+    </span>
   );
 }
 

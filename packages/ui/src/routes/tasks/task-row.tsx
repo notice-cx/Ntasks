@@ -20,7 +20,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { memo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CloseDoneForm } from '../../components/CloseResolution';
 import { factMenuFooter, factMenuItems } from '../../components/Fact';
@@ -297,10 +297,8 @@ export const TaskRow = memo(function TaskRow({ task, context }: { task: BoardTas
         <RowId>{task.id}</RowId>
         <StatusMark status={mark} muted={tint === 'closed'} />
         {task.issueType === 'epic' ? <EpicBadge /> : null}
-        <RowTitle className={task.issueType === 'epic' ? 'font-semibold' : undefined}>
-          <Link to={paths.task(task.id)} className="text-ink no-underline outline-none focus-visible:underline">
-            {task.title}
-          </Link>
+        <RowTitle to={paths.task(task.id)} className={task.issueType === 'epic' ? 'font-semibold' : undefined}>
+          {task.title}
         </RowTitle>
         <RowFacts task={task} mark={mark} context={context} />
         <RowSpacer />
@@ -404,11 +402,7 @@ export const WaitingRow = memo(function WaitingRow({
         <PriorityMark priority={task.priority} />
         <RowId>{task.id}</RowId>
         <StatusMark status="waiting" />
-        <RowTitle>
-          <Link to={paths.task(task.id)} className="text-ink no-underline outline-none focus-visible:underline">
-            {task.title}
-          </Link>
-        </RowTitle>
+        <RowTitle to={paths.task(task.id)}>{task.title}</RowTitle>
         <RowSpacer />
         <RowAnswer>{buttons}</RowAnswer>
         <RowActions className="ms-0">
