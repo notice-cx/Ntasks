@@ -31,9 +31,8 @@ describe('Next', () => {
         await api.updateTask(...args);
       },
     });
-    const facts = await screen.findByRole('complementary', { name: 'Facts' });
-    const next = within(facts).getByRole('region', { name: 'Next' });
-    fireEvent.click(await enabledButton('Reopen and add to Next', next));
+    fireEvent.click(await enabledButton('Reopen and add to Next'));
+    const next = await screen.findByRole('dialog', { name: 'Reopen and add to Next' });
     const field = within(next).getByRole('textbox', { name: 'Note for the agent' });
     fireEvent.change(field, { target: { value: 'Reverify the keyboard flow.' } });
     fireEvent.submit(field.closest('form')!);
@@ -44,6 +43,67 @@ describe('Next', () => {
       task: { status: 'open', assignee: null, labels: [NEXT_LABEL] },
       comments: [expect.objectContaining({ text: 'Reverify the keyboard flow.' })],
     });
-    expect(await within(next).findByRole('button', { name: 'Remove from Next' })).toBeTruthy();
+    const remove = await enabledButton('Remove from Next');
+    await waitFor(() => expect(document.activeElement).toBe(remove));
+    expect(screen.queryByRole('dialog', { name: 'Reopen and add to Next' })).toBeNull();
+  });
+
+  it('adds from the primary header action with a note, then removes from the header', async () => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks/web-b2r6', api);
+    const add = await enabledButton('Add to Next');
+    const header = add.closest('header')!;
+    expect(add.classList.contains('bg-accent')).toBe(true);
+    expect(within(header).getAllByRole('button', { name: 'Add to Next' })).toHaveLength(1);
+    expect(
+      within(await screen.findByRole('complementary', { name: 'Facts' })).queryByRole('button', {
+        name: 'Add to Next',
+      }),
+    ).toBeNull();
+    expect(within(header).getByRole('button', { name: 'Close' }).classList.contains('bg-accent')).toBe(false);
+
+    fireEvent.click(add);
+    const canceled = await screen.findByRole('dialog', { name: 'Add to Next' });
+    fireEvent.click(within(canceled).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(add));
+    fireEvent.click(add);
+    const dialog = await screen.findByRole('dialog', { name: 'Add to Next' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Note for the agent' }), {
+      target: { value: 'Check the link before the next welcome email.' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add to Next' }));
+    await waitFor(() => expect(api.state.tasks.find((task) => task.id === 'web-b2r6')?.labels).toContain(NEXT_LABEL));
+    expect(api.state.comments.get('web-b2r6')?.[0]?.text).toBe('Check the link before the next welcome email.');
+    const remove = await enabledButton('Remove from Next', header);
+    await waitFor(() => expect(document.activeElement).toBe(remove));
+    expect(remove.classList.contains('bg-accent')).toBe(false);
+    fireEvent.click(remove);
+    await enabledButton('Add to Next', header);
+    expect(api.state.tasks.find((task) => task.id === 'web-b2r6')?.labels).not.toContain(NEXT_LABEL);
+  });
+
+  it.each([false, true])('hides Next actions when writable is %s and Next is unsupported', async (writable) => {
+    const api = createFixtureTasksApi();
+    renderApp('/tasks/web-b2r6', {
+      ...api,
+      capabilities: async () => ({ live: true, writable, operations: ['close', 'update'], reason: null }),
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Fix the broken reset link in the welcome email' });
+    await enabledButton('More');
+    expect(screen.queryByRole('button', { name: 'Add to Next' })).toBeNull();
+    fireEvent.click(await enabledButton('More'));
+    const claim = await screen.findByRole('menuitem', { name: 'Claim' });
+    expect((claim as HTMLButtonElement).disabled).toBe(!writable);
+    fireEvent.keyDown(document.body, { key: 'm' });
+    if (!writable) expect(api.state.tasks.find((task) => task.id === 'web-b2r6')?.assignee).toBeNull();
+  });
+
+  it('does not offer Next or Claim for work already in progress', async () => {
+    renderApp('/tasks/web-k3m9.2');
+    await enabledButton('Close');
+    expect(screen.queryByRole('button', { name: 'Add to Next' })).toBeNull();
+    fireEvent.click(await enabledButton('More'));
+    const menu = await screen.findByRole('menu', { name: 'Actions for web-k3m9.2' });
+    expect(within(menu).queryByRole('menuitem', { name: 'Claim' })).toBeNull();
   });
 });

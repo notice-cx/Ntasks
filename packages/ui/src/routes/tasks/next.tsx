@@ -1,10 +1,11 @@
 import { ListPlus, ListX } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { canQueueNext, NEXT_LABEL, TASK_LIMITS } from '@ntasks/domain';
 import type { LiveTask, TaskEdit, TasksCapabilities } from '../../api/types';
 import { Button, IconButton } from '../../components/ui/button';
 import { Field, Textarea } from '../../components/ui/field';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
 import { operationAvailable, useRetryKey, useUpdateTask } from '../../hooks/useTasks';
 import { isGate } from '../../lib/task-model';
 
@@ -62,6 +63,7 @@ export function NextRowAction({ task, project }: { task: LiveTask; project: stri
 }
 
 export function NextTaskAction({ task, project }: { task: LiveTask; project: string }) {
+  const removeButton = useRef<HTMLButtonElement>(null);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
   const { pending, save } = useSaveNext(task.id, project);
@@ -82,37 +84,40 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
     );
     if (saved) cancel();
   }
-  return (
-    <div className="flex flex-col items-start gap-2">
-      {queued ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={() => void save({ queued: false }, 'Removed from Next')}
-        >
-          <ListX aria-hidden />
-          Remove from Next
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-expanded={showNote}
-          disabled={pending}
-          onClick={() => (showNote ? cancel() : setShowNote(true))}
-        >
+  return queued ? (
+    <Button
+      ref={removeButton}
+      type="button"
+      disabled={pending}
+      onClick={() => void save({ queued: false }, 'Removed from Next')}
+    >
+      <ListX aria-hidden />
+      Remove from Next
+    </Button>
+  ) : (
+    <Popover open={showNote} onOpenChange={(open) => (open ? setShowNote(true) : cancel())}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="primary" aria-label={addLabel} disabled={pending}>
           <ListPlus aria-hidden />
-          {addLabel}
+          <span>
+            {reopen ? <span className="max-sm:sr-only">Reopen and </span> : null}
+            {reopen ? 'add to Next' : addLabel}
+          </span>
         </Button>
-      )}
-      {showNote && !queued ? (
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        aria-label={addLabel}
+        onCloseAutoFocus={(event) => {
+          if (removeButton.current) {
+            event.preventDefault();
+            removeButton.current.focus();
+          }
+        }}
+      >
         <form className="flex w-full flex-col gap-2" onSubmit={(event) => void submit(event)}>
           <Field label="Note for the agent">
             <Textarea
-              autoFocus
               rows={3}
               disabled={pending}
               maxLength={TASK_LIMITS.comment}
@@ -129,7 +134,7 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
             </Button>
           </div>
         </form>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
