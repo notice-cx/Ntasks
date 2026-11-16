@@ -261,10 +261,8 @@ function EpicLine({ epic }: { epic: EpicSummary }) {
     <Row tint={epic.mark} data-live-epic={epic.id}>
       <Layers aria-hidden size={14} className="shrink-0 text-ink-3" />
       <RowId>{epic.id}</RowId>
-      <RowTitle className="max-sm:flex-1">
-        <Link to={paths.task(epic.id)} className="text-ink-2 no-underline outline-none focus-visible:underline">
-          {epic.title}
-        </Link>
+      <RowTitle to={paths.task(epic.id)} className="text-ink-2 max-sm:flex-1">
+        {epic.title}
       </RowTitle>
       <RowSpacer className="max-sm:hidden" />
       <ProgressBar parts={progressParts(epic)} className="max-sm:w-12" />
@@ -317,10 +315,8 @@ function LiveRow({
     >
       <ActivityMark activity={activity} />
       <RowId>{task.id}</RowId>
-      <RowTitle className="max-sm:flex-1">
-        <Link to={paths.task(task.id)} className="text-ink no-underline outline-none focus-visible:underline">
-          {task.title}
-        </Link>
+      <RowTitle to={paths.task(task.id)} className="max-sm:flex-1">
+        {task.title}
       </RowTitle>
       {next ? (
         <RowMeta className="min-w-0 shrink-[4]" data-live-next="">

@@ -7,7 +7,6 @@
  */
 import { ChevronDown, ChevronRight, Layers, Search } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { ProgressBar, type ProgressParts } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { EmptyState } from '../../components/ui/empty-state';
@@ -211,10 +210,8 @@ function EpicRow({
         <PriorityMark priority={summary.priority} className="max-sm:hidden" />
         <RowId>{summary.id}</RowId>
         <EpicMark state={summary.state} />
-        <RowTitle className="max-sm:flex-1">
-          <Link to={paths.task(summary.id)} className="text-ink no-underline outline-none focus-visible:underline">
-            {summary.title}
-          </Link>
+        <RowTitle to={paths.task(summary.id)} className="max-sm:flex-1">
+          {summary.title}
         </RowTitle>
         {subs > 0 ? (
           <RowMeta className="max-sm:hidden">
@@ -373,14 +370,7 @@ export function EpicsView({
                       muted={tint === 'closed'}
                       label={tint === 'closed' ? 'Closed' : undefined}
                     />
-                    <RowTitle>
-                      <Link
-                        to={paths.task(epic.id)}
-                        className="text-ink no-underline outline-none focus-visible:underline"
-                      >
-                        {epic.title}
-                      </Link>
-                    </RowTitle>
+                    <RowTitle to={paths.task(epic.id)}>{epic.title}</RowTitle>
                     <RowSpacer />
                     <RowAge>{formatAge(ageMs(nowMs, epic.closedAt))}</RowAge>
                   </Row>
