@@ -43,7 +43,8 @@ describe('Next', () => {
       task: { status: 'open', assignee: null, labels: [NEXT_LABEL] },
       comments: [expect.objectContaining({ text: 'Reverify the keyboard flow.' })],
     });
-    expect(await enabledButton('Remove from Next')).toBeTruthy();
+    const remove = await enabledButton('Remove from Next');
+    await waitFor(() => expect(document.activeElement).toBe(remove));
     expect(screen.queryByRole('dialog', { name: 'Reopen and add to Next' })).toBeNull();
   });
 
@@ -62,6 +63,10 @@ describe('Next', () => {
     expect(within(header).getByRole('button', { name: 'Close' }).classList.contains('bg-accent')).toBe(false);
 
     fireEvent.click(add);
+    const canceled = await screen.findByRole('dialog', { name: 'Add to Next' });
+    fireEvent.click(within(canceled).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(add));
+    fireEvent.click(add);
     const dialog = await screen.findByRole('dialog', { name: 'Add to Next' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Note for the agent' }), {
       target: { value: 'Check the link before the next welcome email.' },
@@ -70,6 +75,7 @@ describe('Next', () => {
     await waitFor(() => expect(api.state.tasks.find((task) => task.id === 'web-b2r6')?.labels).toContain(NEXT_LABEL));
     expect(api.state.comments.get('web-b2r6')?.[0]?.text).toBe('Check the link before the next welcome email.');
     const remove = await enabledButton('Remove from Next', header);
+    await waitFor(() => expect(document.activeElement).toBe(remove));
     expect(remove.classList.contains('bg-accent')).toBe(false);
     fireEvent.click(remove);
     await enabledButton('Add to Next', header);

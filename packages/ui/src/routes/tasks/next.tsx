@@ -1,5 +1,5 @@
 import { ListPlus, ListX } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { canQueueNext, NEXT_LABEL, TASK_LIMITS } from '@ntasks/domain';
 import type { LiveTask, TaskEdit, TasksCapabilities } from '../../api/types';
@@ -63,6 +63,7 @@ export function NextRowAction({ task, project }: { task: LiveTask; project: stri
 }
 
 export function NextTaskAction({ task, project }: { task: LiveTask; project: string }) {
+  const removeButton = useRef<HTMLButtonElement>(null);
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
   const { pending, save } = useSaveNext(task.id, project);
@@ -84,7 +85,12 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
     if (saved) cancel();
   }
   return queued ? (
-    <Button type="button" disabled={pending} onClick={() => void save({ queued: false }, 'Removed from Next')}>
+    <Button
+      ref={removeButton}
+      type="button"
+      disabled={pending}
+      onClick={() => void save({ queued: false }, 'Removed from Next')}
+    >
       <ListX aria-hidden />
       Remove from Next
     </Button>
@@ -99,7 +105,16 @@ export function NextTaskAction({ task, project }: { task: LiveTask; project: str
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label={addLabel}>
+      <PopoverContent
+        align="end"
+        aria-label={addLabel}
+        onCloseAutoFocus={(event) => {
+          if (removeButton.current) {
+            event.preventDefault();
+            removeButton.current.focus();
+          }
+        }}
+      >
         <form className="flex w-full flex-col gap-2" onSubmit={(event) => void submit(event)}>
           <Field label="Note for the agent">
             <Textarea
