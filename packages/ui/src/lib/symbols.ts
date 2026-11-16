@@ -138,7 +138,7 @@ export type AvatarFace =
   | { kind: 'agent' };
 
 const CLAUDE = /\bclaude\b|anthropic/i;
-const CODEX = /codex|openai|\bchatgpt\b|\bgpt\b/i;
+const CODEX = /codex|openai|(?:\b|_)chatgpt(?:\b|_)|\bgpt\b/i;
 
 /**
  * The prefixes the API gives a non-person actor: `agent:<name>`, and
