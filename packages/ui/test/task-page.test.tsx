@@ -181,7 +181,7 @@ describe('a task page', () => {
     async function open(api: ReturnType<typeof createFixtureTasksApi>) {
       renderApp('/tasks/web-b2r6', api);
       // The keys wait for the sign-in's permissions, as the page's buttons do.
-      await enabledButton('Claim');
+      await enabledButton('Add to Next');
     }
     const press = (key: string) => fireEvent.keyDown(document.body, { key });
 
@@ -252,7 +252,9 @@ describe('a task page', () => {
   it('claims, comments, ticks Done when and closes with its evidence', async () => {
     const api = createFixtureTasksApi();
     renderApp('/tasks/web-b2r6', api);
-    fireEvent.click(await enabledButton('Claim'));
+    expect(screen.queryByRole('button', { name: 'Claim' })).toBeNull();
+    fireEvent.click(await enabledButton('More'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Claim' }));
     await waitFor(() => expect(task(api, 'web-b2r6')?.assignee).toBe(FIXTURE_ACTOR));
     expect(await within(fact('Assignee')).findByText(FIXTURE_ACTOR)).toBeTruthy();
     const bar = screen.getByRole('navigation', { name: 'Path' }).closest('header');

@@ -617,10 +617,13 @@ you"), and the action that fills it, when there is one.
 ### A task's page
 
 The top bar holds the task's path: its project's badge and name, its epic's
-id, then its id. Its end holds Copy link, the More menu (add or edit the
+id, then its id. Its end holds Copy link, the More menu (claim the task, add or edit the
 description, Done when, design and notes, add a link, move the task to
-another project or epic, copy the id or the link) and the task's verbs, the primary one last: Claim, or Close once
-someone holds it; on a task waiting for you, Approve after Did it myself,
+another project or epic, copy the id or the link) and the task's verbs. When the task
+can be added to Next and the server supports it, Add to Next is the primary button
+after Close; it opens a popover with Note for the agent and Add to Next. A task
+already in Next shows Remove from Next as a secondary button. A closed task
+shows Reopen and add to Next. Otherwise, Close is primary; on a task waiting for you, Approve after Did it myself,
 which opens a Note in the reading column, or Answer beside Close as. On an
 approval that gates a pull request, a line in `text-label` Text 3 under the
 title says that Approve turns on that pull request's auto-merge, with the
@@ -1070,7 +1073,7 @@ Each action's key:
 | `Esc` | Close a menu, a popover, the composer or an open form |
 
 `M`, `A`, `P` and `Z` act on the task whose page is open, and on the board
-on the row that holds focus. On a task's page, Claim shows `M`, and Priority,
+on the row that holds focus. On a task's page, Claim in the More menu shows `M`, and Priority,
 Assignee and Parked until open their menu and show their key while pointed
 at or focused. On a row, `M` claims, `Z` opens Park, and `A` and `P` open the
 row's menu at Assign to or Priority, where the row's menu lists them beside

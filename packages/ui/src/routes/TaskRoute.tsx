@@ -95,7 +95,7 @@ import { AnswerForm, AutoMergeNote, PerformedButton, PerformedForm } from './tas
 import { closeOperation, declinedOnClose, useCloseAs } from './tasks/close-actions';
 import { cardOptions, DecisionAnswer } from './tasks/decision-card';
 import { MoveForm } from './tasks/move-form';
-import { isInNext } from './tasks/next';
+import { canAddToNext, canUseNext, isInNext, NextTaskAction } from './tasks/next';
 import { StepList } from './tasks/step-list';
 import { TaskFacts, useFieldSave } from './tasks/task-facts';
 import { AnswerSummary, ChoiceSummary, ClosedSummary, DeliveryLine, TaskPath, type Actor } from './tasks/task-head';
@@ -333,6 +333,7 @@ function TaskPage({
     capabilities.operations?.includes('deliver') === true;
   const markLiveReason = reasonFor(operationAvailable(capabilities, 'deliver'));
   const claimable = task.status === 'open' && task.assignee === null && (!isInNext(task) || task.ready);
+  const canManageNext = canAddToNext(task) && canUseNext(capabilities);
   const doneOffered = !declinedOnClose(task) && operationAvailable(capabilities, 'close');
   const acceptOffered = !isGate(task) && operationAvailable(capabilities, 'accept');
   // A person's acceptance that an agent recorded for them, which they can withdraw.
@@ -485,12 +486,7 @@ function TaskPage({
       </>
     );
   } else if (ask === null && !closed && !answered) {
-    actions = (
-      <>
-        {closeMenu('Close', doneOffered, claimable ? 'secondary' : 'primary')}
-        {claimable ? <ClaimAction id={task.id} project={key} disabledReason={claimReason} /> : null}
-      </>
-    );
+    actions = closeMenu('Close', doneOffered, canManageNext ? 'secondary' : 'primary');
   }
 
   const panelBody =
@@ -577,6 +573,7 @@ function TaskPage({
           />
           <MoreMenu
             task={task}
+            claim={claimable && ask === null && !answered ? { project: key, disabledReason: claimReason } : null}
             onEdit={setEditing}
             onAddLink={() => setAddingLink(true)}
             onReply={
@@ -599,6 +596,7 @@ function TaskPage({
             canEdit={writable}
           />
           {actions ? <span className="ms-1 flex items-center gap-2">{actions}</span> : null}
+          {canManageNext ? <NextTaskAction task={task} project={key} /> : null}
         </div>
       </TopBar>
       <div
@@ -760,34 +758,6 @@ function actorOf(actor: string, model: string | null, actors: readonly TaskActor
   return { name: actorLabel(actor, actors), agent: isAgentActor(actor), model };
 }
 
-function ClaimAction({ id, project, disabledReason }: { id: string; project: string; disabledReason: string | null }) {
-  const claim = useClaimTask();
-  const enabled = disabledReason === null && !claim.isPending;
-  const take = () =>
-    claim.mutate(
-      { id, project },
-      {
-        onSuccess: () => toast.success(`Claimed ${id}`),
-        onError: (error) => toast.error(error.message),
-      },
-    );
-  useShortcut('m', take, enabled);
-  return (
-    <Button
-      variant="primary"
-      disabled={!enabled}
-      title={disabledReason ?? undefined}
-      aria-keyshortcuts="M"
-      data-task-action="claim"
-      onClick={take}
-    >
-      <Hand aria-hidden />
-      {claim.isPending ? 'Claiming…' : 'Claim'}
-      <Kbd className="max-sm:hidden">M</Kbd>
-    </Button>
-  );
-}
-
 /** Moves a closed task's change to Live by hand, for a release no deploy check or merge reports to Ntasks. */
 function MarkLiveAction({ id, disabledReason }: { id: string; disabledReason: string | null }) {
   const markLive = useMarkLive();
@@ -856,9 +826,10 @@ const TEXT_WORDS: Readonly<Record<TextField, string>> = {
   notes: 'notes',
 };
 
-/** The top bar's menu: adding or editing the task's text and links, which a pointer also reaches on the page, moving it, and copying. */
+/** The top bar's menu: claiming, editing the task's text and links, moving it, and copying. */
 function MoreMenu({
   task,
+  claim,
   onEdit,
   onAddLink,
   onReply,
@@ -866,6 +837,7 @@ function MoreMenu({
   canEdit,
 }: {
   task: Pick<LiveTask, 'id' | 'description' | 'acceptance' | 'design' | 'notes'>;
+  claim: { project: string; disabledReason: string | null } | null;
   onEdit: (field: TextField) => void;
   onAddLink: () => void;
   onReply: (() => void) | null;
@@ -873,6 +845,19 @@ function MoreMenu({
   onMove: (() => void) | null;
   canEdit: (field: string) => boolean;
 }) {
+  const claimTask = useClaimTask();
+  const canClaim = claim !== null && claim.disabledReason === null && !claimTask.isPending;
+  const take = () => {
+    if (!canClaim) return;
+    claimTask.mutate(
+      { id: task.id, project: claim.project },
+      {
+        onSuccess: () => toast.success(`Claimed ${task.id}`),
+        onError: (error) => toast.error(error.message),
+      },
+    );
+  };
+  useShortcut('m', take, canClaim);
   const fields: TextField[] = ['description', 'acceptance', 'design', 'notes'];
   return (
     <Menu>
@@ -880,6 +865,11 @@ function MoreMenu({
         <IconButton label="More" icon={<Ellipsis aria-hidden />} />
       </MenuTrigger>
       <MenuContent label={`Actions for ${task.id}`} align="end">
+        {claim ? (
+          <MenuItem icon={<Hand aria-hidden />} shortcut="M" disabled={!canClaim} onSelect={take}>
+            <span title={claim.disabledReason ?? undefined}>{claimTask.isPending ? 'Claiming…' : 'Claim'}</span>
+          </MenuItem>
+        ) : null}
         {onReply ? (
           <MenuItem icon={<Reply aria-hidden />} onSelect={onReply}>
             Reply to agent
