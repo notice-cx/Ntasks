@@ -184,6 +184,14 @@ describe('who an avatar shows', () => {
     expect(avatarFace({ name: 'Claude', agent: true }).kind).toBe('claude');
   });
 
+  it.each([{ name: 'ChatGPT', agent: true }, { name: 'agent:ChatGPT' }, { name: 'service:example/chatgpt' }])(
+    'shows $name with the same icon as Codex',
+    (actor) => {
+      const { container } = render(<Avatar {...actor} />);
+      expect(container.querySelector('[data-brand-mark="codex"]')).toBeTruthy();
+    },
+  );
+
   it('shows a person as a person, whatever their name says', () => {
     expect(avatarFace({ name: 'Claude Monet' })).toEqual({ kind: 'person', initials: 'CM' });
     expect(avatarFace({ name: 'Codex Reader' })).toEqual({ kind: 'person', initials: 'CR' });
