@@ -18,6 +18,7 @@
  * in the workspace it began in.
  */
 import type { TaskResolution } from '@ntasks/domain';
+import { newRequestId } from '../lib/request-id';
 import type {
   Account,
   BurndownPage,
@@ -581,7 +582,7 @@ async function writeJson(
     headers: {
       ...JSON_READ,
       'content-type': 'application/json',
-      'idempotency-key': idempotencyKey ?? crypto.randomUUID(),
+      'idempotency-key': idempotencyKey ?? newRequestId(),
     },
     body: JSON.stringify(body),
     ...(keepalive ? { keepalive: true } : {}),

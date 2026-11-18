@@ -27,6 +27,7 @@ import type {
 import { UNDO_WINDOW_MS } from '../lib/answer-queue';
 import { choiceName, closeAsReason, RESOLUTION_LABELS, type NotDone } from '../lib/task-model';
 import { usePaths } from '../lib/paths';
+import { newRequestId } from '../lib/request-id';
 
 /** Until the answer arrives, nothing is offered as writable: a button that
  * appears and then cannot work is a write the person believes happened. */
@@ -251,7 +252,7 @@ export function useRetryKey(): { keyFor: (content: string) => string; done: () =
   return useMemo(
     () => ({
       keyFor: (content: string) => {
-        if (last.current?.content !== content) last.current = { content, key: crypto.randomUUID() };
+        if (last.current?.content !== content) last.current = { content, key: newRequestId() };
         return last.current.key;
       },
       done: () => {
