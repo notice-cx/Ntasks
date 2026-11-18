@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/notice-cx/Ntasks/compare/ntasks-v0.5.0...ntasks-v0.6.0) (2026-11-18)
+
+
+### Features
+
+* **ui:** make Add to Next the primary task action ([#249](https://github.com/notice-cx/Ntasks/issues/249)) ([614f57c](https://github.com/notice-cx/Ntasks/commit/614f57c6c99e1fe6742f10a7c6d1d92c1f20c680))
+
+
+### Bug Fixes
+
+* **ui:** keep task writes working on private HTTP ([#251](https://github.com/notice-cx/Ntasks/issues/251)) ([32db1b0](https://github.com/notice-cx/Ntasks/commit/32db1b068d6b79b924557d6b91151b235543428d))
+* **ui:** make task rows tappable across their full width on mobile ([#250](https://github.com/notice-cx/Ntasks/issues/250)) ([502aa29](https://github.com/notice-cx/Ntasks/commit/502aa29fa6c611c88cb5f54e5787b57a29fa77bc))
+* **ui:** make tasks waiting for you easy to mark done ([#243](https://github.com/notice-cx/Ntasks/issues/243)) ([5ff8aaa](https://github.com/notice-cx/Ntasks/commit/5ff8aaa38298608af149f16706d9bb04ccf4b02a))
+* **ui:** use the Codex icon for ChatGPT ([#248](https://github.com/notice-cx/Ntasks/issues/248)) ([b257809](https://github.com/notice-cx/Ntasks/commit/b25780924008a8e7ba8be331e70bd163154f84c2))
+
 ## [0.5.0](https://github.com/notice-cx/Ntasks/compare/ntasks-v0.4.0...ntasks-v0.5.0) (2026-11-13)
 
 
