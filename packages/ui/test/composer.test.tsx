@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createFixtureTasksApi } from '@/api/fixture';
 import { fixtureSeed } from '@/api/fixture-data';
 import { acceptanceLines, acceptanceText } from '@/components/TaskComposer';
@@ -115,7 +115,13 @@ describe('the composer', () => {
     expect(api.state.tasks.filter((entry) => entry.title === 'Only once')).toHaveLength(1);
   });
 
-  it('sends a failed submission again with the same retry key, and a changed one with a new key', async () => {
+  it('retains the retry key for the same private HTTP submission and gives a changed draft a new key', async ({
+    onTestFinished,
+  }) => {
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
     const api = createFixtureTasksApi();
     const keys: (string | undefined)[] = [];
     const flaky = {

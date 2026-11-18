@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
   createHttpTasksApi,
@@ -257,14 +257,23 @@ describe('the HTTP Tasks API client', () => {
     expect(sent[1]?.headers.get('idempotency-key')).toBe('retry-one');
   });
 
-  it('gives every write its own retry key', async () => {
-    const { api, sent } = server();
-    await api.comment('web-a1b2', 'web', 'one');
-    await api.comment('web-a1b2', 'web', 'two');
-    const keys = sent.map((request) => request.headers.get('idempotency-key'));
-    expect(keys.every((key) => typeof key === 'string' && key.length >= 8)).toBe(true);
-    expect(new Set(keys).size).toBe(2);
-  });
+  it.each([true, false])(
+    'gives every write its own v4 retry key with randomUUID available: %s',
+    async (hasRandomUuid) => {
+      const { api, sent } = server();
+      if (!hasRandomUuid) vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+      try {
+        await api.comment('web-a1b2', 'web', 'one');
+        await api.comment('web-a1b2', 'web', 'two');
+        const keys = sent.map((request) => request.headers.get('idempotency-key'));
+        for (const key of keys)
+          expect(key).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u);
+        expect(new Set(keys).size).toBe(2);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('reads the project list again for a key the last list did not hold', async () => {
     let lists = 0;
