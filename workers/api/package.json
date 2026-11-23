@@ -20,12 +20,12 @@
     "@ntasks/web": "workspace:*",
     "@types/node": "26.6.6",
     "typescript": "6.0.3",
-    "vitest": "5.1.0",
+    "vitest": "5.1.1",
     "wrangler": "4.158.0"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.7.18",
+    "@better-auth/oauth-provider": "1.7.26",
     "@ntasks/domain": "workspace:*",
-    "better-auth": "1.7.18"
+    "better-auth": "1.7.26"
   }
 }
