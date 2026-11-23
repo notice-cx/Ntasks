@@ -16,7 +16,7 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "typescript": "6.0.3",
-    "vitest": "5.1.0",
+    "vitest": "5.1.1",
     "wrangler": "4.158.0"
   }
 }
